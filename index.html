@@ -7,7 +7,7 @@
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body style="background-image: url('Board.png');">
     <header>
         <div><h1>CX MultiNotes Viewer</h1></div>
         <div id="search-container"><input type="search" id="search-box" placeholder="Търсене в заглавията..."></div>
@@ -158,6 +158,31 @@
                     link.classList.add('selected-board');
                 }
             });
+
+            // --- Board Filter Popup Logic ---
+            let popup = document.getElementById('board-filter-popup');
+            if (!popup) {
+                popup = document.createElement('div');
+                popup.id = 'board-filter-popup';
+                popup.className = 'board-filter-popup';
+                document.body.appendChild(popup);
+            }
+
+            if (boardId === 'all') {
+                popup.classList.remove('visible');
+            } else {
+                const board = boardsData.find(b => b.gdid === boardId);
+                if (board) {
+                    popup.textContent = board.title;
+                    popup.classList.add('visible');
+                    // Add click listener here, after the popup is created/updated
+                    popup.onclick = () => {
+                        window.scrollTo({top: 0, behavior: 'smooth'});
+                    };
+                } else {
+                    popup.classList.remove('visible');
+                }
+            }
         }
 
         function applySearchFilter() {
@@ -329,21 +354,22 @@
                             }
 
                             results.forEach(({ file, res }) => {
-                                if (file.name !== 'board.txt') {
+                                if (file.name === 'note.txt') {
                                     const note = document.createElement('div');
                                     note.className = 'note';
                                     let fileContent = '';
-                                    if (file.name === 'note.txt') {
-                                        try {
-                                            const content = JSON.parse(res.body);
-                                            if (content && typeof content.notetxt !== 'undefined') {
-                                                fileContent = content.notetxt;
-                                                const extraData = { ...content };
-                                                delete extraData.notetxt;
-                                                if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
-                                            } else { fileContent = "Error: 'notetxt' field not found."; }
-                                        } catch (e) { fileContent = "Error parsing JSON content."; }
-                                    } else { fileContent = res.body; }
+                                    try {
+                                        const content = JSON.parse(res.body);
+                                        if (content && typeof content.notetxt !== 'undefined') {
+                                            fileContent = content.notetxt;
+                                            const extraData = { ...content };
+                                            delete extraData.notetxt;
+                                            if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
+                                            if (content.color && !isNaN(content.color) && content.color >= 0 && content.color <= 9) {
+                                                note.style.backgroundColor = `var(--note-bg-${content.color})`;
+                                            }
+                                        } else { fileContent = "Error: 'notetxt' field not found."; }
+                                    } catch (e) { fileContent = "Error parsing JSON content."; }
 
                                     let noteTitle = '';
                                     const lines = fileContent.split('\n');
