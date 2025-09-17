@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CX Viewer</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div><h1>CX MultiNotes Viewer</h1></div>
+        <div id="search-container"><input type="search" id="search-box" placeholder="Търсене в заглавията..."></div>
+        <div id="header-buttons">
+            <button id="reload_button" class="header-btn">Презареди</button>
+            <button id="signout_button" class="header-btn">Изход</button>
+        </div>
+    </header>
+    <main>
+        <div id="loader-container" style="display: none;"><div class="loader"></div><div id="loader-text"></div></div>
+        <div id="notes-container"></div>
+    </main>
+
+    <div id="content-modal" class="modal-overlay"><div class="modal-content-box"><button id="copy-modal-btn" class="modal-header-btn" title="Copy content"></button><button class="modal-close modal-header-btn">&times;</button><div id="modal-body"></div></div></div>
+    <button id="scrollTopBtn" title="Go to top">&uarr;</button>
+
+    <script defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script type="text/javascript">
+        // --- Constants and Globals ---
+        const API_KEY = 'AIzaSyA7NjjnhRHBefavUaRtn-Jt8Cf5_tYOW5A';
+        const FOLDER_ID = '1QKCn4pCTdJ_2uPI03lY8cNHYPRSCCLNI';
+        const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
+        const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+        const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
+        const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
+        const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" /></svg>`;
+        
+        let authToken = null, currentModalContent = '', boardsData = [], currentBoardFilter = 'all';
+        let signoutButton, reloadButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText;
+        const boardsNoteBgnd = '#cfe6f8'; // Background for boards note
+
+        // --- App Initialization ---
+        checkAuth();
+
+        function checkAuth() {
+            const storedTokenString = sessionStorage.getItem('google_auth_token');
+            if (!storedTokenString) { window.location.href = 'login.html'; return; }
+            authToken = JSON.parse(storedTokenString);
+            const isExpired = (Date.now() - authToken.issued_at) / 1000 > (authToken.expires_in - 60);
+            if (isExpired) {
+                sessionStorage.removeItem('google_auth_token');
+                alert('Your session has expired. Please log in again.');
+                window.location.href = 'login.html';
+            }
+        }
+
+        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
+
+        async function initializeGapiClient() {
+            await gapi.client.init({ apiKey: API_KEY, discoveryDocs: DISCOVERY_DOCS });
+            gapi.client.setToken(authToken);
+            document.body.style.display = 'block';
+            initApp();
+            listFiles();
+        }
+
+        function initApp() {
+            signoutButton = document.getElementById('signout_button');
+            reloadButton = document.getElementById('reload_button');
+            notesContainer = document.getElementById('notes-container');
+            contentModal = document.getElementById('content-modal');
+            modalBody = document.getElementById('modal-body');
+            copyBtn = document.getElementById('copy-modal-btn');
+            // boardsButton = document.getElementById('boards-btn'); // Removed
+            // boardsModal = document.getElementById('boards-modal'); // Removed
+            scrollTopBtn = document.getElementById("scrollTopBtn");
+            searchBox = document.getElementById('search-box');
+            loaderContainer = document.getElementById('loader-container');
+            loaderText = document.getElementById('loader-text');
+
+            signoutButton.addEventListener('click', handleSignoutClick);
+            reloadButton.addEventListener('click', listFiles);
+            // boardsButton.addEventListener('click', openBoardsModal); // Removed
+
+            window.onscroll = () => {
+                scrollTopBtn.style.display = (document.body.scrollTop > 100 || document.documentElement.scrollTop > 100) ? "flex" : "none";
+            };
+            scrollTopBtn.addEventListener('click', () => window.scrollTo({top: 0, behavior: 'smooth'}));
+
+            searchBox.addEventListener('input', applySearchFilter);
+
+            copyBtn.innerHTML = copyIconSvg;
+            copyBtn.addEventListener('click', () => {
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(currentModalContent).then(() => {
+                        copyBtn.innerHTML = '&#10003;';
+                        setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 2000);
+                    }).catch(err => { alert('Failed to copy content.'); });
+                }
+            });
+
+            document.querySelectorAll('.modal-close').forEach(btn => {
+                btn.addEventListener('click', (e) => e.currentTarget.closest('.modal-overlay').classList.remove('visible'));
+            });
+            document.querySelectorAll('.modal-overlay').forEach(modal => {
+                modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('visible'); });
+            });
+        }
+
+        // --- Core Functions ---
+        function handleSignoutClick() {
+            sessionStorage.removeItem('google_auth_token');
+            window.location.href = 'login.html';
+        }
+
+        function showModal(content) {
+            currentModalContent = content;
+            appendLinkifiedText(modalBody, content);
+            contentModal.classList.add('visible');
+            copyBtn.innerHTML = copyIconSvg;
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            try {
+                const date = new Date(dateString);
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}.${month}.${year}`;
+            } catch (e) { return dateString; }
+        }
+
+        function appendLinkifiedText(container, text) {
+            const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+            let lastIndex = 0, match;
+            container.innerHTML = '';
+            while ((match = urlRegex.exec(text)) !== null) {
+                if (match.index > lastIndex) container.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+                const url = match[0];
+                const link = document.createElement('a');
+                link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+                link.appendChild(document.createTextNode(url));
+                container.appendChild(link);
+                lastIndex = match.index + url.length;
+            }
+            if (text.length > lastIndex) container.appendChild(document.createTextNode(text.substring(lastIndex)));
+        }
+
+        function filterNotesByBoard(boardId) {
+            currentBoardFilter = boardId; // Update the current board filter
+            applyFilters(); // Apply both board and search filters
+
+            // Update board link styles
+            document.querySelectorAll('.board-filter-link').forEach(link => {
+                link.classList.remove('selected-board');
+                if (link.dataset.boardid === boardId) {
+                    link.classList.add('selected-board');
+                }
+            });
+        }
+
+        function applySearchFilter() {
+            applyFilters(); // Apply both board and search filters
+        }
+
+        function applyFilters() {
+            const searchTerm = searchBox.value.toLowerCase();
+            const notes = notesContainer.getElementsByClassName('note');
+
+            for (const note of notes) {
+                // Always show the Boards note
+                if (note.querySelector('h3') && note.querySelector('h3').textContent === 'Boards') {
+                    note.style.display = 'flex';
+                    continue;
+                }
+
+                let isVisibleByBoard = false;
+                const extraInfo = note.dataset.extraInfo;
+
+                if (currentBoardFilter === 'all') {
+                    isVisibleByBoard = true;
+                } else if (extraInfo) {
+                    try {
+                        const data = JSON.parse(extraInfo);
+                        if (data.boardid === currentBoardFilter) {
+                            isVisibleByBoard = true;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing extraInfo for note:', e);
+                    }
+                }
+
+                let isVisibleBySearch = false;
+                const titleEl = note.querySelector('h3');
+                if (titleEl) {
+                    const title = titleEl.textContent.toLowerCase();
+                    isVisibleBySearch = title.includes(searchTerm);
+                }
+
+                // A note is visible if it passes both board and search filters
+                if (isVisibleByBoard && isVisibleBySearch) {
+                    note.style.display = 'flex';
+                } else {
+                    note.style.display = 'none';
+                }
+            }
+        }
+
+        function listFiles() {
+            boardsData = [];
+            // boardsButton.style.display = 'none'; // Removed
+            notesContainer.innerHTML = '';
+            loaderContainer.style.display = 'block';
+            loaderText.textContent = '';
+
+            const allFiles = [];
+            const getFiles = (pageToken) => {
+                gapi.client.drive.files.list({
+                    q: `'${FOLDER_ID}' in parents and mimeType='text/plain'`,
+                    fields: 'files(id, name), nextPageToken',
+                    pageSize: 1000, // Fetch up to 1000 files
+                    pageToken: pageToken
+                }).then(function(response) {
+                    const files = response.result.files || [];
+                    allFiles.push(...files);
+
+                    if (response.result.nextPageToken) {
+                        getFiles(response.result.nextPageToken);
+                    } else {
+                        // All files are fetched, now process them
+                        const totalFiles = allFiles.length;
+                        let loadedFiles = 0;
+
+                        if (totalFiles === 0) {
+                            loaderContainer.style.display = 'none';
+                            notesContainer.innerHTML = 'Няма намерени текстови файлове в папката.';
+                            return;
+                        }
+
+                        loaderText.textContent = `Зарежда се файл 0 от ${totalFiles}...`;
+
+                        const filePromises = allFiles.map(file => 
+                            gapi.client.request({ path: `/drive/v3/files/${file.id}`, params: { alt: 'media' } })
+                            .then(res => {
+                                loadedFiles++;
+                                loaderText.textContent = `Зарежда се файл ${loadedFiles} от ${totalFiles}...`;
+                                return { file, res };
+                            })
+                        );
+
+                        Promise.all(filePromises).then(results => {
+                            notesContainer.innerHTML = '';
+                    
+                            let boardParseError = false;
+                            // First pass: populate boardsData
+                            results.forEach(({ file, res }) => {
+                                if (file.name === 'board.txt') {
+                                    if (res.body.trim() === '') return; // Skip empty files
+                                    try {
+                                        const content = JSON.parse(res.body);
+                                        if (Array.isArray(content)) {
+                                            boardsData.push(...content);
+                                        } else if (typeof content === 'object' && content !== null) {
+                                            boardsData.push(content);
+                                        } else {
+                                            boardParseError = true;
+                                        }
+                                    } catch (e) {
+                                        boardParseError = true;
+                                        console.error(`Error parsing board.txt:`, e);
+                                    }
+                                }
+                            });
+
+                            // Create the special "Boards" note
+                            if (boardsData.length > 0 || boardParseError) {
+                                const boardsNote = document.createElement('div');
+                                boardsNote.className = 'note';
+                                boardsNote.style.backgroundColor = boardsNoteBgnd;
+                                boardsNote.style.order = -1; // Make it appear first (flexbox order)
+
+                                const titleEl = document.createElement('h3');
+                                titleEl.textContent = 'Boards';
+                                boardsNote.appendChild(titleEl);
+
+                                const contentEl = document.createElement('div');
+                                contentEl.className = 'note-content';
+                                
+                                // Add "All" option
+                                const allBoardsLink = document.createElement('a');
+                                allBoardsLink.href = '#';
+                                allBoardsLink.textContent = 'Всички';
+                                allBoardsLink.classList.add('board-filter-link');
+                                allBoardsLink.dataset.boardid = 'all';
+                                allBoardsLink.addEventListener('click', (e) => {
+                                    e.preventDefault();
+                                    filterNotesByBoard('all');
+                                });
+                                contentEl.appendChild(allBoardsLink);
+                                contentEl.appendChild(document.createElement('br')); // New line for "All"
+
+                                boardsData.forEach(board => {
+                                    if (board.title && board.gdid) {
+                                        const boardLink = document.createElement('a');
+                                        boardLink.href = '#';
+                                        boardLink.textContent = board.title;
+                                        boardLink.classList.add('board-filter-link');
+                                        boardLink.dataset.boardid = board.gdid;
+                                        boardLink.addEventListener('click', (e) => {
+                                            e.preventDefault();
+                                            filterNotesByBoard(board.gdid);
+                                        });
+                                        contentEl.appendChild(boardLink);
+                                        contentEl.appendChild(document.createElement('br')); // New line for each board
+                                    }
+                                });
+                                
+                                if (boardParseError) {
+                                    const errorEl = document.createElement('div');
+                                    errorEl.style.color = 'red';
+                                    errorEl.style.marginTop = '10px';
+                                    errorEl.textContent = 'Warning: One or more board files are invalid and have been skipped.';
+                                    contentEl.appendChild(errorEl);
+                                }
+                                
+                                boardsNote.appendChild(contentEl);
+                                notesContainer.appendChild(boardsNote);
+                            }
+
+                            results.forEach(({ file, res }) => {
+                                if (file.name !== 'board.txt') {
+                                    const note = document.createElement('div');
+                                    note.className = 'note';
+                                    let fileContent = '';
+                                    if (file.name === 'note.txt') {
+                                        try {
+                                            const content = JSON.parse(res.body);
+                                            if (content && typeof content.notetxt !== 'undefined') {
+                                                fileContent = content.notetxt;
+                                                const extraData = { ...content };
+                                                delete extraData.notetxt;
+                                                if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
+                                            } else { fileContent = "Error: 'notetxt' field not found."; }
+                                        } catch (e) { fileContent = "Error parsing JSON content."; }
+                                    } else { fileContent = res.body; }
+
+                                    let noteTitle = '';
+                                    const lines = fileContent.split('\n');
+                                    for (const line of lines) {
+                                        const trimmedLine = line.trim();
+                                        if (trimmedLine) { noteTitle = trimmedLine.substring(0, 50); break; }
+                                    }
+                                    if (!noteTitle) { noteTitle = file.name; }
+
+                                    const titleEl = document.createElement('h3');
+                                    titleEl.textContent = noteTitle; titleEl.title = noteTitle;
+                                    const contentEl = document.createElement('div');
+                                    contentEl.className = 'note-content';
+                                    appendLinkifiedText(contentEl, fileContent);
+                                    const footerEl = document.createElement('div');
+                                    footerEl.className = 'note-footer';
+                                    const footerLeft = document.createElement('div');
+                                    footerLeft.style.display = 'flex';
+
+                                    if (note.dataset.extraInfo) {
+                                        try {
+                                            const extraData = JSON.parse(note.dataset.extraInfo);
+                                            if (extraData.boardid && boardsData.length > 0) {
+                                                const board = boardsData.find(b => b.gdid === extraData.boardid);
+                                                if (board) {
+                                                    const boardDisplay = document.createElement('div');
+                                                    boardDisplay.className = 'board-display';
+                                                    boardDisplay.innerHTML = boardIconSvg;
+                                                    const boardText = document.createElement('span');
+                                                    boardText.textContent = board.title;
+                                                    boardDisplay.appendChild(boardText);
+                                                    footerLeft.appendChild(boardDisplay);
+                                                }
+                                            }
+                                            if (extraData.datemod) {
+                                                const dateDisplay = document.createElement('div');
+                                                dateDisplay.className = 'date-display';
+                                                dateDisplay.innerHTML = calendarIconSvg;
+                                                const dateText = document.createElement('span');
+                                                dateText.textContent = formatDate(extraData.datemod);
+                                                dateDisplay.appendChild(dateText);
+                                                footerLeft.appendChild(dateDisplay);
+                                            }
+                                        } catch (e) { console.error('Error parsing extraInfo:', e); }
+                                    }
+                                    
+                                    footerEl.appendChild(footerLeft);
+
+                                    note.appendChild(titleEl); note.appendChild(contentEl); note.appendChild(footerEl);
+                                    notesContainer.appendChild(note);
+
+                                    setTimeout(() => {
+                                        if (contentEl.scrollHeight > contentEl.clientHeight) {
+                                            const viewButton = document.createElement('button');
+                                            viewButton.className = 'view-button';
+                                            viewButton.innerHTML = eyeIconSvg;
+                                            viewButton.title = 'View full content';
+                                            viewButton.addEventListener('click', () => showModal(fileContent));
+                                            footerEl.appendChild(viewButton);
+                                        }
+                                    }, 100);
+                                }
+                            });
+
+                            // Removed boardsButton.style.display = 'inline-block';
+                        }).catch(err => {
+                            console.error("Error processing one or more files:", err);
+                            notesContainer.innerHTML = 'Възникна грешка при обработката на файловете.';
+                        }).finally(() => {
+                            loaderContainer.style.display = 'none';
+                        });
+                    }
+                }, (err) => {
+                    loaderContainer.style.display = 'none';
+                    console.error("Error listing files: ", err);
+                    if (err.status === 401 || err.status === 403) {
+                        alert('Authentication error. Redirecting to login.');
+                        handleSignoutClick();
+                    }
+                });
+            };
+
+            getFiles(null);
+        }
+    </script>
+</body>
+</html>
+<!--style>
+        body { font-family: sans-serif; margin: 0; display: none; background-color: #e3f2fd; }
+        header { padding: 1em; border-bottom: 1px solid #eee; margin-bottom: 1em; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; background-color: #c9c9c9; position: sticky; top: 0; z-index: 100; }
+        header h1 { margin: 0; }
+        header p { margin: 0 1em; color: #555; }
+        #search-container { flex-grow: 1; padding: 0 2em; display: flex; justify-content: center; align-items: center; }
+        #search-box { width: 100%; max-width: 400px; padding: 8px 12px; border-radius: 20px; border: 1px solid #aaa; font-size: 1em; }
+        .header-btn { margin-left: 10px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background-color: #f0f0f0; cursor: pointer; }
+        .header-btn:hover { background-color: #e0e0e0; }
+        main { padding: 0 1em; text-align: center; }
+        #notes-container { display: flex; flex-wrap: wrap; justify-content: center; }
+        .note { border: 1px solid #ccc; border-radius: 8px; padding: 10px 10px 5px 10px; margin: 10px; width: 250px; height: 250px; display: flex; flex-direction: column; background-color: #dff805; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); text-align: left; }
+        .note h3 { margin-top: 0; font-size: 1.1em; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .note-content { flex-grow: 1; overflow-y: auto; overflow-x: hidden; word-wrap: break-word; font-size: 0.9em; white-space: pre-wrap; }
+        .note-footer { flex-shrink: 0; padding-top: 5px; margin-top: auto; border-top: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 0.8em; color: #666; min-height: 18px; /* Set min-height to match icon size + padding */ }
+        .note-footer .date-display, .note-footer .board-display { display: flex; align-items: center; }
+        .note-footer .board-display { margin-right: 10px; }
+        .note-footer svg { width: 16px; height: 16px; stroke: #666; margin-right: 5px; }
+        .view-button { background: none; border: none; cursor: pointer; padding: 0; }
+        .view-button svg { width: 16px; height: 16px; stroke: #555; cursor: pointer; }
+        .note-content::-webkit-scrollbar { width: 8px; }
+        .note-content::-webkit-scrollbar-track { background: #f1f1f1; }
+        .note-content::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        .note-content::-webkit-scrollbar-thumb:hover { background: #555; }
+        .note-content a { color: #007bff; text-decoration: none; display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: text-bottom; cursor: pointer; }
+        .note-content a:hover { text-decoration: underline; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-overlay.visible { display: flex; }
+        .modal-content-box { background: #eef603; padding: 20px; border-radius: 8px; width: 95%; max-width: 1200px; max-height: 80vh; overflow-y: auto; position: relative; white-space: pre-wrap; text-align: left; }
+        .modal-header-btn { background: none; border: 1px solid #aaa; border-radius: 50%; cursor: pointer; position: absolute; top: 10px; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; }
+        .modal-header-btn:hover { background-color: #ddd; }
+        .modal-close { right: 10px; font-size: 24px; padding-bottom: 4px; line-height: 1; }
+        #copy-modal-btn { right: 52px; }
+        #copy-modal-btn svg { width: 16px; height: 16px; stroke: #333; }
+        #boards-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #boards-table th, #boards-table td { border: 1px solid #ddd; padding: 8px; }
+        #boards-table th { background-color: #f2f2f2; }
+        #scrollTopBtn { display: none; position: fixed; bottom: 20px; right: 30px; z-index: 99; border: none; outline: none; background-color: #555; color: white; cursor: pointer; padding: 0; width: 50px; height: 50px; border-radius: 50%; font-size: 24px; justify-content: center; align-items: center; opacity: 0.7; }
+        #scrollTopBtn:hover { background-color: #333; opacity: 1; }
+        #loader-container { text-align: center; margin: 50px auto; }
+        .loader { border: 8px solid #f3f3f3; border-top: 8px solid #3498db; border-radius: 50%; width: 60px; height: 60px; animation: spin 1.5s linear infinite; margin: 0 auto; }
+        #loader-text { margin-top: 10px; font-size: 1.1em; color: #555; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style-->

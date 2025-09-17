@@ -1,0 +1,18 @@
+Следвайте тези инструкции:
+
+Създайте нов проект в Google Cloud Console.
+Активирайте Google Drive API:
+От менюто за навигация изберете APIs & Services > Library.
+Намерете "Google Drive API" и го активирайте.
+Създайте идентификационни данни (credentials):
+Отидете в APIs & Services > Credentials.
+Кликнете върху Create Credentials > OAuth client ID.
+Изберете Web application за тип на приложението.
+В Authorized JavaScript origins добавете http://localhost:8000.
+В Authorized redirect URIs добавете http://localhost:8000/.
+Кликнете Create. Ще получите Client ID.
+Създайте API ключ:
+Отидете в APIs & Services > Credentials.
+Кликнете върху Create Credentials > API key. Ще получите API Key.
+
+python -m http.server 8000
