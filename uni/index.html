@@ -273,13 +273,23 @@
                     alert("Не е зададен Folder ID.");
                     return;
                 }
+if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
+    alert("Folder ID е невалиден или празен.");
+    return;
+}
                 gapi.client.drive.files.list({
                     q: `'${folderId}' in parents and mimeType='text/plain'`,
                     fields: 'files(id, name), nextPageToken',
                     pageSize: 1000, // Fetch up to 1000 files
                     pageToken: pageToken
                 }).then(function(response) {
-                    const files = response.result.files || [];
+if (!response.result || !response.result.files) {
+    console.error("Невалиден отговор от Drive API:", response);
+    alert("Неуспешно зареждане на файловете. Уверете се, че папката съществува и имате достъп.");
+    loaderContainer.style.display = 'none';
+    return;
+}
+const files = response.result.files;
                     allFiles.push(...files);
 
                     if (response.result.nextPageToken) {
