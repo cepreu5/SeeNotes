@@ -76,6 +76,7 @@ async function initializeGapiClient() {
     }
 
     gapi.client.setToken({ access_token: accessToken });
+console.log("GAPI token set.");
 
     document.body.style.display = 'block';
     initApp();
@@ -301,6 +302,13 @@ if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
     alert("Folder ID е невалиден или празен.");
     return;
 }
+console.log("Drive request params:", {
+    q: `'${folderId}' in parents and mimeType='text/plain'`,
+    fields: 'files(id, name), nextPageToken',
+    pageSize: 1000,
+    pageToken: pageToken
+});
+
                 gapi.client.drive.files.list({
                     q: `'${folderId}' in parents and mimeType='text/plain'`,
                     fields: 'files(id, name), nextPageToken',
