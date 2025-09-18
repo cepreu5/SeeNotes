@@ -285,73 +285,60 @@ console.log("GAPI token set.");
             }
         }
 
-        function listFiles() {
-            boardsData = [];
-            // boardsButton.style.display = 'none'; // Removed
-            notesContainer.innerHTML = '';
-            loaderContainer.style.display = 'block';
-            loaderText.textContent = '';
+function listFiles() {
+    boardsData = [];
+    notesContainer.innerHTML = '';
+    loaderContainer.style.display = 'block';
+    loaderText.textContent = '';
 
-            const allFiles = [];
-            const getFiles = (pageToken) => {
-                const folderId = localStorage.getItem('folderId');
-                if (!folderId) {
-                    alert("Не е зададен Folder ID.");
-                    return;
-                }
-                if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
-                    alert("Folder ID е невалиден или празен.");
-                    return;
-                }
-                console.log("Drive request params:", {
-                    q: `'${folderId}' in parents and mimeType='text/plain'`,
-                    fields: 'files(id, name), nextPageToken',
-                    pageSize: 1000,
-                    pageToken: pageToken
-                });
+    const allFiles = [];
 
-                gapi.client.drive.files.list({
-                    q: `'${folderId}' in parents and mimeType='text/plain'`,
-                    fields: 'files(id, name), nextPageToken',
-                    pageSize: 1000, // Fetch up to 1000 files
-                    pageToken: pageToken
-                }).then(function(response) {
-                    console.log("Full Drive API response:", response);
-                    if (!response.result || !response.result.files) {
-                        console.log("Full Drive API response:", response);
-                        console.error("Невалиден отговор от Drive API:", response);
-                        alert("Неуспешно зареждане на файловете. Уверете се, че папката съществува и имате достъп.");
-                        loaderContainer.style.display = 'none';
-                        return;
-                    }
-                    try {
-                        const files = response.result.files;
-                        allFiles.push(...files);
-                        // продължаваш с обработката...
-                        
-                    } catch (err) {
-                        console.error("Грешка при обработка на отговора:", err);
-                        alert("Неуспешно зареждане на файловете. Виж конзолата.");
-                        loaderContainer.style.display = 'none';
-                    }
-            //})
-
-                }, (err) => {
-                    loaderContainer.style.display = 'none';
-                    console.error("Error listing files: ", err);
-                    if (err.status === 401 || err.status === 403) {
-                        alert('Authentication error. Redirecting to login.');
-                        handleSignoutClick();
-                    }
-                }).catch(function(error) {
-                    console.error("Drive API error:", error);
-                    alert("Грешка при заявката към Google Drive. Виж конзолата за подробности.");
-                    loaderContainer.style.display = 'none';
-                }); 
-            };
-
-            getFiles(null);
+    // 🔽 Тук идва новата async функция
+    async function getFiles(pageToken) {
+        const folderId = localStorage.getItem('folderId');
+        if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
+            alert("Folder ID е невалиден или празен.");
+            return;
         }
+
+        console.log("Drive request params:", {
+            q: `'${folderId}' in parents and mimeType='text/plain'`,
+            fields: 'files(id, name), nextPageToken',
+            pageSize: 1000,
+            pageToken: pageToken
+        });
+
+        try {
+            const response = await gapi.client.drive.files.list({
+                q: `'${folderId}' in parents and mimeType='text/plain'`,
+                fields: 'files(id, name), nextPageToken',
+                pageSize: 1000,
+                pageToken: pageToken
+            });
+
+            console.log("Full Drive API response:", response);
+
+            if (!response.result || !response.result.files) {
+                console.error("Невалиден отговор от Drive API:", response);
+                alert("Неуспешно зареждане на файловете. Уверете се, че папката съществува и имате достъп.");
+                loaderContainer.style.display = 'none';
+                return;
+            }
+
+            const files = response.result.files;
+            allFiles.push(...files);
+            // 🔹 Тук можеш да добавиш обработка на файловете
+
+        } catch (error) {
+            console.error("Грешка при заявката към Drive API:", error);
+            alert("Грешка при заявката към Google Drive. Виж конзолата за подробности.");
+            loaderContainer.style.display = 'none';
+        }
+    }
+
+    // 🔽 Извикване на функцията
+    getFiles(null);
+}
     </script>
 </body>
 </html>
