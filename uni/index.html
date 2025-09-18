@@ -34,7 +34,7 @@
         gapi.load('client', initializeGapiClient);
     }
 
-    async function initializeGapiClient() {
+    /*async function initializeGapiClient() {
         try {
             await gapi.client.init({
                 discoveryDocs: DISCOVERY_DOCS
@@ -56,7 +56,31 @@
             console.error("Грешка при инициализацията на GAPI:", error);
             alert("Възникна проблем при зареждане на Google API.");
         }
+    }*/
+
+async function initializeGapiClient() {
+    const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+
+    await gapi.client.init({
+        discoveryDocs: DISCOVERY_DOCS,
+        scope: SCOPES
+    });
+
+    const tokenData = JSON.parse(sessionStorage.getItem('google_auth_token'));
+    const accessToken = tokenData?.access_token;
+
+    if (!accessToken) {
+        alert("Няма достъпен токен. Моля, влезте отново.");
+        window.location.href = 'login.html';
+        return;
     }
+
+    gapi.client.setToken({ access_token: accessToken });
+
+    document.body.style.display = 'block';
+    initApp();
+    listFiles();
+}
 
     const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
         const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
