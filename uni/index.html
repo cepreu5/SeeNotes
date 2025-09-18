@@ -262,10 +262,16 @@
 
     // 🔽 Тук идва новата async функция
     async function getFiles(pageToken) {
-        const folderId = localStorage.getItem('folderId');
-        if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
-            alert("Folder ID е невалиден или празен.");
-            return;
+        let folderId = localStorage.getItem('folderId');
+        while (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
+            folderId = prompt("Моля, въведете ID на папката в Google Drive:");
+            if (folderId) {
+                localStorage.setItem('folderId', folderId);
+            } else {
+                alert("Не е въведен ID. Зареждането на файлове е спряно.");
+                loaderContainer.style.display = 'none';
+                return;
+            }
         }
 
         console.log("Drive request params:", {
