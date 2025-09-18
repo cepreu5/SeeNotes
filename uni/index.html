@@ -38,13 +38,15 @@
 <script type="text/javascript">
     // --- Constants ---
     const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-        console.log("Run 1.11");
+    const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
+        console.log("Run 1.12");
 
 async function initializeGapiClient() {
     const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 
     await gapi.client.init({
-        discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"],
+        clientId: CLIENT_ID,
+        discoveryDocs: DISCOVERY_DOCS,
         scope: SCOPES
     });
 
