@@ -40,9 +40,13 @@
                             const folderId = prompt("Въведете Folder ID:");
                             if (folderId) {
                                 localStorage.setItem('folderId', folderId);
+                                window.location.href = 'index.html';
+                            } else {
+                                alert("Не сте въвели Folder ID.");
                             }
+                        } else {
+                            window.location.href = 'index.html';
                         }
-                        window.location.href = 'index.html';
                     } else {
                         console.error('Failed to get access token');
                         alert('Authentication failed. Please try again.');
