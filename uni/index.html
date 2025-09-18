@@ -29,46 +29,24 @@
         console.log("GAPI library loaded.");
         gapi.load('client', initializeGapiClient);
     }
+
+    const script = document.createElement('script');
+    script.src = "https://apis.google.com/js/api.js";
+    script.onload = gapiLoaded;
+    document.head.appendChild(script);
 </script>
-<script defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
 <script type="text/javascript">
     // --- Constants ---
     const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-        console.log("Run 1.10");
-    // --- Load GAPI and initialize client ---
-
-    /*async function initializeGapiClient() {
-        try {
-            await gapi.client.init({
-                discoveryDocs: DISCOVERY_DOCS
-            });
-
-            const tokenData = JSON.parse(sessionStorage.getItem('google_auth_token'));
-            const accessToken = tokenData?.access_token;
-
-            if (!accessToken) {
-                alert("Няма достъпен токен. Моля, влезте отново.");
-                window.location.href = 'login.html';
-                return;
-            }
-
-            gapi.client.setToken({ access_token: accessToken });
-
-            listFiles(); // 🔹 Започни визуализацията
-        } catch (error) {
-            console.error("Грешка при инициализацията на GAPI:", error);
-            alert("Възникна проблем при зареждане на Google API.");
-        }
-    }*/
+        console.log("Run 1.11");
 
 async function initializeGapiClient() {
     const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 
     await gapi.client.init({
-        discoveryDocs: DISCOVERY_DOCS,
+        discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"],
         scope: SCOPES
     });
-console.log("gapi.client.drive:", gapi.client.drive);
 
     const tokenData = JSON.parse(sessionStorage.getItem('google_auth_token'));
     const accessToken = tokenData?.access_token;
@@ -80,7 +58,10 @@ console.log("gapi.client.drive:", gapi.client.drive);
     }
 
     gapi.client.setToken({ access_token: accessToken });
-console.log("GAPI token set.");
+
+    console.log("GAPI library loaded.");
+    console.log("gapi.client.drive:", gapi.client.drive);
+    console.log("typeof gapi.client.drive.files.list:", typeof gapi.client.drive?.files?.list);
 
     document.body.style.display = 'block';
     initApp();
@@ -109,16 +90,6 @@ console.log("GAPI token set.");
                 alert('Your session has expired. Please log in again.');
                 window.location.href = 'login.html';
             }
-        }
-
-        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
-
-        async function initializeGapiClient() {
-            // await gapi.client.init({ apiKey: API_KEY, discoveryDocs: DISCOVERY_DOCS });
-            gapi.client.setToken(authToken);
-            document.body.style.display = 'block';
-            initApp();
-            listFiles();
         }
 
         function initApp() {
@@ -167,125 +138,6 @@ console.log("GAPI token set.");
         function handleSignoutClick() {
             sessionStorage.removeItem('google_auth_token');
             window.location.href = 'login.html';
-        }
-
-        function showModal(content) {
-            currentModalContent = content;
-            appendLinkifiedText(modalBody, content);
-            contentModal.classList.add('visible');
-            copyBtn.innerHTML = copyIconSvg;
-        }
-
-        function formatDate(dateString) {
-            if (!dateString) return '';
-            try {
-                const date = new Date(dateString);
-                const day = String(date.getDate()).padStart(2, '0');
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const year = date.getFullYear();
-                return `${day}.${month}.${year}`;
-            } catch (e) { return dateString; }
-        }
-
-        function appendLinkifiedText(container, text) {
-            const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-            let lastIndex = 0, match;
-            container.innerHTML = '';
-            while ((match = urlRegex.exec(text)) !== null) {
-                if (match.index > lastIndex) container.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
-                const url = match[0];
-                const link = document.createElement('a');
-                link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
-                link.appendChild(document.createTextNode(url));
-                container.appendChild(link);
-                lastIndex = match.index + url.length;
-            }
-            if (text.length > lastIndex) container.appendChild(document.createTextNode(text.substring(lastIndex)));
-        }
-
-        function filterNotesByBoard(boardId) {
-            currentBoardFilter = boardId; // Update the current board filter
-            applyFilters(); // Apply both board and search filters
-
-            // Update board link styles
-            document.querySelectorAll('.board-filter-link').forEach(link => {
-                link.classList.remove('selected-board');
-                if (link.dataset.boardid === boardId) {
-                    link.classList.add('selected-board');
-                }
-            });
-
-            // --- Board Filter Popup Logic ---
-            let popup = document.getElementById('board-filter-popup');
-            if (!popup) {
-                popup = document.createElement('div');
-                popup.id = 'board-filter-popup';
-                popup.className = 'board-filter-popup';
-                document.body.appendChild(popup);
-            }
-
-            if (boardId === 'all') {
-                popup.classList.remove('visible');
-            } else {
-                const board = boardsData.find(b => b.gdid === boardId);
-                if (board) {
-                    popup.textContent = board.title;
-                    popup.classList.add('visible');
-                    // Add click listener here, after the popup is created/updated
-                    popup.onclick = () => {
-                        window.scrollTo({top: 0, behavior: 'smooth'});
-                    };
-                } else {
-                    popup.classList.remove('visible');
-                }
-            }
-        }
-
-        function applySearchFilter() {
-            applyFilters(); // Apply both board and search filters
-        }
-
-        function applyFilters() {
-            const searchTerm = searchBox.value.toLowerCase();
-            const notes = notesContainer.getElementsByClassName('note');
-
-            for (const note of notes) {
-                // Always show the Boards note
-                if (note.querySelector('h3') && note.querySelector('h3').textContent === 'Boards') {
-                    note.style.display = 'flex';
-                    continue;
-                }
-
-                let isVisibleByBoard = false;
-                const extraInfo = note.dataset.extraInfo;
-
-                if (currentBoardFilter === 'all') {
-                    isVisibleByBoard = true;
-                } else if (extraInfo) {
-                    try {
-                        const data = JSON.parse(extraInfo);
-                        if (data.boardid === currentBoardFilter) {
-                            isVisibleByBoard = true;
-                        }
-                    } catch (e) {
-                        console.error('Error parsing extraInfo for note:', e);
-                    }
-                }
-
-                let isVisibleBySearch = false;
-                const titleEl = note.querySelector('h3');
-                if (titleEl) {
-                    const title = titleEl.textContent.toLowerCase();
-                    isVisibleBySearch = title.includes(searchTerm);
-                }
-
-                // A note is visible if it passes both board and search filters
-                if (isVisibleByBoard && isVisibleBySearch) {
-                    note.style.display = 'flex';
-                } else {
-                    note.style.display = 'none';
-                }
-            }
         }
 
 function listFiles() {
