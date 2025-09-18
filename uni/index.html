@@ -24,16 +24,18 @@
     <div id="content-modal" class="modal-overlay"><div class="modal-content-box"><button id="copy-modal-btn" class="modal-header-btn" title="Copy content"></button><button class="modal-close modal-header-btn">&times;</button><div id="modal-body"></div></div></div>
     <button id="scrollTopBtn" title="Go to top">&uarr;</button>
 
-<script defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-<script type="text/javascript">
-    // --- Constants ---
-    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-        console.log("Run 1.9");
-    // --- Load GAPI and initialize client ---
+<script>
     function gapiLoaded() {
         console.log("GAPI library loaded.");
         gapi.load('client', initializeGapiClient);
     }
+</script>
+<script defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+<script type="text/javascript">
+    // --- Constants ---
+    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
+        console.log("Run 1.10");
+    // --- Load GAPI and initialize client ---
 
     /*async function initializeGapiClient() {
         try {
