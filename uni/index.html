@@ -26,7 +26,7 @@
     <button id="scrollTopBtn" title="Go to top">&uarr;</button>
 
 <script>
-    console.log("Run uncut 1.4");
+    console.log("Run uncut 1.5");
     function gapiLoaded() {
         console.log("GAPI library loaded.");
         gapi.load('client', initializeGapiClient);
@@ -36,18 +36,8 @@
     script.src = "https://apis.google.com/js/api.js";
     script.onload = gapiLoaded;
     document.head.appendChild(script);
-    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-    const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 
     async function initializeGapiClient() {
-        const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-
-        await gapi.client.init({
-            clientId: CLIENT_ID,
-            discoveryDocs: DISCOVERY_DOCS,
-            scope: SCOPES
-        });
-
         const tokenData = JSON.parse(sessionStorage.getItem('google_auth_token'));
         const accessToken = tokenData?.access_token;
 
@@ -57,11 +47,11 @@
             return;
         }
 
+        // Load the discovery doc for the Drive API and set the access token
+        await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
         gapi.client.setToken({ access_token: accessToken });
 
-        console.log("GAPI library loaded.");
-        console.log("gapi.client.drive:", gapi.client.drive);
-        console.log("typeof gapi.client.drive.files.list:", typeof gapi.client.drive?.files?.list);
+        console.log("GAPI client initialized for Drive API.");
 
         document.body.style.display = 'block';
         initApp();
