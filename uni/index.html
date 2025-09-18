@@ -309,6 +309,8 @@ function listFiles() {
         });
 
         try {
+            console.log("gapi.client.drive:", gapi.client.drive);
+            console.log("typeof gapi.client.drive.files.list:", typeof gapi.client.drive?.files?.list);
             const response = await gapi.client.drive.files.list({
                 q: `'${folderId}' in parents and mimeType='text/plain'`,
                 fields: 'files(id, name), nextPageToken',
