@@ -28,9 +28,10 @@
 <script type="text/javascript">
     // --- Constants ---
     const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-
+        console.log("Run 1.9");
     // --- Load GAPI and initialize client ---
     function gapiLoaded() {
+        console.log("GAPI library loaded.");
         gapi.load('client', initializeGapiClient);
     }
 
