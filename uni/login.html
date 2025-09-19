@@ -1,24 +1,98 @@
 <!DOCTYPE html>
-<html>
+<html lang="bg">
 <head>
-    <title>Login</title>
+    <title data-key="appTitle">Login</title>
     <meta charset="UTF-8">
+    <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <style>
         body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f4f4f4; }
         .login-box { text-align: center; background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         #authorize_button { font-size: 1.2em; padding: 10px 20px; cursor: pointer; background-color: #4285F4; color: white; border: none; border-radius: 4px; }
         #authorize_button:hover { background-color: #357ae8; }
+        #lang-switcher {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .lang-btn {
+            background: none;
+            border: 1px solid #ccc;
+            color: #333;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .lang-btn:first-child {
+            border-top-left-radius: 4px;
+            border-bottom-left-radius: 4px;
+        }
+        .lang-btn:last-child {
+            border-top-right-radius: 4px;
+            border-bottom-right-radius: 4px;
+            border-left: none;
+        }
+        .lang-btn.active {
+            background-color: #4285F4;
+            color: white;
+            border-color: #4285F4;
+        }
     </style>
 </head>
 <body>
     <div class="login-box">
-        <h1>CX MultiNotes Viewer</h1>
-        <p>Моля, влезте с Google, за да продължите.</p>
-        <button id="authorize_button">Authorize with Google</button>
+        <div id="lang-switcher">
+            <button id="lang-bg" class="lang-btn">BG</button>
+            <button id="lang-en" class="lang-btn">EN</button>
+        </div>
+        <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
+        <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p>
+        <button id="authorize_button" data-key="authorizeButton">Authorize with Google</button>
     </div>
 
     <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
     <script type="text/javascript">
+        // --- I18N ---
+        const translations = {
+            en: {
+                appTitle: 'CX MultiNotes Viewer',
+                loginPrompt: 'Please sign in with Google to continue.',
+                authorizeButton: 'Authorize with Google',
+                authFailed: 'Authentication failed. Please try again.',
+                gapiNotReady: 'Google authentication library is not ready. Please wait a moment and try again.'
+            },
+            bg: {
+                appTitle: 'CX MultiNotes Viewer',
+                loginPrompt: 'Моля, влезте с Google, за да продължите.',
+                authorizeButton: 'Вход с Google',
+                authFailed: 'Удостоверяването не бе успешно. Моля, опитайте отново.',
+                gapiNotReady: 'Библиотеката за удостоверяване на Google не е готова. Моля, изчакайте малко и опитайте отново.'
+            }
+        };
+        let currentLang = localStorage.getItem('language') || 'bg'; // Get from localStorage or default to bg
+
+        function setLanguage(lang) {
+            if (!translations[lang]) return;
+            currentLang = lang;
+            localStorage.setItem('language', lang);
+            document.documentElement.lang = lang; // Set lang attribute on html tag
+
+            document.querySelectorAll('[data-key]').forEach(element => {
+                const key = element.getAttribute('data-key');
+                element.textContent = _(key);
+            });
+            
+            document.getElementById('authorize_button').textContent = _('authorizeButton');
+            document.title = _('appTitle'); // Update title
+
+            // Update active button
+            document.getElementById('lang-bg').classList.toggle('active', lang === 'bg');
+            document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+        }
+
+        function _(key) {
+            return translations[currentLang][key] || key;
+        }
+
         // NOTE: Add your own Client ID here
         const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
@@ -38,7 +112,7 @@
                         window.location.href = 'index.html';
                     } else {
                         console.error('Failed to get access token');
-                        alert('Authentication failed. Please try again.');
+                        alert(_('authFailed')); // Use translated string
                     }
                 },
             });
@@ -49,8 +123,15 @@
                 tokenClient.requestAccessToken({prompt: 'consent'});
             } else {
                 console.error('Token client not initialized');
-                alert('Google authentication library is not ready. Please wait a moment and try again.');
+                alert(_('gapiNotReady')); // Use translated string
             }
+        });
+
+        // Initial language setup and event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            setLanguage(currentLang);
+            document.getElementById('lang-bg').addEventListener('click', () => setLanguage('bg'));
+            document.getElementById('lang-en').addEventListener('click', () => setLanguage('en'));
         });
     </script>
 </body>
