@@ -101,7 +101,7 @@
             allBoards: 'All',
             boardsTitle: 'Boards',
             viewFullContent: 'View full content',
-            loadingFile: 'Loading...',
+            loadingFile: 'Loading...', 
             of: 'of',
             noFilesFound: 'No text files found in the folder.',
             errorProcessingFiles: 'An error occurred while processing files.',
@@ -131,7 +131,7 @@
             allBoards: 'Всички',
             boardsTitle: 'Бордове',
             viewFullContent: 'Виж цялото съдържание',
-            loadingFile: 'Четене...',
+            loadingFile: 'Четене...', 
             of: 'от',
             noFilesFound: 'Няма намерени текстови файлове в папката.',
             errorProcessingFiles: 'Възникна грешка при обработката на файловете.',
@@ -208,7 +208,7 @@
         submitFolderIdBtn.textContent = _('submitButton');
 
         folderIdPromptPopup.classList.add('show');
-        folderIdInput.value = localStorage.getItem('folderId') || ''; // Pre-fill if exists
+        folderIdInput.value = ''; // Pre-fill if exists
         folderIdInput.focus(); // Focus on the input field
     }
 
@@ -219,9 +219,8 @@
     function handleSubmitFolderId() {
         const newFolderId = folderIdInput.value.trim();
         if (newFolderId) {
-            localStorage.setItem('folderId', newFolderId);
             hideFolderIdPrompt();
-            listFiles(); // Re-run listFiles to load notes with the new folder ID
+            listFiles(newFolderId); // Re-run listFiles to load notes with the new folder ID
         } else {
             showToast(_('errorFolderIdInvalid')); // Use toast for invalid input
         }
@@ -323,7 +322,6 @@
     // --- Core Functions ---
     function handleSignoutClick() {
         sessionStorage.removeItem('google_auth_token');
-        localStorage.removeItem('folderId');
         // showToast(_('folderIdDeleted'));
         window.location.href = 'login.html';
     }
@@ -444,8 +442,7 @@
         }
     }
         
-    async function fetchFiles(filename, onProgress) {
-        let folderId = localStorage.getItem('folderId');
+    async function fetchFiles(filename, folderId, onProgress) {
         if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
             showFolderIdPrompt();
             throw new Error("Folder ID not provided.");
@@ -509,7 +506,7 @@
         }
     }
 
-    async function listFiles() {
+    async function listFiles(folderIdFromPrompt) {
         boardsData = [];
         let mediaData = [];
         notesContainer.innerHTML = '';
@@ -525,21 +522,18 @@
         });
         
         try {
-            let folderId = localStorage.getItem('folderId');
-            if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
-                // Try to get folder ID automatically
-                const foundFolderId = await getFolderID();
-                if (foundFolderId) {
-                    folderId = foundFolderId;
-                    localStorage.setItem('folderId', folderId); // Save it for future use
-                } else {
-                    showFolderIdPrompt();
-                    throw new Error("Folder ID not provided.");
-                }
+            let folderId = folderIdFromPrompt;
+            if (!folderId) {
+                folderId = await getFolderID();
+            }
+
+            if (!folderId) {
+                showFolderIdPrompt();
+                return;
             }
 
             loaderText.textContent = _('loadingFile') + ' board.txt';
-            const boardResults = await fetchFiles('board.txt');
+            const boardResults = await fetchFiles('board.txt', folderId);
             let boardParseError = false;
             boardResults.forEach(({ res }) => {
                 if (res.body.trim() === '') return;
@@ -639,9 +633,19 @@
                         boardLink.textContent = board.title;
                         boardLink.classList.add('board-filter-link');
                         boardLink.dataset.boardid = board.gdid;
+
+                        if (board.status === 1) {
+                            boardLink.style.color = 'red';
+                        }
+
                         boardLink.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            filterNotesByBoard(board.gdid);
+                            if (e.ctrlKey) {
+                                const boardDataString = JSON.stringify(board, null, 2);
+                                showModal(boardDataString);
+                            } else {
+                                e.preventDefault();
+                                filterNotesByBoard(board.gdid);
+                            }
                         });
                         contentEl.appendChild(boardLink);
                     }
@@ -663,7 +667,7 @@
             }
 
             loaderText.textContent = _('loadingFile') + ' media.txt';
-            const mediaResults = await fetchFiles('media.txt');
+            const mediaResults = await fetchFiles('media.txt', folderId);
             mediaResults.forEach(({ res }) => {
                 try {
                     if (res.body.trim()) {
@@ -683,7 +687,7 @@
                 loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
             };
             loaderText.textContent = _('loadingFile') + ' note.txt';
-            const noteResults = await fetchFiles('note.txt', onNoteProgress);
+            const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress);
 
 noteResults.forEach(({ file, res }) => {
     const note = document.createElement('div');
@@ -763,6 +767,12 @@ noteResults.forEach(({ file, res }) => {
                     if (iconData) {
                         const iconWrapperDiv = document.createElement('div');
                         iconWrapperDiv.innerHTML = iconData.svg;
+                        iconWrapperDiv.dataset.extraInfo = JSON.stringify(attachment);
+                        iconWrapperDiv.style.cursor = 'pointer';
+                        iconWrapperDiv.addEventListener('click', () => {
+                            const attachmentDataString = JSON.stringify(attachment, null, 2);
+                            showModal(attachmentDataString);
+                        });
                         contentEl.appendChild(iconWrapperDiv);
                     }
                 });
