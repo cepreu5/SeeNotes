@@ -572,3 +572,36 @@ main {
     font-size: 0.9em;
     text-align: center;
 }
+
+.slider-container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0 10px; /* Add some padding */
+  box-sizing: border-box;
+}
+
+#scaleSlider {
+  appearance: none;
+  flex-grow: 1;
+  height: 5px;
+  background: linear-gradient(to right, #f1c40f, red);
+  border: 1px solid #17202a;
+  border-radius: 5px;
+  outline: none;
+}
+
+#scaleSlider::-webkit-slider-thumb {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  background-color: #17202a;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+#scaleValue {
+  margin-left: 10px;
+  font-size: 1em;
+  color: black;
+}

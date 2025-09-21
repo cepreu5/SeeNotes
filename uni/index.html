@@ -275,7 +275,7 @@
         loaderText = document.getElementById('loader-text');
 
         signoutButton.addEventListener('click', handleSignoutClick);
-        reloadButton.addEventListener('click', listFiles);
+        reloadButton.addEventListener('click', () => listFiles());
 
         window.onscroll = () => {
             const isScrolled = document.body.scrollTop > 100 || document.documentElement.scrollTop > 100;
@@ -404,6 +404,7 @@
     function applyFilters() {
         const searchTerm = searchBox.value.toLowerCase();
         const notes = notesContainer.getElementsByClassName('note');
+        let visibleCount = 0;
 
         for (const note of notes) {
             if (note.querySelector('h3') && note.querySelector('h3').textContent === _('boardsTitle')) {
@@ -436,9 +437,14 @@
 
             if (isVisibleByBoard && isVisibleBySearch) {
                 note.style.display = 'flex';
+                visibleCount++;
             } else {
                 note.style.display = 'none';
             }
+        }
+        const noteCounter = document.getElementById('note-counter');
+        if (noteCounter) {
+            noteCounter.textContent = visibleCount;
         }
     }
         
@@ -566,6 +572,11 @@
                 titleEl.classList.add('board-menu-header');
                 boardsNote.appendChild(titleEl);
 
+                const noteCounter = document.createElement('div');
+                noteCounter.id = 'note-counter';
+                noteCounter.className = 'note-counter';
+                boardsNote.appendChild(noteCounter);
+
                 const boardMenuWrapper = document.createElement('div');
                 boardMenuWrapper.className = 'board-menu-wrapper';
 
@@ -576,44 +587,57 @@
                 const boardsNoteFooter = document.createElement('div');
                 boardsNoteFooter.className = 'note-footer boards-note-footer'; // Reusing note-footer class for styling consistency
 
-                // Zoom label and input field
-                const zoomLabel = document.createElement('span');
-                zoomLabel.textContent = _('zoomLabel');
-                zoomLabel.style.marginRight = '5px';
-                boardsNoteFooter.appendChild(zoomLabel);
+                const sliderContainer = document.createElement('div');
+                sliderContainer.className = 'slider-container';
+                sliderContainer.innerHTML = `<input type="range" id="scaleSlider" min="25" max="175" value="100"><span id="scaleValue"></span>`;
+                boardsNoteFooter.appendChild(sliderContainer);
 
-                const zoomInput = document.createElement('input');
-                zoomInput.type = 'text';
-                zoomInput.className = 'zoom-input';
-                zoomInput.style.width = '40px';
-                zoomInput.style.textAlign = 'center';
-                
+                const slider = sliderContainer.querySelector('#scaleSlider');
+                const scaleValue = sliderContainer.querySelector('#scaleValue');
+
+                const updateZoom = (value) => {
+                    notesContainer.style.zoom = value / 100;
+                    scaleValue.textContent = `${value}%`;
+                };
+
                 // Load zoom level from localStorage
                 let savedZoom = localStorage.getItem('zoomLevel');
                 if (savedZoom) {
-                    notesContainer.style.zoom = savedZoom / 100;
-                    zoomInput.value = `${savedZoom}%`;
+                    slider.value = savedZoom;
+                    updateZoom(savedZoom);
                 } else {
-                    notesContainer.style.zoom = 1;
-                    zoomInput.value = '100%';
+                    updateZoom(slider.value);
                 }
 
-                boardsNoteFooter.appendChild(zoomInput); // Append to new footer
-
-                const zoomOkButton = document.createElement('button');
-                zoomOkButton.textContent = 'OK'; // Label for the button
-                zoomOkButton.className = 'zoom-ok-button'; // New class for styling
-                zoomOkButton.style.marginLeft = '5px';
-                zoomOkButton.addEventListener('click', () => {
-                    let value = parseFloat(zoomInput.value);
-                    if (isNaN(value)) {
-                        value = 100; // Default to 100 if input is not a number
-                    }
-                    notesContainer.style.zoom = value / 100; // Convert percentage to zoom factor
-                    zoomInput.value = `${value}%`; // Ensure input displays percentage
-                    localStorage.setItem('zoomLevel', value); // Save zoom level
+                slider.addEventListener('input', () => {
+                    const zoomValue = slider.value;
+                    updateZoom(zoomValue);
+                    localStorage.setItem('zoomLevel', zoomValue);
                 });
-                boardsNoteFooter.appendChild(zoomOkButton); // Append button
+
+                slider.addEventListener('click', (e) => {
+                    if (e.ctrlKey) {
+                        e.preventDefault();
+                        let currentValue = parseInt(slider.value, 10);
+                        let newValue;
+
+                        if (currentValue % 10 === 0) {
+                            newValue = currentValue + 10;
+                        } else {
+                            newValue = Math.round(currentValue / 10) * 10;
+                        }
+
+                        const max = parseInt(slider.max, 10);
+                        const min = parseInt(slider.min, 10);
+
+                        if (newValue > max) newValue = max;
+                        if (newValue < min) newValue = min;
+
+                        slider.value = newValue;
+                        updateZoom(newValue);
+                        localStorage.setItem('zoomLevel', newValue);
+                    }
+                });
                 
                 const allBoardsLink = document.createElement('a');
                 allBoardsLink.href = '#';
