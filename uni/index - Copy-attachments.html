@@ -101,7 +101,7 @@
             allBoards: 'All',
             boardsTitle: 'Boards',
             viewFullContent: 'View full content',
-            loadingFile: 'Loading...',
+            loadingFile: 'Loading file',
             of: 'of',
             noFilesFound: 'No text files found in the folder.',
             errorProcessingFiles: 'An error occurred while processing files.',
@@ -117,8 +117,6 @@
             warningInvalidBoard: 'Warning: One or more board files are invalid and have been skipped.',
             promptFolderId: 'Please enter the Google Drive Folder ID:',
             folderIdInputPlaceholder: 'Google Drive Folder ID',
-            zoomLabel: 'Zoom:',
-            // folderIdDeleted: 'Folder ID has been deleted.',
             submitButton: 'Confirm'
         },
         bg: {
@@ -131,7 +129,7 @@
             allBoards: 'Всички',
             boardsTitle: 'Бордове',
             viewFullContent: 'Виж цялото съдържание',
-            loadingFile: 'Четене...',
+            loadingFile: 'Зарежда се файл',
             of: 'от',
             noFilesFound: 'Няма намерени текстови файлове в папката.',
             errorProcessingFiles: 'Възникна грешка при обработката на файловете.',
@@ -147,8 +145,6 @@
             warningInvalidBoard: 'Внимание: Един или повече файлове за дефиниция на бордове са невалидни и бяха пропуснати.',
             promptFolderId: 'Моля, въведете ID на папката в Google Drive:',
             folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
-            // folderIdDeleted: 'Folder ID е изтрит.',
-            zoomLabel: 'Мащаб:',
             submitButton: 'Потвърди'
         }
     };
@@ -182,7 +178,7 @@
 
     // --- Toast Notification ---
     let toastTimeout;
-    function showToast(message, duration = 5000) {
+    function showToast(message, duration = 3000) {
         const toast = document.getElementById('toastNotification');
         toast.textContent = message;
         toast.classList.add('show');
@@ -323,8 +319,6 @@
     // --- Core Functions ---
     function handleSignoutClick() {
         sessionStorage.removeItem('google_auth_token');
-        localStorage.removeItem('folderId');
-        // showToast(_('folderIdDeleted'));
         window.location.href = 'login.html';
     }
 
@@ -487,28 +481,6 @@
         return Promise.all(filePromises);
     }
 
-    async function getFolderID() {
-        try {
-            const response = await gapi.client.drive.files.list({
-                q: "name='multinotes_data' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-                fields: 'files(id)',
-                pageSize: 1
-            });
-
-            const files = response.result.files;
-            if (files && files.length > 0) {
-                return files[0].id;
-            } else {
-                console.warn("Folder 'multinotes_data' not found.");
-                return null;
-            }
-        } catch (error) {
-            console.error("Error fetching folder ID:", error);
-            showToast("Error fetching folder ID.");
-            return null;
-        }
-    }
-
     async function listFiles() {
         boardsData = [];
         let mediaData = [];
@@ -525,20 +497,7 @@
         });
         
         try {
-            let folderId = localStorage.getItem('folderId');
-            if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
-                // Try to get folder ID automatically
-                const foundFolderId = await getFolderID();
-                if (foundFolderId) {
-                    folderId = foundFolderId;
-                    localStorage.setItem('folderId', folderId); // Save it for future use
-                } else {
-                    showFolderIdPrompt();
-                    throw new Error("Folder ID not provided.");
-                }
-            }
-
-            loaderText.textContent = _('loadingFile') + ' board.txt';
+            loaderText.textContent = _('loadingFile') + ' board.txt...';
             const boardResults = await fetchFiles('board.txt');
             let boardParseError = false;
             boardResults.forEach(({ res }) => {
@@ -565,50 +524,14 @@
                 boardsNote.style.order = -1;
                 boardsNote.style.userSelect = 'none';
                 boardsNote.style.height = 'auto';
-                boardsNote.style.minHeight = 'auto'; // Added this line
 
                 const titleEl = document.createElement('h3');
                 titleEl.textContent = _('boardsTitle');
                 titleEl.classList.add('board-menu-header');
                 boardsNote.appendChild(titleEl);
 
-                const boardMenuWrapper = document.createElement('div');
-                boardMenuWrapper.className = 'board-menu-wrapper';
-
                 const contentEl = document.createElement('div');
                 contentEl.className = 'note-content board-menu-container';
-                
-                // New footer for the boards note
-                const boardsNoteFooter = document.createElement('div');
-                boardsNoteFooter.className = 'note-footer boards-note-footer'; // Reusing note-footer class for styling consistency
-
-                // Zoom label and input field
-                const zoomLabel = document.createElement('span');
-                zoomLabel.textContent = _('zoomLabel');
-                zoomLabel.style.marginRight = '5px';
-                boardsNoteFooter.appendChild(zoomLabel);
-
-                const zoomInput = document.createElement('input');
-                zoomInput.type = 'text';
-                zoomInput.value = '100%';
-                zoomInput.className = 'zoom-input';
-                zoomInput.style.width = '40px';
-                zoomInput.style.textAlign = 'center';
-                boardsNoteFooter.appendChild(zoomInput); // Append to new footer
-
-                const zoomOkButton = document.createElement('button');
-                zoomOkButton.textContent = 'OK'; // Label for the button
-                zoomOkButton.className = 'zoom-ok-button'; // New class for styling
-                zoomOkButton.style.marginLeft = '5px';
-                zoomOkButton.addEventListener('click', () => {
-                    let value = parseFloat(zoomInput.value);
-                    if (isNaN(value)) {
-                        value = 100; // Default to 100 if input is not a number
-                    }
-                    notesContainer.style.zoom = value / 100; // Convert percentage to zoom factor
-                    zoomInput.value = `${value}%`; // Ensure input displays percentage
-                });
-                boardsNoteFooter.appendChild(zoomOkButton); // Append button
                 
                 const allBoardsLink = document.createElement('a');
                 allBoardsLink.href = '#';
@@ -643,15 +566,12 @@
                     errorEl.textContent = _('warningInvalidBoard');
                     contentEl.appendChild(errorEl);
                 }
-
-                boardMenuWrapper.appendChild(contentEl);
                 
-                boardsNote.appendChild(boardMenuWrapper);
-                boardsNote.appendChild(boardsNoteFooter); // Append the new footer
+                boardsNote.appendChild(contentEl);
                 notesContainer.appendChild(boardsNote);
             }
 
-            loaderText.textContent = _('loadingFile') + ' media.txt';
+            loaderText.textContent = _('loadingFile') + ' media.txt...';
             const mediaResults = await fetchFiles('media.txt');
             mediaResults.forEach(({ res }) => {
                 try {
@@ -669,9 +589,9 @@
             });
 
             const onNoteProgress = (loaded, total) => {
-                loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
+                loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}...`;
             };
-            loaderText.textContent = _('loadingFile') + ' note.txt';
+            loaderText.textContent = _('loadingFile') + ' note.txt...';
             const noteResults = await fetchFiles('note.txt', onNoteProgress);
 
 noteResults.forEach(({ file, res }) => {
@@ -693,12 +613,6 @@ noteResults.forEach(({ file, res }) => {
             if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
                 note.style.backgroundColor = `var(--note-bg-${noteColor})`;
             }
-
-            // Check for status field here
-            if (extraData.status === 1) {
-                return; // Skip this note if status is 1
-            }
-
         } else { fileContent = _('errorNoteFieldMissing'); }
     } catch (e) { fileContent = _('errorNoteParse'); }
 
@@ -777,27 +691,6 @@ noteResults.forEach(({ file, res }) => {
                     boardText.textContent = board.title;
                     boardDisplay.appendChild(boardText);
                     footerLeft.appendChild(boardDisplay);
-
-                    // Add event listener to board icon to show extra info
-                    boardDisplay.addEventListener('click', () => {
-                        const parentNote = boardDisplay.closest('.note');
-                        if (parentNote && parentNote.dataset.extraInfo) {
-                            try {
-                                const extraInfoData = JSON.parse(parentNote.dataset.extraInfo);
-                                let formattedContent = '';
-                                for (const key in extraInfoData) {
-                                    if (Object.hasOwnProperty.call(extraInfoData, key)) {
-                                        formattedContent += `${key}: ${JSON.stringify(extraInfoData[key], null, 2)}
-`;
-                                    }
-                                }
-                                showModal(formattedContent.trim());
-                            } catch (e) {
-                                console.error('Error parsing data-extra-info:', e);
-                                showToast('Error displaying extra info.');
-                            }
-                        }
-                    });
                 }
             }
             if (extraData.datemod) {

@@ -1,14 +1,14 @@
 :root {
-    --note-bg-0: #FBFF86;
-    --note-bg-1: #FF829E;
-    --note-bg-2: #68FF97;
-    --note-bg-3: #EFEFEF;
-    --note-bg-4: #69B7FF;
-    --note-bg-5: #FBCB39;
-    --note-bg-6: #FBFBCD;
-    --note-bg-7: #FFC5D2;
-    --note-bg-8: #B6FFCD;
-    --note-bg-9: #B2DAFF;
+    --note-bg-0: #feff87;
+    --note-bg-1: #ff839f;
+    --note-bg-2: #68ff96;
+    --note-bg-3: #efefef;
+    --note-bg-4: #69b7ff;
+    --note-bg-5: #fbcb39;
+    --note-bg-6: #fcfbcd;
+    --note-bg-7: #ffc5d3;
+    --note-bg-8: #b6fecc;
+    --note-bg-9: #b2dafe;
 }
 
 body {
@@ -350,7 +350,6 @@ main {
     grid-template-columns: 1fr 1fr;
     gap: 5px;
     align-content: start;
-    flex-grow: 1;
 }
 
 .note-content .board-filter-link {
@@ -382,15 +381,15 @@ main {
 
 .board-filter-popup {
     position: fixed;
-    bottom: 20px;
-    right: 30px;
+    top: 120px;
+    left: 20px;
     background-color: #555;
     color: white;
     padding: 10px 20px;
     border-radius: 20px;
     z-index: 999;
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(-20px);
     transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease;
     pointer-events: none;
     font-family: sans-serif;
@@ -545,30 +544,4 @@ main {
 
 .folder-id-prompt-popup button:hover {
     background-color: #357ae8;
-}
-
-.board-menu-wrapper {
-    display: flex;
-    flex-direction: column; /* Changed to column to stack content and footer */
-    /* Removed flex-grow: 1; */
-}
-
-.boards-note-footer {
-    padding-top: 5px;
-    margin-top: auto;
-    border-top: 1px solid gray;
-    display: flex;
-    align-items: center;
-    justify-content: center; /* Center the content */
-    font-size: 0.8em;
-    color: #666;
-    min-height: 18px;
-}
-
-.zoom-input {
-    padding: 4px 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 0.9em;
-    text-align: center;
 }
