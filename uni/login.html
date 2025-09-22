@@ -52,6 +52,9 @@
 
     <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
     <script type="text/javascript">
+
+        const main = 'viewer.html';
+
         // --- I18N ---
         const translations = {
             en: {
@@ -110,7 +113,7 @@
                             issued_at: Date.now()
                         };
                         sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        window.location.href = 'index.html';
+                        window.location.href = main;
                     } else {
                         console.error('Failed to get access token');
                         alert(_('authFailed')); // Use translated string

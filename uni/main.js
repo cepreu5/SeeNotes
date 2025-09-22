@@ -1,62 +1,4 @@
-<!DOCTYPE html>
-<html lang="bg">
-<head>
-    <title>CX Viewer</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
-    <link rel="stylesheet" href="style.css">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com;">
-
-    
-</head>
-<body style="background-image: url('Board.png');">
-    <header>
-        <div><h1 data-key="appTitle">CX MultiNotes Viewer</h1></div>
-        <div id="search-container"><input type="search" id="search-box" data-key-placeholder="searchPlaceholder" placeholder="Търсене в заглавията..."></div>
-        <div id="header-buttons">
-            <button id="reload_button" class="header-btn" data-key="reloadButton">Презареди</button>
-            <button id="signout_button" class="header-btn" data-key="signoutButton">Изход</button>
-        </div>
-    </header>
-
-    <div id="folderIdPromptPopup" class="folder-id-prompt-popup">
-        <div class="popup-content">
-            <p data-key="promptFolderId"></p>
-            <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
-            <button id="submitFolderIdBtn" data-key="submitButton"></button>
-        </div>
-    </div>
-
-    <!-- div id="folderIdPromptPopup" class="folder-id-prompt-popup">
-        <div class="popup-content">
-            <p data-key="promptFolderId"></p>
-            <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
-            <button id="submitFolderIdBtn" data-key="submitButton"></button>
-        </div>
-    </div -->
-    
-    <main>
-        <div id="loader-container" style="display: none;">
-            <div class="loader"></div>
-            <div id="loader-text"></div>
-        </div>
-        <div id="notes-container"></div>
-    </main>
-
-    <div id="content-modal" class="modal-overlay">
-        <div class="modal-content-box">
-            <button id="copy-modal-btn" class="modal-header-btn" data-key-title="copyTooltip" title="Копирай съдържанието"></button>
-            <button class="modal-close modal-header-btn">&times;</button>
-            <div id="modal-body"></div>
-        </div>
-    </div>
-
-    <button id="scrollTopBtn" data-key-title="topTooltip" title="Към началото"></button>
-
-    <div id="toastNotification" class="toast-notification"></div>
-
-<script>
+// terser main.js --compress --mangle --toplevel --output mainn.js
     console.log("Run uncut 1.10");
     function gapiLoaded() {
         console.log("GAPI library loaded.");
@@ -87,8 +29,6 @@
         initApp();
         listFiles();
     }
-</script>
-<script type="text/javascript">
     // --- I18N ---
     const translations = {
         en: {
@@ -713,6 +653,7 @@
             loaderText.textContent = _('loadingFile') + ' note.txt';
             const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress);
 
+let notesCount = 0;
 noteResults.forEach(({ file, res }) => {
     const note = document.createElement('div');
     note.className = 'note';
@@ -740,6 +681,8 @@ noteResults.forEach(({ file, res }) => {
 
         } else { fileContent = _('errorNoteFieldMissing'); }
     } catch (e) { fileContent = _('errorNoteParse'); }
+    
+    notesCount++;
 
     const isHiddenNote = fileContent.startsWith('|');
     if (isHiddenNote) {
@@ -894,6 +837,10 @@ noteResults.forEach(({ file, res }) => {
     note.appendChild(footerEl);
     notesContainer.appendChild(note);
 });
+const noteCounter = document.getElementById('note-counter');
+if (noteCounter) {
+    noteCounter.textContent = notesCount;
+}
         } catch (err) {
             console.error("Error loading files:", err);
             showToast(err.message || _('errorProcessingFiles'));
@@ -901,6 +848,3 @@ noteResults.forEach(({ file, res }) => {
             loaderContainer.style.display = 'none';
         }
     }
-</script>
-</body>
-</html>

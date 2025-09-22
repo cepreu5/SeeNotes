@@ -85,6 +85,7 @@ main {
 }
 
 .note {
+    position: relative;
     border: 1px solid #ccc;
     border-radius: 8px;
     padding: 10px 10px 5px 10px;
@@ -604,4 +605,16 @@ main {
   margin-left: 10px;
   font-size: 1em;
   color: black;
+}
+
+.note-counter {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 0.9em;
+    font-weight: bold;
 }
