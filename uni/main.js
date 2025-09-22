@@ -29,6 +29,7 @@
         initApp();
         listFiles();
     }
+
     // --- I18N ---
     const translations = {
         en: {
@@ -64,8 +65,8 @@
         bg: {
             appTitle: 'CX MultiNotes Viewer',
             searchPlaceholder: 'Търсене в заглавията...', 
-            reloadButton: 'Презареди',
-            signoutButton: 'Изход',
+            reloadButtonTooltip: 'Презареди',
+            signoutButtonTooltip: 'Изход',
             copyTooltip: 'Копирай съдържанието',
             topTooltip: 'Към началото',
             allBoards: 'Всички',
@@ -181,8 +182,11 @@
         { type: 5, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>` },
         { type: 6, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="10" r="2"/><path d="M8 16c0-1.33 2.67-2 4-2s4 .67 4 2"/></svg>` }
     ];
-    
+    // const refreshSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather feather-refresh-cw"><polyline points="23 4 23 10 17 10"></polyline><path d="M1 20a11 11 0 0 0 17.07-4.9"></path></svg>`;
+    // const logoutSvg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="mdi-application-export" width="24" height="24" viewBox="0 0 24 24"><path d="M8,12H17.76L15.26,9.5L16.67,8.08L21.59,13L16.67,17.92L15.26,16.5L17.76,14H8V12M19,3C20.11,3 21,3.9 21,5V9.67L19,7.67V7H5V19H19V18.33L21,16.33V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V5A2,2 0 0,1 5,3H19Z" /></svg>`;
+
     let authToken = null, currentModalContent = '', boardsData = [], currentBoardFilter = 'all';
+    let folderIds = {};
     let signoutButton, reloadButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText, zoomInput;
     const boardsNoteBgnd = '#cfe6f8';
 
@@ -219,10 +223,14 @@
 
         window.onscroll = () => {
             const isScrolled = document.body.scrollTop > 100 || document.documentElement.scrollTop > 100;
-            if (currentBoardFilter === 'all' && isScrolled) {
+            if (currentBoardFilter !== 'all') {
                 scrollTopBtn.style.display = "flex";
             } else {
-                scrollTopBtn.style.display = "none";
+                if (isScrolled) {
+                    scrollTopBtn.style.display = "flex";
+                } else {
+                    scrollTopBtn.style.display = "none";
+                }
             }
         };
         scrollTopBtn.addEventListener('click', () => window.scrollTo({top: 0, behavior: 'smooth'}));
@@ -311,27 +319,12 @@
             }
         });
 
-        let popup = document.getElementById('board-filter-popup');
-        if (!popup) {
-            popup = document.createElement('div');
-            popup.id = 'board-filter-popup';
-            popup.className = 'board-filter-popup';
-            document.body.appendChild(popup);
-        }
-
         if (boardId === 'all') {
-            popup.classList.remove('visible');
+            scrollTopBtn.innerHTML = arrowSvg;
         } else {
             const board = boardsData.find(b => b.gdid === boardId);
             if (board) {
-                //popup.innerHTML = board.title+" "+(&#39;&uarr;&#39;);
-                popup.innerHTML = board.title + " " + arrowSvg;
-                popup.classList.add('visible');
-                popup.onclick = () => {
-                    window.scrollTo({top: 0, behavior: 'smooth'});
-                };
-            } else {
-                popup.classList.remove('visible');
+                scrollTopBtn.innerHTML = board.title + " " + arrowSvg;
             }
         }
         window.dispatchEvent(new Event('scroll'));
@@ -430,7 +423,59 @@
         return Promise.all(filePromises);
     }
 
+    async function getFileID(folderId, fileName) {
+        try {
+            const response = await gapi.client.drive.files.list({
+                q: `'${folderId}' in parents and name = '${fileName}'`,
+                fields: 'files(id, name)',
+                pageSize: 1
+            });
+
+            const files = response.result.files;
+            if (files && files.length > 0) {
+                return files[0].id;
+            } else {
+                console.warn(`File '${fileName}' not found in folder '${folderId}'.`);
+                return null;
+            }
+        } catch (error) {
+            console.error(`Error fetching file ID for '${fileName}' in folder '${folderId}':`, error);
+            showToast(`Error fetching file ID for ${fileName}.`);
+            return null;
+        }
+    }
+
     async function getFolderID() {
+        try {
+            const multinotesDataId = await getMultinotesDataFolderID();
+            if (!multinotesDataId) {
+                return null;
+            }
+
+            const folderNames = ["Other", "Sound", "Video", "Images"];
+            for (const name of folderNames) {
+                const response = await gapi.client.drive.files.list({
+                    q: `'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                    fields: 'files(id)',
+                    pageSize: 1
+                });
+
+                const files = response.result.files;
+                if (files && files.length > 0) {
+                    folderIds[name] = files[0].id;
+                } else {
+                    console.warn(`Folder '${name}' not found within 'multinotes_data'.`);
+                }
+            }
+            return multinotesDataId;
+        } catch (error) {
+            console.error("Error in getFolderID:", error);
+            showToast("Error fetching folder IDs.");
+            return null;
+        }
+    }
+
+    async function getMultinotesDataFolderID() {
         try {
             const response = await gapi.client.drive.files.list({
                 q: "name='multinotes_data' and mimeType='application/vnd.google-apps.folder' and trashed=false",
@@ -525,12 +570,41 @@
                 
                 // New footer for the boards note
                 const boardsNoteFooter = document.createElement('div');
-                boardsNoteFooter.className = 'note-footer boards-note-footer'; // Reusing note-footer class for styling consistency
+                boardsNoteFooter.className = 'note-footer boards-note-footer';
+
+                const zoomButton = document.createElement('button');
+                zoomButton.className = 'zoom-btn';
+                zoomButton.textContent = _('zoomLabel');
+                const zoomValueDisplay = document.createElement('span');
+                zoomValueDisplay.id = 'zoom-value-display';
+                zoomButton.appendChild(zoomValueDisplay);
+                zoomButton.addEventListener('click', () => {
+                    document.getElementById('zoom-modal').classList.add('visible');
+                });
+                boardsNoteFooter.appendChild(zoomButton);
+
+                // --- Zoom Modal Content ---
+                const zoomModalBody = document.getElementById('zoom-modal-body');
+                zoomModalBody.innerHTML = ''; 
+
+                const zoomControlWrapper = document.createElement('div');
+                zoomControlWrapper.className = 'zoom-control-wrapper';
 
                 const sliderContainer = document.createElement('div');
                 sliderContainer.className = 'slider-container';
                 sliderContainer.innerHTML = `<input type="range" id="scaleSlider" min="25" max="175" value="100"><span id="scaleValue"></span>`;
-                boardsNoteFooter.appendChild(sliderContainer);
+
+                const applyBtn = document.createElement('button');
+                applyBtn.className = 'zoom-btn';
+                applyBtn.textContent = _('submitButton');
+                applyBtn.style.marginLeft = '10px';
+                applyBtn.addEventListener('click', () => {
+                    document.getElementById('zoom-modal').classList.remove('visible');
+                });
+
+                zoomControlWrapper.appendChild(sliderContainer);
+                zoomControlWrapper.appendChild(applyBtn);
+                zoomModalBody.appendChild(zoomControlWrapper);
 
                 const slider = sliderContainer.querySelector('#scaleSlider');
                 const scaleValue = sliderContainer.querySelector('#scaleValue');
@@ -538,6 +612,7 @@
                 const updateZoom = (value) => {
                     notesContainer.style.zoom = value / 100;
                     scaleValue.textContent = `${value}%`;
+                    zoomValueDisplay.textContent = ` ${value}%`;
                 };
 
                 // Load zoom level from localStorage
@@ -654,12 +729,13 @@
             const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress);
 
 let notesCount = 0;
-noteResults.forEach(({ file, res }) => {
+await Promise.all(noteResults.map(async ({ file, res }) => {
     const note = document.createElement('div');
     note.className = 'note';
     let fileContent = '';
     let noteGdid = null;
     let noteColor = null;
+    let textSpan = null;
 
     try {
         const content = JSON.parse(res.body);
@@ -667,6 +743,9 @@ noteResults.forEach(({ file, res }) => {
             fileContent = content.notetxt;
             noteGdid = content.gdid;
             noteColor = content.color;
+            if (content.text_span) {
+                textSpan = content.text_span;
+            }
             const extraData = { ...content };
             delete extraData.notetxt;
             if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
@@ -719,7 +798,11 @@ noteResults.forEach(({ file, res }) => {
     const contentEl = document.createElement('div');
     contentEl.className = 'note-content';
     if (!isHiddenNote) {
-        appendLinkifiedText(contentEl, fileContent);
+        if (textSpan && textSpan.trim() !== '') {
+            contentEl.innerHTML = formatText(fileContent, textSpan);
+        } else {
+            appendLinkifiedText(contentEl, fileContent);
+        }
 
         if (noteGdid) {
             const attachments = mediaData.filter(media => media.noteid === noteGdid);
@@ -729,20 +812,128 @@ noteResults.forEach(({ file, res }) => {
                 separator.style.marginBottom = '10px';
                 contentEl.appendChild(separator);
 
-                attachments.forEach(attachment => {
+                await Promise.all(attachments.map(async attachment => {
                     const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
                     if (iconData) {
-                        const iconWrapperDiv = document.createElement('div');
-                        iconWrapperDiv.innerHTML = iconData.svg;
-                        iconWrapperDiv.dataset.extraInfo = JSON.stringify(attachment);
-                        iconWrapperDiv.style.cursor = 'pointer';
-                        iconWrapperDiv.addEventListener('click', () => {
+                        const attachmentWrapper = document.createElement('div');
+                        attachmentWrapper.style.display = 'flex';
+                        attachmentWrapper.style.alignItems = 'center';
+                        attachmentWrapper.style.gap = '5px';
+
+                        const iconDiv = document.createElement('div');
+                        iconDiv.innerHTML = iconData.svg;
+                        iconDiv.style.cursor = 'pointer';
+                        iconDiv.addEventListener('click', () => {
                             const attachmentDataString = JSON.stringify(attachment, null, 2);
                             showModal(attachmentDataString);
                         });
-                        contentEl.appendChild(iconWrapperDiv);
+                        attachmentWrapper.appendChild(iconDiv);
+
+                        if (attachment.type === 3 && attachment.path) {
+                            const filename = attachment.path.split('/').pop();
+                            const link = document.createElement('a');
+                            const fileId = await getFileID(folderIds['Other'], filename);
+                            if (attachment.gdid) {
+                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                            } else {
+                                link.href = '#';
+                                link.onclick = (e) => e.preventDefault();
+                            }
+                            link.title = link.href;
+                            link.textContent = 'Other/' + filename;
+                            attachmentWrapper.appendChild(link);
+                        } else if (attachment.type === 5 && attachment.path) {
+                            const parts = attachment.path.split('|');
+                            if (parts.length >= 3) {
+                                const textContainer = document.createElement('div');
+                                const line1 = document.createElement('span');
+                                line1.textContent = `${parts[0]}, ${parts[1]}`;
+                                textContainer.appendChild(line1);
+                                const line2 = document.createElement('div');
+                                line2.textContent = parts[2];
+                                textContainer.appendChild(line2);
+                                attachmentWrapper.appendChild(textContainer);
+                            }
+                        }
+
+                        if (attachment.type === 1 && attachment.path) {
+                            const filename = attachment.path.split('/').pop();
+                            const link = document.createElement('a');
+                            const fileId = await getFileID(folderIds['Images'], filename);
+                            if (attachment.gdid) {
+                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                            } else {
+                                link.href = '#';
+                                link.onclick = (e) => e.preventDefault();
+                            }
+                            link.title = link.href;
+                            link.textContent = 'Images/' + filename;
+                            attachmentWrapper.appendChild(link);
+                        }
+        
+                        if (attachment.type === 2 && attachment.path) {
+                            const filename = attachment.path.split('/').pop();
+                            const textContainer = document.createElement('div');
+                            textContainer.style.flexGrow = '1';
+                            textContainer.style.flexShrink = '1';
+                            textContainer.style.minWidth = '0';
+                            
+                            const link = document.createElement('a');
+                            const fileId = await getFileID(folderIds['Sound'], filename);
+                            if (attachment.gdid) {
+                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                            } else {
+                                link.href = '#';
+                                link.onclick = (e) => e.preventDefault();
+                            }
+                            link.title = link.href;
+                            link.textContent = 'Sound/' + filename;
+                            textContainer.appendChild(link);
+                            
+                            const line2 = document.createElement('div');
+                            line2.textContent = attachment.description || '';
+                            textContainer.appendChild(line2);
+
+                            attachmentWrapper.appendChild(textContainer);
+                        }
+
+                        if (attachment.type === 4 && attachment.path) {
+                            const filename = attachment.path.split('/').pop();
+                            const textContainer = document.createElement('div');
+                            textContainer.style.flexGrow = '1';
+                            textContainer.style.flexShrink = '1';
+                            textContainer.style.minWidth = '0';
+                            
+                            const link = document.createElement('a');
+                            const fileId = await getFileID(folderIds['Video'], filename);
+                            if (attachment.gdid) {
+                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                            } else {
+                                link.href = '#';
+                                link.onclick = (e) => e.preventDefault();
+                            }
+                            link.title = link.href;
+                            link.textContent = 'Video/' + filename;
+                            textContainer.appendChild(link);
+                            
+                            const line2 = document.createElement('div');
+                            line2.textContent = attachment.description || '';
+                            textContainer.appendChild(line2);
+
+                            attachmentWrapper.appendChild(textContainer);
+                        }
+
+                        contentEl.appendChild(attachmentWrapper);
                     }
-                });
+                }));
             }
         }
     }
@@ -836,11 +1027,12 @@ noteResults.forEach(({ file, res }) => {
     note.appendChild(contentEl);
     note.appendChild(footerEl);
     notesContainer.appendChild(note);
-});
-const noteCounter = document.getElementById('note-counter');
-if (noteCounter) {
-    noteCounter.textContent = notesCount;
-}
+}));
+
+    const noteCounter = document.getElementById('note-counter');
+    if (noteCounter) {
+        noteCounter.textContent = notesCount;
+    }
         } catch (err) {
             console.error("Error loading files:", err);
             showToast(err.message || _('errorProcessingFiles'));
@@ -848,3 +1040,83 @@ if (noteCounter) {
             loaderContainer.style.display = 'none';
         }
     }
+
+/**
+ * Форматира текстов низ въз основа на JSON параметри.
+ * @param {string} text - Текстовият низ за форматиране.
+ * @param {string} formatString - Форматиращият низ, разделен с '
+'.
+ * @returns {string} Форматираният HTML низ.
+ */
+function formatText(text, formatString) {
+  if (formatString.endsWith('|')) {
+    formatString = formatString.slice(0, -1);
+  }
+  let html = '';
+  let lastIndex = 0;
+  const formats = formatString.split('|');
+
+  // Сортира форматите по начална позиция
+  const formatObjects = formats.map(f => {
+    try {
+      return JSON.parse(f);
+    } catch (e) {
+      console.error('Invalid JSON in format string:', f);
+      return null;
+    }
+  }).filter(f => f !== null).sort((a, b) => a.start - b.start);
+
+  formatObjects.forEach(format => {
+    const {
+      start,
+      end,
+      type,
+      paramint,
+      paramfloat
+    } = format;
+
+    // Добавя неформатирания текст преди текущия формат
+    html += text.substring(lastIndex, start);
+
+    let formattedText = text.substring(start, end);
+
+    // Прилага форматиране въз основа на "type"
+    switch (type) {
+      case 1: // bold
+        formattedText = `<strong>${formattedText}</strong>`;
+        break;
+      case 2: // italic
+        formattedText = `<em>${formattedText}</em>`;
+        break;
+      case 3: // underline
+        formattedText = `<u>${formattedText}</u>`;
+        break;
+      case 4: // text color
+        const textColor = '#' + (paramint >>> 0).toString(16).slice(-6);
+        formattedText = `<span style="color: ${textColor};">${formattedText}</span>`;
+        break;
+      case 5: // background color
+        const bgColor = '#' + (paramint >>> 0).toString(16).slice(-6);
+        formattedText = `<span style="background-color: ${bgColor};">${formattedText}</span>`;
+        break;
+      case 6: // font size
+        const fontSize = 100 * paramfloat;
+        formattedText = `<span style="font-size: ${fontSize}%;">${formattedText}</span>`;
+        break;
+      case 7: // strike-through
+        formattedText = `<s>${formattedText}</s>`;
+        break;
+      default:
+        // Ако няма съответствие, просто добавя текста без форматиране
+        break;
+    }
+
+    html += formattedText;
+    lastIndex = end;
+  });
+
+  // Добавя останалия неформатиран текст
+  html += text.substring(lastIndex);
+
+  return html;
+}

@@ -1,0 +1,197 @@
+<head>
+<style>
+.header-btn {
+    margin-left: 10px;
+    padding: 0;
+    border: 1px solid #aaa;
+    border-radius: 50%;
+    background-color: #d6d6d6;
+    box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
+    cursor: pointer;
+    width: 128px;
+    height: 128px;
+    color: #000;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-btn svg {
+  width: 28%;
+  height: 28%;
+  stroke: currentColor;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.slider-container {
+  position: relative;
+  width: 500px;
+  margin: 50px auto;
+  padding: 20px;
+  background-color: #d3d3d3;
+  border-radius: 10px;
+  box-shadow: inset 0 0 10px #a0a0a0;
+}
+
+.slider {
+  width: 100%;
+  -webkit-appearance: none;
+  height: 10px;
+  background: #a0a0a0;
+  border-radius: 5px;
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 25px;
+  height: 25px;
+  background: #f0f0f0;
+  cursor: pointer;
+  border-radius: 5px;
+  border: 1px solid #777;
+  box-shadow: 0 0 5px #777;
+}
+
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-family: sans-serif;
+  color: #555;
+  font-weight: bold;
+}
+
+.slider-labels span {
+  flex: 1;
+  text-align: center;
+  position: relative;
+}
+</style>
+</head>
+<body>
+<div class="slider-container">
+  <input type="range" class="slider" min="0" max="6" step="1" value="3">
+  <div class="slider-labels">
+    <span data-value="0">70</span>
+    <span data-value="1">80</span>
+    <span data-value="2">90</span>
+    <span data-value="3">100</span>
+    <span data-value="4">110</span>
+    <span data-value="5">120</span>
+    <span data-value="6">130</span>
+  </div>
+</div>
+<button class="header-btn" title="Презареди">
+<svg fill="#000000" height="24px" width="24px"xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
+	 viewBox="0 0 24 24" xml:space="preserve">
+<g>
+	<path d="M278.235,33.267c-116.7,0-211.6,95-211.6,211.7v0.7l-41.9-63.1c-4.1-6.2-12.5-7.9-18.7-3.8c-6.2,4.1-7.9,12.5-3.8,18.7
+		l60.8,91.5c2.2,3.3,5.7,5.4,9.6,5.9c0.6,0.1,1.1,0.1,1.7,0.1c3.3,0,6.5-1.2,9-3.5l84.5-76.1c5.5-5,6-13.5,1-19.1
+		c-5-5.5-13.5-6-19.1-1l-56.1,50.7v-1c0-101.9,82.8-184.7,184.6-184.7s184.7,82.8,184.7,184.7s-82.8,184.7-184.6,184.7
+		c-49.3,0-95.7-19.2-130.5-54.1c-5.3-5.3-13.8-5.3-19.1,0c-5.3,5.3-5.3,13.8,0,19.1c40,40,93.1,62,149.6,62
+		c116.6,0,211.6-94.9,211.6-211.7S394.935,33.267,278.235,33.267z"/>
+</g>
+</svg></button>
+<img src='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.93 4.93a10 10 0 1 1-1.41 1.41"/><polyline points="4.93 4.93 4.93 10 10 10"/></svg>' width='28' height='28' alt='Refresh icon' />
+
+<script>
+const slider = document.querySelector('.slider');
+const labels = [70, 80, 90, 100, 110, 120, 130];
+
+slider.addEventListener('input', (e) => {
+  const value = e.target.value;
+  const selectedLabel = labels[value];
+  console.log('Selected value:', selectedLabel);
+});
+</script>
+</body>
+
+<!-- script>
+/**
+ * Форматира текстов низ въз основа на JSON параметри.
+ * @param {string} text - Текстовият низ за форматиране.
+ * @param {string} formatString - Форматиращият низ, разделен с '
+'.
+ * @returns {string} Форматираният HTML низ.
+ */
+function formatText(text, formatString) {
+  let html = '';
+  let lastIndex = 0;
+  const formats = formatString.split('|');
+
+  // Сортира форматите по начална позиция
+  const formatObjects = formats.map(f => {
+    try {
+      return JSON.parse(f);
+    } catch (e) {
+      console.error('Invalid JSON in format string:', f);
+      return null;
+    }
+  }).filter(f => f !== null).sort((a, b) => a.start - b.start);
+
+  formatObjects.forEach(format => {
+    const {
+      start,
+      end,
+      type,
+      paramint,
+      paramfloat
+    } = format;
+
+    // Добавя неформатирания текст преди текущия формат
+    html += text.substring(lastIndex, start);
+
+    let formattedText = text.substring(start, end);
+
+    // Прилага форматиране въз основа на "type"
+    switch (type) {
+      case 1: // bold
+        formattedText = `<strong>${formattedText}</strong>`;
+        break;
+      case 2: // italic
+        formattedText = `<em>${formattedText}</em>`;
+        break;
+      case 3: // underline
+        formattedText = `<u>${formattedText}</u>`;
+        break;
+      case 4: // text color
+        const textColor = '#' + (paramint >>> 0).toString(16).slice(-6);
+        formattedText = `<span style="color: ${textColor};">${formattedText}</span>`;
+        break;
+      case 5: // background color
+        const bgColor = '#' + (paramint >>> 0).toString(16).slice(-6);
+        formattedText = `<span style="background-color: ${bgColor};">${formattedText}</span>`;
+        break;
+      case 6: // font size
+        const fontSize = 100 * paramfloat;
+        formattedText = `<span style="font-size: ${fontSize}%;">${formattedText}</span>`;
+        break;
+      case 7: // strike-through
+        formattedText = `<s>${formattedText}</s>`;
+        break;
+      default:
+        // Ако няма съответствие, просто добавя текста без форматиране
+        break;
+    }
+
+    html += formattedText;
+    lastIndex = end;
+  });
+
+  // Добавя останалия неформатиран текст
+  html += text.substring(lastIndex);
+
+  return html;
+}
+
+// Тестов пример
+const testString = "Шрифтове: bold italic underline зачертан цветен фон размер 120";
+const formatString = "{\"end\":14,\"paramfloat\":0.0,\"paramint\":0,\"start\":10,\"type\":1}|{\"end\":21,\"paramfloat\":0.0,\"paramint\":0,\"start\":15,\"type\":2}|{\"end\":31,\"paramfloat\":0.0,\"paramint\":0,\"start\":22,\"type\":3}|{\"end\":40,\"paramfloat\":0.0,\"paramint\":0,\"start\":32,\"type\":7}|{\"end\":47,\"paramfloat\":0.0,\"paramint\":-16776961,\"start\":41,\"type\":4}|{\"end\":52,\"paramfloat\":0.0,\"paramint\":-256,\"start\":48,\"type\":5}|{\"end\":62,\"paramfloat\":1.2,\"paramint\":0,\"start\":52,\"type\":6}|";
+
+const formattedHtml = formatText(testString, formatString);
+console.log(formattedHtml);
+document.body.innerHTML = formattedHtml;
+</script -->

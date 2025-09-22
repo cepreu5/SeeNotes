@@ -59,18 +59,29 @@ header h1 {
 
 .header-btn {
     margin-left: 10px;
-    padding: 8px 12px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background-color: #f41452;
+    padding: 0;
+    border: 1px solid #aaa;
+    border-radius: 50%;
+    background-color: #d6d6d6;
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
     cursor: pointer;
-    width: 100px;
-    color: white;
+    width: 46px;
+    height: 46px;
+    color: #000;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .header-btn:hover {
-    background-color: #e0e0e0;
+    background-color: #c0c0c0;
+}
+
+.header-btn svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
+    flex-shrink: 0;
 }
 
 main {
@@ -214,10 +225,10 @@ main {
 .modal-content-box {
     background: #eef603;
     padding: 20px;
-    padding-top: 45px;
+    padding-top: 0px;
     border-radius: 8px;
     width: 95%;
-    max-width: 1200px;
+    max-width: 900px;
     max-height: 80vh;
     overflow-y: auto;
     position: relative;
@@ -287,14 +298,14 @@ main {
     background-color: #555;
     color: white;
     cursor: pointer;
-    padding: 0;
-    width: 50px;
+    padding: 0 20px;
     height: 50px;
-    border-radius: 50%;
-    font-size: 24px;
+    border-radius: 25px;
+    font-size: 16px;
     justify-content: center;
     align-items: center;
     opacity: 0.7;
+    white-space: nowrap;
 }
 
 #scrollTopBtn:hover {
@@ -560,25 +571,19 @@ main {
     border-top: 1px solid gray;
     display: flex;
     align-items: center;
-    justify-content: center; /* Center the content */
+    justify-content: flex-start; /* Align to left */
     font-size: 0.8em;
     color: #666;
     min-height: 18px;
-}
-
-.zoom-input {
-    padding: 4px 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 0.9em;
-    text-align: center;
 }
 
 .slider-container {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 0 10px; /* Add some padding */
+  padding: 10px;
+  margin-bottom: 10px; /* Add some padding */
+  margin-top: 10px; /* Add some padding */
   box-sizing: border-box;
 }
 
@@ -617,4 +622,42 @@ main {
     border-radius: 10px;
     font-size: 0.9em;
     font-weight: bold;
+}
+
+.zoom-btn {
+    padding: 3px 7px;
+    border: 1px solid #1f3b52;
+    border-radius: 4px;
+    background-color: #a9cce3;
+    color: #1f3b52;
+    cursor: pointer;
+    white-space: nowrap;
+    font-weight: normal;
+}
+
+.zoom-btn:hover {
+    background-color: #98b9d2;
+}
+
+#zoom-modal .modal-content-box {
+    background-color: #cfe6f8;
+    width: 90%;
+    max-width: 600px;
+    padding: 0;
+    height: auto;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#zoom-modal-body {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.zoom-control-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-right: 20px;
 }
