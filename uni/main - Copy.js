@@ -1033,15 +1033,6 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
                 dateText.textContent = formatDate(extraData.datemod);
                 dateDisplay.appendChild(dateText);
                 footerLeft.appendChild(dateDisplay);
-
-                dateDisplay.addEventListener('click', () => {
-                    try {
-                        const content = JSON.parse(res.body);
-                        showModal(JSON.stringify(content, null, 2));
-                    } catch(e) {
-                        showModal(res.body);
-                    }
-                });
             }
         } catch (e) { console.error('Error parsing extraInfo:', e); }
     }
