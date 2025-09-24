@@ -400,6 +400,32 @@ main {
     color: #fff;
 }
 
+.note-content .calendar-filter-btn {
+    background-color: darkblue;
+    color: white;
+}
+.note-content .calendar-filter-btn:hover {
+    background-color: #0000b3;
+    color: white;
+}
+.note-content .calendar-filter-btn.selected-board {
+    background-color: #000066;
+    color: white;
+}
+
+.note-content .reminder-filter-btn {
+    background-color: red;
+    color: white;
+}
+.note-content .reminder-filter-btn:hover {
+    background-color: #ff3333;
+    color: white;
+}
+.note-content .reminder-filter-btn.selected-board {
+    background-color: #cc0000;
+    color: white;
+}
+
 .board-filter-popup {
     position: fixed;
     bottom: 20px;

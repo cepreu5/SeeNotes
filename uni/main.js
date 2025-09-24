@@ -60,7 +60,7 @@
             folderIdInputPlaceholder: 'Google Drive Folder ID',
             zoomLabel: 'Zoom:',
             calendar: 'Calendar',
-            reminder: 'Reminder',
+            reminder: 'Reminders',
             // folderIdDeleted: 'Folder ID has been deleted.',
             submitButton: 'Confirm'
         },
@@ -93,7 +93,7 @@
             // folderIdDeleted: 'Folder ID е изтрит.',
             zoomLabel: 'Мащаб:',
             calendar: 'Календар',
-            reminder: 'Напомняне',
+            reminder: 'Напомняния',
             submitButton: 'Потвърди'
         }
     };
@@ -730,21 +730,10 @@
                     }
                 });
                 
-                const allBoardsLink = document.createElement('a');
-                allBoardsLink.href = '#';
-                allBoardsLink.textContent = _('allBoards');
-                allBoardsLink.classList.add('board-filter-link');
-                allBoardsLink.dataset.boardid = 'all';
-                allBoardsLink.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    filterNotesByBoard('all');
-                });
-                contentEl.appendChild(allBoardsLink);
-
                 const calendarBoardLink = document.createElement('a');
                 calendarBoardLink.href = '#';
                 calendarBoardLink.textContent = _('calendar');
-                calendarBoardLink.classList.add('board-filter-link');
+                calendarBoardLink.classList.add('board-filter-link', 'calendar-filter-btn');
                 calendarBoardLink.dataset.boardid = 'calendar';
                 calendarBoardLink.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -755,13 +744,24 @@
                 const reminderBoardLink = document.createElement('a');
                 reminderBoardLink.href = '#';
                 reminderBoardLink.textContent = _('reminder');
-                reminderBoardLink.classList.add('board-filter-link');
+                reminderBoardLink.classList.add('board-filter-link', 'reminder-filter-btn');
                 reminderBoardLink.dataset.boardid = 'reminder';
                 reminderBoardLink.addEventListener('click', (e) => {
                     e.preventDefault();
                     filterNotesByBoard('reminder');
                 });
                 contentEl.appendChild(reminderBoardLink);
+
+                const allBoardsLink = document.createElement('a');
+                allBoardsLink.href = '#';
+                allBoardsLink.textContent = _('allBoards');
+                allBoardsLink.classList.add('board-filter-link');
+                allBoardsLink.dataset.boardid = 'all';
+                allBoardsLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    filterNotesByBoard('all');
+                });
+                contentEl.appendChild(allBoardsLink);
 
                 boardsData.forEach(board => {
                     if (board.title && board.gdid) {
