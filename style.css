@@ -14,7 +14,7 @@
 body {
     font-family: sans-serif;
     margin: 0;
-    background-color: #b1d9fc;
+    background-image: url('Board.png');
 }
 
 header {
@@ -225,15 +225,22 @@ main {
 .modal-content-box {
     background: #eef603;
     padding: 20px;
-    padding-top: 0px;
     border-radius: 8px;
     width: 95%;
     max-width: 900px;
     max-height: 80vh;
-    overflow-y: auto;
     position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+#modal-body {
+    padding-top: 60px;
+    padding-right: 100px;
+    overflow-y: auto;
     white-space: pre-wrap;
     text-align: left;
+    flex-grow: 1;
 }
 
 .modal-header-btn {
@@ -248,6 +255,7 @@ main {
     display: flex;
     justify-content: center;
     align-items: center;
+    z-index: 1;
 }
 
 .modal-header-btn:hover {
@@ -255,14 +263,14 @@ main {
 }
 
 .modal-close {
-    right: 10px;
+    right: 45px;
     font-size: 24px;
     padding-bottom: 4px;
     line-height: 1;
 }
 
 #copy-modal-btn {
-    right: 52px;
+    right: 87px;
 }
 
 #copy-modal-btn svg {
@@ -390,6 +398,32 @@ main {
 .note-content .selected-board:hover {
     background-color: #0056b3;
     color: #fff;
+}
+
+.note-content .calendar-filter-btn {
+    background-color: darkblue;
+    color: white;
+}
+.note-content .calendar-filter-btn:hover {
+    background-color: #0000b3;
+    color: white;
+}
+.note-content .calendar-filter-btn.selected-board {
+    background-color: #000066;
+    color: white;
+}
+
+.note-content .reminder-filter-btn {
+    background-color: red;
+    color: white;
+}
+.note-content .reminder-filter-btn:hover {
+    background-color: #ff3333;
+    color: white;
+}
+.note-content .reminder-filter-btn.selected-board {
+    background-color: #cc0000;
+    color: white;
 }
 
 .board-filter-popup {
