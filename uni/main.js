@@ -59,6 +59,8 @@
             promptFolderId: 'Please enter the Google Drive Folder ID:',
             folderIdInputPlaceholder: 'Google Drive Folder ID',
             zoomLabel: 'Zoom:',
+            calendar: 'Calendar',
+            reminder: 'Reminder',
             // folderIdDeleted: 'Folder ID has been deleted.',
             submitButton: 'Confirm'
         },
@@ -90,6 +92,8 @@
             folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
             // folderIdDeleted: 'Folder ID е изтрит.',
             zoomLabel: 'Мащаб:',
+            calendar: 'Календар',
+            reminder: 'Напомняне',
             submitButton: 'Потвърди'
         }
     };
@@ -366,6 +370,10 @@
 
         if (boardId === 'all') {
             scrollTopBtn.innerHTML = arrowSvg;
+        } else if (boardId === 'calendar') {
+            scrollTopBtn.innerHTML = _('calendar') + " " + arrowSvg;
+        } else if (boardId === 'reminder') {
+            scrollTopBtn.innerHTML = _('reminder') + " " + arrowSvg;
         } else {
             const board = boardsData.find(b => b.gdid === boardId);
             if (board) {
@@ -395,6 +403,28 @@
 
             if (currentBoardFilter === 'all') {
                 isVisibleByBoard = true;
+            } else if (currentBoardFilter === 'calendar') {
+                if (extraInfo) {
+                    try {
+                        const data = JSON.parse(extraInfo);
+                        if (data.calendarDate && data.calendarDate !== 0) {
+                            isVisibleByBoard = true;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing extraInfo for note:', e);
+                    }
+                }
+            } else if (currentBoardFilter === 'reminder') {
+                if (extraInfo) {
+                    try {
+                        const data = JSON.parse(extraInfo);
+                        if (data.timer && data.timer !== 0) {
+                            isVisibleByBoard = true;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing extraInfo for note:', e);
+                    }
+                }
             } else if (extraInfo) {
                 try {
                     const data = JSON.parse(extraInfo);
@@ -710,6 +740,28 @@
                     filterNotesByBoard('all');
                 });
                 contentEl.appendChild(allBoardsLink);
+
+                const calendarBoardLink = document.createElement('a');
+                calendarBoardLink.href = '#';
+                calendarBoardLink.textContent = _('calendar');
+                calendarBoardLink.classList.add('board-filter-link');
+                calendarBoardLink.dataset.boardid = 'calendar';
+                calendarBoardLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    filterNotesByBoard('calendar');
+                });
+                contentEl.appendChild(calendarBoardLink);
+
+                const reminderBoardLink = document.createElement('a');
+                reminderBoardLink.href = '#';
+                reminderBoardLink.textContent = _('reminder');
+                reminderBoardLink.classList.add('board-filter-link');
+                reminderBoardLink.dataset.boardid = 'reminder';
+                reminderBoardLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    filterNotesByBoard('reminder');
+                });
+                contentEl.appendChild(reminderBoardLink);
 
                 boardsData.forEach(board => {
                     if (board.title && board.gdid) {

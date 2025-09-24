@@ -225,15 +225,22 @@ main {
 .modal-content-box {
     background: #eef603;
     padding: 20px;
-    padding-top: 0px;
     border-radius: 8px;
     width: 95%;
     max-width: 900px;
     max-height: 80vh;
-    overflow-y: auto;
     position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+#modal-body {
+    padding-top: 60px;
+    padding-right: 100px;
+    overflow-y: auto;
     white-space: pre-wrap;
     text-align: left;
+    flex-grow: 1;
 }
 
 .modal-header-btn {
@@ -248,6 +255,7 @@ main {
     display: flex;
     justify-content: center;
     align-items: center;
+    z-index: 1;
 }
 
 .modal-header-btn:hover {
@@ -255,14 +263,14 @@ main {
 }
 
 .modal-close {
-    right: 10px;
+    right: 45px;
     font-size: 24px;
     padding-bottom: 4px;
     line-height: 1;
 }
 
 #copy-modal-btn {
-    right: 52px;
+    right: 87px;
 }
 
 #copy-modal-btn svg {
