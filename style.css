@@ -108,6 +108,7 @@ main {
     background-color: var(--note-bg-0);
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
     text-align: left;
+    cursor: pointer; /* Added for pointer cursor on hover */
 }
 
 .note h3 {
@@ -126,6 +127,11 @@ main {
     word-wrap: break-word;
     font-size: 0.9em;
     white-space: pre-wrap;
+}
+
+
+pre, code {
+    font-size: 110%;
 }
 
 .note-footer {
@@ -265,8 +271,8 @@ main {
 .modal-close {
     right: 45px;
     font-size: 24px;
-    padding-bottom: 4px;
-    line-height: 1;
+    padding-top: 4px;
+    box-sizing: border-box;
 }
 
 #copy-modal-btn {
@@ -593,11 +599,7 @@ main {
     background-color: #357ae8;
 }
 
-.board-menu-wrapper {
-    display: flex;
-    flex-direction: column; /* Changed to column to stack content and footer */
-    /* Removed flex-grow: 1; */
-}
+
 
 .boards-note-footer {
     padding-top: 5px;
