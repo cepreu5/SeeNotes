@@ -173,7 +173,6 @@
 
     // --- Constants ---
     const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
-    const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M3 3l18 18"></path></svg>`;
     const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
     const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
     const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" /></svg>`;
@@ -295,7 +294,7 @@
         if (formatString && formatString.trim() !== '') {
             displayContent = formatText(rawContent, formatString);
         } else {
-            displayContent = renderNoteContent(rawContent);
+            displayContent = linkifyText(rawContent);
         }
         
         modalBody.innerHTML = displayContent;
@@ -314,7 +313,21 @@
         } catch (e) { return dateString; }
     }
 
-    
+    function appendLinkifiedText(container, text) {
+        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+        let lastIndex = 0, match;
+        container.innerHTML = '';
+        while ((match = urlRegex.exec(text)) !== null) {
+            if (match.index > lastIndex) container.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+            const url = match[0];
+            const link = document.createElement('a');
+            link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+            link.appendChild(document.createTextNode(url));
+            container.appendChild(link);
+            lastIndex = match.index + url.length;
+        }
+        if (text.length > lastIndex) container.appendChild(document.createTextNode(text.substring(lastIndex)));
+    }
 
     function filterNotesByBoard(boardId) {
         currentBoardFilter = boardId;
@@ -368,13 +381,6 @@
             }
         }
         window.dispatchEvent(new Event('scroll'));
-        
-        // Add or remove a class from the container to control child visibility
-        if (boardId === 'calendar') {
-            notesContainer.classList.add('calendar-view');
-        } else {
-            notesContainer.classList.remove('calendar-view');
-        }
     }
 
     function applySearchFilter() {
@@ -619,6 +625,8 @@
                 boardsNote.style.backgroundColor = boardsNoteBgnd;
                 boardsNote.style.order = -1;
                 boardsNote.style.userSelect = 'none';
+                boardsNote.style.height = 'auto';
+                boardsNote.style.minHeight = 'auto'; // Added this line
 
                 const titleEl = document.createElement('h3');
                 titleEl.textContent = _('boardsTitle');
@@ -630,9 +638,8 @@
                 noteCounter.className = 'note-counter';
                 boardsNote.appendChild(noteCounter);
 
-                const contentWrapper = document.createElement('div');
-                contentWrapper.className = 'note-content';
-                contentWrapper.style.minHeight = '0';
+                const boardMenuWrapper = document.createElement('div');
+                boardMenuWrapper.className = 'board-menu-wrapper';
 
                 const contentEl = document.createElement('div');
                 contentEl.className = 'note-content board-menu-container';
@@ -789,8 +796,9 @@
                     contentEl.appendChild(errorEl);
                 }
 
-                contentWrapper.appendChild(contentEl);
-                boardsNote.appendChild(contentWrapper);
+                boardMenuWrapper.appendChild(contentEl);
+                
+                boardsNote.appendChild(boardMenuWrapper);
                 boardsNote.appendChild(boardsNoteFooter); // Append the new footer
                 notesContainer.appendChild(boardsNote);
             }
@@ -881,7 +889,7 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
         if (textSpan && textSpan.trim() !== '') {
             contentEl.innerHTML = formatText(fileContent, textSpan);
         } else {
-            contentEl.innerHTML = renderNoteContent(fileContent);
+            appendLinkifiedText(contentEl, fileContent);
         }
 
         if (noteGdid) {
@@ -952,97 +960,7 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
                             }
                             link.title = link.href;
                             link.textContent = 'Images/' + filename;
-                            
-                            const eyeButton = document.createElement('button');
-                            eyeButton.className = 'view-button';
-                            eyeButton.innerHTML = eyeIconSvg;
-                            
-                            attachmentWrapper.appendChild(eyeButton);
                             attachmentWrapper.appendChild(link);
-
-                            eyeButton.addEventListener('click', async (e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-
-                                const noteEl = attachmentWrapper.closest('.note');
-                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
-                                    return;
-                                }
-                                const titleEl = noteEl.querySelector('h3');
-
-                                if (!fileId) {
-                                    showToast('Image file not found for preview.');
-                                    return;
-                                }
-
-                                try {
-                                    const fileMetadata = await gapi.client.drive.files.get({
-                                        fileId: fileId,
-                                        fields: 'thumbnailLink'
-                                    });
-
-                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-
-                                    if (thumbnailUrl) {
-                                        if (titleEl) titleEl.style.visibility = 'hidden';
-
-                                        const overlay = document.createElement('div');
-                                        overlay.className = 'image-preview-overlay';
-                                        Object.assign(overlay.style, {
-                                            position: 'absolute',
-                                            top: '0', left: '0',
-                                            width: '100%', height: '100%',
-                                            backgroundColor: 'rgba(0,0,0,0.85)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: '10',
-                                            borderRadius: '8px'
-                                        });
-
-                                        overlay.addEventListener('click', () => {
-                                            window.open(link.href, '_blank');
-                                        });
-
-
-                                        const img = document.createElement('img');
-                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                                        Object.assign(img.style, {
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            padding: '10px',
-                                            boxSizing: 'border-box'
-                                        });
-                                        overlay.appendChild(img);
-
-                                        const closeButton = document.createElement('button');
-                                        closeButton.className = 'view-button';
-                                        closeButton.innerHTML = eyeOffIconSvg;
-                                        Object.assign(closeButton.style, {
-                                            position: 'absolute',
-                                            top: '10px',
-                                            right: '10px',
-                                        });
-                                        
-                                        const svg = closeButton.querySelector('svg');
-                                        if(svg) svg.style.stroke = 'white';
-
-                                        closeButton.addEventListener('click', (ev) => {
-                                            ev.stopPropagation();
-                                            overlay.remove();
-                                            if (titleEl) titleEl.style.visibility = 'visible';
-                                        });
-                                        overlay.appendChild(closeButton);
-                                        noteEl.appendChild(overlay);
-                                    } else {
-                                        showToast('No preview available for this image.');
-                                    }
-                                } catch (err) {
-                                    console.error('Error fetching image preview:', err);
-                                    showToast('Error loading image preview: ' + (err.message || err));
-                                }
-                            });
                         }
         
                         if (attachment.type === 2 && attachment.path) {
@@ -1098,95 +1016,7 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
                             line2.textContent = attachment.description || '';
                             textContainer.appendChild(line2);
 
-                            const eyeButton = document.createElement('button');
-                            eyeButton.className = 'view-button';
-                            eyeButton.innerHTML = eyeIconSvg;
-                            
-                            attachmentWrapper.appendChild(eyeButton);
                             attachmentWrapper.appendChild(textContainer);
-
-                            eyeButton.addEventListener('click', async (e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-
-                                const noteEl = attachmentWrapper.closest('.note');
-                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
-                                    return;
-                                }
-                                const titleEl = noteEl.querySelector('h3');
-
-                                if (!fileId) {
-                                    showToast('Video file not found for preview.');
-                                    return;
-                                }
-
-                                try {
-                                    const fileMetadata = await gapi.client.drive.files.get({
-                                        fileId: fileId,
-                                        fields: 'thumbnailLink'
-                                    });
-
-                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-
-                                    if (thumbnailUrl) {
-                                        if (titleEl) titleEl.style.visibility = 'hidden';
-
-                                        const overlay = document.createElement('div');
-                                        overlay.className = 'image-preview-overlay';
-                                        Object.assign(overlay.style, {
-                                            position: 'absolute',
-                                            top: '0', left: '0',
-                                            width: '100%', height: '100%',
-                                            backgroundColor: 'rgba(0,0,0,0.85)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: '10',
-                                            borderRadius: '8px'
-                                        });
-
-                                        overlay.addEventListener('click', () => {
-                                            window.open(link.href, '_blank');
-                                        });
-
-                                        const img = document.createElement('img');
-                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                                        Object.assign(img.style, {
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            padding: '10px',
-                                            boxSizing: 'border-box'
-                                        });
-                                        overlay.appendChild(img);
-
-                                        const closeButton = document.createElement('button');
-                                        closeButton.className = 'view-button';
-                                        closeButton.innerHTML = eyeOffIconSvg;
-                                        Object.assign(closeButton.style, {
-                                            position: 'absolute',
-                                            top: '10px',
-                                            right: '10px',
-                                        });
-                                        
-                                        const svg = closeButton.querySelector('svg');
-                                        if(svg) svg.style.stroke = 'white';
-
-                                        closeButton.addEventListener('click', (ev) => {
-                                            ev.stopPropagation();
-                                            overlay.remove();
-                                            if (titleEl) titleEl.style.visibility = 'visible';
-                                        });
-                                        overlay.appendChild(closeButton);
-                                        noteEl.appendChild(overlay);
-                                    } else {
-                                        showToast('No preview available for this video.');
-                                    }
-                                } catch (err) {
-                                    console.error('Error fetching video preview:', err);
-                                    showToast('Error loading video preview: ' + (err.message || err));
-                                }
-                            });
                         }
 
                         contentEl.appendChild(attachmentWrapper);
@@ -1216,13 +1046,19 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
                     footerLeft.appendChild(boardDisplay);
 
                     // Add event listener to board icon to show extra info
-                    boardDisplay.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent click from propagating to the note itself
+                    boardDisplay.addEventListener('click', () => {
                         const parentNote = boardDisplay.closest('.note');
                         if (parentNote && parentNote.dataset.extraInfo) {
                             try {
                                 const extraInfoData = JSON.parse(parentNote.dataset.extraInfo);
-                                showModal(JSON.stringify(extraInfoData, null, 2));
+                                let formattedContent = '';
+                                for (const key in extraInfoData) {
+                                    if (Object.hasOwnProperty.call(extraInfoData, key)) {
+                                        formattedContent += `${key}: ${JSON.stringify(extraInfoData[key], null, 2)}
+`;
+                                    }
+                                }
+                                showModal(formattedContent.trim());
                             } catch (e) {
                                 console.error('Error parsing data-extra-info:', e);
                                 showToast('Error displaying extra info.');
@@ -1231,14 +1067,12 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
                     });
                 }
             }
-            // Use calendarDate if available, otherwise fallback to datemod
-            const dateToShow = extraData.calendarDate || extraData.datemod;
-            if (dateToShow) {
+            if (extraData.datemod) {
                 const dateDisplay = document.createElement('div');
                 dateDisplay.className = 'date-display';
                 dateDisplay.innerHTML = calendarIconSvg;
                 const dateText = document.createElement('span');
-                dateText.textContent = formatDate(dateToShow);
+                dateText.textContent = formatDate(extraData.datemod);
                 dateDisplay.appendChild(dateText);
                 footerLeft.appendChild(dateDisplay);
 
@@ -1270,23 +1104,21 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
         viewButton.className = 'view-button';
         viewButton.innerHTML = eyeIconSvg;
         viewButton.title = _('viewFullContent');
-        viewButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showModal({ raw: fileContent, format: textSpan });
-        });
+        viewButton.addEventListener('click', () => showModal({ raw: fileContent, format: textSpan }));
         footerRight.appendChild(viewButton);
         footerEl.appendChild(footerRight);
     } else {
-        // The eye icon for scrollable notes is no longer needed as the entire note is now clickable.
+        setTimeout(() => {
+            if (contentEl.scrollHeight > contentEl.clientHeight) {
+                const viewButton = document.createElement('button');
+                viewButton.className = 'view-button';
+                viewButton.innerHTML = eyeIconSvg;
+                viewButton.title = _('viewFullContent');
+                viewButton.addEventListener('click', () => showModal({ raw: fileContent, format: textSpan }));
+                footerEl.appendChild(viewButton);
+            }
+        }, 100);
     }
-
-    note.addEventListener('click', (e) => {
-        // Check if the click target is not an interactive element within the note's footer.
-        // This prevents the modal from opening if a child element with its own click handler was clicked.
-        if (!e.target.closest('.note-footer')) {
-            showModal({ raw: fileContent, format: textSpan });
-        }
-    });
 
     note.appendChild(titleEl);
     note.appendChild(contentEl);
@@ -1306,53 +1138,15 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
         }
     }
 
-function escapeHtml(text) {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-function processCodeAndLinks(text) {
-    if (!text) return '';
-    const codeBlocks = [];
-    const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
-        const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
-        codeBlocks.push(escapeHtml(code));
-        return '%%CODE_BLOCK%%';
-    });
-    let linkifiedText = linkifyText(textWithoutCode);
-    codeBlocks.forEach(block => {
-        linkifiedText = linkifiedText.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
-    });
-    return linkifiedText;
-}
-
-function escapeHtml(text) {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-function renderNoteContent(text) {
-    if (!text) return '';
-    const codeBlocks = [];
-    const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
-        const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
-        codeBlocks.push(escapeHtml(code));
-        return '%%CODE_BLOCK%%';
-    });
+/**
+ * Converts URLs in a string to HTML anchor tags.
+ * @param {string} text - The text to linkify.
+ * @returns {string} The linkified HTML string.
+ */
+function linkifyText(text) {
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-    let html = textWithoutCode.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    codeBlocks.forEach(block => {
-        html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
-    });
-    return html;
+    if (!text) return '';
+    return text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
 /**
@@ -1377,7 +1171,7 @@ function formatText(text, formatString) {
   }).filter(f => f !== null);
 
   if (formats.length === 0) {
-    return renderNoteContent(text);
+    return linkifyText(text);
   }
 
   const points = new Set([0, text.length]);
@@ -1397,7 +1191,7 @@ function formatText(text, formatString) {
     if (segmentText.length === 0) continue;
 
     const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
-    let formattedSegment = renderNoteContent(segmentText);
+    let formattedSegment = linkifyText(segmentText);
 
     activeFormats.sort((a, b) => b.type - a.type);
 

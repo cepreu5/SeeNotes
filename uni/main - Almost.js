@@ -368,13 +368,6 @@
             }
         }
         window.dispatchEvent(new Event('scroll'));
-        
-        // Add or remove a class from the container to control child visibility
-        if (boardId === 'calendar') {
-            notesContainer.classList.add('calendar-view');
-        } else {
-            notesContainer.classList.remove('calendar-view');
-        }
     }
 
     function applySearchFilter() {
@@ -1231,14 +1224,12 @@ await Promise.all(noteResults.map(async ({ file, res }) => {
                     });
                 }
             }
-            // Use calendarDate if available, otherwise fallback to datemod
-            const dateToShow = extraData.calendarDate || extraData.datemod;
-            if (dateToShow) {
+            if (extraData.datemod) {
                 const dateDisplay = document.createElement('div');
                 dateDisplay.className = 'date-display';
                 dateDisplay.innerHTML = calendarIconSvg;
                 const dateText = document.createElement('span');
-                dateText.textContent = formatDate(dateToShow);
+                dateText.textContent = formatDate(extraData.datemod);
                 dateDisplay.appendChild(dateText);
                 footerLeft.appendChild(dateDisplay);
 
