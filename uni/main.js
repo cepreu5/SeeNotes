@@ -342,17 +342,6 @@ async function startApp() {
         setLanguage(currentLang);
     }
 
-    function updateBoardsNotePosition() {
-        const header = document.querySelector('header');
-        const boardsNote = document.querySelector('.boards-note');
-        if (header && boardsNote) {
-            // Use getBoundingClientRect().bottom for a more reliable height calculation,
-            // as offsetHeight can sometimes be inconsistent during resize events.
-            const headerRect = header.getBoundingClientRect();
-            boardsNote.style.top = `${headerRect.bottom - 6}px`;
-        }
-    }
-
     // --- Core Functions ---
     function handleSignoutClick() {
         sessionStorage.removeItem('google_auth_token');
@@ -673,7 +662,6 @@ async function startApp() {
                 const boardsNote = document.createElement('div');
                 // Create the boards note but don't append it yet
                 boardsNote.className = 'note boards-note';
-                boardsNote.style.order = -1;
                 // Title element is removed for a cleaner look.
                 // The note counter is now created and appended to the footer below.
                 const contentWrapper = document.createElement('div');
@@ -1294,11 +1282,8 @@ async function startApp() {
 
             // Now, prepend the boards note if it was created
             if (boardsNoteElement) {
-                notesContainer.prepend(boardsNoteElement);
-                // Set initial position after it's added to the DOM
-                updateBoardsNotePosition();
-                // Add resize listener to adjust on window resize
-                window.addEventListener('resize', updateBoardsNotePosition);
+                // Append the boards note to the header for natural sticky positioning
+                document.querySelector('header').appendChild(boardsNoteElement);
             }
 
             // filterNotesByBoard('all');

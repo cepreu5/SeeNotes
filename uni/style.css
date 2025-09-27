@@ -66,6 +66,7 @@ header h1 {
 #header-buttons {
     display: flex;
     align-items: center;
+    padding-bottom: 10px;
 }
 
 .header-btn {
@@ -124,19 +125,18 @@ main {
 
 /* Specific styles for the boards note to make it a full-width panel */
 .boards-note, .note.boards-note {
-    width: 100%; /* Take full width */
     height: auto; /* Auto-adjust height based on content */
-    margin: 0; /* Remove margin */
+    margin: 0 0;
+    margin-left: -1em; /* Negative margin to span full width, counteracting header padding */
+    width: calc(100% + 2em); /* Adjust width to compensate for negative margins */
     border-radius: 0; /* Remove rounded corners */
     box-shadow: 0 5px 8px rgba(0,0,0,0.1); /* Add a subtle shadow */
     border: none;
     border-bottom: 1px solid #ccc;
     padding: 10px;
-    box-sizing: border-box;
     background-image: url('Frame.jpg');
-    position: sticky;
-    z-index: 99; /* Lower than header's z-index */
     user-select: none; /* Prevent text selection on the board panel */
+    box-sizing: border-box; /* Ensure padding is included in width */
 }
 
 .note h3 {
@@ -544,30 +544,18 @@ pre, code {
 @media (max-width: 768px) {
     header {
         flex-direction: column;
-        align-items: stretch;
+        align-items: center;
     }
 
     #search-container {
-        padding: 1em 0 0.5em; /* Reduced bottom padding */
-        order: 1;
+        padding: 1em 0 0.5em;
     }
 
     #header-buttons {
-        order: 2;
         display: flex;
         justify-content: center;
-        padding-top: 0; /* Removed top padding */
-    }
-
-    header div:first-child {
-        text-align: center;
-        order: 0;
-    }
-}
-
-@media (max-width: 768px) {
-    .board-filter-popup {
-        top: 220px; /* Adjusted for taller header on small screens */
+        padding-top: 0;
+        padding-bottom: 10px;
     }
 }
 
