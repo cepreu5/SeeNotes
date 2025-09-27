@@ -19,14 +19,15 @@ body {
 
 header {
     padding: 1em;
-    border-bottom: 1px solid #eee;
-    box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);
-    margin-bottom: 1em;
+    padding-bottom: 0.2em;
+    /*border-bottom: 1px solid #eee;*/
+    /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
+    /* margin-bottom: 1em; */ /* Removed to stick the boards note to the header */
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    background-image: url('Frame.png');
+    background-image: url('Frame.jpg');
     position: sticky;
     top: 0;
     z-index: 100;
@@ -55,6 +56,11 @@ header h1 {
     background-color: #d6d6d6;
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
 
+}
+
+#header-buttons {
+    display: flex;
+    align-items: center;
 }
 
 .header-btn {
@@ -111,8 +117,19 @@ main {
     cursor: pointer; /* Added for pointer cursor on hover */
 }
 
-.boards-note {
-    width: 100%;
+/* Specific styles for the boards note to make it a full-width panel */
+.boards-note, .note.boards-note {
+    width: 100%; /* Take full width */
+    height: auto; /* Auto-adjust height based on content */
+    margin: 0; /* Remove margin */
+    border-radius: 0; /* Remove rounded corners */
+    box-shadow: 0 5px 8px rgba(0,0,0,0.1); /* Add a subtle shadow */
+    border: none;
+    border-bottom: 1px solid #ccc;
+    padding: 10px;
+    box-sizing: border-box;
+    background-image: url('Frame.jpg');
+    user-select: none; /* Prevent text selection on the board panel */
 }
 
 .note h3 {
@@ -375,15 +392,46 @@ pre, code {
     border-radius: 8px 8px 0 0;
 }
 
-.board-menu-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 5px;
-    align-content: start;
-    flex-grow: 1;
+.scrolling-menu-wrapper {
+    display: flex;
+    align-items: center;
+    width: 100%;
 }
 
-.note-content .board-filter-link {
+.board-menu-container {
+    display: flex;
+    flex-wrap: nowrap; /* Prevent wrapping */
+    overflow-x: hidden; /* Hide scrollbar, we use buttons */
+    scroll-behavior: smooth; /* Smooth scrolling on button click */
+    gap: 5px;
+    flex-grow: 1;
+    padding: 5px 0; /* Add some vertical padding */
+}
+
+.scroll-arrow {
+    background-color: #d0e0ed;
+    border: 1px solid #a9cce3;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin: 0 5px;
+    visibility: hidden; /* Hidden by default */
+}
+
+.scroll-arrow.visible {
+    visibility: visible;
+}
+
+.scroll-arrow:hover {
+    background-color: #bdd9ef;
+}
+
+.board-filter-link {
     display: block;
     padding: 8px 12px;
     color: #000;
@@ -391,47 +439,50 @@ pre, code {
     border-radius: 4px;
     text-align: left;
     background-color: #bdd9ef;
-    font-size: 16px;
+    font-size: 16px; /* Width will be set by JS */
+    flex-shrink: 0; /* Prevent buttons from shrinking */
+    cursor: pointer; /* Add pointer cursor to indicate clickability */
+    box-sizing: border-box; /* Ensure padding is included in the width set by JS */
 }
 
-.note-content .board-filter-link:hover {
+.board-filter-link:hover {
     background-color: #e9ecef;
     text-decoration: none;
 }
 
-.note-content .selected-board {
+.selected-board {
     font-weight: bold;
     background-color: #007bff;
     color: #fff;
 }
 
-.note-content .selected-board:hover {
+.selected-board:hover {
     background-color: #0056b3;
     color: #fff;
 }
 
-.note-content .calendar-filter-btn {
+.calendar-filter-btn {
     background-color: darkblue;
     color: white;
 }
-.note-content .calendar-filter-btn:hover {
+.calendar-filter-btn:hover {
     background-color: #0000b3;
     color: white;
 }
-.note-content .calendar-filter-btn.selected-board {
+.calendar-filter-btn.selected-board {
     background-color: #000066;
     color: white;
 }
 
-.note-content .reminder-filter-btn {
+.reminder-filter-btn {
     background-color: red;
     color: white;
 }
-.note-content .reminder-filter-btn:hover {
+.reminder-filter-btn:hover {
     background-color: #ff3333;
     color: white;
 }
-.note-content .reminder-filter-btn.selected-board {
+.reminder-filter-btn.selected-board {
     background-color: #cc0000;
     color: white;
 }
@@ -611,10 +662,11 @@ pre, code {
     border-top: 1px solid gray;
     display: flex;
     align-items: center;
-    justify-content: flex-start; /* Align to left */
+    justify-content: space-between; /* Align items to both ends */
     font-size: 0.8em;
     color: #666;
     min-height: 18px;
+    padding-right: 10px; /* Add some padding on the right */
 }
 
 .slider-container {
@@ -653,30 +705,14 @@ pre, code {
 }
 
 .note-counter {
-    position: absolute;
-    top: 10px;
-    right: 10px;
     background-color: rgba(0, 0, 0, 0.6);
     color: white;
     padding: 3px 8px;
     border-radius: 10px;
     font-size: 0.9em;
     font-weight: bold;
-}
-
-.zoom-btn {
-    padding: 3px 7px;
-    border: 1px solid #1f3b52;
-    border-radius: 4px;
-    background-color: #a9cce3;
-    color: #1f3b52;
-    cursor: pointer;
-    white-space: nowrap;
-    font-weight: normal;
-}
-
-.zoom-btn:hover {
-    background-color: #98b9d2;
+    margin-right: 15px; /* Add space to the right, before the buttons */
+    /* Removed absolute positioning */
 }
 
 #zoom-modal .modal-content-box {
@@ -700,4 +736,53 @@ pre, code {
     align-items: center;
     justify-content: center;
     padding-right: 20px;
+}
+
+/* Renamed from #zoom-modal to #settings-modal */
+#settings-modal .modal-content-box {
+    background-color: #cfe6f8;
+    width: 90%;
+    max-width: 600px;
+    padding: 20px;
+    height: auto;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#settings-modal .modal-content-box h2 {
+    margin: 0 0 15px 0;
+    text-align: center;
+    color: #1f3b52;
+}
+
+/* Close button for settings modal */
+#settings-modal .modal-close {
+    right: 10px;
+}
+
+#settings-modal-body {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.slider-container span {
+    /* Spacing is now handled by the input's margin */
+}
+
+.zoom-input-number {
+    width: 60px;
+    margin: 0 2px 0 10px; /* top, right, bottom, left */
+    text-align: center;
+    font-size: 1em;
+    border: 1px solid #1f3b52;
+    border-radius: 4px;
+    background-color: #eef5fb;
+    -moz-appearance: textfield; /* Firefox */
+}
+
+.zoom-input-number::-webkit-outer-spin-button,
+.zoom-input-number::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0; /* Safari */
 }

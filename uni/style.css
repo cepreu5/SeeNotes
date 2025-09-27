@@ -18,8 +18,8 @@ body {
 }
 
 header {
-    padding: 0.5em;
-    padding-bottom: 0em;
+    padding: 1em;
+    padding-bottom: 0.2em;
     /*border-bottom: 1px solid #eee;*/
     /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
     /* margin-bottom: 1em; */ /* Removed to stick the boards note to the header */
@@ -56,6 +56,11 @@ header h1 {
     background-color: #d6d6d6;
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
 
+}
+
+#header-buttons {
+    display: flex;
+    align-items: center;
 }
 
 .header-btn {
@@ -706,22 +711,8 @@ pre, code {
     border-radius: 10px;
     font-size: 0.9em;
     font-weight: bold;
+    margin-right: 15px; /* Add space to the right, before the buttons */
     /* Removed absolute positioning */
-}
-
-.zoom-btn {
-    padding: 3px 7px;
-    border: 1px solid #1f3b52;
-    border-radius: 4px;
-    background-color: #a9cce3;
-    color: #1f3b52;
-    cursor: pointer;
-    white-space: nowrap;
-    font-weight: normal;
-}
-
-.zoom-btn:hover {
-    background-color: #98b9d2;
 }
 
 #zoom-modal .modal-content-box {
@@ -745,6 +736,34 @@ pre, code {
     align-items: center;
     justify-content: center;
     padding-right: 20px;
+}
+
+/* Renamed from #zoom-modal to #settings-modal */
+#settings-modal .modal-content-box {
+    background-color: #cfe6f8;
+    width: 90%;
+    max-width: 600px;
+    padding: 20px;
+    height: auto;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#settings-modal .modal-content-box h2 {
+    margin: 0 0 15px 0;
+    text-align: center;
+    color: #1f3b52;
+}
+
+/* Close button for settings modal */
+#settings-modal .modal-close {
+    right: 10px;
+}
+
+#settings-modal-body {
+    flex-grow: 1;
+    overflow-y: auto;
 }
 
 .slider-container span {

@@ -141,6 +141,7 @@ async function startApp() {
             folderIdInputPlaceholder: 'Google Drive Folder ID',
             zoomLabel: 'Zoom:',
             calendar: 'Calendar',
+            settingsTitle: 'Settings',
             reminder: 'Reminders',
             // folderIdDeleted: 'Folder ID has been deleted.',
             submitButton: 'Confirm'
@@ -174,6 +175,8 @@ async function startApp() {
             // folderIdDeleted: 'Folder ID е изтрит.',
             zoomLabel: 'Мащаб:',
             calendar: 'Календар',
+            settingsTitle: 'Настройки',
+            settingsTitle: 'Настройки',
             reminder: 'Напомняния',
             submitButton: 'Потвърди'
         }
@@ -254,6 +257,7 @@ async function startApp() {
     const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
     const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" /></svg>`;
     const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
+    const settingsIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /><circle cx="12" cy="12" r="3" /></svg>`;
     const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
     const attachmentIcons = [
         { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
@@ -268,7 +272,7 @@ async function startApp() {
 
     let authToken = null, currentModalContent = '', boardsData = [], currentBoardFilter = 'all', currentBackground = 'Board.png';
     let folderIds = {};
-    let signoutButton, reloadButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText, zoomInput;
+    let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText, zoomInput;
     const boardsNoteBgnd = '#cfe6f8';
 
     // --- App Initialization ---
@@ -277,6 +281,8 @@ async function startApp() {
     function initApp() {
         signoutButton = document.getElementById('signout_button');
         reloadButton = document.getElementById('reload_button');
+        settingsButton = document.getElementById('settings_button');
+        settingsButton.innerHTML = settingsIconSvg;
         notesContainer = document.getElementById('notes-container');
         contentModal = document.getElementById('content-modal');
         modalBody = document.getElementById('modal-body');
@@ -288,6 +294,9 @@ async function startApp() {
         loaderText = document.getElementById('loader-text');
         signoutButton.addEventListener('click', handleSignoutClick);
         reloadButton.addEventListener('click', () => listFiles());
+        settingsButton.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.add('visible');
+        });
         window.onscroll = () => {
             const isScrolled = document.body.scrollTop > 100 || document.documentElement.scrollTop > 100;
             if (currentBoardFilter !== 'all') {
@@ -660,27 +669,12 @@ async function startApp() {
                 contentWrapper.className = 'note-content';
                 contentWrapper.style.minHeight = '0';
                 const contentEl = document.createElement('div');
-                contentEl.className = 'note-content board-menu-container';
-                // New footer for the boards note
-                const boardsNoteFooter = document.createElement('div');
-                boardsNoteFooter.className = 'note-footer boards-note-footer';
-                const zoomButton = document.createElement('button');
-                zoomButton.className = 'zoom-btn';
-                zoomButton.textContent = _('zoomLabel');
+                contentEl.className = 'board-menu-container';
+                
                 const zoomValueDisplay = document.createElement('span');
                 zoomValueDisplay.id = 'zoom-value-display';
-                zoomButton.appendChild(zoomValueDisplay);
-                zoomButton.addEventListener('click', () => {
-                    document.getElementById('zoom-modal').classList.add('visible');
-                });
-                boardsNoteFooter.appendChild(zoomButton);
-                // Create and append the note counter to the footer
-                const noteCounter = document.createElement('div');
-                noteCounter.id = 'note-counter';
-                noteCounter.className = 'note-counter';
-                boardsNoteFooter.appendChild(noteCounter);
                 // --- Zoom Modal Content ---
-                const zoomModalBody = document.getElementById('zoom-modal-body');
+                const zoomModalBody = document.getElementById('settings-modal-body');
                 zoomModalBody.innerHTML = ''; 
                 const zoomControlWrapper = document.createElement('div');
                 zoomControlWrapper.className = 'zoom-control-wrapper';
@@ -692,7 +686,7 @@ async function startApp() {
                 applyBtn.textContent = _('submitButton');
                 applyBtn.style.marginLeft = '10px';
                 applyBtn.addEventListener('click', () => {
-                    document.getElementById('zoom-modal').classList.remove('visible');
+                    document.getElementById('settings-modal').classList.remove('visible');
                 });
                 zoomControlWrapper.appendChild(sliderContainer);
                 zoomControlWrapper.appendChild(applyBtn);
@@ -755,7 +749,6 @@ async function startApp() {
                 }
                 contentWrapper.appendChild(contentEl);
                 boardsNote.appendChild(contentWrapper);
-                boardsNote.appendChild(boardsNoteFooter); // Append the new footer
                 
                 // --- Corrected Logic for Button Sizing and Scrolling ---
 
@@ -846,11 +839,6 @@ async function startApp() {
                 new ResizeObserver(checkScroll).observe(contentEl); // Re-check on resize
                 
                 boardsNoteElement = boardsNote;
-            }
-            // Create and append the note counter to the footer, ensuring it's always there
-            const footer = document.querySelector('.boards-note-footer');
-            if (footer) {
-                footer.innerHTML += `<div id="note-counter" class="note-counter">0</div>`;
             }
             loaderText.textContent = _('loadingFile') + ' media.txt';
             const mediaResults = await fetchFiles('media.txt', folderId);
