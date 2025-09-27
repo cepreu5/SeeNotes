@@ -111,6 +111,10 @@ main {
     cursor: pointer; /* Added for pointer cursor on hover */
 }
 
+.boards-note {
+    width: 100%;
+}
+
 .note h3 {
     margin-top: 0;
     font-size: 1.1em;

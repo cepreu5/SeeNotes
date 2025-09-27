@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://accounts.google.com;">
 </head>
 <body>
     <header>
@@ -22,14 +22,6 @@
         </div>
     </header>
 
-    <div id="folderIdPromptPopup" class="folder-id-prompt-popup">
-        <div class="popup-content">
-            <p data-key="promptFolderId"></p>
-            <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
-            <button id="submitFolderIdBtn" data-key="submitButton"></button>
-        </div>
-    </div>
-
     <main>
         <div id="loader-container" style="display: none;">
             <div class="loader"></div>
@@ -37,6 +29,14 @@
         </div>
         <div id="notes-container"></div>
     </main>
+
+    <div id="folderIdPromptPopup" class="folder-id-prompt-popup">
+        <div class="popup-content">
+            <p data-key="promptFolderId"></p>
+            <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
+            <button id="submitFolderIdBtn" data-key="submitButton"></button>
+        </div>
+    </div>
 
     <div id="content-modal" class="modal-overlay">
         <div class="modal-content-box">
@@ -57,6 +57,17 @@
             </div>
         </div>
     </div>
+
+    <svg width="0" height="0" style="position:absolute">
+        <defs>
+            <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+            </symbol>
+            <symbol id="icon-arrow-right" viewBox="0 0 24 24">
+                <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
+            </symbol>
+        </defs>
+    </svg>
 
     <script src="main.js"></script>
 </body>

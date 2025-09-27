@@ -55,3 +55,92 @@ q: \'${folderId}' in parents and name = 'note.txt' and mimeType='text/plain'``
 
 За търсене с "wildcard": Google Drive API не поддържа wildcards като *, но поддържа оператора contains. Например, за да намерите всички файлове, чието име 
 съдържа думата "note": q: \'${folderId}' in parents and name contains 'note' and mimeType='text/plain'`
+
+
+----------
+
+За да подновите токена, трябва да използвате "refresh token". Ето как работи процесът:
+
+Получаване на Refresh Token: При първоначалното влизане на потребителя, вашето приложение трябва да поиска от Google offline достъп. В отговор, освен access_token, Google ще върне и refresh_token. Този refresh_token е дълготраен и се използва, за да се получават нови access_token-и.
+
+Съхраняване на Refresh Token: Трябва да съхраните refresh_token на сигурно място. Тъй като sessionStorage се изтрива при затваряне на браузъра, може да искате да използвате localStorage, ако искате потребителят да остане логнат за по-дълго.
+
+Подновяване на Access Token: Когато access_token е напът да изтече (както вашият checkAuth засича), вместо да препращате към login.html, трябва да изпратите POST заявка към https://oauth2.googleapis.com/token със следните параметри:
+
+client_id: Вашият клиентски ID от Google.
+client_secret: Вашият клиентски "secret" ключ. ВНИМАНИЕ: Съхраняването на client_secret в клиентски JavaScript код е много рисковано и не се препоръчва!
+refresh_token: Запазеният refresh token.
+grant_type: refresh_token.
+Актуализиране на токена: В отговор на заявката ще получите нов access_token (с нов срок на валидност). Трябва да го запазите в sessionStorage (или localStorage), заменяйки стария.
+
+Примерна функция за подновяване:
+
+async function refreshToken() {
+    const storedTokenString = sessionStorage.getItem('google_auth_token'); // Or localStorage
+    if (!storedTokenString) throw new Error('No token found');
+    
+    const tokenData = JSON.parse(storedTokenString);
+    const refreshToken = tokenData.refresh_token;
+
+    if (!refreshToken) {
+        // If there is no refresh token, we can't refresh.
+        // This might happen if 'offline' access was not requested.
+        throw new Error('No refresh token available.');
+    }
+
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            'client_id': 'YOUR_CLIENT_ID', // Replace with your actual client ID
+            'client_secret': 'YOUR_CLIENT_SECRET', // Replace with your actual client secret - **SECURITY RISK**
+            'refresh_token': refreshToken,
+            'grant_type': 'refresh_token'
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to refresh token');
+    }
+
+    const newAuthData = await response.json();
+    
+    // Google might not return a new refresh_token, so preserve the old one.
+    newAuthData.refresh_token = refreshToken; 
+    newAuthData.issued_at = Date.now(); // Add issued_at timestamp
+
+    sessionStorage.setItem('google_auth_token', JSON.stringify(newAuthData));
+    return newAuthData;
+}
+Как да промените checkAuth:
+
+async function checkAuth() {
+    const storedTokenString = sessionStorage.getItem('google_auth_token');
+    if (!storedTokenString) {
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    let authToken = JSON.parse(storedTokenString);
+    const isExpired = (Date.now() - authToken.issued_at) / 1000 > (authToken.expires_in - 60);
+
+    if (isExpired) {
+        try {
+            console.log('Access token expired, attempting to refresh...');
+            authToken = await refreshToken();
+            console.log('Token refreshed successfully.');
+        } catch (error) {
+            console.error('Failed to refresh token:', error);
+            sessionStorage.removeItem('google_auth_token');
+            showToast(_('errorSessionExpired'));
+            window.location.href = 'login.html';
+        }
+    }
+    // Continue with the application logic using the (potentially new) authToken
+}
+Важни съображения:
+
+Сигурност: Както споменах, вграждането на client_secret в уеб приложение е голям риск за сигурността. Правилният подход за уеб приложения е да се използва "Authorization Code Flow with PKCE", където client_secret не е необходим. Друга алтернатива е да имате бекенд компонент, който сигурно съхранява client_secret и извършва подновяването от името на клиента.
+Google Identity Services (GIS): Google препоръчва използването на тяхната нова библиотека (GIS), която може да управлява голяма част от този процес автоматично и по-сигурно.

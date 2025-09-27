@@ -1,34 +1,115 @@
 // terser main.js --compress --mangle --toplevel --output mainn.js
-    console.log("Run uncut 1.10");
-    function gapiLoaded() {
-        console.log("GAPI library loaded.");
-        gapi.load('client', initializeGapiClient);
-    }
 
-    const script = document.createElement('script');
-    script.src = "https://apis.google.com/js/api.js";
-    script.onload = gapiLoaded;
-    document.head.appendChild(script);
+// --- Google Auth & App Initialization ---
+const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+let tokenClient;
 
-    async function initializeGapiClient() {
-        const tokenData = JSON.parse(sessionStorage.getItem('google_auth_token'));
-        const accessToken = tokenData?.access_token;
+// Promise to load a script
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+    });
+}
 
-        if (!accessToken) {
-            showToast(_('errorTokenMissing'));
-            window.location.href = 'login.html';
-            return;
+/**
+ * Attempts to silently refresh the access token.
+ * Returns a promise that resolves with the new token data, or rejects on failure.
+ */
+function refreshToken() {
+    return new Promise((resolve, reject) => {
+        if (!tokenClient) {
+            return reject(new Error('Google Token Client not initialized.'));
         }
+        const timeout = setTimeout(() => reject(new Error('Token refresh timed out.')), 10000);
+        tokenClient.callback = (tokenResponse) => {
+            clearTimeout(timeout);
+            if (tokenResponse && tokenResponse.access_token) {
+                const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+                sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                resolve(tokenWithTimestamp);
+            } else {
+                reject(new Error('Failed to refresh access token. Response was empty.'));
+            }
+        };
+        tokenClient.requestAccessToken({ prompt: '' });
+    });
+}
 
-        await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
-        gapi.client.setToken({ access_token: accessToken });
-
-        console.log("GAPI client initialized for Drive API.");
-
-        document.body.style.display = 'block';
-        initApp();
-        listFiles();
+// Main startup function
+async function startApp() {
+    // 1. Check for a stored token first. If missing, redirect to login.
+    const storedTokenString = sessionStorage.getItem('google_auth_token');
+    if (!storedTokenString) {
+        window.location.href = 'login.html';
+        return;
     }
+
+    // 2. Load Google libraries in parallel
+    try {
+        await Promise.all([
+            loadScript('https://accounts.google.com/gsi/client'),
+            loadScript('https://apis.google.com/js/api.js')
+        ]);
+    } catch (error) {
+        console.error("Failed to load Google scripts", error);
+        showToast("Error loading Google libraries.");
+        return;
+    }
+
+    // 3. Initialize GSI token client
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: '' // Callback is managed by the refreshToken promise
+    });
+
+    // 4. Check if token is expired and refresh if needed
+    let tokenData = JSON.parse(storedTokenString);
+    const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
+
+    if (isExpired) {
+        console.log("Token expired, attempting to refresh...");
+        try {
+            tokenData = await refreshToken();
+            console.log("Token refreshed silently.");
+        } catch (error) {
+            console.warn("Silent token refresh failed, attempting consent refresh:", error);
+            // If silent refresh fails, try again with user consent.
+            // This will show the Google account chooser popup.
+            try {
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+                // The callback in refreshToken will handle the response.
+                // We need to wait for the new token. We can create a one-time listener.
+                tokenData = await new Promise((resolve, reject) => {
+                    tokenClient.callback = (response) => response.access_token ? resolve(response) : reject(new Error('Consent refresh failed.'));
+                });
+                console.log("Token refreshed with consent.");
+            } catch (consentError) {
+                console.error("Full token refresh failed:", consentError);
+                showToast(_('errorSessionExpired'));
+                handleSignoutClick(); // If this also fails, then sign out.
+                return;
+            }
+        }
+    }
+    
+    // 5. We have a valid token, now initialize GAPI client
+    authToken = tokenData; // Set global authToken
+    await new Promise(resolve => gapi.load('client', resolve));
+    await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+    gapi.client.setToken({ access_token: authToken.access_token });
+    // console.log("GAPI client initialized for Drive API.");
+    document.body.style.display = 'block';
+    initApp();
+    listFiles();
+}
 
     // --- I18N ---
     const translations = {
@@ -86,7 +167,7 @@
             errorSessionExpired: 'Вашата сесия е изтекла. Моля, влезте отново.',
             errorCopyFailed: 'Неуспешно копиране на съдържанието.',
             errorNoteParse: "Грешка при парсване на JSON съдържание.",
-            errorNoteFieldMissing: "Грешка: липсва поле 'notetxt'.",
+            errorNoteFieldMissing: "Грешка: липсва поле \'notetxt\'.",
             warningInvalidBoard: 'Внимание: Един или повече файлове за дефиниция на бордове са невалидни и бяха пропуснати.',
             promptFolderId: 'Моля, въведете ID на папката в Google Drive:',
             folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
@@ -104,17 +185,14 @@
         currentLang = lang;
         localStorage.setItem('language', lang);
         document.documentElement.lang = lang;
-
         document.querySelectorAll('[data-key]').forEach(element => {
             const key = element.getAttribute('data-key');
             element.textContent = _(key);
         });
-
         document.querySelectorAll('[data-key-placeholder]').forEach(element => {
             const key = element.getAttribute('data-key-placeholder');
             element.placeholder = _(key);
         });
-        
         document.querySelectorAll('[data-key-title]').forEach(element => {
             const key = element.getAttribute('data-key-title');
             element.title = _(key);
@@ -146,12 +224,10 @@
         folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
         folderIdInput = document.getElementById('folderIdInput');
         submitFolderIdBtn = document.getElementById('submitFolderIdBtn');
-
         // Set translated text for popup elements
         document.querySelector('#folderIdPromptPopup p').textContent = _('promptFolderId');
         folderIdInput.placeholder = _('folderIdInputPlaceholder');
         submitFolderIdBtn.textContent = _('submitButton');
-
         folderIdPromptPopup.classList.add('show');
         folderIdInput.value = ''; // Pre-fill if exists
         folderIdInput.focus(); // Focus on the input field
@@ -196,19 +272,7 @@
     const boardsNoteBgnd = '#cfe6f8';
 
     // --- App Initialization ---
-    checkAuth();
-
-    function checkAuth() {
-        const storedTokenString = sessionStorage.getItem('google_auth_token');
-        if (!storedTokenString) { window.location.href = 'login.html'; return; }
-        authToken = JSON.parse(storedTokenString);
-        const isExpired = (Date.now() - authToken.issued_at) / 1000 > (authToken.expires_in - 60);
-        if (isExpired) {
-            sessionStorage.removeItem('google_auth_token');
-            showToast(_('errorSessionExpired'));
-            window.location.href = 'login.html';
-        }
-    }
+    startApp();
 
     function initApp() {
         signoutButton = document.getElementById('signout_button');
@@ -222,10 +286,8 @@
         searchBox = document.getElementById('search-box');
         loaderContainer = document.getElementById('loader-container');
         loaderText = document.getElementById('loader-text');
-
         signoutButton.addEventListener('click', handleSignoutClick);
         reloadButton.addEventListener('click', () => listFiles());
-
         window.onscroll = () => {
             const isScrolled = document.body.scrollTop > 100 || document.documentElement.scrollTop > 100;
             if (currentBoardFilter !== 'all') {
@@ -239,9 +301,7 @@
             }
         };
         scrollTopBtn.addEventListener('click', () => window.scrollTo({top: 0, behavior: 'smooth'}));
-
         searchBox.addEventListener('input', applySearchFilter);
-
         copyBtn.innerHTML = copyIconSvg;
         copyBtn.addEventListener('click', () => {
             if (navigator.clipboard) {
@@ -253,7 +313,6 @@
                 }
             }
         });
-
         // Event listener for submit button in folder ID popup
         document.getElementById('submitFolderIdBtn').addEventListener('click', handleSubmitFolderId);
         document.getElementById('folderIdInput').addEventListener('keydown', (event) => {
@@ -261,14 +320,16 @@
                 handleSubmitFolderId();
             }
         });
-
         document.querySelectorAll('.modal-close').forEach(btn => {
             btn.addEventListener('click', (e) => e.currentTarget.closest('.modal-overlay').classList.remove('visible'));
         });
         document.querySelectorAll('.modal-overlay').forEach(modal => {
             modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('visible'); });
         });
-        
+        // Prevent clicks inside the content modal from propagating to the underlying notes
+        contentModal.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
         setLanguage(currentLang);
     }
 
@@ -281,7 +342,6 @@
 
     function showModal(options) {
         let rawContent, formatString, displayContent;
-
         if (typeof options === 'string') {
             rawContent = options;
             formatString = null;
@@ -289,15 +349,19 @@
             rawContent = options.raw;
             formatString = options.format;
         }
-
         currentModalContent = rawContent;
 
+        // For notes with a preview (pass: true), the '|' is a separator.
+        // For the full view in the modal, we want to show the entire content,
+        // just replacing the separator with a newline for better readability.
+        if (rawContent.includes('|')) {
+            rawContent = rawContent.replace('|', '\n');
+        }
         if (formatString && formatString.trim() !== '') {
             displayContent = formatText(rawContent, formatString);
         } else {
             displayContent = renderNoteContent(rawContent);
         }
-        
         modalBody.innerHTML = displayContent;
         contentModal.classList.add('visible');
         copyBtn.innerHTML = copyIconSvg;
@@ -314,12 +378,9 @@
         } catch (e) { return dateString; }
     }
 
-    
-
     function filterNotesByBoard(boardId) {
         currentBoardFilter = boardId;
         applyFilters();
-
         document.querySelectorAll('.board-filter-link').forEach(link => {
             link.classList.remove('selected-board');
             if (link.dataset.boardid === boardId) {
@@ -327,29 +388,25 @@
             }
         });
 
-        let newBackground = 'Board.png'; // Default background
-
-        if (boardId !== 'all') {
+        if (boardId === 'all') {
+            // For the 'all' view, clear the inline style to let the default CSS background apply.
+            // This prevents flickering on initial load.
+            if (currentBackground !== 'Board.png') {
+                document.body.style.backgroundImage = '';
+                notesContainer.style.backgroundImage = '';
+            }
+            currentBackground = 'Board.png';
+        } else {
+            // For a specific board, set the background via inline style.
+            let newBackground = 'Board.png'; // Default
             const board = boardsData.find(b => b.gdid === boardId);
             if (board && board.backnum) {
                 switch (board.backnum) {
-                    case 1:
-                        newBackground = 'Board1.png';
-                        break;
-                    case 2:
-                        newBackground = 'Board2.png';
-                        break;
-                    case 3:
-                        newBackground = 'Board3.png';
-                        break;
-                    default:
-                        newBackground = 'Board.png';
-                        break;
+                    case 1: newBackground = 'Board1.png'; break;
+                    case 2: newBackground = 'Board2.png'; break;
+                    case 3: newBackground = 'Board3.png'; break;
                 }
             }
-        }
-
-        if (newBackground !== currentBackground) {
             document.body.style.backgroundImage = `url('${newBackground}')`;
             notesContainer.style.backgroundImage = `url('${newBackground}')`;
             currentBackground = newBackground;
@@ -368,7 +425,6 @@
             }
         }
         window.dispatchEvent(new Event('scroll'));
-        
         // Add or remove a class from the container to control child visibility
         if (boardId === 'calendar') {
             notesContainer.classList.add('calendar-view');
@@ -385,16 +441,13 @@
         const searchTerm = searchBox.value.toLowerCase();
         const notes = notesContainer.getElementsByClassName('note');
         let visibleCount = 0;
-
         for (const note of notes) {
-            if (note.querySelector('h3') && note.querySelector('h3').textContent === _('boardsTitle')) {
-                note.style.display = 'flex';
+            // Keep the boards note visible regardless of the filter
+            if (note.classList.contains('boards-note')) {
                 continue;
             }
-
             let isVisibleByBoard = false;
             const extraInfo = note.dataset.extraInfo;
-
             if (currentBoardFilter === 'all') {
                 isVisibleByBoard = true;
             } else if (currentBoardFilter === 'calendar') {
@@ -429,14 +482,12 @@
                     console.error('Error parsing extraInfo for note:', e);
                 }
             }
-
             let isVisibleBySearch = false;
             const titleEl = note.querySelector('h3');
             if (titleEl) {
                 const title = titleEl.textContent.toLowerCase();
                 isVisibleBySearch = title.includes(searchTerm);
             }
-
             if (isVisibleByBoard && isVisibleBySearch) {
                 note.style.display = 'flex';
                 visibleCount++;
@@ -455,10 +506,8 @@
             showFolderIdPrompt();
             throw new Error("Folder ID not provided.");
         }
-
         const allFiles = [];
         let pageToken = null;
-
         do {
             const response = await gapi.client.drive.files.list({
                 q: `'${folderId}' in parents and name = '${filename}' and mimeType='text/plain'`,
@@ -466,18 +515,14 @@
                 pageSize: 1000,
                 pageToken: pageToken
             });
-
             if (!response.result || !response.result.files) {
                 throw new Error("Invalid response from Drive API.");
             }
-            
             allFiles.push(...response.result.files);
             pageToken = response.result.nextPageToken;
         } while (pageToken);
-
         let loadedFiles = 0;
         const totalFiles = allFiles.length;
-
         const filePromises = allFiles.map(file =>
             gapi.client.request({ path: `/drive/v3/files/${file.id}`, params: { alt: 'media' } })
             .then(res => {
@@ -488,7 +533,6 @@
                 return { file, res };
             })
         );
-
         return Promise.all(filePromises);
     }
 
@@ -499,7 +543,6 @@
                 fields: 'files(id, name)',
                 pageSize: 1
             });
-
             const files = response.result.files;
             if (files && files.length > 0) {
                 return files[0].id;
@@ -520,7 +563,6 @@
             if (!multinotesDataId) {
                 return null;
             }
-
             const folderNames = ["Other", "Sound", "Video", "Images"];
             for (const name of folderNames) {
                 const response = await gapi.client.drive.files.list({
@@ -528,7 +570,6 @@
                     fields: 'files(id)',
                     pageSize: 1
                 });
-
                 const files = response.result.files;
                 if (files && files.length > 0) {
                     folderIds[name] = files[0].id;
@@ -552,7 +593,6 @@
                 fields: 'files(id)',
                 pageSize: 1
             });
-
             const files = response.result.files;
             if (files && files.length > 0) {
                 return files[0].id;
@@ -570,9 +610,9 @@
     async function listFiles(folderIdFromPrompt) {
         boardsData = [];
         let mediaData = [];
+        let boardsNoteElement = null; // Will hold the boards note element until the end
         notesContainer.innerHTML = '';
         loaderContainer.style.display = 'block';
-
         currentBoardFilter = 'all';
         const popup = document.getElementById('board-filter-popup');
         if (popup) {
@@ -581,18 +621,15 @@
         document.querySelectorAll('.board-filter-link').forEach(link => {
             link.classList.remove('selected-board');
         });
-        
         try {
             let folderId = folderIdFromPrompt;
             if (!folderId) {
                 folderId = await getFolderID();
             }
-
             if (!folderId) {
                 showFolderIdPrompt();
                 return;
             }
-
             loaderText.textContent = _('loadingFile') + ' board.txt';
             const boardResults = await fetchFiles('board.txt', folderId);
             let boardParseError = false;
@@ -612,35 +649,21 @@
                     console.error(`Error parsing board.txt:`, e);
                 }
             });
-
             if (boardsData.length > 0 || boardParseError) {
                 const boardsNote = document.createElement('div');
-                boardsNote.className = 'note';
-                boardsNote.style.backgroundColor = boardsNoteBgnd;
+                // Create the boards note but don't append it yet
+                boardsNote.className = 'note boards-note';
                 boardsNote.style.order = -1;
-                boardsNote.style.userSelect = 'none';
-
-                const titleEl = document.createElement('h3');
-                titleEl.textContent = _('boardsTitle');
-                titleEl.classList.add('board-menu-header');
-                boardsNote.appendChild(titleEl);
-
-                const noteCounter = document.createElement('div');
-                noteCounter.id = 'note-counter';
-                noteCounter.className = 'note-counter';
-                boardsNote.appendChild(noteCounter);
-
+                // Title element is removed for a cleaner look.
+                // The note counter is now created and appended to the footer below.
                 const contentWrapper = document.createElement('div');
                 contentWrapper.className = 'note-content';
                 contentWrapper.style.minHeight = '0';
-
                 const contentEl = document.createElement('div');
                 contentEl.className = 'note-content board-menu-container';
-                
                 // New footer for the boards note
                 const boardsNoteFooter = document.createElement('div');
                 boardsNoteFooter.className = 'note-footer boards-note-footer';
-
                 const zoomButton = document.createElement('button');
                 zoomButton.className = 'zoom-btn';
                 zoomButton.textContent = _('zoomLabel');
@@ -651,18 +674,19 @@
                     document.getElementById('zoom-modal').classList.add('visible');
                 });
                 boardsNoteFooter.appendChild(zoomButton);
-
+                // Create and append the note counter to the footer
+                const noteCounter = document.createElement('div');
+                noteCounter.id = 'note-counter';
+                noteCounter.className = 'note-counter';
+                boardsNoteFooter.appendChild(noteCounter);
                 // --- Zoom Modal Content ---
                 const zoomModalBody = document.getElementById('zoom-modal-body');
                 zoomModalBody.innerHTML = ''; 
-
                 const zoomControlWrapper = document.createElement('div');
                 zoomControlWrapper.className = 'zoom-control-wrapper';
-
                 const sliderContainer = document.createElement('div');
                 sliderContainer.className = 'slider-container';
-                sliderContainer.innerHTML = `<input type="range" id="scaleSlider" min="25" max="175" value="100"><span id="scaleValue"></span>`;
-
+                sliderContainer.innerHTML = `<input type="range" id="scaleSlider" min="25" max="175" value="100"><input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number"><span>%</span>`;
                 const applyBtn = document.createElement('button');
                 applyBtn.className = 'zoom-btn';
                 applyBtn.textContent = _('submitButton');
@@ -670,20 +694,21 @@
                 applyBtn.addEventListener('click', () => {
                     document.getElementById('zoom-modal').classList.remove('visible');
                 });
-
                 zoomControlWrapper.appendChild(sliderContainer);
                 zoomControlWrapper.appendChild(applyBtn);
                 zoomModalBody.appendChild(zoomControlWrapper);
-
                 const slider = sliderContainer.querySelector('#scaleSlider');
-                const scaleValue = sliderContainer.querySelector('#scaleValue');
-
+                const scaleInput = sliderContainer.querySelector('#scaleInput');
                 const updateZoom = (value) => {
-                    notesContainer.style.zoom = value / 100;
-                    scaleValue.textContent = `${value}%`;
-                    zoomValueDisplay.textContent = ` ${value}%`;
-                };
+                    value = Math.max(25, Math.min(175, parseInt(value, 10))); // Clamp value
+                    if (isNaN(value)) value = 100;
 
+                    notesContainer.style.zoom = value / 100;
+                    zoomValueDisplay.textContent = ` ${value}%`;
+                    // Sync slider and input field
+                    slider.value = value;
+                    scaleInput.value = value;
+                };
                 // Load zoom level from localStorage
                 let savedZoom = localStorage.getItem('zoomLevel');
                 if (savedZoom) {
@@ -692,95 +717,35 @@
                 } else {
                     updateZoom(slider.value);
                 }
-
                 slider.addEventListener('input', () => {
                     const zoomValue = slider.value;
                     updateZoom(zoomValue);
                     localStorage.setItem('zoomLevel', zoomValue);
                 });
-
+                scaleInput.addEventListener('change', () => { // Use 'change' to update when user finishes editing
+                    const zoomValue = scaleInput.value;
+                    updateZoom(zoomValue);
+                    localStorage.setItem('zoomLevel', zoomValue);
+                });
                 slider.addEventListener('click', (e) => {
                     if (e.ctrlKey) {
                         e.preventDefault();
                         let currentValue = parseInt(slider.value, 10);
                         let newValue;
-
                         if (currentValue % 10 === 0) {
                             newValue = currentValue + 10;
                         } else {
                             newValue = Math.round(currentValue / 10) * 10;
                         }
-
                         const max = parseInt(slider.max, 10);
                         const min = parseInt(slider.min, 10);
-
                         if (newValue > max) newValue = max;
                         if (newValue < min) newValue = min;
-
                         slider.value = newValue;
                         updateZoom(newValue);
                         localStorage.setItem('zoomLevel', newValue);
                     }
                 });
-                
-                const calendarBoardLink = document.createElement('a');
-                calendarBoardLink.href = '#';
-                calendarBoardLink.textContent = _('calendar');
-                calendarBoardLink.classList.add('board-filter-link', 'calendar-filter-btn');
-                calendarBoardLink.dataset.boardid = 'calendar';
-                calendarBoardLink.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    filterNotesByBoard('calendar');
-                });
-                contentEl.appendChild(calendarBoardLink);
-
-                const reminderBoardLink = document.createElement('a');
-                reminderBoardLink.href = '#';
-                reminderBoardLink.textContent = _('reminder');
-                reminderBoardLink.classList.add('board-filter-link', 'reminder-filter-btn');
-                reminderBoardLink.dataset.boardid = 'reminder';
-                reminderBoardLink.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    filterNotesByBoard('reminder');
-                });
-                contentEl.appendChild(reminderBoardLink);
-
-                const allBoardsLink = document.createElement('a');
-                allBoardsLink.href = '#';
-                allBoardsLink.textContent = _('allBoards');
-                allBoardsLink.classList.add('board-filter-link');
-                allBoardsLink.dataset.boardid = 'all';
-                allBoardsLink.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    filterNotesByBoard('all');
-                });
-                contentEl.appendChild(allBoardsLink);
-
-                boardsData.forEach(board => {
-                    if (board.title && board.gdid) {
-                        const boardLink = document.createElement('a');
-                        boardLink.href = '#';
-                        boardLink.textContent = board.title;
-                        boardLink.classList.add('board-filter-link');
-                        boardLink.dataset.boardid = board.gdid;
-
-                        if (board.status === 1) {
-                            boardLink.style.color = 'red';
-                        }
-
-                        boardLink.addEventListener('click', (e) => {
-                            if (e.ctrlKey) {
-                                const boardDataString = JSON.stringify(board, null, 2);
-                                showModal(boardDataString);
-                            } else {
-                                e.preventDefault();
-                                filterNotesByBoard(board.gdid);
-                            }
-                        });
-                        contentEl.appendChild(boardLink);
-                    }
-                });
-                
                 if (boardParseError) {
                     const errorEl = document.createElement('div');
                     errorEl.style.color = 'red';
@@ -788,13 +753,105 @@
                     errorEl.textContent = _('warningInvalidBoard');
                     contentEl.appendChild(errorEl);
                 }
-
                 contentWrapper.appendChild(contentEl);
                 boardsNote.appendChild(contentWrapper);
                 boardsNote.appendChild(boardsNoteFooter); // Append the new footer
-                notesContainer.appendChild(boardsNote);
-            }
+                
+                // --- Corrected Logic for Button Sizing and Scrolling ---
 
+                // 1. Create all button elements and store them in an array
+                const allButtonLinks = [];
+
+                const calendarLink = document.createElement('span');
+                calendarLink.textContent = _('calendar');
+                calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
+                calendarLink.dataset.boardid = 'calendar';
+                calendarLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('calendar'); });
+                allButtonLinks.push(calendarLink);
+
+                const reminderLink = document.createElement('span');
+                reminderLink.textContent = _('reminder');
+                reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
+                reminderLink.dataset.boardid = 'reminder';
+                reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder'); });
+                allButtonLinks.push(reminderLink);
+
+                const allBoardsLink = document.createElement('span');
+                allBoardsLink.textContent = _('allBoards');
+                allBoardsLink.classList.add('board-filter-link');
+                allBoardsLink.dataset.boardid = 'all';
+                allBoardsLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('all'); });
+                allButtonLinks.push(allBoardsLink);
+
+                boardsData.forEach(board => {
+                    if (!board.title || !board.gdid) return;
+                    const link = document.createElement('span');
+                    link.textContent = board.title;
+                    link.classList.add('board-filter-link');
+                    link.dataset.boardid = board.gdid;
+                    if (board.status === 1) link.style.color = 'red';
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (e.ctrlKey) { showModal(JSON.stringify(board, null, 2)); } 
+                        else { e.preventDefault(); filterNotesByBoard(board.gdid); }
+                    });
+                    allButtonLinks.push(link);
+                });
+
+                // 2. Measure max width using a temporary container
+                let maxWidth = 0;
+                const tempContainer = document.createElement('div');
+                tempContainer.style.position = 'absolute';
+                tempContainer.style.visibility = 'hidden';
+                document.body.appendChild(tempContainer);
+
+                allButtonLinks.forEach(link => {
+                    tempContainer.appendChild(link);
+                    maxWidth = Math.max(maxWidth, link.scrollWidth);
+                });
+
+                document.body.removeChild(tempContainer);
+                maxWidth += 10; // Reverted to smaller padding
+
+                // 3. Apply width and append to the actual container
+                allButtonLinks.forEach(link => {
+                    link.style.width = `${maxWidth}px`;
+                    contentEl.appendChild(link);
+                });
+
+                // 4. Create and add scroll arrows
+                const scrollWrapper = document.createElement('div');
+                scrollWrapper.className = 'scrolling-menu-wrapper';
+                const leftArrow = document.createElement('button');
+                leftArrow.className = 'scroll-arrow left-arrow';
+                leftArrow.innerHTML = `<svg width="24" height="24"><use href="#icon-arrow-left"></use></svg>`;
+                const rightArrow = document.createElement('button');
+                rightArrow.className = 'scroll-arrow right-arrow';
+                rightArrow.innerHTML = `<svg width="24" height="24"><use href="#icon-arrow-right"></use></svg>`;
+                
+                leftArrow.onclick = () => { contentEl.scrollLeft -= (maxWidth + 5); };
+                rightArrow.onclick = () => { contentEl.scrollLeft += (maxWidth + 5); };
+
+                scrollWrapper.appendChild(leftArrow);
+                scrollWrapper.appendChild(contentEl);
+                scrollWrapper.appendChild(rightArrow);
+                contentWrapper.appendChild(scrollWrapper);
+                
+                // 5. Show/hide arrows based on scroll
+                const checkScroll = () => {
+                    leftArrow.classList.toggle('visible', contentEl.scrollLeft > 0);
+                    rightArrow.classList.toggle('visible', contentEl.scrollWidth > contentEl.clientWidth && contentEl.scrollLeft < contentEl.scrollWidth - contentEl.clientWidth - 1);
+                };
+                contentEl.addEventListener('scroll', checkScroll);
+                new ResizeObserver(checkScroll).observe(contentEl); // Re-check on resize
+                
+                boardsNoteElement = boardsNote;
+            }
+            // Create and append the note counter to the footer, ensuring it's always there
+            const footer = document.querySelector('.boards-note-footer');
+            if (footer) {
+                footer.innerHTML += `<div id="note-counter" class="note-counter">0</div>`;
+            }
             loaderText.textContent = _('loadingFile') + ' media.txt';
             const mediaResults = await fetchFiles('media.txt', folderId);
             mediaResults.forEach(({ res }) => {
@@ -811,646 +868,588 @@
                     console.error('Error parsing media.txt:', e);
                 }
             });
-
             const onNoteProgress = (loaded, total) => {
                 loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
             };
             loaderText.textContent = _('loadingFile') + ' note.txt';
             const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress);
-
-let notesCount = 0;
-await Promise.all(noteResults.map(async ({ file, res }) => {
-    const note = document.createElement('div');
-    note.className = 'note';
-    let fileContent = '';
-    let noteGdid = null;
-    let noteColor = null;
-    let textSpan = null;
-
-    try {
-        const content = JSON.parse(res.body);
-        if (content && typeof content.notetxt !== 'undefined') {
-            fileContent = content.notetxt;
-            noteGdid = content.gdid;
-            noteColor = content.color;
-            if (content.text_span) {
-                textSpan = content.text_span;
-            }
-            const extraData = { ...content };
-            delete extraData.notetxt;
-            if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
-            if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
-                note.style.backgroundColor = `var(--note-bg-${noteColor})`;
-            }
-
-            // Check for status field here
-            if (extraData.status === 1) {
-                return; // Skip this note if status is 1
-            }
-
-        } else { fileContent = _('errorNoteFieldMissing'); }
-    } catch (e) { fileContent = _('errorNoteParse'); }
-    
-    notesCount++;
-
-    const isHiddenNote = fileContent.startsWith('|');
-    if (isHiddenNote) {
-        fileContent = fileContent.substring(1);
-    }
-
-    let noteTitle = '';
-    const lines = fileContent.split('\n');
-    for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (trimmedLine) {
-            noteTitle = trimmedLine.substring(0, 50);
-            break;
-        }
-    }
-    if (!noteTitle) { noteTitle = file.name; }
-
-    const titleEl = document.createElement('h3');
-    if (!isHiddenNote) {
-        titleEl.textContent = noteTitle;
-        titleEl.title = noteTitle;
-    }
-    
-    const contentEl = document.createElement('div');
-    contentEl.className = 'note-content';
-    if (!isHiddenNote) {
-        if (textSpan && textSpan.trim() !== '') {
-            contentEl.innerHTML = formatText(fileContent, textSpan);
-        } else {
-            contentEl.innerHTML = renderNoteContent(fileContent);
-        }
-
-        if (noteGdid) {
-            const attachments = mediaData.filter(media => media.noteid === noteGdid);
-            if (attachments.length > 0) {
-                const separator = document.createElement('hr');
-                separator.style.marginTop = '10px';
-                separator.style.marginBottom = '10px';
-                contentEl.appendChild(separator);
-
-                await Promise.all(attachments.map(async attachment => {
-                    const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-                    if (iconData) {
-                        const attachmentWrapper = document.createElement('div');
-                        attachmentWrapper.style.display = 'flex';
-                        attachmentWrapper.style.alignItems = 'center';
-                        attachmentWrapper.style.gap = '5px';
-
-                        const iconDiv = document.createElement('div');
-                        iconDiv.innerHTML = iconData.svg;
-                        iconDiv.style.cursor = 'pointer';
-                        iconDiv.addEventListener('click', () => {
-                            const attachmentDataString = JSON.stringify(attachment, null, 2);
-                            showModal(attachmentDataString);
-                        });
-                        attachmentWrapper.appendChild(iconDiv);
-
-                        if (attachment.type === 3 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const link = document.createElement('a');
-                            const fileId = await getFileID(folderIds['Other'], filename);
-                            if (attachment.gdid) {
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-                            link.title = link.href;
-                            link.textContent = 'Other/' + filename;
-                            attachmentWrapper.appendChild(link);
-                        } else if (attachment.type === 5 && attachment.path) {
-                            const parts = attachment.path.split('|');
-                            if (parts.length >= 3) {
-                                const textContainer = document.createElement('div');
-                                const line1 = document.createElement('span');
-                                line1.textContent = `${parts[0]}, ${parts[1]}`;
-                                textContainer.appendChild(line1);
-                                const line2 = document.createElement('div');
-                                line2.textContent = parts[2];
-                                textContainer.appendChild(line2);
-                                attachmentWrapper.appendChild(textContainer);
-                            }
+            let notesCount = 0;
+            await Promise.all(noteResults.map(async ({ file, res }) => {
+                const note = document.createElement('div');
+                note.className = 'note';
+                let fileContent = '';
+                let noteGdid = null;
+                let noteColor = null;
+                let textSpan = null;
+                let extraData = {};
+                try {
+                    const content = JSON.parse(res.body);
+                    if (content && typeof content.notetxt !== 'undefined') {
+                        fileContent = content.notetxt;
+                        noteGdid = content.gdid;
+                        noteColor = content.color;
+                        if (content.text_span) {
+                            textSpan = content.text_span;
                         }
-
-                        if (attachment.type === 1 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const link = document.createElement('a');
-                            const fileId = await getFileID(folderIds['Images'], filename);
-                            if (attachment.gdid) {
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-                            link.title = link.href;
-                            link.textContent = 'Images/' + filename;
-                            
-                            const eyeButton = document.createElement('button');
-                            eyeButton.className = 'view-button';
-                            eyeButton.innerHTML = eyeIconSvg;
-                            
-                            attachmentWrapper.appendChild(eyeButton);
-                            attachmentWrapper.appendChild(link);
-
-                            eyeButton.addEventListener('click', async (e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-
-                                const noteEl = attachmentWrapper.closest('.note');
-                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
-                                    return;
-                                }
-                                const titleEl = noteEl.querySelector('h3');
-
-                                if (!fileId) {
-                                    showToast('Image file not found for preview.');
-                                    return;
-                                }
-
-                                try {
-                                    const fileMetadata = await gapi.client.drive.files.get({
-                                        fileId: fileId,
-                                        fields: 'thumbnailLink'
-                                    });
-
-                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-
-                                    if (thumbnailUrl) {
-                                        if (titleEl) titleEl.style.visibility = 'hidden';
-
-                                        const overlay = document.createElement('div');
-                                        overlay.className = 'image-preview-overlay';
-                                        Object.assign(overlay.style, {
-                                            position: 'absolute',
-                                            top: '0', left: '0',
-                                            width: '100%', height: '100%',
-                                            backgroundColor: 'rgba(0,0,0,0.85)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: '10',
-                                            borderRadius: '8px'
-                                        });
-
-                                        overlay.addEventListener('click', () => {
-                                            window.open(link.href, '_blank');
-                                        });
-
-
-                                        const img = document.createElement('img');
-                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                                        Object.assign(img.style, {
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            padding: '10px',
-                                            boxSizing: 'border-box'
-                                        });
-                                        overlay.appendChild(img);
-
-                                        const closeButton = document.createElement('button');
-                                        closeButton.className = 'view-button';
-                                        closeButton.innerHTML = eyeOffIconSvg;
-                                        Object.assign(closeButton.style, {
-                                            position: 'absolute',
-                                            top: '10px',
-                                            right: '10px',
-                                        });
-                                        
-                                        const svg = closeButton.querySelector('svg');
-                                        if(svg) svg.style.stroke = 'white';
-
-                                        closeButton.addEventListener('click', (ev) => {
-                                            ev.stopPropagation();
-                                            overlay.remove();
-                                            if (titleEl) titleEl.style.visibility = 'visible';
-                                        });
-                                        overlay.appendChild(closeButton);
-                                        noteEl.appendChild(overlay);
-                                    } else {
-                                        showToast('No preview available for this image.');
-                                    }
-                                } catch (err) {
-                                    console.error('Error fetching image preview:', err);
-                                    showToast('Error loading image preview: ' + (err.message || err));
-                                }
-                            });
+                        extraData = { ...content };
+                        delete extraData.notetxt;
+                        if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
+                        if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
+                            note.style.backgroundColor = `var(--note-bg-${noteColor})`;
                         }
-        
-                        if (attachment.type === 2 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const textContainer = document.createElement('div');
-                            textContainer.style.flexGrow = '1';
-                            textContainer.style.flexShrink = '1';
-                            textContainer.style.minWidth = '0';
-                            
-                            const link = document.createElement('a');
-                            const fileId = await getFileID(folderIds['Sound'], filename);
-                            if (attachment.gdid) {
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-                            link.title = link.href;
-                            link.textContent = 'Sound/' + filename;
-                            textContainer.appendChild(link);
-                            
-                            const line2 = document.createElement('div');
-                            line2.textContent = attachment.description || '';
-                            textContainer.appendChild(line2);
-
-                            attachmentWrapper.appendChild(textContainer);
+                        // Check for status field here
+                        if (extraData.status === 1) {
+                            return; // Skip this note if status is 1
                         }
-
-                        if (attachment.type === 4 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const textContainer = document.createElement('div');
-                            textContainer.style.flexGrow = '1';
-                            textContainer.style.flexShrink = '1';
-                            textContainer.style.minWidth = '0';
-                            
-                            const link = document.createElement('a');
-                            const fileId = await getFileID(folderIds['Video'], filename);
-                            if (attachment.gdid) {
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-                            link.title = link.href;
-                            link.textContent = 'Video/' + filename;
-                            textContainer.appendChild(link);
-                            
-                            const line2 = document.createElement('div');
-                            line2.textContent = attachment.description || '';
-                            textContainer.appendChild(line2);
-
-                            const eyeButton = document.createElement('button');
-                            eyeButton.className = 'view-button';
-                            eyeButton.innerHTML = eyeIconSvg;
-                            
-                            attachmentWrapper.appendChild(eyeButton);
-                            attachmentWrapper.appendChild(textContainer);
-
-                            eyeButton.addEventListener('click', async (e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-
-                                const noteEl = attachmentWrapper.closest('.note');
-                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
-                                    return;
-                                }
-                                const titleEl = noteEl.querySelector('h3');
-
-                                if (!fileId) {
-                                    showToast('Video file not found for preview.');
-                                    return;
-                                }
-
-                                try {
-                                    const fileMetadata = await gapi.client.drive.files.get({
-                                        fileId: fileId,
-                                        fields: 'thumbnailLink'
-                                    });
-
-                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-
-                                    if (thumbnailUrl) {
-                                        if (titleEl) titleEl.style.visibility = 'hidden';
-
-                                        const overlay = document.createElement('div');
-                                        overlay.className = 'image-preview-overlay';
-                                        Object.assign(overlay.style, {
-                                            position: 'absolute',
-                                            top: '0', left: '0',
-                                            width: '100%', height: '100%',
-                                            backgroundColor: 'rgba(0,0,0,0.85)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: '10',
-                                            borderRadius: '8px'
-                                        });
-
-                                        overlay.addEventListener('click', () => {
-                                            window.open(link.href, '_blank');
-                                        });
-
-                                        const img = document.createElement('img');
-                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                                        Object.assign(img.style, {
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            padding: '10px',
-                                            boxSizing: 'border-box'
-                                        });
-                                        overlay.appendChild(img);
-
-                                        const closeButton = document.createElement('button');
-                                        closeButton.className = 'view-button';
-                                        closeButton.innerHTML = eyeOffIconSvg;
-                                        Object.assign(closeButton.style, {
-                                            position: 'absolute',
-                                            top: '10px',
-                                            right: '10px',
-                                        });
-                                        
-                                        const svg = closeButton.querySelector('svg');
-                                        if(svg) svg.style.stroke = 'white';
-
-                                        closeButton.addEventListener('click', (ev) => {
-                                            ev.stopPropagation();
-                                            overlay.remove();
-                                            if (titleEl) titleEl.style.visibility = 'visible';
-                                        });
-                                        overlay.appendChild(closeButton);
-                                        noteEl.appendChild(overlay);
-                                    } else {
-                                        showToast('No preview available for this video.');
-                                    }
-                                } catch (err) {
-                                    console.error('Error fetching video preview:', err);
-                                    showToast('Error loading video preview: ' + (err.message || err));
-                                }
-                            });
-                        }
-
-                        contentEl.appendChild(attachmentWrapper);
+                    } else { fileContent = _('errorNoteFieldMissing'); }
+                } catch (e) { fileContent = _('errorNoteParse'); }
+                notesCount++;
+                
+                const isHiddenNote = extraData.pass === true;
+                let noteTitle = '';
+                const lines = fileContent.split('\n');
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (trimmedLine) {
+                        noteTitle = trimmedLine.substring(0, 50);
+                        break;
                     }
-                }));
-            }
-        }
-    }
+                }
+                if (!noteTitle) { noteTitle = file.name; }
+                const titleEl = document.createElement('h3');
+                if (!isHiddenNote) {
+                    titleEl.textContent = noteTitle;
+                    titleEl.title = noteTitle;
+                }
+                const contentEl = document.createElement('div');
+                contentEl.className = 'note-content';
 
-    const footerEl = document.createElement('div');
-    footerEl.className = 'note-footer';
-    const footerLeft = document.createElement('div');
-    footerLeft.style.display = 'flex';
-
-    if (note.dataset.extraInfo) {
-        try {
-            const extraData = JSON.parse(note.dataset.extraInfo);
-            if (extraData.boardid && boardsData.length > 0) {
-                const board = boardsData.find(b => b.gdid === extraData.boardid);
-                if (board) {
-                    const boardDisplay = document.createElement('div');
-                    boardDisplay.className = 'board-display';
-                    boardDisplay.innerHTML = boardIconSvg;
-                    const boardText = document.createElement('span');
-                    boardText.textContent = board.title;
-                    boardDisplay.appendChild(boardText);
-                    footerLeft.appendChild(boardDisplay);
-
-                    // Add event listener to board icon to show extra info
-                    boardDisplay.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent click from propagating to the note itself
-                        const parentNote = boardDisplay.closest('.note');
-                        if (parentNote && parentNote.dataset.extraInfo) {
-                            try {
-                                const extraInfoData = JSON.parse(parentNote.dataset.extraInfo);
-                                showModal(JSON.stringify(extraInfoData, null, 2));
-                            } catch (e) {
-                                console.error('Error parsing data-extra-info:', e);
-                                showToast('Error displaying extra info.');
+                if (isHiddenNote) {
+                    const pipeIndex = fileContent.indexOf('|');
+                    const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
+                    contentEl.innerHTML = renderNoteContent(previewContent);
+                } else {
+                    if (textSpan && textSpan.trim() !== '') {
+                        contentEl.innerHTML = formatText(fileContent, textSpan);
+                    } else {
+                        contentEl.innerHTML = renderNoteContent(fileContent);
+                    }
+                }
+                if (!isHiddenNote) { // Attachments should only show for non-hidden notes in the main view
+                    if (noteGdid) {
+                        const attachments = mediaData.filter(media => media.noteid === noteGdid);
+                        if (attachments.length > 0) {
+                            const separator = document.createElement('hr');
+                            separator.style.marginTop = '10px';
+                            separator.style.marginBottom = '10px';
+                            contentEl.appendChild(separator);
+                            await Promise.all(attachments.map(async attachment => {
+                                const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
+                                if (iconData) {
+                                    const attachmentWrapper = document.createElement('div');
+                                    attachmentWrapper.style.display = 'flex';
+                                    attachmentWrapper.style.alignItems = 'center';
+                                    attachmentWrapper.style.gap = '5px';
+                                    const iconDiv = document.createElement('div');
+                                    iconDiv.innerHTML = iconData.svg;
+                                    iconDiv.style.cursor = 'pointer';
+                                    iconDiv.addEventListener('click', () => {
+                                        const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                        showModal(attachmentDataString);
+                                    });
+                                    attachmentWrapper.appendChild(iconDiv);
+                                    if (attachment.type === 3 && attachment.path) {
+                                        const filename = attachment.path.split('/').pop();
+                                        const link = document.createElement('a');
+                                        const fileId = await getFileID(folderIds['Other'], filename);
+                                        if (attachment.gdid) {
+                                            link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                            link.target = '_blank';
+                                            link.rel = 'noopener noreferrer';
+                                        } else {
+                                            link.href = '#';
+                                            link.onclick = (e) => e.preventDefault();
+                                        }
+                                        link.title = link.href;
+                                        link.textContent = 'Other/' + filename;
+                                        attachmentWrapper.appendChild(link);
+                                    } else if (attachment.type === 5 && attachment.path) {
+                                        const parts = attachment.path.split('|');
+                                        if (parts.length >= 3) {
+                                            const textContainer = document.createElement('div');
+                                            const line1 = document.createElement('span');
+                                            line1.textContent = `${parts[0]}, ${parts[1]}`;
+                                            textContainer.appendChild(line1);
+                                            const line2 = document.createElement('div');
+                                            line2.textContent = parts[2];
+                                            textContainer.appendChild(line2);
+                                            attachmentWrapper.appendChild(textContainer);
+                                        }
+                                    }
+                                    if (attachment.type === 1 && attachment.path) {
+                                        const filename = attachment.path.split('/').pop();
+                                        const link = document.createElement('a');
+                                        const fileId = await getFileID(folderIds['Images'], filename);
+                                        if (attachment.gdid) {
+                                            link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                            link.target = '_blank';
+                                            link.rel = 'noopener noreferrer';
+                                        } else {
+                                            link.href = '#';
+                                            link.onclick = (e) => e.preventDefault();
+                                        }
+                                        link.title = link.href;
+                                        link.textContent = 'Images/' + filename;
+                                        const eyeButton = document.createElement('button');
+                                        eyeButton.className = 'view-button';
+                                        eyeButton.innerHTML = eyeIconSvg;
+                                        attachmentWrapper.appendChild(eyeButton);
+                                        attachmentWrapper.appendChild(link);
+                                        eyeButton.addEventListener('click', async (e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            const noteEl = attachmentWrapper.closest('.note');
+                                            if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
+                                                return;
+                                            }
+                                            const titleEl = noteEl.querySelector('h3');
+                                            if (!fileId) {
+                                                showToast('Image file not found for preview.');
+                                                return;
+                                            }
+                                            try {
+                                                const fileMetadata = await gapi.client.drive.files.get({
+                                                    fileId: fileId,
+                                                    fields: 'thumbnailLink'
+                                                });
+                                                const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                                                if (thumbnailUrl) {
+                                                    if (titleEl) titleEl.style.visibility = 'hidden';
+                                                    const overlay = document.createElement('div');
+                                                    overlay.className = 'image-preview-overlay';
+                                                    Object.assign(overlay.style, {
+                                                        position: 'absolute',
+                                                        top: '0', left: '0',
+                                                        width: '100%', height: '100%',
+                                                        backgroundColor: 'rgba(0,0,0,0.85)',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        zIndex: '10',
+                                                        borderRadius: '8px'
+                                                    });
+                                                    overlay.addEventListener('click', () => {
+                                                        window.open(link.href, '_blank');
+                                                    });
+                                                    const img = document.createElement('img');
+                                                    img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                                                    Object.assign(img.style, {
+                                                        maxWidth: '100%',
+                                                        maxHeight: '100%',
+                                                        objectFit: 'contain',
+                                                        padding: '10px',
+                                                        boxSizing: 'border-box'
+                                                    });
+                                                    overlay.appendChild(img);
+                                                    const closeButton = document.createElement('button');
+                                                    closeButton.className = 'view-button';
+                                                    closeButton.innerHTML = eyeOffIconSvg;
+                                                    Object.assign(closeButton.style, {
+                                                        position: 'absolute',
+                                                        top: '10px',
+                                                        right: '10px',
+                                                    });
+                                                    const svg = closeButton.querySelector('svg');
+                                                    if(svg) svg.style.stroke = 'white';
+                                                    closeButton.addEventListener('click', (ev) => {
+                                                        ev.stopPropagation();
+                                                        overlay.remove();
+                                                        if (titleEl) titleEl.style.visibility = 'visible';
+                                                    });
+                                                    overlay.appendChild(closeButton);
+                                                    noteEl.appendChild(overlay);
+                                                } else {
+                                                    showToast('No preview available for this image.');
+                                                }
+                                            } catch (err) {
+                                                console.error('Error fetching image preview:', err);
+                                                showToast('Error loading image preview: ' + (err.message || err));
+                                            }
+                                        });
+                                    }
+                                    if (attachment.type === 2 && attachment.path) {
+                                        const filename = attachment.path.split('/').pop();
+                                        const textContainer = document.createElement('div');
+                                        textContainer.style.flexGrow = '1';
+                                        textContainer.style.flexShrink = '1';
+                                        textContainer.style.minWidth = '0';
+                                        const link = document.createElement('a');
+                                        const fileId = await getFileID(folderIds['Sound'], filename);
+                                        if (attachment.gdid) {
+                                            link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                            link.target = '_blank';
+                                            link.rel = 'noopener noreferrer';
+                                        } else {
+                                            link.href = '#';
+                                            link.onclick = (e) => e.preventDefault();
+                                        }
+                                        link.title = link.href;
+                                        link.textContent = 'Sound/' + filename;
+                                        textContainer.appendChild(link);
+                                        const line2 = document.createElement('div');
+                                        line2.textContent = attachment.description || '';
+                                        textContainer.appendChild(line2);
+                                        attachmentWrapper.appendChild(textContainer);
+                                    }
+                                    if (attachment.type === 4 && attachment.path) {
+                                        const filename = attachment.path.split('/').pop();
+                                        const textContainer = document.createElement('div');
+                                        textContainer.style.flexGrow = '1';
+                                        textContainer.style.flexShrink = '1';
+                                        textContainer.style.minWidth = '0';
+                                        const link = document.createElement('a');
+                                        const fileId = await getFileID(folderIds['Video'], filename);
+                                        if (attachment.gdid) {
+                                            link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                            link.target = '_blank';
+                                            link.rel = 'noopener noreferrer';
+                                        } else {
+                                            link.href = '#';
+                                            link.onclick = (e) => e.preventDefault();
+                                        }
+                                        link.title = link.href;
+                                        link.textContent = 'Video/' + filename;
+                                        textContainer.appendChild(link);
+                                        const line2 = document.createElement('div');
+                                        line2.textContent = attachment.description || '';
+                                        textContainer.appendChild(line2);
+                                        const eyeButton = document.createElement('button');
+                                        eyeButton.className = 'view-button';
+                                        eyeButton.innerHTML = eyeIconSvg;
+                                        attachmentWrapper.appendChild(eyeButton);
+                                        attachmentWrapper.appendChild(textContainer);
+                                        eyeButton.addEventListener('click', async (e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            const noteEl = attachmentWrapper.closest('.note');
+                                            if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
+                                                return;
+                                            }
+                                            const titleEl = noteEl.querySelector('h3');
+                                            if (!fileId) {
+                                                showToast('Video file not found for preview.');
+                                                return;
+                                            }
+                                            try {
+                                                const fileMetadata = await gapi.client.drive.files.get({
+                                                    fileId: fileId,
+                                                    fields: 'thumbnailLink'
+                                                });
+                                                const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                                                if (thumbnailUrl) {
+                                                    if (titleEl) titleEl.style.visibility = 'hidden';
+                                                    const overlay = document.createElement('div');
+                                                    overlay.className = 'image-preview-overlay';
+                                                    Object.assign(overlay.style, {
+                                                        position: 'absolute',
+                                                        top: '0', left: '0',
+                                                        width: '100%', height: '100%',
+                                                        backgroundColor: 'rgba(0,0,0,0.85)',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        zIndex: '10',
+                                                        borderRadius: '8px'
+                                                    });
+                                                    overlay.addEventListener('click', () => {
+                                                        window.open(link.href, '_blank');
+                                                    });
+                                                    const img = document.createElement('img');
+                                                    img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                                                    Object.assign(img.style, {
+                                                        maxWidth: '100%',
+                                                        maxHeight: '100%',
+                                                        objectFit: 'contain',
+                                                        padding: '10px',
+                                                        boxSizing: 'border-box'
+                                                    });
+                                                    overlay.appendChild(img);
+                                                    const closeButton = document.createElement('button');
+                                                    closeButton.className = 'view-button';
+                                                    closeButton.innerHTML = eyeOffIconSvg;
+                                                    Object.assign(closeButton.style, {
+                                                        position: 'absolute',
+                                                        top: '10px',
+                                                        right: '10px',
+                                                    });
+                                                    const svg = closeButton.querySelector('svg');
+                                                    if(svg) svg.style.stroke = 'white';
+                                                    closeButton.addEventListener('click', (ev) => {
+                                                        ev.stopPropagation();
+                                                        overlay.remove();
+                                                        if (titleEl) titleEl.style.visibility = 'visible';
+                                                    });
+                                                    overlay.appendChild(closeButton);
+                                                    noteEl.appendChild(overlay);
+                                                } else {
+                                                    showToast('No preview available for this video.');
+                                                }
+                                            } catch (err) {
+                                                console.error('Error fetching video preview:', err);
+                                                showToast('Error loading video preview: ' + (err.message || err));
+                                            }
+                                        });
+                                    }
+                                    contentEl.appendChild(attachmentWrapper);
+                                }
+                            }));
+                        }
+                    }
+                }
+                const footerEl = document.createElement('div');
+                footerEl.className = 'note-footer';
+                const footerLeft = document.createElement('div');
+                footerLeft.style.display = 'flex';
+                if (note.dataset.extraInfo) {
+                    try {
+                        const extraData = JSON.parse(note.dataset.extraInfo);
+                        if (extraData.boardid && boardsData.length > 0) {
+                            const board = boardsData.find(b => b.gdid === extraData.boardid);
+                            if (board) {
+                                const boardDisplay = document.createElement('div');
+                                boardDisplay.className = 'board-display';
+                                boardDisplay.innerHTML = boardIconSvg;
+                                const boardText = document.createElement('span');
+                                boardText.textContent = board.title;
+                                boardDisplay.appendChild(boardText);
+                                footerLeft.appendChild(boardDisplay);
+                                // Add event listener to board icon to show extra info
+                                boardDisplay.addEventListener('click', (e) => {
+                                    e.stopPropagation(); // Prevent click from propagating to the note itself
+                                    const parentNote = boardDisplay.closest('.note');
+                                    if (parentNote && parentNote.dataset.extraInfo) {
+                                        try {
+                                            const extraInfoData = JSON.parse(parentNote.dataset.extraInfo);
+                                            showModal(JSON.stringify(extraInfoData, null, 2));
+                                        } catch (e) {
+                                            console.error('Error parsing data-extra-info:', e);
+                                            showToast('Error displaying extra info.');
+                                        }
+                                    }
+                                });
                             }
                         }
-                    });
+                        // Use calendarDate if available, otherwise fallback to datemod
+                        const dateToShow = extraData.calendarDate || extraData.datemod;
+                        if (dateToShow) {
+                            const dateDisplay = document.createElement('div');
+                            dateDisplay.className = 'date-display';
+                            dateDisplay.innerHTML = calendarIconSvg;
+                            const dateText = document.createElement('span');
+                            dateText.textContent = formatDate(dateToShow);
+                            dateDisplay.appendChild(dateText);
+                            footerLeft.appendChild(dateDisplay);
+                            dateDisplay.addEventListener('click', () => {
+                                try {
+                                    const content = JSON.parse(res.body);
+                                    showModal(JSON.stringify(content, null, 2));
+                                } catch(e) {
+                                    showModal(res.body);
+                                }
+                            });
+                        }
+                    } catch (e) { console.error('Error parsing extraInfo:', e); }
                 }
-            }
-            // Use calendarDate if available, otherwise fallback to datemod
-            const dateToShow = extraData.calendarDate || extraData.datemod;
-            if (dateToShow) {
-                const dateDisplay = document.createElement('div');
-                dateDisplay.className = 'date-display';
-                dateDisplay.innerHTML = calendarIconSvg;
-                const dateText = document.createElement('span');
-                dateText.textContent = formatDate(dateToShow);
-                dateDisplay.appendChild(dateText);
-                footerLeft.appendChild(dateDisplay);
-
-                dateDisplay.addEventListener('click', () => {
-                    try {
-                        const content = JSON.parse(res.body);
-                        showModal(JSON.stringify(content, null, 2));
-                    } catch(e) {
-                        showModal(res.body);
+                footerEl.appendChild(footerLeft);
+                if (isHiddenNote) {
+                    const footerRight = document.createElement('div');
+                    footerRight.style.display = 'flex';
+                    footerRight.style.alignItems = 'center';
+                    const lockIcon = document.createElement('span');
+                    lockIcon.innerHTML = lockIconSvg;
+                    lockIcon.style.marginRight = '5px';
+                    footerRight.appendChild(lockIcon);
+                    const viewButton = document.createElement('button');
+                    viewButton.className = 'view-button';
+                    viewButton.innerHTML = eyeIconSvg;
+                    viewButton.title = _('viewFullContent');
+                    viewButton.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showModal({ raw: fileContent, format: textSpan });
+                    });
+                    footerRight.appendChild(viewButton);
+                    footerEl.appendChild(footerRight);
+                }
+                note.addEventListener('click', (e) => {
+                    // Check if the click target is not an interactive element within the note's footer.
+                    // This prevents the modal from opening if a child element with its own click handler was clicked.
+                    if (!e.target.closest('.note-footer')) {
+                        showModal({ raw: fileContent, format: textSpan });
                     }
                 });
+                note.appendChild(titleEl);
+                note.appendChild(contentEl);
+                note.appendChild(footerEl);
+                notesContainer.appendChild(note);
+            }));
+
+            // Now, prepend the boards note if it was created
+            if (boardsNoteElement) {
+                notesContainer.prepend(boardsNoteElement);
             }
-        } catch (e) { console.error('Error parsing extraInfo:', e); }
-    }
-    
-    footerEl.appendChild(footerLeft);
 
-    if (isHiddenNote) {
-        const footerRight = document.createElement('div');
-        footerRight.style.display = 'flex';
-        footerRight.style.alignItems = 'center';
+            // filterNotesByBoard('all');
 
-        const lockIcon = document.createElement('span');
-        lockIcon.innerHTML = lockIconSvg;
-        lockIcon.style.marginRight = '5px';
-        footerRight.appendChild(lockIcon);
-
-        const viewButton = document.createElement('button');
-        viewButton.className = 'view-button';
-        viewButton.innerHTML = eyeIconSvg;
-        viewButton.title = _('viewFullContent');
-        viewButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showModal({ raw: fileContent, format: textSpan });
-        });
-        footerRight.appendChild(viewButton);
-        footerEl.appendChild(footerRight);
-    } else {
-        // The eye icon for scrollable notes is no longer needed as the entire note is now clickable.
-    }
-
-    note.addEventListener('click', (e) => {
-        // Check if the click target is not an interactive element within the note's footer.
-        // This prevents the modal from opening if a child element with its own click handler was clicked.
-        if (!e.target.closest('.note-footer')) {
-            showModal({ raw: fileContent, format: textSpan });
-        }
-    });
-
-    note.appendChild(titleEl);
-    note.appendChild(contentEl);
-    note.appendChild(footerEl);
-    notesContainer.appendChild(note);
-}));
-
-    const noteCounter = document.getElementById('note-counter');
-    if (noteCounter) {
-        noteCounter.textContent = notesCount;
-    }
+            const counterEl = document.getElementById('note-counter');
+            if (counterEl) {
+                counterEl.textContent = notesCount;
+            }
         } catch (err) {
             console.error("Error loading files:", err);
             showToast(err.message || _('errorProcessingFiles'));
         } finally {
             loaderContainer.style.display = 'none';
+            // Explicitly set the default background after everything is loaded
+            // to ensure consistency and prevent flickering.
+            document.body.style.backgroundImage = `url('Board.png')`;
+            notesContainer.style.backgroundImage = `url('Board.png')`;
+            currentBackground = 'Board.png';
         }
     }
 
-function escapeHtml(text) {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-function processCodeAndLinks(text) {
-    if (!text) return '';
-    const codeBlocks = [];
-    const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
-        const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
-        codeBlocks.push(escapeHtml(code));
-        return '%%CODE_BLOCK%%';
-    });
-    let linkifiedText = linkifyText(textWithoutCode);
-    codeBlocks.forEach(block => {
-        linkifiedText = linkifiedText.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
-    });
-    return linkifiedText;
-}
-
-function escapeHtml(text) {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-function renderNoteContent(text) {
-    if (!text) return '';
-    const codeBlocks = [];
-    const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
-        const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
-        codeBlocks.push(escapeHtml(code));
-        return '%%CODE_BLOCK%%';
-    });
-    const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-    let html = textWithoutCode.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    codeBlocks.forEach(block => {
-        html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
-    });
-    return html;
-}
-
-/**
- * Форматира текстов низ въз основа на JSON параметри.
- * @param {string} text - Текстовият низ за форматиране.
- * @param {string} formatString - Форматиращият низ, разделен с '
-'.
- * @returns {string} Форматираният HTML низ.
- */
-function formatText(text, formatString) {
-  if (formatString.endsWith('|')) {
-    formatString = formatString.slice(0, -1);
-  }
-
-  const formats = formatString.split('|').map(f => {
-    try {
-      return JSON.parse(f);
-    } catch (e) {
-      console.error('Invalid JSON in format string:', f);
-      return null;
+    function escapeHtml(text) {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
-  }).filter(f => f !== null);
 
-  if (formats.length === 0) {
-    return renderNoteContent(text);
-  }
+    function processCodeAndLinks(text) {
+        if (!text) return '';
+        const codeBlocks = [];
+        const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
+            const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
+            codeBlocks.push(escapeHtml(code));
+            return '%%CODE_BLOCK%%';
+        });
+        let linkifiedText = linkifyText(textWithoutCode);
+        codeBlocks.forEach(block => {
+            linkifiedText = linkifiedText.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
+        });
+        return linkifiedText;
+    }
 
-  const points = new Set([0, text.length]);
-  formats.forEach(f => {
-    points.add(f.start);
-    points.add(f.end);
-  });
-  const sortedPoints = Array.from(points).sort((a, b) => a - b);
+    function escapeHtml(text) {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
 
-  let html = '';
+    function renderNoteContent(text) {
+        if (!text) return '';
+        const codeBlocks = [];
+        const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
+            const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
+            codeBlocks.push(escapeHtml(code));
+            return '%%CODE_BLOCK%%';
+        });
+        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+        let html = textWithoutCode.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        codeBlocks.forEach(block => {
+            html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
+        });
+        return html;
+    }
 
-  for (let i = 0; i < sortedPoints.length - 1; i++) {
-    const start = sortedPoints[i];
-    const end = sortedPoints[i + 1];
-    const segmentText = text.substring(start, end);
-
-    if (segmentText.length === 0) continue;
-
-    const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
-    let formattedSegment = renderNoteContent(segmentText);
-
-    activeFormats.sort((a, b) => b.type - a.type);
-
-    activeFormats.forEach(format => {
-      const {
-        type,
-        paramint,
-        paramfloat
-      } = format;
-      switch (type) {
-        case 1: // bold
-          formattedSegment = `<strong>${formattedSegment}</strong>`;
-          break;
-        case 2: // italic
-          formattedSegment = `<em>${formattedSegment}</em>`;
-          break;
-        case 3: // underline
-          formattedSegment = `<u>${formattedSegment}</u>`;
-          break;
-        case 4: // text color
-        case 5: // background color
-          {
-            let aVal = (paramint >> 24) & 0xff;
-            // If alpha is 0, but the color is not black, assume it should be opaque.
-            if (aVal === 0 && (paramint & 0x00ffffff) !== 0) {
-              aVal = 255;
-            }
-            const r = (paramint >> 16) & 0xff;
-            const g = (paramint >> 8) & 0xff;
-            const b = paramint & 0xff;
-            const a = aVal / 255;
-            const rgbaColor = `rgba(${r}, ${g}, ${b}, ${a})`;
-
-            if (type === 4) {
-              formattedSegment = `<span style="color: ${rgbaColor};">${formattedSegment}</span>`;
-            } else {
-              formattedSegment = `<span style="background-color: ${rgbaColor};">${formattedSegment}</span>`;
-            }
-            break;
-          }
-        case 6: // font size
-          const fontSize = 100 * paramfloat;
-          formattedSegment = `<span style="font-size: ${fontSize}%;">${formattedSegment}</span>`;
-          break;
-        case 7: // strike-through
-          formattedSegment = `<s>${formattedSegment}</s>`;
-          break;
-        default:
-          break;
-      }
+    /**
+     * Форматира текстов низ въз основа на JSON параметри.
+     * @param {string} text - Текстовият низ за форматиране.
+     * @param {string} formatString - Форматиращият низ, разделен с '\n'.
+     * @returns {string} Форматираният HTML низ.
+     */
+    function formatText(text, formatString) {
+    if (formatString.endsWith('|')) {
+        formatString = formatString.slice(0, -1);
+    }
+    const formats = formatString.split('|').map(f => {
+        try {
+        return JSON.parse(f);
+        } catch (e) {
+        console.error('Invalid JSON in format string:', f);
+        return null;
+        }
+    }).filter(f => f !== null);
+    if (formats.length === 0) {
+        return renderNoteContent(text);
+    }
+    const points = new Set([0, text.length]);
+    formats.forEach(f => {
+        points.add(f.start);
+        points.add(f.end);
     });
-    html += formattedSegment;
-  }
-
-  return html;
-}
+    const sortedPoints = Array.from(points).sort((a, b) => a - b);
+    let html = '';
+    for (let i = 0; i < sortedPoints.length - 1; i++) {
+        const start = sortedPoints[i];
+        const end = sortedPoints[i + 1];
+        const segmentText = text.substring(start, end);
+        if (segmentText.length === 0) continue;
+        const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
+        let formattedSegment = renderNoteContent(segmentText);
+        activeFormats.sort((a, b) => b.type - a.type);
+        activeFormats.forEach(format => {
+        const {
+            type,
+            paramint,
+            paramfloat
+        } = format;
+        switch (type) {
+            case 1: // bold
+            formattedSegment = `<strong>${formattedSegment}</strong>`;
+            break;
+            case 2: // italic
+            formattedSegment = `<em>${formattedSegment}</em>`;
+            break;
+            case 3: // underline
+            formattedSegment = `<u>${formattedSegment}</u>`;
+            break;
+            case 4: // text color
+            case 5: // background color
+            {
+                let aVal = (paramint >> 24) & 0xff;
+                // If alpha is 0, but the color is not black, assume it should be opaque.
+                if (aVal === 0 && (paramint & 0x00ffffff) !== 0) {
+                aVal = 255;
+                }
+                const r = (paramint >> 16) & 0xff;
+                const g = (paramint >> 8) & 0xff;
+                const b = paramint & 0xff;
+                const a = aVal / 255;
+                const rgbaColor = `rgba(${r}, ${g}, ${b}, ${a})`;
+                if (type === 4) {
+                formattedSegment = `<span style="color: ${rgbaColor};">${formattedSegment}</span>`;
+                } else {
+                formattedSegment = `<span style="background-color: ${rgbaColor};">${formattedSegment}</span>`;
+                }
+                break;
+            }
+            case 6: // font size
+            const fontSize = 100 * paramfloat;
+            formattedSegment = `<span style="font-size: ${fontSize}%;">${formattedSegment}</span>`;
+            break;
+            case 7: // strike-through
+            formattedSegment = `<s>${formattedSegment}</s>`;
+            break;
+            default:
+            break;
+        }
+        });
+        html += formattedSegment;
+    }
+    return html;
+    }
