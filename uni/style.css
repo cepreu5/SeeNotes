@@ -19,7 +19,7 @@ body {
 
 header {
     padding: 1em;
-    padding-bottom: 0.2em;
+    padding-bottom: 0.3em;
     /*border-bottom: 1px solid #eee;*/
     /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
     /* margin-bottom: 1em; */ /* Removed to stick the boards note to the header */
@@ -56,6 +56,11 @@ header h1 {
     background-color: #d6d6d6;
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
 
+}
+
+/* Change cursor to pointer on the search input's clear button (X) */
+#search-box::-webkit-search-cancel-button {
+    cursor: pointer;
 }
 
 #header-buttons {
@@ -129,6 +134,8 @@ main {
     padding: 10px;
     box-sizing: border-box;
     background-image: url('Frame.jpg');
+    position: sticky;
+    z-index: 99; /* Lower than header's z-index */
     user-select: none; /* Prevent text selection on the board panel */
 }
 
@@ -170,6 +177,7 @@ pre, code {
 
 .note-footer .date-display,
 .note-footer .board-display {
+    cursor: pointer;
     display: flex;
     align-items: center;
 }
@@ -268,6 +276,24 @@ pre, code {
     white-space: pre-wrap;
     text-align: left;
     flex-grow: 1;
+}
+
+/* Custom scrollbar for modal content */
+#modal-body::-webkit-scrollbar {
+    width: 10px;
+}
+
+#modal-body::-webkit-scrollbar-track {
+    background: #c8a64b; /* Dark yellow background for the track */
+}
+
+#modal-body::-webkit-scrollbar-thumb {
+    background: #555; /* Darker handle for contrast */
+    border-radius: 5px;
+}
+
+#modal-body::-webkit-scrollbar-thumb:hover {
+    background: #333; /* Even darker on hover */
 }
 
 .modal-header-btn {
@@ -522,7 +548,7 @@ pre, code {
     }
 
     #search-container {
-        padding: 1em 0;
+        padding: 1em 0 0.5em; /* Reduced bottom padding */
         order: 1;
     }
 
@@ -530,7 +556,7 @@ pre, code {
         order: 2;
         display: flex;
         justify-content: center;
-        padding-top: 1em;
+        padding-top: 0; /* Removed top padding */
     }
 
     header div:first-child {
@@ -758,7 +784,7 @@ pre, code {
 
 /* Close button for settings modal */
 #settings-modal .modal-close {
-    right: 10px;
+    right: 15px;
 }
 
 #settings-modal-body {
@@ -786,3 +812,24 @@ pre, code {
     -webkit-appearance: none;
     margin: 0; /* Safari */
 }
+
+.set-modal {
+      background: linear-gradient(135deg, #858585, #E4E4E4);
+      border-radius: 3px;
+      padding: 20px;
+      position: relative;
+      height: 300px;
+    }
+
+    .corner-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: conic-gradient(#636363, #E4E4E4, #636363);
+      position: absolute;
+    }
+
+    .top-left     { top: 5px; left: 5px; }
+    .top-right    { top: 5px; right: 5px; }
+    .bottom-left  { bottom: 5px; left: 5px; }
+    .bottom-right { bottom: 5px; right: 5px; }

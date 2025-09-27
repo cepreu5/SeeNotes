@@ -342,6 +342,17 @@ async function startApp() {
         setLanguage(currentLang);
     }
 
+    function updateBoardsNotePosition() {
+        const header = document.querySelector('header');
+        const boardsNote = document.querySelector('.boards-note');
+        if (header && boardsNote) {
+            // Use getBoundingClientRect().bottom for a more reliable height calculation,
+            // as offsetHeight can sometimes be inconsistent during resize events.
+            const headerRect = header.getBoundingClientRect();
+            boardsNote.style.top = `${headerRect.bottom - 6}px`;
+        }
+    }
+
     // --- Core Functions ---
     function handleSignoutClick() {
         sessionStorage.removeItem('google_auth_token');
@@ -1284,6 +1295,10 @@ async function startApp() {
             // Now, prepend the boards note if it was created
             if (boardsNoteElement) {
                 notesContainer.prepend(boardsNoteElement);
+                // Set initial position after it's added to the DOM
+                updateBoardsNotePosition();
+                // Add resize listener to adjust on window resize
+                window.addEventListener('resize', updateBoardsNotePosition);
             }
 
             // filterNotesByBoard('all');
