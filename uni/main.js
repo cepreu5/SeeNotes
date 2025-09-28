@@ -6,6 +6,7 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 let tokenClient;
 
 // Promise to load a script
+let allNotesData = []; // Store all notes data for calendar
 function loadScript(src) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -271,6 +272,7 @@ async function startApp() {
     // const logoutSvg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="mdi-application-export" width="24" height="24" viewBox="0 0 24 24"><path d="M8,12H17.76L15.26,9.5L16.67,8.08L21.59,13L16.67,17.92L15.26,16.5L17.76,14H8V12M19,3C20.11,3 21,3.9 21,5V9.67L19,7.67V7H5V19H19V18.33L21,16.33V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V5A2,2 0 0,1 5,3H19Z" /></svg>`;
 
     let authToken = null, currentModalContent = '', boardsData = [], currentBoardFilter = 'all', currentBackground = 'Board.png';
+    let currentCalendarDate = new Date();
     let folderIds = {};
     let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText, zoomInput;
     const boardsNoteBgnd = '#cfe6f8';
@@ -388,6 +390,11 @@ async function startApp() {
     }
 
     function filterNotesByBoard(boardId) {
+        if (boardId === 'calendar') {
+            renderCalendarView();
+            return;
+        }
+
         currentBoardFilter = boardId;
         applyFilters();
         document.querySelectorAll('.board-filter-link').forEach(link => {
@@ -423,9 +430,7 @@ async function startApp() {
 
         if (boardId === 'all') {
             scrollTopBtn.innerHTML = arrowSvg;
-        } else if (boardId === 'calendar') {
-            scrollTopBtn.innerHTML = _('calendar') + " " + arrowSvg;
-        } else if (boardId === 'reminder') {
+        }  else if (boardId === 'reminder') {
             scrollTopBtn.innerHTML = _('reminder') + " " + arrowSvg;
         } else {
             const board = boardsData.find(b => b.gdid === boardId);
@@ -435,11 +440,8 @@ async function startApp() {
         }
         window.dispatchEvent(new Event('scroll'));
         // Add or remove a class from the container to control child visibility
-        if (boardId === 'calendar') {
-            notesContainer.classList.add('calendar-view');
-        } else {
-            notesContainer.classList.remove('calendar-view');
-        }
+        // This part is no longer needed as calendar has its own view
+        notesContainer.classList.remove('calendar-view');
     }
 
     function applySearchFilter() {
@@ -459,18 +461,7 @@ async function startApp() {
             const extraInfo = note.dataset.extraInfo;
             if (currentBoardFilter === 'all') {
                 isVisibleByBoard = true;
-            } else if (currentBoardFilter === 'calendar') {
-                if (extraInfo) {
-                    try {
-                        const data = JSON.parse(extraInfo);
-                        if (data.calendarDate && data.calendarDate !== 0) {
-                            isVisibleByBoard = true;
-                        }
-                    } catch (e) {
-                        console.error('Error parsing extraInfo for note:', e);
-                    }
-                }
-            } else if (currentBoardFilter === 'reminder') {
+            }  else if (currentBoardFilter === 'reminder') {
                 if (extraInfo) {
                     try {
                         const data = JSON.parse(extraInfo);
@@ -618,6 +609,7 @@ async function startApp() {
 
     async function listFiles(folderIdFromPrompt) {
         boardsData = [];
+        allNotesData = [];
         let mediaData = [];
         let boardsNoteElement = null; // Will hold the boards note element until the end
         notesContainer.innerHTML = '';
@@ -875,6 +867,13 @@ async function startApp() {
                 let textSpan = null;
                 let extraData = {};
                 try {
+                    // Store raw data for calendar view
+                    const rawNoteData = {
+                        file: file,
+                        content: JSON.parse(res.body)
+                    };
+                    allNotesData.push(rawNoteData);
+
                     const content = JSON.parse(res.body);
                     if (content && typeof content.notetxt !== 'undefined') {
                         fileContent = content.notetxt;
@@ -1308,6 +1307,124 @@ async function startApp() {
             notesContainer.style.backgroundImage = `url('Board.png')`;
             currentBackground = 'Board.png';
         }
+    }
+
+    function renderCalendarView() {
+        document.querySelector('header').style.display = 'none';
+        notesContainer.style.display = 'none';
+        scrollTopBtn.style.display = 'none';
+
+        let calendarContainer = document.getElementById('calendar-container');
+        if (!calendarContainer) {
+            calendarContainer = document.createElement('div');
+            calendarContainer.id = 'calendar-container';
+            document.querySelector('main').appendChild(calendarContainer);
+        }
+        calendarContainer.style.display = 'block';
+        calendarContainer.innerHTML = ''; // Clear previous content
+
+        const year = currentCalendarDate.getFullYear();
+        const month = currentCalendarDate.getMonth();
+        const monthName = currentCalendarDate.toLocaleString(currentLang, { month: 'long', year: 'numeric' });
+
+        // Header
+        const calendarHeader = document.createElement('div');
+        calendarHeader.className = 'calendar-header';
+        calendarHeader.innerHTML = `
+            <button id="prev-month-btn">&lt;</button>
+            <h2>${monthName}</h2>
+            <button id="next-month-btn">&gt;</button>
+            <button id="close-calendar-btn">&times;</button>
+        `;
+        calendarContainer.appendChild(calendarHeader);
+
+        // Grid
+        const calendarGrid = document.createElement('div');
+        calendarGrid.className = 'calendar-grid';
+
+        // Day names header
+        const days = currentLang === 'bg' ? ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        days.forEach(day => {
+            const dayEl = document.createElement('div');
+            dayEl.className = 'calendar-day-name';
+            dayEl.textContent = day;
+            calendarGrid.appendChild(dayEl);
+        });
+
+        const firstDayOfMonth = new Date(year, month, 1);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        let startingDay = firstDayOfMonth.getDay(); // 0=Sun, 1=Mon...
+        if (startingDay === 0) startingDay = 7; // Make Sunday 7
+
+        // Create blank cells for days before the 1st
+        for (let i = 1; i < startingDay; i++) {
+            const blankCell = document.createElement('div');
+            blankCell.className = 'calendar-cell-blank';
+            calendarGrid.appendChild(blankCell);
+        }
+
+        // Create cells for each day of the month
+        for (let day = 1; day <= daysInMonth; day++) {
+            const cell = document.createElement('div');
+            cell.className = 'calendar-cell';
+            const dateNum = document.createElement('div');
+            dateNum.className = 'calendar-date-number';
+            dateNum.textContent = day;
+            cell.appendChild(dateNum);
+
+            const notesForDayContainer = document.createElement('div');
+            notesForDayContainer.className = 'calendar-notes-container';
+            cell.appendChild(notesForDayContainer);
+
+            // Find and render notes for this day
+            const dayDate = new Date(year, month, day);
+            allNotesData.forEach(noteData => {
+                if (noteData.content.calendarDate) {
+                    const noteDate = new Date(noteData.content.calendarDate);
+                    if (noteDate.getFullYear() === dayDate.getFullYear() &&
+                        noteDate.getMonth() === dayDate.getMonth() &&
+                        noteDate.getDate() === dayDate.getDate()) {
+                        
+                        const miniNote = document.createElement('div');
+                        miniNote.className = 'calendar-mini-note';
+                        const noteTitle = noteData.content.notetxt.split('\n')[0].trim() || '...';
+                        miniNote.textContent = noteTitle;
+                        miniNote.title = noteData.content.notetxt;
+                        if (noteData.content.color) {
+                             miniNote.style.backgroundColor = `var(--note-bg-${noteData.content.color})`;
+                        }
+                        miniNote.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            showModal({ raw: noteData.content.notetxt, format: noteData.content.text_span });
+                        });
+                        notesForDayContainer.appendChild(miniNote);
+                    }
+                }
+            });
+
+            calendarGrid.appendChild(cell);
+        }
+
+        calendarContainer.appendChild(calendarGrid);
+
+        // Event Listeners
+        document.getElementById('prev-month-btn').addEventListener('click', () => {
+            currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+            renderCalendarView();
+        });
+
+        document.getElementById('next-month-btn').addEventListener('click', () => {
+            currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+            renderCalendarView();
+        });
+
+        document.getElementById('close-calendar-btn').addEventListener('click', () => {
+            calendarContainer.style.display = 'none';
+            document.querySelector('header').style.display = 'flex';
+            notesContainer.style.display = 'flex';
+            filterNotesByBoard('all'); // Go back to all notes view
+            window.dispatchEvent(new Event('scroll')); // Trigger scroll to show/hide scrollTopBtn
+        });
     }
 
     function escapeHtml(text) {
