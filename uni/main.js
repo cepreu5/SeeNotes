@@ -1343,11 +1343,15 @@ async function startApp() {
         calendarGrid.className = 'calendar-grid';
 
         // Day names header
-        const days = currentLang === 'bg' ? ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        days.forEach(day => {
+        const days = currentLang === 'bg' ? ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        days.forEach((day, index) => {
             const dayEl = document.createElement('div');
             dayEl.className = 'calendar-day-name';
             dayEl.textContent = day;
+            // index 5 is Saturday, 6 is Sunday
+            if (index >= 5) {
+                dayEl.classList.add('weekend-day');
+            }
             calendarGrid.appendChild(dayEl);
         });
 
@@ -1387,9 +1391,18 @@ async function startApp() {
                         
                         const miniNote = document.createElement('div');
                         miniNote.className = 'calendar-mini-note';
-                        const noteTitle = noteData.content.notetxt.split('\n')[0].trim() || '...';
-                        miniNote.textContent = noteTitle;
-                        miniNote.title = noteData.content.notetxt;
+
+                        // Find the first non-empty line and use the rest of the text
+                        const lines = noteData.content.notetxt.split('\n');
+                        let firstNonEmptyLineIndex = -1;
+                        for (let i = 0; i < lines.length; i++) {
+                            if (lines[i].trim() !== '') {
+                                firstNonEmptyLineIndex = i;
+                                break;
+                            }
+                        }
+                        const contentToShow = firstNonEmptyLineIndex !== -1 ? lines.slice(firstNonEmptyLineIndex).join('\n') : '...';
+                        miniNote.textContent = contentToShow;
                         if (noteData.content.color) {
                              miniNote.style.backgroundColor = `var(--note-bg-${noteData.content.color})`;
                         }

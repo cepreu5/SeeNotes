@@ -895,39 +895,66 @@ pre, code {
     gap: 5px;
 }
 
+.calendar-days-header {
+    grid-column: 1 / -1; /* Span all 7 columns */
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background-color: #fef9c3; /* Pale yellow */
+    border-radius: 4px;
+    padding: 10px 0;
+    margin-bottom: 5px; /* Space between header and first row of dates */
+}
+
 .calendar-day-name {
     font-weight: bold;
     text-align: center;
     padding: 10px 0;
     background-color: #e9e0c9;
     border-radius: 4px;
+    margin-right: 20px;
 }
 
-.calendar-cell, .calendar-cell-blank {
-    border: 1px solid #d4c8a8;
-    background-color: #fffbf0;
-    min-height: 150px; /* Square-like cells */
-    position: relative;
-    padding: 5px;
-    display: flex;
-    flex-direction: column;
+.weekend-day {
+    color: red;
 }
 
 .calendar-cell-blank {
-    background-color: #f5efe2;
-    border: 1px solid #e9e0c9;
+    background: none;
+    border: none;
+}
+.calendar-cell {
+    /*border: 1px solid #d4c8a8;*/
+    background-image: url('day1.png');
+    background-size: 100% 100%;
+    background-position: center;
+    background-repeat: no-repeat;
+    position: relative;
+    padding-right: 20px;
+    padding-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Prevent content from expanding the cell */
+}
+.calendar-cell, .calendar-cell-blank {
+    height: 150px; /* Use fixed height instead of min-height */
 }
 
 .calendar-date-number {
     font-weight: bold;
     color: #555;
-    align-self: flex-start;
+    margin-top: 5px;
+    margin-left: 5px;
+    background-color: rgb(196, 196, 196);
 }
 
 .calendar-notes-container {
     flex-grow: 1;
     overflow-y: auto;
     margin-top: 5px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px; /* Creates space between the notes */
+    padding-right: 4px; /* Space between notes and scrollbar */
 }
 
 /* Custom scrollbar for calendar cells */
@@ -946,16 +973,22 @@ pre, code {
 }
 
 .calendar-mini-note {
-    font-size: 0.8em;
-    padding: 3px 5px;
+    font-size: 0.7em;
+    padding: 4px;
     border-radius: 3px;
     margin-bottom: 3px;
     background-color: var(--note-bg-0);
     cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: hidden; /* Hide text that overflows */
     border: 1px solid rgba(0,0,0,0.1);
+    width: calc(50% - 2px); /* Two notes per row with a 4px gap */
+    height: 55px; /* Fixed height to create a square-like shape */
+    box-sizing: border-box;
+    display: -webkit-box;
+    -webkit-line-clamp: 5; /* Limit text to 5 lines */
+    -webkit-box-orient: vertical;
+    white-space: pre-wrap; /* Respect newlines */
+    word-break: break-word;
 }
 
 .calendar-mini-note:hover {
