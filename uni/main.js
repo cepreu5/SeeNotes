@@ -372,17 +372,20 @@ async function startApp() {
     }
 
     function showModal(options) {
-        let rawContent, formatString, displayContent;
+        let rawContent, formatString, displayContent, noteColor;
         if (typeof options === 'string') {
             rawContent = options;
             formatString = null;
+            noteColor = null; // Default color for simple string content
         } else {
             rawContent = options.raw;
             formatString = options.format;
+            noteColor = options.color;
         }
         currentModalContent = rawContent;
 
         // For notes with a preview (pass: true), the '|' is a separator.
+        // For the full view in the modal, we want to show the entire content,
         // For the full view in the modal, we want to show the entire content,
         // just replacing the separator with a newline for better readability.
         if (rawContent.includes('|')) {
@@ -394,6 +397,14 @@ async function startApp() {
             displayContent = renderNoteContent(rawContent);
         }
         modalBody.innerHTML = displayContent;
+
+        // Set modal background color
+        const modalContentBox = contentModal.querySelector('.modal-content-box');
+        if (noteColor) {
+            modalContentBox.style.backgroundColor = noteColor;
+        } else {
+            modalContentBox.style.backgroundColor = '#eef603'; // Reset to default color
+        }
         contentModal.classList.add('visible');
         copyBtn.innerHTML = copyIconSvg;
     }
@@ -653,6 +664,12 @@ async function startApp() {
         document.querySelectorAll('.board-filter-link').forEach(link => {
             link.classList.remove('selected-board');
         });
+
+        // Fix: Remove the old boards note from the header if it exists to prevent duplication on reload
+        const oldBoardsNote = document.querySelector('header .boards-note');
+        if (oldBoardsNote) {
+            oldBoardsNote.remove();
+        }
         try {
             let folderId = folderIdFromPrompt;
             if (!folderId) {
@@ -1273,7 +1290,8 @@ async function startApp() {
                                     if (parentNote && parentNote.dataset.extraInfo) {
                                         try {
                                             const extraInfoData = JSON.parse(parentNote.dataset.extraInfo);
-                                            showModal(JSON.stringify(extraInfoData, null, 2));
+                                            // Pass the note's color to the modal
+                                            showModal({ raw: JSON.stringify(extraInfoData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
                                         } catch (e) {
                                             console.error('Error parsing data-extra-info:', e);
                                             showToast('Error displaying extra info.');
@@ -1293,9 +1311,10 @@ async function startApp() {
                             dateDisplay.appendChild(dateText);
                             footerLeft.appendChild(dateDisplay);
                             dateDisplay.addEventListener('click', () => {
+                                const parentNote = dateDisplay.closest('.note');
                                 try {
                                     const content = JSON.parse(res.body);
-                                    showModal(JSON.stringify(content, null, 2));
+                                    showModal({ raw: JSON.stringify(content, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
                                 } catch(e) {
                                     showModal(res.body);
                                 }
@@ -1318,16 +1337,18 @@ async function startApp() {
                     viewButton.title = _('viewFullContent');
                     viewButton.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        showModal({ raw: fileContent, format: textSpan });
+                        const noteEl = e.currentTarget.closest('.note');
+                        showModal({ raw: fileContent, format: textSpan, color: window.getComputedStyle(noteEl).backgroundColor });
                     });
                     footerRight.appendChild(viewButton);
                     footerEl.appendChild(footerRight);
                 }
                 note.addEventListener('click', (e) => {
+                    const noteEl = e.currentTarget;
                     // Check if the click target is not an interactive element within the note's footer.
                     // This prevents the modal from opening if a child element with its own click handler was clicked.
                     if (!e.target.closest('.note-footer')) {
-                        showModal({ raw: fileContent, format: textSpan });
+                        showModal({ raw: fileContent, format: textSpan, color: window.getComputedStyle(noteEl).backgroundColor });
                     }
                 });
                 note.appendChild(titleEl);
@@ -1383,10 +1404,11 @@ async function startApp() {
         const calendarHeader = document.createElement('div');
         calendarHeader.className = 'calendar-header';
         calendarHeader.innerHTML = `
-            <button id="prev-month-btn">&lt;</button>
+            <button class="close-calendar-btn">&times;</button>
+            <button id="prev-month-btn">&laquo;</button>
             <h2>${monthName}</h2>
-            <button id="next-month-btn">&gt;</button>
-            <button id="close-calendar-btn">&times;</button>
+            <button id="next-month-btn">&raquo;</button>
+            <button class="close-calendar-btn">&times;</button>
         `;
         calendarContainer.appendChild(calendarHeader);
 
@@ -1469,7 +1491,7 @@ async function startApp() {
                         }
                         miniNote.addEventListener('click', (e) => {
                             e.stopPropagation();
-                            showModal({ raw: noteData.content.notetxt, format: noteData.content.text_span });
+                            showModal({ raw: noteData.content.notetxt, format: noteData.content.text_span, color: miniNote.style.backgroundColor });
                         });
                         notesForDayContainer.appendChild(miniNote);
                     }
@@ -1492,12 +1514,14 @@ async function startApp() {
             renderCalendarView();
         });
 
-        document.getElementById('close-calendar-btn').addEventListener('click', () => {
-            calendarContainer.style.display = 'none';
-            document.querySelector('header').style.display = 'flex';
-            notesContainer.style.display = 'flex';
-            filterNotesByBoard('all'); // Go back to all notes view
-            window.dispatchEvent(new Event('scroll')); // Trigger scroll to show/hide scrollTopBtn
+        document.querySelectorAll('.close-calendar-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                calendarContainer.style.display = 'none';
+                document.querySelector('header').style.display = 'flex';
+                notesContainer.style.display = 'flex';
+                filterNotesByBoard('all'); // Go back to all notes view
+                window.dispatchEvent(new Event('scroll')); // Trigger scroll to show/hide scrollTopBtn
+            });
         });
     }
 
