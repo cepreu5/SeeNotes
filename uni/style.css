@@ -44,6 +44,7 @@ header h1 {
     display: flex;
     justify-content: center;
     align-items: center;
+    position: relative; /* Needed for absolute positioning of the icon */
 }
 
 #search-box {
@@ -55,7 +56,31 @@ header h1 {
     font-size: 1em;
     background-color: #d6d6d6;
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
+    padding-left: 12px; /* Default padding */
+    transition: padding-left 0.2s ease-in-out; /* Smooth transition */
+}
 
+/* New class for when the icon is shown */
+#search-box.with-board-icon {
+    padding-left: 40px; /* Increased padding to make space for the icon */
+}
+
+/* New style for the icon itself */
+#search-board-icon {
+    position: absolute;
+    /* Position inside the search box. Calculation: 50% of container - half of max-width + padding */
+    left: calc(50% - 200px + 15px); 
+    top: 50%;
+    transform: translateY(-50%);
+    display: none; /* Hidden by default */
+    pointer-events: none; /* Icon should not be clickable */
+    z-index: 1; /* Ensure it's above the input's background */
+}
+
+/* Set the color of the SVG icon inside the search bar */
+#search-board-icon svg {
+    width: 24px;
+    height: 24px;
 }
 
 /* Change cursor to pointer on the search input's clear button (X) */
@@ -135,6 +160,8 @@ main {
     border-bottom: 1px solid #ccc;
     padding: 10px;
     background-image: url('Frame.jpg');
+    -webkit-user-select: none; /* Safari */
+    -moz-user-select: none;    /* Firefox */
     user-select: none; /* Prevent text selection on the board panel */
     box-sizing: border-box; /* Ensure padding is included in width */
 }
@@ -806,6 +833,7 @@ pre, code {
     border-radius: 4px;
     background-color: #eef5fb;
     -moz-appearance: textfield; /* Firefox */
+    appearance: none; /* Standard property to remove default appearance */
 }
 
 .zoom-input-number::-webkit-outer-spin-button,
@@ -991,6 +1019,7 @@ pre, code {
     box-sizing: border-box;
     display: -webkit-box;
     -webkit-line-clamp: 5; /* Limit text to 5 lines */
+    line-clamp: 5;
     -webkit-box-orient: vertical;
     white-space: pre-wrap; /* Respect newlines */
     word-break: break-word;

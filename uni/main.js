@@ -130,16 +130,18 @@ async function startApp() {
             errorProcessingFiles: 'An error occurred while processing files.',
             errorInvalidResponse: 'Failed to load files. Make sure the folder exists and you have access.',
             errorRequestFailed: 'Request to Google Drive failed. See console for details.',
-            errorFolderIdInvalid: 'Folder ID is invalid or empty.',
+            // errorFolderIdInvalid: 'Folder ID is invalid or empty.',
             errorFolderIdMissing: 'Folder ID not provided. File loading stopped.',
             errorTokenMissing: 'Access token not available. Please log in again.',
             errorSessionExpired: 'Your session has expired. Please log in again.',
             errorCopyFailed: 'Failed to copy content.',
             errorNoteParse: "Error parsing JSON content.",
             errorNoteFieldMissing: "Error: 'notetxt' field not found.",
+            errorInvalidFolderIdSession: 'Invalid Folder ID. Please sign out and sign in again.',
+            errorFolderNotFound: "The main folder multinotes_data was not found. Please check Google Drive.",
             warningInvalidBoard: 'Warning: One or more board files are invalid and have been skipped.',
-            promptFolderId: 'Please enter the Google Drive Folder ID:',
-            folderIdInputPlaceholder: 'Google Drive Folder ID',
+            // promptFolderId: 'Please enter the Google Drive Folder ID:',
+            // folderIdInputPlaceholder: 'Google Drive Folder ID',
             zoomLabel: 'Zoom:',
             calendar: 'Calendar',
             settingsTitle: 'Settings',
@@ -163,16 +165,18 @@ async function startApp() {
             errorProcessingFiles: 'Възникна грешка при обработката на файловете.',
             errorInvalidResponse: 'Неуспешно зареждане на файловете. Уверете се, че папката съществува и имате достъп.',
             errorRequestFailed: 'Грешка при заявката към Google Drive. Виж конзолата за подробности.',
-            errorFolderIdInvalid: 'Folder ID е невалиден или празен.',
+            // errorFolderIdInvalid: 'Folder ID е невалиден или празен.',
             errorFolderIdMissing: 'Не е въведен ID. Зареждането на файлове е спряно.',
             errorTokenMissing: 'Няма достъпен токен. Моля, влезте отново.',
             errorSessionExpired: 'Вашата сесия е изтекла. Моля, влезте отново.',
             errorCopyFailed: 'Неуспешно копиране на съдържанието.',
             errorNoteParse: "Грешка при парсване на JSON съдържание.",
+            errorFolderNotFound: "Основната папка multinotes_data не е намерена. Моля, проверете в Google Drive.",
+            errorInvalidFolderIdSession: 'Невалиден Folder ID. Моля, излезте и влезте отново.',
             errorNoteFieldMissing: "Грешка: липсва поле \'notetxt\'.",
             warningInvalidBoard: 'Внимание: Един или повече файлове за дефиниция на бордове са невалидни и бяха пропуснати.',
-            promptFolderId: 'Моля, въведете ID на папката в Google Drive:',
-            folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
+            // promptFolderId: 'Моля, въведете ID на папката в Google Drive:',
+            // folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
             // folderIdDeleted: 'Folder ID е изтрит.',
             zoomLabel: 'Мащаб:',
             calendar: 'Календар',
@@ -224,31 +228,39 @@ async function startApp() {
     let folderIdInput;
     let submitFolderIdBtn;
 
-    function showFolderIdPrompt() {
+    function showMessagePopup(message, showInput = false) {
         folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
         folderIdInput = document.getElementById('folderIdInput');
         submitFolderIdBtn = document.getElementById('submitFolderIdBtn');
-        // Set translated text for popup elements
-        document.querySelector('#folderIdPromptPopup p').textContent = _('promptFolderId');
-        folderIdInput.placeholder = _('folderIdInputPlaceholder');
-        submitFolderIdBtn.textContent = _('submitButton');
+
+        document.querySelector('#folderIdPromptPopup p').textContent = message;
+
+        if (showInput) {
+            folderIdInput.style.display = 'block';
+            submitFolderIdBtn.textContent = _('submitButton');
+            folderIdInput.value = '';
+            folderIdInput.focus();
+        } else {
+            folderIdInput.style.display = 'none';
+            submitFolderIdBtn.textContent = 'OK';
+        }
+
         folderIdPromptPopup.classList.add('show');
-        folderIdInput.value = ''; // Pre-fill if exists
-        folderIdInput.focus(); // Focus on the input field
     }
 
     function hideFolderIdPrompt() {
-        folderIdPromptPopup.classList.remove('show');
+        if (folderIdPromptPopup) {
+            folderIdPromptPopup.classList.remove('show');
+        }
     }
 
     function handleSubmitFolderId() {
-        const newFolderId = folderIdInput.value.trim();
-        if (newFolderId) {
+        // If input is not visible, just close the popup
+        if (folderIdInput.style.display === 'none') {
             hideFolderIdPrompt();
-            listFiles(newFolderId); // Re-run listFiles to load notes with the new folder ID
-        } else {
-            showToast(_('errorFolderIdInvalid')); // Use toast for invalid input
+            return;
         }
+        folderIdPromptPopup.classList.remove('show');
     }
 
     // --- Constants ---
@@ -256,7 +268,7 @@ async function startApp() {
     const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M3 3l18 18"></path></svg>`;
     const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
     const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
-    const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" /></svg>`;
+    const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" /></svg>`;
     const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
     const settingsIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /><circle cx="12" cy="12" r="3" /></svg>`;
     const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
@@ -341,6 +353,14 @@ async function startApp() {
         contentModal.addEventListener('click', (e) => {
             e.stopPropagation();
         });
+
+        // Create and append the search board icon
+        const searchContainer = document.getElementById('search-container');
+        const searchIcon = document.createElement('div');
+        searchIcon.id = 'search-board-icon';
+        searchIcon.innerHTML = boardIconSvg;
+        searchContainer.appendChild(searchIcon);
+
         setLanguage(currentLang);
     }
 
@@ -390,6 +410,9 @@ async function startApp() {
     }
 
     function filterNotesByBoard(boardId) {
+        const searchIcon = document.getElementById('search-board-icon');
+        const searchInput = document.getElementById('search-box');
+
         if (boardId === 'calendar') {
             renderCalendarView();
             return;
@@ -404,6 +427,14 @@ async function startApp() {
             }
         });
 
+        // Show/hide board icon in search bar
+        if (boardId !== 'all' && boardId !== 'calendar' && boardId !== 'reminder') {
+            searchIcon.style.display = 'block';
+            searchInput.classList.add('with-board-icon');
+        } else {
+            searchIcon.style.display = 'none';
+            searchInput.classList.remove('with-board-icon');
+        }
         if (boardId === 'all') {
             // For the 'all' view, clear the inline style to let the default CSS background apply.
             // This prevents flickering on initial load.
@@ -503,8 +534,8 @@ async function startApp() {
         
     async function fetchFiles(filename, folderId, onProgress) {
         if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
-            showFolderIdPrompt();
-            throw new Error("Folder ID not provided.");
+            showMessagePopup(_('errorInvalidFolderIdSession'));
+            throw new Error("Invalid Folder ID provided to fetchFiles.");
         }
         const allFiles = [];
         let pageToken = null;
@@ -611,7 +642,7 @@ async function startApp() {
         boardsData = [];
         allNotesData = [];
         let mediaData = [];
-        let boardsNoteElement = null; // Will hold the boards note element until the end
+        let boardsNoteElement = null; // Will hold the boards note element until the end 
         notesContainer.innerHTML = '';
         loaderContainer.style.display = 'block';
         currentBoardFilter = 'all';
@@ -628,8 +659,8 @@ async function startApp() {
                 folderId = await getFolderID();
             }
             if (!folderId) {
-                showFolderIdPrompt();
-                return;
+                showMessagePopup(_('errorFolderNotFound'));
+                throw new Error("Main folder ID not found.");
             }
             loaderText.textContent = _('loadingFile') + ' board.txt';
             const boardResults = await fetchFiles('board.txt', folderId);
@@ -897,21 +928,42 @@ async function startApp() {
                 notesCount++;
                 
                 const isHiddenNote = extraData.pass === true;
+                const isType1Note = extraData.type === 1;
                 let noteTitle = '';
-                const lines = fileContent.split('\n');
-                for (const line of lines) {
-                    const trimmedLine = line.trim();
-                    if (trimmedLine) {
-                        noteTitle = trimmedLine.substring(0, 50);
-                        break;
+                let displayContent = fileContent;
+
+                if (isHiddenNote) {
+                    const pipeIndex = fileContent.indexOf('|');
+                    const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
+                    noteTitle = previewContent.split('\n')[0].trim();
+
+                } else if (isType1Note) {
+                    const pipeIndex = fileContent.indexOf('|');
+                    if (pipeIndex !== -1) {
+                        noteTitle = fileContent.substring(0, pipeIndex).trim();
+                        displayContent = fileContent.substring(pipeIndex + 1).trim();
+                    } else {
+                        // Fallback for type 1 notes without a pipe: use first line as title
+                        noteTitle = fileContent.split('\n')[0].substring(0, 50);
+                    }
+                } else if (!isHiddenNote) {
+                    // Default title logic for regular notes
+                    const lines = fileContent.split('\n');
+                    for (const line of lines) {
+                        const trimmedLine = line.trim();
+                        if (trimmedLine) {
+                            noteTitle = trimmedLine.substring(0, 50);
+                            break;
+                        }
                     }
                 }
-                if (!noteTitle) { noteTitle = file.name; }
+
+                if (!noteTitle && !isHiddenNote) { noteTitle = file.name; }
+
                 const titleEl = document.createElement('h3');
-                if (!isHiddenNote) {
-                    titleEl.textContent = noteTitle;
-                    titleEl.title = noteTitle;
-                }
+                titleEl.textContent = noteTitle;
+                titleEl.title = noteTitle;
+
                 const contentEl = document.createElement('div');
                 contentEl.className = 'note-content';
 
@@ -921,9 +973,9 @@ async function startApp() {
                     contentEl.innerHTML = renderNoteContent(previewContent);
                 } else {
                     if (textSpan && textSpan.trim() !== '') {
-                        contentEl.innerHTML = formatText(fileContent, textSpan);
+                        contentEl.innerHTML = formatText(displayContent, textSpan);
                     } else {
-                        contentEl.innerHTML = renderNoteContent(fileContent);
+                        contentEl.innerHTML = renderNoteContent(displayContent);
                     }
                 }
                 if (!isHiddenNote) { // Attachments should only show for non-hidden notes in the main view
