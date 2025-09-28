@@ -677,6 +677,10 @@ async function startApp() {
                 zoomModalBody.innerHTML = ''; 
                 const zoomControlWrapper = document.createElement('div');
                 zoomControlWrapper.className = 'zoom-control-wrapper';
+                const zoomLabel = document.createElement('label');
+                zoomLabel.textContent = _('zoomLabel');
+                zoomLabel.htmlFor = 'scaleSlider';
+                zoomLabel.style.marginRight = '10px';
                 const sliderContainer = document.createElement('div');
                 sliderContainer.className = 'slider-container';
                 sliderContainer.innerHTML = `<input type="range" id="scaleSlider" min="25" max="175" value="100"><input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number"><span>%</span>`;
@@ -687,6 +691,7 @@ async function startApp() {
                 applyBtn.addEventListener('click', () => {
                     document.getElementById('settings-modal').classList.remove('visible');
                 });
+                zoomControlWrapper.appendChild(zoomLabel);
                 zoomControlWrapper.appendChild(sliderContainer);
                 zoomControlWrapper.appendChild(applyBtn);
                 zoomModalBody.appendChild(zoomControlWrapper);
