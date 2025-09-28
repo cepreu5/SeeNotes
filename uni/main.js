@@ -1355,6 +1355,11 @@ async function startApp() {
             calendarGrid.appendChild(dayEl);
         });
 
+        // Get today's date components for comparison
+        const today = new Date();
+        const todayDate = today.getDate();
+        const todayMonth = today.getMonth();
+        const todayYear = today.getFullYear();
         const firstDayOfMonth = new Date(year, month, 1);
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         let startingDay = firstDayOfMonth.getDay(); // 0=Sun, 1=Mon...
@@ -1374,6 +1379,10 @@ async function startApp() {
             const dateNum = document.createElement('div');
             dateNum.className = 'calendar-date-number';
             dateNum.textContent = day;
+            // Check if the cell being rendered is today's date
+            if (day === todayDate && month === todayMonth && year === todayYear) {
+                dateNum.classList.add('today-date');
+            }
             cell.appendChild(dateNum);
 
             const notesForDayContainer = document.createElement('div');

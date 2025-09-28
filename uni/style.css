@@ -911,7 +911,7 @@ pre, code {
     padding: 10px 0;
     background-color: #e9e0c9;
     border-radius: 4px;
-    margin-right: 20px;
+    margin-right: 15px;
 }
 
 .weekend-day {
@@ -931,6 +931,7 @@ pre, code {
     position: relative;
     padding-right: 20px;
     padding-bottom: 10px;
+    padding-left: 5px; /* Use padding for inner spacing */
     display: flex;
     flex-direction: column;
     overflow: hidden; /* Prevent content from expanding the cell */
@@ -943,8 +944,12 @@ pre, code {
     font-weight: bold;
     color: #555;
     margin-top: 5px;
-    margin-left: 5px;
-    background-color: rgb(196, 196, 196);
+    /* margin-left: 5px; Re-added background for all dates */
+    background-color: rgb(194, 194, 194); 
+}
+
+.today-date {
+    background-color: yellow;
 }
 
 .calendar-notes-container {
