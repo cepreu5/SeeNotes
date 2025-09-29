@@ -550,7 +550,7 @@ pre, code {
 
 /* Special style for the 'All' button when it's selected */
 .all-boards-filter-btn.selected-board {
-    background-color: #bdd9ef; /* Default non-selected color */
+    background-color: #ffc107; /* Keep it orange even when selected */
     color: #000; /* Default non-selected text color */
     font-weight: bold; /* Keep it bold to indicate selection */
 }
@@ -560,6 +560,7 @@ pre, code {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background-color: #ffc107; /* Orange color */
 }
 
 /* Style for the icon inside the button */

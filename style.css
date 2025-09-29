@@ -44,6 +44,7 @@ header h1 {
     display: flex;
     justify-content: center;
     align-items: center;
+    position: relative; /* Needed for absolute positioning of the icon */
 }
 
 #search-box {
@@ -55,7 +56,31 @@ header h1 {
     font-size: 1em;
     background-color: #d6d6d6;
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
+    padding-left: 12px; /* Default padding */
+    transition: padding-left 0.2s ease-in-out; /* Smooth transition */
+}
 
+/* New class for when the icon is shown */
+#search-box.with-board-icon {
+    padding-left: 40px; /* Increased padding to make space for the icon */
+}
+
+/* New style for the icon itself */
+#search-board-icon {
+    position: absolute;
+    /* Position inside the search box. Calculation: 50% of container - half of max-width + padding */
+    left: calc(50% - 200px + 15px); 
+    top: 50%;
+    transform: translateY(-50%);
+    display: none; /* Hidden by default */
+    pointer-events: none; /* Icon should not be clickable */
+    z-index: 1; /* Ensure it's above the input's background */
+}
+
+/* Set the color of the SVG icon inside the search bar */
+#search-board-icon svg {
+    width: 24px;
+    height: 24px;
 }
 
 /* Change cursor to pointer on the search input's clear button (X) */
@@ -135,6 +160,8 @@ main {
     border-bottom: 1px solid #ccc;
     padding: 10px;
     background-image: url('Frame.jpg');
+    -webkit-user-select: none; /* Safari */
+    -moz-user-select: none;    /* Firefox */
     user-select: none; /* Prevent text selection on the board panel */
     box-sizing: border-box; /* Ensure padding is included in width */
 }
@@ -258,7 +285,6 @@ pre, code {
 }
 
 .modal-content-box {
-    background: #eef603;
     padding: 20px;
     border-radius: 8px;
     width: 95%;
@@ -267,6 +293,7 @@ pre, code {
     position: relative;
     display: flex;
     flex-direction: column;
+    transition: background-color 0.3s ease; /* Smooth background color transition */
 }
 
 #modal-body {
@@ -470,6 +497,40 @@ pre, code {
     cursor: pointer; /* Add pointer cursor to indicate clickability */
     box-sizing: border-box; /* Ensure padding is included in the width set by JS */
 }
+.modal-body .board-filter-link {
+    display: inline-block; /* Allow width to be based on content */
+    width: auto;
+    text-align: left;
+}
+
+/* Container for the Ctrl+Click modal with all boards */
+.all-boards-modal-container {
+    display: flex;
+    flex-direction: row; /* Arrange items in rows */
+    flex-wrap: wrap; /* Allow wrapping to the next column */
+    gap: 10px; /* Space between buttons */
+}
+
+/* Remove the large top padding from the modal body when showing the board list */
+.modal-content-box:has(.all-boards-modal-container) #modal-body {
+    padding-top: 25px;
+    padding-right: 0px;
+}
+
+/* Apply background to the parent modal box when it contains the board list */
+.modal-content-box:has(.all-boards-modal-container) {
+    background-image: url('Frame.jpg');
+    width: 95%;
+    max-width: 95%;
+    margin-left: 5px;
+}
+
+/* Make the close button visible on the textured background */
+.modal-content-box:has(.all-boards-modal-container) .modal-close {
+    background-color: #d6d6d6; /* Same color as header buttons for consistency */
+    opacity: 0.8;
+    right: 10px; /* Fine-tuned position closer to the edge */
+}
 
 .board-filter-link:hover {
     background-color: #e9ecef;
@@ -485,6 +546,30 @@ pre, code {
 .selected-board:hover {
     background-color: #0056b3;
     color: #fff;
+}
+
+/* Special style for the 'All' button when it's selected */
+.all-boards-filter-btn.selected-board {
+    background-color: #ffc107; /* Keep it orange even when selected */
+    color: #000; /* Default non-selected text color */
+    font-weight: bold; /* Keep it bold to indicate selection */
+}
+
+/* Style for the 'All' button to accommodate the icon */
+.all-boards-filter-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #ffc107; /* Orange color */
+}
+
+/* Style for the icon inside the button */
+.board-icon-in-button svg {
+    width: 18px;
+    height: 18px;
+    stroke: #333; /* A slightly softer black */
+    vertical-align: middle;
+    margin-left: 8px;
 }
 
 .calendar-filter-btn {
@@ -806,6 +891,7 @@ pre, code {
     border-radius: 4px;
     background-color: #eef5fb;
     -moz-appearance: textfield; /* Firefox */
+    appearance: none; /* Standard property to remove default appearance */
 }
 
 .zoom-input-number::-webkit-outer-spin-button,
@@ -818,8 +904,8 @@ pre, code {
     text-align: center;
     font-size: 1em;
     color: #555;
-    margin-top: 20px;
-    margin-bottom: 0;
+    margin-top: 0px;
+    margin-bottom: 20px;
     padding-bottom: 0px;
     align-self: center;
 }
@@ -844,6 +930,34 @@ pre, code {
     .top-right    { top: 5px; right: 5px; }
     .bottom-left  { bottom: 5px; left: 5px; }
     .bottom-right { bottom: 5px; right: 5px; }
+
+.settings-close-btn-wrapper {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 25px; /* Increased margin for better separation */
+    width: 100%; /* Ensure the wrapper takes full width to allow alignment */
+}
+.start-board-select {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #1f3b52;
+    background-color: #eef5fb;
+    font-size: 1em;
+    flex-grow: 1;
+}
+
+.start-board-select:focus {
+    outline: 2px solid #4285F4;
+}
+
+/* New style for the close button to differentiate it */
+.settings-close-btn {
+    background-color: #6c757d; /* A neutral grey color */
+}
+
+.settings-close-btn:hover {
+    background-color: #5a6268;
+}
 
 /* --- Calendar View Styles --- */
 #calendar-container {
@@ -991,6 +1105,7 @@ pre, code {
     box-sizing: border-box;
     display: -webkit-box;
     -webkit-line-clamp: 5; /* Limit text to 5 lines */
+    line-clamp: 5;
     -webkit-box-orient: vertical;
     white-space: pre-wrap; /* Respect newlines */
     word-break: break-word;
