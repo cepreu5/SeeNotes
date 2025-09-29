@@ -147,7 +147,11 @@ async function startApp() {
             settingsTitle: 'Settings',
             reminder: 'Reminders',
             // folderIdDeleted: 'Folder ID has been deleted.',
-            submitButton: 'Confirm'
+            startBoardLabel: 'Start Board:',
+            settingSaved: 'Setting saved!',
+            submitButton: 'Confirm',
+            allBoardsCtrlClickTooltip: 'Ctrl-click for all',
+            closeButton: 'Close'
         },
         bg: {
             appTitle: 'CX MultiNotes Viewer',
@@ -181,9 +185,12 @@ async function startApp() {
             zoomLabel: 'Мащаб:',
             calendar: 'Календар',
             settingsTitle: 'Настройки',
-            settingsTitle: 'Настройки',
             reminder: 'Напомняния',
-            submitButton: 'Потвърди'
+            submitButton: 'Потвърди',
+            startBoardLabel: 'Стартов борд:',
+            settingSaved: 'Настройката е запазена!',
+            closeButton: 'Затвори',
+            allBoardsCtrlClickTooltip: 'Ctrl-клик за всички'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -268,7 +275,7 @@ async function startApp() {
     const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M3 3l18 18"></path></svg>`;
     const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
     const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
-    const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" /></svg>`;
+    const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
     const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
     const settingsIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /><circle cx="12" cy="12" r="3" /></svg>`;
     const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
@@ -284,6 +291,7 @@ async function startApp() {
     // const logoutSvg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="mdi-application-export" width="24" height="24" viewBox="0 0 24 24"><path d="M8,12H17.76L15.26,9.5L16.67,8.08L21.59,13L16.67,17.92L15.26,16.5L17.76,14H8V12M19,3C20.11,3 21,3.9 21,5V9.67L19,7.67V7H5V19H19V18.33L21,16.33V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V5A2,2 0 0,1 5,3H19Z" /></svg>`;
 
     let authToken = null, currentModalContent = '', boardsData = [], currentBoardFilter = 'all', currentBackground = 'Board.png';
+    let maxWidthForButtons = 0; // Store max width for modal use
     let currentCalendarDate = new Date();
     let folderIds = {};
     let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText, zoomInput;
@@ -409,6 +417,47 @@ async function startApp() {
         copyBtn.innerHTML = copyIconSvg;
     }
 
+    function showAllBoardsModal() {
+        const modalContent = document.createElement('div');
+        // Use CSS class for styling
+        modalContent.className = 'all-boards-modal-container';
+
+        const createLink = (text, boardId, classes = []) => {
+            const link = document.createElement('a');
+            link.textContent = text;
+            link.href = '#';
+            // Apply the same width as the header buttons
+            link.style.width = `${maxWidthForButtons}px`;
+            link.classList.add('board-filter-link', ...classes);
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.getElementById('content-modal').classList.remove('visible');
+                filterNotesByBoard(boardId);
+            });
+            return link;
+        };
+
+        modalContent.appendChild(createLink(_('allBoards'), 'all', ['all-boards-filter-btn']));
+        modalContent.appendChild(createLink(_('calendar'), 'calendar', ['calendar-filter-btn']));
+        modalContent.appendChild(createLink(_('reminder'), 'reminder', ['reminder-filter-btn']));
+
+        boardsData.forEach(board => {
+            if (board.title && board.gdid) {
+                const link = createLink(board.title, board.gdid);
+                if (board.status === 1) link.style.color = 'red';
+                modalContent.appendChild(link);
+            }
+        });
+
+        modalBody.innerHTML = '';
+        modalBody.appendChild(modalContent);
+        contentModal.classList.add('visible');
+        // Hide the copy button as it's not relevant for this view
+        copyBtn.style.display = 'none';
+        // Ensure the close button is visible
+        contentModal.querySelector('.modal-close').style.display = 'flex';
+    }
+
     function formatDate(dateString) {
         if (!dateString) return '';
         try {
@@ -419,6 +468,13 @@ async function startApp() {
             return `${day}.${month}.${year}`;
         } catch (e) { return dateString; }
     }
+
+    // Add an event listener to the modal's close button to reset button visibility
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', () => {
+            copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
+        });
+    });
 
     function filterNotesByBoard(boardId) {
         const searchIcon = document.getElementById('search-board-icon');
@@ -656,6 +712,7 @@ async function startApp() {
         let boardsNoteElement = null; // Will hold the boards note element until the end 
         notesContainer.innerHTML = '';
         loaderContainer.style.display = 'block';
+        currentBoardFilter = localStorage.getItem('startBoard') || 'all';
         currentBoardFilter = 'all';
         const popup = document.getElementById('board-filter-popup');
         if (popup) {
@@ -735,6 +792,57 @@ async function startApp() {
                 zoomControlWrapper.appendChild(sliderContainer);
                 zoomControlWrapper.appendChild(applyBtn);
                 zoomModalBody.appendChild(zoomControlWrapper);
+
+                // --- Start Board Setting ---
+                const startBoardWrapper = document.createElement('div');
+                startBoardWrapper.className = 'zoom-control-wrapper';
+                startBoardWrapper.style.marginTop = '20px';
+
+                const startBoardLabel = document.createElement('label');
+                startBoardLabel.textContent = _('startBoardLabel');
+                startBoardLabel.style.marginRight = '10px';
+
+                const startBoardSelect = document.createElement('select');
+                startBoardSelect.id = 'start-board-select';
+                startBoardSelect.className = 'start-board-select';
+
+                // Add default options
+                startBoardSelect.innerHTML = `
+                    <option value="all">${_('allBoards')}</option>
+                    <option value="calendar">${_('calendar')}</option>
+                    <option value="reminder">${_('reminder')}</option>
+                `;
+
+                // Add boards from boardsData
+                boardsData.forEach(board => {
+                    if (board.gdid && board.title) {
+                        const option = new Option(board.title, board.gdid);
+                        startBoardSelect.appendChild(option);
+                    }
+                });
+
+                startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
+                startBoardSelect.addEventListener('change', () => {
+                    localStorage.setItem('startBoard', startBoardSelect.value);
+                    showToast(_('settingSaved'), 2000);
+                });
+
+                startBoardWrapper.appendChild(startBoardLabel);
+                startBoardWrapper.appendChild(startBoardSelect);
+                zoomModalBody.appendChild(startBoardWrapper);
+
+                // --- Close Button ---
+                const closeBtnWrapper = document.createElement('div');
+                closeBtnWrapper.className = 'settings-close-btn-wrapper';
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'zoom-btn settings-close-btn'; // Add a specific class for styling
+                closeBtn.textContent = _('closeButton');
+                closeBtn.addEventListener('click', () => {
+                    document.getElementById('settings-modal').classList.remove('visible');
+                });
+                closeBtnWrapper.appendChild(closeBtn);
+                zoomModalBody.appendChild(closeBtnWrapper);
+
                 const slider = sliderContainer.querySelector('#scaleSlider');
                 const scaleInput = sliderContainer.querySelector('#scaleInput');
                 const updateZoom = (value) => {
@@ -799,26 +907,41 @@ async function startApp() {
                 // 1. Create all button elements and store them in an array
                 const allButtonLinks = [];
 
+                const allBoardsLink = document.createElement('span');
+                allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
+                allBoardsLink.dataset.boardid = 'all';
+                allBoardsLink.title = _('allBoardsCtrlClickTooltip'); // Set the title directly
+
+                const allBoardsText = document.createElement('span');
+                allBoardsText.textContent = _('allBoards');
+                const allBoardsIcon = document.createElement('span');
+                allBoardsIcon.innerHTML = boardIconSvg;
+                allBoardsIcon.classList.add('board-icon-in-button');
+                allBoardsLink.appendChild(allBoardsText);
+                allBoardsLink.appendChild(allBoardsIcon);
+
+                allBoardsLink.addEventListener('click', (e) => { 
+                    e.preventDefault(); 
+                    if (e.ctrlKey) {
+                        showAllBoardsModal();
+                    } else {
+                        filterNotesByBoard('all'); 
+                    }
+                });
+                allButtonLinks.push(allBoardsLink);
+
                 const calendarLink = document.createElement('span');
                 calendarLink.textContent = _('calendar');
                 calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
                 calendarLink.dataset.boardid = 'calendar';
                 calendarLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('calendar'); });
                 allButtonLinks.push(calendarLink);
-
                 const reminderLink = document.createElement('span');
                 reminderLink.textContent = _('reminder');
                 reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
                 reminderLink.dataset.boardid = 'reminder';
                 reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder'); });
                 allButtonLinks.push(reminderLink);
-
-                const allBoardsLink = document.createElement('span');
-                allBoardsLink.textContent = _('allBoards');
-                allBoardsLink.classList.add('board-filter-link');
-                allBoardsLink.dataset.boardid = 'all';
-                allBoardsLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('all'); });
-                allButtonLinks.push(allBoardsLink);
 
                 boardsData.forEach(board => {
                     if (!board.title || !board.gdid) return;
@@ -836,7 +959,7 @@ async function startApp() {
                 });
 
                 // 2. Measure max width using a temporary container
-                let maxWidth = 0;
+                maxWidthForButtons = 0;
                 const tempContainer = document.createElement('div');
                 tempContainer.style.position = 'absolute';
                 tempContainer.style.visibility = 'hidden';
@@ -844,15 +967,15 @@ async function startApp() {
 
                 allButtonLinks.forEach(link => {
                     tempContainer.appendChild(link);
-                    maxWidth = Math.max(maxWidth, link.scrollWidth);
+                    maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
                 });
 
                 document.body.removeChild(tempContainer);
-                maxWidth += 10; // Reverted to smaller padding
+                maxWidthForButtons += 10; // Reverted to smaller padding
 
                 // 3. Apply width and append to the actual container
                 allButtonLinks.forEach(link => {
-                    link.style.width = `${maxWidth}px`;
+                    link.style.width = `${maxWidthForButtons}px`;
                     contentEl.appendChild(link);
                 });
 
@@ -866,8 +989,8 @@ async function startApp() {
                 rightArrow.className = 'scroll-arrow right-arrow';
                 rightArrow.innerHTML = `<svg width="24" height="24"><use href="#icon-arrow-right"></use></svg>`;
                 
-                leftArrow.onclick = () => { contentEl.scrollLeft -= (maxWidth + 5); };
-                rightArrow.onclick = () => { contentEl.scrollLeft += (maxWidth + 5); };
+                leftArrow.onclick = () => { contentEl.scrollLeft -= (maxWidthForButtons + 5); };
+                rightArrow.onclick = () => { contentEl.scrollLeft += (maxWidthForButtons + 5); };
 
                 scrollWrapper.appendChild(leftArrow);
                 scrollWrapper.appendChild(contentEl);
@@ -1363,7 +1486,7 @@ async function startApp() {
                 document.querySelector('header').appendChild(boardsNoteElement);
             }
 
-            // filterNotesByBoard('all');
+            filterNotesByBoard(localStorage.getItem('startBoard') || 'all');
 
             const counterEl = document.getElementById('note-counter');
             if (counterEl) {
