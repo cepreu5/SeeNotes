@@ -362,13 +362,6 @@ async function startApp() {
             e.stopPropagation();
         });
 
-        // Create and append the search board icon
-        const searchContainer = document.getElementById('search-container');
-        const searchIcon = document.createElement('div');
-        searchIcon.id = 'search-board-icon';
-        searchIcon.innerHTML = boardIconSvg;
-        searchContainer.appendChild(searchIcon);
-
         setLanguage(currentLang);
     }
 
@@ -417,7 +410,7 @@ async function startApp() {
         copyBtn.innerHTML = copyIconSvg;
     }
 
-    function showAllBoardsModal() {
+    function showAllBoardsModal(anchorElement) {
         const modalContent = document.createElement('div');
         // Use CSS class for styling
         modalContent.className = 'all-boards-modal-container';
@@ -451,11 +444,24 @@ async function startApp() {
 
         modalBody.innerHTML = '';
         modalBody.appendChild(modalContent);
-        contentModal.classList.add('visible');
+
+        const modalBox = contentModal.querySelector('.modal-content-box');
+
+        if (anchorElement) {
+            const rect = anchorElement.getBoundingClientRect();
+            contentModal.classList.add('popup-mode'); // Use a class to change positioning behavior
+            modalBox.style.top = `${rect.bottom + 5}px`; // Position below the button
+            modalBox.style.left = `${rect.left}px`;
+            modalBox.style.transform = 'none'; // Override centering transform
+        } else {
+            contentModal.classList.remove('popup-mode'); // Revert to default centered modal
+        }
+
         // Hide the copy button as it's not relevant for this view
         copyBtn.style.display = 'none';
         // Ensure the close button is visible
         contentModal.querySelector('.modal-close').style.display = 'flex';
+        contentModal.classList.add('visible');
     }
 
     function formatDate(dateString) {
@@ -473,12 +479,17 @@ async function startApp() {
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => {
             copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
+            contentModal.classList.remove('popup-mode'); // Reset popup mode on close
+            const modalBox = contentModal.querySelector('.modal-content-box');
+            modalBox.style.top = '';
+            modalBox.style.left = '';
+            modalBox.style.transform = '';
+
         });
     });
 
     function filterNotesByBoard(boardId) {
-        const searchIcon = document.getElementById('search-board-icon');
-        const searchInput = document.getElementById('search-box');
+        const searchInput = document.getElementById('search-box'); // The search input field
 
         if (boardId === 'calendar') {
             renderCalendarView();
@@ -494,13 +505,17 @@ async function startApp() {
             }
         });
 
-        // Show/hide board icon in search bar
-        if (boardId !== 'all' && boardId !== 'calendar' && boardId !== 'reminder') {
-            searchIcon.style.display = 'block';
-            searchInput.classList.add('with-board-icon');
+        // Update search box placeholder based on the selected board
+        if (boardId === 'reminder') {
+            searchInput.placeholder = `[${_('reminder')}]: ${_('searchPlaceholder')}`;
+        } else if (boardId !== 'all' && boardId !== 'calendar') {
+            const board = boardsData.find(b => b.gdid === boardId);
+            if (board) {
+                searchInput.placeholder = `[${board.title}]: ${_('searchPlaceholder')}`;
+            }
         } else {
-            searchIcon.style.display = 'none';
-            searchInput.classList.remove('with-board-icon');
+            // Reset to default placeholder for 'all' and 'calendar'
+            searchInput.placeholder = _('searchPlaceholder');
         }
         if (boardId === 'all') {
             // For the 'all' view, clear the inline style to let the default CSS background apply.
@@ -920,10 +935,36 @@ async function startApp() {
                 allBoardsLink.appendChild(allBoardsText);
                 allBoardsLink.appendChild(allBoardsIcon);
 
+                let longPressTimer;
+                let isLongPress = false;
+
+                const startPress = (e) => {
+                    e.preventDefault(); // Prevent context menu on mobile
+                    isLongPress = false;
+                    longPressTimer = setTimeout(() => {
+                        isLongPress = true;
+                        showAllBoardsModal(allBoardsLink);
+                    }, 500); // 500ms for a long press
+                };
+
+                const endPress = () => {
+                    clearTimeout(longPressTimer);
+                };
+
+                // Desktop and Mobile event listeners
+                allBoardsLink.addEventListener('mousedown', startPress);
+                allBoardsLink.addEventListener('mouseup', endPress);
+                allBoardsLink.addEventListener('mouseleave', endPress); // Cancel if mouse leaves
+                allBoardsLink.addEventListener('touchstart', startPress);
+                allBoardsLink.addEventListener('touchend', endPress);
+                allBoardsLink.addEventListener('touchmove', endPress); // Cancel on scroll
+
                 allBoardsLink.addEventListener('click', (e) => { 
                     e.preventDefault(); 
-                    if (e.ctrlKey) {
-                        showAllBoardsModal();
+                    if (isLongPress) return; // Don't trigger click after a long press
+
+                    if (e.ctrlKey) { // Keep Ctrl+Click for desktop
+                        showAllBoardsModal(allBoardsLink);
                     } else {
                         filterNotesByBoard('all'); 
                     }
@@ -1598,16 +1639,24 @@ async function startApp() {
                         const miniNote = document.createElement('div');
                         miniNote.className = 'calendar-mini-note';
 
-                        // Find the first non-empty line and use the rest of the text
-                        const lines = noteData.content.notetxt.split('\n');
-                        let firstNonEmptyLineIndex = -1;
-                        for (let i = 0; i < lines.length; i++) {
-                            if (lines[i].trim() !== '') {
-                                firstNonEmptyLineIndex = i;
-                                break;
+                        let contentToShow = '...';
+                        const noteContent = noteData.content.notetxt;
+                        const isHidden = noteData.content.pass === true;
+                        const isType1 = noteData.content.type === 1;
+
+                        if ((isHidden || isType1) && noteContent.includes('|')) {
+                            contentToShow = noteContent.split('|')[0].trim();
+                        } else {
+                            const lines = noteContent.split('\n');
+                            let firstNonEmptyLineIndex = -1;
+                            for (let i = 0; i < lines.length; i++) {
+                                if (lines[i].trim() !== '') {
+                                    firstNonEmptyLineIndex = i;
+                                    break;
+                                }
                             }
+                            contentToShow = firstNonEmptyLineIndex !== -1 ? lines.slice(firstNonEmptyLineIndex).join('\n') : '...';
                         }
-                        const contentToShow = firstNonEmptyLineIndex !== -1 ? lines.slice(firstNonEmptyLineIndex).join('\n') : '...';
                         miniNote.textContent = contentToShow;
                         if (noteData.content.color) {
                              miniNote.style.backgroundColor = `var(--note-bg-${noteData.content.color})`;
