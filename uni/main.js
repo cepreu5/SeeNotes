@@ -820,7 +820,10 @@ async function startApp() {
                 applyBtn.textContent = _('submitButton');
                 applyBtn.style.marginLeft = '10px';
                 applyBtn.addEventListener('click', () => {
-                    document.getElementById('settings-modal').classList.remove('visible');
+                    const zoomValue = scaleInput.value;
+                    updateZoom(zoomValue);
+                    localStorage.setItem('zoomLevel', zoomValue);
+                    showToast(_('settingSaved'), 2000);
                 });
                 zoomControlWrapper.appendChild(zoomLabel);
                 zoomControlWrapper.appendChild(sliderContainer);

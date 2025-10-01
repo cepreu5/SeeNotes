@@ -118,6 +118,7 @@ main {
     display: flex;
     flex-direction: column;
     background-color: var(--note-bg-0);
+    font-size: var(--note-font-size); /* Set base font size for the whole note */
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
     text-align: left;
     cursor: pointer; /* Added for pointer cursor on hover */
@@ -155,13 +156,13 @@ main {
     overflow-y: auto;
     overflow-x: hidden;
     word-wrap: break-word;    
-    font-size: var(--note-font-size); /* Use CSS variable */
+    /* Font size is now inherited from .note */
     white-space: pre-wrap;
 }
 
 
 pre, code {
-    font-size: 110%;
+    font-size: 100%; /* Match the surrounding text size */
 }
 
 .note-footer {
@@ -612,18 +613,27 @@ pre, code {
     opacity: 1;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
     header {
         flex-direction: column;
         align-items: center;
     }
-
-    /* Reorder elements for mobile view */
+    /* Order for tablets (769px - 900px) */
     header > div:first-child { order: 1; } /* Title */
-    #search-container { order: 3; }      /* Search Box */
-    #header-buttons { order: 2; }        /* Buttons */
+    #search-container { order: 2; }      /* Search Box */
+    #header-buttons { order: 3; }        /* Buttons */
+    .boards-note { order: 4; }           /* Board menu at the bottom */
+}
+
+@media (max-width: 768px) {
+    /* Reorder elements for mobile view (up to 768px) */
+    /* Title is already order 1 from the rule above */
+    #search-container { order: 3; }      /* Search Box moves down */
+    #header-buttons { order: 2; }        /* Buttons move up */
     .boards-note { order: 4; } 
-    
+    /* .boards-note is already order 4 from the rule above */
+}
+
     #search-container {
         padding: 1em 0 0.5em;
     }
@@ -634,7 +644,26 @@ pre, code {
         padding-top: 0;
         padding-bottom: 10px;
     }
-}
+
+    /* Responsive layout for settings modal on small screens */
+    @media (max-width: 500px) {
+        .zoom-control-wrapper {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 5px;
+        }
+        .zoom-control-wrapper {
+            margin-top: 15px !important; /* Reduce space between settings groups */
+        }
+        .zoom-control-wrapper label {
+            flex-basis: auto !important; /* Reset basis to prevent extra height */
+            text-align: left !important; /* Ensure labels are left-aligned */
+        }
+        #settings-modal .modal-content-box {
+            height: auto; /* Let content define height */
+            max-height: 90vh; /* Still prevent it from being too tall */
+        }
+    }
 
 /* Toast Notification */
 .toast-notification {
