@@ -1,4 +1,5 @@
 :root {
+    --note-font-size: 12px; /* Default font size for notes */
     --note-bg-0: #FBFF86;
     --note-bg-1: #FF829E;
     --note-bg-2: #68FF97;
@@ -153,8 +154,8 @@ main {
     flex-grow: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    word-wrap: break-word;
-    font-size: 0.9em;
+    word-wrap: break-word;    
+    font-size: var(--note-font-size); /* Use CSS variable */
     white-space: pre-wrap;
 }
 
@@ -617,6 +618,12 @@ pre, code {
         align-items: center;
     }
 
+    /* Reorder elements for mobile view */
+    header > div:first-child { order: 1; } /* Title */
+    #search-container { order: 3; }      /* Search Box */
+    #header-buttons { order: 2; }        /* Buttons */
+    .boards-note { order: 4; } 
+    
     #search-container {
         padding: 1em 0 0.5em;
     }
@@ -795,7 +802,7 @@ pre, code {
     border-radius: 10px;
     font-size: 0.9em;
     font-weight: bold;
-    margin-right: 15px; /* Add space to the right, before the buttons */
+    margin-right: 5px; /* Add space to the right, before the buttons */
     /* Removed absolute positioning */
 }
 
@@ -818,7 +825,7 @@ pre, code {
 .zoom-control-wrapper {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     padding-right: 20px;
 }
 
@@ -878,6 +885,18 @@ pre, code {
     -moz-appearance: textfield; /* Firefox */
     appearance: none; /* Standard property to remove default appearance */
 }
+
+.zoom-input-select {
+    width: 80px; /* Explicit width */
+    margin: 0 2px 0 10px; /* top, right, bottom, left */
+    text-align: center;
+    font-size: 1em;
+    border: 1px solid #1f3b52;
+    border-radius: 4px;
+    background-color: #eef5fb;
+    /* No appearance property needed for select, as it's not a number input */
+}
+
 
 .zoom-input-number::-webkit-outer-spin-button,
 .zoom-input-number::-webkit-inner-spin-button {

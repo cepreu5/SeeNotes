@@ -151,6 +151,8 @@ async function startApp() {
             settingSaved: 'Setting saved!',
             submitButton: 'Confirm',
             allBoardsCtrlClickTooltip: 'Ctrl-click for all',
+            noteFontSizeLabel: 'Note Font Size:',
+            modalFontSizeLabel: 'Modal Font Size:',
             closeButton: 'Close'
         },
         bg: {
@@ -190,7 +192,9 @@ async function startApp() {
             startBoardLabel: 'Стартов борд:',
             settingSaved: 'Настройката е запазена!',
             closeButton: 'Затвори',
-            allBoardsCtrlClickTooltip: 'Ctrl-клик за всички'
+            allBoardsCtrlClickTooltip: 'Ctrl-клик за всички',
+            noteFontSizeLabel: 'Размер шрифт (бележка):',
+            modalFontSizeLabel: 'Размер шрифт (преглед):'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -360,6 +364,21 @@ async function startApp() {
         // Prevent clicks inside the content modal from propagating to the underlying notes
         contentModal.addEventListener('click', (e) => {
             e.stopPropagation();
+        });
+
+        // Apply initial font size settings from localStorage
+        const initialNoteFontSize = localStorage.getItem('noteFontSize') || 12;
+        document.documentElement.style.setProperty('--note-font-size', `${initialNoteFontSize}px`);
+
+        const initialModalFontSize = localStorage.getItem('modalFontSize') || 12;
+        modalBody.style.fontSize = `${initialModalFontSize}px`;
+
+        // Add a listener to reset the modal font size when it's closed,
+        // as it might be changed by other parts of the app (like formatText).
+        contentModal.addEventListener('transitionend', () => {
+            if (!contentModal.classList.contains('visible')) {
+                modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 12}px`;
+            }
         });
 
         setLanguage(currentLang);
@@ -856,7 +875,8 @@ async function startApp() {
                     document.getElementById('settings-modal').classList.remove('visible');
                 });
                 closeBtnWrapper.appendChild(closeBtn);
-                zoomModalBody.appendChild(closeBtnWrapper);
+                // Append the button wrapper to the modal content box, not the scrollable body
+                zoomModalBody.parentNode.appendChild(closeBtnWrapper);
 
                 const slider = sliderContainer.querySelector('#scaleSlider');
                 const scaleInput = sliderContainer.querySelector('#scaleInput');
@@ -907,6 +927,51 @@ async function startApp() {
                         localStorage.setItem('zoomLevel', newValue);
                     }
                 });
+
+                // --- Font Size Settings ---
+                const createFontSizeInput = (id, labelKey, storageKey, defaultValue, targetUpdate) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'zoom-control-wrapper';
+                    wrapper.style.marginTop = '15px';
+
+                    const label = document.createElement('label');
+                    label.textContent = _(labelKey);
+                    label.style.marginRight = '10px';
+                    label.style.flexBasis = '200px'; // Adjusted basis for longer labels
+                    label.style.flexShrink = '0'; // Prevent label from shrinking
+                    label.style.textAlign = 'left';
+
+                    const select = document.createElement('select');
+                    select.id = id;
+                    select.className = 'zoom-input-select'; // New class for styling
+                    select.style.width = '80px'; // Explicit width for consistency
+                    select.style.margin = '0 2px 0 10px'; // Match number input margin
+                    select.style.flexShrink = '0'; // Prevent select from shrinking
+
+                    const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24];
+                    fontSizes.forEach(size => {
+                        const option = document.createElement('option');
+                        option.value = size;
+                        option.textContent = `${size}px`;
+                        select.appendChild(option);
+                    });
+                    select.value = localStorage.getItem(storageKey) || defaultValue; // Set selected value
+
+                    select.addEventListener('change', () => {
+                        const value = select.value;
+                        localStorage.setItem(storageKey, value);
+                        targetUpdate(value);
+                        showToast(_('settingSaved'), 2000);
+                    });
+
+                    wrapper.appendChild(label);
+                    wrapper.appendChild(select); // Append select instead of input
+                    return wrapper;
+                };
+
+                zoomModalBody.appendChild(createFontSizeInput('note-font-size-input', 'noteFontSizeLabel', 'noteFontSize', 12, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`)));
+                zoomModalBody.appendChild(createFontSizeInput('modal-font-size-input', 'modalFontSizeLabel', 'modalFontSize', 12, (val) => modalBody.style.fontSize = `${val}px`));
+
                 if (boardParseError) {
                     const errorEl = document.createElement('div');
                     errorEl.style.color = 'red';
