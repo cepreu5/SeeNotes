@@ -436,9 +436,9 @@ async function startApp() {
         modalContent.className = 'all-boards-modal-container';
 
         const createLink = (text, boardId, classes = []) => {
-            const link = document.createElement('a');
+            const link = document.createElement('span'); // Use SPAN to match header buttons
             link.textContent = text;
-            link.href = '#';
+            // link.href = '#'; // Not needed for span
             // Apply the same width as the header buttons
             link.style.width = `${maxWidthForButtons}px`;
             link.classList.add('board-filter-link', ...classes);
@@ -1652,7 +1652,18 @@ async function startApp() {
         days.forEach((day, index) => {
             const dayEl = document.createElement('div');
             dayEl.className = 'calendar-day-name';
-            dayEl.textContent = day;
+            
+            const longName = document.createElement('span');
+            longName.className = 'day-name-long';
+            longName.textContent = day;
+
+            const shortName = document.createElement('span');
+            shortName.className = 'day-name-short';
+            shortName.textContent = day.substring(0, 3);
+
+            dayEl.appendChild(longName);
+            dayEl.appendChild(shortName);
+
             if (index >= 5) {
                 dayEl.classList.add('weekend-day');
             }
@@ -1747,10 +1758,13 @@ async function startApp() {
         calendarContainer.appendChild(calendarGrid);
 
         // Make mini-notes square by setting their height equal to their calculated width
-        document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
-            const width = miniNote.getBoundingClientRect().width;
-            miniNote.style.height = `${width}px`;
-        });
+        // Use setTimeout to ensure the browser has rendered the elements before we measure them.
+        setTimeout(() => {
+            document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
+                const width = miniNote.getBoundingClientRect().width;
+                if (width > 0) miniNote.style.height = `${width}px`;
+            });
+        }, 0);
 
         // Event Listeners
         document.getElementById('prev-month-btn').addEventListener('click', () => {
@@ -1783,15 +1797,6 @@ async function startApp() {
             .replace(/'/g, "&#039;");
     }
 
-    function escapeHtml(text) {
-        return text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
     function renderNoteContent(text) {
         if (!text) return '';
         const codeBlocks = [];
@@ -1800,8 +1805,11 @@ async function startApp() {
             codeBlocks.push(escapeHtml(code));
             return '%%CODE_BLOCK%%';
         });
+        // First, escape the entire remaining text to neutralize any HTML
+        const escapedText = escapeHtml(textWithoutCode);
+        // Then, find URLs in the *escaped* text and wrap them in <a> tags.
         const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-        let html = textWithoutCode.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
         codeBlocks.forEach(block => {
             html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
         });

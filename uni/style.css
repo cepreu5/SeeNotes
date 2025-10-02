@@ -227,7 +227,8 @@ pre, code {
     background: #555;
 }
 
-.note-content a {
+.note-content a,
+#modal-body a {
     color: #007bff;
     text-decoration: none;
     display: inline-block;
@@ -498,6 +499,32 @@ pre, code {
     width: auto;
     text-align: left;
 }
+
+/* --- Start: Fix button colors inside the modal --- */
+/* Default button style inside the modal */
+.all-boards-modal-container .board-filter-link {
+    background-color: #bdd9ef;
+    color: #000;
+}
+
+/* "All" button style inside the modal */
+.all-boards-modal-container .all-boards-filter-btn {
+    background-color: #ffc107;
+    color: #000;
+}
+
+/* "Calendar" button style inside the modal */
+.all-boards-modal-container .calendar-filter-btn {
+    background-color: darkblue;
+    color: #fff;
+}
+
+/* "Reminder" button style inside the modal */
+.all-boards-modal-container .reminder-filter-btn {
+    background-color: red;
+    color: #fff;
+}
+/* --- End: Fix button colors inside the modal --- */
 
 /* Container for the Ctrl+Click modal with all boards */
 .all-boards-modal-container {
@@ -1004,7 +1031,7 @@ pre, code {
 /* --- Calendar View Styles --- */
 #calendar-container {
     padding: 1em;
-    /*background-color: #fdf6e3;*/
+    background-color: #fdf6e3;
     box-sizing: border-box; /* Crucial for correct scaling with padding */
 }
 
@@ -1067,8 +1094,12 @@ pre, code {
     font-weight: bold;
     text-align: center;
     padding: 10px 0;
-    background-color: #fef9c3; /* Pale yellow */
+    background-color: #c8c8c8;
     border-radius: 4px;
+}
+
+.day-name-short {
+    display: none; /* Hide short names by default */
 }
 
 .weekend-day {
@@ -1155,4 +1186,14 @@ pre, code {
 .calendar-mini-note:hover {
     filter: brightness(95%);
     border-color: rgba(0,0,0,0.3);
+}
+
+@media (max-width: 768px) {
+    .day-name-long {
+        display: none; /* Hide long names on small screens */
+    }
+    .day-name-short {
+        display: inline; /* Show short names on small screens */
+    }
+}
 }
