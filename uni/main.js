@@ -282,6 +282,7 @@ async function startApp() {
     const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
     const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
     const settingsIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /><circle cx="12" cy="12" r="3" /></svg>`;
+    const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
     const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
     const attachmentIcons = [
         { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
@@ -493,6 +494,33 @@ async function startApp() {
             const year = date.getFullYear();
             return `${day}.${month}.${year}`;
         } catch (e) { return dateString; }
+    }
+
+    function formatDateTime(timestamp) {
+        if (!timestamp) return '';
+        try {
+            const date = new Date(timestamp);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${day}.${month}.${year} ${hours}:${minutes}`;
+        } catch (e) {
+            return timestamp; // Fallback
+        }
+    }
+
+    function formatTime(timestamp) {
+        if (!timestamp) return '';
+        try {
+            const date = new Date(timestamp);
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        } catch (e) {
+            return ''; // Fallback
+        }
     }
 
     // Add an event listener to the modal's close button to reset button visibility
@@ -1510,8 +1538,8 @@ async function startApp() {
                             const board = boardsData.find(b => b.gdid === extraData.boardid);
                             if (board) {
                                 const boardDisplay = document.createElement('div');
-                                boardDisplay.className = 'board-display';
-                                boardDisplay.innerHTML = boardIconSvg;
+                                boardDisplay.className = 'board-display';                                
+                                boardDisplay.innerHTML = `<svg class="footer-icon" style="margin-left: -3px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="4" width="16" height="16" rx="2"></rect><line x1="4" y1="12" x2="20" y2="12"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
                                 const boardText = document.createElement('span');
                                 boardText.textContent = board.title;
                                 boardDisplay.appendChild(boardText);
@@ -1533,25 +1561,50 @@ async function startApp() {
                                 });
                             }
                         }
-                        // Use calendarDate if available, otherwise fallback to datemod
-                        const dateToShow = extraData.calendarDate || extraData.datemod;
-                        if (dateToShow) {
+
+                        // Handle date and time display
+                        if (extraData.timer) {
+                            // If there's a timer, it takes precedence for both date and time
+                            // 1. Display the date part from the timer
                             const dateDisplay = document.createElement('div');
                             dateDisplay.className = 'date-display';
-                            dateDisplay.innerHTML = calendarIconSvg;
+                            dateDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`;
                             const dateText = document.createElement('span');
-                            dateText.textContent = formatDate(dateToShow);
+                            dateText.textContent = formatDate(extraData.timer);
                             dateDisplay.appendChild(dateText);
-                            footerLeft.appendChild(dateDisplay);
                             dateDisplay.addEventListener('click', () => {
                                 const parentNote = dateDisplay.closest('.note');
-                                try {
-                                    const content = JSON.parse(res.body);
-                                    showModal({ raw: JSON.stringify(content, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
-                                } catch(e) {
-                                    showModal(res.body);
-                                }
+                                showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
                             });
+                            footerLeft.appendChild(dateDisplay);
+
+                            // 2. Display the time part from the timer
+                            const timerDisplay = document.createElement('div');
+                            timerDisplay.className = 'date-display';
+                            timerDisplay.style.marginLeft = '10px'; // Add space to the left
+                            timerDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 15"></polyline></svg>`;
+                            const timerText = document.createElement('span');
+                            timerText.textContent = formatTime(extraData.timer);
+                            timerDisplay.appendChild(timerText);
+                            timerDisplay.style.cursor = 'pointer';
+                            timerDisplay.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                const parentNote = timerDisplay.closest('.note');
+                                showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
+                            });
+                            footerLeft.appendChild(timerDisplay);
+                        } else {
+                            // If no timer, fall back to calendarDate or datemod
+                            const dateToShow = extraData.calendarDate || extraData.datemod;
+                            if (dateToShow) {
+                                const dateDisplay = document.createElement('div');
+                                dateDisplay.className = 'date-display';
+                                dateDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`;
+                                const dateText = document.createElement('span');
+                                dateText.textContent = formatDate(dateToShow);
+                                dateDisplay.appendChild(dateText);
+                                footerLeft.appendChild(dateDisplay);
+                            }
                         }
                     } catch (e) { console.error('Error parsing extraInfo:', e); }
                 }
@@ -1562,10 +1615,10 @@ async function startApp() {
                     footerRight.style.alignItems = 'center';
                     const lockIcon = document.createElement('span');
                     lockIcon.innerHTML = lockIconSvg;
-                    lockIcon.style.marginRight = '5px';
+                    lockIcon.style.marginRight = '-7px'; // Compensate for the 10px note padding (10px - 7px = 3px)
                     footerRight.appendChild(lockIcon);
                     const viewButton = document.createElement('button');
-                    viewButton.className = 'view-button';
+                    /*viewButton.className = 'view-button';
                     viewButton.innerHTML = eyeIconSvg;
                     viewButton.title = _('viewFullContent');
                     viewButton.addEventListener('click', (e) => {
@@ -1573,7 +1626,7 @@ async function startApp() {
                         const noteEl = e.currentTarget.closest('.note');
                         showModal({ raw: fileContent, format: textSpan, color: window.getComputedStyle(noteEl).backgroundColor });
                     });
-                    footerRight.appendChild(viewButton);
+                    footerRight.appendChild(viewButton);*/
                     footerEl.appendChild(footerRight);
                 }
                 note.addEventListener('click', (e) => {
