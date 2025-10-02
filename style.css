@@ -267,7 +267,10 @@ pre, code {
 }
 
 .modal-content-box {
-    padding: 20px;
+    padding-top: 50px;
+    padding-right: 10px;
+    padding-bottom: 10px;
+    padding-left: 10px;
     border-radius: 8px;
     width: 95%;
     max-width: 900px;
@@ -285,7 +288,7 @@ pre, code {
 
 #modal-body {
     padding-top: 60px;
-    padding-right: 100px;
+    padding-right: 10px;
     overflow-y: auto;
     white-space: pre-wrap;
     text-align: left;
@@ -330,14 +333,14 @@ pre, code {
 }
 
 .modal-close {
-    right: 45px;
+    right: 15px;
     font-size: 24px;
     padding-top: 4px;
     box-sizing: border-box;
 }
 
 #copy-modal-btn {
-    right: 87px;
+    right: 57px;
 }
 
 #copy-modal-btn svg {
@@ -441,11 +444,17 @@ pre, code {
 .board-menu-container {
     display: flex;
     flex-wrap: nowrap; /* Prevent wrapping */
-    overflow-x: hidden; /* Hide scrollbar, we use buttons */
+    overflow-x: auto;   /* Allow scrolling */
     scroll-behavior: smooth; /* Smooth scrolling on button click */
     gap: 5px;
     flex-grow: 1;
     padding: 5px 0; /* Add some vertical padding */
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+.board-menu-container::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for Chrome, Safari and Opera */
 }
 
 .scroll-arrow {
