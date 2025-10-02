@@ -381,6 +381,7 @@ async function startApp() {
             }
         });
 
+
         setLanguage(currentLang);
     }
 
@@ -1644,22 +1645,20 @@ async function startApp() {
         `;
         calendarContainer.appendChild(calendarHeader);
 
-        // Grid
-        const calendarGrid = document.createElement('div');
-        calendarGrid.className = 'calendar-grid';
-
         // Day names header
+        const daysHeader = document.createElement('div');
+        daysHeader.className = 'calendar-days-header';
         const days = currentLang === 'bg' ? ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
         days.forEach((day, index) => {
             const dayEl = document.createElement('div');
             dayEl.className = 'calendar-day-name';
             dayEl.textContent = day;
-            // index 5 is Saturday, 6 is Sunday
             if (index >= 5) {
                 dayEl.classList.add('weekend-day');
             }
-            calendarGrid.appendChild(dayEl);
+            daysHeader.appendChild(dayEl);
         });
+        calendarContainer.appendChild(daysHeader);
 
         // Get today's date components for comparison
         const today = new Date();
@@ -1670,6 +1669,10 @@ async function startApp() {
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         let startingDay = firstDayOfMonth.getDay(); // 0=Sun, 1=Mon...
         if (startingDay === 0) startingDay = 7; // Make Sunday 7
+
+        // Grid for the actual days
+        const calendarGrid = document.createElement('div');
+        calendarGrid.className = 'calendar-grid';
 
         // Create blank cells for days before the 1st
         for (let i = 1; i < startingDay; i++) {
@@ -1743,6 +1746,12 @@ async function startApp() {
 
         calendarContainer.appendChild(calendarGrid);
 
+        // Make mini-notes square by setting their height equal to their calculated width
+        document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
+            const width = miniNote.getBoundingClientRect().width;
+            miniNote.style.height = `${width}px`;
+        });
+
         // Event Listeners
         document.getElementById('prev-month-btn').addEventListener('click', () => {
             currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
@@ -1772,21 +1781,6 @@ async function startApp() {
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
-    }
-
-    function processCodeAndLinks(text) {
-        if (!text) return '';
-        const codeBlocks = [];
-        const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
-            const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
-            codeBlocks.push(escapeHtml(code));
-            return '%%CODE_BLOCK%%';
-        });
-        let linkifiedText = linkifyText(textWithoutCode);
-        codeBlocks.forEach(block => {
-            linkifiedText = linkifiedText.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
-        });
-        return linkifiedText;
     }
 
     function escapeHtml(text) {
