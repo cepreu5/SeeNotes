@@ -104,6 +104,12 @@
 
         function gisLoaded() {
             tokenClient = google.accounts.oauth2.initTokenClient({
+                // Add a hint for Google to show the account chooser if re-authenticating
+                hint: sessionStorage.getItem('google_auth_email_hint') || '',
+                // Add error handling
+                error_callback: (error) => {
+                    console.error("GSI Error:", error);
+                },
                 client_id: CLIENT_ID,
                 scope: SCOPES,
                 callback: (tokenResponse) => {
@@ -112,6 +118,10 @@
                             ...tokenResponse,
                             issued_at: Date.now()
                         };
+                        // Try to get user's email to use as a hint for next time
+                        if (tokenResponse.email) {
+                            sessionStorage.setItem('google_auth_email_hint', tokenResponse.email);
+                        }
                         sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         window.location.href = main;
                     } else {
@@ -122,20 +132,27 @@
             });
         }
 
-        document.getElementById('authorize_button').addEventListener('click', () => {
+        function handleAuthClick() {
             if (tokenClient) {
                 tokenClient.requestAccessToken({prompt: 'consent'});
             } else {
                 console.error('Token client not initialized');
                 alert(_('gapiNotReady')); // Use translated string
             }
-        });
+        }
 
         // Initial language setup and event listeners
         document.addEventListener('DOMContentLoaded', () => {
             setLanguage(currentLang);
+            document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
             document.getElementById('lang-bg').addEventListener('click', () => setLanguage('bg'));
             document.getElementById('lang-en').addEventListener('click', () => setLanguage('en'));
+
+            // If the page was loaded for re-authentication, trigger the flow immediately.
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('reauth') === 'true') {
+                handleAuthClick();
+            }
         });
     </script>
 </body>

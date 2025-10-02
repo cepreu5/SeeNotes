@@ -1,5 +1,5 @@
 :root {
-    --note-font-size: 12px; /* Default font size for notes */
+    --note-font-size: 16px; /* Default font size for notes */
     --note-bg-0: #FBFF86;
     --note-bg-1: #FF829E;
     --note-bg-2: #68FF97;
@@ -10,6 +10,14 @@
     --note-bg-7: #FFC5D2;
     --note-bg-8: #B6FFCD;
     --note-bg-9: #B2DAFF;
+
+    --board-bg-0: #00FF00;
+    --board-bg-1: #FF0000;
+    --board-bg-2: #FF4500;
+    --board-bg-3: #FFFF00;
+    --board-bg-4: #00FFFF;
+    --board-bg-5: #FF00FF;
+    --board-bg-6: #3355FF;
 }
 
 body {
@@ -499,32 +507,6 @@ pre, code {
     width: auto;
     text-align: left;
 }
-
-/* --- Start: Fix button colors inside the modal --- */
-/* Default button style inside the modal */
-.all-boards-modal-container .board-filter-link {
-    background-color: #bdd9ef;
-    color: #000;
-}
-
-/* "All" button style inside the modal */
-.all-boards-modal-container .all-boards-filter-btn {
-    background-color: #ffc107;
-    color: #000;
-}
-
-/* "Calendar" button style inside the modal */
-.all-boards-modal-container .calendar-filter-btn {
-    background-color: darkblue;
-    color: #fff;
-}
-
-/* "Reminder" button style inside the modal */
-.all-boards-modal-container .reminder-filter-btn {
-    background-color: red;
-    color: #fff;
-}
-/* --- End: Fix button colors inside the modal --- */
 
 /* Container for the Ctrl+Click modal with all boards */
 .all-boards-modal-container {

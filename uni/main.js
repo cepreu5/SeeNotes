@@ -19,86 +19,41 @@ function loadScript(src) {
     });
 }
 
-/**
- * Attempts to silently refresh the access token.
- * Returns a promise that resolves with the new token data, or rejects on failure.
- */
-function refreshToken() {
-    return new Promise((resolve, reject) => {
-        if (!tokenClient) {
-            return reject(new Error('Google Token Client not initialized.'));
-        }
-        const timeout = setTimeout(() => reject(new Error('Token refresh timed out.')), 10000);
-        tokenClient.callback = (tokenResponse) => {
-            clearTimeout(timeout);
-            if (tokenResponse && tokenResponse.access_token) {
-                const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                resolve(tokenWithTimestamp);
-            } else {
-                reject(new Error('Failed to refresh access token. Response was empty.'));
-            }
-        };
-        tokenClient.requestAccessToken({ prompt: '' });
-    });
+function checkAuth() {
+    const storedTokenString = sessionStorage.getItem('google_auth_token');
+    if (!storedTokenString) {
+        window.location.href = 'login.html';
+        return null; // Stop execution
+    }
+
+    const tokenData = JSON.parse(storedTokenString);
+    const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
+
+    if (isExpired) {
+        console.log("Token expired. Redirecting to login for re-authentication.");
+        sessionStorage.removeItem('google_auth_token');
+        // Redirect to login page with a parameter to trigger re-auth automatically
+        window.location.href = 'login.html?reauth=true';
+        return null; // Stop execution
+    }
+
+    return tokenData; // Token is valid
 }
 
 // Main startup function
 async function startApp() {
-    // 1. Check for a stored token first. If missing, redirect to login.
-    const storedTokenString = sessionStorage.getItem('google_auth_token');
-    if (!storedTokenString) {
-        window.location.href = 'login.html';
-        return;
+    const tokenData = checkAuth();
+    if (!tokenData) {
+        return; // Stop if auth check fails/redirects
     }
 
-    // 2. Load Google libraries in parallel
+    // Load Google API script before using gapi
     try {
-        await Promise.all([
-            loadScript('https://accounts.google.com/gsi/client'),
-            loadScript('https://apis.google.com/js/api.js')
-        ]);
+        await loadScript('https://apis.google.com/js/api.js');
     } catch (error) {
-        console.error("Failed to load Google scripts", error);
+        console.error("Failed to load Google API script", error);
         showToast("Error loading Google libraries.");
         return;
-    }
-
-    // 3. Initialize GSI token client
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: '' // Callback is managed by the refreshToken promise
-    });
-
-    // 4. Check if token is expired and refresh if needed
-    let tokenData = JSON.parse(storedTokenString);
-    const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
-
-    if (isExpired) {
-        console.log("Token expired, attempting to refresh...");
-        try {
-            tokenData = await refreshToken();
-            console.log("Token refreshed silently.");
-        } catch (error) {
-            console.warn("Silent token refresh failed, attempting consent refresh:", error);
-            // If silent refresh fails, try again with user consent.
-            // This will show the Google account chooser popup.
-            try {
-                tokenClient.requestAccessToken({ prompt: 'consent' });
-                // The callback in refreshToken will handle the response.
-                // We need to wait for the new token. We can create a one-time listener.
-                tokenData = await new Promise((resolve, reject) => {
-                    tokenClient.callback = (response) => response.access_token ? resolve(response) : reject(new Error('Consent refresh failed.'));
-                });
-                console.log("Token refreshed with consent.");
-            } catch (consentError) {
-                console.error("Full token refresh failed:", consentError);
-                showToast(_('errorSessionExpired'));
-                handleSignoutClick(); // If this also fails, then sign out.
-                return;
-            }
-        }
     }
     
     // 5. We have a valid token, now initialize GAPI client
@@ -458,6 +413,15 @@ async function startApp() {
         boardsData.forEach(board => {
             if (board.title && board.gdid) {
                 const link = createLink(board.title, board.gdid);
+
+                // Apply custom colors from board definition (same as in header)
+                if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) {
+                    link.style.backgroundColor = `var(--board-bg-${board.color})`;
+                }
+                // Set text color to black by default, as per header logic
+                link.style.color = 'black';
+
+                // Override for status
                 if (board.status === 1) link.style.color = 'red';
                 modalContent.appendChild(link);
             }
@@ -980,7 +944,7 @@ async function startApp() {
                     select.style.margin = '0 2px 0 10px'; // Match number input margin
                     select.style.flexShrink = '0'; // Prevent select from shrinking
 
-                    const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24];
+                    const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
                     fontSizes.forEach(size => {
                         const option = document.createElement('option');
                         option.value = size;
@@ -1087,6 +1051,18 @@ async function startApp() {
                     link.textContent = board.title;
                     link.classList.add('board-filter-link');
                     link.dataset.boardid = board.gdid;
+
+                    // Apply custom colors from board definition
+                    if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) {
+                        link.style.backgroundColor = `var(--board-bg-${board.color})`;
+                    }
+                    link.style.color = 'black';
+                    /*if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont >= 0 && board.colorfont <= 6) {
+                        link.style.color = `var(--board-bg-${board.colorfont})`;
+                    } else if (board.colorfont === 0) { // Special case for black text
+                        link.style.color = 'black';
+                    }*/
+
                     if (board.status === 1) link.style.color = 'red';
                     link.addEventListener('click', (e) => {
                         e.preventDefault();
