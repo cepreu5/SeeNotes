@@ -1534,6 +1534,11 @@ async function startApp() {
                 if (note.dataset.extraInfo) {
                     try {
                         const extraData = JSON.parse(note.dataset.extraInfo);
+                        // Highlight footer for notes with reminders
+                        if (extraData.timer) {
+                            footerEl.style.backgroundColor = 'rgba(255, 0, 0, 0.2)'; // Light red background
+                        }
+
                         if (extraData.boardid && boardsData.length > 0) {
                             const board = boardsData.find(b => b.gdid === extraData.boardid);
                             if (board) {
