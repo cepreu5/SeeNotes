@@ -147,12 +147,6 @@
             document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
             document.getElementById('lang-bg').addEventListener('click', () => setLanguage('bg'));
             document.getElementById('lang-en').addEventListener('click', () => setLanguage('en'));
-
-            // If the page was loaded for re-authentication, trigger the flow immediately.
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('reauth') === 'true') {
-                handleAuthClick();
-            }
         });
     </script>
 </body>
