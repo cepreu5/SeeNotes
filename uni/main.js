@@ -756,13 +756,22 @@ async function startApp() {
                 return null;
             }
         } catch (error) {
-            console.error("Error fetching folder ID:", error);
-            showToast("Error fetching folder ID.");
+            console.error("Error fetching multinotes_data folder ID:", error);
+            // If it's an auth error, redirect to login
+            if (error.result && error.result.error && error.result.error.code === 401) {
+                showToast(_('errorSessionExpired'));
+                handleSignoutClick();
+            }
             return null;
         }
     }
 
     async function listFiles(folderIdFromPrompt) {
+        const tokenData = checkAuth();
+        if (!tokenData) {
+            return; // Stop if auth check fails/redirects
+        }
+
         boardsData = [];
         allNotesData = [];
         let mediaData = [];
@@ -1667,8 +1676,19 @@ async function startApp() {
                 counterEl.textContent = notesCount;
             }
         } catch (err) {
-            console.error("Error loading files:", err);
-            showToast(err.message || _('errorProcessingFiles'));
+            console.error("Error in listFiles:", err);
+            // Check if the error is an auth error from Google API
+            if (err.result && err.result.error && err.result.error.code === 401) {
+                showToast(_('errorSessionExpired'));
+                handleSignoutClick(); // Redirect to login
+            } else {
+                // Show a more detailed error message for debugging
+                let errorMessage = _('errorProcessingFiles');
+                if (err.result && err.result.error) {
+                    errorMessage += ` (Status: ${err.result.error.code} - ${err.result.error.message})`;
+                }
+                showToast(errorMessage);
+            }
         } finally {
             loaderContainer.style.display = 'none';
             // Explicitly set the default background after everything is loaded
