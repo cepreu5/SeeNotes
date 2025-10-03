@@ -47,13 +47,13 @@
         </div>
         <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
         <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p>
-        <button id="authorize_button" data-key="authorizeButton">Authorize with Google</button>
+        <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
     </div>
 
     <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
     <script type="text/javascript">
 
-        const main = 'index.html';
+        const main = 'viewer.html';
 
         // --- I18N ---
         const translations = {
@@ -99,41 +99,76 @@
 
         // NOTE: Add your own Client ID here
         const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
-        const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.readonly email';
         let tokenClient;
 
+        function decodeJwtResponse(token) {
+            var base64Url = token.split('.')[1];
+            var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            var jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        }
+
         function gisLoaded() {
+            // Initialize the client for the OAuth2 access token
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
-                callback: (tokenResponse) => {
+                callback: async (tokenResponse) => {
                     if (tokenResponse && tokenResponse.access_token) {
-                        const tokenWithTimestamp = {
-                            ...tokenResponse,
-                            issued_at: Date.now()
-                        };
+                        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
                         sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+
+                        // Fetch user email using the access token and save it
+                        try {
+                            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                                headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+                            });
+                            if (userInfoResponse.ok) {
+                                const userInfo = await userInfoResponse.json();
+                                sessionStorage.setItem('google_auth_email_hint', userInfo.email);
+                            }
+                        } catch (error) {
+                            console.error('Failed to fetch user info:', error);
+                        }
+
                         window.location.href = main;
                     } else {
                         console.error('Failed to get access token');
-                        alert(_('authFailed')); // Use translated string
+                        alert(_('authFailed'));
                     }
                 },
+                error_callback: (error) => {
+                    console.error("GSI Error:", error);
+                    alert(_('authFailed') + `\n\nError: ${error.type}`);
+                }
             });
+
+            // Enable the button now that the client is ready
+            document.getElementById('authorize_button').disabled = false;
+
+            // If re-authenticating, trigger the flow immediately
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('reauth') === 'true') {
+                handleAuthClick();
+            }
         }
 
-        document.getElementById('authorize_button').addEventListener('click', () => {
+        function handleAuthClick() {
             if (tokenClient) {
-                tokenClient.requestAccessToken({prompt: 'consent'});
+                tokenClient.requestAccessToken({ prompt: 'consent' });
             } else {
                 console.error('Token client not initialized');
-                alert(_('gapiNotReady')); // Use translated string
+                alert(_('gapiNotReady'));
             }
-        });
+        }
 
         // Initial language setup and event listeners
         document.addEventListener('DOMContentLoaded', () => {
             setLanguage(currentLang);
+            document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
             document.getElementById('lang-bg').addEventListener('click', () => setLanguage('bg'));
             document.getElementById('lang-en').addEventListener('click', () => setLanguage('en'));
         });

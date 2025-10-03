@@ -1,5 +1,5 @@
 :root {
-    --note-font-size: 12px; /* Default font size for notes */
+    --note-font-size: 16px; /* Default font size for notes */
     --note-bg-0: #FBFF86;
     --note-bg-1: #FF829E;
     --note-bg-2: #68FF97;
@@ -10,6 +10,14 @@
     --note-bg-7: #FFC5D2;
     --note-bg-8: #B6FFCD;
     --note-bg-9: #B2DAFF;
+
+    --board-bg-0: #00FF00;
+    --board-bg-1: #FF0000;
+    --board-bg-2: #FF4500;
+    --board-bg-3: #FFFF00;
+    --board-bg-4: #00FFFF;
+    --board-bg-5: #FF00FF;
+    --board-bg-6: #3355FF;
 }
 
 body {
@@ -83,6 +91,10 @@ header h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    /* Prevent text selection on buttons */
+    -webkit-user-select: none; /* Safari */
+    -moz-user-select: none;    /* Firefox */
+    user-select: none;
 }
 
 .header-btn:hover {
@@ -227,7 +239,8 @@ pre, code {
     background: #555;
 }
 
-.note-content a {
+.note-content a,
+#modal-body a {
     color: #007bff;
     text-decoration: none;
     display: inline-block;
@@ -509,7 +522,7 @@ pre, code {
 
 /* Remove the large top padding from the modal body when showing the board list */
 .modal-content-box:has(.all-boards-modal-container) #modal-body {
-    padding-top: 25px;
+    padding-top: 0px;
     padding-right: 0px;
 }
 
@@ -536,6 +549,7 @@ pre, code {
 .selected-board {
     font-weight: bold;
     background-color: #007bff;
+    /* border: 3px solid #f70202 !important; Add a thick border to the selected board */
     color: #fff;
 }
 
@@ -1004,7 +1018,12 @@ pre, code {
 /* --- Calendar View Styles --- */
 #calendar-container {
     padding: 1em;
-    background-color: #fdf6e3; /* A soft, paper-like background */
+    background-color: #fdf6e3;
+    box-sizing: border-box; /* Crucial for correct scaling with padding */
+}
+
+#calendar-container * {
+    box-sizing: border-box; /* Crucial for correct scaling with padding */
 }
 
 .calendar-header {
@@ -1052,22 +1071,22 @@ pre, code {
 }
 
 .calendar-days-header {
-    grid-column: 1 / -1; /* Span all 7 columns */
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    background-color: #fef9c3; /* Pale yellow */
-    border-radius: 4px;
-    padding: 10px 0;
-    margin-bottom: 5px; /* Space between header and first row of dates */
+    gap: 5px; /* Same gap as the main grid */
+    margin-bottom: 5px;
 }
 
 .calendar-day-name {
     font-weight: bold;
     text-align: center;
     padding: 10px 0;
-    background-color: #e9e0c9;
+    background-color: #c8c8c8;
     border-radius: 4px;
-    margin-right: 15px;
+}
+
+.day-name-short {
+    display: none; /* Hide short names by default */
 }
 
 .weekend-day {
@@ -1090,10 +1109,8 @@ pre, code {
     padding-left: 5px; /* Use padding for inner spacing */
     display: flex;
     flex-direction: column;
+    aspect-ratio: 1 / 1; /* This is the key: forces the element to be a square */
     overflow: hidden; /* Prevent content from expanding the cell */
-}
-.calendar-cell, .calendar-cell-blank {
-    height: 150px; /* Use fixed height instead of min-height */
 }
 
 .calendar-date-number {
@@ -1156,4 +1173,13 @@ pre, code {
 .calendar-mini-note:hover {
     filter: brightness(95%);
     border-color: rgba(0,0,0,0.3);
+}
+
+@media (max-width: 768px) {
+    .day-name-long {
+        display: none; /* Hide long names on small screens */
+    }
+    .day-name-short {
+        display: inline; /* Show short names on small screens */
+    }
 }
