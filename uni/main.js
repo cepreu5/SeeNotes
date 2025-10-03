@@ -72,7 +72,7 @@ async function startApp() {
         en: {
             appTitle: 'CX MultiNotes Viewer',
             searchPlaceholder: 'Search in titles...', 
-            reloadButton: 'Reload',
+            reloadButtonTooltip: 'Reload',
             signoutButtonTooltip: 'Sign Out',
             copyTooltip: 'Copy content',
             topTooltip: 'Go to top',
@@ -171,6 +171,21 @@ async function startApp() {
             const key = element.getAttribute('data-key-title');
             element.title = _(key);
         });
+        updateSignoutTooltip();
+    }
+
+    function updateSignoutTooltip() {
+        const email = sessionStorage.getItem('google_auth_email_hint');
+        const signoutBtn = document.getElementById('signout_button');
+        if (signoutBtn) {
+            const baseTooltip = _('signoutButtonTooltip');
+            if (email) {
+                const username = email.split('@')[0];
+                signoutBtn.title = `${baseTooltip} (${username})`;
+            } else {
+                signoutBtn.title = baseTooltip;
+            }
+        }
     }
 
     function _(key) {
