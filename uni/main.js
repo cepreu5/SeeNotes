@@ -73,7 +73,7 @@ async function startApp() {
             appTitle: 'CX MultiNotes Viewer',
             searchPlaceholder: 'Search in titles...', 
             reloadButton: 'Reload',
-            signoutButton: 'Sign Out',
+            signoutButtonTooltip: 'Sign Out',
             copyTooltip: 'Copy content',
             topTooltip: 'Go to top',
             allBoards: 'All',
@@ -749,7 +749,7 @@ async function startApp() {
             link.classList.remove('selected-board');
         });
 
-        // Fix: Remove the old boards note from the header if it exists to prevent duplication on reload
+        // Fix: Remove the old boards note from the header to prevent duplication on reload
         const oldBoardsNote = document.querySelector('header .boards-note');
         if (oldBoardsNote) {
             oldBoardsNote.remove();

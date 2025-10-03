@@ -91,6 +91,10 @@ header h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    /* Prevent text selection on buttons */
+    -webkit-user-select: none; /* Safari */
+    -moz-user-select: none;    /* Firefox */
+    user-select: none;
 }
 
 .header-btn:hover {

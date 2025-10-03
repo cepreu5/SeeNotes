@@ -47,7 +47,7 @@
         </div>
         <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
         <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p>
-        <button id="authorize_button" data-key="authorizeButton">Authorize with Google</button>
+        <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
     </div>
 
     <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
@@ -109,6 +109,7 @@
                 // Add error handling
                 error_callback: (error) => {
                     console.error("GSI Error:", error);
+                    alert(_('authFailed') + `\n\nError: ${error.type}`);
                 },
                 client_id: CLIENT_ID,
                 scope: SCOPES,
@@ -118,10 +119,6 @@
                             ...tokenResponse,
                             issued_at: Date.now()
                         };
-                        // Try to get user's email to use as a hint for next time
-                        if (tokenResponse.email) {
-                            sessionStorage.setItem('google_auth_email_hint', tokenResponse.email);
-                        }
                         sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         window.location.href = main;
                     } else {
@@ -130,6 +127,15 @@
                     }
                 },
             });
+
+            // Enable the button now that the client is ready
+            document.getElementById('authorize_button').disabled = false;
+
+            // If re-authenticating, trigger the flow immediately
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('reauth') === 'true') {
+                handleAuthClick();
+            }
         }
 
         function handleAuthClick() {
