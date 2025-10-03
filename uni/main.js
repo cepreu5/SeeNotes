@@ -449,10 +449,25 @@ async function startApp() {
 
         if (anchorElement) {
             const rect = anchorElement.getBoundingClientRect();
+
             contentModal.classList.add('popup-mode'); // Use a class to change positioning behavior
             modalBox.style.top = `${rect.bottom + 5}px`; // Position below the button
-            modalBox.style.left = `${rect.left}px`;
+            // modalBox.style.left = `${rect.left}px`; // Initially align with the anchor
             modalBox.style.transform = 'none'; // Override centering transform
+
+            // After setting initial position, check if it overflows
+            // Reset width before measuring to get the natural content width
+            modalBox.style.width = 'auto';
+            const modalRect = modalBox.getBoundingClientRect();
+            const windowWidth = window.innerWidth;
+            if (rect.left + modalRect.width > windowWidth - 10) {
+                modalBox.style.left = 'auto'; // Unset left alignment
+                modalBox.style.right = '10px'; // Align to the right edge with a small buffer
+                modalBox.style.width = `${Math.min(modalRect.width, windowWidth - 20)}px`; // Limit width to fit screen
+            } else {
+                modalBox.style.left = `${rect.left}px`; // Align with the anchor element
+                modalBox.style.right = 'auto'; // Unset right alignment
+            }
         } else {
             contentModal.classList.remove('popup-mode'); // Revert to default centered modal
         }
