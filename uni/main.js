@@ -1004,8 +1004,8 @@ async function startApp() {
                     return wrapper;
                 };
 
-                zoomModalBody.appendChild(createFontSizeInput('note-font-size-input', 'noteFontSizeLabel', 'noteFontSize', 12, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`)));
-                zoomModalBody.appendChild(createFontSizeInput('modal-font-size-input', 'modalFontSizeLabel', 'modalFontSize', 12, (val) => modalBody.style.fontSize = `${val}px`));
+                zoomModalBody.appendChild(createFontSizeInput('note-font-size-input', 'noteFontSizeLabel', 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`)));
+                zoomModalBody.appendChild(createFontSizeInput('modal-font-size-input', 'modalFontSizeLabel', 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`));
 
                 if (boardParseError) {
                     const errorEl = document.createElement('div');
@@ -1287,13 +1287,7 @@ async function startApp() {
                                     attachmentWrapper.style.alignItems = 'center';
                                     attachmentWrapper.style.gap = '5px';
                                     const iconDiv = document.createElement('div');
-                                    iconDiv.innerHTML = iconData.svg;
-                                    iconDiv.style.cursor = 'pointer';
-                                    iconDiv.addEventListener('click', () => {
-                                        const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                        showModal(attachmentDataString);
-                                    });
-                                    attachmentWrapper.appendChild(iconDiv);
+                                    let link; // Дефинираме link тук
                                     if (attachment.type === 3 && attachment.path) {
                                         const filename = attachment.path.split('/').pop();
                                         const link = document.createElement('a');
@@ -1309,6 +1303,12 @@ async function startApp() {
                                         link.title = link.href;
                                         link.textContent = 'Other/' + filename;
                                         attachmentWrapper.appendChild(link);
+                                        iconDiv.innerHTML = iconData.svg;
+                                        iconDiv.style.cursor = 'pointer';
+                                        iconDiv.addEventListener('click', () => {
+                                            const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                            showModal(attachmentDataString);
+                                        });
                                     } else if (attachment.type === 5 && attachment.path) {
                                         const parts = attachment.path.split('|');
                                         if (parts.length >= 3) {
@@ -1320,6 +1320,12 @@ async function startApp() {
                                             line2.textContent = parts[2];
                                             textContainer.appendChild(line2);
                                             attachmentWrapper.appendChild(textContainer);
+                                            iconDiv.innerHTML = iconData.svg;
+                                            iconDiv.style.cursor = 'pointer';
+                                            iconDiv.addEventListener('click', () => {
+                                                const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                                showModal(attachmentDataString);
+                                            });
                                         }
                                     }
                                     if (attachment.type === 1 && attachment.path) {
@@ -1336,12 +1342,8 @@ async function startApp() {
                                         }
                                         link.title = link.href;
                                         link.textContent = 'Images/' + filename;
-                                        const eyeButton = document.createElement('button');
-                                        eyeButton.className = 'view-button';
-                                        eyeButton.innerHTML = eyeIconSvg;
-                                        attachmentWrapper.appendChild(eyeButton);
-                                        attachmentWrapper.appendChild(link);
-                                        eyeButton.addEventListener('click', async (e) => {
+                                        iconDiv.innerHTML = iconData.svg;
+                                        iconDiv.addEventListener('click', async (e) => {
                                             e.stopPropagation();
                                             e.preventDefault();
                                             const noteEl = attachmentWrapper.closest('.note');
@@ -1412,7 +1414,9 @@ async function startApp() {
                                                 showToast('Error loading image preview: ' + (err.message || err));
                                             }
                                         });
+                                        attachmentWrapper.appendChild(link);
                                     }
+                                    attachmentWrapper.prepend(iconDiv);
                                     if (attachment.type === 2 && attachment.path) {
                                         const filename = attachment.path.split('/').pop();
                                         const textContainer = document.createElement('div');
@@ -1435,6 +1439,12 @@ async function startApp() {
                                         const line2 = document.createElement('div');
                                         line2.textContent = attachment.description || '';
                                         textContainer.appendChild(line2);
+                                        iconDiv.innerHTML = iconData.svg;
+                                        iconDiv.style.cursor = 'pointer';
+                                        iconDiv.addEventListener('click', () => {
+                                            const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                            showModal(attachmentDataString);
+                                        });
                                         attachmentWrapper.appendChild(textContainer);
                                     }
                                     if (attachment.type === 4 && attachment.path) {
@@ -1459,12 +1469,8 @@ async function startApp() {
                                         const line2 = document.createElement('div');
                                         line2.textContent = attachment.description || '';
                                         textContainer.appendChild(line2);
-                                        const eyeButton = document.createElement('button');
-                                        eyeButton.className = 'view-button';
-                                        eyeButton.innerHTML = eyeIconSvg;
-                                        attachmentWrapper.appendChild(eyeButton);
-                                        attachmentWrapper.appendChild(textContainer);
-                                        eyeButton.addEventListener('click', async (e) => {
+                                        iconDiv.innerHTML = iconData.svg;
+                                        iconDiv.addEventListener('click', async (e) => {
                                             e.stopPropagation();
                                             e.preventDefault();
                                             const noteEl = attachmentWrapper.closest('.note');
@@ -1535,6 +1541,10 @@ async function startApp() {
                                                 showToast('Error loading video preview: ' + (err.message || err));
                                             }
                                         });
+                                        attachmentWrapper.appendChild(textContainer);
+                                    }
+                                    if (link) { // Проверяваме дали link е дефиниран
+                                        iconDiv.title = link.href;
                                     }
                                     contentEl.appendChild(attachmentWrapper);
                                 }
