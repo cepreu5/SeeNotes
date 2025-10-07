@@ -766,6 +766,911 @@ async function startApp() {
         }
     }
 
+    /**
+     * Initializes the loading process by resetting state and showing the loader.
+     */
+    function initializeLoad() {
+        boardsData = [];
+        allNotesData = [];
+        notesContainer.innerHTML = '';
+        loaderContainer.style.display = 'block';
+        currentBoardFilter = localStorage.getItem('startBoard') || 'all';
+        currentBoardFilter = 'all';
+        const popup = document.getElementById('board-filter-popup');
+        if (popup) {
+            popup.classList.remove('visible');
+        }
+        document.querySelectorAll('.board-filter-link').forEach(link => {
+            link.classList.remove('selected-board');
+        });
+
+        // Fix: Remove the old boards note from the header to prevent duplication on reload
+        const oldBoardsNote = document.querySelector('header .boards-note');
+        if (oldBoardsNote) {
+            oldBoardsNote.remove();
+        }
+    }
+    
+    async function createBoardsUI(boardsData, boardParseError) {
+        const boardsNote = document.createElement('div');
+        boardsNote.className = 'note boards-note';
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'note-content';
+        contentWrapper.style.minHeight = '0';
+        const contentEl = document.createElement('div');
+        contentEl.className = 'board-menu-container';
+        
+        const zoomValueDisplay = document.createElement('span');
+        zoomValueDisplay.id = 'zoom-value-display';
+        const zoomModalBody = document.getElementById('settings-modal-body');
+        zoomModalBody.innerHTML = ''; 
+        const zoomControlWrapper = document.createElement('div');
+        zoomControlWrapper.className = 'zoom-control-wrapper';
+        const zoomLabel = document.createElement('label');
+        zoomLabel.textContent = _('zoomLabel');
+        zoomLabel.htmlFor = 'scaleSlider';
+        zoomLabel.style.marginRight = '10px';
+        const sliderContainer = document.createElement('div');
+        sliderContainer.className = 'slider-container';
+        sliderContainer.innerHTML = `<input type="range" id="scaleSlider" min="25" max="175" value="100"><input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number"><span>%</span>`;
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'zoom-btn';
+        applyBtn.textContent = _('submitButton');
+        applyBtn.style.marginLeft = '10px';
+        applyBtn.addEventListener('click', () => {
+            const zoomValue = scaleInput.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+            showToast(_('settingSaved'), 2000);
+        });
+        zoomControlWrapper.appendChild(zoomLabel);
+        zoomControlWrapper.appendChild(sliderContainer);
+        zoomControlWrapper.appendChild(applyBtn);
+        zoomModalBody.appendChild(zoomControlWrapper);
+    
+        const startBoardWrapper = document.createElement('div');
+        startBoardWrapper.className = 'zoom-control-wrapper';
+        startBoardWrapper.style.marginTop = '20px';
+    
+        const startBoardLabel = document.createElement('label');
+        startBoardLabel.textContent = _('startBoardLabel');
+        startBoardLabel.style.marginRight = '10px';
+    
+        const startBoardSelect = document.createElement('select');
+        startBoardSelect.id = 'start-board-select';
+        startBoardSelect.className = 'start-board-select';
+    
+        startBoardSelect.innerHTML = `
+            <option value="all">${_('allBoards')}</option>
+            <option value="calendar">${_('calendar')}</option>
+            <option value="reminder">${_('reminder')}</option>
+        `;
+    
+        boardsData.forEach(board => {
+            if (board.gdid && board.title) {
+                const option = new Option(board.title, board.gdid);
+                startBoardSelect.appendChild(option);
+            }
+        });
+    
+        startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
+        startBoardSelect.addEventListener('change', () => {
+            localStorage.setItem('startBoard', startBoardSelect.value);
+            showToast(_('settingSaved'), 2000);
+        });
+    
+        startBoardWrapper.appendChild(startBoardLabel);
+        startBoardWrapper.appendChild(startBoardSelect);
+        zoomModalBody.appendChild(startBoardWrapper);
+    
+        const closeBtnWrapper = document.createElement('div');
+        closeBtnWrapper.className = 'settings-close-btn-wrapper';
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'zoom-btn settings-close-btn';
+        closeBtn.textContent = _('closeButton');
+        closeBtn.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+        });
+        closeBtnWrapper.appendChild(closeBtn);
+        zoomModalBody.parentNode.appendChild(closeBtnWrapper);
+    
+        const slider = sliderContainer.querySelector('#scaleSlider');
+        const scaleInput = sliderContainer.querySelector('#scaleInput');
+        const updateZoom = (value) => {
+            value = Math.max(25, Math.min(175, parseInt(value, 10)));
+            if (isNaN(value)) value = 100;
+    
+            notesContainer.style.zoom = value / 100;
+            zoomValueDisplay.textContent = ` ${value}%`;
+            slider.value = value;
+            scaleInput.value = value;
+        };
+        let savedZoom = localStorage.getItem('zoomLevel');
+        if (savedZoom) {
+            slider.value = savedZoom;
+            updateZoom(savedZoom);
+        } else {
+            updateZoom(slider.value);
+        }
+        slider.addEventListener('input', () => {
+            const zoomValue = slider.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+        });
+        scaleInput.addEventListener('change', () => {
+            const zoomValue = scaleInput.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+        });
+        slider.addEventListener('click', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                let currentValue = parseInt(slider.value, 10);
+                let newValue;
+                if (currentValue % 10 === 0) {
+                    newValue = currentValue + 10;
+                } else {
+                    newValue = Math.round(currentValue / 10) * 10;
+                }
+                const max = parseInt(slider.max, 10);
+                const min = parseInt(slider.min, 10);
+                if (newValue > max) newValue = max;
+                if (newValue < min) newValue = min;
+                slider.value = newValue;
+                updateZoom(newValue);
+                localStorage.setItem('zoomLevel', newValue);
+            }
+        });
+    
+        const createFontSizeInput = (id, labelKey, storageKey, defaultValue, targetUpdate) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'zoom-control-wrapper';
+            wrapper.style.marginTop = '15px';
+    
+            const label = document.createElement('label');
+            label.textContent = _(labelKey);
+            label.style.marginRight = '10px';
+            label.style.flexBasis = '200px';
+            label.style.flexShrink = '0';
+            label.style.textAlign = 'left';
+    
+            const select = document.createElement('select');
+            select.id = id;
+            select.className = 'zoom-input-select';
+            select.style.width = '80px';
+            select.style.margin = '0 2px 0 10px';
+            select.style.flexShrink = '0';
+    
+            const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
+            fontSizes.forEach(size => {
+                const option = document.createElement('option');
+                option.value = size;
+                option.textContent = `${size}px`;
+                select.appendChild(option);
+            });
+            select.value = localStorage.getItem(storageKey) || defaultValue;
+    
+            select.addEventListener('change', () => {
+                const value = select.value;
+                localStorage.setItem(storageKey, value);
+                targetUpdate(value);
+                showToast(_('settingSaved'), 2000);
+            });
+    
+            wrapper.appendChild(label);
+            wrapper.appendChild(select);
+            return wrapper;
+        };
+    
+        zoomModalBody.appendChild(createFontSizeInput('note-font-size-input', 'noteFontSizeLabel', 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`)));
+        zoomModalBody.appendChild(createFontSizeInput('modal-font-size-input', 'modalFontSizeLabel', 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`));
+    
+        if (boardParseError) {
+            const errorEl = document.createElement('div');
+            errorEl.style.color = 'red';
+            errorEl.style.marginTop = '10px';
+            errorEl.textContent = _('warningInvalidBoard');
+            contentEl.appendChild(errorEl);
+        }
+        contentWrapper.appendChild(contentEl);
+        boardsNote.appendChild(contentWrapper);
+    
+        const allButtonLinks = [];
+    
+        const allBoardsLink = document.createElement('span');
+        allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
+        allBoardsLink.dataset.boardid = 'all';
+        allBoardsLink.title = _('allBoardsCtrlClickTooltip');
+    
+        const allBoardsText = document.createElement('span');
+        allBoardsText.textContent = _('allBoards');
+        const allBoardsIcon = document.createElement('span');
+        allBoardsIcon.innerHTML = boardIconSvg;
+        allBoardsIcon.classList.add('board-icon-in-button');
+        allBoardsLink.appendChild(allBoardsText);
+        allBoardsLink.appendChild(allBoardsIcon);
+    
+        let longPressTimer;
+        let isLongPress = false;
+    
+        const startPress = (e) => {
+            e.preventDefault();
+            isLongPress = false;
+            longPressTimer = setTimeout(() => {
+                isLongPress = true;
+                showAllBoardsModal(allBoardsLink);
+            }, 500);
+        };
+    
+        const endPress = () => {
+            clearTimeout(longPressTimer);
+        };
+    
+        allBoardsLink.addEventListener('mousedown', startPress);
+        allBoardsLink.addEventListener('mouseup', endPress);
+        allBoardsLink.addEventListener('mouseleave', endPress);
+        allBoardsLink.addEventListener('touchstart', startPress);
+        allBoardsLink.addEventListener('touchend', endPress);
+        allBoardsLink.addEventListener('touchmove', endPress);
+    
+        allBoardsLink.addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            if (isLongPress) return;
+    
+            if (e.ctrlKey) {
+                showAllBoardsModal(allBoardsLink);
+            } else {
+                filterNotesByBoard('all'); 
+            }
+        });
+        allButtonLinks.push(allBoardsLink);
+    
+        const calendarLink = document.createElement('span');
+        calendarLink.textContent = _('calendar');
+        calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
+        calendarLink.dataset.boardid = 'calendar';
+        calendarLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('calendar'); });
+        allButtonLinks.push(calendarLink);
+        const reminderLink = document.createElement('span');
+        reminderLink.textContent = _('reminder');
+        reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
+        reminderLink.dataset.boardid = 'reminder';
+        reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder'); });
+        allButtonLinks.push(reminderLink);
+    
+        boardsData.forEach(board => {
+            if (!board.title || !board.gdid) return;
+            const link = document.createElement('span');
+            link.textContent = board.title;
+            link.classList.add('board-filter-link');
+            link.dataset.boardid = board.gdid;
+    
+            if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) {
+                link.style.backgroundColor = `var(--board-bg-${board.color})`;
+            }
+            link.style.color = 'black';
+    
+            if (board.status === 1) link.style.color = 'red';
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (e.ctrlKey) { showModal(JSON.stringify(board, null, 2)); } 
+                else { e.preventDefault(); filterNotesByBoard(board.gdid); }
+            });
+            allButtonLinks.push(link);
+        });
+    
+        maxWidthForButtons = 0;
+        const tempContainer = document.createElement('div');
+        tempContainer.style.position = 'absolute';
+        tempContainer.style.visibility = 'hidden';
+        document.body.appendChild(tempContainer);
+    
+        allButtonLinks.forEach(link => {
+            tempContainer.appendChild(link);
+            maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
+        });
+    
+        document.body.removeChild(tempContainer);
+        maxWidthForButtons += 10;
+    
+        allButtonLinks.forEach(link => {
+            link.style.width = `${maxWidthForButtons}px`;
+            contentEl.appendChild(link);
+        });
+    
+        const scrollWrapper = document.createElement('div');
+        scrollWrapper.className = 'scrolling-menu-wrapper';
+        const leftArrow = document.createElement('button');
+        leftArrow.className = 'scroll-arrow left-arrow';
+        leftArrow.innerHTML = `<svg width="24" height="24"><use href="#icon-arrow-left"></use></svg>`;
+        const rightArrow = document.createElement('button');
+        rightArrow.className = 'scroll-arrow right-arrow';
+        rightArrow.innerHTML = `<svg width="24" height="24"><use href="#icon-arrow-right"></use></svg>`;
+        
+        leftArrow.onclick = () => { contentEl.scrollLeft -= (maxWidthForButtons + 5); };
+        rightArrow.onclick = () => { contentEl.scrollLeft += (maxWidthForButtons + 5); };
+    
+        scrollWrapper.appendChild(leftArrow);
+        scrollWrapper.appendChild(contentEl);
+        scrollWrapper.appendChild(rightArrow);
+        contentWrapper.appendChild(scrollWrapper);
+        
+        const checkScroll = () => {
+            leftArrow.classList.toggle('visible', contentEl.scrollLeft > 0);
+            rightArrow.classList.toggle('visible', contentEl.scrollWidth > contentEl.clientWidth && contentEl.scrollLeft < contentEl.scrollWidth - contentEl.clientWidth - 1);
+        };
+        contentEl.addEventListener('scroll', checkScroll);
+        new ResizeObserver(checkScroll).observe(contentEl);
+        
+        return boardsNote;
+    }
+    
+    async function createNoteElement(rawNoteData, mediaData, boardsData) {
+        const { file, res } = rawNoteData;
+        const note = document.createElement('div');
+        note.className = 'note note-item';
+        let fileContent = '';
+        let noteGdid = null;
+        let noteColor = null;
+        let textSpan = null;
+        let extraData = {};
+        try {
+            const content = JSON.parse(res.body);
+            if (content && typeof content.notetxt !== 'undefined') {
+                fileContent = content.notetxt;
+                noteGdid = content.gdid;
+                noteColor = content.color;
+                if (content.text_span) {
+                    textSpan = content.text_span;
+                }
+                extraData = { ...content };
+                delete extraData.notetxt;
+                if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
+                if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
+                    note.style.backgroundColor = 'transparent'; // `var(--note-bg-${noteColor})`;
+                } else {
+                    note.style.backgroundColor = 'transparent';
+                    // Color is handled by CSS or other elements, not the main note container with the image.
+                }
+                if (extraData.status === 1) {
+                    return null; // Skip this note if status is 1
+                }
+            } else { fileContent = _('errorNoteFieldMissing'); }
+        } catch (e) { fileContent = _('errorNoteParse'); }
+        
+        const isHiddenNote = extraData.pass === true;
+        const isType1Note = extraData.type === 1;
+        let noteTitle = '';
+        let displayContent = fileContent;
+    
+        if (isHiddenNote) {
+            const pipeIndex = fileContent.indexOf('|');
+            const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
+            noteTitle = previewContent.split('\n')[0].trim();
+    
+        } else if (isType1Note) {
+            const pipeIndex = fileContent.indexOf('|');
+            if (pipeIndex !== -1) {
+                noteTitle = fileContent.substring(0, pipeIndex).trim();
+                displayContent = fileContent.substring(pipeIndex + 1).trim();
+            } else {
+                noteTitle = fileContent.split('\n')[0].substring(0, 50);
+            }
+        } else if (!isHiddenNote) {
+            const lines = fileContent.split('\n');
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (trimmedLine) {
+                    noteTitle = trimmedLine.substring(0, 50);
+                    break;
+                }
+            }
+        }
+    
+        if (!noteTitle && !isHiddenNote) { noteTitle = file.name; }
+    
+        const titleEl = document.createElement('h3');
+        titleEl.textContent = noteTitle;
+        titleEl.title = noteTitle;
+
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'note-content-wrapper';
+        note.appendChild(contentWrapper);
+
+    
+        const contentEl = document.createElement('div');
+        contentEl.className = 'note-content';
+    
+        if (isHiddenNote) {
+            const pipeIndex = fileContent.indexOf('|');
+            const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
+            contentEl.innerHTML = renderNoteContent(previewContent);
+        } else {
+            if (textSpan && textSpan.trim() !== '') {
+                contentEl.innerHTML = formatText(displayContent, textSpan);
+            } else {
+                contentEl.innerHTML = renderNoteContent(displayContent);
+            }
+        }
+        if (!isHiddenNote && noteGdid) {
+            const attachments = mediaData.filter(media => media.noteid === noteGdid);
+            if (attachments.length > 0) {
+                const separator = document.createElement('hr');
+                separator.style.marginTop = '10px';
+                separator.style.marginBottom = '10px';
+                contentEl.appendChild(separator);
+                await Promise.all(attachments.map(async attachment => {
+                    const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
+                    if (iconData) {
+                        const attachmentWrapper = document.createElement('div');
+                        attachmentWrapper.style.display = 'flex';
+                        attachmentWrapper.style.alignItems = 'center';
+                        attachmentWrapper.style.gap = '5px';
+                        const iconDiv = document.createElement('div');
+                        let link;
+                        if (attachment.type === 3 && attachment.path) {
+                            const filename = attachment.path.split('/').pop();
+                            const link = document.createElement('a');
+                            const fileId = await getFileID(folderIds['Other'], filename);
+                            if (attachment.gdid) {
+                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                            } else {
+                                link.href = '#';
+                                link.onclick = (e) => e.preventDefault();
+                            }
+                            link.title = link.href;
+                            link.textContent = 'Other/' + filename;
+                            attachmentWrapper.appendChild(link);
+                            iconDiv.innerHTML = iconData.svg;
+                            iconDiv.style.cursor = 'pointer';
+                            iconDiv.addEventListener('click', () => {
+                                const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                showModal(attachmentDataString);
+                            });
+                        } else if (attachment.type === 5 && attachment.path) {
+                            const parts = attachment.path.split('|');
+                            if (parts.length >= 3) {
+                                const textContainer = document.createElement('div');
+                                const line1 = document.createElement('span');
+                                line1.textContent = `${parts[0]}, ${parts[1]}`;
+                                textContainer.appendChild(line1);
+                                const line2 = document.createElement('div');
+                                line2.textContent = parts[2];
+                                textContainer.appendChild(line2);
+                                attachmentWrapper.appendChild(textContainer);
+                                iconDiv.innerHTML = iconData.svg;
+                                iconDiv.style.cursor = 'pointer';
+                                iconDiv.addEventListener('click', () => {
+                                    const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                    showModal(attachmentDataString);
+                                });
+                            }
+                        }
+                        if (attachment.type === 1 && attachment.path) {
+                            const filename = attachment.path.split('/').pop();
+                            const link = document.createElement('a');
+                            const fileId = await getFileID(folderIds['Images'], filename);
+                            if (attachment.gdid) {
+                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                            } else {
+                                link.href = '#';
+                                link.onclick = (e) => e.preventDefault();
+                            }
+                            link.title = link.href;
+                            link.textContent = 'Images/' + filename;
+                            iconDiv.innerHTML = iconData.svg;
+                            iconDiv.addEventListener('click', async (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const noteEl = attachmentWrapper.closest('.note');
+                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
+                                    return;
+                                }
+                                const titleEl = noteEl.querySelector('h3');
+                                if (!fileId) {
+                                    showToast('Image file not found for preview.');
+                                    return;
+                                }
+                                try {
+                                    const fileMetadata = await gapi.client.drive.files.get({
+                                        fileId: fileId,
+                                        fields: 'thumbnailLink'
+                                    });
+                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                                    if (thumbnailUrl) {
+                                        if (titleEl) titleEl.style.visibility = 'hidden';
+                                        const overlay = document.createElement('div');
+                                        overlay.className = 'image-preview-overlay';
+                                        Object.assign(overlay.style, {
+                                            position: 'absolute',
+                                            top: '0', left: '0',
+                                            width: '100%', height: '100%',
+                                            backgroundColor: 'rgba(0,0,0,0.85)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            zIndex: '10',
+                                            borderRadius: '8px'
+                                        });
+                                        overlay.addEventListener('click', () => {
+                                            window.open(link.href, '_blank');
+                                        });
+                                        const img = document.createElement('img');
+                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                                        Object.assign(img.style, {
+                                            maxWidth: '100%',
+                                            maxHeight: '100%',
+                                            objectFit: 'contain',
+                                            padding: '10px',
+                                            boxSizing: 'border-box'
+                                        });
+                                        overlay.appendChild(img);
+                                        const closeButton = document.createElement('button');
+                                        closeButton.className = 'view-button';
+                                        closeButton.innerHTML = eyeOffIconSvg;
+                                        Object.assign(closeButton.style, {
+                                            position: 'absolute',
+                                            top: '10px',
+                                            right: '10px',
+                                        });
+                                        const svg = closeButton.querySelector('svg');
+                                        if(svg) svg.style.stroke = 'white';
+                                        closeButton.addEventListener('click', (ev) => {
+                                            ev.stopPropagation();
+                                            overlay.remove();
+                                            if (titleEl) titleEl.style.visibility = 'visible';
+                                        });
+                                        overlay.appendChild(closeButton);
+                                        noteEl.appendChild(overlay);
+                                    } else {
+                                        showToast('No preview available for this image.');
+                                    }
+                                } catch (err) {
+                                    console.error('Error fetching image preview:', err);
+                                    showToast('Error loading image preview: ' + (err.message || err));
+                                }
+                            });
+                            attachmentWrapper.appendChild(link);
+                        }
+                        attachmentWrapper.prepend(iconDiv);
+                        if (attachment.type === 2 && attachment.path) {
+                            const filename = attachment.path.split('/').pop();
+                            const textContainer = document.createElement('div');
+                            textContainer.style.flexGrow = '1';
+                            textContainer.style.flexShrink = '1';
+                            textContainer.style.minWidth = '0';
+                            const link = document.createElement('a');
+                            const fileId = await getFileID(folderIds['Sound'], filename);
+                            if (attachment.gdid) {
+                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                            } else {
+                                link.href = '#';
+                                link.onclick = (e) => e.preventDefault();
+                            }
+                            link.title = link.href;
+                            link.textContent = 'Sound/' + filename;
+                            textContainer.appendChild(link);
+                            const line2 = document.createElement('div');
+                            line2.textContent = attachment.description || '';
+                            textContainer.appendChild(line2);
+                            iconDiv.innerHTML = iconData.svg;
+                            iconDiv.style.cursor = 'pointer';
+                            iconDiv.addEventListener('click', () => {
+                                const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                showModal(attachmentDataString);
+                            });
+                            attachmentWrapper.appendChild(textContainer);
+                        }
+                        if (attachment.type === 4 && attachment.path) {
+                            const filename = attachment.path.split('/').pop();
+                            const textContainer = document.createElement('div');
+                            textContainer.style.flexGrow = '1';
+                            textContainer.style.flexShrink = '1';
+                            textContainer.style.minWidth = '0';
+                            const link = document.createElement('a');
+                            const fileId = await getFileID(folderIds['Video'], filename);
+                            if (attachment.gdid) {
+                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                            } else {
+                                link.href = '#';
+                                link.onclick = (e) => e.preventDefault();
+                            }
+                            link.title = link.href;
+                            link.textContent = 'Video/' + filename;
+                            textContainer.appendChild(link);
+                            const line2 = document.createElement('div');
+                            line2.textContent = attachment.description || '';
+                            textContainer.appendChild(line2);
+                            iconDiv.innerHTML = iconData.svg;
+                            iconDiv.addEventListener('click', async (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const noteEl = attachmentWrapper.closest('.note');
+                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
+                                    return;
+                                }
+                                const titleEl = noteEl.querySelector('h3');
+                                if (!fileId) {
+                                    showToast('Video file not found for preview.');
+                                    return;
+                                }
+                                try {
+                                    const fileMetadata = await gapi.client.drive.files.get({
+                                        fileId: fileId,
+                                        fields: 'thumbnailLink'
+                                    });
+                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                                    if (thumbnailUrl) {
+                                        if (titleEl) titleEl.style.visibility = 'hidden';
+                                        const overlay = document.createElement('div');
+                                        overlay.className = 'image-preview-overlay';
+                                        Object.assign(overlay.style, {
+                                            position: 'absolute',
+                                            top: '0', left: '0',
+                                            width: '100%', height: '100%',
+                                            backgroundColor: 'rgba(0,0,0,0.85)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            zIndex: '10',
+                                            borderRadius: '8px'
+                                        });
+                                        overlay.addEventListener('click', () => {
+                                            window.open(link.href, '_blank');
+                                        });
+                                        const img = document.createElement('img');
+                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                                        Object.assign(img.style, {
+                                            maxWidth: '100%',
+                                            maxHeight: '100%',
+                                            objectFit: 'contain',
+                                            padding: '10px',
+                                            boxSizing: 'border-box'
+                                        });
+                                        overlay.appendChild(img);
+                                        const closeButton = document.createElement('button');
+                                        closeButton.className = 'view-button';
+                                        closeButton.innerHTML = eyeOffIconSvg;
+                                        Object.assign(closeButton.style, {
+                                            position: 'absolute',
+                                            top: '10px',
+                                            right: '10px',
+                                        });
+                                        const svg = closeButton.querySelector('svg');
+                                        if(svg) svg.style.stroke = 'white';
+                                        closeButton.addEventListener('click', (ev) => {
+                                            ev.stopPropagation();
+                                            overlay.remove();
+                                            if (titleEl) titleEl.style.visibility = 'visible';
+                                        });
+                                        overlay.appendChild(closeButton);
+                                        noteEl.appendChild(overlay);
+                                    } else {
+                                        showToast('No preview available for this video.');
+                                    }
+                                } catch (err) {
+                                    console.error('Error fetching video preview:', err);
+                                    showToast('Error loading video preview: ' + (err.message || err));
+                                }
+                            });
+                            attachmentWrapper.appendChild(textContainer);
+                        }
+                        if (link) {
+                            iconDiv.title = link.href;
+                        }
+                        contentEl.appendChild(attachmentWrapper);
+                    }
+                }));
+            }
+        }
+        const footerEl = document.createElement('div');
+        footerEl.className = 'note-footer';
+        const footerLeft = document.createElement('div');
+        footerLeft.style.display = 'flex';
+        if (note.dataset.extraInfo) {
+            try {
+                const extraData = JSON.parse(note.dataset.extraInfo);
+                if (extraData.timer) {
+                    footerEl.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
+                }
+    
+                if (extraData.boardid && boardsData.length > 0) {
+                    const board = boardsData.find(b => b.gdid === extraData.boardid);
+                    if (board) {
+                        const boardDisplay = document.createElement('div');
+                        boardDisplay.className = 'board-display';                                
+                        boardDisplay.innerHTML = `<svg class="footer-icon" style="margin-left: -3px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="4" width="16" height="16" rx="2"></rect><line x1="4" y1="12" x2="20" y2="12"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+                        const boardText = document.createElement('span');
+                        boardText.textContent = board.title;
+                        boardDisplay.appendChild(boardText);
+                        footerLeft.appendChild(boardDisplay);
+                        boardDisplay.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const parentNote = boardDisplay.closest('.note');
+                            if (parentNote && parentNote.dataset.extraInfo) {
+                                try {
+                                    const extraInfoData = JSON.parse(parentNote.dataset.extraInfo);
+                                    showModal({ raw: JSON.stringify(extraInfoData, null, 2), color: 'white' });
+                                } catch (e) {
+                                    console.error('Error parsing data-extra-info:', e);
+                                    showToast('Error displaying extra info.');
+                                }
+                            }
+                        });
+                    }
+                }
+    
+                if (extraData.timer) {
+                    const dateDisplay = document.createElement('div');
+                    dateDisplay.className = 'date-display';
+                    dateDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`;
+                    const dateText = document.createElement('span');
+                    dateText.textContent = formatDate(extraData.timer);
+                    dateDisplay.appendChild(dateText);
+                    dateDisplay.addEventListener('click', () => {
+                        const parentNote = dateDisplay.closest('.note');
+                        showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
+                    });
+                    footerLeft.appendChild(dateDisplay);
+    
+                    const timerDisplay = document.createElement('div');
+                    timerDisplay.className = 'date-display';
+                    timerDisplay.style.marginLeft = '10px';
+                    timerDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 15"></polyline></svg>`;
+                    const timerText = document.createElement('span');
+                    timerText.textContent = formatTime(extraData.timer);
+                    timerDisplay.appendChild(timerText);
+                    timerDisplay.style.cursor = 'pointer';
+                    timerDisplay.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const parentNote = timerDisplay.closest('.note');
+                        showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
+                    });
+                    footerLeft.appendChild(timerDisplay);
+                } else {
+                    const dateToShow = extraData.calendarDate || extraData.datemod;
+                    if (dateToShow) {
+                        const dateDisplay = document.createElement('div');
+                        dateDisplay.className = 'date-display';
+                        dateDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`;
+                        const dateText = document.createElement('span');
+                        dateText.textContent = formatDate(dateToShow);
+                        dateDisplay.appendChild(dateText);
+                        footerLeft.appendChild(dateDisplay);
+                    }
+                }
+            } catch (e) { console.error('Error parsing extraInfo:', e); }
+        }
+        footerEl.appendChild(footerLeft);
+        if (isHiddenNote) {
+            const footerRight = document.createElement('div');
+            footerRight.style.display = 'flex';
+            footerRight.style.alignItems = 'center';
+            const lockIcon = document.createElement('span');
+            lockIcon.innerHTML = lockIconSvg;
+            lockIcon.style.marginRight = '-7px';
+            footerRight.appendChild(lockIcon);
+            footerEl.appendChild(footerRight);
+        }
+        note.addEventListener('click', (e) => {
+            const noteEl = e.currentTarget;
+            if (!e.target.closest('.note-footer')) {
+                const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
+                showModal({ raw: fileContent, format: textSpan, color: noteBgColor });
+            }
+        });
+        contentWrapper.appendChild(titleEl);
+        contentWrapper.appendChild(contentEl);
+        contentWrapper.appendChild(footerEl);
+        return note;
+    }
+    
+    async function loadAndParseFile(filename, folderId) {
+        loaderText.textContent = _('loadingFile') + ` ${filename}`;
+        const results = await fetchFiles(filename, folderId);
+        const data = [];
+        let parseError = false;
+        results.forEach(({ res }) => {
+            if (res.body.trim() === '') return;
+            try {
+                const content = JSON.parse(res.body);
+                if (Array.isArray(content)) {
+                    data.push(...content);
+                } else if (typeof content === 'object' && content !== null) {
+                    data.push(content);
+                } else {
+                    parseError = true;
+                }
+            } catch (e) {
+                parseError = true;
+                console.error(`Error parsing ${filename}:`, e);
+            }
+        });
+        return { data, parseError };
+    }
+    
+    async function listFiles(folderIdFromPrompt) {
+        const tokenData = checkAuth();
+        if (!tokenData) return;
+    
+        initializeLoad();
+        let mediaData = [];
+        let boardsNoteElement = null;
+    
+        try {
+            let folderId = folderIdFromPrompt || await getFolderID();
+            if (!folderId) {
+                showMessagePopup(_('errorFolderNotFound'));
+                throw new Error("Main folder ID not found.");
+            }
+    
+            const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId);
+            boardsData = boardFileData;
+    
+            if (boardsData.length > 0 || boardParseError) {
+                boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
+            }
+    
+            const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId);
+            mediaData = mediaFileData;
+    
+            const onNoteProgress = (loaded, total) => {
+                loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
+            };
+            loaderText.textContent = _('loadingFile') + ' note.txt';
+            const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress);
+            
+            allNotesData = noteResults.map(r => ({ file: r.file, content: JSON.parse(r.res.body) }));
+    
+            const noteElements = await Promise.all(noteResults.map(noteRawData => createNoteElement(noteRawData, mediaData, boardsData)));
+    
+            let notesCount = 0;
+            noteElements.forEach(noteEl => {
+                if (noteEl) {
+                    notesContainer.appendChild(noteEl);
+                    notesCount++;
+                }
+            });
+    
+            if (boardsNoteElement) {
+                document.querySelector('header').appendChild(boardsNoteElement);
+            }
+    
+            filterNotesByBoard(localStorage.getItem('startBoard') || 'all');
+    
+            const counterEl = document.getElementById('note-counter');
+            if (counterEl) {
+                counterEl.textContent = notesCount;
+            }
+        } catch (err) {
+            console.error("Error in listFiles:", err);
+            if (err.result && err.result.error && err.result.error.code === 401) {
+                showToast(_('errorSessionExpired'));
+                handleSignoutClick();
+            } else {
+                let errorMessage = _('errorProcessingFiles');
+                if (err.result && err.result.error) {
+                    errorMessage += ` (Status: ${err.result.error.code} - ${err.result.error.message})`;
+                }
+                showToast(errorMessage);
+            }
+        } finally {
+            loaderContainer.style.display = 'none';
+            document.body.style.backgroundImage = `url('Board.png')`;
+            notesContainer.style.backgroundImage = `url('Board.png')`;
+            currentBackground = 'Board.png';
+        }
+    }
+
+    /*
     async function listFiles(folderIdFromPrompt) {
         const tokenData = checkAuth();
         if (!tokenData) {
@@ -823,10 +1728,7 @@ async function startApp() {
             });
             if (boardsData.length > 0 || boardParseError) {
                 const boardsNote = document.createElement('div');
-                // Create the boards note but don't append it yet
                 boardsNote.className = 'note boards-note';
-                // Title element is removed for a cleaner look.
-                // The note counter is now created and appended to the footer below.
                 const contentWrapper = document.createElement('div');
                 contentWrapper.className = 'note-content';
                 contentWrapper.style.minHeight = '0';
@@ -835,7 +1737,6 @@ async function startApp() {
                 
                 const zoomValueDisplay = document.createElement('span');
                 zoomValueDisplay.id = 'zoom-value-display';
-                // --- Zoom Modal Content ---
                 const zoomModalBody = document.getElementById('settings-modal-body');
                 zoomModalBody.innerHTML = ''; 
                 const zoomControlWrapper = document.createElement('div');
@@ -862,7 +1763,6 @@ async function startApp() {
                 zoomControlWrapper.appendChild(applyBtn);
                 zoomModalBody.appendChild(zoomControlWrapper);
 
-                // --- Start Board Setting ---
                 const startBoardWrapper = document.createElement('div');
                 startBoardWrapper.className = 'zoom-control-wrapper';
                 startBoardWrapper.style.marginTop = '20px';
@@ -875,14 +1775,12 @@ async function startApp() {
                 startBoardSelect.id = 'start-board-select';
                 startBoardSelect.className = 'start-board-select';
 
-                // Add default options
                 startBoardSelect.innerHTML = `
                     <option value="all">${_('allBoards')}</option>
                     <option value="calendar">${_('calendar')}</option>
                     <option value="reminder">${_('reminder')}</option>
                 `;
 
-                // Add boards from boardsData
                 boardsData.forEach(board => {
                     if (board.gdid && board.title) {
                         const option = new Option(board.title, board.gdid);
@@ -900,17 +1798,15 @@ async function startApp() {
                 startBoardWrapper.appendChild(startBoardSelect);
                 zoomModalBody.appendChild(startBoardWrapper);
 
-                // --- Close Button ---
                 const closeBtnWrapper = document.createElement('div');
                 closeBtnWrapper.className = 'settings-close-btn-wrapper';
                 const closeBtn = document.createElement('button');
-                closeBtn.className = 'zoom-btn settings-close-btn'; // Add a specific class for styling
+                closeBtn.className = 'zoom-btn settings-close-btn';
                 closeBtn.textContent = _('closeButton');
                 closeBtn.addEventListener('click', () => {
                     document.getElementById('settings-modal').classList.remove('visible');
                 });
                 closeBtnWrapper.appendChild(closeBtn);
-                // Append the button wrapper to the modal content box, not the scrollable body
                 zoomModalBody.parentNode.appendChild(closeBtnWrapper);
 
                 const slider = sliderContainer.querySelector('#scaleSlider');
@@ -921,11 +1817,9 @@ async function startApp() {
 
                     notesContainer.style.zoom = value / 100;
                     zoomValueDisplay.textContent = ` ${value}%`;
-                    // Sync slider and input field
                     slider.value = value;
                     scaleInput.value = value;
                 };
-                // Load zoom level from localStorage
                 let savedZoom = localStorage.getItem('zoomLevel');
                 if (savedZoom) {
                     slider.value = savedZoom;
@@ -938,7 +1832,7 @@ async function startApp() {
                     updateZoom(zoomValue);
                     localStorage.setItem('zoomLevel', zoomValue);
                 });
-                scaleInput.addEventListener('change', () => { // Use 'change' to update when user finishes editing
+                scaleInput.addEventListener('change', () => {
                     const zoomValue = scaleInput.value;
                     updateZoom(zoomValue);
                     localStorage.setItem('zoomLevel', zoomValue);
@@ -963,7 +1857,6 @@ async function startApp() {
                     }
                 });
 
-                // --- Font Size Settings ---
                 const createFontSizeInput = (id, labelKey, storageKey, defaultValue, targetUpdate) => {
                     const wrapper = document.createElement('div');
                     wrapper.className = 'zoom-control-wrapper';
@@ -972,16 +1865,16 @@ async function startApp() {
                     const label = document.createElement('label');
                     label.textContent = _(labelKey);
                     label.style.marginRight = '10px';
-                    label.style.flexBasis = '200px'; // Adjusted basis for longer labels
-                    label.style.flexShrink = '0'; // Prevent label from shrinking
+                    label.style.flexBasis = '200px';
+                    label.style.flexShrink = '0';
                     label.style.textAlign = 'left';
 
                     const select = document.createElement('select');
                     select.id = id;
-                    select.className = 'zoom-input-select'; // New class for styling
-                    select.style.width = '80px'; // Explicit width for consistency
-                    select.style.margin = '0 2px 0 10px'; // Match number input margin
-                    select.style.flexShrink = '0'; // Prevent select from shrinking
+                    select.className = 'zoom-input-select';
+                    select.style.width = '80px';
+                    select.style.margin = '0 2px 0 10px';
+                    select.style.flexShrink = '0';
 
                     const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
                     fontSizes.forEach(size => {
@@ -990,7 +1883,7 @@ async function startApp() {
                         option.textContent = `${size}px`;
                         select.appendChild(option);
                     });
-                    select.value = localStorage.getItem(storageKey) || defaultValue; // Set selected value
+                    select.value = localStorage.getItem(storageKey) || defaultValue;
 
                     select.addEventListener('change', () => {
                         const value = select.value;
@@ -1000,7 +1893,7 @@ async function startApp() {
                     });
 
                     wrapper.appendChild(label);
-                    wrapper.appendChild(select); // Append select instead of input
+                    wrapper.appendChild(select);
                     return wrapper;
                 };
 
@@ -1017,15 +1910,12 @@ async function startApp() {
                 contentWrapper.appendChild(contentEl);
                 boardsNote.appendChild(contentWrapper);
                 
-                // --- Corrected Logic for Button Sizing and Scrolling ---
-
-                // 1. Create all button elements and store them in an array
                 const allButtonLinks = [];
 
                 const allBoardsLink = document.createElement('span');
                 allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
                 allBoardsLink.dataset.boardid = 'all';
-                allBoardsLink.title = _('allBoardsCtrlClickTooltip'); // Set the title directly
+                allBoardsLink.title = _('allBoardsCtrlClickTooltip');
 
                 const allBoardsText = document.createElement('span');
                 allBoardsText.textContent = _('allBoards');
@@ -1039,31 +1929,30 @@ async function startApp() {
                 let isLongPress = false;
 
                 const startPress = (e) => {
-                    e.preventDefault(); // Prevent context menu on mobile
+                    e.preventDefault();
                     isLongPress = false;
                     longPressTimer = setTimeout(() => {
                         isLongPress = true;
                         showAllBoardsModal(allBoardsLink);
-                    }, 500); // 500ms for a long press
+                    }, 500);
                 };
 
                 const endPress = () => {
                     clearTimeout(longPressTimer);
                 };
 
-                // Desktop and Mobile event listeners
                 allBoardsLink.addEventListener('mousedown', startPress);
                 allBoardsLink.addEventListener('mouseup', endPress);
-                allBoardsLink.addEventListener('mouseleave', endPress); // Cancel if mouse leaves
+                allBoardsLink.addEventListener('mouseleave', endPress);
                 allBoardsLink.addEventListener('touchstart', startPress);
                 allBoardsLink.addEventListener('touchend', endPress);
-                allBoardsLink.addEventListener('touchmove', endPress); // Cancel on scroll
+                allBoardsLink.addEventListener('touchmove', endPress);
 
                 allBoardsLink.addEventListener('click', (e) => { 
                     e.preventDefault(); 
-                    if (isLongPress) return; // Don't trigger click after a long press
+                    if (isLongPress) return;
 
-                    if (e.ctrlKey) { // Keep Ctrl+Click for desktop
+                    if (e.ctrlKey) {
                         showAllBoardsModal(allBoardsLink);
                     } else {
                         filterNotesByBoard('all'); 
@@ -1091,16 +1980,10 @@ async function startApp() {
                     link.classList.add('board-filter-link');
                     link.dataset.boardid = board.gdid;
 
-                    // Apply custom colors from board definition
                     if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) {
                         link.style.backgroundColor = `var(--board-bg-${board.color})`;
                     }
                     link.style.color = 'black';
-                    /*if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont >= 0 && board.colorfont <= 6) {
-                        link.style.color = `var(--board-bg-${board.colorfont})`;
-                    } else if (board.colorfont === 0) { // Special case for black text
-                        link.style.color = 'black';
-                    }*/
 
                     if (board.status === 1) link.style.color = 'red';
                     link.addEventListener('click', (e) => {
@@ -1111,7 +1994,6 @@ async function startApp() {
                     allButtonLinks.push(link);
                 });
 
-                // 2. Measure max width using a temporary container
                 maxWidthForButtons = 0;
                 const tempContainer = document.createElement('div');
                 tempContainer.style.position = 'absolute';
@@ -1124,15 +2006,13 @@ async function startApp() {
                 });
 
                 document.body.removeChild(tempContainer);
-                maxWidthForButtons += 10; // Reverted to smaller padding
+                maxWidthForButtons += 10;
 
-                // 3. Apply width and append to the actual container
                 allButtonLinks.forEach(link => {
                     link.style.width = `${maxWidthForButtons}px`;
                     contentEl.appendChild(link);
                 });
 
-                // 4. Create and add scroll arrows
                 const scrollWrapper = document.createElement('div');
                 scrollWrapper.className = 'scrolling-menu-wrapper';
                 const leftArrow = document.createElement('button');
@@ -1150,13 +2030,12 @@ async function startApp() {
                 scrollWrapper.appendChild(rightArrow);
                 contentWrapper.appendChild(scrollWrapper);
                 
-                // 5. Show/hide arrows based on scroll
                 const checkScroll = () => {
                     leftArrow.classList.toggle('visible', contentEl.scrollLeft > 0);
                     rightArrow.classList.toggle('visible', contentEl.scrollWidth > contentEl.clientWidth && contentEl.scrollLeft < contentEl.scrollWidth - contentEl.clientWidth - 1);
                 };
                 contentEl.addEventListener('scroll', checkScroll);
-                new ResizeObserver(checkScroll).observe(contentEl); // Re-check on resize
+                new ResizeObserver(checkScroll).observe(contentEl);
                 
                 boardsNoteElement = boardsNote;
             }
@@ -1191,7 +2070,6 @@ async function startApp() {
                 let textSpan = null;
                 let extraData = {};
                 try {
-                    // Store raw data for calendar view
                     const rawNoteData = {
                         file: file,
                         content: JSON.parse(res.body)
@@ -1212,9 +2090,8 @@ async function startApp() {
                         if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
                             note.style.backgroundColor = `var(--note-bg-${noteColor})`;
                         }
-                        // Check for status field here
                         if (extraData.status === 1) {
-                            return; // Skip this note if status is 1
+                            return;
                         }
                     } else { fileContent = _('errorNoteFieldMissing'); }
                 } catch (e) { fileContent = _('errorNoteParse'); }
@@ -1236,11 +2113,9 @@ async function startApp() {
                         noteTitle = fileContent.substring(0, pipeIndex).trim();
                         displayContent = fileContent.substring(pipeIndex + 1).trim();
                     } else {
-                        // Fallback for type 1 notes without a pipe: use first line as title
                         noteTitle = fileContent.split('\n')[0].substring(0, 50);
                     }
                 } else if (!isHiddenNote) {
-                    // Default title logic for regular notes
                     const lines = fileContent.split('\n');
                     for (const line of lines) {
                         const trimmedLine = line.trim();
@@ -1271,7 +2146,7 @@ async function startApp() {
                         contentEl.innerHTML = renderNoteContent(displayContent);
                     }
                 }
-                if (!isHiddenNote) { // Attachments should only show for non-hidden notes in the main view
+                if (!isHiddenNote) {
                     if (noteGdid) {
                         const attachments = mediaData.filter(media => media.noteid === noteGdid);
                         if (attachments.length > 0) {
@@ -1287,7 +2162,7 @@ async function startApp() {
                                     attachmentWrapper.style.alignItems = 'center';
                                     attachmentWrapper.style.gap = '5px';
                                     const iconDiv = document.createElement('div');
-                                    let link; // Дефинираме link тук
+                                    let link;
                                     if (attachment.type === 3 && attachment.path) {
                                         const filename = attachment.path.split('/').pop();
                                         const link = document.createElement('a');
@@ -1543,7 +2418,7 @@ async function startApp() {
                                         });
                                         attachmentWrapper.appendChild(textContainer);
                                     }
-                                    if (link) { // Проверяваме дали link е дефиниран
+                                    if (link) {
                                         iconDiv.title = link.href;
                                     }
                                     contentEl.appendChild(attachmentWrapper);
@@ -1559,9 +2434,8 @@ async function startApp() {
                 if (note.dataset.extraInfo) {
                     try {
                         const extraData = JSON.parse(note.dataset.extraInfo);
-                        // Highlight footer for notes with reminders
                         if (extraData.timer) {
-                            footerEl.style.backgroundColor = 'rgba(255, 0, 0, 0.2)'; // Light red background
+                            footerEl.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
                         }
 
                         if (extraData.boardid && boardsData.length > 0) {
@@ -1574,14 +2448,12 @@ async function startApp() {
                                 boardText.textContent = board.title;
                                 boardDisplay.appendChild(boardText);
                                 footerLeft.appendChild(boardDisplay);
-                                // Add event listener to board icon to show extra info
                                 boardDisplay.addEventListener('click', (e) => {
-                                    e.stopPropagation(); // Prevent click from propagating to the note itself
+                                    e.stopPropagation();
                                     const parentNote = boardDisplay.closest('.note');
                                     if (parentNote && parentNote.dataset.extraInfo) {
                                         try {
                                             const extraInfoData = JSON.parse(parentNote.dataset.extraInfo);
-                                            // Pass the note's color to the modal
                                             showModal({ raw: JSON.stringify(extraInfoData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
                                         } catch (e) {
                                             console.error('Error parsing data-extra-info:', e);
@@ -1592,10 +2464,7 @@ async function startApp() {
                             }
                         }
 
-                        // Handle date and time display
                         if (extraData.timer) {
-                            // If there's a timer, it takes precedence for both date and time
-                            // 1. Display the date part from the timer
                             const dateDisplay = document.createElement('div');
                             dateDisplay.className = 'date-display';
                             dateDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`;
@@ -1608,10 +2477,9 @@ async function startApp() {
                             });
                             footerLeft.appendChild(dateDisplay);
 
-                            // 2. Display the time part from the timer
                             const timerDisplay = document.createElement('div');
                             timerDisplay.className = 'date-display';
-                            timerDisplay.style.marginLeft = '10px'; // Add space to the left
+                            timerDisplay.style.marginLeft = '10px';
                             timerDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 15"></polyline></svg>`;
                             const timerText = document.createElement('span');
                             timerText.textContent = formatTime(extraData.timer);
@@ -1624,7 +2492,6 @@ async function startApp() {
                             });
                             footerLeft.appendChild(timerDisplay);
                         } else {
-                            // If no timer, fall back to calendarDate or datemod
                             const dateToShow = extraData.calendarDate || extraData.datemod;
                             if (dateToShow) {
                                 const dateDisplay = document.createElement('div');
@@ -1645,24 +2512,13 @@ async function startApp() {
                     footerRight.style.alignItems = 'center';
                     const lockIcon = document.createElement('span');
                     lockIcon.innerHTML = lockIconSvg;
-                    lockIcon.style.marginRight = '-7px'; // Compensate for the 10px note padding (10px - 7px = 3px)
+                    lockIcon.style.marginRight = '-7px';
                     footerRight.appendChild(lockIcon);
                     const viewButton = document.createElement('button');
-                    /*viewButton.className = 'view-button';
-                    viewButton.innerHTML = eyeIconSvg;
-                    viewButton.title = _('viewFullContent');
-                    viewButton.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const noteEl = e.currentTarget.closest('.note');
-                        showModal({ raw: fileContent, format: textSpan, color: window.getComputedStyle(noteEl).backgroundColor });
-                    });
-                    footerRight.appendChild(viewButton);*/
                     footerEl.appendChild(footerRight);
                 }
                 note.addEventListener('click', (e) => {
                     const noteEl = e.currentTarget;
-                    // Check if the click target is not an interactive element within the note's footer.
-                    // This prevents the modal from opening if a child element with its own click handler was clicked.
                     if (!e.target.closest('.note-footer')) {
                         showModal({ raw: fileContent, format: textSpan, color: window.getComputedStyle(noteEl).backgroundColor });
                     }
@@ -1673,9 +2529,7 @@ async function startApp() {
                 notesContainer.appendChild(note);
             }));
 
-            // Now, prepend the boards note if it was created
             if (boardsNoteElement) {
-                // Append the boards note to the header for natural sticky positioning
                 document.querySelector('header').appendChild(boardsNoteElement);
             }
 
@@ -1687,12 +2541,10 @@ async function startApp() {
             }
         } catch (err) {
             console.error("Error in listFiles:", err);
-            // Check if the error is an auth error from Google API
             if (err.result && err.result.error && err.result.error.code === 401) {
                 showToast(_('errorSessionExpired'));
-                handleSignoutClick(); // Redirect to login
+                handleSignoutClick();
             } else {
-                // Show a more detailed error message for debugging
                 let errorMessage = _('errorProcessingFiles');
                 if (err.result && err.result.error) {
                     errorMessage += ` (Status: ${err.result.error.code} - ${err.result.error.message})`;
@@ -1701,13 +2553,11 @@ async function startApp() {
             }
         } finally {
             loaderContainer.style.display = 'none';
-            // Explicitly set the default background after everything is loaded
-            // to ensure consistency and prevent flickering.
             document.body.style.backgroundImage = `url('Board.png')`;
             notesContainer.style.backgroundImage = `url('Board.png')`;
             currentBackground = 'Board.png';
         }
-    }
+    }*/
 
     function renderCalendarView() {
         document.querySelector('header').style.display = 'none';
@@ -1798,11 +2648,8 @@ async function startApp() {
                 dateNum.classList.add('today-date');
             }
             cell.appendChild(dateNum);
-
             const notesForDayContainer = document.createElement('div');
             notesForDayContainer.className = 'calendar-notes-container';
-            cell.appendChild(notesForDayContainer);
-
             // Find and render notes for this day
             const dayDate = new Date(year, month, day);
             allNotesData.forEach(noteData => {
@@ -1845,7 +2692,7 @@ async function startApp() {
                     }
                 }
             });
-
+            cell.appendChild(notesForDayContainer);
             calendarGrid.appendChild(cell);
         }
 
