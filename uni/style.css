@@ -49,7 +49,7 @@ header h1 {
 
 #search-container {
     flex-grow: 1;
-    padding: 0 2em;
+    /*padding: 0 2em;*/
     display: flex;
     justify-content: center;
     align-items: center;
@@ -58,6 +58,7 @@ header h1 {
 #search-box {
     width: 100%;
     max-width: 400px;
+    min-width: 320px;
     padding: 8px 12px;
     border-radius: 20px;
     border: 1px solid #aaa;
@@ -192,7 +193,7 @@ main {
     box-shadow: 0 5px 8px rgba(0,0,0,0.1); /* Add a subtle shadow */
     border: none;
     border-bottom: 1px solid #ccc;
-    padding: 10px;
+    /*padding: 10px;*/
     background-image: url('Frame.jpg');
     -webkit-user-select: none; /* Safari */
     -moz-user-select: none;    /* Firefox */
@@ -685,15 +686,15 @@ pre, code {
     opacity: 1;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1030px) {
     header {
         flex-direction: column;
         align-items: center;
     }
-    /* Order for tablets (769px - 900px) */
-    header > div:first-child { order: 1; } /* Title */
-    #search-container { order: 2; }      /* Search Box */
-    #header-buttons { order: 3; }        /* Buttons */
+    /* Order for tablets (769px - 1030px) */
+    /* header > div:first-child { order: 1; } Title */
+    #search-container { order: 3; }      /* Search Box */
+    #header-buttons { order: 2; }        /* Buttons */
     .boards-note { order: 4; }           /* Board menu at the bottom */
 }
 
@@ -706,9 +707,9 @@ pre, code {
     /* .boards-note is already order 4 from the rule above */
 }
 
-    #search-container {
+    /*#search-container {
         padding: 1em 0 0.5em;
-    }
+    }*/
 
     #header-buttons {
         display: flex;

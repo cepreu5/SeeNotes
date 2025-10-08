@@ -471,24 +471,25 @@ async function startApp() {
 
         if (anchorElement) {
             const rect = anchorElement.getBoundingClientRect();
-
-            contentModal.classList.add('popup-mode'); // Use a class to change positioning behavior
+            contentModal.classList.add('popup-mode');
             modalBox.style.top = `${rect.bottom + 5}px`; // Position below the button
-            // modalBox.style.left = `${rect.left}px`; // Initially align with the anchor
             modalBox.style.transform = 'none'; // Override centering transform
-
-            // After setting initial position, check if it overflows
-            // Reset width before measuring to get the natural content width
             modalBox.style.width = 'auto';
-            const modalRect = modalBox.getBoundingClientRect();
-            const windowWidth = window.innerWidth;
-            if (rect.left + modalRect.width > windowWidth - 10) {
-                modalBox.style.left = 'auto'; // Unset left alignment
-                modalBox.style.right = '10px'; // Align to the right edge with a small buffer
-                modalBox.style.width = `${Math.min(modalRect.width, windowWidth - 20)}px`; // Limit width to fit screen
+            
+            // Special handling for the right arrow to align its right edge
+            if (anchorElement.classList.contains('right-arrow')) {
+                modalBox.style.right = `${window.innerWidth - rect.right}px`;
+                modalBox.style.left = 'auto';
             } else {
+                // Default behavior: align left, but check for overflow
+                const modalRect = modalBox.getBoundingClientRect();
+                const windowWidth = window.innerWidth;
                 modalBox.style.left = `${rect.left}px`; // Align with the anchor element
                 modalBox.style.right = 'auto'; // Unset right alignment
+                if (rect.left + modalRect.width > windowWidth - 10) {
+                    modalBox.style.left = 'auto';
+                    modalBox.style.right = '10px';
+                }
             }
         } else {
             contentModal.classList.remove('popup-mode'); // Revert to default centered modal
@@ -815,7 +816,7 @@ async function startApp() {
     
     async function createBoardsUI(boardsData, boardParseError) {
         const boardsNote = document.createElement('div');
-        boardsNote.className = 'note boards-note';
+        boardsNote.className = 'boards-note';
         const contentWrapper = document.createElement('div');
         contentWrapper.className = 'note-content';
         contentWrapper.style.minHeight = '0';
@@ -1011,40 +1012,44 @@ async function startApp() {
         allBoardsIcon.classList.add('board-icon-in-button');
         allBoardsLink.appendChild(allBoardsText);
         allBoardsLink.appendChild(allBoardsIcon);
-    
-        let longPressTimer;
-        let isLongPress = false;
-    
-        const startPress = (e) => {
-            e.preventDefault();
-            isLongPress = false;
-            longPressTimer = setTimeout(() => {
-                isLongPress = true;
-                showAllBoardsModal(allBoardsLink);
-            }, 500);
+
+        /**
+         * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
+         * @param {HTMLElement} element The element to attach events to.
+         * @param {Function} [singleClickCallback] An optional callback for a regular single click.
+         */
+        const addAllBoardsModalEvents = (element, singleClickCallback) => {
+            let longPressTimer;
+            let isLongPress = false;
+
+            const startPress = (e) => {
+                e.preventDefault();
+                isLongPress = false;
+                longPressTimer = setTimeout(() => {
+                    isLongPress = true;
+                    showAllBoardsModal(element);
+                }, 500);
+            };
+
+            const endPress = () => clearTimeout(longPressTimer);
+
+            element.addEventListener('mousedown', startPress);
+            element.addEventListener('mouseup', endPress);
+            element.addEventListener('mouseleave', endPress);
+            element.addEventListener('touchstart', startPress);
+            element.addEventListener('touchend', endPress);
+            element.addEventListener('touchmove', endPress);
+
+            element.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (isLongPress) return;
+
+                if (e.ctrlKey) showAllBoardsModal(element);
+                else if (singleClickCallback) singleClickCallback();
+            });
         };
-    
-        const endPress = () => {
-            clearTimeout(longPressTimer);
-        };
-    
-        allBoardsLink.addEventListener('mousedown', startPress);
-        allBoardsLink.addEventListener('mouseup', endPress);
-        allBoardsLink.addEventListener('mouseleave', endPress);
-        allBoardsLink.addEventListener('touchstart', startPress);
-        allBoardsLink.addEventListener('touchend', endPress);
-        allBoardsLink.addEventListener('touchmove', endPress);
-    
-        allBoardsLink.addEventListener('click', (e) => { 
-            e.preventDefault(); 
-            if (isLongPress) return;
-    
-            if (e.ctrlKey) {
-                showAllBoardsModal(allBoardsLink);
-            } else {
-                filterNotesByBoard('all'); 
-            }
-        });
+
+        addAllBoardsModalEvents(allBoardsLink, () => filterNotesByBoard('all'));
         allButtonLinks.push(allBoardsLink);
     
         const calendarLink = document.createElement('span');
@@ -1109,8 +1114,11 @@ async function startApp() {
         rightArrow.className = 'scroll-arrow right-arrow';
         rightArrow.innerHTML = `<svg width="24" height="24"><use href="#icon-arrow-right"></use></svg>`;
         
-        leftArrow.onclick = () => { contentEl.scrollLeft -= (maxWidthForButtons + 5); };
-        rightArrow.onclick = () => { contentEl.scrollLeft += (maxWidthForButtons + 5); };
+        // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
+        addAllBoardsModalEvents(leftArrow, () => { contentEl.scrollLeft -= (maxWidthForButtons + 5); });
+        addAllBoardsModalEvents(rightArrow, () => { contentEl.scrollLeft += (maxWidthForButtons + 5); });
+        // leftArrow.onclick = () => { contentEl.scrollLeft -= (maxWidthForButtons + 5); };
+        // rightArrow.onclick = () => { contentEl.scrollLeft += (maxWidthForButtons + 5); };
     
         scrollWrapper.appendChild(leftArrow);
         scrollWrapper.appendChild(contentEl);
