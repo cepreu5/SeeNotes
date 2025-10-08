@@ -4,7 +4,7 @@
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 let tokenClient;
-const version = '0.6'; // App version
+const version = '0.7'; // App version
 
 // Promise to load a script
 let allNotesData = []; // Store all notes data for calendar
