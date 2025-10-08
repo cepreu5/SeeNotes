@@ -1747,14 +1747,14 @@ async function startApp() {
                     dateDisplay.appendChild(dateText);
                     dateDisplay.addEventListener('click', () => {
                         const parentNote = dateDisplay.closest('.note');
-                        showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
+                        showModal({ raw: JSON.stringify(extraData, null, 2), color: noteBgColor });
                     });
                     footerLeft.appendChild(dateDisplay);
     
                     const timerDisplay = document.createElement('div');
                     timerDisplay.className = 'date-display';
                     timerDisplay.style.marginLeft = '10px';
-                    timerDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 15"></polyline></svg>`;
+                    timerDisplay.innerHTML = clockIconSvg;
                     const timerText = document.createElement('span');
                     timerText.textContent = formatTime(extraData.timer);
                     timerDisplay.appendChild(timerText);
@@ -1762,7 +1762,7 @@ async function startApp() {
                     timerDisplay.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const parentNote = timerDisplay.closest('.note');
-                        showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
+                        showModal({ raw: JSON.stringify(extraData, null, 2), color: noteBgColor });
                     });
                     footerLeft.appendChild(timerDisplay);
                 } else {
