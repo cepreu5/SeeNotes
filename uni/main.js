@@ -4,6 +4,7 @@
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 let tokenClient;
+const version = '0.6'; // App version
 
 // Promise to load a script
 let allNotesData = []; // Store all notes data for calendar
@@ -153,6 +154,21 @@ async function startApp() {
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
+    // Този масив съпоставя индекса (стойността от sellist) с името на файла
+    const noteBackgrounds = [
+        'wg1_1.png', // 0
+        'wr1_1.png', // 1
+        'wb1_1.png', // 2
+        'wr1_1.png', // 3
+        'wg1_1.png', // 4
+        'wy1_1.png', // 5
+        'wb1_1.png', // 6
+        'wr1_1.png', // 7
+        'wy1_1.png', // 8
+        'stl1_1.png', // 9
+        'stl2_1.png', // 10
+        'stl3_1.png'  // 11
+    ];
 
     function setLanguage(lang) {
         if (!translations[lang]) return;
@@ -354,6 +370,12 @@ async function startApp() {
 
 
         setLanguage(currentLang);
+
+        // Add app version to the settings modal title
+        const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
+        if (settingsTitle) {
+            settingsTitle.textContent += `${version}`;
+        }
     }
 
     // --- Core Functions ---
@@ -1104,6 +1126,31 @@ async function startApp() {
         
         return boardsNote;
     }
+
+    async function createColoredNoteBackground(color, src, width, height) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.src = (src >= 0 && src < noteBackgrounds.length)
+                ? noteBackgrounds[src]
+                : 'stl1_1.png';
+            image.onload = () => {
+                const canvas = document.createElement('canvas');
+                const w = canvas.width = width;
+                const h = canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = color;
+                ctx.fillRect(0, 0, w, h);
+                ctx.globalCompositeOperation = 'destination-in';
+                ctx.drawImage(image, 0, 0, w, h);
+                // ctx.fillStyle = '#0000ff'; // color;
+                // ctx.fillRect(0, 0, w, h);
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.drawImage(image, 0, 0, w, h);
+                resolve(canvas); // Return the canvas element directly
+            };
+            image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+        });
+    }
     
     async function createNoteElement(rawNoteData, mediaData, boardsData) {
         const { file, res } = rawNoteData;
@@ -1127,10 +1174,7 @@ async function startApp() {
                 delete extraData.notetxt;
                 if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
                 if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
-                    note.style.backgroundColor = 'transparent'; // `var(--note-bg-${noteColor})`;
-                } else {
-                    note.style.backgroundColor = 'transparent';
-                    // Color is handled by CSS or other elements, not the main note container with the image.
+                    // Color will be handled by canvas background
                 }
                 if (extraData.status === 1) {
                     return null; // Skip this note if status is 1
@@ -1172,6 +1216,19 @@ async function startApp() {
         const titleEl = document.createElement('h3');
         titleEl.textContent = noteTitle;
         titleEl.title = noteTitle;
+
+        // Asynchronously create and apply the colored background
+        const noteBgColor = noteColor !== null ? getComputedStyle(document.documentElement).getPropertyValue(`--note-bg-${noteColor}`).trim() : '#FBFF86';
+        try {
+            // Pass the note's dimensions (from CSS) to the canvas function
+            const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
+            const backgroundCanvas = await createColoredNoteBackground(noteBgColor, imageName, 250, 250);
+            backgroundCanvas.className = 'note-background-canvas';
+            // Prepend the canvas so it's the first child and sits behind the content wrapper
+            note.prepend(backgroundCanvas);
+        } catch (error) {
+            console.error("Failed to create colored note background:", error);
+        }
 
         const contentWrapper = document.createElement('div');
         contentWrapper.className = 'note-content-wrapper';

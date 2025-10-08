@@ -124,16 +124,62 @@ main {
     border: 1px solid #ccc;
     border-radius: 8px;
     padding: 10px 10px 5px 10px;
-    margin: 10px;
+    margin: 0px;
     width: 250px;
     height: 250px;
     display: flex;
     flex-direction: column;
-    background-color: var(--note-bg-0);
+    /*background-color: var(--note-bg-0);*/
     font-size: var(--note-font-size); /* Set base font size for the whole note */
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
     text-align: left;
     cursor: pointer; /* Added for pointer cursor on hover */
+}
+
+.note-item {
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-blend-mode: normal;
+    box-shadow: none;
+}
+
+.note-background-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0; /* Ensure it's behind the content wrapper */
+}
+
+.note-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    padding-top: 0px;
+    box-sizing: border-box;
+    background-color: transparent;
+    z-index: 1; /* Ensure content is on top of the canvas */
+}
+
+.note-content-wrapper > h3 {
+    margin-top: 20%;
+    margin-left: 8%;
+    margin-right: 8%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* height: 30%; */ /* Removed fixed height */
+    padding-top: 0px;   /* Added padding for vertical space */
+    padding-bottom: 5%;/* Added padding for vertical space */
+}
+
+.note-content-wrapper > .note-content {
+    margin: 0 10% 0 8%;
 }
 
 /* Specific styles for the boards note to make it a full-width panel */
@@ -154,14 +200,16 @@ main {
     box-sizing: border-box; /* Ensure padding is included in width */
 }
 
-.note h3 {
-    margin-top: 0;
+/*.note h3 {
+    margin-top: 20%;
     font-size: 1.1em;
     flex-shrink: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
+    /~ Margin is now controlled by .note-content-wrapper > h3 ~/
+    margin: 0;
+}*/
 
 .note-content {
     flex-grow: 1;
@@ -179,7 +227,7 @@ pre, code {
 
 .note-footer {
     flex-shrink: 0;
-    padding-top: 5px;
+    padding-top: 1px;
     margin-top: auto;
     border-top: 1px solid gray;
     display: flex;
@@ -187,7 +235,8 @@ pre, code {
     justify-content: space-between;
     font-size: 0.8em;
     color: #666;
-    min-height: 18px; /* Set min-height to match icon size + padding */
+    min-height: 18px;
+    margin: 0 8% 12% 8%; /* Add horizontal and bottom margin */
 }
 
 .note-footer .date-display,
@@ -1098,19 +1147,27 @@ pre, code {
     border: none;
 }
 .calendar-cell {
-    /*border: 1px solid #d4c8a8;*/
-    background-image: url('day1.png');
-    background-size: 100% 100%;
-    background-position: center;
-    background-repeat: no-repeat;
     position: relative;
-    padding-right: 20px;
-    padding-bottom: 10px;
-    padding-left: 5px; /* Use padding for inner spacing */
     display: flex;
     flex-direction: column;
     aspect-ratio: 1 / 1; /* This is the key: forces the element to be a square */
     overflow: hidden; /* Prevent content from expanding the cell */
+    padding: 5px 5px 10px 5px; /* Restore padding for content alignment */
+    isolation: isolate; /* Create a new stacking context to contain the ::before pseudo-element */
+}
+
+.calendar-cell::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: url('day1.png');
+    background-size: 100% 100%; /* Stretch to fill the cell */
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: -1; /* Place it behind the content */
 }
 
 .calendar-date-number {
