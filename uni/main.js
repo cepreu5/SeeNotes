@@ -102,11 +102,14 @@ async function startApp() {
             calendar: 'Calendar',
             settingsTitle: 'Settings',
             reminder: 'Reminders',
-            // folderIdDeleted: 'Folder ID has been deleted.',
+            searchSavedTip: 'Save search',
             startBoardLabel: 'Start Board:',
             settingSaved: 'Setting saved!',
             submitButton: 'Confirm',
+            searchSaved: 'Search saved',
             allBoardsCtrlClickTooltip: 'Ctrl-click for all',
+            maxSearchesLabel: 'Saved Searches:',
+            clearSearchesTooltip: 'Clear search history',
             noteFontSizeLabel: 'Note Font Size:',
             modalFontSizeLabel: 'Modal Font Size:',
             closeButton: 'Close'
@@ -139,7 +142,7 @@ async function startApp() {
             warningInvalidBoard: 'Внимание: Един или повече файлове за дефиниция на бордове са невалидни и бяха пропуснати.',
             // promptFolderId: 'Моля, въведете ID на папката в Google Drive:',
             // folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
-            // folderIdDeleted: 'Folder ID е изтрит.',
+            searchSavedTip: 'Запомни търсенето',
             zoomLabel: 'Мащаб:',
             calendar: 'Календар',
             settingsTitle: 'Настройки',
@@ -147,8 +150,11 @@ async function startApp() {
             submitButton: 'Потвърди',
             startBoardLabel: 'Стартов борд:',
             settingSaved: 'Настройката е запазена!',
+            searchSaved: 'Търсенето е запазено',
             closeButton: 'Затвори',
             allBoardsCtrlClickTooltip: 'Ctrl-клик за всички',
+            maxSearchesLabel: 'Запазени търсения:',
+            clearSearchesTooltip: 'Изчисти историята на търсенията',
             noteFontSizeLabel: 'Размер шрифт (бележка):',
             modalFontSizeLabel: 'Размер шрифт (преглед):'
         }
@@ -209,13 +215,17 @@ async function startApp() {
     }
 
     // --- Toast Notification ---
-    let toastTimeout;
+    let toastTimeout, isShowingToast = false;
     function showToast(message, duration = 5000) {
+        if (isShowingToast) return; // Prevent multiple toasts at once
+        isShowingToast = true;
+
         const toast = document.getElementById('toastNotification');
         toast.textContent = message;
         toast.classList.add('show');
         clearTimeout(toastTimeout);
         toastTimeout = setTimeout(() => {
+            isShowingToast = false;
             toast.classList.remove('show');
         }, duration);
     }
@@ -272,6 +282,7 @@ async function startApp() {
     const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
     const attachmentIcons = [
         { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
+        // ... other icons
         { type: 2, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24" ><circle cx="7" cy="12" r="4" /><circle cx="17" cy="12" r="4"/><line x1="6" y1="16" x2="18" y2="16" stroke="black" stroke-width="1" /></svg>` },
         { type: 3, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6"/></svg>` },
         { type: 4, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>` },
@@ -285,6 +296,9 @@ async function startApp() {
     let maxWidthForButtons = 0; // Store max width for modal use
     let currentCalendarDate = new Date();
     let folderIds = {};
+    let lastSearchTerm = ""; // New variable for the last typed search
+    let savedSearches = []; // Will now only store manually saved searches
+    let maxSavedSearches = 20, saveSearchBtn; // Max for manually saved
     let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText, zoomInput;
     const boardsNoteBgnd = '#cfe6f8';
 
@@ -323,7 +337,65 @@ async function startApp() {
             }
         };
         scrollTopBtn.addEventListener('click', () => window.scrollTo({top: 0, behavior: 'smooth'}));
-        searchBox.addEventListener('input', applySearchFilter);
+
+        // --- Search Box Enhancements ---
+        const searchContainer = document.getElementById('search-container');
+        const searchWrapper = document.createElement('div'); // New wrapper
+        searchWrapper.id = 'search-wrapper';
+
+        saveSearchBtn = document.createElement('span');
+        saveSearchBtn.id = 'save-search-btn';
+        saveSearchBtn.className = 'search-icon';
+        saveSearchBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+        saveSearchBtn.style.display = 'none';
+        saveSearchBtn.style.marginTop = '2px';
+        saveSearchBtn.title = _('searchSavedTip');
+        const savedSearchesPopup = document.createElement('div');
+        savedSearchesPopup.id = 'saved-searches-popup';
+
+        // Append elements to the new wrapper
+        searchWrapper.appendChild(searchBox);
+        searchWrapper.appendChild(saveSearchBtn);
+        searchWrapper.appendChild(savedSearchesPopup);
+        searchContainer.appendChild(searchWrapper); // Append wrapper to the main container
+        
+        // This function will be the single point for applying search and UI updates
+        const triggerSearch = (isUserTyping = false) => {
+            if (isUserTyping) {
+                // Only update the "last search" if the input is not empty
+                if (searchBox.value.trim() !== '') {
+                    lastSearchTerm = searchBox.value;
+                    localStorage.setItem('lastSearchTerm', lastSearchTerm);
+                }
+            }
+            applyFilters(); // This just filters the notes
+            saveSearchBtn.style.display = searchBox.value.trim() ? 'block' : 'none';
+        };
+
+        // Listen for user typing
+        searchBox.addEventListener('input', (event) => {
+            if (event.isTrusted) triggerSearch(true);
+        });
+
+        searchBox.addEventListener('focus', () => {
+            if (savedSearches.length > 0) {
+                renderSavedSearchesPopup(); // This will now just populate the div
+                document.getElementById('saved-searches-popup').style.display = 'block';
+            }
+        });
+
+        saveSearchBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const searchTerm = searchBox.value.trim();
+            if (searchTerm) {
+                saveSearchTerm(searchTerm);
+                // Animate the save button instead of showing a toast
+                saveSearchBtn.classList.add('saved-animation');
+                setTimeout(() => saveSearchBtn.classList.remove('saved-animation'), 600);
+                renderSavedSearchesPopup(); // Re-render to show the new term immediately
+            }
+        });
+
         copyBtn.innerHTML = copyIconSvg;
         copyBtn.addEventListener('click', () => {
             if (navigator.clipboard) {
@@ -368,6 +440,11 @@ async function startApp() {
             }
         });
 
+        // Load saved searches and settings from localStorage
+        lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
+        savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
+        maxSavedSearches = parseInt(localStorage.getItem('maxSavedSearches') || '20', 10);
+
 
         setLanguage(currentLang);
 
@@ -376,6 +453,58 @@ async function startApp() {
         if (settingsTitle) {
             settingsTitle.textContent += `${version}`;
         }
+
+        // Hide saved searches popup when clicking outside
+        document.addEventListener('click', (e) => {
+            if (savedSearchesPopup.style.display === 'block' && !searchWrapper.contains(e.target)) {
+                savedSearchesPopup.style.display = 'none';
+            }
+        });
+    }
+
+    function saveSearchTerm(term) {
+        // Remove if it already exists to move it to the top
+        const existingIndex = savedSearches.indexOf(term);
+        if (existingIndex > -1) {
+            savedSearches.splice(existingIndex, 1);
+        }
+        // Add to the beginning
+        savedSearches.unshift(term);
+        // Trim the array if it's too long
+        if (maxSavedSearches > 0 && savedSearches.length > maxSavedSearches) {
+            savedSearches.length = maxSavedSearches;
+        } else if (maxSavedSearches === 0) {
+            savedSearches = []; // If max is 0, clear the list
+        }
+        localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+    }
+
+    function renderSavedSearchesPopup() {
+        const popup = document.getElementById('saved-searches-popup');
+        popup.innerHTML = ''; // Clear previous items
+        
+        // Add corner dots for styling
+        popup.insertAdjacentHTML('beforeend', `<div class="corner-dot top-left"></div><div class="corner-dot top-right"></div><div class="corner-dot bottom-left"></div><div class="corner-dot bottom-right"></div>`);
+        
+        // Combine last search with saved searches for display
+        const allSearchesForDisplay = [lastSearchTerm, ...savedSearches];
+
+        allSearchesForDisplay.forEach((term, index) => {
+            if (index > 0 && !term) return; // Don't show empty saved searches
+
+            const item = document.createElement('div');
+            item.className = 'saved-search-item';
+            item.textContent = term;
+            item.addEventListener('click', () => {
+                searchBox.value = term;
+                // Directly call applyFilters to ensure the search runs.
+                // This bypasses the 'input' event listener, so lastSearchTerm is not updated.
+                applyFilters(); 
+                saveSearchBtn.style.display = 'block'; // Also ensure the save icon is visible
+                popup.style.display = 'none';
+            });
+            popup.appendChild(item);
+        });
     }
 
     // --- Core Functions ---
@@ -560,6 +689,9 @@ async function startApp() {
             renderCalendarView();
             return;
         }
+
+        searchInput.value = ''; // Clear the search box
+        saveSearchBtn.style.display = 'none'; // Hide the save icon
 
         currentBoardFilter = boardId;
         applyFilters();
@@ -886,6 +1018,39 @@ async function startApp() {
         startBoardWrapper.appendChild(startBoardSelect);
         zoomModalBody.appendChild(startBoardWrapper);
     
+        // --- Max Saved Searches Setting ---
+        const maxSearchesWrapper = document.createElement('div');
+        maxSearchesWrapper.className = 'zoom-control-wrapper';
+        maxSearchesWrapper.style.marginTop = '20px';
+
+        const maxSearchesLabel = document.createElement('label');
+        maxSearchesLabel.textContent = _('maxSearchesLabel');
+        maxSearchesLabel.style.marginRight = '10px';
+
+        const maxSearchesInput = document.createElement('input');
+        maxSearchesInput.type = 'number';
+        maxSearchesInput.id = 'max-searches-input';
+        maxSearchesInput.className = 'zoom-input-number';
+        maxSearchesInput.value = maxSavedSearches;
+        maxSearchesInput.min = '0';
+        maxSearchesInput.max = '20';
+        maxSearchesInput.addEventListener('change', () => {
+            let newValue = parseInt(maxSearchesInput.value, 10);
+            if (isNaN(newValue) || newValue < 0) newValue = 0;
+            if (newValue > 20) newValue = 20;
+            maxSavedSearches = newValue;
+            localStorage.setItem('maxSavedSearches', newValue);
+            // Trim existing searches if new limit is smaller
+            if (savedSearches.length > maxSavedSearches) {
+                savedSearches.length = maxSavedSearches;
+                localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+            }
+            showToast(_('settingSaved'), 2000);
+        });
+        maxSearchesWrapper.appendChild(maxSearchesLabel);
+        maxSearchesWrapper.appendChild(maxSearchesInput);
+        zoomModalBody.appendChild(maxSearchesWrapper);
+
         const closeBtnWrapper = document.createElement('div');
         closeBtnWrapper.className = 'settings-close-btn-wrapper';
         const closeBtn = document.createElement('button');
