@@ -121,13 +121,13 @@ header h1 {
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    width: 100%;
+    width: 90%;
     background: linear-gradient(135deg, #E4E4E4, #858585);
     border: 1px solid #636363;
     border-radius: 3px;
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     z-index: 101; /* Above the header content */
-    max-height: 200px;
+    max-height: 600px;
     overflow-y: auto;
     display: none; /* Hidden by default */
     padding: 15px;
@@ -979,7 +979,8 @@ pre, code {
     font-size: 0.9em;
     font-weight: bold;
     margin-right: 5px; /* Add space to the right, before the buttons */
-    /* Removed absolute positioning */
+    margin-top: 12px;
+    margin-bottom: 12px;
 }
 
 #zoom-modal .modal-content-box {

@@ -510,11 +510,16 @@ async function startApp() {
 
     function renderSavedSearchesPopup() {
         const popup = document.getElementById('saved-searches-popup');
-        popup.innerHTML = ''; // Clear previous items
-        
+        popup.innerHTML = ''; // Clear everything
+
         // Add corner dots for styling
-        popup.insertAdjacentHTML('beforeend', `<div class="corner-dot top-left"></div><div class="corner-dot top-right"></div><div class="corner-dot bottom-left"></div><div class="corner-dot bottom-right"></div>`);
-        
+        // popup.insertAdjacentHTML('beforeend', `<div class="corner-dot top-left"></div><div class="corner-dot top-right"></div><div class="corner-dot bottom-left"></div><div class="corner-dot bottom-right"></div>`);
+
+        // Create a dedicated container for the scrollable items
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'saved-searches-content';
+        popup.appendChild(contentContainer);
+
         // Combine last search with saved searches for display
         const allSearchesForDisplay = [lastSearchTerm, ...savedSearches];
 
@@ -528,11 +533,11 @@ async function startApp() {
                 searchBox.value = term;
                 // Directly call applyFilters to ensure the search runs.
                 // This bypasses the 'input' event listener, so lastSearchTerm is not updated.
-                applyFilters(); 
+                applyFilters();
                 saveSearchBtn.style.display = 'block'; // Also ensure the save icon is visible
                 popup.style.display = 'none';
             });
-            popup.appendChild(item);
+            contentContainer.appendChild(item); // Add items to the new container
         });
     }
 
