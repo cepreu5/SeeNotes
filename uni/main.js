@@ -72,7 +72,7 @@ async function startApp() {
     const translations = {
         en: {
             appTitle: 'CX MultiNotes Viewer',
-            searchPlaceholder: 'Search in titles...', 
+            searchPlaceholder: 'Search', 
             reloadButtonTooltip: 'Reload',
             signoutButtonTooltip: 'Sign Out',
             copyTooltip: 'Copy content',
@@ -112,11 +112,15 @@ async function startApp() {
             clearSearchesTooltip: 'Clear search history',
             noteFontSizeLabel: 'Note Font Size:',
             modalFontSizeLabel: 'Modal Font Size:',
-            closeButton: 'Close'
+            closeButton: 'Close',
+            searchByTitleTooltip: 'Search by Title',
+            searchByContentTooltip: 'Search by Content',
+            searchInTitles: 'in titles',
+            searchInContent: 'in content'
         },
         bg: {
             appTitle: 'CX MultiNotes Viewer',
-            searchPlaceholder: 'Търсене в заглавията...', 
+            searchPlaceholder: 'Търсене', 
             reloadButtonTooltip: 'Презареди',
             signoutButtonTooltip: 'Изход',
             copyTooltip: 'Копирай съдържанието',
@@ -156,7 +160,11 @@ async function startApp() {
             maxSearchesLabel: 'Запазени търсения:',
             clearSearchesTooltip: 'Изчисти историята на търсенията',
             noteFontSizeLabel: 'Размер шрифт (бележка):',
-            modalFontSizeLabel: 'Размер шрифт (преглед):'
+            modalFontSizeLabel: 'Размер шрифт (преглед):',
+            searchByTitleTooltip: 'Търсене в заглавията',
+            searchByContentTooltip: 'Търсене в бележките',
+            searchInTitles: 'в заглавията',
+            searchInContent: 'в бележките'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -278,6 +286,7 @@ async function startApp() {
     const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
     const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
     const settingsIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /><circle cx="12" cy="12" r="3" /></svg>`;
+    const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
     const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
     const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
     const attachmentIcons = [
@@ -299,7 +308,7 @@ async function startApp() {
     let lastSearchTerm = ""; // New variable for the last typed search
     let savedSearches = []; // Will now only store manually saved searches
     let maxSavedSearches = 20, saveSearchBtn; // Max for manually saved
-    let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText, zoomInput;
+    let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, boardsButton, boardsModal, scrollTopBtn, searchBox, loaderContainer, loaderText, zoomInput, searchModeToggle, searchMode = 'title';
     const boardsNoteBgnd = '#cfe6f8';
 
     // --- App Initialization ---
@@ -339,9 +348,29 @@ async function startApp() {
         scrollTopBtn.addEventListener('click', () => window.scrollTo({top: 0, behavior: 'smooth'}));
 
         // --- Search Box Enhancements ---
-        const searchContainer = document.getElementById('search-container');
-        const searchWrapper = document.createElement('div'); // New wrapper
-        searchWrapper.id = 'search-wrapper';
+        const searchWrapper = document.getElementById('search-wrapper');
+        searchBox = document.getElementById('search-box');
+
+        searchModeToggle = document.createElement('button');
+        searchModeToggle.id = 'search-mode-toggle';
+        searchModeToggle.className = 'search-mode-btn';
+        searchModeToggle.innerHTML = boardIconSvg; // Default: Search by Title
+        searchModeToggle.title = _('searchByTitleTooltip');
+
+        searchModeToggle.addEventListener('click', () => {
+            if (searchMode === 'title') {
+                searchMode = 'content';
+                searchModeToggle.innerHTML = noteIconSvg; // Icon for Content Search
+                searchModeToggle.title = _('searchByContentTooltip');
+                searchBox.placeholder = `${_('searchPlaceholder')} ${_('searchInContent')}...`;
+            } else {
+                searchMode = 'title';
+                searchModeToggle.innerHTML = boardIconSvg; // Icon for Title Search
+                searchModeToggle.title = _('searchByTitleTooltip');
+                searchBox.placeholder = `${_('searchPlaceholder')} ${_('searchInTitles')}...`;
+            }
+            applyFilters();
+        });
 
         saveSearchBtn = document.createElement('span');
         saveSearchBtn.id = 'save-search-btn';
@@ -353,11 +382,10 @@ async function startApp() {
         const savedSearchesPopup = document.createElement('div');
         savedSearchesPopup.id = 'saved-searches-popup';
 
-        // Append elements to the new wrapper
-        searchWrapper.appendChild(searchBox);
+        // Add all icons and popups to the wrapper
+        searchWrapper.prepend(searchModeToggle);
         searchWrapper.appendChild(saveSearchBtn);
         searchWrapper.appendChild(savedSearchesPopup);
-        searchContainer.appendChild(searchWrapper); // Append wrapper to the main container
         
         // This function will be the single point for applying search and UI updates
         const triggerSearch = (isUserTyping = false) => {
@@ -453,7 +481,8 @@ async function startApp() {
         if (settingsTitle) {
             settingsTitle.textContent += `${version}`;
         }
-
+        // Set initial placeholder text correctly
+        searchBox.placeholder = `${_('searchPlaceholder')} ${_('searchInTitles')}...`;
         // Hide saved searches popup when clicking outside
         document.addEventListener('click', (e) => {
             if (savedSearchesPopup.style.display === 'block' && !searchWrapper.contains(e.target)) {
@@ -711,8 +740,12 @@ async function startApp() {
                 searchInput.placeholder = `[${board.title}]: ${_('searchPlaceholder')}`;
             }
         } else {
-            // Reset to default placeholder for 'all' and 'calendar'
-            searchInput.placeholder = _('searchPlaceholder');
+            // Reset to default placeholder for 'all', considering the current search mode
+            if (searchMode === 'title') {
+                searchInput.placeholder = `${_('searchPlaceholder')} ${_('searchInTitles')}...`;
+            } else {
+                searchInput.placeholder = `${_('searchPlaceholder')} ${_('searchInContent')}...`;
+            }
         }
         if (boardId === 'all') {
             // For the 'all' view, clear the inline style to let the default CSS background apply.
@@ -793,10 +826,17 @@ async function startApp() {
                 }
             }
             let isVisibleBySearch = false;
-            const titleEl = note.querySelector('h3');
-            if (titleEl) {
-                const title = titleEl.textContent.toLowerCase();
-                isVisibleBySearch = title.includes(searchTerm);
+            if (searchMode === 'title') {
+                const titleEl = note.querySelector('h3');
+                if (titleEl) {
+                    const title = titleEl.textContent.toLowerCase();
+                    isVisibleBySearch = title.includes(searchTerm);
+                }
+            } else { // searchMode === 'content'
+                const contentEl = note.querySelector('.note-content');
+                if (contentEl) {
+                    isVisibleBySearch = contentEl.textContent.toLowerCase().includes(searchTerm);
+                }
             }
             if (isVisibleByBoard && isVisibleBySearch) {
                 note.style.display = 'flex';
@@ -1747,14 +1787,14 @@ async function startApp() {
                     dateDisplay.appendChild(dateText);
                     dateDisplay.addEventListener('click', () => {
                         const parentNote = dateDisplay.closest('.note');
-                        showModal({ raw: JSON.stringify(extraData, null, 2), color: noteBgColor });
+                        showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
                     });
                     footerLeft.appendChild(dateDisplay);
     
                     const timerDisplay = document.createElement('div');
                     timerDisplay.className = 'date-display';
                     timerDisplay.style.marginLeft = '10px';
-                    timerDisplay.innerHTML = clockIconSvg;
+                    timerDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 15"></polyline></svg>`;
                     const timerText = document.createElement('span');
                     timerText.textContent = formatTime(extraData.timer);
                     timerDisplay.appendChild(timerText);
@@ -1762,7 +1802,7 @@ async function startApp() {
                     timerDisplay.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const parentNote = timerDisplay.closest('.note');
-                        showModal({ raw: JSON.stringify(extraData, null, 2), color: noteBgColor });
+                        showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
                     });
                     footerLeft.appendChild(timerDisplay);
                 } else {

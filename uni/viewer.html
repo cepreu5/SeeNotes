@@ -6,12 +6,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
+    <style>
+        #search-wrapper {
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .search-mode-btn {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .search-mode-btn svg {
+            width: 20px;
+            height: 20px;
+            stroke: #555;
+        }
+        #search-box {
+            padding-left: 35px !important; /* Make space for the icon */
+        }
+    </style>
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://accounts.google.com;">
 </head>
 <body>
     <header>
-        <div><h1 data-key="appTitle">CX MultiNotes Viewer</h1></div>
-        <div id="search-container"><input type="search" id="search-box" data-key-placeholder="searchPlaceholder" placeholder="Търсене в заглавията..."></div>
+        <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
+        <div id="search-wrapper">
+            <input type="search" id="search-box" data-key-placeholder="searchPlaceholder" placeholder="Търсене в заглавията...">
+        </div>
         <div id="header-buttons">
             <div id="note-counter" class="note-counter">0</div>
             <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Настройки">
