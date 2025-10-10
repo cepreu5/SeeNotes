@@ -121,23 +121,18 @@ header h1 {
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    width: 100%;
+    width: 90%;
     background: linear-gradient(135deg, #E4E4E4, #858585);
     border: 1px solid #636363;
     border-radius: 3px;
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     z-index: 101; /* Above the header content */
-    max-height: 200px;
+    max-height: 600px;
     overflow-y: auto;
     display: none; /* Hidden by default */
     padding: 15px;
 }
 
-#header-buttons {
-    display: flex;
-    align-items: center;
-    padding-bottom: 10px;
-}
 .saved-search-item {
     padding: 10px 15px;
     cursor: pointer;
@@ -246,18 +241,6 @@ main {
     z-index: 1; /* Ensure content is on top of the canvas */
 }
 
-.note-content-wrapper > h3 {
-    margin-top: 20%;
-    margin-left: 8%;
-    margin-right: 8%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    /* height: 30%; */ /* Removed fixed height */
-    padding-top: 0px;   /* Added padding for vertical space */
-    padding-bottom: 5%;/* Added padding for vertical space */
-}
-
 .note-content-wrapper > .note-content {
     margin: 0 10% 0 8%;
 }
@@ -291,6 +274,16 @@ main {
     margin: 0;
 }*/
 
+.note-title-truncated {
+    margin-top: 50px;
+    margin-left: 8%;
+    margin-right: 10%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0; /* Премахва стандартния долен марджин на h3 */
+}
+
 .note-content {
     flex-grow: 1;
     overflow-y: auto;
@@ -313,7 +306,7 @@ pre, code {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 0.8em;
+    font-size: 12px; /* Задаване на фиксиран размер, който не се влияе от настройките */
     color: #666;
     min-height: 18px;
     margin: 0 8% 12% 8%; /* Add horizontal and bottom margin */
@@ -793,8 +786,8 @@ pre, code {
     #header-buttons {
         display: flex;
         justify-content: center;
-        padding-top: 0;
-        padding-bottom: 10px;
+        padding-top: 5px;
+        padding-bottom: 5px;
     }
 
     /* Responsive layout for settings modal on small screens */
@@ -984,7 +977,8 @@ pre, code {
     font-size: 0.9em;
     font-weight: bold;
     margin-right: 5px; /* Add space to the right, before the buttons */
-    /* Removed absolute positioning */
+    margin-top: 12px;
+    margin-bottom: 12px;
 }
 
 #zoom-modal .modal-content-box {

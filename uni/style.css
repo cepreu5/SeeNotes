@@ -241,18 +241,6 @@ main {
     z-index: 1; /* Ensure content is on top of the canvas */
 }
 
-.note-content-wrapper > h3 {
-    margin-top: 20%;
-    margin-left: 8%;
-    margin-right: 8%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    /* height: 30%; */ /* Removed fixed height */
-    padding-top: 0px;   /* Added padding for vertical space */
-    padding-bottom: 5%;/* Added padding for vertical space */
-}
-
 .note-content-wrapper > .note-content {
     margin: 0 10% 0 8%;
 }
@@ -286,6 +274,16 @@ main {
     margin: 0;
 }*/
 
+.note-title-truncated {
+    margin-top: 50px;
+    margin-left: 8%;
+    margin-right: 10%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0; /* Премахва стандартния долен марджин на h3 */
+}
+
 .note-content {
     flex-grow: 1;
     overflow-y: auto;
@@ -308,7 +306,7 @@ pre, code {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 0.8em;
+    font-size: 12px; /* Задаване на фиксиран размер, който не се влияе от настройките */
     color: #666;
     min-height: 18px;
     margin: 0 8% 12% 8%; /* Add horizontal and bottom margin */

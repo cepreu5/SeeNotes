@@ -1379,8 +1379,10 @@ async function startApp() {
         let noteColor = null;
         let textSpan = null;
         let extraData = {};
+        let fullNoteContent = {}; // Variable to hold the complete note object
         try {
             const content = JSON.parse(res.body);
+            fullNoteContent = content; // Store the full object
             if (content && typeof content.notetxt !== 'undefined') {
                 fileContent = content.notetxt;
                 noteGdid = content.gdid;
@@ -1429,11 +1431,15 @@ async function startApp() {
             }
         }
     
-        if (!noteTitle && !isHiddenNote) { noteTitle = file.name; }
+        if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
     
+        const titleWrapper = document.createElement('div');
         const titleEl = document.createElement('h3');
         titleEl.textContent = noteTitle;
-        titleEl.title = noteTitle;
+        titleEl.title = noteTitle; // Keep the tooltip with the full title
+        titleEl.className = 'note-title-truncated';
+
+        titleWrapper.appendChild(titleEl);
 
         // Asynchronously create and apply the colored background
         const noteBgColor = noteColor !== null ? getComputedStyle(document.documentElement).getPropertyValue(`--note-bg-${noteColor}`).trim() : '#FBFF86';
@@ -1791,8 +1797,8 @@ async function startApp() {
                     dateText.textContent = formatDate(extraData.timer);
                     dateDisplay.appendChild(dateText);
                     dateDisplay.addEventListener('click', () => {
-                        const parentNote = dateDisplay.closest('.note');
-                        showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
+                        // Show reminder details on a clean white background
+                        showModal({ raw: JSON.stringify(extraData, null, 2), color: 'white' });
                     });
                     footerLeft.appendChild(dateDisplay);
     
@@ -1806,8 +1812,8 @@ async function startApp() {
                     timerDisplay.style.cursor = 'pointer';
                     timerDisplay.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        const parentNote = timerDisplay.closest('.note');
-                        showModal({ raw: JSON.stringify(extraData, null, 2), color: window.getComputedStyle(parentNote).backgroundColor });
+                        // Show reminder details on a clean white background
+                        showModal({ raw: JSON.stringify(extraData, null, 2), color: 'white' });
                     });
                     footerLeft.appendChild(timerDisplay);
                 } else {
@@ -1819,6 +1825,10 @@ async function startApp() {
                         const dateText = document.createElement('span');
                         dateText.textContent = formatDate(dateToShow);
                         dateDisplay.appendChild(dateText);
+                        dateDisplay.addEventListener('click', () => {
+                            // Show note details on a clean white background
+                            showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
+                        });
                         footerLeft.appendChild(dateDisplay);
                     }
                 }
@@ -1842,7 +1852,7 @@ async function startApp() {
                 showModal({ raw: fileContent, format: textSpan, color: noteBgColor });
             }
         });
-        contentWrapper.appendChild(titleEl);
+        contentWrapper.appendChild(titleWrapper);
         contentWrapper.appendChild(contentEl);
         contentWrapper.appendChild(footerEl);
         return note;
