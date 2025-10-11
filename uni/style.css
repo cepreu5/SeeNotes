@@ -684,6 +684,12 @@ pre, code {
     visibility: hidden; /* Hidden by default */
 }
 
+.scroll-arrow svg {
+    width: 24px;
+    height: 24px;
+    stroke-width: 2;
+}
+
 .scroll-arrow.visible {
     visibility: visible;
 }

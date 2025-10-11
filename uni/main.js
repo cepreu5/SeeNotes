@@ -1265,10 +1265,8 @@ async function startApp() {
         const allBoardsText = document.createElement('span');
         allBoardsText.textContent = _('allBoards');
         const allBoardsIcon = document.createElement('span');
-        allBoardsIcon.innerHTML = boardIconSvg;
         allBoardsIcon.classList.add('board-icon-in-button');
         allBoardsLink.appendChild(allBoardsText);
-        allBoardsLink.appendChild(allBoardsIcon);
 
         /**
          * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
@@ -1280,25 +1278,32 @@ async function startApp() {
             let isLongPress = false;
 
             const startPress = (e) => {
-                e.preventDefault();
                 isLongPress = false;
                 longPressTimer = setTimeout(() => {
                     isLongPress = true;
                     showAllBoardsModal(element);
                 }, 500);
+                // Only prevent default on touch to avoid unwanted scrolling while holding
+                if (e.type === 'touchstart') {
+                    e.preventDefault();
+                }
             };
 
-            const endPress = () => clearTimeout(longPressTimer);
+            const endPress = (e) => {
+                clearTimeout(longPressTimer);
+                // If it's a touchend and not a long press, trigger the single click action
+                if (e.type === 'touchend' && !isLongPress) {
+                    if (singleClickCallback) singleClickCallback();
+                }
+            };
 
             element.addEventListener('mousedown', startPress);
             element.addEventListener('mouseup', endPress);
             element.addEventListener('mouseleave', endPress);
             element.addEventListener('touchstart', startPress);
             element.addEventListener('touchend', endPress);
-            element.addEventListener('touchmove', endPress);
 
             element.addEventListener('click', (e) => {
-                e.preventDefault();
                 if (isLongPress) return;
 
                 if (e.ctrlKey) showAllBoardsModal(element);
@@ -1365,26 +1370,18 @@ async function startApp() {
         const scrollWrapper = document.createElement('div');
         scrollWrapper.className = 'scrolling-menu-wrapper';
         const leftArrow = document.createElement('button');
-        leftArrow.className = 'scroll-arrow left-arrow';
-        leftArrow.innerHTML = `<svg width="24" height="24"><use href="#icon-arrow-left"></use></svg>`;
-        const rightArrow = document.createElement('button');
-        rightArrow.className = 'scroll-arrow right-arrow';
-        rightArrow.innerHTML = `<svg width="24" height="24"><use href="#icon-arrow-right"></use></svg>`;
+        leftArrow.className = 'scroll-arrow left-arrow'; // Keep class for styling
+        leftArrow.innerHTML = boardIconSvg; // Use the board icon
         
         // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
-        addAllBoardsModalEvents(leftArrow, () => { contentEl.scrollLeft -= (maxWidthForButtons + 5); });
-        addAllBoardsModalEvents(rightArrow, () => { contentEl.scrollLeft += (maxWidthForButtons + 5); });
-        // leftArrow.onclick = () => { contentEl.scrollLeft -= (maxWidthForButtons + 5); };
-        // rightArrow.onclick = () => { contentEl.scrollLeft += (maxWidthForButtons + 5); };
+        addAllBoardsModalEvents(leftArrow, () => { showAllBoardsModal(leftArrow); });
     
         scrollWrapper.appendChild(leftArrow);
         scrollWrapper.appendChild(contentEl);
-        scrollWrapper.appendChild(rightArrow);
         contentWrapper.appendChild(scrollWrapper);
         
         const checkScroll = () => {
-            leftArrow.classList.toggle('visible', contentEl.scrollLeft > 0);
-            rightArrow.classList.toggle('visible', contentEl.scrollWidth > contentEl.clientWidth && contentEl.scrollLeft < contentEl.scrollWidth - contentEl.clientWidth - 1);
+            leftArrow.classList.toggle('visible', true); // The button is now always visible
         };
         contentEl.addEventListener('scroll', checkScroll);
         new ResizeObserver(checkScroll).observe(contentEl);
