@@ -111,6 +111,7 @@ async function startApp() {
             maxSearchesLabel: 'Saved Searches:',
             clearSearchesTooltip: 'Clear search history',
             noteFontSizeLabel: 'Note Font Size:',
+            showDatemodLabel: 'Show modification date:',
             modalFontSizeLabel: 'Modal Font Size:',
             closeButton: 'Close',
             searchByTitleTooltip: 'Search by Title',
@@ -160,6 +161,7 @@ async function startApp() {
             maxSearchesLabel: 'Запазени търсения:',
             clearSearchesTooltip: 'Изчисти историята на търсенията',
             noteFontSizeLabel: 'Размер шрифт (бележка):',
+            showDatemodLabel: 'Покажи дата на модификация:',
             modalFontSizeLabel: 'Размер шрифт (преглед):',
             searchByTitleTooltip: 'Търсене в заглавията',
             searchByContentTooltip: 'Търсене в бележките',
@@ -457,6 +459,10 @@ async function startApp() {
         const initialNoteFontSize = localStorage.getItem('noteFontSize') || 12;
         document.documentElement.style.setProperty('--note-font-size', `${initialNoteFontSize}px`);
 
+        // Apply initial state for datemod visibility
+        const shouldHideDatemod = localStorage.getItem('showDatemod') === 'false';
+        document.body.classList.toggle('hide-datemod', shouldHideDatemod);
+
         const initialModalFontSize = localStorage.getItem('modalFontSize') || 12;
         modalBody.style.fontSize = `${initialModalFontSize}px`;
 
@@ -552,6 +558,7 @@ async function startApp() {
         let rawContent, formatString, displayContent, noteColor;
         if (typeof options === 'string') {
             rawContent = options;
+        options = {}; // Ensure options is an object
             formatString = null;
             noteColor = null; // Default color for simple string content
         } else {
@@ -559,6 +566,20 @@ async function startApp() {
             formatString = options.format;
             noteColor = options.color;
         }
+
+    // --- Board Name Display in Modal ---
+    const modalBoardNameEl = document.getElementById('modal-board-name');
+    if (options.boardId) {
+        const board = boardsData.find(b => b.gdid === options.boardId);
+        if (board) {
+            modalBoardNameEl.textContent = board.title;
+            modalBoardNameEl.style.display = 'block';
+        } else {
+            modalBoardNameEl.style.display = 'none';
+        }
+    } else {
+        modalBoardNameEl.style.display = 'none';
+    }
         currentModalContent = rawContent;
 
         // For notes with a preview (pass: true), the '|' is a separator.
@@ -1096,17 +1117,6 @@ async function startApp() {
         maxSearchesWrapper.appendChild(maxSearchesInput);
         zoomModalBody.appendChild(maxSearchesWrapper);
 
-        const closeBtnWrapper = document.createElement('div');
-        closeBtnWrapper.className = 'settings-close-btn-wrapper';
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'zoom-btn settings-close-btn';
-        closeBtn.textContent = _('closeButton');
-        closeBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-        });
-        closeBtnWrapper.appendChild(closeBtn);
-        zoomModalBody.parentNode.appendChild(closeBtnWrapper);
-    
         const slider = sliderContainer.querySelector('#scaleSlider');
         const scaleInput = sliderContainer.querySelector('#scaleInput');
         const updateZoom = (value) => {
@@ -1197,7 +1207,44 @@ async function startApp() {
     
         zoomModalBody.appendChild(createFontSizeInput('note-font-size-input', 'noteFontSizeLabel', 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`)));
         zoomModalBody.appendChild(createFontSizeInput('modal-font-size-input', 'modalFontSizeLabel', 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`));
-    
+
+        // --- Show Modification Date Setting ---
+        const showDatemodWrapper = document.createElement('div');
+        showDatemodWrapper.className = 'zoom-control-wrapper';
+        showDatemodWrapper.style.marginTop = '20px';
+
+        const showDatemodLabel = document.createElement('label');
+        showDatemodLabel.textContent = _('showDatemodLabel');
+        showDatemodLabel.style.marginRight = '10px';
+        showDatemodLabel.htmlFor = 'show-datemod-checkbox';
+
+        const showDatemodCheckbox = document.createElement('input');
+        showDatemodCheckbox.type = 'checkbox';
+        showDatemodCheckbox.id = 'show-datemod-checkbox';
+        showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
+
+        showDatemodCheckbox.addEventListener('change', () => {
+            const isChecked = showDatemodCheckbox.checked;
+            localStorage.setItem('showDatemod', isChecked);
+            document.body.classList.toggle('hide-datemod', !isChecked);
+            showToast(_('settingSaved'), 2000);
+        });
+
+        showDatemodWrapper.appendChild(showDatemodLabel);
+        showDatemodWrapper.appendChild(showDatemodCheckbox);
+        zoomModalBody.appendChild(showDatemodWrapper);
+
+        const closeBtnWrapper = document.createElement('div');
+        closeBtnWrapper.className = 'settings-close-btn-wrapper';
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'zoom-btn settings-close-btn';
+        closeBtn.textContent = _('closeButton');
+        closeBtn.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+        });
+        closeBtnWrapper.appendChild(closeBtn);
+        zoomModalBody.appendChild(closeBtnWrapper);
+
         if (boardParseError) {
             const errorEl = document.createElement('div');
             errorEl.style.color = 'red';
@@ -1439,6 +1486,45 @@ async function startApp() {
         titleEl.title = noteTitle; // Keep the tooltip with the full title
         titleEl.className = 'note-title-truncated';
 
+        // Create header info container for date and time
+        const headerInfoContainer = document.createElement('div');
+        headerInfoContainer.className = 'note-header-info';
+
+        const headerDate = document.createElement('span');
+        headerDate.className = 'note-header-date';
+
+        const headerTime = document.createElement('span');
+        headerTime.className = 'note-header-time';
+
+        // Add click listener to the date to show full note data
+        headerDate.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
+        });
+
+        if (extraData.timer) {
+            const dateText = formatDate(extraData.timer);
+            if (dateText) headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+            const timeText = formatTime(extraData.timer);
+            if (timeText) headerTime.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
+        } else if (extraData.calendarDate) {
+            const dateText = formatDate(extraData.calendarDate);
+            if (dateText) {
+                headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+            }
+        } else if (extraData.datemod) { // Always create the element
+            const dateText = formatDate(extraData.datemod);
+            if (dateText) {
+                headerDate.textContent = dateText; // No icon for datemod
+                headerDate.classList.add('datemod-header-date');
+            }
+        }
+
+        headerInfoContainer.appendChild(headerDate);
+        headerInfoContainer.appendChild(headerTime);
+
+        // Add the new container before the title
+        titleWrapper.appendChild(headerInfoContainer);
         titleWrapper.appendChild(titleEl);
 
         // Asynchronously create and apply the colored background
@@ -1457,6 +1543,13 @@ async function startApp() {
         const contentWrapper = document.createElement('div');
         contentWrapper.className = 'note-content-wrapper';
         note.appendChild(contentWrapper);
+
+        if (isHiddenNote) {
+            const lockIconOverlay = document.createElement('div');
+            lockIconOverlay.className = 'lock-icon-overlay';
+            lockIconOverlay.innerHTML = lockIconSvg;
+            contentWrapper.appendChild(lockIconOverlay);
+        }
 
     
         const contentEl = document.createElement('div');
@@ -1752,109 +1845,96 @@ async function startApp() {
                 }));
             }
         }
-        const footerEl = document.createElement('div');
-        footerEl.className = 'note-footer';
-        const footerLeft = document.createElement('div');
-        footerLeft.style.display = 'flex';
-        if (note.dataset.extraInfo) {
-            try {
-                const extraData = JSON.parse(note.dataset.extraInfo);
-                if (extraData.timer) {
-                    footerEl.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
-                }
+        // const footerEl = document.createElement('div');
+        // footerEl.className = 'note-footer';
+        // const footerLeft = document.createElement('div');
+        // footerLeft.style.display = 'flex';
+        // if (note.dataset.extraInfo) {
+        //     try {
+        //         const extraData = JSON.parse(note.dataset.extraInfo);
+        //         if (extraData.timer) {
+        //             footerEl.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
+        //         }
     
-                if (extraData.boardid && boardsData.length > 0) {
-                    const board = boardsData.find(b => b.gdid === extraData.boardid);
-                    if (board) {
-                        const boardDisplay = document.createElement('div');
-                        boardDisplay.className = 'board-display';                                
-                        boardDisplay.innerHTML = `<svg class="footer-icon" style="margin-left: -3px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="4" width="16" height="16" rx="2"></rect><line x1="4" y1="12" x2="20" y2="12"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
-                        const boardText = document.createElement('span');
-                        boardText.textContent = board.title;
-                        boardDisplay.appendChild(boardText);
-                        footerLeft.appendChild(boardDisplay);
-                        boardDisplay.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const parentNote = boardDisplay.closest('.note');
-                            if (parentNote && parentNote.dataset.extraInfo) {
-                                try {
-                                    const extraInfoData = JSON.parse(parentNote.dataset.extraInfo);
-                                    showModal({ raw: JSON.stringify(extraInfoData, null, 2), color: 'white' });
-                                } catch (e) {
-                                    console.error('Error parsing data-extra-info:', e);
-                                    showToast('Error displaying extra info.');
-                                }
-                            }
-                        });
-                    }
-                }
+        //         if (extraData.boardid && boardsData.length > 0) {
+        //             const board = boardsData.find(b => b.gdid === extraData.boardid);
+        //             if (board) {
+        //                 const boardDisplay = document.createElement('div');
+        //                 boardDisplay.className = 'board-display';
+        //                 boardDisplay.innerHTML = `<svg class="footer-icon" style="margin-left: -3px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="4" width="16" height="16" rx="2"></rect><line x1="4" y1="12" x2="20" y2="12"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`;
+        //                 const boardText = document.createElement('span');
+        //                 boardText.textContent = board.title;
+        //                 boardDisplay.appendChild(boardText);
+        //                 footerLeft.appendChild(boardDisplay); // The listener is removed
+        //             }
+        //         }
     
-                if (extraData.timer) {
-                    const dateDisplay = document.createElement('div');
-                    dateDisplay.className = 'date-display';
-                    dateDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`;
-                    const dateText = document.createElement('span');
-                    dateText.textContent = formatDate(extraData.timer);
-                    dateDisplay.appendChild(dateText);
-                    dateDisplay.addEventListener('click', () => {
-                        // Show reminder details on a clean white background
-                        showModal({ raw: JSON.stringify(extraData, null, 2), color: 'white' });
-                    });
-                    footerLeft.appendChild(dateDisplay);
+        //         if (extraData.timer) {
+        //             const dateDisplay = document.createElement('div');
+        //             dateDisplay.className = 'date-display';
+        //             dateDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`;
+        //             const dateText = document.createElement('span');
+        //             dateText.textContent = formatDate(extraData.timer);
+        //             dateDisplay.appendChild(dateText);
+        //             dateDisplay.addEventListener('click', () => {
+        //                 // Show reminder details on a clean white background
+        //                 showModal({ raw: JSON.stringify(extraData, null, 2), color: 'white' });
+        //             });
+        //             footerLeft.appendChild(dateDisplay);
     
-                    const timerDisplay = document.createElement('div');
-                    timerDisplay.className = 'date-display';
-                    timerDisplay.style.marginLeft = '10px';
-                    timerDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 15"></polyline></svg>`;
-                    const timerText = document.createElement('span');
-                    timerText.textContent = formatTime(extraData.timer);
-                    timerDisplay.appendChild(timerText);
-                    timerDisplay.style.cursor = 'pointer';
-                    timerDisplay.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        // Show reminder details on a clean white background
-                        showModal({ raw: JSON.stringify(extraData, null, 2), color: 'white' });
-                    });
-                    footerLeft.appendChild(timerDisplay);
-                } else {
-                    const dateToShow = extraData.calendarDate || extraData.datemod;
-                    if (dateToShow) {
-                        const dateDisplay = document.createElement('div');
-                        dateDisplay.className = 'date-display';
-                        dateDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`;
-                        const dateText = document.createElement('span');
-                        dateText.textContent = formatDate(dateToShow);
-                        dateDisplay.appendChild(dateText);
-                        dateDisplay.addEventListener('click', () => {
-                            // Show note details on a clean white background
-                            showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
-                        });
-                        footerLeft.appendChild(dateDisplay);
-                    }
-                }
-            } catch (e) { console.error('Error parsing extraInfo:', e); }
-        }
-        footerEl.appendChild(footerLeft);
-        if (isHiddenNote) {
-            const footerRight = document.createElement('div');
-            footerRight.style.display = 'flex';
-            footerRight.style.alignItems = 'center';
-            const lockIcon = document.createElement('span');
-            lockIcon.innerHTML = lockIconSvg;
-            lockIcon.style.marginRight = '-7px';
-            footerRight.appendChild(lockIcon);
-            footerEl.appendChild(footerRight);
-        }
+        //             const timerDisplay = document.createElement('div');
+        //             timerDisplay.className = 'date-display';
+        //             timerDisplay.style.marginLeft = '10px';
+        //             timerDisplay.innerHTML = `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 15"></polyline></svg>`;
+        //             const timerText = document.createElement('span');
+        //             timerText.textContent = formatTime(extraData.timer);
+        //             timerDisplay.appendChild(timerText);
+        //             timerDisplay.style.cursor = 'pointer';
+        //             timerDisplay.addEventListener('click', (e) => {
+        //                 e.stopPropagation();
+        //                 // Show reminder details on a clean white background
+        //                 showModal({ raw: JSON.stringify(extraData, null, 2), color: 'white' });
+        //             });
+        //             footerLeft.appendChild(timerDisplay);
+        //         } else {
+        //             const dateToShow = extraData.calendarDate;
+        //             if (dateToShow) {
+        //                 const dateDisplay = document.createElement('div');
+        //                 dateDisplay.className = 'date-display';
+        //                 const dateText = document.createElement('span');
+        //                 dateText.textContent = formatDate(dateToShow);
+        //                 dateDisplay.appendChild(dateText);
+        //                 dateDisplay.insertAdjacentHTML('afterbegin', `<svg class="footer-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="5" width="16" height="16" rx="2"></rect><line x1="16" y1="3" x2="16" y2="7"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="4" y1="11" x2="20" y2="11"></line></svg>`);
+        //                 dateDisplay.addEventListener('click', () => {
+        //                     // Show note details on a clean white background
+        //                     showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
+        //                 });
+        //                 footerLeft.appendChild(dateDisplay);
+        //             }
+        //         }
+        //     } catch (e) { console.error('Error parsing extraInfo:', e); }
+        // }
+        // footerEl.appendChild(footerLeft);
+        // if (isHiddenNote) {
+        //     const footerRight = document.createElement('div');
+        //     footerRight.style.display = 'flex';
+        //     footerRight.style.alignItems = 'center';
+        //     const lockIcon = document.createElement('span');
+        //     lockIcon.innerHTML = lockIconSvg;
+        //     lockIcon.style.marginRight = '-7px';
+        //     footerRight.appendChild(lockIcon);
+        //     footerEl.appendChild(footerRight);
+        // }
         note.addEventListener('click', (e) => {
             const noteEl = e.currentTarget;
             if (!e.target.closest('.note-footer')) {
                 const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
-                showModal({ raw: fileContent, format: textSpan, color: noteBgColor });
+                showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid });
             }
         });
         contentWrapper.appendChild(titleWrapper);
         contentWrapper.appendChild(contentEl);
-        contentWrapper.appendChild(footerEl);
+        // contentWrapper.appendChild(footerEl);
         return note;
     }
     
