@@ -79,7 +79,6 @@ const translations = {
             loadingFile: 'Loading...', 
             of: 'of',
             noFilesFound: 'No text files found in the folder.',
-            skippedFileScan: 'Skipped DB update. Loading from DB...',
             errorProcessingFiles: 'An error occurred while processing files.',
             errorInvalidResponse: 'Failed to load files. Make sure the folder exists and you have access.',
             errorRequestFailed: 'Request to Google Drive failed. See console for details.',
@@ -113,7 +112,6 @@ const translations = {
             updateIndexedDbLabel: 'Update IndexedDB:',
             localSyncFolderLabel: 'Local sync folder:',
             selectFolderButton: 'Select Folder',
-            folderNotSelected: 'Not selected',
             modalFontSizeLabel: 'Modal Font Size:',
             closeButton: 'Close',
             searchByTitleTooltip: 'Search by Title',
@@ -134,7 +132,6 @@ const translations = {
             loadingFile: 'Четене...', 
             of: 'от',
             noFilesFound: 'Няма намерени текстови файлове в папката.',
-            skippedFileScan: 'Пропускане на обновяването. Зареждане от базата...',
             errorProcessingFiles: 'Възникна грешка при обработката на файловете.',
             errorInvalidResponse: 'Неуспешно зареждане на файловете. Уверете се, че папката съществува и имате достъп.',
             errorRequestFailed: 'Грешка при заявката към Google Drive. Виж конзолата за подробности.',
@@ -169,8 +166,6 @@ const translations = {
             updateIndexedDbLabel: 'IndexedDB update:',
             localSyncFolderLabel: 'Папка за локална синхронизация:',
             selectFolderButton: 'Избери папка',
-            skipScanLabel: 'Не проверявай за нови',
-            folderNotSelected: 'Не е избрана',
             modalFontSizeLabel: 'Размер шрифт (преглед):',
             searchByTitleTooltip: 'Търсене в заглавията',
             searchByContentTooltip: 'Търсене в бележките',
@@ -286,14 +281,6 @@ function initApp() {
     searchBox = document.getElementById('search-box');
     loaderContainer = document.getElementById('loader-container');
     loaderText = document.getElementById('loader-text');
-
-    // --- Add Title to Loader ---
-    const loaderTitle = document.createElement('h3');
-    loaderTitle.id = 'loader-title';
-    loaderTitle.style.marginTop = '0';
-    loaderTitle.style.marginBottom = '20px';
-    loaderContainer.prepend(loaderTitle);
-
     // Настройване на UI и езикови настройки
     function setLanguage(lang) {
         if (!translations[lang]) return;
@@ -655,20 +642,16 @@ async function listFiles(folderIdFromPrompt) {
     if (!useLocalDb && !tokenData) return;
 
     initializeLoad();
-    const loaderTitle = document.getElementById('loader-title');
-
     try {
         if (useLocalDb) {
-            if (loaderTitle) loaderTitle.textContent = "Локална база";
             console.log("Local DB mode is active. Starting local sync process...");
             loaderText.textContent = "Starting local sync...";
             await runLocalSync(); // Update from local file system first
-            loaderText.textContent = "Fetching data from DB...";
+            loaderText.textContent = "Fetching updated data from DB...";
             await fetchAllDataLocal();
             await renderUI({ boardParseError: false }); // Assume no parse error from local DB
             showToast("Local data synchronized and loaded.", 3000);
         } else {
-            if (loaderTitle) loaderTitle.textContent = "Google Drive";
             // Standard flow: fetch from Google Drive
             const { boardParseError } = await fetchAllData(folderIdFromPrompt);
             await renderUI({ boardParseError });
@@ -732,13 +715,6 @@ async function runLocalSync() {
     if (!handle) {
         showToast("Local sync folder not selected. Please select one in Settings.", 5000);
         // We can still proceed to load whatever is in the DB
-        return;
-    }
-
-    // Ако опцията за пропускане на сканирането е включена, прекратяваме, след като сме заредили handle-a
-    if (localStorage.getItem('skipLocalScan') === 'true') {
-        console.log("Skipping local file scan as per settings.");
-        loaderText.textContent = _('skippedFileScan');
         return;
     }
 
@@ -1516,32 +1492,6 @@ async function processDirectoryContent(minModificationDate) {
         useLocalDbWrapper.appendChild(useLocalDbCheckbox);
         zoomModalBody.appendChild(useLocalDbWrapper);
 
-        // --- NEW: Skip Local Scan Setting (only for local DB) ---
-        const skipScanWrapper = document.createElement('div');
-        skipScanWrapper.className = 'zoom-control-wrapper';
-        skipScanWrapper.style.marginTop = '10px';
-        skipScanWrapper.style.paddingLeft = '20px'; // Indent for visual hierarchy
-        const skipScanLabel = document.createElement('label');
-        skipScanLabel.textContent = _('skipScanLabel');
-        skipScanLabel.htmlFor = 'skip-scan-checkbox';
-        const skipScanCheckbox = document.createElement('input');
-        skipScanCheckbox.type = 'checkbox';
-        skipScanCheckbox.id = 'skip-scan-checkbox';
-        skipScanCheckbox.checked = localStorage.getItem('skipLocalScan') === 'true';
-        skipScanCheckbox.addEventListener('change', () => {
-            localStorage.setItem('skipLocalScan', skipScanCheckbox.checked);
-            showToast(_('settingSaved'), 2000);
-        });
-        skipScanWrapper.appendChild(skipScanLabel);
-        skipScanWrapper.appendChild(skipScanCheckbox);
-        zoomModalBody.appendChild(skipScanWrapper);
-
-        // Function to toggle visibility based on the "Use Local DB" checkbox
-        const toggleSkipScanVisibility = () => {
-            skipScanWrapper.style.display = useLocalDbCheckbox.checked ? 'flex' : 'none';
-        };
-        useLocalDbCheckbox.addEventListener('change', toggleSkipScanVisibility);
-        toggleSkipScanVisibility(); // Set initial state
         // --- Update IndexedDB Setting ---
         const updateIndexedDbWrapper = document.createElement('div');
         updateIndexedDbWrapper.className = 'zoom-control-wrapper';
@@ -1566,29 +1516,16 @@ async function processDirectoryContent(minModificationDate) {
         localSyncWrapper.style.marginTop = '20px';
         const localSyncLabel = document.createElement('label');
         localSyncLabel.textContent = _('localSyncFolderLabel');
-        localSyncLabel.style.marginRight = '10px';
         const selectFolderBtn = document.createElement('button');
         selectFolderBtn.className = 'zoom-btn';
         selectFolderBtn.textContent = _('selectFolderButton');
-        const folderNameDisplay = document.createElement('span');
-        folderNameDisplay.id = 'local-sync-folder-name';
-        folderNameDisplay.style.marginLeft = '10px';
-        folderNameDisplay.style.fontStyle = 'italic';
-        folderNameDisplay.style.maxWidth = '200px';
-        folderNameDisplay.style.overflow = 'hidden';
-        folderNameDisplay.style.textOverflow = 'ellipsis';
-        folderNameDisplay.style.whiteSpace = 'nowrap';
-
         selectFolderBtn.addEventListener('click', async () => {
             const handle = await getDirectoryHandle(true); // Prompt user to select
             if (handle) {
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
                 showToast(`Folder '${handle.name}' selected for local sync.`, 3000);
                 await runLocalSync(); // Run initial sync immediately
             }
         });
-
         localSyncWrapper.appendChild(localSyncLabel);
         localSyncWrapper.appendChild(selectFolderBtn);
         zoomModalBody.appendChild(localSyncWrapper);
@@ -1603,19 +1540,6 @@ async function processDirectoryContent(minModificationDate) {
         });
         closeBtnWrapper.appendChild(closeBtn);
         zoomModalBody.appendChild(closeBtnWrapper);
-        localSyncWrapper.appendChild(folderNameDisplay);
-
-        // Asynchronously get and display the current folder name
-        (async () => {
-            const handle = await getDirectoryHandle(); // This won't prompt the user
-            if (handle) {
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-            } else {
-                folderNameDisplay.textContent = _('folderNotSelected');
-            }
-        })();
-        updateIndexedDbWrapper.style.marginTop = '20px';
 
         if (boardParseError) {
             const errorEl = document.createElement('div');
