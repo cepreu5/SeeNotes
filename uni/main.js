@@ -110,7 +110,9 @@ const translations = {
             noteFontSizeLabel: 'Note Font Size:',
             showDatemodLabel: 'Show modification date:',
             useLocalDbLabel: 'Local database:',
-            updateIndexedDbLabel: 'Update IndexedDB:',
+            updateIndexedDbLabel: 'from local disk',
+            updateLocalDbTitle: 'Update local database:',
+            updateFromGoogleDriveLabel: 'from Google Drive',
             localSyncFolderLabel: 'Local sync folder:',
             selectFolderButton: 'Select Folder',
             folderNotSelected: 'Not selected',
@@ -166,10 +168,11 @@ const translations = {
             noteFontSizeLabel: 'Размер шрифт (бележка):',
             showDatemodLabel: 'Покажи дата на модификация:',
             useLocalDbLabel: 'Локална база:',
-            updateIndexedDbLabel: 'IndexedDB update:',
+            updateIndexedDbLabel: 'от локален диск',
+            updateLocalDbTitle: 'Обновяване на локалната база:',
+            updateFromGoogleDriveLabel: 'от Google Drive',
             localSyncFolderLabel: 'Папка за локална синхронизация:',
             selectFolderButton: 'Избери папка',
-            skipScanLabel: 'Не проверявай за нови',
             folderNotSelected: 'Не е избрана',
             modalFontSizeLabel: 'Размер шрифт (преглед):',
             searchByTitleTooltip: 'Търсене в заглавията',
@@ -726,9 +729,9 @@ async function runLocalSync() {
         return;
     }
 
-    // Ако опцията за пропускане на сканирането е включена, прекратяваме, след като сме заредили handle-a
-    if (localStorage.getItem('skipLocalScan') === 'true') {
-        console.log("Skipping local file scan as per settings.");
+    // Ако опцията за обновяване на IndexedDB е изключена, пропускаме сканирането на файлове.
+    if (localStorage.getItem('updateIndexedDb') === 'false') {
+        console.log("Skipping local file scan because IndexedDB update is disabled.");
         loaderText.textContent = _('skippedFileScan');
         return;
     }
@@ -1469,6 +1472,7 @@ async function processDirectoryContent(minModificationDate) {
         const showDatemodCheckbox = document.createElement('input');
         showDatemodCheckbox.type = 'checkbox';
         showDatemodCheckbox.id = 'show-datemod-checkbox';
+        showDatemodCheckbox.className = 'settings-checkbox'; // Unified class
         showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
         showDatemodCheckbox.addEventListener('change', () => {
             const isChecked = showDatemodCheckbox.checked;
@@ -1486,10 +1490,12 @@ async function processDirectoryContent(minModificationDate) {
         useLocalDbWrapper.style.marginTop = '20px';
         const useLocalDbLabel = document.createElement('label');
         useLocalDbLabel.textContent = _('useLocalDbLabel');
+        useLocalDbLabel.style.marginRight = '10px';
         useLocalDbLabel.htmlFor = 'use-local-db-checkbox';
         const useLocalDbCheckbox = document.createElement('input');
         useLocalDbCheckbox.type = 'checkbox';
         useLocalDbCheckbox.id = 'use-local-db-checkbox';
+        useLocalDbCheckbox.className = 'settings-checkbox'; // Unified class
         useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
         useLocalDbCheckbox.addEventListener('change', () => {
             localStorage.setItem('useLocalDb', useLocalDbCheckbox.checked);
@@ -1499,41 +1505,27 @@ async function processDirectoryContent(minModificationDate) {
         useLocalDbWrapper.appendChild(useLocalDbCheckbox);
         zoomModalBody.appendChild(useLocalDbWrapper);
 
-        // --- NEW: Skip Local Scan Setting (only for local DB) ---
-        const skipScanWrapper = document.createElement('div');
-        skipScanWrapper.className = 'zoom-control-wrapper';
-        skipScanWrapper.style.marginTop = '10px';
-        skipScanWrapper.style.paddingLeft = '20px'; // Indent for visual hierarchy
-        const skipScanLabel = document.createElement('label');
-        skipScanLabel.textContent = _('skipScanLabel');
-        skipScanLabel.htmlFor = 'skip-scan-checkbox';
-        const skipScanCheckbox = document.createElement('input');
-        skipScanCheckbox.type = 'checkbox';
-        skipScanCheckbox.id = 'skip-scan-checkbox';
-        skipScanCheckbox.checked = localStorage.getItem('skipLocalScan') === 'true';
-        skipScanCheckbox.addEventListener('change', () => {
-            localStorage.setItem('skipLocalScan', skipScanCheckbox.checked);
-            showToast(_('settingSaved'), 2000);
-        });
-        skipScanWrapper.appendChild(skipScanLabel);
-        skipScanWrapper.appendChild(skipScanCheckbox);
-        zoomModalBody.appendChild(skipScanWrapper);
+        // --- Database Update Settings (conditionally shown) ---
+        const updateDbTitleWrapper = document.createElement('div');
+        updateDbTitleWrapper.className = 'zoom-control-wrapper';
+        updateDbTitleWrapper.style.marginTop = '20px';
+        const updateDbTitleLabel = document.createElement('label');
+        updateDbTitleLabel.textContent = _('updateLocalDbTitle');
+        updateDbTitleWrapper.appendChild(updateDbTitleLabel);
+        zoomModalBody.appendChild(updateDbTitleWrapper);
 
-        // Function to toggle visibility based on the "Use Local DB" checkbox
-        const toggleSkipScanVisibility = () => {
-            skipScanWrapper.style.display = useLocalDbCheckbox.checked ? 'flex' : 'none';
-        };
-        useLocalDbCheckbox.addEventListener('change', toggleSkipScanVisibility);
-        toggleSkipScanVisibility(); // Set initial state
-        // --- Update IndexedDB Setting ---
+        // --- Update IndexedDB from local disk Setting ---
         const updateIndexedDbWrapper = document.createElement('div');
         updateIndexedDbWrapper.className = 'zoom-control-wrapper';
+        updateIndexedDbWrapper.style.paddingLeft = '20px'; // Indent
         const updateIndexedDbLabel = document.createElement('label');
+        updateIndexedDbLabel.style.marginRight = '10px';
         updateIndexedDbLabel.textContent = _('updateIndexedDbLabel');
         updateIndexedDbLabel.htmlFor = 'update-indexed-db-checkbox';
         const updateIndexedDbCheckbox = document.createElement('input');
         updateIndexedDbCheckbox.type = 'checkbox';
         updateIndexedDbCheckbox.id = 'update-indexed-db-checkbox';
+        updateIndexedDbCheckbox.className = 'settings-checkbox'; // Unified class
         updateIndexedDbCheckbox.checked = localStorage.getItem('updateIndexedDb') !== 'false'; // Default to true
         updateIndexedDbCheckbox.addEventListener('change', () => {
             localStorage.setItem('updateIndexedDb', updateIndexedDbCheckbox.checked);
@@ -1542,6 +1534,41 @@ async function processDirectoryContent(minModificationDate) {
         updateIndexedDbWrapper.appendChild(updateIndexedDbLabel);
         updateIndexedDbWrapper.appendChild(updateIndexedDbCheckbox);
         zoomModalBody.appendChild(updateIndexedDbWrapper);
+
+        // --- Update from Google Drive Setting ---
+        const updateFromGoogleDriveWrapper = document.createElement('div');
+        updateFromGoogleDriveWrapper.className = 'zoom-control-wrapper';
+        updateFromGoogleDriveWrapper.style.paddingLeft = '20px'; // Indent
+        const updateFromGoogleDriveLabel = document.createElement('label');
+        updateFromGoogleDriveLabel.style.marginRight = '10px';
+        updateFromGoogleDriveLabel.textContent = _('updateFromGoogleDriveLabel');
+        updateFromGoogleDriveLabel.htmlFor = 'update-from-gdrive-checkbox';
+        const updateFromGoogleDriveCheckbox = document.createElement('input');
+        updateFromGoogleDriveCheckbox.type = 'checkbox';
+        updateFromGoogleDriveCheckbox.id = 'update-from-gdrive-checkbox';
+        updateFromGoogleDriveCheckbox.className = 'settings-checkbox'; // Unified class
+        updateFromGoogleDriveCheckbox.checked = localStorage.getItem('updateFromGoogleDrive') !== 'false'; // Default to true
+        updateFromGoogleDriveCheckbox.addEventListener('change', () => {
+            localStorage.setItem('updateFromGoogleDrive', updateFromGoogleDriveCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+        updateFromGoogleDriveWrapper.appendChild(updateFromGoogleDriveLabel);
+        updateFromGoogleDriveWrapper.appendChild(updateFromGoogleDriveCheckbox);
+        zoomModalBody.appendChild(updateFromGoogleDriveWrapper);
+
+        // Function to toggle visibility of the update options
+        const toggleUpdateOptionsVisibility = () => {
+            const isVisible = useLocalDbCheckbox.checked;
+            updateDbTitleWrapper.style.display = isVisible ? 'flex' : 'none';
+            updateIndexedDbWrapper.style.display = isVisible ? 'flex' : 'none';
+            updateFromGoogleDriveWrapper.style.display = isVisible ? 'flex' : 'none';
+        };
+
+        // Add the event listener to the "Use Local DB" checkbox
+        useLocalDbCheckbox.addEventListener('change', toggleUpdateOptionsVisibility);
+
+        // Set the initial visibility when the modal is created
+        toggleUpdateOptionsVisibility();
 
         // --- Local Sync Folder Setting ---
         const localSyncWrapper = document.createElement('div');

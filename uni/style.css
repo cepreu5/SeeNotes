@@ -341,10 +341,12 @@ main {
     display: none;
 }
 
-#show-datemod-checkbox {
+/* New unified style for all checkboxes in the settings modal */
+.settings-checkbox {
     width: 20px;
     height: 20px;
     cursor: pointer;
+    vertical-align: middle; /* Better alignment with the label text */
 }
 .note-content {
     flex-grow: 1;
