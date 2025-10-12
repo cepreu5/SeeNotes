@@ -2170,6 +2170,7 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
+                                    e.stopPropagation(); // Спираме разпространението на събитието
                                     try {
                                         const otherDir = await dirHandle.getDirectoryHandle('Other');
                                         const fileHandle = await otherDir.getFileHandle(filename);
@@ -2227,6 +2228,7 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
+                                    e.stopPropagation(); // Спираме разпространението на събитието
                                     try {
                                         const imagesDir = await dirHandle.getDirectoryHandle('Images');
                                         const fileHandle = await imagesDir.getFileHandle(filename);
@@ -2339,6 +2341,7 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
+                                    e.stopPropagation(); // Спираме разпространението на събитието
                                     try {
                                         const soundDir = await dirHandle.getDirectoryHandle('Sound');
                                         const fileHandle = await soundDir.getFileHandle(filename);
@@ -2386,6 +2389,7 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
+                                    e.stopPropagation(); // Спираме разпространението на събитието
                                     try {
                                         const videoDir = await dirHandle.getDirectoryHandle('Video');
                                         const fileHandle = await videoDir.getFileHandle(filename);
