@@ -173,9 +173,9 @@ const translations = {
             folderNotSelected: 'Не е избрана',
             modalFontSizeLabel: 'Размер шрифт (преглед):',
             searchByTitleTooltip: 'Търсене в заглавията',
-            searchByContentTooltip: 'Търсене в бележките',
+            searchByContentTooltip: 'Търсене в съдържанието',
             searchInTitles: 'в заглавията',
-            searchInContent: 'в бележките'
+            searchInContent: 'в съдържанието'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -600,99 +600,90 @@ function handleSignoutClick() {
         return { data, parseError };
     }
 
-async function fetchAllData(folderIdFromPrompt) {
-    let folderId = folderIdFromPrompt || await getFolderID();
-    if (!folderId) {
-        // Try to load from local DB as a fallback
-        console.log("Main folder ID not found on Google Drive, attempting to load from local IndexedDB.");
+    async function fetchAllData(folderIdFromPrompt) {
+        let folderId = folderIdFromPrompt || await getFolderID();
+        if (!folderId) {
+            // Try to load from local DB as a fallback
+            console.log("Main folder ID not found on Google Drive, attempting to load from local IndexedDB.");
+            try {
+                await fetchAllDataLocal();
+                if (allNotesData.length > 0) {
+                    showToast("Loaded data from local storage. Could not connect to Google Drive.", 5000);
+                    return { boardParseError: false }; // Assuming no parse error from local
+                }
+            } catch (localDbError) {
+                console.error("Failed to load from local DB as well:", localDbError);
+            }
+            // If local loading also fails or is empty, show the original error.
+            showMessagePopup(_('errorFolderNotFound'));
+            throw new Error("Main folder ID not found.");
+        }
+        // Proceed with fetching from Google Drive
+        const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId);
+        boardsData = boardFileData;
+        await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
+        const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId);
+        mediaData = mediaFileData;
+        await bulkPutDB(MEDIA_STORE_NAME, mediaData); // Sync to DB
+        const onNoteProgress = (loaded, total) => {
+            loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
+        };
+        loaderText.textContent = _('loadingFile') + ' note.txt';
+        const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress);
+        // We need to process the raw data for both the UI and the DB
+        const notesToStoreInDB = [];
+        allNotesData = noteResults.map(r => {
+            const content = JSON.parse(r.res.body);
+            notesToStoreInDB.push(content);
+            return { file: r.file, content: content, rawData: r };
+        });
+        await bulkPutDB(NOTE_STORE_NAME, notesToStoreInDB); // Sync to DB
+        return { boardParseError };
+    }
+
+    async function listFiles(folderIdFromPrompt) {
+        const tokenData = checkAuth();
+        const useLocalDb = localStorage.getItem('useLocalDb') === 'true';
+        // Ако се ползва локална база, не е нужен токен за Google Drive
+        if (!useLocalDb && !tokenData) return;
+        initializeLoad();
+        const loaderTitle = document.getElementById('loader-title');
         try {
-            await fetchAllDataLocal();
-            if (allNotesData.length > 0) {
-                showToast("Loaded data from local storage. Could not connect to Google Drive.", 5000);
-                return { boardParseError: false }; // Assuming no parse error from local
+            if (useLocalDb) {
+                if (loaderTitle) loaderTitle.textContent = "Локална база";
+                console.log("Local DB mode is active. Starting local sync process...");
+                loaderText.textContent = "Starting local sync...";
+                await runLocalSync(); // Update from local file system first
+                loaderText.textContent = "Fetching data from DB...";
+                await fetchAllDataLocal();
+                await renderUI({ boardParseError: false }); // Assume no parse error from local DB
+                showToast("Local data synchronized and loaded.", 3000);
+            } else {
+                if (loaderTitle) loaderTitle.textContent = "Google Drive";
+                // Standard flow: fetch from Google Drive
+                const { boardParseError } = await fetchAllData(folderIdFromPrompt);
+                await renderUI({ boardParseError });
             }
-        } catch (localDbError) {
-            console.error("Failed to load from local DB as well:", localDbError);
-        }
-        // If local loading also fails or is empty, show the original error.
-        showMessagePopup(_('errorFolderNotFound'));
-        throw new Error("Main folder ID not found.");
-    }
-
-    // Proceed with fetching from Google Drive
-    const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId);
-    boardsData = boardFileData;
-    await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
-
-    const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId);
-    mediaData = mediaFileData;
-    await bulkPutDB(MEDIA_STORE_NAME, mediaData); // Sync to DB
-
-    const onNoteProgress = (loaded, total) => {
-        loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
-    };
-    loaderText.textContent = _('loadingFile') + ' note.txt';
-    const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress);
-    
-    // We need to process the raw data for both the UI and the DB
-    const notesToStoreInDB = [];
-    allNotesData = noteResults.map(r => {
-        const content = JSON.parse(r.res.body);
-        notesToStoreInDB.push(content);
-        return { file: r.file, content: content, rawData: r };
-    });
-    
-    await bulkPutDB(NOTE_STORE_NAME, notesToStoreInDB); // Sync to DB
-
-    return { boardParseError };
-}
-
-async function listFiles(folderIdFromPrompt) {
-    const tokenData = checkAuth();
-    const useLocalDb = localStorage.getItem('useLocalDb') === 'true';
-
-    // Ако се ползва локална база, не е нужен токен за Google Drive
-    if (!useLocalDb && !tokenData) return;
-
-    initializeLoad();
-    const loaderTitle = document.getElementById('loader-title');
-
-    try {
-        if (useLocalDb) {
-            if (loaderTitle) loaderTitle.textContent = "Локална база";
-            console.log("Local DB mode is active. Starting local sync process...");
-            loaderText.textContent = "Starting local sync...";
-            await runLocalSync(); // Update from local file system first
-            loaderText.textContent = "Fetching data from DB...";
-            await fetchAllDataLocal();
-            await renderUI({ boardParseError: false }); // Assume no parse error from local DB
-            showToast("Local data synchronized and loaded.", 3000);
-        } else {
-            if (loaderTitle) loaderTitle.textContent = "Google Drive";
-            // Standard flow: fetch from Google Drive
-            const { boardParseError } = await fetchAllData(folderIdFromPrompt);
-            await renderUI({ boardParseError });
-        }
-    } catch (err) {
-        console.error("Error in listFiles:", err);
-        // Handle Google Drive specific errors only if not in local DB mode
-        if (err.result && err.result.error && err.result.error.code === 401) {
-            showToast(_('errorSessionExpired'));
-            handleSignoutClick();
-        } else {
-            let errorMessage = _('errorProcessingFiles');
-            if (err.result && err.result.error) {
-                errorMessage += ` (Status: ${err.result.error.code} - ${err.result.error.message})`;
+        } catch (err) {
+            console.error("Error in listFiles:", err);
+            // Handle Google Drive specific errors only if not in local DB mode
+            if (err.result && err.result.error && err.result.error.code === 401) {
+                showToast(_('errorSessionExpired'));
+                handleSignoutClick();
+            } else {
+                let errorMessage = _('errorProcessingFiles');
+                if (err.result && err.result.error) {
+                    errorMessage += ` (Status: ${err.result.error.code} - ${err.result.error.message})`;
+                }
+                showToast(errorMessage);
             }
-            showToast(errorMessage);
+        } finally {
+            loaderContainer.style.display = 'none';
+            document.body.style.backgroundImage = `url('Board.png')`;
+            notesContainer.style.backgroundImage = `url('Board.png')`;
+            currentBackground = 'Board.png';
         }
-    } finally {
-        loaderContainer.style.display = 'none';
-        document.body.style.backgroundImage = `url('Board.png')`;
-        notesContainer.style.backgroundImage = `url('Board.png')`;
-        currentBackground = 'Board.png';
     }
-}
 
 // =================================================================================
 // IV.a. ЛОКАЛНИ ДАННИ (INDEXEDDB)
@@ -802,27 +793,21 @@ async function processDirectoryContent(minModificationDate) {
     const minTimestamp = minModificationDate ? minModificationDate.getTime() : 0;
     const handle = await getDirectoryHandle();
     if (!handle) return;
-
     const stores = {
         [BOARD_STORE_NAME]: [],
         [MEDIA_STORE_NAME]: [],
         [NOTE_STORE_NAME]: []
     };
-
     let fileCount = 0;
     for await (const entry of handle.values()) {
         if (entry.kind !== 'file' || !entry.name.toLowerCase().endsWith('.txt')) continue;
-
         fileCount++;
         loaderText.textContent = `Checked ${fileCount} files...`;
-
         try {
             const file = await entry.getFile();
-
             if (file.lastModified >= minTimestamp) {
                 const content = await file.text();
                 const fileObject = JSON.parse(content);
-
                 if (fileObject.gdid) {
                     const lowerCaseName = entry.name.toLowerCase();
                     if (lowerCaseName.includes('board')) {
@@ -838,14 +823,12 @@ async function processDirectoryContent(minModificationDate) {
             console.error(`Error processing local file '${entry.name}':`, error);
         }
     }
-
     // Bulk update the stores that have new/updated data
     const updateIndexedDb = localStorage.getItem('updateIndexedDb') !== 'false';
     if (!updateIndexedDb) {
         console.log("IndexedDB update is disabled in settings. Skipping database write.");
         return;
     }
-
     for (const storeName in stores) {
         if (stores[storeName].length > 0) {
             await bulkPutDB(storeName, stores[storeName], true); // Use incremental put
@@ -2572,21 +2555,17 @@ function openNotesDB() {
 async function bulkPutDB(storeName, data, incremental = false) {
     if (!data || data.length === 0) return;
     if (localStorage.getItem('updateIndexedDb') === 'false') return;
-
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([storeName], 'readwrite');
         const store = transaction.objectStore(storeName);
-
         const putData = () => {
             data.forEach(item => {
                 store.put(item);
             });
         };
-
         transaction.oncomplete = () => resolve();
         transaction.onerror = (event) => reject("DB Transaction Error: " + event.target.error);
-
         if (incremental) {
             putData();
         } else {
@@ -2606,7 +2585,6 @@ async function getAllFromDB(storeName) {
         const transaction = db.transaction([storeName], 'readonly');
         const store = transaction.objectStore(storeName);
         const request = store.getAll();
-
         request.onsuccess = (event) => resolve(event.target.result);
         request.onerror = (event) => reject(`Error in getAllFromDB (${storeName}): ` + event.target.error);
     });
@@ -2639,7 +2617,6 @@ async function getConfig(key) {
         const transaction = db.transaction(CONFIG_STORE_NAME, 'readonly');
         const store = transaction.objectStore(CONFIG_STORE_NAME);
         const request = store.get(key);
-
         request.onsuccess = () => resolve(request.result);
         request.onerror = (event) => reject('Error getting from config: ' + event.target.error);
     });
@@ -2650,7 +2627,6 @@ async function renderUI({ boardParseError }) {
     if (boardsData.length > 0 || boardParseError) {
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
-
     const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData.rawData)));
     let notesCount = 0;
     noteElements.forEach(noteEl => {
@@ -2659,13 +2635,10 @@ async function renderUI({ boardParseError }) {
             notesCount++;
         }
     });
-
     if (boardsNoteElement) {
         document.querySelector('header').appendChild(boardsNoteElement);
     }
-
     filterNotesByBoard(localStorage.getItem('startBoard') || 'all');
-
     const counterEl = document.getElementById('note-counter');
     if (counterEl) {
         counterEl.textContent = notesCount;
