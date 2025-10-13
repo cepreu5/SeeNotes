@@ -417,345 +417,194 @@
         contentWrapper.style.minHeight = '0';
         const contentEl = document.createElement('div');
         contentEl.className = 'board-menu-container';
-        const zoomValueDisplay = document.createElement('span');
-        zoomValueDisplay.id = 'zoom-value-display';
-        const zoomModalBody = document.getElementById('settings-modal-body');
-        zoomModalBody.innerHTML = ''; 
-        const zoomControlWrapper = document.createElement('div');
-        zoomControlWrapper.className = 'zoom-control-wrapper';
-        const zoomLabel = document.createElement('label');
-        zoomLabel.textContent = _('zoomLabel');
-        zoomLabel.htmlFor = 'scaleSlider';
-        zoomLabel.style.marginRight = '10px';
-        const sliderContainer = document.createElement('div');
-        sliderContainer.className = 'slider-container';
-        sliderContainer.innerHTML = `<input type="range" id="scaleSlider" min="25" max="175" value="100"><input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number"><span>%</span>`;
-        const applyBtn = document.createElement('button');
-        applyBtn.className = 'zoom-btn';
-        applyBtn.textContent = _('submitButton');
-        applyBtn.style.marginLeft = '10px';
-        applyBtn.addEventListener('click', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-            showToast(_('settingSaved'), 2000);
-        });
-        zoomControlWrapper.appendChild(zoomLabel);
-        zoomControlWrapper.appendChild(sliderContainer);
-        zoomControlWrapper.appendChild(applyBtn);
-        zoomModalBody.appendChild(zoomControlWrapper);
-        const startBoardWrapper = document.createElement('div');
-        startBoardWrapper.className = 'zoom-control-wrapper';
-        startBoardWrapper.style.marginTop = '20px';
-        const startBoardLabel = document.createElement('label');
-        startBoardLabel.textContent = _('startBoardLabel');
-        startBoardLabel.style.marginRight = '10px';
-        const startBoardSelect = document.createElement('select');
-        startBoardSelect.id = 'start-board-select';
-        startBoardSelect.className = 'start-board-select';
-    
-        startBoardSelect.innerHTML = `
-            <option value="all">${_('allBoards')}</option>
-            <option value="calendar">${_('calendar')}</option>
-            <option value="reminder">${_('reminder')}</option>
-        `;
-        boardsData.forEach(board => {
-            if (board.gdid && board.title) {
-                const option = new Option(board.title, board.gdid);
-                startBoardSelect.appendChild(option);
-            }
-        });
-    
-        startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
-        startBoardSelect.addEventListener('change', () => {
-            localStorage.setItem('startBoard', startBoardSelect.value);
-            showToast(_('settingSaved'), 2000);
-        });
-        startBoardWrapper.appendChild(startBoardLabel);
-        startBoardWrapper.appendChild(startBoardSelect);
-        zoomModalBody.appendChild(startBoardWrapper);
-        // --- Max Saved Searches Setting ---
-        const maxSearchesWrapper = document.createElement('div');
-        maxSearchesWrapper.className = 'zoom-control-wrapper';
-        maxSearchesWrapper.style.marginTop = '20px';
-        const maxSearchesLabel = document.createElement('label');
-        maxSearchesLabel.textContent = _('maxSearchesLabel');
-        maxSearchesLabel.style.marginRight = '10px';
-        const maxSearchesInput = document.createElement('input');
-        maxSearchesInput.type = 'number';
-        maxSearchesInput.id = 'max-searches-input';
-        maxSearchesInput.className = 'zoom-input-number';
-        maxSearchesInput.value = maxSavedSearches;
-        maxSearchesInput.min = '0';
-        maxSearchesInput.max = '20';
-        maxSearchesInput.addEventListener('change', () => {
-            let newValue = parseInt(maxSearchesInput.value, 10);
-            if (isNaN(newValue) || newValue < 0) newValue = 0;
-            if (newValue > 20) newValue = 20;
-            maxSavedSearches = newValue;
-            localStorage.setItem('maxSavedSearches', newValue);
-            // Trim existing searches if new limit is smaller
-            if (savedSearches.length > maxSavedSearches) {
-                savedSearches.length = maxSavedSearches;
-                localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-            }
-            showToast(_('settingSaved'), 2000);
-        });
-        maxSearchesWrapper.appendChild(maxSearchesLabel);
-        maxSearchesWrapper.appendChild(maxSearchesInput);
-        zoomModalBody.appendChild(maxSearchesWrapper);
-        const slider = sliderContainer.querySelector('#scaleSlider');
-        const scaleInput = sliderContainer.querySelector('#scaleInput');
+
+        // --- Get Element References ---
+        const scaleSlider = document.getElementById('scaleSlider');
+        const scaleInput = document.getElementById('scaleInput');
+        const applyZoomBtn = document.getElementById('applyZoomBtn');
+        const startBoardSelect = document.getElementById('start-board-select');
+        const maxSearchesInput = document.getElementById('max-searches-input');
+        const noteFontSizeInput = document.getElementById('note-font-size-input');
+        const modalFontSizeInput = document.getElementById('modal-font-size-input');
+        const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
+        const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
+        const updateDbOptionsWrapper = document.getElementById('update-db-options-wrapper');
+        const updateIndexedDbCheckbox = document.getElementById('update-indexed-db-checkbox');
+        const updateFromGoogleDriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
+        const selectFolderBtn = document.getElementById('select-folder-btn');
+        const localSyncFolderName = document.getElementById('local-sync-folder-name');
+        const settingsCloseBtn = document.getElementById('settings-close-btn');
+
+        // --- Logic for Settings Modal ---
+
+        // 1. Zoom Controls
         const updateZoom = (value) => {
             value = Math.max(25, Math.min(175, parseInt(value, 10)));
             if (isNaN(value)) value = 100;
             notesContainer.style.zoom = value / 100;
-            zoomValueDisplay.textContent = ` ${value}%`;
-            slider.value = value;
+            scaleSlider.value = value;
             scaleInput.value = value;
         };
+
         let savedZoom = localStorage.getItem('zoomLevel');
         if (savedZoom) {
-            slider.value = savedZoom;
             updateZoom(savedZoom);
         } else {
-            updateZoom(slider.value);
+            updateZoom(scaleSlider.value);
         }
-        slider.addEventListener('input', () => {
-            const zoomValue = slider.value;
+
+        scaleSlider.addEventListener('input', () => {
+            const zoomValue = scaleSlider.value;
             updateZoom(zoomValue);
             localStorage.setItem('zoomLevel', zoomValue);
         });
+
         scaleInput.addEventListener('change', () => {
             const zoomValue = scaleInput.value;
             updateZoom(zoomValue);
             localStorage.setItem('zoomLevel', zoomValue);
         });
-        slider.addEventListener('click', (e) => {
+        
+        applyZoomBtn.addEventListener('click', () => {
+            const zoomValue = scaleInput.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+            showToast(_('settingSaved'), 2000);
+        });
+
+        scaleSlider.addEventListener('click', (e) => {
             if (e.ctrlKey) {
                 e.preventDefault();
-                let currentValue = parseInt(slider.value, 10);
+                let currentValue = parseInt(scaleSlider.value, 10);
                 let newValue;
                 if (currentValue % 10 === 0) {
                     newValue = currentValue + 10;
                 } else {
                     newValue = Math.round(currentValue / 10) * 10;
                 }
-                const max = parseInt(slider.max, 10);
-                const min = parseInt(slider.min, 10);
+                const max = parseInt(scaleSlider.max, 10);
+                const min = parseInt(scaleSlider.min, 10);
                 if (newValue > max) newValue = max;
                 if (newValue < min) newValue = min;
-                slider.value = newValue;
+                scaleSlider.value = newValue;
                 updateZoom(newValue);
                 localStorage.setItem('zoomLevel', newValue);
             }
         });
-    
-        const createFontSizeInput = (id, labelKey, storageKey, defaultValue, targetUpdate) => {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'zoom-control-wrapper';
-            wrapper.style.marginTop = '15px';
-            const label = document.createElement('label');
-            label.textContent = _(labelKey);
-            label.style.marginRight = '10px';
-            label.style.flexBasis = '200px';
-            label.style.flexShrink = '0';
-            label.style.textAlign = 'left';
-            const select = document.createElement('select');
-            select.id = id;
-            select.className = 'zoom-input-select';
-            select.style.width = '80px';
-            select.style.margin = '0 2px 0 10px';
-            select.style.flexShrink = '0';
-    
+
+        // 2. Start Board Select
+        boardsData.forEach(board => {
+            if (board.gdid && board.title) {
+                const option = new Option(board.title, board.gdid);
+                startBoardSelect.appendChild(option);
+            }
+        });
+        startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
+        startBoardSelect.addEventListener('change', () => {
+            localStorage.setItem('startBoard', startBoardSelect.value);
+            showToast(_('settingSaved'), 2000);
+        });
+
+        // 3. Max Saved Searches
+        maxSearchesInput.value = maxSavedSearches;
+        maxSearchesInput.addEventListener('change', () => {
+            let newValue = parseInt(maxSearchesInput.value, 10);
+            if (isNaN(newValue) || newValue < 0) newValue = 0;
+            if (newValue > 20) newValue = 20;
+            maxSavedSearches = newValue;
+            localStorage.setItem('maxSavedSearches', newValue);
+            if (savedSearches.length > maxSavedSearches) {
+                savedSearches.length = maxSavedSearches;
+                localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+            }
+            showToast(_('settingSaved'), 2000);
+        });
+
+        // 4. Font Size Inputs
+        const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
             const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
             fontSizes.forEach(size => {
                 const option = document.createElement('option');
                 option.value = size;
                 option.textContent = `${size}px`;
-                select.appendChild(option);
+                selectElement.appendChild(option);
             });
-            select.value = localStorage.getItem(storageKey) || defaultValue;
-            select.addEventListener('change', () => {
-                const value = select.value;
+            selectElement.value = localStorage.getItem(storageKey) || defaultValue;
+            // Apply initial value
+            targetUpdate(selectElement.value);
+            selectElement.addEventListener('change', () => {
+                const value = selectElement.value;
                 localStorage.setItem(storageKey, value);
                 targetUpdate(value);
                 showToast(_('settingSaved'), 2000);
             });
-    
-            wrapper.appendChild(label);
-            wrapper.appendChild(select);
-            return wrapper;
         };
-    
-        zoomModalBody.appendChild(createFontSizeInput('note-font-size-input', 'noteFontSizeLabel', 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`)));
-        zoomModalBody.appendChild(createFontSizeInput('modal-font-size-input', 'modalFontSizeLabel', 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`));
+        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
+        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`);
 
-        const showDatemodWrapper = document.createElement('div');
-        showDatemodWrapper.className = 'zoom-control-wrapper';
-        showDatemodWrapper.style.marginTop = '20px';
-        const showDatemodLabel = document.createElement('label');
-        showDatemodLabel.textContent = _('showDatemodLabel');
-        showDatemodLabel.style.marginRight = '10px';
-        showDatemodLabel.htmlFor = 'show-datemod-checkbox';
-        const showDatemodCheckbox = document.createElement('input');
-        showDatemodCheckbox.type = 'checkbox';
-        showDatemodCheckbox.id = 'show-datemod-checkbox';
-        showDatemodCheckbox.className = 'settings-checkbox'; // Unified class
-        showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
+        // 5. Show Datemod Checkbox
+        showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false';
         showDatemodCheckbox.addEventListener('change', () => {
             const isChecked = showDatemodCheckbox.checked;
             localStorage.setItem('showDatemod', isChecked);
             document.body.classList.toggle('hide-datemod', !isChecked);
             showToast(_('settingSaved'), 2000);
         });
-        showDatemodWrapper.appendChild(showDatemodLabel);
-        showDatemodWrapper.appendChild(showDatemodCheckbox);
-        zoomModalBody.appendChild(showDatemodWrapper);
 
-        // --- Use Local DB Setting ---
-        const useLocalDbWrapper = document.createElement('div');
-        useLocalDbWrapper.className = 'zoom-control-wrapper';
-        useLocalDbWrapper.style.marginTop = '20px';
-        const useLocalDbLabel = document.createElement('label');
-        useLocalDbLabel.textContent = _('useLocalDbLabel');
-        useLocalDbLabel.style.marginRight = '10px';
-        useLocalDbLabel.htmlFor = 'use-local-db-checkbox';
-        const useLocalDbCheckbox = document.createElement('input');
-        useLocalDbCheckbox.type = 'checkbox';
-        useLocalDbCheckbox.id = 'use-local-db-checkbox';
-        useLocalDbCheckbox.className = 'settings-checkbox'; // Unified class
+        // 6. Local DB & Update Options
         useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
         useLocalDbCheckbox.addEventListener('change', () => {
             localStorage.setItem('useLocalDb', useLocalDbCheckbox.checked);
+            toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 2000);
         });
-        useLocalDbWrapper.appendChild(useLocalDbLabel);
-        useLocalDbWrapper.appendChild(useLocalDbCheckbox);
-        zoomModalBody.appendChild(useLocalDbWrapper);
 
-        // --- Database Update Settings (conditionally shown) ---
-        const updateDbTitleWrapper = document.createElement('div');
-        updateDbTitleWrapper.className = 'zoom-control-wrapper';
-        updateDbTitleWrapper.style.marginTop = '20px';
-        const updateDbTitleLabel = document.createElement('label');
-        updateDbTitleLabel.textContent = _('updateLocalDbTitle');
-        updateDbTitleWrapper.appendChild(updateDbTitleLabel);
-        zoomModalBody.appendChild(updateDbTitleWrapper);
-
-        // --- Update IndexedDB from local disk Setting ---
-        const updateIndexedDbWrapper = document.createElement('div');
-        updateIndexedDbWrapper.className = 'zoom-control-wrapper';
-        updateIndexedDbWrapper.style.paddingLeft = '20px'; // Indent
-        const updateIndexedDbLabel = document.createElement('label');
-        updateIndexedDbLabel.style.marginRight = '10px';
-        updateIndexedDbLabel.textContent = _('updateIndexedDbLabel');
-        updateIndexedDbLabel.htmlFor = 'update-indexed-db-checkbox';
-        const updateIndexedDbCheckbox = document.createElement('input');
-        updateIndexedDbCheckbox.type = 'checkbox';
-        updateIndexedDbCheckbox.id = 'update-indexed-db-checkbox';
-        updateIndexedDbCheckbox.className = 'settings-checkbox'; // Unified class
-        updateIndexedDbCheckbox.checked = localStorage.getItem('updateIndexedDb') !== 'false'; // Default to true
+        updateIndexedDbCheckbox.checked = localStorage.getItem('updateIndexedDb') !== 'false';
         updateIndexedDbCheckbox.addEventListener('change', () => {
             localStorage.setItem('updateIndexedDb', updateIndexedDbCheckbox.checked);
             showToast(_('settingSaved'), 2000);
         });
-        updateIndexedDbWrapper.appendChild(updateIndexedDbLabel);
-        updateIndexedDbWrapper.appendChild(updateIndexedDbCheckbox);
-        zoomModalBody.appendChild(updateIndexedDbWrapper);
 
-        // --- Update from Google Drive Setting ---
-        const updateFromGoogleDriveWrapper = document.createElement('div');
-        updateFromGoogleDriveWrapper.className = 'zoom-control-wrapper';
-        updateFromGoogleDriveWrapper.style.paddingLeft = '20px'; // Indent
-        const updateFromGoogleDriveLabel = document.createElement('label');
-        updateFromGoogleDriveLabel.style.marginRight = '10px';
-        updateFromGoogleDriveLabel.textContent = _('updateFromGoogleDriveLabel');
-        updateFromGoogleDriveLabel.htmlFor = 'update-from-gdrive-checkbox';
-        const updateFromGoogleDriveCheckbox = document.createElement('input');
-        updateFromGoogleDriveCheckbox.type = 'checkbox';
-        updateFromGoogleDriveCheckbox.id = 'update-from-gdrive-checkbox';
-        updateFromGoogleDriveCheckbox.className = 'settings-checkbox'; // Unified class
-        updateFromGoogleDriveCheckbox.checked = localStorage.getItem('updateFromGoogleDrive') !== 'false'; // Default to true
+        updateFromGoogleDriveCheckbox.checked = localStorage.getItem('updateFromGoogleDrive') !== 'false';
         updateFromGoogleDriveCheckbox.addEventListener('change', () => {
             localStorage.setItem('updateFromGoogleDrive', updateFromGoogleDriveCheckbox.checked);
             showToast(_('settingSaved'), 2000);
         });
-        updateFromGoogleDriveWrapper.appendChild(updateFromGoogleDriveLabel);
-        updateFromGoogleDriveWrapper.appendChild(updateFromGoogleDriveCheckbox);
-        zoomModalBody.appendChild(updateFromGoogleDriveWrapper);
 
-        // Function to toggle visibility of the update options
         const toggleUpdateOptionsVisibility = () => {
             const isVisible = useLocalDbCheckbox.checked;
-            updateDbTitleWrapper.style.display = isVisible ? 'flex' : 'none';
-            updateIndexedDbWrapper.style.display = isVisible ? 'flex' : 'none';
-            updateFromGoogleDriveWrapper.style.display = isVisible ? 'flex' : 'none';
+            updateDbOptionsWrapper.style.display = isVisible ? 'block' : 'none';
         };
-
-        // Add the event listener to the "Use Local DB" checkbox
-        useLocalDbCheckbox.addEventListener('change', toggleUpdateOptionsVisibility);
-
-        // Set the initial visibility when the modal is created
         toggleUpdateOptionsVisibility();
 
-        // --- Local Sync Folder Setting ---
-        const localSyncWrapper = document.createElement('div');
-        localSyncWrapper.className = 'zoom-control-wrapper';
-        localSyncWrapper.style.marginTop = '20px';
-        const localSyncLabel = document.createElement('label');
-        localSyncLabel.textContent = _('localSyncFolderLabel');
-        localSyncLabel.style.marginRight = '10px';
-        const selectFolderBtn = document.createElement('button');
-        selectFolderBtn.className = 'zoom-btn';
-        selectFolderBtn.textContent = _('selectFolderButton');
-        const folderNameDisplay = document.createElement('span');
-        folderNameDisplay.id = 'local-sync-folder-name';
-        folderNameDisplay.style.marginLeft = '10px';
-        folderNameDisplay.style.fontStyle = 'italic';
-        folderNameDisplay.style.maxWidth = '200px';
-        folderNameDisplay.style.overflow = 'hidden';
-        folderNameDisplay.style.textOverflow = 'ellipsis';
-        folderNameDisplay.style.whiteSpace = 'nowrap';
-
+        // 7. Local Sync Folder
         selectFolderBtn.addEventListener('click', async () => {
             const handle = await getDirectoryHandle(true); // Prompt user to select
             if (handle) {
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000); // Ensure this toast is visible
-                await runLocalSync(); // Run initial sync immediately
+                localSyncFolderName.textContent = handle.name;
+                localSyncFolderName.title = handle.name;
+                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
+                await runLocalSync();
             }
         });
 
-        localSyncWrapper.appendChild(localSyncLabel);
-        localSyncWrapper.appendChild(selectFolderBtn);
-        zoomModalBody.appendChild(localSyncWrapper);
-
-        const closeBtnWrapper = document.createElement('div');
-        closeBtnWrapper.className = 'settings-close-btn-wrapper';
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'zoom-btn settings-close-btn';
-        closeBtn.textContent = _('closeButton');
-        closeBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-        });
-        closeBtnWrapper.appendChild(closeBtn);
-        zoomModalBody.appendChild(closeBtnWrapper);
-        localSyncWrapper.appendChild(folderNameDisplay);
-
-        // Asynchronously get and display the current folder name
         (async () => {
             const handle = await getDirectoryHandle(); // This won't prompt the user
             if (handle) {
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
+                localSyncFolderName.textContent = handle.name;
+                localSyncFolderName.title = handle.name;
             } else {
-                folderNameDisplay.textContent = _('folderNotSelected');
+                localSyncFolderName.textContent = _('folderNotSelected');
             }
         })();
-        updateIndexedDbWrapper.style.marginTop = '20px';
 
+        // 8. Close Button
+        settingsCloseBtn.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+        });
+
+
+        // --- Original logic for boards menu (unchanged) ---
         if (boardParseError) {
             const errorEl = document.createElement('div');
             errorEl.style.color = 'red';
@@ -775,11 +624,7 @@
         const allBoardsIcon = document.createElement('span');
         allBoardsIcon.classList.add('board-icon-in-button');
         allBoardsLink.appendChild(allBoardsText);
-        /**
-         * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
-         * @param {HTMLElement} element The element to attach events to.
-         * @param {Function} [singleClickCallback] An optional callback for a regular single click.
-         */
+
         const addAllBoardsModalEvents = (element, singleClickCallback) => {
             let longPressTimer;
             let isLongPress = false;
@@ -789,14 +634,12 @@
                     isLongPress = true;
                     showAllBoardsModal(element);
                 }, 500);
-                // Only prevent default on touch to avoid unwanted scrolling while holding
                 if (e.type === 'touchstart') {
                     e.preventDefault();
                 }
             };
             const endPress = (e) => {
                 clearTimeout(longPressTimer);
-                // If it's a touchend and not a long press, trigger the single click action
                 if (e.type === 'touchend' && !isLongPress) {
                     if (singleClickCallback) singleClickCallback();
                 }
@@ -814,7 +657,7 @@
         };
         addAllBoardsModalEvents(allBoardsLink, () => filterNotesByBoard('all'));
         allButtonLinks.push(allBoardsLink);
-    
+
         const calendarLink = document.createElement('span');
         calendarLink.textContent = _('calendar');
         calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
@@ -840,8 +683,8 @@
             if (board.status === 1) link.style.color = 'red';
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                if (e.ctrlKey) { showModal(JSON.stringify(board, null, 2)); } 
-                else { e.preventDefault(); filterNotesByBoard(board.gdid); } // Ensure preventDefault is called here too
+                if (e.ctrlKey) { showModal(JSON.stringify(board, null, 2)); }
+                else { e.preventDefault(); filterNotesByBoard(board.gdid); }
             });
             allButtonLinks.push(link);
         });
@@ -863,21 +706,20 @@
         const scrollWrapper = document.createElement('div');
         scrollWrapper.className = 'scrolling-menu-wrapper';
         const leftArrow = document.createElement('button');
-        leftArrow.className = 'scroll-arrow left-arrow'; // Keep class for styling
-        leftArrow.innerHTML = boardIconSvg; // Use the board icon
-        // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
+        leftArrow.className = 'scroll-arrow left-arrow';
+        leftArrow.innerHTML = boardIconSvg;
         addAllBoardsModalEvents(leftArrow, () => { showAllBoardsModal(leftArrow); });
-    
+
         scrollWrapper.appendChild(leftArrow);
         scrollWrapper.appendChild(contentEl);
         contentWrapper.appendChild(scrollWrapper);
-        
+
         const checkScroll = () => {
-            leftArrow.classList.toggle('visible', true); // The button is now always visible
+            leftArrow.classList.toggle('visible', true);
         };
         contentEl.addEventListener('scroll', checkScroll);
         new ResizeObserver(checkScroll).observe(contentEl);
-        
+
         return boardsNote;
     }
 
