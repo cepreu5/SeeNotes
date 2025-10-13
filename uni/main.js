@@ -93,6 +93,9 @@ const translations = {
             errorInvalidFolderIdSession: 'Invalid Folder ID. Please sign out and sign in again.',
             errorFolderNotFound: "The main folder multinotes_data was not found. Please check Google Drive.",
             warningInvalidBoard: 'Warning: One or more board files are invalid and have been skipped.',
+            confirmCreateLocalDb: 'Do you want to create a local database?',
+            confirmCreateDbYes: 'Yes',
+            confirmCreateDbNo: 'No',
             // promptFolderId: 'Please enter the Google Drive Folder ID:',
             // folderIdInputPlaceholder: 'Google Drive Folder ID',
             zoomLabel: 'Zoom:',
@@ -121,7 +124,22 @@ const translations = {
             searchByTitleTooltip: 'Search by Title',
             searchByContentTooltip: 'Search by Content',
             searchInTitles: 'in titles',
-            searchInContent: 'in content'
+            searchInContent: 'in content',
+            errorLocalFolderNotSelected: 'Local sync folder not selected. Please select one in Settings.',
+            folderSelectedForSync: 'Folder \'{folderName}\' selected for local sync.',
+            localDataLoaded: 'Local data loaded.',
+            localDbUpdated: 'Local database updated from Google Drive.',
+            errorGoogleLibs: 'Error loading Google libraries.',
+            loadedFromLocalNoDrive: 'Loaded data from local storage. Could not connect to Google Drive.',
+            imgNotFound: 'Image file not found for preview.',
+            noImgPreview: 'No preview available for this image.',
+            errorImgPreview: 'Error loading image preview: {error}',
+            videoNotFound: 'Video file not found for preview.',
+            noVideoPreview: 'No preview available for this video.',
+            errorVideoPreview: 'Error loading video preview: {error}',
+            errorOpenFile: 'Could not open local file: {filename}',
+            errorFetchFolderIds: 'Error fetching folder IDs.',
+            errorFetchFileId: 'Error fetching file ID for {fileName}.'
         },
         bg: {
             appTitle: 'CX MultiNotes Viewer',
@@ -150,6 +168,9 @@ const translations = {
             errorInvalidFolderIdSession: 'Невалиден Folder ID. Моля, излезте и влезте отново.',
             errorNoteFieldMissing: "Грешка: липсва поле \'notetxt\'.",
             warningInvalidBoard: 'Внимание: Един или повече файлове за дефиниция на бордове са невалидни и бяха пропуснати.',
+            confirmCreateLocalDb: 'Искате ли да се създаде локална база?',
+            confirmCreateDbYes: 'Да',
+            confirmCreateDbNo: 'Не',
             // promptFolderId: 'Моля, въведете ID на папката в Google Drive:',
             // folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
             searchSavedTip: 'Запомни търсенето',
@@ -178,7 +199,22 @@ const translations = {
             searchByTitleTooltip: 'Търсене в заглавията',
             searchByContentTooltip: 'Търсене в съдържанието',
             searchInTitles: 'в заглавията',
-            searchInContent: 'в съдържанието'
+            searchInContent: 'в съдържанието',
+            errorLocalFolderNotSelected: 'Папката за локална синхронизация не е избрана. Моля, изберете такава от Настройки.',
+            folderSelectedForSync: 'Папка \'{folderName}\' е избрана за локална синхронизация.',
+            localDataLoaded: 'Локалните данни са заредени.',
+            localDbUpdated: 'Локалната база е обновена от Google Drive.',
+            errorGoogleLibs: 'Грешка при зареждане на библиотеките на Google.',
+            loadedFromLocalNoDrive: 'Заредени са данни от локалното хранилище. Няма връзка с Google Drive.',
+            imgNotFound: 'Файлът с изображение не е намерен за преглед.',
+            noImgPreview: 'Няма наличен преглед за това изображение.',
+            errorImgPreview: 'Грешка при зареждане на преглед на изображение: {error}',
+            videoNotFound: 'Видео файлът не е намерен за преглед.',
+            noVideoPreview: 'Няма наличен преглед за това видео.',
+            errorVideoPreview: 'Грешка при зареждане на преглед на видео: {error}',
+            errorOpenFile: 'Неуспешно отваряне на локален файл: {filename}',
+            errorFetchFolderIds: 'Грешка при извличане на ID-та на папки.',
+            errorFetchFileId: 'Грешка при извличане на ID на файл за {fileName}.',
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -274,6 +310,57 @@ function handleSubmitFolderId() {
         return;
     }
     // Logic for submitting the folder ID would go here
+}
+
+function showConfirmation(message) {
+    return new Promise(resolve => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        const messagePara = popup.querySelector('p');
+        const okButton = document.getElementById('submitFolderIdBtn');
+        const folderIdInput = document.getElementById('folderIdInput');
+        
+        let noButton = document.getElementById('prompt-no-btn');
+        if (!noButton) {
+            noButton = document.createElement('button');
+            noButton.id = 'prompt-no-btn';
+            noButton.className = 'zoom-btn settings-close-btn'; // Use classes from other buttons
+            noButton.style.marginLeft = '10px';
+            okButton.parentNode.appendChild(noButton);
+        }
+
+        messagePara.textContent = message;
+        folderIdInput.style.display = 'none';
+        okButton.textContent = _('confirmCreateDbYes');
+        noButton.textContent = _('confirmCreateDbNo');
+        noButton.style.display = 'inline-block';
+
+        // Remove existing listener to avoid conflicts
+        okButton.removeEventListener('click', handleSubmitFolderId);
+
+        const cleanup = () => {
+            popup.classList.remove('show');
+            okButton.removeEventListener('click', onOk);
+            noButton.removeEventListener('click', onNo);
+            noButton.style.display = 'none';
+            // Restore original listener
+            okButton.addEventListener('click', handleSubmitFolderId);
+        };
+
+        const onOk = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        const onNo = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        okButton.addEventListener('click', onOk);
+        noButton.addEventListener('click', onNo);
+
+        popup.classList.add('show');
+    });
 }
 
 function initApp() {
@@ -603,7 +690,7 @@ function handleSignoutClick() {
         return { data, parseError };
     }
 
-    async function fetchAllData(folderIdFromPrompt) {
+    async function fetchAllData(folderIdFromPrompt, saveToDb = true) {
         let folderId = folderIdFromPrompt || await getFolderID();
         if (!folderId) {
             // Try to load from local DB as a fallback
@@ -624,10 +711,14 @@ function handleSignoutClick() {
         // Proceed with fetching from Google Drive
         const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId);
         boardsData = boardFileData;
-        await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
+        if (saveToDb) {
+            await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
+        }
         const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId);
         mediaData = mediaFileData;
-        await bulkPutDB(MEDIA_STORE_NAME, mediaData); // Sync to DB
+        if (saveToDb) {
+            await bulkPutDB(MEDIA_STORE_NAME, mediaData); // Sync to DB
+        }
         const onNoteProgress = (loaded, total) => {
             loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
         };
@@ -640,36 +731,72 @@ function handleSignoutClick() {
             notesToStoreInDB.push(content);
             return { file: r.file, content: content, rawData: r };
         });
-        await bulkPutDB(NOTE_STORE_NAME, notesToStoreInDB); // Sync to DB
+        if (saveToDb) {
+            await bulkPutDB(NOTE_STORE_NAME, notesToStoreInDB); // Sync to DB
+        }
         return { boardParseError };
     }
 
     async function listFiles(folderIdFromPrompt) {
-        const tokenData = checkAuth();
         const useLocalDb = localStorage.getItem('useLocalDb') === 'true';
-        // Ако се ползва локална база, не е нужен токен за Google Drive
-        if (!useLocalDb && !tokenData) return;
+        const updateFromGoogleDrive = localStorage.getItem('updateFromGoogleDrive') !== 'false';
+        let tokenData = null;
+
+        // Decide if we need a token BEFORE anything else.
+        const needsToken = !useLocalDb || (useLocalDb && updateFromGoogleDrive);
+
+        if (needsToken) {
+            tokenData = checkAuth();
+            if (!tokenData) {
+                // checkAuth() redirects to login, so we just stop here.
+                return;
+            }
+        }
+
         initializeLoad();
         const loaderTitle = document.getElementById('loader-title');
         try {
             if (useLocalDb) {
-                if (loaderTitle) loaderTitle.textContent = "Локална база";
-                console.log("Local DB mode is active. Starting local sync process...");
-                loaderText.textContent = "Starting local sync...";
-                await runLocalSync(); // Update from local file system first
-                loaderText.textContent = "Fetching data from DB...";
-                await fetchAllDataLocal();
-                await renderUI({ boardParseError: false }); // Assume no parse error from local DB
-                showToast("Local data synchronized and loaded.", 3000);
-            } else {
+                if (updateFromGoogleDrive) {
+                    if (loaderTitle) loaderTitle.textContent = "Google Drive Sync";
+                    const boards = await getAllFromDB(BOARD_STORE_NAME);
+                    let saveToDb = true; // By default, save to DB when syncing.
+
+                    // If DB is empty, ask for confirmation first.
+                    if (boards.length === 0) {
+                        if (!await showConfirmation(_('confirmCreateLocalDb'))) {
+                            // User declined to create a local DB for storage,
+                            // so we load for the session only.
+                            saveToDb = false;
+                        }
+                    }
+                    
+                    // Fetch from GDrive and conditionally save to DB.
+                    const { boardParseError } = await fetchAllData(folderIdFromPrompt, saveToDb);
+                    await renderUI({ boardParseError });
+                    if (saveToDb) {
+                        showToast("Local database updated from Google Drive.", 3000);
+                    }
+
+                } else {
+                    // GDrive sync is disabled. Load locally.
+                    if (loaderTitle) loaderTitle.textContent = "Локална база";
+                    console.log("Loading from local DB (Google Drive sync is disabled).");
+                    loaderText.textContent = "Starting local sync...";
+                    await runLocalSync();
+                    loaderText.textContent = "Fetching data from DB...";
+                    await fetchAllDataLocal();
+                    await renderUI({ boardParseError: false });
+                    showToast(_('localDataLoaded'), 3000);
+                }
+            } else { // Not using local DB
                 if (loaderTitle) loaderTitle.textContent = "Google Drive";
-                // Standard flow: fetch from Google Drive
+                // We have a token from the check at the top.
                 const { boardParseError } = await fetchAllData(folderIdFromPrompt);
                 await renderUI({ boardParseError });
             }
         } catch (err) {
             console.error("Error in listFiles:", err);
-            // Handle Google Drive specific errors only if not in local DB mode
             if (err.result && err.result.error && err.result.error.code === 401) {
                 showToast(_('errorSessionExpired'));
                 handleSignoutClick();
@@ -724,7 +851,7 @@ async function fetchAllDataLocal() {
 async function runLocalSync() {
     const handle = await getDirectoryHandle();
     if (!handle) {
-        showToast("Local sync folder not selected. Please select one in Settings.", 5000);
+        showToast(_('errorLocalFolderNotSelected'), 10000);
         // We can still proceed to load whatever is in the DB
         return;
     }
@@ -1594,7 +1721,7 @@ async function processDirectoryContent(minModificationDate) {
             if (handle) {
                 folderNameDisplay.textContent = handle.name;
                 folderNameDisplay.title = handle.name;
-                showToast(`Folder '${handle.name}' selected for local sync.`, 3000);
+                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 3000);
                 await runLocalSync(); // Run initial sync immediately
             }
         });
@@ -2581,7 +2708,6 @@ function openNotesDB() {
  */
 async function bulkPutDB(storeName, data, incremental = false) {
     if (!data || data.length === 0) return;
-    if (localStorage.getItem('updateIndexedDb') === 'false') return;
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([storeName], 'readwrite');
