@@ -4412,17 +4412,17 @@ async function processDirectoryContent(minTimestamp) {
                         attachmentWrapper.style.display = 'flex';
                         attachmentWrapper.style.alignItems = 'center';
                         attachmentWrapper.style.gap = '5px';
-                        const iconDiv = document.createElement('div');
-
-                        if (attachment.type === 3 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const link = document.createElement('a');
-                            
-                            if (useLocalDb && dirHandle) {
+                        
+                        if (useLocalDb && dirHandle) {
+                            // The existing local DB logic remains here
+                            const iconDiv = document.createElement('div');
+                            if (attachment.type === 3 && attachment.path) {
+                                const filename = attachment.path.split('/').pop();
+                                const link = document.createElement('a');
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
-                                    e.stopPropagation(); // Спираме разпространението на събитието
+                                    e.stopPropagation();
                                     try {
                                         const otherDir = await dirHandle.getDirectoryHandle('Other');
                                         const fileHandle = await otherDir.getFileHandle(filename);
@@ -4434,57 +4434,41 @@ async function processDirectoryContent(minTimestamp) {
                                     }
                                 };
                                 link.target = '_blank';
-                            } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Other'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-
-                            link.title = link.href;
-                            link.textContent = 'Other/' + filename;
-                            attachmentWrapper.appendChild(link);
-                            iconDiv.innerHTML = iconData.svg;
-                            iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', () => {
-                                const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                showModal(attachmentDataString);
-                            });
-                        } else if (attachment.type === 5 && attachment.path) {
-                            const parts = attachment.path.split('|');
-                            if (parts.length >= 3) {
-                                const textContainer = document.createElement('div');
-                                const line1 = document.createElement('span');
-                                line1.textContent = `${parts[0]}, ${parts[1]}`;
-                                textContainer.appendChild(line1);
-                                const line2 = document.createElement('div');
-                                line2.textContent = parts[2];
-                                textContainer.appendChild(line2);
-                                attachmentWrapper.appendChild(textContainer);
+                                link.title = link.href;
+                                link.textContent = 'Other/' + filename;
+                                attachmentWrapper.appendChild(link);
                                 iconDiv.innerHTML = iconData.svg;
                                 iconDiv.style.cursor = 'pointer';
                                 iconDiv.addEventListener('click', () => {
                                     const attachmentDataString = JSON.stringify(attachment, null, 2);
                                     showModal(attachmentDataString);
                                 });
+                            } else if (attachment.type === 5 && attachment.path) {
+                                const parts = attachment.path.split('|');
+                                if (parts.length >= 3) {
+                                    const textContainer = document.createElement('div');
+                                    const line1 = document.createElement('span');
+                                    line1.textContent = `${parts[0]}, ${parts[1]}`;
+                                    textContainer.appendChild(line1);
+                                    const line2 = document.createElement('div');
+                                    line2.textContent = parts[2];
+                                    textContainer.appendChild(line2);
+                                    attachmentWrapper.appendChild(textContainer);
+                                    iconDiv.innerHTML = iconData.svg;
+                                    iconDiv.style.cursor = 'pointer';
+                                    iconDiv.addEventListener('click', () => {
+                                        const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                        showModal(attachmentDataString);
+                                    });
+                                }
                             }
-                        }
-                        if (attachment.type === 1 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const link = document.createElement('a');
-
-                            if (useLocalDb && dirHandle) {
+                            if (attachment.type === 1 && attachment.path) {
+                                const filename = attachment.path.split('/').pop();
+                                const link = document.createElement('a');
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
-                                    e.stopPropagation(); // Спираме разпространението на събитието
+                                    e.stopPropagation();
                                     try {
                                         const imagesDir = await dirHandle.getDirectoryHandle('Images');
                                         const fileHandle = await imagesDir.getFileHandle(filename);
@@ -4496,113 +4480,23 @@ async function processDirectoryContent(minTimestamp) {
                                     }
                                 };
                                 link.target = '_blank';
-                            } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Images'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
+                                link.title = link.href;
+                                link.textContent = 'Images/' + filename;
+                                iconDiv.innerHTML = iconData.svg;
+                                attachmentWrapper.appendChild(link);
                             }
-
-                            link.title = link.href;
-                            link.textContent = 'Images/' + filename;
-                            iconDiv.innerHTML = iconData.svg;
-                            iconDiv.addEventListener('click', async (e) => {
-                                if (useLocalDb) return; // Preview is not available in local mode
-                                e.stopPropagation();
-                                e.preventDefault();
-                                const noteEl = attachmentWrapper.closest('.note');
-                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
-                                    return;
-                                }
-                                const titleEl = noteEl.querySelector('h3');
-                                const fileId = await getFileID(folderIds['Images'], filename);
-                                if (!fileId) {
-                                    showToast('Image file not found for preview.');
-                                    return;
-                                }
-                                try {
-                                    const fileMetadata = await gapi.client.drive.files.get({
-                                        fileId: fileId,
-                                        fields: 'thumbnailLink'
-                                    });
-                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-                                    if (thumbnailUrl) {
-                                        if (titleEl) titleEl.style.visibility = 'hidden';
-                                        const overlay = document.createElement('div');
-                                        overlay.className = 'image-preview-overlay';
-                                        Object.assign(overlay.style, {
-                                            position: 'absolute',
-                                            top: '0', left: '0',
-                                            width: '100%', height: '100%',
-                                            backgroundColor: 'rgba(0,0,0,0.85)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: '10',
-                                            borderRadius: '8px'
-                                        });
-                                        overlay.addEventListener('click', (e) => {
-                                            e.stopPropagation(); // Спираме пробива
-                                            window.open(link.href, '_blank');
-                                        });
-                                        const img = document.createElement('img');
-                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                                        Object.assign(img.style, {
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            padding: '10px',
-                                            boxSizing: 'border-box'
-                                        });
-                                        overlay.appendChild(img);
-                                        const closeButton = document.createElement('button');
-                                        closeButton.className = 'view-button';
-                                        closeButton.innerHTML = eyeOffIconSvg;
-                                        Object.assign(closeButton.style, {
-                                            position: 'absolute',
-                                            top: '10px',
-                                            right: '10px',
-                                        });
-                                        const svg = closeButton.querySelector('svg');
-                                        if(svg) svg.style.stroke = 'white';
-                                        closeButton.addEventListener('click', (ev) => {
-                                            ev.stopPropagation();
-                                            overlay.remove();
-                                            if (titleEl) titleEl.style.visibility = 'visible';
-                                        });
-                                        overlay.appendChild(closeButton);
-                                        noteEl.appendChild(overlay);
-                                    } else {
-                                        showToast('No preview available for this image.');
-                                    }
-                                } catch (err) {
-                                    console.error('Error fetching image preview:', err);
-                                    showToast('Error loading image preview: ' + (err.message || err));
-                                }
-                            });
-                            attachmentWrapper.appendChild(link);
-                        }
-                        attachmentWrapper.prepend(iconDiv);
-                        if (attachment.type === 2 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const textContainer = document.createElement('div');
-                            textContainer.style.flexGrow = '1';
-                            textContainer.style.flexShrink = '1';
-                            textContainer.style.minWidth = '0';
-                            const link = document.createElement('a');
-
-                            if (useLocalDb && dirHandle) {
+                            attachmentWrapper.prepend(iconDiv);
+                            if (attachment.type === 2 && attachment.path) {
+                                const filename = attachment.path.split('/').pop();
+                                const textContainer = document.createElement('div');
+                                textContainer.style.flexGrow = '1';
+                                textContainer.style.flexShrink = '1';
+                                textContainer.style.minWidth = '0';
+                                const link = document.createElement('a');
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
-                                    e.stopPropagation(); // Спираме разпространението на събитието
+                                    e.stopPropagation();
                                     try {
                                         const soundDir = await dirHandle.getDirectoryHandle('Sound');
                                         const fileHandle = await soundDir.getFileHandle(filename);
@@ -4614,47 +4508,31 @@ async function processDirectoryContent(minTimestamp) {
                                     }
                                 };
                                 link.target = '_blank';
-                            } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Sound'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
+                                link.title = link.href;
+                                link.textContent = 'Sound/' + filename;
+                                textContainer.appendChild(link);
+                                const line2 = document.createElement('div');
+                                line2.textContent = attachment.description || '';
+                                textContainer.appendChild(line2);
+                                iconDiv.innerHTML = iconData.svg;
+                                iconDiv.style.cursor = 'pointer';
+                                iconDiv.addEventListener('click', () => {
+                                    const attachmentDataString = JSON.stringify(attachment, null, 2);
+                                    showModal(attachmentDataString);
+                                });
+                                attachmentWrapper.appendChild(textContainer);
                             }
-
-                            link.title = link.href;
-                            link.textContent = 'Sound/' + filename;
-                            textContainer.appendChild(link);
-                            const line2 = document.createElement('div');
-                            line2.textContent = attachment.description || '';
-                            textContainer.appendChild(line2);
-                            iconDiv.innerHTML = iconData.svg;
-                            iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', () => {
-                                const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                showModal(attachmentDataString);
-                            });
-                            attachmentWrapper.appendChild(textContainer);
-                        }
-                        if (attachment.type === 4 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const textContainer = document.createElement('div');
-                            textContainer.style.flexGrow = '1';
-                            textContainer.style.flexShrink = '1';
-                            textContainer.style.minWidth = '0';
-                            const link = document.createElement('a');
-
-                            if (useLocalDb && dirHandle) {
+                            if (attachment.type === 4 && attachment.path) {
+                                const filename = attachment.path.split('/').pop();
+                                const textContainer = document.createElement('div');
+                                textContainer.style.flexGrow = '1';
+                                textContainer.style.flexShrink = '1';
+                                textContainer.style.minWidth = '0';
+                                const link = document.createElement('a');
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
-                                    e.stopPropagation(); // Спираме разпространението на събитието
+                                    e.stopPropagation();
                                     try {
                                         const videoDir = await dirHandle.getDirectoryHandle('Video');
                                         const fileHandle = await videoDir.getFileHandle(filename);
@@ -4666,102 +4544,17 @@ async function processDirectoryContent(minTimestamp) {
                                     }
                                 };
                                 link.target = '_blank';
-                            } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Video'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
+                                link.title = link.href;
+                                link.textContent = 'Video/' + filename;
+                                textContainer.appendChild(link);
+                                const line2 = document.createElement('div');
+                                line2.textContent = attachment.description || '';
+                                textContainer.appendChild(line2);
+                                iconDiv.innerHTML = iconData.svg;
+                                attachmentWrapper.appendChild(textContainer);
                             }
-
-                            link.title = link.href;
-                            link.textContent = 'Video/' + filename;
-                            textContainer.appendChild(link);
-                            const line2 = document.createElement('div');
-                            line2.textContent = attachment.description || '';
-                            textContainer.appendChild(line2);
-                            iconDiv.innerHTML = iconData.svg;
-                            iconDiv.addEventListener('click', async (e) => {
-                                if (useLocalDb) return; // Preview is not available in local mode
-                                e.stopPropagation();
-                                e.preventDefault();
-                                const noteEl = attachmentWrapper.closest('.note');
-                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
-                                    return;
-                                }
-                                const titleEl = noteEl.querySelector('h3');
-                                const fileId = await getFileID(folderIds['Video'], filename);
-                                if (!fileId) {
-                                    showToast('Video file not found for preview.');
-                                    return;
-                                }
-                                try {
-                                    const fileMetadata = await gapi.client.drive.files.get({
-                                        fileId: fileId,
-                                        fields: 'thumbnailLink'
-                                    });
-                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-                                    if (thumbnailUrl) {
-                                        if (titleEl) titleEl.style.visibility = 'hidden';
-                                        const overlay = document.createElement('div');
-                                        overlay.className = 'image-preview-overlay';
-                                        Object.assign(overlay.style, {
-                                            position: 'absolute',
-                                            top: '0', left: '0',
-                                            width: '100%', height: '100%',
-                                            backgroundColor: 'rgba(0,0,0,0.85)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: '10',
-                                            borderRadius: '8px'
-                                        });
-                                        overlay.addEventListener('click', (e) => {
-                                            e.stopPropagation(); // Спираме пробива
-                                            window.open(link.href, '_blank');
-                                        });
-                                        const img = document.createElement('img');
-                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                                        Object.assign(img.style, {
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            padding: '10px',
-                                            boxSizing: 'border-box'
-                                        });
-                                        overlay.appendChild(img);
-                                        const closeButton = document.createElement('button');
-                                        closeButton.className = 'view-button';
-                                        closeButton.innerHTML = eyeOffIconSvg;
-                                        Object.assign(closeButton.style, {
-                                            position: 'absolute',
-                                            top: '10px',
-                                            right: '10px',
-                                        });
-                                        const svg = closeButton.querySelector('svg');
-                                        if(svg) svg.style.stroke = 'white';
-                                        closeButton.addEventListener('click', (ev) => {
-                                            ev.stopPropagation();
-                                            overlay.remove();
-                                            if (titleEl) titleEl.style.visibility = 'visible';
-                                        });
-                                        overlay.appendChild(closeButton);
-                                        noteEl.appendChild(overlay);
-                                    } else {
-                                        showToast('No preview available for this video.');
-                                    }
-                                } catch (err) {
-                                    console.error('Error fetching video preview:', err);
-                                    showToast('Error loading video preview: ' + (err.message || err));
-                                }
-                            });
-                            attachmentWrapper.appendChild(textContainer);
+                        } else if (attachment.gdid) {
+                            await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
                         }
                         contentEl.appendChild(attachmentWrapper);
                     }
@@ -4778,6 +4571,197 @@ async function processDirectoryContent(minTimestamp) {
         contentWrapper.appendChild(titleWrapper);
         contentWrapper.appendChild(contentEl);
         return note;
+    }
+
+    async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData) {
+        const iconDiv = document.createElement('div');
+        iconDiv.innerHTML = iconData.svg;
+
+        if (!attachment.path) {
+            iconDiv.style.cursor = 'pointer';
+            iconDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const attachmentDataString = JSON.stringify(attachment, null, 2);
+                showModal(attachmentDataString);
+            });
+            attachmentWrapper.prepend(iconDiv);
+            return;
+        }
+
+        const filename = attachment.path.split('/').pop();
+        const link = document.createElement('a');
+
+        const setupLink = async (folderName, textPrefix) => {
+            const fileId = await getFileID(folderIds[folderName], filename);
+            if (fileId) {
+                link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.onclick = (e) => e.stopPropagation();
+            } else {
+                link.href = '#';
+                link.onclick = (e) => e.preventDefault();
+            }
+            link.title = link.href;
+            link.textContent = textPrefix + filename;
+        };
+
+        switch (attachment.type) {
+            case 1: // Image
+                await setupLink('Images', 'Images/');
+                iconDiv.addEventListener('click', async (e) => {
+                    if (localStorage.getItem('useLocalDb') === 'true') return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const noteEl = attachmentWrapper.closest('.note');
+                    if (!noteEl || noteEl.querySelector('.image-preview-overlay')) return;
+                    
+                    const titleEl = noteEl.querySelector('h3');
+                    const fileId = await getFileID(folderIds['Images'], filename);
+                    if (!fileId) {
+                        showToast(_('imgNotFound'));
+                        return;
+                    }
+                    try {
+                        const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink' });
+                        const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                        if (thumbnailUrl) {
+                            if (titleEl) titleEl.style.visibility = 'hidden';
+                            const overlay = document.createElement('div');
+                            overlay.className = 'image-preview-overlay';
+                            Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px' });
+                            overlay.addEventListener('click', (ev) => { ev.stopPropagation(); window.open(link.href, '_blank'); });
+                            const img = document.createElement('img');
+                            img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                            Object.assign(img.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
+                            overlay.appendChild(img);
+                            const closeButton = document.createElement('button');
+                            closeButton.className = 'view-button';
+                            closeButton.innerHTML = eyeOffIconSvg;
+                            Object.assign(closeButton.style, { position: 'absolute', top: '10px', right: '10px' });
+                            const svg = closeButton.querySelector('svg');
+                            if(svg) svg.style.stroke = 'white';
+                            closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); if (titleEl) titleEl.style.visibility = 'visible'; });
+                            overlay.appendChild(closeButton);
+                            noteEl.appendChild(overlay);
+                        } else {
+                            showToast(_('noImgPreview'));
+                        }
+                    } catch (err) {
+                        console.error('Error fetching image preview:', err);
+                        showToast(_('errorImgPreview').replace('{error}', (err.message || err)));
+                    }
+                });
+                attachmentWrapper.appendChild(link);
+                break;
+
+            case 2: // Sound
+                await setupLink('Sound', 'Sound/');
+                const soundTextContainer = document.createElement('div');
+                soundTextContainer.style.flexGrow = '1';
+                soundTextContainer.style.flexShrink = '1';
+                soundTextContainer.style.minWidth = '0';
+                soundTextContainer.appendChild(link);
+                const soundLine2 = document.createElement('div');
+                soundLine2.textContent = attachment.description || '';
+                soundTextContainer.appendChild(soundLine2);
+                iconDiv.style.cursor = 'pointer';
+                iconDiv.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const attachmentDataString = JSON.stringify(attachment, null, 2);
+                    showModal(attachmentDataString);
+                });
+                attachmentWrapper.appendChild(soundTextContainer);
+                break;
+
+            case 3: // Other
+                await setupLink('Other', 'Other/');
+                attachmentWrapper.appendChild(link);
+                iconDiv.style.cursor = 'pointer';
+                iconDiv.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const attachmentDataString = JSON.stringify(attachment, null, 2);
+                    showModal(attachmentDataString);
+                });
+                break;
+
+            case 4: // Video
+                await setupLink('Video', 'Video/');
+                const videoTextContainer = document.createElement('div');
+                videoTextContainer.style.flexGrow = '1';
+                videoTextContainer.style.flexShrink = '1';
+                videoTextContainer.style.minWidth = '0';
+                videoTextContainer.appendChild(link);
+                const videoLine2 = document.createElement('div');
+                videoLine2.textContent = attachment.description || '';
+                videoTextContainer.appendChild(videoLine2);
+                iconDiv.addEventListener('click', async (e) => {
+                    if (localStorage.getItem('useLocalDb') === 'true') return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const noteEl = attachmentWrapper.closest('.note');
+                    if (!noteEl || noteEl.querySelector('.image-preview-overlay')) return;
+
+                    const titleEl = noteEl.querySelector('h3');
+                    const fileId = await getFileID(folderIds['Video'], filename);
+                    if (!fileId) {
+                        showToast(_('videoNotFound'));
+                        return;
+                    }
+                    try {
+                        const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink' });
+                        const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                        if (thumbnailUrl) {
+                            if (titleEl) titleEl.style.visibility = 'hidden';
+                            const overlay = document.createElement('div');
+                            overlay.className = 'image-preview-overlay';
+                            Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px' });
+                            overlay.addEventListener('click', (ev) => { ev.stopPropagation(); window.open(link.href, '_blank'); });
+                            const img = document.createElement('img');
+                            img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                            Object.assign(img.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
+                            overlay.appendChild(img);
+                            const closeButton = document.createElement('button');
+                            closeButton.className = 'view-button';
+                            closeButton.innerHTML = eyeOffIconSvg;
+                            Object.assign(closeButton.style, { position: 'absolute', top: '10px', right: '10px' });
+                            const svg = closeButton.querySelector('svg');
+                            if(svg) svg.style.stroke = 'white';
+                            closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); if (titleEl) titleEl.style.visibility = 'visible'; });
+                            overlay.appendChild(closeButton);
+                            noteEl.appendChild(overlay);
+                        } else {
+                            showToast(_('noVideoPreview'));
+                        }
+                    } catch (err) {
+                        console.error('Error fetching video preview:', err);
+                        showToast(_('errorVideoPreview').replace('{error}', (err.message || err)));
+                    }
+                });
+                attachmentWrapper.appendChild(videoTextContainer);
+                break;
+
+            case 5: // Location
+                const parts = attachment.path.split('|');
+                if (parts.length >= 3) {
+                    const textContainer = document.createElement('div');
+                    const line1 = document.createElement('span');
+                    line1.textContent = `${parts[0]}, ${parts[1]}`;
+                    textContainer.appendChild(line1);
+                    const line2 = document.createElement('div');
+                    line2.textContent = parts[2];
+                    textContainer.appendChild(line2);
+                    attachmentWrapper.appendChild(textContainer);
+                    iconDiv.style.cursor = 'pointer';
+                    iconDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const attachmentDataString = JSON.stringify(attachment, null, 2);
+                        showModal(attachmentDataString);
+                    });
+                }
+                break;
+        }
+        attachmentWrapper.prepend(iconDiv);
     }
     async function createColoredNoteBackground(color, src, width, height) {
         return new Promise((resolve, reject) => {
