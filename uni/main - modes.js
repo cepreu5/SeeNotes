@@ -20,6 +20,7 @@ let currentCalendarDate = new Date();
 let authToken = null;
 let tokenClient;
 let dirHandle = null; // За локален достъп до файловата система
+let localFolderMissing = false; // Флаг, който показва дали е избрана локална папка
 
 // --- Състояние на търсенето ---
 let searchMode = 'title';
@@ -143,7 +144,15 @@ const translations = {
             gdriveUpdatesFound: '{count} file(s) updated from Google Drive.',
             gdriveNoUpdates: 'No new updates from Google Drive.',
             localUpdatesFound: '{count} file(s) updated from local disk.',
-            localNoUpdates: 'No new updates from local disk.'            
+            localNoUpdates: 'No new updates from local disk.',
+            confirmDbRecreate: 'The local database already exists. Do you want to delete it and create a new one from the current data?',
+            confirmDbDelete: 'Are you sure you want to delete the local database? This action cannot be undone.',
+            dbCreated: 'Local database created successfully.',
+            dbCreateFailedNoData: 'Cannot create database. No data loaded in memory.',
+            dbDeleted: 'Local database deleted successfully.',
+            dbDeleteFailed: 'Failed to delete local database.',
+            createDbButton: 'Create',
+            deleteDbButton: 'Delete'
         },
         bg: {
             appTitle: 'CX MultiNotes Viewer',
@@ -222,7 +231,15 @@ const translations = {
             gdriveUpdatesFound: 'Обновени са {count} файла от Google Drive.',
             gdriveNoUpdates: 'Няма нови промени в Google Drive.',
             localUpdatesFound: 'Обновени са {count} файла от локалния диск.',
-            localNoUpdates: 'Няма нови промени в локалния диск.'            
+            localNoUpdates: 'Няма нови промени в локалния диск.',
+            confirmDbRecreate: 'Локалната база данни вече съществува. Искате ли да я изтриете и да създадете нова от текущите данни?',
+            confirmDbDelete: 'Сигурни ли сте, че искате да изтриете локалната база данни? Това действие е необратимо.',
+            dbCreated: 'Локалната база данни е създадена успешно.',
+            dbCreateFailedNoData: 'Базата не може да бъде създадена. Няма заредени данни в паметта.',
+            dbDeleted: 'Локалната база данни е изтрита успешно.',
+            dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
+            createDbButton: 'Създай',
+            deleteDbButton: 'Изтрий'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -730,7 +747,7 @@ function handleSignoutClick() {
             try {
                 await fetchAllDataLocal();
                 if (allNotesData.length > 0) {
-                    showToast(_('loadedFromLocalNoDrive'), 5000);
+                    showToast(_('loadedFromLocalNoDrive'), 10000);
                     return { boardParseError: false }; // Assuming no parse error from local
                 }
             } catch (localDbError) {
@@ -805,12 +822,13 @@ function handleSignoutClick() {
         await syncFile('media.txt', MEDIA_STORE_NAME);
         await syncFile('note.txt', NOTE_STORE_NAME);
 
-        if (modifiedSince) { // Only show toast for incremental updates
+        if (modifiedSince) { // Показваме съобщение само при инкрементално обновяване
             const message = updatedFilesCount > 0
                 ? _('gdriveUpdatesFound').replace('{count}', updatedFilesCount)
                 : _('gdriveNoUpdates');
             showToast(message, 10000);
         }
+        // Винаги записваме времето на последна синхронизация, за да избегнем повторна пълна синхронизация.
         await saveConfig('lastGoogleDriveSyncTimestamp', Date.now());
         console.log('Google Drive sync finished.');
     }
@@ -843,7 +861,7 @@ function handleSignoutClick() {
                     const boardParseError = false; // Assume no parse error after sync
                     await renderUI({ boardParseError });
 
-                } else {
+            } else { // GDrive sync is disabled OR local folder is missing
                     // GDrive sync is disabled. Load locally.
                     if (loaderTitle) loaderTitle.textContent = "Локална база";
                     console.log("Loading from local DB (Google Drive sync is disabled).");
@@ -858,6 +876,11 @@ function handleSignoutClick() {
                 }
             } else { // Not using local DB
                 if (loaderTitle) loaderTitle.textContent = "Google Drive";
+                // Ensure folderIds are populated BEFORE fetching any data.
+                const folderId = await getFolderID();
+                if (!folderId) {
+                    throw new Error("Could not get main folder ID from Google Drive.");
+                }
                 // Fetch all data for the session without saving to DB
                 const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
                 await renderUI({ boardParseError });
@@ -931,7 +954,7 @@ async function runLocalSync() {
     // Perform sync only if the setting is enabled
     if (localStorage.getItem('updateIndexedDb') !== 'false') {
         updatedCount = await processDirectoryContent(lastUpdateTimestamp);
-        await saveConfig('lastUpdateTimestamp', Date.now());
+        await saveConfig('lastUpdateTimestamp', Date.now())
     } else {
         console.log("Skipping local file scan because IndexedDB update is disabled.");
         loaderText.textContent = _('skippedFileScan');
@@ -942,7 +965,7 @@ async function runLocalSync() {
         const message = updatedCount > 0
             ? _('localUpdatesFound').replace('{count}', updatedCount)
             : _('localNoUpdates');
-        showToast(message, 3000);
+        showToast(message, 10000);
     }
 }
 
@@ -1722,6 +1745,63 @@ async function processDirectoryContent(minModificationDate) {
         zoomModalBody.appendChild(useLocalDbWrapper);
 
         // --- Database Update Settings (conditionally shown) ---
+        const dbManagementWrapper = document.createElement('div');
+        dbManagementWrapper.className = 'zoom-control-wrapper';
+        dbManagementWrapper.style.marginTop = '10px';
+        dbManagementWrapper.style.paddingLeft = '20px'; // Indent
+
+        const createDbBtn = document.createElement('button');
+        createDbBtn.className = 'zoom-btn';
+        createDbBtn.textContent = _('createDbButton');
+        createDbBtn.addEventListener('click', handleCreateDbClick);
+
+        const deleteDbBtn = document.createElement('button');
+        deleteDbBtn.className = 'zoom-btn settings-close-btn'; // Red-like color
+        deleteDbBtn.style.marginLeft = '10px';
+        deleteDbBtn.textContent = _('deleteDbButton');
+        deleteDbBtn.addEventListener('click', handleDeleteDbClick);
+
+        dbManagementWrapper.appendChild(createDbBtn);
+        dbManagementWrapper.appendChild(deleteDbBtn);
+        zoomModalBody.appendChild(dbManagementWrapper);
+
+        async function handleCreateDbClick() {
+            const dbExists = await checkDbExists(NOTES_DB_NAME);
+            let proceed = false;
+
+            if (dbExists) {
+                proceed = await showConfirmation(_('confirmDbRecreate'));
+            } else {
+                proceed = true;
+            }
+
+            if (proceed) {
+                if (allNotesData.length === 0 && boardsData.length === 0) {
+                    showToast(_('dbCreateFailedNoData'), 10000);
+                    return;
+                }
+                if (dbExists) {
+                    await deleteNotesDB();
+                }
+                await bulkPutDB(BOARD_STORE_NAME, boardsData);
+                await bulkPutDB(MEDIA_STORE_NAME, mediaData);
+                const notesToStore = allNotesData.map(n => n.content);
+                await bulkPutDB(NOTE_STORE_NAME, notesToStore);
+                showToast(_('dbCreated'), 10000);
+            }
+        }
+
+        async function handleDeleteDbClick() {
+            const confirmed = await showConfirmation(_('confirmDbDelete'));
+            if (confirmed) {
+                try {
+                    await deleteNotesDB();
+                    showToast(_('dbDeleted'), 10000);
+                } catch (error) {
+                    showToast(_('dbDeleteFailed'), 10000);
+                }
+            }
+        }
         const updateDbTitleWrapper = document.createElement('div');
         updateDbTitleWrapper.className = 'zoom-control-wrapper';
         updateDbTitleWrapper.style.marginTop = '20px';
@@ -1742,11 +1822,6 @@ async function processDirectoryContent(minModificationDate) {
         updateIndexedDbCheckbox.type = 'checkbox';
         updateIndexedDbCheckbox.id = 'update-indexed-db-checkbox';
         updateIndexedDbCheckbox.className = 'settings-checkbox'; // Unified class
-        updateIndexedDbCheckbox.checked = localStorage.getItem('updateIndexedDb') !== 'false'; // Default to true
-        updateIndexedDbCheckbox.addEventListener('change', () => {
-            localStorage.setItem('updateIndexedDb', updateIndexedDbCheckbox.checked);
-            showToast(_('settingSaved'), 2000);
-        });
         updateIndexedDbWrapper.appendChild(updateIndexedDbLabel);
         updateIndexedDbWrapper.appendChild(updateIndexedDbCheckbox);
         zoomModalBody.appendChild(updateIndexedDbWrapper);
@@ -1763,8 +1838,26 @@ async function processDirectoryContent(minModificationDate) {
         updateFromGoogleDriveCheckbox.type = 'checkbox';
         updateFromGoogleDriveCheckbox.id = 'update-from-gdrive-checkbox';
         updateFromGoogleDriveCheckbox.className = 'settings-checkbox'; // Unified class
-        updateFromGoogleDriveCheckbox.checked = localStorage.getItem('updateFromGoogleDrive') !== 'false'; // Default to true
+
+        // Set initial checked states
+        updateIndexedDbCheckbox.checked = localStorage.getItem('updateIndexedDb') === 'true';
+        updateFromGoogleDriveCheckbox.checked = localStorage.getItem('updateFromGoogleDrive') === 'true';
+
+        // Add mutually exclusive logic
+        updateIndexedDbCheckbox.addEventListener('change', () => {
+            if (updateIndexedDbCheckbox.checked) {
+                updateFromGoogleDriveCheckbox.checked = false;
+            }
+            localStorage.setItem('updateIndexedDb', updateIndexedDbCheckbox.checked);
+            localStorage.setItem('updateFromGoogleDrive', updateFromGoogleDriveCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+
         updateFromGoogleDriveCheckbox.addEventListener('change', () => {
+            if (updateFromGoogleDriveCheckbox.checked) {
+                updateIndexedDbCheckbox.checked = false;
+            }
+            localStorage.setItem('updateIndexedDb', updateIndexedDbCheckbox.checked);
             localStorage.setItem('updateFromGoogleDrive', updateFromGoogleDriveCheckbox.checked);
             showToast(_('settingSaved'), 2000);
         });
@@ -1777,6 +1870,7 @@ async function processDirectoryContent(minModificationDate) {
             const isVisible = useLocalDbCheckbox.checked;
             updateDbTitleWrapper.style.display = isVisible ? 'flex' : 'none';
             updateIndexedDbWrapper.style.display = isVisible ? 'flex' : 'none';
+            dbManagementWrapper.style.display = isVisible ? 'flex' : 'none';
             updateFromGoogleDriveWrapper.style.display = isVisible ? 'flex' : 'none';
         };
 
@@ -2396,7 +2490,7 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
-                                e.stopPropagation();
+                                    e.stopPropagation(); // Спираме разпространението на събитието
                                     try {
                                         const otherDir = await dirHandle.getDirectoryHandle('Other');
                                         const fileHandle = await otherDir.getFileHandle(filename);
@@ -2413,10 +2507,6 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = `https://drive.google.com/file/d/${fileId}/view`;
                                 link.target = '_blank';
                                 link.rel = 'noopener noreferrer';
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                };
                             } else {
                                 link.href = '#';
                                 link.onclick = (e) => e.preventDefault();
@@ -2427,9 +2517,8 @@ async function processDirectoryContent(minModificationDate) {
                             attachmentWrapper.appendChild(link);
                             iconDiv.innerHTML = iconData.svg;
                             iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', (e) => {
+                            iconDiv.addEventListener('click', () => {
                                 const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                e.stopPropagation();
                                 showModal(attachmentDataString);
                             });
                         } else if (attachment.type === 5 && attachment.path) {
@@ -2445,9 +2534,8 @@ async function processDirectoryContent(minModificationDate) {
                                 attachmentWrapper.appendChild(textContainer);
                                 iconDiv.innerHTML = iconData.svg;
                                 iconDiv.style.cursor = 'pointer';
-                                iconDiv.addEventListener('click', (e) => {
+                                iconDiv.addEventListener('click', () => {
                                     const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                    e.stopPropagation();
                                     showModal(attachmentDataString);
                                 });
                             }
@@ -2460,7 +2548,7 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
-                                    e.stopPropagation();
+                                    e.stopPropagation(); // Спираме разпространението на събитието
                                     try {
                                         const imagesDir = await dirHandle.getDirectoryHandle('Images');
                                         const fileHandle = await imagesDir.getFileHandle(filename);
@@ -2477,10 +2565,6 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = `https://drive.google.com/file/d/${fileId}/view`;
                                 link.target = '_blank';
                                 link.rel = 'noopener noreferrer';
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                };
                             } else {
                                 link.href = '#';
                                 link.onclick = (e) => e.preventDefault();
@@ -2577,7 +2661,7 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
-                                    e.stopPropagation();
+                                    e.stopPropagation(); // Спираме разпространението на събитието
                                     try {
                                         const soundDir = await dirHandle.getDirectoryHandle('Sound');
                                         const fileHandle = await soundDir.getFileHandle(filename);
@@ -2594,10 +2678,6 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = `https://drive.google.com/file/d/${fileId}/view`;
                                 link.target = '_blank';
                                 link.rel = 'noopener noreferrer';
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                };
                             } else {
                                 link.href = '#';
                                 link.onclick = (e) => e.preventDefault();
@@ -2611,9 +2691,8 @@ async function processDirectoryContent(minModificationDate) {
                             textContainer.appendChild(line2);
                             iconDiv.innerHTML = iconData.svg;
                             iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', (e) => {
+                            iconDiv.addEventListener('click', () => {
                                 const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                e.stopPropagation();
                                 showModal(attachmentDataString);
                             });
                             attachmentWrapper.appendChild(textContainer);
@@ -2630,7 +2709,7 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
                                     e.preventDefault();
-                                    e.stopPropagation();
+                                    e.stopPropagation(); // Спираме разпространението на събитието
                                     try {
                                         const videoDir = await dirHandle.getDirectoryHandle('Video');
                                         const fileHandle = await videoDir.getFileHandle(filename);
@@ -2647,10 +2726,6 @@ async function processDirectoryContent(minModificationDate) {
                                 link.href = `https://drive.google.com/file/d/${fileId}/view`;
                                 link.target = '_blank';
                                 link.rel = 'noopener noreferrer';
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                };
                             } else {
                                 link.href = '#';
                                 link.onclick = (e) => e.preventDefault();
@@ -2883,6 +2958,56 @@ async function getConfig(key) {
     });
 }
 
+/**
+ * Checks if an IndexedDB database exists.
+ * @param {string} dbName The name of the database.
+ * @returns {Promise<boolean>}
+ */
+async function checkDbExists(dbName) {
+    if (!window.indexedDB.databases) {
+        console.warn("checkDbExists: indexedDB.databases() is not supported. Using a fallback check.");
+        return new Promise(resolve => {
+            const req = indexedDB.open(dbName);
+            let existed = true;
+            req.onupgradeneeded = () => { existed = false; };
+            req.onsuccess = () => {
+                req.result.close();
+                if (!existed) indexedDB.deleteDatabase(dbName);
+                resolve(existed);
+            };
+            req.onerror = () => resolve(false);
+        });
+    }
+    const dbs = await indexedDB.databases();
+    return dbs.some(db => db.name === dbName);
+}
+
+/**
+ * Deletes the entire IndexedDB database.
+ * @returns {Promise<void>}
+ */
+function deleteNotesDB() {
+    return new Promise((resolve, reject) => {
+        console.log(`Attempting to delete database: ${NOTES_DB_NAME}`);
+        const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+
+        deleteRequest.onsuccess = () => {
+            console.log(`Database '${NOTES_DB_NAME}' deleted successfully.`);
+            resolve();
+        };
+        deleteRequest.onerror = (event) => {
+            console.error(`Error deleting database:`, event.target.error);
+            reject(event.target.error);
+        };
+        deleteRequest.onblocked = () => {
+            console.warn("Database deletion is blocked. Please close other tabs with this app open.");
+            showToast("Database deletion is blocked. Please close other tabs with this app open.", 10000);
+            reject(new Error("Database deletion blocked."));
+        };
+    });
+}
+
+
 async function renderUI({ boardParseError }) {
     let boardsNoteElement = null;
     if (boardsData.length > 0 || boardParseError) {
@@ -2942,10 +3067,13 @@ async function fetchAllDataLocal() {
 async function runLocalSync() {
     const lastUpdateTimestamp = await getConfig('lastUpdateTimestamp') || 0;
 
+    localFolderMissing = false; // Reset the flag at the start of sync
     const handle = await getDirectoryHandle();
     if (!handle) {
-        showToast(_('errorLocalFolderNotSelected'), 10000);
-        return;
+        // Ако няма избрана папка, не правим нищо. Линковете ще сочат към Google Drive.
+        localFolderMissing = true; // Вдигаме флага
+        console.log("Local sync folder not selected. Skipping local sync.");
+        return -1;
     }
 
     // Ако опцията за обновяване на IndexedDB е изключена, пропускаме сканирането на файлове.
@@ -3747,6 +3875,74 @@ async function processDirectoryContent(minTimestamp) {
         useLocalDbWrapper.appendChild(useLocalDbCheckbox);
         zoomModalBody.appendChild(useLocalDbWrapper);
 
+        // --- Database Management Buttons (conditionally shown) ---
+        const dbManagementWrapper = document.createElement('div');
+        dbManagementWrapper.className = 'zoom-control-wrapper';
+        dbManagementWrapper.style.marginTop = '10px';
+        dbManagementWrapper.style.paddingLeft = '20px'; // Indent
+
+        const createDbBtn = document.createElement('button');
+        createDbBtn.className = 'zoom-btn';
+        createDbBtn.textContent = _('createDbButton');
+        createDbBtn.addEventListener('click', handleCreateDbClick);
+
+        const deleteDbBtn = document.createElement('button');
+        deleteDbBtn.className = 'zoom-btn settings-close-btn'; // Red-like color
+        deleteDbBtn.style.marginLeft = '10px';
+        deleteDbBtn.textContent = _('deleteDbButton');
+        deleteDbBtn.addEventListener('click', handleDeleteDbClick);
+
+        dbManagementWrapper.appendChild(createDbBtn);
+        dbManagementWrapper.appendChild(deleteDbBtn);
+        zoomModalBody.appendChild(dbManagementWrapper);
+
+        async function handleCreateDbClick() {
+            document.getElementById('settings-modal').classList.remove('visible');
+            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
+
+            const dbExists = await checkDbExists(NOTES_DB_NAME);
+            let proceed = false;
+
+            if (dbExists) {
+                proceed = await showConfirmation(_('confirmDbRecreate'));
+            } else {
+                proceed = true;
+            }
+
+            if (proceed) {
+                if (allNotesData.length === 0 && boardsData.length === 0) {
+                    showToast(_('dbCreateFailedNoData'), 10000);
+                    return;
+                }
+                if (dbExists) {
+                    await deleteNotesDB();
+                }
+                await bulkPutDB(BOARD_STORE_NAME, boardsData);
+                await bulkPutDB(MEDIA_STORE_NAME, mediaData);
+                const notesToStore = allNotesData.map(n => n.content);
+                await bulkPutDB(NOTE_STORE_NAME, notesToStore);
+                // Save the current timestamp to prevent immediate re-sync on next load
+                const now = Date.now();
+                await saveConfig('lastGoogleDriveSyncTimestamp', now);
+                showToast(_('dbCreated'), 10000);
+            }
+        }
+
+        async function handleDeleteDbClick() {
+            document.getElementById('settings-modal').classList.remove('visible');
+            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
+
+            const confirmed = await showConfirmation(_('confirmDbDelete'));
+            if (confirmed) {
+                try {
+                    await deleteNotesDB();
+                    showToast(_('dbDeleted'), 10000);
+                } catch (error) {
+                    showToast(_('dbDeleteFailed'), 10000);
+                }
+            }
+        }
+
         // --- Database Update Settings (conditionally shown) ---
         const updateDbTitleWrapper = document.createElement('div');
         updateDbTitleWrapper.className = 'zoom-control-wrapper';
@@ -3803,6 +3999,7 @@ async function processDirectoryContent(minTimestamp) {
             const isVisible = useLocalDbCheckbox.checked;
             updateDbTitleWrapper.style.display = isVisible ? 'flex' : 'none';
             updateIndexedDbWrapper.style.display = isVisible ? 'flex' : 'none';
+            dbManagementWrapper.style.display = isVisible ? 'flex' : 'none';
             updateFromGoogleDriveWrapper.style.display = isVisible ? 'flex' : 'none';
         };
 
@@ -4417,45 +4614,29 @@ async function processDirectoryContent(minTimestamp) {
                         if (attachment.type === 3 && attachment.path) {
                             const filename = attachment.path.split('/').pop();
                             const link = document.createElement('a');
-                            
-                            if (useLocalDb && dirHandle) {
+                            link.textContent = 'Other/' + filename;                            
+
+                            if (useLocalDb && !localFolderMissing) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation(); // Спираме разпространението на събитието
+                                    e.preventDefault(); e.stopPropagation();
                                     try {
-                                        const otherDir = await dirHandle.getDirectoryHandle('Other');
-                                        const fileHandle = await otherDir.getFileHandle(filename);
-                                        const file = await fileHandle.getFile();
-                                        window.open(URL.createObjectURL(file), '_blank');
-                                    } catch (err) {
-                                        console.error(`Could not open local file Other/${filename}`, err);
-                                        showToast(`Could not open local file: ${filename}`);
-                                    }
+                                        const fileHandle = await (await dirHandle.getDirectoryHandle('Other')).getFileHandle(filename);
+                                        window.open(URL.createObjectURL(await fileHandle.getFile()), '_blank');
+                                    } catch (err) { showToast(_('errorOpenFile').replace('{filename}', filename)); }
                                 };
-                                link.target = '_blank';
                             } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Other'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
+                                link.href = `https://drive.google.com/file/d/${attachment.gdid}/view`;
                                 link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
+                                    e.preventDefault(); e.stopPropagation();
+                                    if (checkAuth()) window.open(link.href, '_blank', 'noopener,noreferrer');
                                 };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
                             }
-
-                            link.title = link.href;
-                            link.textContent = 'Other/' + filename;
                             attachmentWrapper.appendChild(link);
                             iconDiv.innerHTML = iconData.svg;
                             iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', () => {
-                                const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                showModal(attachmentDataString);
+                            iconDiv.addEventListener('click', (e) => {
+                                if (e.ctrlKey) showModal(JSON.stringify(attachment, null, 2));                                
                             });
                         } else if (attachment.type === 5 && attachment.path) {
                             const parts = attachment.path.split('|');
@@ -4470,47 +4651,32 @@ async function processDirectoryContent(minTimestamp) {
                                 attachmentWrapper.appendChild(textContainer);
                                 iconDiv.innerHTML = iconData.svg;
                                 iconDiv.style.cursor = 'pointer';
-                                iconDiv.addEventListener('click', () => {
-                                    const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                    showModal(attachmentDataString);
+                                iconDiv.addEventListener('click', (e) => {
+                                    if (e.ctrlKey) showModal(JSON.stringify(attachment, null, 2));
                                 });
                             }
                         }
                         if (attachment.type === 1 && attachment.path) {
                             const filename = attachment.path.split('/').pop();
                             const link = document.createElement('a');
+                            link.textContent = 'Images/' + filename;
 
-                            if (useLocalDb && dirHandle) {
+                            if (useLocalDb && !localFolderMissing) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation(); // Спираме разпространението на събитието
+                                    e.preventDefault(); e.stopPropagation();
                                     try {
-                                        const imagesDir = await dirHandle.getDirectoryHandle('Images');
-                                        const fileHandle = await imagesDir.getFileHandle(filename);
-                                        const file = await fileHandle.getFile();
-                                        window.open(URL.createObjectURL(file), '_blank');
-                                    } catch (err) {
-                                        console.error(`Could not open local file Images/${filename}`, err);
-                                        showToast(`Could not open local file: ${filename}`);
-                                    }
+                                        const fileHandle = await (await dirHandle.getDirectoryHandle('Images')).getFileHandle(filename);
+                                        window.open(URL.createObjectURL(await fileHandle.getFile()), '_blank');
+                                    } catch (err) { showToast(_('errorOpenFile').replace('{filename}', filename)); }
                                 };
-                                link.target = '_blank';
                             } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Images'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
+                                link.href = `https://drive.google.com/file/d/${attachment.gdid}/view`;
                                 link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
+                                    e.preventDefault(); e.stopPropagation();
+                                    if (checkAuth()) window.open(link.href, '_blank', 'noopener,noreferrer');
                                 };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
                             }
-
-                            link.title = link.href;
                             link.textContent = 'Images/' + filename;
                             iconDiv.innerHTML = iconData.svg;
                             iconDiv.addEventListener('click', async (e) => {
@@ -4548,8 +4714,7 @@ async function processDirectoryContent(minTimestamp) {
                                             zIndex: '10',
                                             borderRadius: '8px'
                                         });
-                                        overlay.addEventListener('click', (e) => {
-                                            e.stopPropagation(); // Спираме пробива
+                                        overlay.addEventListener('click', () => {
                                             window.open(link.href, '_blank');
                                         });
                                         const img = document.createElement('img');
@@ -4598,37 +4763,24 @@ async function processDirectoryContent(minTimestamp) {
                             textContainer.style.minWidth = '0';
                             const link = document.createElement('a');
 
-                            if (useLocalDb && dirHandle) {
+                            link.textContent = 'Sound/' + filename;
+
+                            if (useLocalDb && !localFolderMissing) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation(); // Спираме разпространението на събитието
+                                    e.preventDefault(); e.stopPropagation();
                                     try {
-                                        const soundDir = await dirHandle.getDirectoryHandle('Sound');
-                                        const fileHandle = await soundDir.getFileHandle(filename);
-                                        const file = await fileHandle.getFile();
-                                        window.open(URL.createObjectURL(file), '_blank');
-                                    } catch (err) {
-                                        console.error(`Could not open local file Sound/${filename}`, err);
-                                        showToast(`Could not open local file: ${filename}`);
-                                    }
+                                        const fileHandle = await (await dirHandle.getDirectoryHandle('Sound')).getFileHandle(filename);
+                                        window.open(URL.createObjectURL(await fileHandle.getFile()), '_blank');
+                                    } catch (err) { showToast(_('errorOpenFile').replace('{filename}', filename)); }
                                 };
-                                link.target = '_blank';
                             } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Sound'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
+                                link.href = `https://drive.google.com/file/d/${attachment.gdid}/view`;
                                 link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
+                                    e.preventDefault(); e.stopPropagation();
+                                    if (checkAuth()) window.open(link.href, '_blank', 'noopener,noreferrer');
                                 };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
                             }
-
-                            link.title = link.href;
                             link.textContent = 'Sound/' + filename;
                             textContainer.appendChild(link);
                             const line2 = document.createElement('div');
@@ -4636,9 +4788,8 @@ async function processDirectoryContent(minTimestamp) {
                             textContainer.appendChild(line2);
                             iconDiv.innerHTML = iconData.svg;
                             iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', () => {
-                                const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                showModal(attachmentDataString);
+                            iconDiv.addEventListener('click', (e) => {
+                                if (e.ctrlKey) showModal(JSON.stringify(attachment, null, 2));
                             });
                             attachmentWrapper.appendChild(textContainer);
                         }
@@ -4650,37 +4801,24 @@ async function processDirectoryContent(minTimestamp) {
                             textContainer.style.minWidth = '0';
                             const link = document.createElement('a');
 
-                            if (useLocalDb && dirHandle) {
+                            link.textContent = 'Video/' + filename;
+
+                            if (useLocalDb && !localFolderMissing) {
                                 link.href = '#';
                                 link.onclick = async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation(); // Спираме разпространението на събитието
+                                    e.preventDefault(); e.stopPropagation();
                                     try {
-                                        const videoDir = await dirHandle.getDirectoryHandle('Video');
-                                        const fileHandle = await videoDir.getFileHandle(filename);
-                                        const file = await fileHandle.getFile();
-                                        window.open(URL.createObjectURL(file), '_blank');
-                                    } catch (err) {
-                                        console.error(`Could not open local file Video/${filename}`, err);
-                                        showToast(`Could not open local file: ${filename}`);
-                                    }
+                                        const fileHandle = await (await dirHandle.getDirectoryHandle('Video')).getFileHandle(filename);
+                                        window.open(URL.createObjectURL(await fileHandle.getFile()), '_blank');
+                                    } catch (err) { showToast(_('errorOpenFile').replace('{filename}', filename)); }
                                 };
-                                link.target = '_blank';
                             } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Video'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
+                                link.href = `https://drive.google.com/file/d/${attachment.gdid}/view`;
                                 link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
+                                    e.preventDefault(); e.stopPropagation();
+                                    if (checkAuth()) window.open(link.href, '_blank', 'noopener,noreferrer');
                                 };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
                             }
-
-                            link.title = link.href;
                             link.textContent = 'Video/' + filename;
                             textContainer.appendChild(link);
                             const line2 = document.createElement('div');
@@ -4722,8 +4860,7 @@ async function processDirectoryContent(minTimestamp) {
                                             zIndex: '10',
                                             borderRadius: '8px'
                                         });
-                                        overlay.addEventListener('click', (e) => {
-                                            e.stopPropagation(); // Спираме пробива
+                                        overlay.addEventListener('click', () => {
                                             window.open(link.href, '_blank');
                                         });
                                         const img = document.createElement('img');
