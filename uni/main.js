@@ -275,17 +275,27 @@ function _(key) {
     return translations[currentLang][key] || key;
 }
 
-function showToast(message, duration = 5000) {
-    if (isShowingToast) return; // Prevent multiple toasts at once
+function hideToast() {
+    const toast = document.getElementById('toastNotification');
+    if (toast.classList.contains('show')) {
+        clearTimeout(toastTimeout);
+        toast.classList.remove('show');
+        isShowingToast = false;
+    }
+}
+
+function showToast(message, duration = 10000) {
+    if (isShowingToast) {
+        hideToast();
+        // Short delay to allow the hide animation to finish before showing the new one
+        setTimeout(() => showToast(message, duration), 300);
+        return;
+    }
     isShowingToast = true;
     const toast = document.getElementById('toastNotification');
     toast.textContent = message;
     toast.classList.add('show');
-    clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => {
-        isShowingToast = false;
-        toast.classList.remove('show');
-    }, duration);
+    toastTimeout = setTimeout(hideToast, duration);
 }
 
 function showMessagePopup(message, showInput = false) {
@@ -393,6 +403,9 @@ function initApp() {
     loaderContainer.prepend(loaderTitle);
 
     // Настройване на UI и езикови настройки
+    const toast = document.getElementById('toastNotification');
+    toast.addEventListener('click', hideToast);
+
     function setLanguage(lang) {
         if (!translations[lang]) return;
         currentLang = lang;
@@ -829,7 +842,6 @@ function handleSignoutClick() {
                     await fetchAllDataLocal();
                     const boardParseError = false; // Assume no parse error after sync
                     await renderUI({ boardParseError });
-                    showToast(_('localDbUpdated'), 10000);
 
                 } else {
                     // GDrive sync is disabled. Load locally.
@@ -837,10 +849,12 @@ function handleSignoutClick() {
                     console.log("Loading from local DB (Google Drive sync is disabled).");
                     loaderText.textContent = "Starting local sync...";
                     await runLocalSync();
-                    loaderText.textContent = "Fetching data from DB...";
+                    // Only show the "Fetching data" message if a sync was actually performed.
+                    // runLocalSync will handle its own toast messages.
+                    loaderText.textContent = "Fetching data from DB..."; 
+
                     await fetchAllDataLocal();
                     await renderUI({ boardParseError: false });
-                    showToast(_('localDataLoaded'), 10000);
                 }
             } else { // Not using local DB
                 if (loaderTitle) loaderTitle.textContent = "Google Drive";
@@ -902,34 +916,34 @@ async function fetchAllDataLocal() {
  * Управлява процеса на локална синхронизация с файловата система.
  */
 async function runLocalSync() {
+    const lastUpdateTimestamp = await getConfig('lastUpdateTimestamp');
+    const updateDate = lastUpdateTimestamp ? new Date(lastUpdateTimestamp) : null;
+    let updatedCount = 0;
+
     const handle = await getDirectoryHandle();
     if (!handle) {
         showToast(_('errorLocalFolderNotSelected'), 10000);
-        // We can still proceed to load whatever is in the DB
-        return;
+        return; // Stop if no folder is selected
     }
-
-    // Ако опцията за обновяване на IndexedDB е изключена, пропускаме сканирането на файлове.
-    if (localStorage.getItem('updateIndexedDb') === 'false') {
-        console.log("Skipping local file scan because IndexedDB update is disabled.");
-        loaderText.textContent = _('skippedFileScan');
-        return;
-    }
-
-    const lastUpdateTimestamp = await getConfig('lastUpdateTimestamp');
-    const updateDate = lastUpdateTimestamp ? new Date(lastUpdateTimestamp) : null;
 
     loaderText.textContent = updateDate ? `Updating files since ${updateDate.toLocaleString()}...` : "Performing full initial sync...";
-    
-    const updatedCount = await processDirectoryContent(lastUpdateTimestamp);
 
-    if (updateDate) { // Only show toast for incremental updates
+    // Perform sync only if the setting is enabled
+    if (localStorage.getItem('updateIndexedDb') !== 'false') {
+        updatedCount = await processDirectoryContent(lastUpdateTimestamp);
+        await saveConfig('lastUpdateTimestamp', Date.now());
+    } else {
+        console.log("Skipping local file scan because IndexedDB update is disabled.");
+        loaderText.textContent = _('skippedFileScan');
+    }
+
+    // Show toast only for incremental updates (not the very first sync)
+    if (updateDate) {
         const message = updatedCount > 0
             ? _('localUpdatesFound').replace('{count}', updatedCount)
             : _('localNoUpdates');
-        showToast(message, 10000);
+        showToast(message, 3000);
     }
-    await saveConfig('lastUpdateTimestamp', Date.now());
 }
 
 /**
@@ -2919,8 +2933,8 @@ async function runLocalSync() {
     // Пропускаме само ако НЕ е първоначална синхронизация (т.е. имаме timestamp).
     if (localStorage.getItem('updateIndexedDb') === 'false' && lastUpdateTimestamp > 0) {
         console.log("Skipping local file scan because IndexedDB update is disabled.");
-        loaderText.textContent = _('skippedFileScan');
-        return;
+        // Не показваме съобщение тук, за да не се дублира.
+        return -1; // Връщаме специална стойност, за да покажем, че е пропуснато.
     }
 
     const updateDate = lastUpdateTimestamp > 0 ? new Date(lastUpdateTimestamp) : null;
@@ -2929,13 +2943,14 @@ async function runLocalSync() {
     
     const updatedCount = await processDirectoryContent(lastUpdateTimestamp);
 
-    if (updateDate) { // Only show toast for incremental updates
+    if (updateDate) { // Показваме съобщение само при инкрементално обновяване
         const message = updatedCount > 0
             ? _('localUpdatesFound').replace('{count}', updatedCount)
             : _('localNoUpdates');
         showToast(message, 10000);
     }
     await saveConfig('lastUpdateTimestamp', Date.now());
+    return updatedCount;
 }
 
 /**
