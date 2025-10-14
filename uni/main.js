@@ -111,11 +111,10 @@ const translations = {
             clearSearchesTooltip: 'Clear search history',
             noteFontSizeLabel: 'Note Font Size:',
             showDatemodLabel: 'Show modification date:',
-            useLocalDbLabel: 'Local database:',
+            useLocalDbLabel: 'Local folder:',
             useGoogleDbLabel: 'Google Drive database:',
-            updateIndexedDbLabel: 'from local disk',
-            updateLocalDbTitle: 'Update local database:',
-            updateFromGoogleDriveLabel: 'from Google Drive',
+            updateIndexedDbLabel: 'update',
+            updateFromGoogleDriveLabel: 'update only',
             localSyncFolderLabel: 'Local sync folder:',
             selectFolderButton: 'Select Folder',
             folderNotSelected: 'Not selected',
@@ -192,11 +191,10 @@ const translations = {
             clearSearchesTooltip: 'Изчисти историята на търсенията',
             noteFontSizeLabel: 'Размер шрифт (бележка):',
             showDatemodLabel: 'Покажи дата на модификация:',
-            useLocalDbLabel: 'Локална база:',
+            useLocalDbLabel: 'Локална папка:',
             useGoogleDbLabel: 'Google Drive база:',
-            updateIndexedDbLabel: 'от локален диск',
-            updateLocalDbTitle: 'Обновяване на локалната база:',
-            updateFromGoogleDriveLabel: 'от Google Drive',
+            updateIndexedDbLabel: 'обновяване',
+            updateFromGoogleDriveLabel: 'само обновяване',
             localSyncFolderLabel: 'Папка за локална синхронизация:',
             selectFolderButton: 'Избери папка',
             folderNotSelected: 'Не е избрана',
@@ -818,9 +816,24 @@ function handleSignoutClick() {
     }
 
     async function listFiles(folderIdFromPrompt) {
-        const useLocalDb = localStorage.getItem('useLocalDb') === 'true';
+        let useLocalDb = localStorage.getItem('useLocalDb') === 'true';
         const updateFromGoogleDrive = localStorage.getItem('updateFromGoogleDrive') !== 'false';
         let tokenData = null;
+
+        // --- Prompt to create DB if it doesn't exist ---
+        if (useLocalDb) {
+            const dbExists = await checkDbExists(NOTES_DB_NAME);
+            if (!dbExists) {
+                const createDb = await showConfirmation(_('confirmCreateLocalDb'));
+                if (!createDb) {
+                    // User declined. Fallback to non-local mode for this session.
+                    useLocalDb = false;
+                    showToast(_('loadedFromLocalNoDrive'), 5000); // Inform user about the fallback
+                }
+                // If they confirmed, the DB will be created automatically on the first `openNotesDB` call.
+            }
+        }
+        // ----------------------------------------------------
 
         // Decide if we need a token BEFORE anything else.
         const needsToken = !useLocalDb || (useLocalDb && updateFromGoogleDrive);
@@ -2912,6 +2925,52 @@ async function getConfig(key) {
         const request = store.get(key);
         request.onsuccess = () => resolve(request.result);
         request.onerror = (event) => reject('Error getting from config: ' + event.target.error);
+    });
+}
+
+/**
+ * Checks if an IndexedDB database exists.
+ * @param {string} dbName The name of the database.
+ * @returns {Promise<boolean>}
+ */
+async function checkDbExists(dbName) {
+    // The modern `databases()` method is the most reliable.
+    if (window.indexedDB.databases) {
+        const dbs = await indexedDB.databases();
+        return dbs.some(db => db.name === dbName);
+    }
+
+    // Fallback for older browsers that don't support `databases()`.
+    console.warn("checkDbExists: indexedDB.databases() is not supported. Using a fallback check.");
+    return new Promise(resolve => {
+        const req = indexedDB.open(dbName);
+        let existed = true;
+        req.onupgradeneeded = () => {
+            existed = false; // This event is only triggered if the DB doesn't exist or needs upgrading.
+        };
+        req.onsuccess = () => {
+            req.result.close();
+            // If the DB was created just now, delete it to leave no trace.
+            if (!existed) {
+                indexedDB.deleteDatabase(dbName);
+            }
+            resolve(existed);
+        };
+        // If we can't even open it, assume it doesn't exist or is inaccessible.
+        req.onerror = () => resolve(false);
+    });
+}
+
+/**
+ * Deletes the entire IndexedDB database.
+ * @returns {Promise<void>}
+ */
+function deleteNotesDB() {
+    return new Promise((resolve, reject) => {
+        const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+        deleteRequest.onsuccess = () => resolve();
+        deleteRequest.onerror = (event) => reject(event.target.error);
+        deleteRequest.onblocked = () => reject(new Error("Database deletion blocked."));
     });
 }
 
