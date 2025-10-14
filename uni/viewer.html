@@ -96,78 +96,7 @@
             <div class="corner-dot bottom-left"></div>
             <div class="corner-dot bottom-right"></div>
             <div id="settings-modal-body">
-                <!-- Settings content starts here -->
-                <div class="zoom-control-wrapper">
-                    <label for="scaleSlider" data-key="zoomLabel">Мащаб</label>
-                    <div class="slider-container">
-                        <input type="range" id="scaleSlider" min="25" max="175" value="100">
-                        <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number">
-                        <span>%</span>
-                    </div>
-                    <button id="applyZoomBtn" class="zoom-btn" data-key="submitButton">Приложи</button>
-                </div>
-
-                <div class="zoom-control-wrapper" style="margin-top: 20px;">
-                    <label for="start-board-select" data-key="startBoardLabel">Начална дъска</label>
-                    <select id="start-board-select" class="start-board-select">
-                        <option value="all" data-key="allBoards">Всички</option>
-                        <option value="calendar" data-key="calendar">Календар</option>
-                        <option value="reminder" data-key="reminder">Напомняния</option>
-                        <!-- Board options will be populated by JS -->
-                    </select>
-                </div>
-
-                <div class="zoom-control-wrapper" style="margin-top: 20px;">
-                    <label for="max-searches-input" data-key="maxSearchesLabel">Запомни последни търсения</label>
-                    <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
-                </div>
-
-                <div class="zoom-control-wrapper" style="margin-top: 15px;">
-                    <label for="note-font-size-input" data-key="noteFontSizeLabel" style="flex-basis: 200px; flex-shrink: 0; text-align: left;">Размер на шрифта на бележките</label>
-                    <select id="note-font-size-input" class="zoom-input-select" style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
-                </div>
-
-                <div class="zoom-control-wrapper" style="margin-top: 15px;">
-                    <label for="modal-font-size-input" data-key="modalFontSizeLabel" style="flex-basis: 200px; flex-shrink: 0; text-align: left;">Размер на шрифта в модала</label>
-                    <select id="modal-font-size-input" class="zoom-input-select" style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
-                </div>
-
-                <div class="zoom-control-wrapper" style="margin-top: 20px;">
-                    <label for="show-datemod-checkbox" data-key="showDatemodLabel">Покажи дата на модификация</label>
-                    <input type="checkbox" id="show-datemod-checkbox" class="settings-checkbox">
-                </div>
-
-                <div class="zoom-control-wrapper" style="margin-top: 20px;">
-                    <label for="use-local-db-checkbox" data-key="useLocalDbLabel">Използвай локална база данни</label>
-                    <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox">
-                </div>
-
-                <div id="update-db-options-wrapper">
-                    <div class="zoom-control-wrapper" style="margin-top: 20px;">
-                        <label data-key="updateLocalDbTitle">Актуализиране на локалната база данни:</label>
-                    </div>
-
-                    <div class="zoom-control-wrapper" style="padding-left: 20px;">
-                        <label for="update-indexed-db-checkbox" data-key="updateIndexedDbLabel">Актуализиране от локален диск</label>
-                        <input type="checkbox" id="update-indexed-db-checkbox" class="settings-checkbox">
-                    </div>
-
-                    <div class="zoom-control-wrapper" style="padding-left: 20px;">
-                        <label for="update-from-gdrive-checkbox" data-key="updateFromGoogleDriveLabel">Актуализиране от Google Drive</label>
-                        <input type="checkbox" id="update-from-gdrive-checkbox" class="settings-checkbox">
-                    </div>
-                </div>
-
-                <div class="zoom-control-wrapper" style="margin-top: 20px;">
-                    <label data-key="localSyncFolderLabel">Папка за локална синхронизация</label>
-                    <button id="select-folder-btn" class="zoom-btn" data-key="selectFolderButton">Избери папка</button>
-                    <span id="local-sync-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                </div>
-
-                <div class="settings-close-btn-wrapper">
-                    <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
-                </div>
-                <!-- Settings content ends here -->
+                <!-- Content generated by JS -->
             </div>
         </div>
     </div>
@@ -183,11 +112,11 @@
         </defs>
     </svg>
 
-    <script src="config.js"></script>
+    <!--script src="config.js"></script>
     <script src="auth.js"></script>
     <script src="drive-api.js"></script>
     <script src="local-data.js"></script>
-    <script src="ui.js"></script>
+    <script src="ui.js"></script-->
     <script src="main.js"></script>
 </body>
 </html>
