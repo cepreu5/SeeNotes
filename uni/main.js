@@ -2722,18 +2722,22 @@ async function processDirectoryContent(minModificationDate) {
                                 link.target = '_blank';
                             } else if (attachment.gdid) {
                                 const fileId = await getFileID(folderIds['Other'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
+                                if (fileId) {
+                                    link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                    link.target = '_blank';
+                                    link.rel = 'noopener noreferrer';
+                                } else {
+                                    link.href = '#'; // Fallback if file ID not found
+                                }
                                 link.onclick = (e) => {
                                     // Спираме разпространението, за да не се отвори модалът на бележката
                                     e.stopPropagation();
+                                    if (!checkAuth()) e.preventDefault(); // Prevent navigation if not authenticated
                                 };
                             } else {
                                 link.href = '#';
                                 link.onclick = (e) => e.preventDefault();
                             }
-
                             link.title = link.href;
                             link.textContent = 'Other/' + filename;
                             attachmentWrapper.appendChild(link);
@@ -2786,12 +2790,16 @@ async function processDirectoryContent(minModificationDate) {
                                 link.target = '_blank';
                             } else if (attachment.gdid) {
                                 const fileId = await getFileID(folderIds['Images'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
+                                if (fileId) {
+                                    link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                    link.target = '_blank';
+                                    link.rel = 'noopener noreferrer';
+                                } else {
+                                    link.href = '#';
+                                }
                                 link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
                                     e.stopPropagation();
+                                    if (!checkAuth()) e.preventDefault();
                                 };
                             } else {
                                 link.href = '#';
@@ -2903,12 +2911,16 @@ async function processDirectoryContent(minModificationDate) {
                                 link.target = '_blank';
                             } else if (attachment.gdid) {
                                 const fileId = await getFileID(folderIds['Sound'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
+                                if (fileId) {
+                                    link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                    link.target = '_blank';
+                                    link.rel = 'noopener noreferrer';
+                                } else {
+                                    link.href = '#';
+                                }
                                 link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
                                     e.stopPropagation();
+                                    if (!checkAuth()) e.preventDefault();
                                 };
                             } else {
                                 link.href = '#';
@@ -2956,12 +2968,16 @@ async function processDirectoryContent(minModificationDate) {
                                 link.target = '_blank';
                             } else if (attachment.gdid) {
                                 const fileId = await getFileID(folderIds['Video'], filename);
-                                link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                link.target = '_blank';
-                                link.rel = 'noopener noreferrer';
+                                if (fileId) {
+                                    link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                    link.target = '_blank';
+                                    link.rel = 'noopener noreferrer';
+                                } else {
+                                    link.href = '#';
+                                }
                                 link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
                                     e.stopPropagation();
+                                    if (!checkAuth()) e.preventDefault();
                                 };
                             } else {
                                 link.href = '#';
