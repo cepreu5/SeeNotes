@@ -740,6 +740,9 @@ function handleSignoutClick() {
 
     async function fetchAllData(folderIdFromPrompt, saveToDb = true, modifiedSince = null) {
         let folderId = folderIdFromPrompt || await getFolderID();
+        // Determine if we should save to DB based on the global setting for Google Drive mode
+        const useIndexedDbForGoogle = localStorage.getItem('useIndexedDbForGoogle') === 'true';
+
         if (!folderId) {
             // Try to load from local DB as a fallback
             console.log("Main folder ID not found on Google Drive, attempting to load from local IndexedDB.");
@@ -759,12 +762,12 @@ function handleSignoutClick() {
         // Proceed with fetching from Google Drive
         const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId, modifiedSince);
         boardsData = boardFileData;
-        if (saveToDb) {
+        if (saveToDb && useIndexedDbForGoogle) {
             await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
         }
         const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId, modifiedSince);
         mediaData = mediaFileData;
-        if (saveToDb) {
+        if (saveToDb && useIndexedDbForGoogle) {
             await bulkPutDB(MEDIA_STORE_NAME, mediaData); // Sync to DB
         }
         const onNoteProgress = (loaded, total) => {
@@ -779,7 +782,7 @@ function handleSignoutClick() {
             notesToStoreInDB.push(content);
             return { file: r.file, content: content, rawData: r };
         });
-        if (saveToDb && notesToStoreInDB.length > 0) {
+        if (saveToDb && useIndexedDbForGoogle && notesToStoreInDB.length > 0) {
             await bulkPutDB(NOTE_STORE_NAME, notesToStoreInDB); // Sync to DB
         }
         return { boardParseError };
@@ -789,11 +792,26 @@ function handleSignoutClick() {
      * Fetches only updated files from Google Drive since the last sync and updates IndexedDB.
      */
     async function runGoogleDriveSync() {
+        const useIndexedDb = localStorage.getItem('useIndexedDbForGoogle') === 'true';
+        if (!useIndexedDb) {
+            console.log("Skipping Google Drive sync because IndexedDB is disabled for this mode.");
+            return;
+        }
+
         let updatedFilesCount = 0;
-        const lastSyncTimestamp = await getConfig('lastGoogleDriveSyncTimestamp');
+        let lastSyncTimestamp = null;
+        const updateOnly = localStorage.getItem('updateFromGoogleDrive') !== 'false';
+
+        // Get the timestamp only if "update only" is checked
+        if (updateOnly) {
+            lastSyncTimestamp = await getConfig('lastGoogleDriveSyncTimestamp');
+        }
+
+        // This will be null if updateOnly is false or if no timestamp is found,
+        // triggering a full sync in those cases.
         const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
 
-        if (modifiedSince) {
+        if (updateOnly && modifiedSince) {
             console.log(`Checking for Google Drive updates since ${modifiedSince}`);
         } else {
             console.log('Performing full initial sync from Google Drive to local DB.');
@@ -821,7 +839,8 @@ function handleSignoutClick() {
         await syncFile('media.txt', MEDIA_STORE_NAME);
         await syncFile('note.txt', NOTE_STORE_NAME);
 
-        if (modifiedSince) { // Only show toast for incremental updates
+        // Show toast only for incremental updates (when a timestamp was actually used)
+        if (updateOnly && modifiedSince) {
             const message = updatedFilesCount > 0
                 ? _('gdriveUpdatesFound').replace('{count}', updatedFilesCount)
                 : _('gdriveNoUpdates');
@@ -832,64 +851,56 @@ function handleSignoutClick() {
     }
 
     async function listFiles(folderIdFromPrompt) {
-        let useLocalDb = localStorage.getItem('useLocalDb') === 'true';
-        const updateFromGoogleDrive = localStorage.getItem('updateFromGoogleDrive') !== 'false';
+        const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
+        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+
+        const useIndexedDbForGoogle = localStorage.getItem('useIndexedDbForGoogle') === 'true';
+        const useIndexedDbForLocal = localStorage.getItem('useIndexedDbForLocal') !== 'false';
+
         let tokenData = null;
 
-        // --- Prompt to create DB if it doesn't exist ---
-        if (useLocalDb) {
-            const dbExists = await checkDbExists(NOTES_DB_NAME);
-            if (!dbExists) {
-                const createDb = await showConfirmation(_('confirmCreateLocalDb'));
-                if (!createDb) {
-                    // User declined. Fallback to non-local mode for this session.
-                    useLocalDb = false;
-                    showToast(_('loadedFromLocalNoDrive'), 5000); // Inform user about the fallback
-                }
-                // If they confirmed, the DB will be created automatically on the first `openNotesDB` call.
-            }
-        }
-        // ----------------------------------------------------
-
         // Decide if we need a token BEFORE anything else.
-        const needsToken = !useLocalDb || (useLocalDb && updateFromGoogleDrive);
-
+        // A token is needed for any Google Drive operation.
+        const needsToken = useGoogleDb;
         if (needsToken) {
             tokenData = checkAuth();
-            if (!tokenData) {
-                // checkAuth() redirects to login, so we just stop here.
-                return;
-            }
+            if (!tokenData) return; // checkAuth() handles redirection
         }
 
         initializeLoad();
         const loaderTitle = document.getElementById('loader-title');
         try {
-            if (useLocalDb) {
-                if (updateFromGoogleDrive) {
-                    if (loaderTitle) loaderTitle.textContent = "Google Drive Sync";
-                    await runGoogleDriveSync();
+            if (useGoogleDb) {
+                if (loaderTitle) loaderTitle.textContent = "Google Drive";
+                if (useIndexedDbForGoogle) {
+                    // GDrive mode with DB: Sync first, then load from DB.
+                    await runGoogleDriveSync(); // This function now internally checks the setting.
                     loaderText.textContent = "Fetching updated data from DB...";
                     await fetchAllDataLocal();
-                    const boardParseError = false; // Assume no parse error after sync
-                    await renderUI({ boardParseError });
-
+                    await renderUI({ boardParseError: false });
                 } else {
-                    // GDrive sync is disabled. Load locally.
-                    if (loaderTitle) loaderTitle.textContent = "Локална база";
-                    console.log("Loading from local DB (Google Drive sync is disabled).");
-                    loaderText.textContent = "Starting local sync...";
-                    await runLocalSync();
-                    // Only show the "Fetching data" message if a sync was actually performed.
-                    // runLocalSync will handle its own toast messages.
-                    loaderText.textContent = "Fetching data from DB..."; 
-
+                    // GDrive mode without DB: Fetch directly for the session.
+                    const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
+                    await renderUI({ boardParseError });
+                }
+            } else if (useLocalFolder) {
+                if (loaderTitle) loaderTitle.textContent = "Локална папка";
+                if (useIndexedDbForLocal) {
+                    // Local Folder mode with DB: Sync from disk, then load from DB.
+                    await runLocalSync(); // This function now internally checks the setting.
+                    loaderText.textContent = "Fetching data from DB...";
                     await fetchAllDataLocal();
                     await renderUI({ boardParseError: false });
+                } else {
+                    // Local Folder mode without DB: This is not a supported scenario as it needs the DB to function.
+                    // We show a message and do nothing.
+                    showToast("Режим 'Локална папка' изисква IndexedDB да е разрешена в настройките.", 10000);
+                    loaderContainer.style.display = 'none'; // Hide loader
+                    return;
                 }
-            } else { // Not using local DB
+            } else {
+                // Fallback/Default: No mode selected, behave like GDrive without DB.
                 if (loaderTitle) loaderTitle.textContent = "Google Drive";
-                // Fetch all data for the session without saving to DB
                 const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
                 await renderUI({ boardParseError });
             }
@@ -947,14 +958,19 @@ async function fetchAllDataLocal() {
  * Управлява процеса на локална синхронизация с файловата система.
  */
 async function runLocalSync() {
+    const useIndexedDb = localStorage.getItem('useIndexedDbForLocal') !== 'false';
+    if (!useIndexedDb) {
+        console.log("Skipping local sync because IndexedDB is disabled for this mode.");
+        return;
+    }
+
     const lastUpdateTimestamp = await getConfig('lastUpdateTimestamp');
     const updateDate = lastUpdateTimestamp ? new Date(lastUpdateTimestamp) : null;
     let updatedCount = 0;
 
     const handle = await getDirectoryHandle();
     if (!handle) {
-        showToast(_('errorLocalFolderNotSelected'), 10000);
-        return; // Stop if no folder is selected
+        return; // getDirectoryHandle will show a toast if needed.
     }
 
     loaderText.textContent = updateDate ? `Updating files since ${updateDate.toLocaleString()}...` : "Performing full initial sync...";
@@ -1001,6 +1017,7 @@ async function getDirectoryHandle(promptUser = false) {
             dirHandle = newHandle;
             return dirHandle;
         }
+        if (localStorage.getItem('useLocalDb') === 'true') showToast(_('errorLocalFolderNotSelected'), 10000);
         return null;
     } catch (error) {
         if (error.name !== 'AbortError') console.error("Error getting directory handle:", error);
@@ -1778,6 +1795,15 @@ async function processDirectoryContent(minModificationDate) {
                 const notesToStore = allNotesData.map(n => n.content);
                 await bulkPutDB(NOTE_STORE_NAME, notesToStore);
                 await saveConfig('lastGoogleDriveSyncTimestamp', Date.now());
+
+                // Automatically check the IndexedDB boxes since the user just created it.
+                const useIndexedDbForGoogleCheckbox = document.getElementById('use-indexeddb-google-checkbox');
+                const useIndexedDbForLocalCheckbox = document.getElementById('use-indexeddb-local-checkbox');
+                if (useIndexedDbForGoogleCheckbox) useIndexedDbForGoogleCheckbox.checked = true;
+                if (useIndexedDbForLocalCheckbox) useIndexedDbForLocalCheckbox.checked = true;
+                localStorage.setItem('useIndexedDbForGoogle', 'true');
+                localStorage.setItem('useIndexedDbForLocal', 'true');
+
                 showToast(_('dbCreated'), 10000);
             }
         }
@@ -1813,13 +1839,20 @@ async function processDirectoryContent(minModificationDate) {
         useLocalDbCheckbox.className = 'settings-checkbox'; // Unified class
         useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
         useLocalDbCheckbox.addEventListener('change', () => {
-            localStorage.setItem('useLocalDb', useLocalDbCheckbox.checked);
-            if (useLocalDbCheckbox.checked) {
-                // When switching to local folder mode, uncheck Google Drive mode
-                const googleDbCheckbox = document.getElementById('use-google-db-checkbox');
+            const isChecked = useLocalDbCheckbox.checked;
+            const googleDbCheckbox = document.getElementById('use-google-db-checkbox');
+
+            if (isChecked) {
+                // Ако се избере "Локална папка", деактивираме "Google Drive".
                 if (googleDbCheckbox) googleDbCheckbox.checked = false;
                 localStorage.setItem('useGoogleDb', 'false');
+            } else {
+                // Ако се деактивира "Локална папка", автоматично активираме "Google Drive".
+                if (googleDbCheckbox) googleDbCheckbox.checked = true;
+                localStorage.setItem('useGoogleDb', 'true');
             }
+            localStorage.setItem('useLocalDb', isChecked);
+
             toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 2000);
         });
@@ -1842,20 +1875,19 @@ async function processDirectoryContent(minModificationDate) {
         useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') === 'true';
         useGoogleDbCheckbox.addEventListener('change', () => {
             const isChecked = useGoogleDbCheckbox.checked;
-            localStorage.setItem('useGoogleDb', isChecked);
+            const localDbCheckbox = document.getElementById('use-local-db-checkbox');
+
             if (isChecked) {
-                // When switching to Google Drive mode, uncheck local folder mode
-                const localDbCheckbox = document.getElementById('use-local-db-checkbox');
+                // Ако се избере "Google Drive", деактивираме "Локална папка".
                 if (localDbCheckbox) localDbCheckbox.checked = false;
                 localStorage.setItem('useLocalDb', 'false');
             } else {
-                // When unchecking Google Drive, also uncheck "update only"
-                const updateGdriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
-                if (updateGdriveCheckbox) {
-                    updateGdriveCheckbox.checked = false;
-                    localStorage.setItem('updateFromGoogleDrive', 'false');
-                }
+                // Ако се деактивира "Google Drive", автоматично активираме "Локална папка".
+                if (localDbCheckbox) localDbCheckbox.checked = true;
+                localStorage.setItem('useLocalDb', 'true');
             }
+            localStorage.setItem('useGoogleDb', isChecked);
+
             toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 2000);
         });
@@ -1876,7 +1908,19 @@ async function processDirectoryContent(minModificationDate) {
         useIndexedDbForGoogleCheckbox.className = 'settings-checkbox';
         useIndexedDbForGoogleCheckbox.checked = localStorage.getItem('useIndexedDbForGoogle') === 'true';
         useIndexedDbForGoogleCheckbox.addEventListener('change', () => {
-            localStorage.setItem('useIndexedDbForGoogle', useIndexedDbForGoogleCheckbox.checked);
+            const isChecked = useIndexedDbForGoogleCheckbox.checked;
+            localStorage.setItem('useIndexedDbForGoogle', isChecked);
+
+            // Find the "update only" checkbox and manage its state
+            const updateGdriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
+            if (updateGdriveCheckbox) {
+                updateGdriveCheckbox.disabled = !isChecked; // Disable if IndexedDB is off
+                if (!isChecked) {
+                    // If we disable IndexedDB, we must also uncheck "update only"
+                    updateGdriveCheckbox.checked = false;
+                    localStorage.setItem('updateFromGoogleDrive', 'false');
+                }
+            }
             showToast(_('settingSaved'), 2000);
         });
         useIndexedDbForGoogleWrapper.appendChild(useIndexedDbForGoogleLabel);
@@ -2022,6 +2066,10 @@ async function processDirectoryContent(minModificationDate) {
             updateFromGoogleDriveWrapper.style.display = isGoogleVisible ? 'flex' : 'none';
             const isLocalVisible = useLocalDbCheckbox.checked;
             localSubOptionsContainer.style.display = isLocalVisible ? 'block' : 'none';
+
+            // Also set the initial disabled state for the "update only" checkbox
+            const updateGdriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
+            if (updateGdriveCheckbox) updateGdriveCheckbox.disabled = !useIndexedDbForGoogleCheckbox.checked;
         };
 
         // Correctly append the new Google Drive sub-option
