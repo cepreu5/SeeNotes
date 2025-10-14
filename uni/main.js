@@ -112,7 +112,7 @@ const translations = {
             noteFontSizeLabel: 'Note Font Size:',
             showDatemodLabel: 'Show modification date:',
             useLocalDbLabel: 'Local folder:',
-            useGoogleDbLabel: 'Google Drive database:',
+            useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'update',
             updateFromGoogleDriveLabel: 'update only',
             localSyncFolderLabel: 'Local sync folder:',
@@ -143,7 +143,15 @@ const translations = {
             gdriveUpdatesFound: '{count} file(s) updated from Google Drive.',
             gdriveNoUpdates: 'No new updates from Google Drive.',
             localUpdatesFound: '{count} file(s) updated from local disk.',
-            localNoUpdates: 'No new updates from local disk.'            
+            localNoUpdates: 'No new updates from local disk.',
+            confirmDbRecreate: 'The local database already exists. Do you want to delete it and create a new one from the current data?',
+            confirmDbDelete: 'Are you sure you want to delete the local database? This action cannot be undone.',
+            dbCreated: 'Local database created successfully.',
+            dbCreateFailedNoData: 'Cannot create database. No data loaded in memory.',
+            dbDeleted: 'Local database deleted successfully.',
+            dbDeleteFailed: 'Failed to delete local database.',
+            createDbButton: 'Create',
+            deleteDbButton: 'Delete'
         },
         bg: {
             appTitle: 'CX MultiNotes Viewer',
@@ -192,7 +200,7 @@ const translations = {
             noteFontSizeLabel: 'Размер шрифт (бележка):',
             showDatemodLabel: 'Покажи дата на модификация:',
             useLocalDbLabel: 'Локална папка:',
-            useGoogleDbLabel: 'Google Drive база:',
+            useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'обновяване',
             updateFromGoogleDriveLabel: 'само обновяване',
             localSyncFolderLabel: 'Папка за локална синхронизация:',
@@ -222,7 +230,15 @@ const translations = {
             gdriveUpdatesFound: 'Обновени са {count} файла от Google Drive.',
             gdriveNoUpdates: 'Няма нови промени в Google Drive.',
             localUpdatesFound: 'Обновени са {count} файла от локалния диск.',
-            localNoUpdates: 'Няма нови промени в локалния диск.'            
+            localNoUpdates: 'Няма нови промени в локалния диск.',
+            confirmDbRecreate: 'Локалната база данни вече съществува. Искате ли да я изтриете и да създадете нова от текущите данни?',
+            confirmDbDelete: 'Сигурни ли сте, че искате да изтриете локалната база данни? Това действие е необратимо.',
+            dbCreated: 'Локалната база данни е създадена успешно.',
+            dbCreateFailedNoData: 'Базата не може да бъде създадена. Няма заредени данни в паметта.',
+            dbDeleted: 'Локалната база данни е изтрита успешно.',
+            dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
+            createDbButton: 'Създай',
+            deleteDbButton: 'Изтрий'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -1715,24 +1731,94 @@ async function processDirectoryContent(minModificationDate) {
         showDatemodWrapper.appendChild(showDatemodCheckbox);
         zoomModalBody.appendChild(showDatemodWrapper);
 
+        // --- IndexedDB Management Buttons ---
+        const dbManagementWrapper = document.createElement('div');
+        dbManagementWrapper.className = 'zoom-control-wrapper';
+        dbManagementWrapper.style.marginTop = '10px';
+        dbManagementWrapper.style.paddingLeft = '20px'; // Indent
+
+        const createDbBtn = document.createElement('button');
+        createDbBtn.className = 'zoom-btn';
+        createDbBtn.textContent = _('createDbButton');
+        createDbBtn.addEventListener('click', handleCreateDbClick); // This will be defined below
+
+        const deleteDbBtn = document.createElement('button');
+        deleteDbBtn.className = 'zoom-btn settings-close-btn'; // Red-like color
+        deleteDbBtn.style.marginLeft = '10px';
+        deleteDbBtn.textContent = _('deleteDbButton');
+        deleteDbBtn.addEventListener('click', handleDeleteDbClick); // This will be defined below
+
+        dbManagementWrapper.appendChild(createDbBtn);
+        dbManagementWrapper.appendChild(deleteDbBtn);
+
+        // --- Handler Functions for DB Management ---
+        async function handleCreateDbClick() {
+            document.getElementById('settings-modal').classList.remove('visible');
+            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
+
+            const dbExists = await checkDbExists(NOTES_DB_NAME);
+            let proceed = false;
+
+            if (dbExists) {
+                proceed = await showConfirmation(_('confirmDbRecreate'));
+            } else {
+                proceed = true;
+            }
+
+            if (proceed) {
+                if (allNotesData.length === 0 && boardsData.length === 0) {
+                    showToast(_('dbCreateFailedNoData'), 10000);
+                    return;
+                }
+                if (dbExists) {
+                    await deleteNotesDB();
+                }
+                await bulkPutDB(BOARD_STORE_NAME, boardsData);
+                await bulkPutDB(MEDIA_STORE_NAME, mediaData);
+                const notesToStore = allNotesData.map(n => n.content);
+                await bulkPutDB(NOTE_STORE_NAME, notesToStore);
+                await saveConfig('lastGoogleDriveSyncTimestamp', Date.now());
+                showToast(_('dbCreated'), 10000);
+            }
+        }
+
+        async function handleDeleteDbClick() {
+            document.getElementById('settings-modal').classList.remove('visible');
+            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
+
+            const confirmed = await showConfirmation(_('confirmDbDelete'));
+            if (confirmed) {
+                try {
+                    await deleteNotesDB();
+                    showToast(_('dbDeleted'), 10000);
+                } catch (error) {
+                    showToast(_('dbDeleteFailed'), 10000);
+                }
+            }
+        }
+
         // --- Use Local DB Setting ---
         const useLocalDbWrapper = document.createElement('div');
         useLocalDbWrapper.className = 'zoom-control-wrapper';
         useLocalDbWrapper.style.marginTop = '20px';
         const useLocalDbLabel = document.createElement('label');
+        useLocalDbLabel.style.fontWeight = 'bold';
         useLocalDbLabel.textContent = _('useLocalDbLabel');
         useLocalDbLabel.style.marginRight = '10px';
         useLocalDbLabel.htmlFor = 'use-local-db-checkbox';
         const useLocalDbCheckbox = document.createElement('input');
         useLocalDbCheckbox.type = 'checkbox';
         useLocalDbCheckbox.id = 'use-local-db-checkbox';
+        useLocalDbCheckbox.style.flexShrink = '0'; // Prevent checkbox from shrinking
         useLocalDbCheckbox.className = 'settings-checkbox'; // Unified class
         useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
         useLocalDbCheckbox.addEventListener('change', () => {
             localStorage.setItem('useLocalDb', useLocalDbCheckbox.checked);
             if (useLocalDbCheckbox.checked) {
-                useGoogleDbCheckbox.checked = false;
-                localStorage.setItem('useGoogleDb', false);
+                // When switching to local folder mode, uncheck Google Drive mode
+                const googleDbCheckbox = document.getElementById('use-google-db-checkbox');
+                if (googleDbCheckbox) googleDbCheckbox.checked = false;
+                localStorage.setItem('useGoogleDb', 'false');
             }
             toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 2000);
@@ -1740,12 +1826,14 @@ async function processDirectoryContent(minModificationDate) {
         useLocalDbWrapper.appendChild(useLocalDbLabel);
         useLocalDbWrapper.appendChild(useLocalDbCheckbox);
 
+        // --- Local Sync Folder Setting ---
         const useGoogleDbWrapper = document.createElement('div');
         useGoogleDbWrapper.className = 'zoom-control-wrapper';
         useGoogleDbWrapper.style.marginTop = '20px';
         const useGoogleDbLabel = document.createElement('label');
         useGoogleDbLabel.textContent = _('useGoogleDbLabel');
         useGoogleDbLabel.style.marginRight = '10px';
+        useGoogleDbLabel.style.fontWeight = 'bold';
         useGoogleDbLabel.htmlFor = 'use-google-db-checkbox';
         const useGoogleDbCheckbox = document.createElement('input');
         useGoogleDbCheckbox.type = 'checkbox';
@@ -1753,10 +1841,20 @@ async function processDirectoryContent(minModificationDate) {
         useGoogleDbCheckbox.className = 'settings-checkbox'; // Unified class
         useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') === 'true';
         useGoogleDbCheckbox.addEventListener('change', () => {
-            localStorage.setItem('useGoogleDb', useGoogleDbCheckbox.checked);
-            if (useGoogleDbCheckbox.checked) {
-                useLocalDbCheckbox.checked = false;
-                localStorage.setItem('useLocalDb', false);
+            const isChecked = useGoogleDbCheckbox.checked;
+            localStorage.setItem('useGoogleDb', isChecked);
+            if (isChecked) {
+                // When switching to Google Drive mode, uncheck local folder mode
+                const localDbCheckbox = document.getElementById('use-local-db-checkbox');
+                if (localDbCheckbox) localDbCheckbox.checked = false;
+                localStorage.setItem('useLocalDb', 'false');
+            } else {
+                // When unchecking Google Drive, also uncheck "update only"
+                const updateGdriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
+                if (updateGdriveCheckbox) {
+                    updateGdriveCheckbox.checked = false;
+                    localStorage.setItem('updateFromGoogleDrive', 'false');
+                }
             }
             toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 2000);
@@ -1764,18 +1862,40 @@ async function processDirectoryContent(minModificationDate) {
         useGoogleDbWrapper.appendChild(useGoogleDbLabel);
         useGoogleDbWrapper.appendChild(useGoogleDbCheckbox);
         
+        // --- NEW: Use IndexedDB with Google Drive ---
+        const useIndexedDbForGoogleWrapper = document.createElement('div');
+        useIndexedDbForGoogleWrapper.className = 'zoom-control-wrapper';
+        useIndexedDbForGoogleWrapper.style.paddingLeft = '20px'; // Indent
+        const useIndexedDbForGoogleLabel = document.createElement('label');
+        useIndexedDbForGoogleLabel.textContent = 'IndexedDB';
+        useIndexedDbForGoogleLabel.style.marginRight = '10px';
+        useIndexedDbForGoogleLabel.htmlFor = 'use-indexeddb-google-checkbox';
+        const useIndexedDbForGoogleCheckbox = document.createElement('input');
+        useIndexedDbForGoogleCheckbox.type = 'checkbox';
+        useIndexedDbForGoogleCheckbox.id = 'use-indexeddb-google-checkbox';
+        useIndexedDbForGoogleCheckbox.className = 'settings-checkbox';
+        useIndexedDbForGoogleCheckbox.checked = localStorage.getItem('useIndexedDbForGoogle') === 'true';
+        useIndexedDbForGoogleCheckbox.addEventListener('change', () => {
+            localStorage.setItem('useIndexedDbForGoogle', useIndexedDbForGoogleCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+        useIndexedDbForGoogleWrapper.appendChild(useIndexedDbForGoogleLabel);
+        useIndexedDbForGoogleWrapper.appendChild(useIndexedDbForGoogleCheckbox);
+
         // --- Update from Google Drive Setting ---
         const updateFromGoogleDriveWrapper = document.createElement('div');
         updateFromGoogleDriveWrapper.className = 'zoom-control-wrapper';
         updateFromGoogleDriveWrapper.style.paddingLeft = '20px'; // Indent
         const updateFromGoogleDriveLabel = document.createElement('label');
         updateFromGoogleDriveLabel.style.marginRight = '10px';
+        updateFromGoogleDriveLabel.style.fontWeight = 'normal';
         updateFromGoogleDriveLabel.textContent = _('updateFromGoogleDriveLabel');
         updateFromGoogleDriveLabel.htmlFor = 'update-from-gdrive-checkbox';
         const updateFromGoogleDriveCheckbox = document.createElement('input');
         updateFromGoogleDriveCheckbox.type = 'checkbox';
         updateFromGoogleDriveCheckbox.id = 'update-from-gdrive-checkbox';
         updateFromGoogleDriveCheckbox.className = 'settings-checkbox'; // Unified class
+        updateFromGoogleDriveCheckbox.checked = localStorage.getItem('useGoogleDb') === 'true'; // Default to checked if parent is checked
         updateFromGoogleDriveCheckbox.checked = localStorage.getItem('updateFromGoogleDrive') !== 'false'; // Default to true
         updateFromGoogleDriveCheckbox.addEventListener('change', () => {
             localStorage.setItem('updateFromGoogleDrive', updateFromGoogleDriveCheckbox.checked);
@@ -1784,25 +1904,12 @@ async function processDirectoryContent(minModificationDate) {
         updateFromGoogleDriveWrapper.appendChild(updateFromGoogleDriveLabel);
         updateFromGoogleDriveWrapper.appendChild(updateFromGoogleDriveCheckbox);
 
-        zoomModalBody.appendChild(useGoogleDbWrapper);
-        zoomModalBody.appendChild(updateFromGoogleDriveWrapper); // <-- ДОБАВЕН ЛИПСВАЩ РЕД
-        
-        zoomModalBody.appendChild(useLocalDbWrapper);
-
-        // --- Database Update Settings (conditionally shown) ---
-        /*const updateDbTitleWrapper = document.createElement('div');
-        updateDbTitleWrapper.className = 'zoom-control-wrapper';
-        updateDbTitleWrapper.style.marginTop = '20px';
-        const updateDbTitleLabel = document.createElement('label');
-        updateDbTitleLabel.textContent = _('updateLocalDbTitle');
-        updateDbTitleWrapper.appendChild(updateDbTitleLabel);
-        zoomModalBody.appendChild(updateDbTitleWrapper);*/
-
         // --- Update IndexedDB from local disk Setting ---
         const updateIndexedDbWrapper = document.createElement('div');
         updateIndexedDbWrapper.className = 'zoom-control-wrapper';
         updateIndexedDbWrapper.style.paddingLeft = '20px'; // Indent
         const updateIndexedDbLabel = document.createElement('label');
+        updateIndexedDbLabel.style.fontWeight = 'normal';
         updateIndexedDbLabel.style.marginRight = '10px';
         updateIndexedDbLabel.textContent = _('updateIndexedDbLabel');
         updateIndexedDbLabel.htmlFor = 'update-indexed-db-checkbox';
@@ -1819,25 +1926,14 @@ async function processDirectoryContent(minModificationDate) {
         updateIndexedDbWrapper.appendChild(updateIndexedDbCheckbox);
         zoomModalBody.appendChild(updateIndexedDbWrapper);
 
-        // Function to toggle visibility of the update options
-        const toggleUpdateOptionsVisibility = () => {
-            const isVisible = useLocalDbCheckbox.checked;
-            updateIndexedDbWrapper.style.display = isVisible ? 'flex' : 'none';
-            const isVisibleG = useGoogleDbCheckbox.checked;
-            updateFromGoogleDriveWrapper.style.display = isVisibleG ? 'flex' : 'none';
-        };
-
-        // Add the event listener to the "Use Local DB" checkbox
-        // The logic is now inside the main change listeners
-        toggleUpdateOptionsVisibility();
-
         // --- Local Sync Folder Setting ---
         const localSyncWrapper = document.createElement('div');
-        localSyncWrapper.className = 'zoom-control-wrapper';
-        localSyncWrapper.style.marginTop = '20px';
+        localSyncWrapper.className = 'zoom-control-wrapper'; // This will be a sub-option
+        localSyncWrapper.style.flexDirection = 'column';
+        localSyncWrapper.style.alignItems = 'flex-start';
+        localSyncWrapper.style.paddingLeft = '20px'; // Indent the whole section
         const localSyncLabel = document.createElement('label');
-        localSyncLabel.textContent = _('localSyncFolderLabel');
-        localSyncLabel.style.marginRight = '10px';
+        localSyncLabel.textContent = _('localSyncFolderLabel'); // e.g., "Папка за локална синхронизация:"
         const selectFolderBtn = document.createElement('button');
         selectFolderBtn.className = 'zoom-btn';
         selectFolderBtn.textContent = _('selectFolderButton');
@@ -1860,21 +1956,77 @@ async function processDirectoryContent(minModificationDate) {
             }
         });
 
+        // Create a sub-wrapper for the button and folder name to place them on a new line
+        const folderActionWrapper = document.createElement('div');
+        folderActionWrapper.style.display = 'flex';
+        folderActionWrapper.style.alignItems = 'center';        
+        folderActionWrapper.style.marginTop = '5px';
+        folderActionWrapper.appendChild(selectFolderBtn);
+        folderActionWrapper.appendChild(folderNameDisplay);
         localSyncWrapper.appendChild(localSyncLabel);
-        localSyncWrapper.appendChild(selectFolderBtn);
-        zoomModalBody.appendChild(localSyncWrapper);
+        localSyncWrapper.appendChild(folderActionWrapper);
 
-        const closeBtnWrapper = document.createElement('div');
-        closeBtnWrapper.className = 'settings-close-btn-wrapper';
+        // --- NEW: Use IndexedDB with Local Folder ---
+        const useIndexedDbForLocalWrapper = document.createElement('div');
+        useIndexedDbForLocalWrapper.className = 'zoom-control-wrapper';
+        useIndexedDbForLocalWrapper.style.paddingLeft = '20px'; // Indent
+        const useIndexedDbForLocalLabel = document.createElement('label');
+        useIndexedDbForLocalLabel.textContent = 'IndexedDB';
+        useIndexedDbForLocalLabel.style.marginRight = '10px';
+        useIndexedDbForLocalLabel.htmlFor = 'use-indexeddb-local-checkbox';
+        const useIndexedDbForLocalCheckbox = document.createElement('input');
+        useIndexedDbForLocalCheckbox.type = 'checkbox';
+        useIndexedDbForLocalCheckbox.id = 'use-indexeddb-local-checkbox';
+        useIndexedDbForLocalCheckbox.className = 'settings-checkbox';
+        useIndexedDbForLocalCheckbox.checked = localStorage.getItem('useIndexedDbForLocal') !== 'false'; // Default to true
+        useIndexedDbForLocalCheckbox.addEventListener('change', () => {
+            localStorage.setItem('useIndexedDbForLocal', useIndexedDbForLocalCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+        useIndexedDbForLocalWrapper.appendChild(useIndexedDbForLocalLabel);
+        useIndexedDbForLocalWrapper.appendChild(useIndexedDbForLocalCheckbox);
+
+        // Grouping UI elements
+        zoomModalBody.appendChild(useGoogleDbWrapper);
+        useGoogleDbWrapper.appendChild(updateFromGoogleDriveWrapper);
+
         const closeBtn = document.createElement('button');
         closeBtn.className = 'zoom-btn settings-close-btn';
         closeBtn.textContent = _('closeButton');
         closeBtn.addEventListener('click', () => {
             document.getElementById('settings-modal').classList.remove('visible');
         });
-        closeBtnWrapper.appendChild(closeBtn);
-        zoomModalBody.appendChild(closeBtnWrapper);
-        localSyncWrapper.appendChild(folderNameDisplay);
+
+        // --- Create a dedicated container for all local folder options ---
+        const localFolderContainer = document.createElement('div');
+        localFolderContainer.style.flexDirection = 'column';
+
+        // Create a container for the sub-options that can be toggled
+        const localSubOptionsContainer = document.createElement('div');
+        localSubOptionsContainer.style.flexDirection = 'column'; // Ensure vertical stacking
+        localSubOptionsContainer.style.paddingLeft = '20px'; // Indent all sub-options
+        localSubOptionsContainer.appendChild(localSyncWrapper);
+        localSubOptionsContainer.appendChild(updateIndexedDbWrapper);
+        localSubOptionsContainer.appendChild(dbManagementWrapper);
+
+        // Add the main checkbox and the sub-options container to the main local folder container
+        localFolderContainer.appendChild(useLocalDbWrapper);
+        localFolderContainer.appendChild(localSubOptionsContainer);
+
+        zoomModalBody.appendChild(localFolderContainer); // Add the whole group to the modal
+
+        // Define toggle function with correct grouping
+        const toggleUpdateOptionsVisibility = () => {
+            const isGoogleVisible = useGoogleDbCheckbox.checked;
+            useIndexedDbForGoogleWrapper.style.display = isGoogleVisible ? 'flex' : 'none';
+            updateFromGoogleDriveWrapper.style.display = isGoogleVisible ? 'flex' : 'none';
+            const isLocalVisible = useLocalDbCheckbox.checked;
+            localSubOptionsContainer.style.display = isLocalVisible ? 'block' : 'none';
+        };
+
+        // Correctly append the new Google Drive sub-option
+        useGoogleDbWrapper.appendChild(useIndexedDbForGoogleWrapper);
+        localSubOptionsContainer.prepend(useIndexedDbForLocalWrapper); // Add to the top of local sub-options
 
         // Asynchronously get and display the current folder name
         (async () => {
@@ -1886,7 +2038,74 @@ async function processDirectoryContent(minModificationDate) {
                 folderNameDisplay.textContent = _('folderNotSelected');
             }
         })();
-        updateIndexedDbWrapper.style.marginTop = '20px';
+
+        // Set initial visibility
+        toggleUpdateOptionsVisibility();
+
+        // Add the close button at the very end
+        const closeBtnWrapper = document.createElement('div');
+        closeBtnWrapper.className = 'settings-close-btn-wrapper';
+        closeBtnWrapper.appendChild(closeBtn);
+        zoomModalBody.appendChild(closeBtnWrapper);
+        
+        // Add helper functions for DB management that were missing
+        /**
+         * Checks if an IndexedDB database exists.
+         * @param {string} dbName The name of the database.
+         * @returns {Promise<boolean>}
+         */
+        async function checkDbExists(dbName) {
+            // The modern `databases()` method is the most reliable.
+            if (window.indexedDB.databases) {
+                const dbs = await indexedDB.databases();
+                return dbs.some(db => db.name === dbName);
+            }
+
+            // Fallback for older browsers that don't support `databases()`.
+            console.warn("checkDbExists: indexedDB.databases() is not supported. Using a fallback check.");
+            return new Promise(resolve => {
+                const req = indexedDB.open(dbName);
+                let existed = true;
+                req.onupgradeneeded = () => {
+                    existed = false; // This event is only triggered if the DB doesn't exist or needs upgrading.
+                };
+                req.onsuccess = () => {
+                    req.result.close();
+                    // If the DB was created just now, delete it to leave no trace.
+                    if (!existed) {
+                        indexedDB.deleteDatabase(dbName);
+                    }
+                    resolve(existed);
+                };
+                // If we can't even open it, assume it doesn't exist or is inaccessible.
+                req.onerror = () => resolve(false);
+            });
+        }
+
+        /**
+         * Deletes the entire IndexedDB database.
+         * @returns {Promise<void>}
+         */
+        function deleteNotesDB() {
+            return new Promise((resolve, reject) => {
+                console.log(`Attempting to delete database: ${NOTES_DB_NAME}`);
+                const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+
+                deleteRequest.onsuccess = () => {
+                    console.log(`Database '${NOTES_DB_NAME}' deleted successfully.`);
+                    resolve();
+                };
+                deleteRequest.onerror = (event) => {
+                    console.error(`Error deleting database:`, event.target.error);
+                    reject(event.target.error);
+                };
+                deleteRequest.onblocked = () => {
+                    console.warn("Database deletion is blocked. Please close other tabs with this app open.");
+                    showToast("Database deletion is blocked. Please close other tabs with this app open.", 10000);
+                    reject(new Error("Database deletion blocked."));
+                };
+            });
+        }
 
         if (boardParseError) {
             const errorEl = document.createElement('div');
