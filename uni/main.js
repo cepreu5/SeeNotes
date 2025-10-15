@@ -151,7 +151,8 @@ const translations = {
             dbDeleted: 'Local database deleted successfully.',
             dbDeleteFailed: 'Failed to delete local database.',
             createDbButton: 'Create',
-            deleteDbButton: 'Delete'
+            deleteDbButton: 'Delete',
+            dbManagementTitle: 'Database Management'
         },
         bg: {
             appTitle: 'CX MultiNotes Viewer',
@@ -238,7 +239,8 @@ const translations = {
             dbDeleted: 'Локалната база данни е изтрита успешно.',
             dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
             createDbButton: 'Създай',
-            deleteDbButton: 'Изтрий'
+            deleteDbButton: 'Изтрий',
+            dbManagementTitle: 'Управление на базата данни'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -744,18 +746,8 @@ function handleSignoutClick() {
         const useIndexedDbForGoogle = localStorage.getItem('useIndexedDbForGoogle') === 'true';
 
         if (!folderId) {
-            // Try to load from local DB as a fallback
-            console.log("Main folder ID not found on Google Drive, attempting to load from local IndexedDB.");
-            try {
-                await fetchAllDataLocal();
-                if (allNotesData.length > 0) {
-                    showToast(_('loadedFromLocalNoDrive'), 5000);
-                    return { boardParseError: false }; // Assuming no parse error from local
-                }
-            } catch (localDbError) {
-                console.error("Failed to load from local DB as well:", localDbError);
-            }
-            // If local loading also fails or is empty, show the original error.
+            // If no folderId is found, it's a critical error. Show message and stop.
+            // The fallback to local DB is now handled by the main listFiles logic.
             showMessagePopup(_('errorFolderNotFound'));
             throw new Error("Main folder ID not found.");
         }
@@ -775,6 +767,9 @@ function handleSignoutClick() {
         };
         loaderText.textContent = _('loadingFile') + ' note.txt...';
         const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress, modifiedSince);
+        // Clear the progress text after files are fetched
+        loaderText.textContent = _('loadingFile');
+
         // We need to process the raw data for both the UI and the DB
         const notesToStoreInDB = [];
         allNotesData = noteResults.map(r => {
@@ -1783,6 +1778,16 @@ async function processDirectoryContent(minModificationDate) {
             }
 
             if (proceed) {
+                // First, enable the IndexedDB settings programmatically.
+                // This ensures that subsequent DB operations are allowed.
+                const useIndexedDbForGoogleCheckbox = document.getElementById('use-indexeddb-google-checkbox');
+                const useIndexedDbForLocalCheckbox = document.getElementById('use-indexeddb-local-checkbox');
+                if (useIndexedDbForGoogleCheckbox) useIndexedDbForGoogleCheckbox.checked = true;
+                if (useIndexedDbForLocalCheckbox) useIndexedDbForLocalCheckbox.checked = true;
+                localStorage.setItem('useIndexedDbForGoogle', 'true');
+                localStorage.setItem('useIndexedDbForLocal', 'true');
+
+                // Now, proceed with creation.
                 if (allNotesData.length === 0 && boardsData.length === 0) {
                     showToast(_('dbCreateFailedNoData'), 10000);
                     return;
@@ -1794,16 +1799,6 @@ async function processDirectoryContent(minModificationDate) {
                 await bulkPutDB(MEDIA_STORE_NAME, mediaData);
                 const notesToStore = allNotesData.map(n => n.content);
                 await bulkPutDB(NOTE_STORE_NAME, notesToStore);
-                await saveConfig('lastGoogleDriveSyncTimestamp', Date.now());
-
-                // Automatically check the IndexedDB boxes since the user just created it.
-                const useIndexedDbForGoogleCheckbox = document.getElementById('use-indexeddb-google-checkbox');
-                const useIndexedDbForLocalCheckbox = document.getElementById('use-indexeddb-local-checkbox');
-                if (useIndexedDbForGoogleCheckbox) useIndexedDbForGoogleCheckbox.checked = true;
-                if (useIndexedDbForLocalCheckbox) useIndexedDbForLocalCheckbox.checked = true;
-                localStorage.setItem('useIndexedDbForGoogle', 'true');
-                localStorage.setItem('useIndexedDbForLocal', 'true');
-
                 showToast(_('dbCreated'), 10000);
             }
         }
@@ -1816,12 +1811,55 @@ async function processDirectoryContent(minModificationDate) {
             if (confirmed) {
                 try {
                     await deleteNotesDB();
+
+                    // Uncheck the IndexedDB boxes since the user just deleted the DB.
+                    const useIndexedDbForGoogleCheckbox = document.getElementById('use-indexeddb-google-checkbox');
+                    const useIndexedDbForLocalCheckbox = document.getElementById('use-indexeddb-local-checkbox');
+                    if (useIndexedDbForGoogleCheckbox) useIndexedDbForGoogleCheckbox.checked = false;
+                    if (useIndexedDbForLocalCheckbox) useIndexedDbForLocalCheckbox.checked = false;
+                    localStorage.setItem('useIndexedDbForGoogle', 'false');
+                    localStorage.setItem('useIndexedDbForLocal', 'false');
+
+                    // Also uncheck and disable the update checkboxes
+                    const updateGdriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
+                    if (updateGdriveCheckbox) {
+                        updateGdriveCheckbox.checked = false;
+                        updateGdriveCheckbox.disabled = true;
+                        localStorage.setItem('updateFromGoogleDrive', 'false');
+                    }
+                    const updateLocalCheckbox = document.getElementById('update-indexed-db-checkbox');
+                    if (updateLocalCheckbox) {
+                        updateLocalCheckbox.checked = false;
+                        updateLocalCheckbox.disabled = true;
+                        localStorage.setItem('updateIndexedDb', 'false');
+                    }
+
                     showToast(_('dbDeleted'), 10000);
                 } catch (error) {
                     showToast(_('dbDeleteFailed'), 10000);
                 }
             }
         }
+
+        // --- NEW: Database Management Section ---
+        const dbSectionWrapper = document.createElement('div');
+        dbSectionWrapper.className = 'settings-section'; // A new class for styling if needed
+        dbSectionWrapper.style.marginTop = '20px';
+        dbSectionWrapper.style.borderTop = '1px solid #ccc';
+        dbSectionWrapper.style.paddingTop = '20px';
+
+        const dbSectionTitle = document.createElement('label');
+        dbSectionTitle.textContent = _('dbManagementTitle');
+        dbSectionTitle.style.fontWeight = 'bold';
+        dbSectionTitle.style.display = 'block';
+        dbSectionTitle.style.marginBottom = '10px';
+
+        // Move the existing dbManagementWrapper here
+        dbManagementWrapper.style.paddingLeft = '0'; // Remove previous indent
+        dbManagementWrapper.style.marginTop = '0';
+
+        dbSectionWrapper.appendChild(dbSectionTitle);
+        dbSectionWrapper.appendChild(dbManagementWrapper);
 
         // --- Use Local DB Setting ---
         const useLocalDbWrapper = document.createElement('div');
@@ -2024,7 +2062,18 @@ async function processDirectoryContent(minModificationDate) {
         useIndexedDbForLocalCheckbox.className = 'settings-checkbox';
         useIndexedDbForLocalCheckbox.checked = localStorage.getItem('useIndexedDbForLocal') !== 'false'; // Default to true
         useIndexedDbForLocalCheckbox.addEventListener('change', () => {
-            localStorage.setItem('useIndexedDbForLocal', useIndexedDbForLocalCheckbox.checked);
+            const isChecked = useIndexedDbForLocalCheckbox.checked;
+            localStorage.setItem('useIndexedDbForLocal', isChecked);
+
+            // Manage the state of the "update" checkbox
+            const updateLocalCheckbox = document.getElementById('update-indexed-db-checkbox');
+            if (updateLocalCheckbox) {
+                updateLocalCheckbox.disabled = !isChecked; // Disable if IndexedDB is off
+                if (!isChecked) {
+                    updateLocalCheckbox.checked = false;
+                    localStorage.setItem('updateIndexedDb', 'false');
+                }
+            }
             showToast(_('settingSaved'), 2000);
         });
         useIndexedDbForLocalWrapper.appendChild(useIndexedDbForLocalLabel);
@@ -2050,8 +2099,11 @@ async function processDirectoryContent(minModificationDate) {
         localSubOptionsContainer.style.flexDirection = 'column'; // Ensure vertical stacking
         localSubOptionsContainer.style.paddingLeft = '20px'; // Indent all sub-options
         localSubOptionsContainer.appendChild(localSyncWrapper);
-        localSubOptionsContainer.appendChild(updateIndexedDbWrapper);
-        localSubOptionsContainer.appendChild(dbManagementWrapper);
+        
+        // Create a new container for DB-related options that depend on a folder being selected
+        const localDbOptionsContainer = document.createElement('div');
+        localDbOptionsContainer.id = 'local-db-options-container';
+        localDbOptionsContainer.style.display = 'none'; // Hidden by default
 
         // Add the main checkbox and the sub-options container to the main local folder container
         localFolderContainer.appendChild(useLocalDbWrapper);
@@ -2066,6 +2118,11 @@ async function processDirectoryContent(minModificationDate) {
             updateFromGoogleDriveWrapper.style.display = isGoogleVisible ? 'flex' : 'none';
             const isLocalVisible = useLocalDbCheckbox.checked;
             localSubOptionsContainer.style.display = isLocalVisible ? 'block' : 'none';
+            // The visibility of localDbOptionsContainer is handled separately
+
+            // Set initial disabled state for the local "update" checkbox
+            const updateLocalCheckbox = document.getElementById('update-indexed-db-checkbox');
+            if (updateLocalCheckbox) updateLocalCheckbox.disabled = !useIndexedDbForLocalCheckbox.checked;
 
             // Also set the initial disabled state for the "update only" checkbox
             const updateGdriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
@@ -2074,7 +2131,11 @@ async function processDirectoryContent(minModificationDate) {
 
         // Correctly append the new Google Drive sub-option
         useGoogleDbWrapper.appendChild(useIndexedDbForGoogleWrapper);
-        localSubOptionsContainer.prepend(useIndexedDbForLocalWrapper); // Add to the top of local sub-options
+
+        // Move DB-dependent options into their own container
+        localDbOptionsContainer.appendChild(useIndexedDbForLocalWrapper);
+        localDbOptionsContainer.appendChild(updateIndexedDbWrapper);
+        localSubOptionsContainer.appendChild(localDbOptionsContainer);
 
         // Asynchronously get and display the current folder name
         (async () => {
@@ -2082,13 +2143,20 @@ async function processDirectoryContent(minModificationDate) {
             if (handle) {
                 folderNameDisplay.textContent = handle.name;
                 folderNameDisplay.title = handle.name;
+                // If a folder is already selected, show the DB options
+                document.getElementById('local-db-options-container').style.display = 'block';
             } else {
                 folderNameDisplay.textContent = _('folderNotSelected');
+                // If no folder is selected, ensure DB options are hidden
+                document.getElementById('local-db-options-container').style.display = 'none';
             }
         })();
 
         // Set initial visibility
         toggleUpdateOptionsVisibility();
+
+        // Add the DB management section before the close button
+        zoomModalBody.appendChild(dbSectionWrapper);
 
         // Add the close button at the very end
         const closeBtnWrapper = document.createElement('div');
@@ -2719,13 +2787,17 @@ async function processDirectoryContent(minModificationDate) {
                                         showToast(`Could not open local file: ${filename}`);
                                     }
                                 };
-                                link.target = '_blank';
                             } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Other'], filename);
-                                if (fileId) {
-                                    link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                    link.target = '_blank';
-                                    link.rel = 'noopener noreferrer';
+                                // Only try to get Google Drive file ID if NOT in local DB mode
+                                if (!useLocalDb) {
+                                    const fileId = await getFileID(folderIds['Other'], filename);
+                                    if (fileId) {
+                                        link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                        link.target = '_blank';
+                                        link.rel = 'noopener noreferrer';
+                                    } else {
+                                        link.href = '#'; // Fallback if file ID not found
+                                    }
                                 } else {
                                     link.href = '#'; // Fallback if file ID not found
                                 }
@@ -2789,11 +2861,16 @@ async function processDirectoryContent(minModificationDate) {
                                 };
                                 link.target = '_blank';
                             } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Images'], filename);
-                                if (fileId) {
-                                    link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                    link.target = '_blank';
-                                    link.rel = 'noopener noreferrer';
+                                // Only try to get Google Drive file ID if NOT in local DB mode
+                                if (!useLocalDb) {
+                                    const fileId = await getFileID(folderIds['Images'], filename);
+                                    if (fileId) {
+                                        link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                        link.target = '_blank';
+                                        link.rel = 'noopener noreferrer';
+                                    } else {
+                                        link.href = '#';
+                                    }
                                 } else {
                                     link.href = '#';
                                 }
@@ -2910,11 +2987,16 @@ async function processDirectoryContent(minModificationDate) {
                                 };
                                 link.target = '_blank';
                             } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Sound'], filename);
-                                if (fileId) {
-                                    link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                    link.target = '_blank';
-                                    link.rel = 'noopener noreferrer';
+                                // Only try to get Google Drive file ID if NOT in local DB mode
+                                if (!useLocalDb) {
+                                    const fileId = await getFileID(folderIds['Sound'], filename);
+                                    if (fileId) {
+                                        link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                        link.target = '_blank';
+                                        link.rel = 'noopener noreferrer';
+                                    } else {
+                                        link.href = '#';
+                                    }
                                 } else {
                                     link.href = '#';
                                 }
@@ -2967,11 +3049,16 @@ async function processDirectoryContent(minModificationDate) {
                                 };
                                 link.target = '_blank';
                             } else if (attachment.gdid) {
-                                const fileId = await getFileID(folderIds['Video'], filename);
-                                if (fileId) {
-                                    link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                    link.target = '_blank';
-                                    link.rel = 'noopener noreferrer';
+                                // Only try to get Google Drive file ID if NOT in local DB mode
+                                if (!useLocalDb) {
+                                    const fileId = await getFileID(folderIds['Video'], filename);
+                                    if (fileId) {
+                                        link.href = `https://drive.google.com/file/d/${fileId}/view`;
+                                        link.target = '_blank';
+                                        link.rel = 'noopener noreferrer';
+                                    } else {
+                                        link.href = '#';
+                                    }
                                 } else {
                                     link.href = '#';
                                 }
@@ -3143,6 +3230,16 @@ function openNotesDB() {
  * @returns {Promise<void>}
  */
 async function bulkPutDB(storeName, data, incremental = false) {
+    // Determine which mode we are in to check the correct setting
+    const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
+    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+
+    // Central check: Do not proceed if IndexedDB is disabled for the current mode.
+    if ((useGoogleDb && localStorage.getItem('useIndexedDbForGoogle') !== 'true') ||
+        (useLocalFolder && localStorage.getItem('useIndexedDbForLocal') !== 'false')) {
+        return; // Exit immediately
+    }
+
     if (!data || !Array.isArray(data) || data.length === 0) return;
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
@@ -3185,6 +3282,16 @@ async function getAllFromDB(storeName) {
  * @param {*} value - Стойността за запис.
  */
 async function saveConfig(key, value) {
+    // Determine which mode we are in to check the correct setting
+    const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
+    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+
+    // Central check: Do not proceed if IndexedDB is disabled for the current mode.
+    if ((useGoogleDb && localStorage.getItem('useIndexedDbForGoogle') !== 'true') ||
+        (useLocalFolder && localStorage.getItem('useIndexedDbForLocal') !== 'false')) {
+        return; // Exit immediately
+    }
+
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(CONFIG_STORE_NAME, 'readwrite');
@@ -3201,6 +3308,16 @@ async function saveConfig(key, value) {
  * @returns {Promise<*>} - Стойността или undefined, ако не съществува.
  */
 async function getConfig(key) {
+    // Determine which mode we are in to check the correct setting
+    const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
+    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+
+    // Central check: Do not proceed if IndexedDB is disabled for the current mode.
+    if ((useGoogleDb && localStorage.getItem('useIndexedDbForGoogle') !== 'true') ||
+        (useLocalFolder && localStorage.getItem('useIndexedDbForLocal') !== 'false')) {
+        return undefined; // Exit immediately and return undefined as if no value was found
+    }
+
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(CONFIG_STORE_NAME, 'readonly');
