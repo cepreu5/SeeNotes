@@ -961,18 +961,14 @@ async function runLocalSync() {
         console.log("Skipping local sync because IndexedDB is disabled for this mode.");
         return;
     }
-
     const lastUpdateTimestamp = await getConfig('lastUpdateTimestamp');
     const updateDate = lastUpdateTimestamp ? new Date(lastUpdateTimestamp) : null;
     let updatedCount = 0;
-
     const handle = await getDirectoryHandle();
     if (!handle) {
         return; // getDirectoryHandle will show a toast if needed.
     }
-
     loaderText.textContent = updateDate ? `Updating files since ${updateDate.toLocaleString()}...` : "Performing full initial sync...";
-
     // Perform sync only if the setting is enabled
     if (localStorage.getItem('updateIndexedDb') !== 'false') {
         updatedCount = await processDirectoryContent(lastUpdateTimestamp);
@@ -981,7 +977,6 @@ async function runLocalSync() {
         console.log("Skipping local file scan because IndexedDB update is disabled.");
         loaderText.textContent = _('skippedFileScan');
     }
-
     // Show toast only for incremental updates (not the very first sync)
     if (updateDate) {
         const message = updatedCount > 0
@@ -2045,11 +2040,14 @@ async function processDirectoryContent(minModificationDate) {
         folderActionWrapper.style.marginTop = '5px';
         // folderActionWrapper.appendChild(selectFolderBtn);
         // folderActionWrapper.appendChild(folderNameDisplay);
-        localSyncWrapper.appendChild(localSyncLabel);
+        // localSyncWrapper.appendChild(localSyncLabel);
         localSyncWrapper.appendChild(folderActionWrapper);
 
+        const nextLine = document.createElement('br');
         // Grouping UI elements
         zoomModalBody.appendChild(useGoogleDbWrapper);
+        zoomModalBody.appendChild(localSyncLabel); // +
+        zoomModalBody.appendChild(nextLine); // +
         zoomModalBody.appendChild(selectFolderBtn); // +
         zoomModalBody.appendChild(folderNameDisplay); // +
         useGoogleDbWrapper.appendChild(updateFromGoogleDriveWrapper);
