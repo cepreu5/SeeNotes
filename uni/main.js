@@ -1547,78 +1547,14 @@ async function processDirectoryContent(minModificationDate) {
         contentEl.className = 'board-menu-container';
         const zoomValueDisplay = document.createElement('span');
         zoomValueDisplay.id = 'zoom-value-display';
-
         const zoomModalBody = document.getElementById('settings-modal-body');
-        // НЕ изтриваме съдържанието, за да запазим статичния HTML от viewer.html
-        // zoomModalBody.innerHTML = ''; 
+        // zoomModalBody.innerHTML = ''; // This should remain commented out
 
-        const zoomControlWrapper = document.createElement('div');
-        zoomControlWrapper.className = 'zoom-control-wrapper';
-        const zoomLabel = document.createElement('label');
-        zoomLabel.textContent = _('zoomLabel');
-        zoomLabel.htmlFor = 'scaleSlider';
-        zoomLabel.style.marginRight = '10px';
-        const sliderContainer = document.createElement('div');
-        sliderContainer.className = 'slider-container';
-        sliderContainer.innerHTML = `<input type="range" id="scaleSlider" min="25" max="175" value="100"><input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number"><span>%</span>`;
-        const applyBtn = document.createElement('button');
-        applyBtn.className = 'zoom-btn';
-        applyBtn.textContent = _('submitButton');
-        applyBtn.style.marginLeft = '10px';
-        applyBtn.addEventListener('click', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-            showToast(_('settingSaved'), 2000);
-        });
-        zoomControlWrapper.appendChild(zoomLabel);
-        zoomControlWrapper.appendChild(sliderContainer);
-        zoomControlWrapper.appendChild(applyBtn);
-        zoomModalBody.appendChild(zoomControlWrapper);
-        const startBoardWrapper = document.createElement('div');
-        startBoardWrapper.className = 'zoom-control-wrapper';
-        startBoardWrapper.style.marginTop = '20px';
-        const startBoardLabel = document.createElement('label');
-        startBoardLabel.textContent = _('startBoardLabel');
-        startBoardLabel.style.marginRight = '10px';
-        const startBoardSelect = document.createElement('select');
-        startBoardSelect.id = 'start-board-select';
-        startBoardSelect.className = 'start-board-select';
-    
-        startBoardSelect.innerHTML = `
-            <option value="all">${_('allBoards')}</option>
-            <option value="calendar">${_('calendar')}</option>
-            <option value="reminder">${_('reminder')}</option>
-        `;
-        boardsData.forEach(board => {
-            if (board.gdid && board.title) {
-                const option = new Option(board.title, board.gdid);
-                startBoardSelect.appendChild(option);
-            }
-        });
-    
-        startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
-        startBoardSelect.addEventListener('change', () => {
-            localStorage.setItem('startBoard', startBoardSelect.value);
-            showToast(_('settingSaved'), 2000);
-        });
-        startBoardWrapper.appendChild(startBoardLabel);
-        startBoardWrapper.appendChild(startBoardSelect);
-        zoomModalBody.appendChild(startBoardWrapper);
-        // --- Max Saved Searches Setting ---
-        const maxSearchesWrapper = document.createElement('div');
-        maxSearchesWrapper.className = 'zoom-control-wrapper';
-        maxSearchesWrapper.style.marginTop = '20px';
-        const maxSearchesLabel = document.createElement('label');
-        maxSearchesLabel.textContent = _('maxSearchesLabel');
-        maxSearchesLabel.style.marginRight = '10px';
-        const maxSearchesInput = document.createElement('input');
-        maxSearchesInput.type = 'number';
-        maxSearchesInput.id = 'max-searches-input';
-        maxSearchesInput.className = 'zoom-input-number';
-        maxSearchesInput.value = maxSavedSearches;
-        maxSearchesInput.min = '0';
-        maxSearchesInput.max = '20';
+        // --- Намираме Zoom контролите, които вече са в HTML ---
+        const scaleSlider = document.getElementById('scaleSlider');
+        const scaleInput = document.getElementById('scaleInput');
+        const applyBtn = document.getElementById('applyZoomBtn');
+
         maxSearchesInput.addEventListener('change', () => {
             let newValue = parseInt(maxSearchesInput.value, 10);
             if (isNaN(newValue) || newValue < 0) newValue = 0;
@@ -1632,107 +1568,42 @@ async function processDirectoryContent(minModificationDate) {
             }
             showToast(_('settingSaved'), 2000);
         });
-        maxSearchesWrapper.appendChild(maxSearchesLabel);
-        maxSearchesWrapper.appendChild(maxSearchesInput);
-        zoomModalBody.appendChild(maxSearchesWrapper);
-        const slider = sliderContainer.querySelector('#scaleSlider');
-        const scaleInput = sliderContainer.querySelector('#scaleInput');
+
         const updateZoom = (value) => {
             value = Math.max(25, Math.min(175, parseInt(value, 10)));
             if (isNaN(value)) value = 100;
             notesContainer.style.zoom = value / 100;
             zoomValueDisplay.textContent = ` ${value}%`;
-            slider.value = value;
+            scaleSlider.value = value;
             scaleInput.value = value;
         };
-        let savedZoom = localStorage.getItem('zoomLevel');
-        if (savedZoom) {
-            slider.value = savedZoom;
-            updateZoom(savedZoom);
-        } else {
-            updateZoom(slider.value);
-        }
-        slider.addEventListener('input', () => {
-            const zoomValue = slider.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-        });
-        scaleInput.addEventListener('change', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-        });
-        slider.addEventListener('click', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                let currentValue = parseInt(slider.value, 10);
-                let newValue;
-                if (currentValue % 10 === 0) {
-                    newValue = currentValue + 10;
-                } else {
-                    newValue = Math.round(currentValue / 10) * 10;
-                }
-                const max = parseInt(slider.max, 10);
-                const min = parseInt(slider.min, 10);
-                if (newValue > max) newValue = max;
-                if (newValue < min) newValue = min;
-                slider.value = newValue;
-                updateZoom(newValue);
-                localStorage.setItem('zoomLevel', newValue);
-            }
-        });
-    
-        const createFontSizeInput = (id, labelKey, storageKey, defaultValue, targetUpdate) => {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'zoom-control-wrapper';
-            wrapper.style.marginTop = '15px';
-            const label = document.createElement('label');
-            label.textContent = _(labelKey);
-            label.style.marginRight = '10px';
-            label.style.flexBasis = '200px';
-            label.style.flexShrink = '0';
-            label.style.textAlign = 'left';
-            const select = document.createElement('select');
-            select.id = id;
-            select.className = 'zoom-input-select';
-            select.style.width = '80px';
-            select.style.margin = '0 2px 0 10px';
-            select.style.flexShrink = '0';
-    
+
+        // --- Намираме Font Size и Datemod, които вече са в HTML ---
+        const noteFontSizeInput = document.getElementById('note-font-size-input');
+        const modalFontSizeInput = document.getElementById('modal-font-size-input');
+        const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
+
+        const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
             const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
             fontSizes.forEach(size => {
                 const option = document.createElement('option');
                 option.value = size;
                 option.textContent = `${size}px`;
-                select.appendChild(option);
+                selectElement.appendChild(option);
             });
-            select.value = localStorage.getItem(storageKey) || defaultValue;
-            select.addEventListener('change', () => {
-                const value = select.value;
+            selectElement.value = localStorage.getItem(storageKey) || defaultValue;
+            // Apply initial value
+            targetUpdate(selectElement.value);
+            selectElement.addEventListener('change', () => {
+                const value = selectElement.value;
                 localStorage.setItem(storageKey, value);
                 targetUpdate(value);
                 showToast(_('settingSaved'), 2000);
             });
-    
-            wrapper.appendChild(label);
-            wrapper.appendChild(select);
-            return wrapper;
         };
-    
-        zoomModalBody.appendChild(createFontSizeInput('note-font-size-input', 'noteFontSizeLabel', 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`)));
-        zoomModalBody.appendChild(createFontSizeInput('modal-font-size-input', 'modalFontSizeLabel', 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`));
+        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
+        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`);
 
-        const showDatemodWrapper = document.createElement('div');
-        showDatemodWrapper.className = 'zoom-control-wrapper';
-        showDatemodWrapper.style.marginTop = '20px';
-        const showDatemodLabel = document.createElement('label');
-        showDatemodLabel.textContent = _('showDatemodLabel');
-        showDatemodLabel.style.marginRight = '10px';
-        showDatemodLabel.htmlFor = 'show-datemod-checkbox';
-        const showDatemodCheckbox = document.createElement('input');
-        showDatemodCheckbox.type = 'checkbox';
-        showDatemodCheckbox.id = 'show-datemod-checkbox';
-        showDatemodCheckbox.className = 'settings-checkbox'; // Unified class
         showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
         showDatemodCheckbox.addEventListener('change', () => {
             const isChecked = showDatemodCheckbox.checked;
@@ -1740,231 +1611,85 @@ async function processDirectoryContent(minModificationDate) {
             document.body.classList.toggle('hide-datemod', !isChecked);
             showToast(_('settingSaved'), 2000);
         });
-        showDatemodWrapper.appendChild(showDatemodLabel);
-        showDatemodWrapper.appendChild(showDatemodCheckbox);
-        zoomModalBody.appendChild(showDatemodWrapper);
 
-        // --- IndexedDB Management Buttons ---
-        const dbManagementWrapper = document.createElement('div');
-        dbManagementWrapper.className = 'zoom-control-wrapper';
-        dbManagementWrapper.style.marginTop = '10px';
-        dbManagementWrapper.style.paddingLeft = '20px'; // Indent
+        // --- Намираме "Start Board" и "Max Searches", които вече са в HTML ---
+        const startBoardSelect = document.getElementById('start-board-select');
+        const maxSearchesInput = document.getElementById('max-searches-input');
 
-        const createDbBtn = document.createElement('button');
-        createDbBtn.className = 'zoom-btn';
-        createDbBtn.textContent = _('createDbButton');
-        createDbBtn.addEventListener('click', handleCreateDbClick); // This will be defined below
-
-        const deleteDbBtn = document.createElement('button');
-        deleteDbBtn.className = 'zoom-btn settings-close-btn'; // Red-like color
-        deleteDbBtn.style.marginLeft = '10px';
-        deleteDbBtn.textContent = _('deleteDbButton');
-        deleteDbBtn.addEventListener('click', handleDeleteDbClick); // This will be defined below
-
-        dbManagementWrapper.appendChild(createDbBtn);
-        dbManagementWrapper.appendChild(deleteDbBtn);
-
-        // --- Handler Functions for DB Management ---
-        async function handleCreateDbClick() {
-            document.getElementById('settings-modal').classList.remove('visible');
-            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
-            const dbExists = await checkDbExists(NOTES_DB_NAME);
-            let proceed = false;
-
-            if (dbExists) {
-                proceed = await showConfirmation(_('confirmDbRecreate'));
-            } else {
-                proceed = true;
-            }
-            if (proceed) {
-                if (allNotesData.length === 0 && boardsData.length === 0) {
-                    showToast(_('dbCreateFailedNoData'), 10000);
-                    return;
-                }
-                if (dbExists) {
-                    await deleteNotesDB();
-                }
-                await bulkPutDB(BOARD_STORE_NAME, boardsData);
-                await bulkPutDB(MEDIA_STORE_NAME, mediaData);
-                const notesToStore = allNotesData.map(n => n.content);
-                await bulkPutDB(NOTE_STORE_NAME, notesToStore);
-                await saveConfig('lastGoogleDriveSyncTimestamp', Date.now());
-                // Automatically check the IndexedDB boxes since the user just created it.
-                const useIndexedDbForGoogleCheckbox = document.getElementById('use-indexeddb-google-checkbox');
-                const useIndexedDbForLocalCheckbox = document.getElementById('use-indexeddb-local-checkbox');
-                if (useIndexedDbForGoogleCheckbox) useIndexedDbForGoogleCheckbox.checked = true;
-                if (useIndexedDbForLocalCheckbox) useIndexedDbForLocalCheckbox.checked = true;
-                localStorage.setItem('useIndexedDbForGoogle', 'true');
-                localStorage.setItem('useIndexedDbForLocal', 'true');
-                showToast(_('dbCreated'), 10000);
-            }
-        }
-
-        async function handleDeleteDbClick() {
-            document.getElementById('settings-modal').classList.remove('visible');
-            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
-
-            const confirmed = await showConfirmation(_('confirmDbDelete'));
-            if (confirmed) {
-                try {
-                    await deleteNotesDB();
-                    showToast(_('dbDeleted'), 10000);
-                } catch (error) {
-                    showToast(_('dbDeleteFailed'), 10000);
-                }
-            }
-        }
-
-        // --- NEW: Database Management Section ---
-        const dbSectionWrapper = document.createElement('div');
-        dbSectionWrapper.className = 'settings-section'; // A new class for styling if needed
-        dbSectionWrapper.style.marginTop = '20px';
-        dbSectionWrapper.style.borderTop = '1px solid #ccc';
-        dbSectionWrapper.style.paddingTop = '20px';
-
-        const dbSectionTitle = document.createElement('label');
-        dbSectionTitle.textContent = _('dbManagementTitle'); // Управление на базата данни
-        dbSectionTitle.style.fontWeight = 'bold';
-        dbSectionTitle.style.display = 'block';
-        dbSectionTitle.style.marginBottom = '15px';
-
-        // Move the existing dbManagementWrapper here
-        dbManagementWrapper.style.paddingLeft = '0'; // Remove previous indent
-        dbManagementWrapper.style.marginTop = '0';
-
-        dbSectionWrapper.appendChild(dbSectionTitle);
-        dbSectionWrapper.appendChild(dbManagementWrapper);
-
-        // --- Use IndexedDB Checkbox (moved here) ---
-        const useIndexedDbWrapper = document.createElement('div');
-        useIndexedDbWrapper.className = 'zoom-control-wrapper';
-        useIndexedDbWrapper.style.marginTop = '15px';
-        const useIndexedDbLabel = document.createElement('label');
-        useIndexedDbLabel.textContent = _('useIndexedDb');
-        useIndexedDbLabel.htmlFor = 'use-indexeddb-checkbox';
-        const useIndexedDbCheckbox = document.createElement('input');
-        useIndexedDbCheckbox.type = 'checkbox';
-        useIndexedDbCheckbox.id = 'use-indexeddb-checkbox';
-        useIndexedDbCheckbox.className = 'settings-checkbox';
-        useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-        useIndexedDbWrapper.appendChild(useIndexedDbLabel);
-        useIndexedDbWrapper.appendChild(useIndexedDbCheckbox);
-        dbSectionWrapper.appendChild(useIndexedDbWrapper);
-
-        // --- Update from Source Checkbox (moved here) ---
-        const updateFromSourceWrapper = document.createElement('div');
-        updateFromSourceWrapper.className = 'zoom-control-wrapper';
-        updateFromSourceWrapper.style.paddingLeft = '20px'; // Indent under "Use IndexedDB"
-        const updateFromSourceLabel = document.createElement('label');
-        updateFromSourceLabel.textContent = _('updateFromSource');
-        updateFromSourceLabel.htmlFor = 'update-from-source-checkbox';
-        const updateFromSourceCheckbox = document.createElement('input');
-        updateFromSourceCheckbox.type = 'checkbox';
-        updateFromSourceCheckbox.id = 'update-from-source-checkbox';
-        updateFromSourceCheckbox.className = 'settings-checkbox';
-        updateFromSourceCheckbox.checked = localStorage.getItem('updateFromSource') !== 'false'; // Default to true
-        updateFromSourceWrapper.appendChild(updateFromSourceLabel);
-        updateFromSourceWrapper.appendChild(updateFromSourceCheckbox);
-        dbSectionWrapper.appendChild(updateFromSourceWrapper);
-
-        // --- Local Sync Folder (moved here) ---
-        const localSyncWrapper = document.createElement('div');
-        localSyncWrapper.className = 'zoom-control-wrapper';
-        localSyncWrapper.style.marginTop = '15px';
-        const localSyncLabel = document.createElement('label');
-        localSyncLabel.textContent = _('localSyncFolderLabel');
-        localSyncLabel.style.marginRight = '10px';
-        const selectFolderBtn = document.createElement('button');
-        selectFolderBtn.className = 'zoom-btn';
-        selectFolderBtn.textContent = _('selectFolderButton');
-        const folderNameDisplay = document.createElement('span');
-        folderNameDisplay.id = 'local-sync-folder-name';
-        folderNameDisplay.style.marginLeft = '10px';
-        folderNameDisplay.style.fontStyle = 'italic';
-        folderNameDisplay.style.maxWidth = '200px';
-        folderNameDisplay.style.overflow = 'hidden';
-        folderNameDisplay.style.textOverflow = 'ellipsis';
-        folderNameDisplay.style.whiteSpace = 'nowrap';
-
-        selectFolderBtn.addEventListener('click', async () => {
-            const handle = await getDirectoryHandle(true); // Prompt user to select
-            if (handle) {
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-                await runLocalSync(); // Run initial sync immediately
+        // Попълваме опциите за "Start Board"
+        startBoardSelect.innerHTML = `
+            <option value="all">${_('allBoards')}</option>
+            <option value="calendar">${_('calendar')}</option>
+            <option value="reminder">${_('reminder')}</option>
+        `;
+        boardsData.forEach(board => {
+            if (board.gdid && board.title) {
+                const option = new Option(board.title, board.gdid);
+                startBoardSelect.appendChild(option);
             }
         });
-        localSyncWrapper.appendChild(localSyncLabel);
-        localSyncWrapper.appendChild(selectFolderBtn);
-        localSyncWrapper.appendChild(folderNameDisplay);
-        dbSectionWrapper.appendChild(localSyncWrapper);
-
-        // --- IndexedDB (Local Folder) ---
-        /*const useIndexedDbForLocalWrapper = document.createElement('div');
-        useIndexedDbForLocalWrapper.className = 'zoom-control-wrapper';
-        useIndexedDbForLocalWrapper.style.paddingLeft = '20px'; // Indent
-        const useIndexedDbForLocalLabel = document.createElement('label');
-        useIndexedDbForLocalLabel.textContent = _('useIndexedDb');
-        useIndexedDbForLocalLabel.style.marginRight = '10px';
-        useIndexedDbForLocalLabel.htmlFor = 'use-indexeddb-local-checkbox';
-        const useIndexedDbForLocalCheckbox = document.createElement('input');
-        useIndexedDbForLocalCheckbox.type = 'checkbox';
-        useIndexedDbForLocalCheckbox.id = 'use-indexeddb-local-checkbox';
-        useIndexedDbForLocalCheckbox.className = 'settings-checkbox';
-        useIndexedDbForLocalCheckbox.checked = localStorage.getItem('useIndexedDbForLocal') !== 'false'; // Default to true
-        useIndexedDbForLocalCheckbox.addEventListener('change', () => {
-            const isChecked = useIndexedDbForLocalCheckbox.checked;
-            localStorage.setItem('useIndexedDbForLocal', isChecked);
-            // Manage the state of the "update" checkbox
-            const updateLocalCheckbox = document.getElementById('update-indexed-db-checkbox');
-            if (updateLocalCheckbox) {
-                updateLocalCheckbox.disabled = !isChecked; // Disable if IndexedDB is off
-                if (!isChecked) {
-                    updateLocalCheckbox.checked = false;
-                    localStorage.setItem('updateIndexedDb', 'false');
-                }
-            }
+        startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
+        startBoardSelect.addEventListener('change', () => {
+            localStorage.setItem('startBoard', startBoardSelect.value);
             showToast(_('settingSaved'), 2000);
         });
-        useIndexedDbForLocalWrapper.appendChild(useIndexedDbForLocalLabel);
-        useIndexedDbForLocalWrapper.appendChild(useIndexedDbForLocalCheckbox);
-        */
-        // --- IndexedDB (Google Drive) ---
-        /*const useIndexedDbForGoogleWrapper = document.createElement('div');
-        useIndexedDbForGoogleWrapper.className = 'zoom-control-wrapper';
-        useIndexedDbForGoogleWrapper.style.paddingLeft = '20px'; // Indent
-        const useIndexedDbForGoogleLabel = document.createElement('label');
-        useIndexedDbForGoogleLabel.textContent = _('useIndexedDb');
-        useIndexedDbForGoogleLabel.style.marginRight = '10px';
-        useIndexedDbForGoogleLabel.htmlFor = 'use-indexeddb-google-checkbox';
-        const useIndexedDbForGoogleCheckbox = document.createElement('input');
-        useIndexedDbForGoogleCheckbox.type = 'checkbox';
-        useIndexedDbForGoogleCheckbox.id = 'use-indexeddb-google-checkbox';
-        useIndexedDbForGoogleCheckbox.className = 'settings-checkbox';
-        useIndexedDbForGoogleCheckbox.checked = localStorage.getItem('useIndexedDbForGoogle') === 'true';
-        useIndexedDbForGoogleCheckbox.addEventListener('change', () => {
-            const isChecked = useIndexedDbForGoogleCheckbox.checked;
-            localStorage.setItem('useIndexedDbForGoogle', isChecked);
-            // Find the "update only" checkbox and manage its state
-            const updateGdriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
-            if (updateGdriveCheckbox) {
-                updateGdriveCheckbox.disabled = !isChecked; // Disable if IndexedDB is off
-                if (!isChecked) {
-                    // If we disable IndexedDB, we must also uncheck "update only"
-                    updateGdriveCheckbox.checked = false;
-                    localStorage.setItem('updateFromGoogleDrive', 'false');
-                }
-            }
+
+        // Задаваме стойност и event listener за "Max Searches"
+        maxSearchesInput.value = maxSavedSearches;
+
+        let savedZoom = localStorage.getItem('zoomLevel');
+        if (savedZoom) {
+            scaleSlider.value = savedZoom;
+            updateZoom(savedZoom);
+        } else {
+            updateZoom(scaleSlider.value);
+        }
+
+        applyBtn.addEventListener('click', () => {
+            const zoomValue = scaleInput.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
             showToast(_('settingSaved'), 2000);
         });
-        useIndexedDbForGoogleWrapper.appendChild(useIndexedDbForGoogleLabel);
-        useIndexedDbForGoogleWrapper.appendChild(useIndexedDbForGoogleCheckbox);
-        */
+
+        scaleSlider.addEventListener('input', () => {
+            const zoomValue = scaleSlider.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+        });
+
+        scaleInput.addEventListener('change', () => {
+            const zoomValue = scaleInput.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+        });
+        scaleSlider.addEventListener('click', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                let currentValue = parseInt(scaleSlider.value, 10);
+                let newValue;
+                if (currentValue % 10 === 0) {
+                    newValue = currentValue + 10;
+                } else {
+                    newValue = Math.round(currentValue / 10) * 10;
+                }
+                const max = parseInt(scaleSlider.max, 10);
+                const min = parseInt(scaleSlider.min, 10);
+                if (newValue > max) newValue = max;
+                if (newValue < min) newValue = min;
+                scaleSlider.value = newValue;
+                updateZoom(newValue);
+                localStorage.setItem('zoomLevel', newValue);
+            }
+        });
+
         // --- Local folder ---
         const useLocalDbWrapper = document.getElementById('local-db-wrapper');
         const useLocalDbLabel = document.getElementById('use-local-db-label');
         const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
+        const useGoogleDbWrapper = document.getElementById('google-db-wrapper');
+        const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
+        const useGoogleDbLabel = document.getElementById('use-google-db-label');
 
         // Задаваме началното състояние и превода
         useLocalDbLabel.textContent = _('useLocalDbLabel');
@@ -2003,13 +1728,58 @@ function toggleLocalFolderSectionVisibility(isVisible) {
 }
         // --- Google Drive ---
         // Намираме елементите, които вече съществуват във viewer.html
-        const useGoogleDbWrapper = document.getElementById('google-db-wrapper');
+        /*const useGoogleDbWrapper = document.getElementById('google-db-wrapper');
         const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
-        const useGoogleDbLabel = document.getElementById('use-google-db-label');
+        const useGoogleDbLabel = document.getElementById('use-google-db-label');*/
 
         // Задаваме началното състояние и превода
         useGoogleDbLabel.textContent = _('useGoogleDbLabel');
         useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false'; // По подразбиране е true
+
+        // --- DB Section Elements (moved up) ---
+        const dbSectionWrapper = document.getElementById('db-section-wrapper');
+        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+        const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
+        const updateFromSourceCheckbox = document.getElementById('update-from-source-checkbox');
+
+        // --- Toggle Visibility Function (moved up) ---
+        /*const toggleUpdateOptionsVisibility = () => {
+            const isDbEnabled = useIndexedDbCheckbox.checked;
+            // DB Management section is visible only if IndexedDB is enabled
+            dbSectionWrapper.style.display = isDbEnabled ? 'block' : 'none';
+            // "Update from source" is visible only if IndexedDB is enabled
+            updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
+        };*/
+
+        // Define toggle function with correct grouping
+        const toggleUpdateOptionsVisibility = () => {
+            const isLocalMode = document.getElementById('use-local-db-checkbox').checked;
+            const isDbEnabled = useIndexedDbCheckbox.checked;
+            // DB Management section is visible only if IndexedDB is enabled
+            dbSectionWrapper.style.display = isDbEnabled ? 'block' : 'none';
+            // "Update from source" is visible only if IndexedDB is enabled
+            updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
+            // "Local sync folder" is visible only if in local mode AND IndexedDB is enabled
+            // localSyncWrapper.style.display = (isLocalMode && isDbEnabled) ? 'flex' : 'none';
+        };
+
+        // Set initial states
+        useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+        updateFromSourceCheckbox.checked = localStorage.getItem('updateFromSource') !== 'false';
+
+        // Add event listeners
+        useIndexedDbCheckbox.addEventListener('change', () => {
+            localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
+            toggleUpdateOptionsVisibility(); // Now safe to call
+            showToast(_('settingSaved'), 2000);
+        });
+
+        updateFromSourceCheckbox.addEventListener('change', () => {
+            localStorage.setItem('updateFromSource', updateFromSourceCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+        // --- End of DB Section ---
+
 
         // Добавяме event listener
         useGoogleDbCheckbox.addEventListener('change', () => {
@@ -2021,21 +1791,12 @@ function toggleLocalFolderSectionVisibility(isVisible) {
             toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 2000);
         });
-        
+
         // Logic to show/hide "Update" checkbox
         const toggleUpdateCheckboxVisibility = () => {
             const isDbEnabled = useIndexedDbCheckbox.checked;
             updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
-        };
-
-        const nextLine = document.createElement('br');
-
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'zoom-btn settings-close-btn';
-        closeBtn.textContent = _('closeButton');
-        closeBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-        });
+        };        
 
         // --- Create a dedicated container for all local folder options ---
         const modesSectionWrapper = document.createElement('div');
@@ -2053,44 +1814,13 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         modesSectionWrapper.appendChild(useGoogleDbWrapper); // Добавяме wrapper-a към динамичната структура
         modesSectionWrapper.appendChild(useLocalDbWrapper);
 
-        // Define toggle function with correct grouping
-        const toggleUpdateOptionsVisibility = () => {
-            const isLocalMode = document.getElementById('use-local-db-checkbox').checked;
-            const isDbEnabled = useIndexedDbCheckbox.checked;
-            // DB Management section is visible only if IndexedDB is enabled
-            dbSectionWrapper.style.display = isDbEnabled ? 'block' : 'none';
-            // "Update from source" is visible only if IndexedDB is enabled
-            updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
-            // "Local sync folder" is visible only if in local mode AND IndexedDB is enabled
-            localSyncWrapper.style.display = (isLocalMode && isDbEnabled) ? 'flex' : 'none';
-        };
-
-        updateFromSourceCheckbox.addEventListener('change', () => localStorage.setItem('updateFromSource', updateFromSourceCheckbox.checked));
-
-
-        // Asynchronously get and display the current folder name
-        (async () => {
-            const handle = await getDirectoryHandle(); // This won't prompt the user
-            if (handle) {
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-            } else {
-                folderNameDisplay.textContent = _('folderNotSelected');
-            }
-        })();
-
         zoomModalBody.appendChild(modesSectionWrapper);
         zoomModalBody.appendChild(dbSectionWrapper);
 
-        // Set initial visibility
-        toggleUpdateOptionsVisibility();
+        // --- Намираме бутона за затваряне и добавяме event listener ---
+        const settingsCloseBtn = document.getElementById('settings-close-btn');
+        settingsCloseBtn.addEventListener('click', () => document.getElementById('settings-modal').classList.remove('visible'));
 
-        // Add the close button at the very end
-        const closeBtnWrapper = document.createElement('div');
-        closeBtnWrapper.className = 'settings-close-btn-wrapper';
-        closeBtnWrapper.appendChild(closeBtn);
-        zoomModalBody.appendChild(closeBtnWrapper);
-        
         // Add helper functions for DB management that were missing
         /**
          * Checks if an IndexedDB database exists.
