@@ -1547,8 +1547,11 @@ async function processDirectoryContent(minModificationDate) {
         contentEl.className = 'board-menu-container';
         const zoomValueDisplay = document.createElement('span');
         zoomValueDisplay.id = 'zoom-value-display';
+
         const zoomModalBody = document.getElementById('settings-modal-body');
-        zoomModalBody.innerHTML = ''; 
+        // НЕ изтриваме съдържанието, за да запазим статичния HTML от viewer.html
+        // zoomModalBody.innerHTML = ''; 
+
         const zoomControlWrapper = document.createElement('div');
         zoomControlWrapper.className = 'zoom-control-wrapper';
         const zoomLabel = document.createElement('label');
@@ -1959,64 +1962,65 @@ async function processDirectoryContent(minModificationDate) {
         useIndexedDbForGoogleWrapper.appendChild(useIndexedDbForGoogleCheckbox);
         */
         // --- Local folder ---
-        const useLocalDbWrapper = document.createElement('div');
-        useLocalDbWrapper.className = 'zoom-control-wrapper';
-        useLocalDbWrapper.style.marginTop = '20px';
-        const useLocalDbLabel = document.createElement('label');
+        const useLocalDbWrapper = document.getElementById('local-db-wrapper');
+        const useLocalDbLabel = document.getElementById('use-local-db-label');
+        const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
+
+        // Задаваме началното състояние и превода
         useLocalDbLabel.textContent = _('useLocalDbLabel');
-        useLocalDbLabel.style.marginRight = '10px';
-        useLocalDbLabel.htmlFor = 'use-local-db-checkbox';
-        const useLocalDbCheckbox = document.createElement('input');
-        useLocalDbCheckbox.type = 'checkbox';
-        useLocalDbCheckbox.id = 'use-local-db-checkbox';
-        useLocalDbCheckbox.style.flexShrink = '0'; // Prevent checkbox from shrinking
-        useLocalDbCheckbox.className = 'settings-checkbox';
         useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
+
+        // Добавяме event listener
         useLocalDbCheckbox.addEventListener('change', () => {
+            const isChecked = useLocalDbCheckbox.checked;
             const googleDbCheckbox = document.getElementById('use-google-db-checkbox');
-            if (useLocalDbCheckbox.checked) {
-                document.getElementById('use-google-db-checkbox').checked = false;
+            const dbSectionWrapper = document.querySelector('.settings-section'); // Секцията за управление на базата данни
+
+            if (isChecked) {
                 googleDbCheckbox.checked = false;
                 localStorage.setItem('useGoogleDb', 'false');
                 localStorage.setItem('useLocalDb', 'true');
-                // localStorage.setItem('dataSourceMode', 'local');
+                if (dbSectionWrapper) dbSectionWrapper.style.display = 'block'; // Показва секцията
             } else {
-                // Prevent unchecking if the other is also unchecked, effectively making one required.
-                useLocalDbCheckbox.checked = true;
+                // Предотвратява изключването, ако и другата отметка е изключена
+                if (!googleDbCheckbox.checked) {
+                    useLocalDbCheckbox.checked = true;
+                    return;
+                }
+                localStorage.setItem('useLocalDb', 'false');
+                if (dbSectionWrapper) dbSectionWrapper.style.display = 'none'; // Скрива секцията
             }
-            // Unchecking is handled by the other checkbox's listener
-            toggleUpdateOptionsVisibility();
+
             showToast(_('settingSaved'), 10000);
         });
-        useLocalDbWrapper.appendChild(useLocalDbLabel);
-        useLocalDbWrapper.appendChild(useLocalDbCheckbox);
 
+// Нова функция за управление на видимостта на секцията под "Локална папка"
+function toggleLocalFolderSectionVisibility(isVisible) {
+    const localFolderSection = document.querySelector('#local-folder-section'); // Уверете се, че секцията има този ID
+    if (localFolderSection) {
+        localFolderSection.style.display = isVisible ? 'block' : 'none';
+    }
+}
         // --- Google Drive ---
-        const useGoogleDbWrapper = document.createElement('div');
-        useGoogleDbWrapper.className = 'zoom-control-wrapper';
-        useGoogleDbWrapper.style.marginTop = '20px';
-        const useGoogleDbLabel = document.createElement('label');
+        // Намираме елементите, които вече съществуват във viewer.html
+        const useGoogleDbWrapper = document.getElementById('google-db-wrapper');
+        const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
+        const useGoogleDbLabel = document.getElementById('use-google-db-label');
+
+        // Задаваме началното състояние и превода
         useGoogleDbLabel.textContent = _('useGoogleDbLabel');
-        useGoogleDbLabel.style.marginRight = '10px';
-        useGoogleDbLabel.htmlFor = 'use-google-db-checkbox';
-        const useGoogleDbCheckbox = document.createElement('input');
-        useGoogleDbCheckbox.type = 'checkbox';
-        useGoogleDbCheckbox.id = 'use-google-db-checkbox';
-        useGoogleDbCheckbox.className = 'settings-checkbox'; // Unified class
-        useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') === 'true'; // Default to Google
-        // useGoogleDbCheckbox.checked = localStorage.getItem('dataSourceMode') !== 'local'; // Default to Google
+        useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false'; // По подразбиране е true
+
+        // Добавяме event listener
         useGoogleDbCheckbox.addEventListener('change', () => {
             if (useGoogleDbCheckbox.checked) {
                 document.getElementById('use-local-db-checkbox').checked = false;
                 localStorage.setItem('useLocalDb', 'false');
                 localStorage.setItem('useGoogleDb', 'true');
-                // localStorage.setItem('dataSourceMode', ' google');
             }
             toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 2000);
         });
-        useGoogleDbWrapper.appendChild(useGoogleDbLabel);
-        useGoogleDbWrapper.appendChild(useGoogleDbCheckbox);
         
         // Logic to show/hide "Update" checkbox
         const toggleUpdateCheckboxVisibility = () => {
@@ -2046,7 +2050,7 @@ async function processDirectoryContent(minModificationDate) {
         modesSectionTitle.style.marginBottom = '10px';
 
         modesSectionWrapper.appendChild(modesSectionTitle);
-        modesSectionWrapper.appendChild(useGoogleDbWrapper);
+        modesSectionWrapper.appendChild(useGoogleDbWrapper); // Добавяме wrapper-a към динамичната структура
         modesSectionWrapper.appendChild(useLocalDbWrapper);
 
         // Define toggle function with correct grouping
@@ -2061,11 +2065,6 @@ async function processDirectoryContent(minModificationDate) {
             localSyncWrapper.style.display = (isLocalMode && isDbEnabled) ? 'flex' : 'none';
         };
 
-        useIndexedDbCheckbox.addEventListener('change', () => {
-            localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
-            toggleUpdateOptionsVisibility();
-            showToast(_('settingSaved'), 2000);
-        });
         updateFromSourceCheckbox.addEventListener('change', () => localStorage.setItem('updateFromSource', updateFromSourceCheckbox.checked));
 
 
