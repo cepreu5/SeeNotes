@@ -159,12 +159,16 @@
                         <label for="update-from-source-checkbox" data-key="updateFromSource">Обновяване от източника</label>
                         <input type="checkbox" id="update-from-source-checkbox" class="settings-checkbox">
                     </div>
-                </div>
 
-                <div class="settings-close-btn-wrapper">
-                    <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
+                    <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 15px;">
+                        <label for="select-folder-btn" data-key="localSyncFolderLabel">Папка за локална синхронизация:</label>
+                        <button id="select-folder-btn" class="zoom-btn">Избери папка</button>
+                        <span id="local-sync-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                    </div>
                 </div>
-
+            </div>
+            <div class="settings-close-btn-wrapper">
+                <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
             </div>
         </div>
     </div>

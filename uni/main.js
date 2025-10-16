@@ -1555,20 +1555,6 @@ async function processDirectoryContent(minModificationDate) {
         const scaleInput = document.getElementById('scaleInput');
         const applyBtn = document.getElementById('applyZoomBtn');
 
-        maxSearchesInput.addEventListener('change', () => {
-            let newValue = parseInt(maxSearchesInput.value, 10);
-            if (isNaN(newValue) || newValue < 0) newValue = 0;
-            if (newValue > 20) newValue = 20;
-            maxSavedSearches = newValue;
-            localStorage.setItem('maxSavedSearches', newValue);
-            // Trim existing searches if new limit is smaller
-            if (savedSearches.length > maxSavedSearches) {
-                savedSearches.length = maxSavedSearches;
-                localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-            }
-            showToast(_('settingSaved'), 2000);
-        });
-
         const updateZoom = (value) => {
             value = Math.max(25, Math.min(175, parseInt(value, 10)));
             if (isNaN(value)) value = 100;
@@ -1615,6 +1601,20 @@ async function processDirectoryContent(minModificationDate) {
         // --- Намираме "Start Board" и "Max Searches", които вече са в HTML ---
         const startBoardSelect = document.getElementById('start-board-select');
         const maxSearchesInput = document.getElementById('max-searches-input');
+
+        maxSearchesInput.addEventListener('change', () => {
+            let newValue = parseInt(maxSearchesInput.value, 10);
+            if (isNaN(newValue) || newValue < 0) newValue = 0;
+            if (newValue > 20) newValue = 20;
+            maxSavedSearches = newValue;
+            localStorage.setItem('maxSavedSearches', newValue);
+            // Trim existing searches if new limit is smaller
+            if (savedSearches.length > maxSavedSearches) {
+                savedSearches.length = maxSavedSearches;
+                localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+            }
+            showToast(_('settingSaved'), 2000);
+        });
 
         // Попълваме опциите за "Start Board"
         startBoardSelect.innerHTML = `
@@ -1798,35 +1798,35 @@ function toggleLocalFolderSectionVisibility(isVisible) {
             updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
         };        
 
-        // --- Create a dedicated container for all local folder options ---
-        const modesSectionWrapper = document.createElement('div');
-        modesSectionWrapper.className = 'settings-section';
-        modesSectionWrapper.style.marginTop = '20px';
-        modesSectionWrapper.style.borderTop = '1px solid #ccc';
-        modesSectionWrapper.style.paddingTop = '20px';
-
-        const modesSectionTitle = document.createElement('label');
-        modesSectionTitle.style.fontWeight = 'bold';
-        modesSectionTitle.style.display = 'block';
-        modesSectionTitle.style.marginBottom = '10px';
-
-        modesSectionWrapper.appendChild(modesSectionTitle);
-        modesSectionWrapper.appendChild(useGoogleDbWrapper); // Добавяме wrapper-a към динамичната структура
-        modesSectionWrapper.appendChild(useLocalDbWrapper);
-
-        zoomModalBody.appendChild(modesSectionWrapper);
-        zoomModalBody.appendChild(dbSectionWrapper);
-
         // --- Намираме бутона за затваряне и добавяме event listener ---
         const settingsCloseBtn = document.getElementById('settings-close-btn');
         settingsCloseBtn.addEventListener('click', () => document.getElementById('settings-modal').classList.remove('visible'));
 
         // Add helper functions for DB management that were missing
-        /**
-         * Checks if an IndexedDB database exists.
-         * @param {string} dbName The name of the database.
-         * @returns {Promise<boolean>}
-         */
+        // --- Local Sync Folder ---
+        const selectFolderBtn = document.getElementById('select-folder-btn');
+        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+
+        selectFolderBtn.addEventListener('click', async () => {
+            const handle = await getDirectoryHandle(true); // Prompt user to select
+            if (handle) {
+                folderNameDisplay.textContent = handle.name;
+                folderNameDisplay.title = handle.name;
+                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
+                await runLocalSync(); // Run initial sync immediately
+            }
+        });
+
+        (async () => {
+            const handle = await getDirectoryHandle(); // This won't prompt the user
+            if (handle) {
+                folderNameDisplay.textContent = handle.name;
+                folderNameDisplay.title = handle.name;
+            } else {
+                folderNameDisplay.textContent = _('folderNotSelected');
+            }
+        })();
+
         /*async function checkDbExists(dbName) {
             // The modern `databases()` method is the most reliable.
             if (window.indexedDB.databases) {
