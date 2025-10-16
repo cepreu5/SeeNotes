@@ -1820,10 +1820,10 @@ async function processDirectoryContent(minModificationDate) {
         dbSectionWrapper.style.paddingTop = '20px';
 
         const dbSectionTitle = document.createElement('label');
-        dbSectionTitle.textContent = _('dbManagementTitle');
+        dbSectionTitle.textContent = _('dbManagementTitle'); // Управление на базата данни
         dbSectionTitle.style.fontWeight = 'bold';
         dbSectionTitle.style.display = 'block';
-        dbSectionTitle.style.marginBottom = '10px';
+        dbSectionTitle.style.marginBottom = '15px';
 
         // Move the existing dbManagementWrapper here
         dbManagementWrapper.style.paddingLeft = '0'; // Remove previous indent
@@ -1832,12 +1832,77 @@ async function processDirectoryContent(minModificationDate) {
         dbSectionWrapper.appendChild(dbSectionTitle);
         dbSectionWrapper.appendChild(dbManagementWrapper);
 
+        // --- Use IndexedDB Checkbox (moved here) ---
+        const useIndexedDbWrapper = document.createElement('div');
+        useIndexedDbWrapper.className = 'zoom-control-wrapper';
+        useIndexedDbWrapper.style.marginTop = '15px';
+        const useIndexedDbLabel = document.createElement('label');
+        useIndexedDbLabel.textContent = _('useIndexedDb');
+        useIndexedDbLabel.htmlFor = 'use-indexeddb-checkbox';
+        const useIndexedDbCheckbox = document.createElement('input');
+        useIndexedDbCheckbox.type = 'checkbox';
+        useIndexedDbCheckbox.id = 'use-indexeddb-checkbox';
+        useIndexedDbCheckbox.className = 'settings-checkbox';
+        useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+        useIndexedDbWrapper.appendChild(useIndexedDbLabel);
+        useIndexedDbWrapper.appendChild(useIndexedDbCheckbox);
+        dbSectionWrapper.appendChild(useIndexedDbWrapper);
+
+        // --- Update from Source Checkbox (moved here) ---
+        const updateFromSourceWrapper = document.createElement('div');
+        updateFromSourceWrapper.className = 'zoom-control-wrapper';
+        updateFromSourceWrapper.style.paddingLeft = '20px'; // Indent under "Use IndexedDB"
+        const updateFromSourceLabel = document.createElement('label');
+        updateFromSourceLabel.textContent = _('updateFromSource');
+        updateFromSourceLabel.htmlFor = 'update-from-source-checkbox';
+        const updateFromSourceCheckbox = document.createElement('input');
+        updateFromSourceCheckbox.type = 'checkbox';
+        updateFromSourceCheckbox.id = 'update-from-source-checkbox';
+        updateFromSourceCheckbox.className = 'settings-checkbox';
+        updateFromSourceCheckbox.checked = localStorage.getItem('updateFromSource') !== 'false'; // Default to true
+        updateFromSourceWrapper.appendChild(updateFromSourceLabel);
+        updateFromSourceWrapper.appendChild(updateFromSourceCheckbox);
+        dbSectionWrapper.appendChild(updateFromSourceWrapper);
+
+        // --- Local Sync Folder (moved here) ---
+        const localSyncWrapper = document.createElement('div');
+        localSyncWrapper.className = 'zoom-control-wrapper';
+        localSyncWrapper.style.marginTop = '15px';
+        const localSyncLabel = document.createElement('label');
+        localSyncLabel.textContent = _('localSyncFolderLabel');
+        localSyncLabel.style.marginRight = '10px';
+        const selectFolderBtn = document.createElement('button');
+        selectFolderBtn.className = 'zoom-btn';
+        selectFolderBtn.textContent = _('selectFolderButton');
+        const folderNameDisplay = document.createElement('span');
+        folderNameDisplay.id = 'local-sync-folder-name';
+        folderNameDisplay.style.marginLeft = '10px';
+        folderNameDisplay.style.fontStyle = 'italic';
+        folderNameDisplay.style.maxWidth = '200px';
+        folderNameDisplay.style.overflow = 'hidden';
+        folderNameDisplay.style.textOverflow = 'ellipsis';
+        folderNameDisplay.style.whiteSpace = 'nowrap';
+
+        selectFolderBtn.addEventListener('click', async () => {
+            const handle = await getDirectoryHandle(true); // Prompt user to select
+            if (handle) {
+                folderNameDisplay.textContent = handle.name;
+                folderNameDisplay.title = handle.name;
+                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
+                await runLocalSync(); // Run initial sync immediately
+            }
+        });
+        localSyncWrapper.appendChild(localSyncLabel);
+        localSyncWrapper.appendChild(selectFolderBtn);
+        localSyncWrapper.appendChild(folderNameDisplay);
+        dbSectionWrapper.appendChild(localSyncWrapper);
+
         // --- IndexedDB (Local Folder) ---
-        const useIndexedDbForLocalWrapper = document.createElement('div');
+        /*const useIndexedDbForLocalWrapper = document.createElement('div');
         useIndexedDbForLocalWrapper.className = 'zoom-control-wrapper';
         useIndexedDbForLocalWrapper.style.paddingLeft = '20px'; // Indent
         const useIndexedDbForLocalLabel = document.createElement('label');
-        useIndexedDbForLocalLabel.textContent = 'IndexedDB';
+        useIndexedDbForLocalLabel.textContent = _('useIndexedDb');
         useIndexedDbForLocalLabel.style.marginRight = '10px';
         useIndexedDbForLocalLabel.htmlFor = 'use-indexeddb-local-checkbox';
         const useIndexedDbForLocalCheckbox = document.createElement('input');
@@ -1861,13 +1926,13 @@ async function processDirectoryContent(minModificationDate) {
         });
         useIndexedDbForLocalWrapper.appendChild(useIndexedDbForLocalLabel);
         useIndexedDbForLocalWrapper.appendChild(useIndexedDbForLocalCheckbox);
-
+        */
         // --- IndexedDB (Google Drive) ---
-        const useIndexedDbForGoogleWrapper = document.createElement('div');
+        /*const useIndexedDbForGoogleWrapper = document.createElement('div');
         useIndexedDbForGoogleWrapper.className = 'zoom-control-wrapper';
         useIndexedDbForGoogleWrapper.style.paddingLeft = '20px'; // Indent
         const useIndexedDbForGoogleLabel = document.createElement('label');
-        useIndexedDbForGoogleLabel.textContent = 'IndexedDB';
+        useIndexedDbForGoogleLabel.textContent = _('useIndexedDb');
         useIndexedDbForGoogleLabel.style.marginRight = '10px';
         useIndexedDbForGoogleLabel.htmlFor = 'use-indexeddb-google-checkbox';
         const useIndexedDbForGoogleCheckbox = document.createElement('input');
@@ -1892,13 +1957,12 @@ async function processDirectoryContent(minModificationDate) {
         });
         useIndexedDbForGoogleWrapper.appendChild(useIndexedDbForGoogleLabel);
         useIndexedDbForGoogleWrapper.appendChild(useIndexedDbForGoogleCheckbox);
-
+        */
         // --- Local folder ---
         const useLocalDbWrapper = document.createElement('div');
         useLocalDbWrapper.className = 'zoom-control-wrapper';
         useLocalDbWrapper.style.marginTop = '20px';
         const useLocalDbLabel = document.createElement('label');
-        useLocalDbLabel.style.fontWeight = 'bold';
         useLocalDbLabel.textContent = _('useLocalDbLabel');
         useLocalDbLabel.style.marginRight = '10px';
         useLocalDbLabel.htmlFor = 'use-local-db-checkbox';
@@ -1906,21 +1970,21 @@ async function processDirectoryContent(minModificationDate) {
         useLocalDbCheckbox.type = 'checkbox';
         useLocalDbCheckbox.id = 'use-local-db-checkbox';
         useLocalDbCheckbox.style.flexShrink = '0'; // Prevent checkbox from shrinking
-        useLocalDbCheckbox.className = 'settings-checkbox'; // Unified class
+        useLocalDbCheckbox.className = 'settings-checkbox';
         useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
         useLocalDbCheckbox.addEventListener('change', () => {
-            const isChecked = useLocalDbCheckbox.checked;
             const googleDbCheckbox = document.getElementById('use-google-db-checkbox');
-            if (isChecked) {
-                // Ако се избере "Локална папка", деактивираме "Google Drive".
-                if (googleDbCheckbox) googleDbCheckbox.checked = false;
+            if (useLocalDbCheckbox.checked) {
+                document.getElementById('use-google-db-checkbox').checked = false;
+                googleDbCheckbox.checked = false;
                 localStorage.setItem('useGoogleDb', 'false');
+                localStorage.setItem('useLocalDb', 'true');
+                // localStorage.setItem('dataSourceMode', 'local');
             } else {
-                // Ако се деактивира "Локална папка", автоматично активираме "Google Drive".
-                if (googleDbCheckbox) googleDbCheckbox.checked = true;
-                localStorage.setItem('useGoogleDb', 'true');
+                // Prevent unchecking if the other is also unchecked, effectively making one required.
+                useLocalDbCheckbox.checked = true;
             }
-            localStorage.setItem('useLocalDb', isChecked);
+            // Unchecking is handled by the other checkbox's listener
             toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 10000);
         });
@@ -1934,123 +1998,33 @@ async function processDirectoryContent(minModificationDate) {
         const useGoogleDbLabel = document.createElement('label');
         useGoogleDbLabel.textContent = _('useGoogleDbLabel');
         useGoogleDbLabel.style.marginRight = '10px';
-        useGoogleDbLabel.style.fontWeight = 'bold';
         useGoogleDbLabel.htmlFor = 'use-google-db-checkbox';
         const useGoogleDbCheckbox = document.createElement('input');
         useGoogleDbCheckbox.type = 'checkbox';
         useGoogleDbCheckbox.id = 'use-google-db-checkbox';
         useGoogleDbCheckbox.className = 'settings-checkbox'; // Unified class
-        useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') === 'true';
+        useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') === 'true'; // Default to Google
+        // useGoogleDbCheckbox.checked = localStorage.getItem('dataSourceMode') !== 'local'; // Default to Google
         useGoogleDbCheckbox.addEventListener('change', () => {
-            const isChecked = useGoogleDbCheckbox.checked;
-            const localDbCheckbox = document.getElementById('use-local-db-checkbox');
-            if (isChecked) {
-                // Ако се избере "Google Drive", деактивираме "Локална папка".
-                if (localDbCheckbox) localDbCheckbox.checked = false;
+            if (useGoogleDbCheckbox.checked) {
+                document.getElementById('use-local-db-checkbox').checked = false;
                 localStorage.setItem('useLocalDb', 'false');
-            } else {
-                // Ако се деактивира "Google Drive", автоматично активираме "Локална папка".
-                if (localDbCheckbox) localDbCheckbox.checked = true;
-                localStorage.setItem('useLocalDb', 'true');
+                localStorage.setItem('useGoogleDb', 'true');
+                // localStorage.setItem('dataSourceMode', ' google');
             }
-            localStorage.setItem('useGoogleDb', isChecked);
             toggleUpdateOptionsVisibility();
             showToast(_('settingSaved'), 2000);
         });
         useGoogleDbWrapper.appendChild(useGoogleDbLabel);
         useGoogleDbWrapper.appendChild(useGoogleDbCheckbox);
         
-        // --- Update from Google Drive Setting ---
-        const updateFromGoogleDriveWrapper = document.createElement('div');
-        updateFromGoogleDriveWrapper.className = 'zoom-control-wrapper';
-        updateFromGoogleDriveWrapper.style.paddingLeft = '20px'; // Indent
-        const updateFromGoogleDriveLabel = document.createElement('label');
-        updateFromGoogleDriveLabel.style.marginRight = '10px';
-        updateFromGoogleDriveLabel.style.fontWeight = 'normal';
-        updateFromGoogleDriveLabel.textContent = _('updateFromGoogleDriveLabel');
-        updateFromGoogleDriveLabel.htmlFor = 'update-from-gdrive-checkbox';
-        const updateFromGoogleDriveCheckbox = document.createElement('input');
-        updateFromGoogleDriveCheckbox.type = 'checkbox';
-        updateFromGoogleDriveCheckbox.id = 'update-from-gdrive-checkbox';
-        updateFromGoogleDriveCheckbox.className = 'settings-checkbox'; // Unified class
-        updateFromGoogleDriveCheckbox.checked = localStorage.getItem('useGoogleDb') === 'true'; // Default to checked if parent is checked
-        updateFromGoogleDriveCheckbox.checked = localStorage.getItem('updateFromGoogleDrive') !== 'false'; // Default to true
-        updateFromGoogleDriveCheckbox.addEventListener('change', () => {
-            localStorage.setItem('updateFromGoogleDrive', updateFromGoogleDriveCheckbox.checked);
-            showToast(_('settingSaved'), 10000);
-        });
-        updateFromGoogleDriveWrapper.appendChild(updateFromGoogleDriveLabel);
-        updateFromGoogleDriveWrapper.appendChild(updateFromGoogleDriveCheckbox);
-
-        // --- Update IndexedDB from local disk Setting ---
-        const updateIndexedDbWrapper = document.createElement('div');
-        updateIndexedDbWrapper.className = 'zoom-control-wrapper';
-        updateIndexedDbWrapper.style.paddingLeft = '20px'; // Indent
-        const updateIndexedDbLabel = document.createElement('label');
-        updateIndexedDbLabel.style.fontWeight = 'normal';
-        updateIndexedDbLabel.style.marginRight = '10px';
-        updateIndexedDbLabel.textContent = _('updateIndexedDbLabel');
-        updateIndexedDbLabel.htmlFor = 'update-indexed-db-checkbox';
-        const updateIndexedDbCheckbox = document.createElement('input');
-        updateIndexedDbCheckbox.type = 'checkbox';
-        updateIndexedDbCheckbox.id = 'update-indexed-db-checkbox';
-        updateIndexedDbCheckbox.className = 'settings-checkbox'; // Unified class
-        updateIndexedDbCheckbox.checked = localStorage.getItem('updateIndexedDb') !== 'false'; // Default to true
-        updateIndexedDbCheckbox.addEventListener('change', () => {
-            localStorage.setItem('updateIndexedDb', updateIndexedDbCheckbox.checked);
-            showToast(_('settingSaved'), 2000);
-        });
-        updateIndexedDbWrapper.appendChild(updateIndexedDbLabel);
-        updateIndexedDbWrapper.appendChild(updateIndexedDbCheckbox);
-        zoomModalBody.appendChild(updateIndexedDbWrapper);
-
-        // --- Local Sync Folder ---
-        const localSyncWrapper = document.createElement('div');
-        localSyncWrapper.className = 'zoom-control-wrapper'; // This will be a sub-option
-        localSyncWrapper.style.flexDirection = 'column';
-        localSyncWrapper.style.alignItems = 'flex-start';
-        localSyncWrapper.style.paddingLeft = '20px'; // Indent the whole section
-        const localSyncLabel = document.createElement('label');
-        localSyncLabel.textContent = _('localSyncFolderLabel'); // e.g., "Папка за локална синхронизация:"
-        const selectFolderBtn = document.createElement('button');
-        selectFolderBtn.className = 'zoom-btn';
-        selectFolderBtn.textContent = _('selectFolderButton');
-        const folderNameDisplay = document.createElement('span');
-        folderNameDisplay.id = 'local-sync-folder-name';
-        folderNameDisplay.style.marginLeft = '10px';
-        folderNameDisplay.style.fontStyle = 'italic';
-        folderNameDisplay.style.maxWidth = '200px';
-        folderNameDisplay.style.overflow = 'hidden';
-        folderNameDisplay.style.textOverflow = 'ellipsis';
-        folderNameDisplay.style.whiteSpace = 'nowrap';
-        selectFolderBtn.addEventListener('click', async () => {
-            const handle = await getDirectoryHandle(true); // Prompt user to select
-            if (handle) {
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-                await runLocalSync(); // Run initial sync immediately
-            }
-        });
-
-        // Create a sub-wrapper for the button and folder name to place them on a new line
-        const folderActionWrapper = document.createElement('div');
-        folderActionWrapper.style.display = 'flex';
-        folderActionWrapper.style.alignItems = 'center';        
-        folderActionWrapper.style.marginTop = '5px';
-        // folderActionWrapper.appendChild(selectFolderBtn);
-        // folderActionWrapper.appendChild(folderNameDisplay);
-        // localSyncWrapper.appendChild(localSyncLabel);
-        localSyncWrapper.appendChild(folderActionWrapper);
+        // Logic to show/hide "Update" checkbox
+        const toggleUpdateCheckboxVisibility = () => {
+            const isDbEnabled = useIndexedDbCheckbox.checked;
+            updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
+        };
 
         const nextLine = document.createElement('br');
-        // Grouping UI elements
-        zoomModalBody.appendChild(useGoogleDbWrapper);
-        zoomModalBody.appendChild(localSyncLabel); // +
-        zoomModalBody.appendChild(nextLine); // +
-        zoomModalBody.appendChild(selectFolderBtn); // +
-        zoomModalBody.appendChild(folderNameDisplay); // +
-        useGoogleDbWrapper.appendChild(updateFromGoogleDriveWrapper);
 
         const closeBtn = document.createElement('button');
         closeBtn.className = 'zoom-btn settings-close-btn';
@@ -2060,42 +2034,40 @@ async function processDirectoryContent(minModificationDate) {
         });
 
         // --- Create a dedicated container for all local folder options ---
-        const localFolderContainer = document.createElement('div');
-        localFolderContainer.style.flexDirection = 'column';
+        const modesSectionWrapper = document.createElement('div');
+        modesSectionWrapper.className = 'settings-section';
+        modesSectionWrapper.style.marginTop = '20px';
+        modesSectionWrapper.style.borderTop = '1px solid #ccc';
+        modesSectionWrapper.style.paddingTop = '20px';
 
-        // Create a container for the sub-options that can be toggled
-        const localSubOptionsContainer = document.createElement('div');
-        localSubOptionsContainer.style.flexDirection = 'column'; // Ensure vertical stacking
-        localSubOptionsContainer.style.paddingLeft = '20px'; // Indent all sub-options
-        localSubOptionsContainer.appendChild(localSyncWrapper);
+        const modesSectionTitle = document.createElement('label');
+        modesSectionTitle.style.fontWeight = 'bold';
+        modesSectionTitle.style.display = 'block';
+        modesSectionTitle.style.marginBottom = '10px';
 
-        // Add the main checkbox and the sub-options container to the main local folder container
-        localFolderContainer.appendChild(useLocalDbWrapper);
-        localFolderContainer.appendChild(localSubOptionsContainer);
-
-        zoomModalBody.appendChild(localFolderContainer); // Add the whole group to the modal
+        modesSectionWrapper.appendChild(modesSectionTitle);
+        modesSectionWrapper.appendChild(useGoogleDbWrapper);
+        modesSectionWrapper.appendChild(useLocalDbWrapper);
 
         // Define toggle function with correct grouping
         const toggleUpdateOptionsVisibility = () => {
-            const isGoogleVisible = useGoogleDbCheckbox.checked;
-            useIndexedDbForGoogleWrapper.style.display = isGoogleVisible ? 'flex' : 'none';
-            updateFromGoogleDriveWrapper.style.display = isGoogleVisible ? 'flex' : 'none';
-            const isLocalVisible = useLocalDbCheckbox.checked;
-            localSubOptionsContainer.style.display = isLocalVisible ? 'block' : 'none';
-
-            // Set initial disabled state for the local "update" checkbox
-            const updateLocalCheckbox = document.getElementById('update-indexed-db-checkbox');
-            if (updateLocalCheckbox) updateLocalCheckbox.disabled = !useIndexedDbForLocalCheckbox.checked;
-
-            // Also set the initial disabled state for the "update only" checkbox
-            const updateGdriveCheckbox = document.getElementById('update-from-gdrive-checkbox');
-            if (updateGdriveCheckbox) updateGdriveCheckbox.disabled = !useIndexedDbForGoogleCheckbox.checked;
+            const isLocalMode = document.getElementById('use-local-db-checkbox').checked;
+            const isDbEnabled = useIndexedDbCheckbox.checked;
+            // DB Management section is visible only if IndexedDB is enabled
+            dbSectionWrapper.style.display = isDbEnabled ? 'block' : 'none';
+            // "Update from source" is visible only if IndexedDB is enabled
+            updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
+            // "Local sync folder" is visible only if in local mode AND IndexedDB is enabled
+            localSyncWrapper.style.display = (isLocalMode && isDbEnabled) ? 'flex' : 'none';
         };
 
-        // Correctly append the new Google Drive sub-option
-        useGoogleDbWrapper.appendChild(useIndexedDbForGoogleWrapper);
-        localSubOptionsContainer.prepend(updateIndexedDbWrapper); // Move "update" checkbox here
-        localSubOptionsContainer.prepend(useIndexedDbForLocalWrapper); // "IndexedDB" checkbox should be on top
+        useIndexedDbCheckbox.addEventListener('change', () => {
+            localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
+            toggleUpdateOptionsVisibility();
+            showToast(_('settingSaved'), 2000);
+        });
+        updateFromSourceCheckbox.addEventListener('change', () => localStorage.setItem('updateFromSource', updateFromSourceCheckbox.checked));
+
 
         // Asynchronously get and display the current folder name
         (async () => {
@@ -2108,11 +2080,11 @@ async function processDirectoryContent(minModificationDate) {
             }
         })();
 
+        zoomModalBody.appendChild(modesSectionWrapper);
+        zoomModalBody.appendChild(dbSectionWrapper);
+
         // Set initial visibility
         toggleUpdateOptionsVisibility();
-
-        // Add the DB management section before the close button
-        zoomModalBody.appendChild(dbSectionWrapper);
 
         // Add the close button at the very end
         const closeBtnWrapper = document.createElement('div');
