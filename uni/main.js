@@ -1052,11 +1052,12 @@ async function fetchAllDataLocal() {
  * Управлява процеса на локална синхронизация с файловата система.
  */
 async function runLocalSync() {
-    const useIndexedDb = localStorage.getItem('useIndexedDbForLocal') !== 'false';
+    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
     if (!useIndexedDb) {
         console.log("Skipping local sync because IndexedDB is disabled for this mode.");
         return;
     }
+
     const lastUpdateTimestamp = await getConfig('lastUpdateTimestamp');
     const updateDate = lastUpdateTimestamp ? new Date(lastUpdateTimestamp) : null;
     let updatedCount = 0;
@@ -2186,6 +2187,11 @@ function toggleLocalFolderSectionVisibility(isVisible) {
                 option.remove();
             }
         });
+
+        boardsData.forEach(board => {
+            if (board.gdid && board.title) startBoardSelect.add(new Option(board.title, board.gdid));
+        });
+        startBoardSelect.value = currentValue; // Опитваме се да възстановим старата стойност
     }
 
     function renderCalendarView() {
