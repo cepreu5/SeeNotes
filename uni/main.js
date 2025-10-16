@@ -742,13 +742,11 @@ function handleSignoutClick() {
 
     async function fetchAllData(folderIdFromPrompt, saveToDb = true, modifiedSince = null) {
         let folderId = folderIdFromPrompt || await getFolderID();
-        // Determine if we should save to DB based on the global setting for Google Drive mode
-        const useIndexedDbForGoogle = localStorage.getItem('useIndexedDbForGoogle') === 'true';
 
         if (!folderId) {
             // Try to load from local DB as a fallback
             // Only attempt this if IndexedDB is actually enabled for Google Drive mode.
-            if (useIndexedDbForGoogle) {
+            if (saveToDb) { // Проверяваме само флага, който е подаден
                 console.log("Main folder ID not found on Google Drive, attempting to load from local IndexedDB.");
                 try {
                     await fetchAllDataLocal();
@@ -767,12 +765,12 @@ function handleSignoutClick() {
         // Proceed with fetching from Google Drive
         const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId, modifiedSince);
         boardsData = boardFileData;
-        if (saveToDb && useIndexedDbForGoogle) {
+        if (saveToDb) {
             await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
         }
         const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId, modifiedSince);
         mediaData = mediaFileData;
-        if (saveToDb && useIndexedDbForGoogle) {
+        if (saveToDb) {
             await bulkPutDB(MEDIA_STORE_NAME, mediaData); // Sync to DB
         }
         const onNoteProgress = (loaded, total) => {
@@ -789,7 +787,7 @@ function handleSignoutClick() {
             notesToStoreInDB.push(content);
             return { file: r.file, content: content, rawData: r };
         });
-        if (saveToDb && useIndexedDbForGoogle && notesToStoreInDB.length > 0) {
+        if (saveToDb && notesToStoreInDB.length > 0) {
             await bulkPutDB(NOTE_STORE_NAME, notesToStoreInDB); // Sync to DB
         }
         return { boardParseError };
@@ -1085,6 +1083,52 @@ async function runLocalSync() {
 }
 
 /**
+ * Проверява дали избраната папка съдържа само файлове от очаквания тип.
+ * Функцията проверява дали файловете в основната директория започват с 'note', 'media', или 'board' и завършват на '.txt'.
+ * Игнорира под-директории и скрити файлове (започващи с точка).
+ * @param {FileSystemDirectoryHandle} directoryHandle - Handle на папката за проверка.
+ * @returns {Promise<{isValid: boolean, invalidFile: string|null}>} 
+ * Връща обект, който показва дали папката е валидна (`isValid`) 
+ * и името на първия невалиден файл (`invalidFile`), ако такъв е намерен.
+ */
+async function validateFolderContent(directoryHandle) {
+    const boardPattern = /^board.*\.txt$/i;
+    const notePattern = /^note.*\.txt$/i;
+    const mediaPattern = /^media.*\.txt$/i;
+    let boardFileCount = 0;
+    let noteFileCount = 0;
+    let mediaFileCount = 0;
+    let noFileCount = 0;
+    try {
+        for await (const entry of directoryHandle.values()) {
+            if (entry.kind === 'file') {
+                if (boardPattern.test(entry.name)) {
+                    boardFileCount++;
+                } else if (notePattern.test(entry.name)) {
+                    noteFileCount++;
+                } else if (mediaPattern.test(entry.name)) {
+                    mediaFileCount++;
+                } else noFileCount++;
+            }
+        }
+    } catch (error) {
+        console.error("Error during folder validation:", error);
+        // При грешка приемаме, че не е валидна, за да сме сигурни.
+        return { isValid: false, reason: 'error' };
+    }
+    // Проверяваме дали са изпълнени новите условия.
+    if (boardFileCount >= 1 && noteFileCount > 5) {
+        if (noFileCount > 0) console.log(`Found ${noFileCount} NO file(s)`, 10013);
+        console.log(`Validation successful: Found ${boardFileCount} board file(s), ${noteFileCount} note file(s), and ${mediaFileCount} media file(s).`);
+        return { isValid: true, reason: null };
+    } else {
+        console.warn(`Validation failed: Found ${boardFileCount} board file(s) and ${noteFileCount} note file(s). Required: >=1 board, >5 notes.`);
+        return { isValid: false, reason: 'criteria_not_met' };
+    }
+}
+
+
+/**
  * Взима handle на директория - от паметта, от IndexedDB или чрез избор от потребителя.
  * @param {boolean} promptUser - Дали да се покаже диалог за избор, ако няма запазен handle.
  * @returns {Promise<FileSystemDirectoryHandle|null>}
@@ -1104,9 +1148,9 @@ async function getDirectoryHandle(promptUser = false) {
 
         if (promptUser) {
             const newHandle = await window.showDirectoryPicker();
-            await saveConfig('directoryHandle', newHandle);
-            dirHandle = newHandle;
-            return dirHandle;
+            // Запазването ще се случи в извикващата функция СЛЕД валидация.
+            // dirHandle = newHandle; // Глобалната променлива също ще се зададе там.
+            return newHandle;
         }
         if (localStorage.getItem('useLocalDb') === 'true') showToast(_('errorLocalFolderNotSelected'), 10000);
         return null;
@@ -1133,6 +1177,13 @@ async function verifyPermission(handle) {
  * @param {Date} [minModificationDate] - Минимална дата на модификация за инкрементално обновяване.
  */
 async function processDirectoryContent(minModificationDate) {
+    // --- КЛЮЧОВА ПРОВЕРКА ---
+    // Ако опцията за използване на IndexedDB е изключена, не трябва да записваме нищо.
+    if (localStorage.getItem('useIndexedDb') !== 'true') {
+        console.log("Skipping processDirectoryContent because useIndexedDb is disabled.");
+        return 0; // Връщаме 0, защото нищо не е обновено.
+    }
+
     const minTimestamp = minModificationDate || 0;
     const handle = await getDirectoryHandle();
     if (!handle) return 0;
@@ -1915,6 +1966,24 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         selectFolderBtn.addEventListener('click', async () => {
             const handle = await getDirectoryHandle(true); // Prompt user to select
             if (handle) {
+                // --- ВАЛИДАЦИЯ НА СЪДЪРЖАНИЕТО ---
+                const validationResult = await validateFolderContent(handle);
+                if (!validationResult.isValid) {
+                    let warningMessage = `Папката '${handle.name}' не изглежда като валидна папка с данни.`;
+                    if (validationResult.reason === 'criteria_not_met') {
+                        warningMessage += " Необходимо е да съдържа поне 1 'board' файл и повече от 5 'note' файла.";
+                    } else if (validationResult.reason === 'error') {
+                        warningMessage += " Възникна грешка при проверката.";
+                    }
+                    showToast(warningMessage, 15000); // Показваме предупреждението за по-дълго
+                    return; // Спираме изпълнението и се връщаме за нов избор.
+                }
+                // --- КРАЙ НА ВАЛИДАЦИЯТА ---
+
+                // Валидацията е успешна, сега запазваме.
+                await saveConfig('directoryHandle', handle);
+                dirHandle = handle; // Актуализираме и глобалната променлива.
+
                 folderNameDisplay.textContent = handle.name;
                 folderNameDisplay.title = handle.name;
                 showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
