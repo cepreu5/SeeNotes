@@ -285,8 +285,9 @@ async function startApp() {
     gapi.client.setToken({ access_token: authToken.access_token });
     
     document.body.style.display = 'block';
-    initApp();
-    listFiles();
+    initApp(); // Инициализира UI елементите и event listeners
+    await createBoardsUI([], false); // Предварително създава UI на настройките
+    mainLogic(); // Извиква новата основна логика за зареждане на данни
 }
 
 function _(key) {
@@ -848,78 +849,175 @@ function handleSignoutClick() {
         console.log('Google Drive sync finished.');
     }
 
-    async function listFiles(folderIdFromPrompt) {
-        const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
-        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-
-        const useIndexedDbForGoogle = localStorage.getItem('useIndexedDbForGoogle') === 'true';
-        const useIndexedDbForLocal = localStorage.getItem('useIndexedDbForLocal') !== 'false';
-
-        let tokenData = null;
-
-        // Decide if we need a token BEFORE anything else.
-        // A token is needed for any Google Drive operation.
-        const needsToken = useGoogleDb;
-        if (needsToken) {
-            tokenData = checkAuth();
-            if (!tokenData) return; // checkAuth() handles redirection
-        }
-
-        initializeLoad();
+    /**
+     * Основна логика за зареждане на данни в приложението.
+     * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
+     */
+    async function mainLogic() {
+        initializeLoad(); // Нулира състоянието и показва зареждащия екран
         const loaderTitle = document.getElementById('loader-title');
+
+        // Взимаме актуалните настройки от localStorage
+        const useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
+        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+        const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+
         try {
-            if (useGoogleDb) {
-                if (loaderTitle) loaderTitle.textContent = "Google Drive";
-                if (useIndexedDbForGoogle) {
-                    // GDrive mode with DB: Sync first, then load from DB.
-                    await runGoogleDriveSync(); // This function now internally checks the setting.
-                    loaderText.textContent = "Fetching updated data from DB...";
-                    await fetchAllDataLocal();
-                    await renderUI({ boardParseError: false });
-                } else {
-                    // GDrive mode without DB: Fetch directly for the session.
-                    const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
+            if (!useIndexedDb) {
+                // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
+                console.log("Mode: Direct from source (IndexedDB is OFF)");
+                if (useGoogleDb) {
+                    if (loaderTitle) loaderTitle.textContent = "Google Drive";
+                    const { boardParseError } = await fetchAllData(null, false); // false -> не записвай в DB
+                    await renderUI({ boardParseError });
+                } else if (useLocalFolder) {
+                    if (loaderTitle) loaderTitle.textContent = "Локална папка";
+                    const { boardParseError } = await fetchAllDataFromLocalFolder();
                     await renderUI({ boardParseError });
                 }
-            } else if (useLocalFolder) {
-                if (loaderTitle) loaderTitle.textContent = "Локална папка";
-                if (useIndexedDbForLocal) {
-                    // Local Folder mode with DB: Sync from disk, then load from DB.
-                    await runLocalSync(); // This function now internally checks the setting.
-                    loaderText.textContent = "Fetching data from DB...";
-                    await fetchAllDataLocal();
-                    await renderUI({ boardParseError: false });
-                } else {
-                    // Local Folder mode without DB: This is not a supported scenario as it needs the DB to function.
-                    // We show a message and do nothing.
-                    showToast("Режим 'Локална папка' изисква IndexedDB да е разрешена в настройките.", 10000);
-                    loaderContainer.style.display = 'none'; // Hide loader
-                    return;
-                }
             } else {
-                // Fallback/Default: No mode selected, behave like GDrive without DB.
-                if (loaderTitle) loaderTitle.textContent = "Google Drive";
-                const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
-                await renderUI({ boardParseError });
+                // --- РЕЖИМ 2: С IndexedDB (ще бъде имплементиран на следващи стъпки) ---
+                console.log("Mode: Using IndexedDB (logic to be implemented)");
+                // Празен блок, както е по задание
             }
         } catch (err) {
-            console.error("Error in listFiles:", err);
-            if (err.result && err.result.error && err.result.error.code === 401) {
-                showToast(_('errorSessionExpired'));
-                handleSignoutClick();
-            } else {
-                let errorMessage = _('errorProcessingFiles');
-                if (err.result && err.result.error) {
-                    errorMessage += ` (Status: ${err.result.error.code} - ${err.result.error.message})`;
-                }
-                showToast(errorMessage);
-            }
+            console.error("Error in mainLogic:", err);
+            showToast(_('errorProcessingFiles'));
         } finally {
             loaderContainer.style.display = 'none';
             document.body.style.backgroundImage = `url('Board.png')`;
             notesContainer.style.backgroundImage = `url('Board.png')`;
-            currentBackground = 'Board.png';
         }
+    }
+
+    async function listFiles(folderIdFromPrompt) {
+        // const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
+        // const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+
+        // const useIndexedDbForGoogle = localStorage.getItem('useIndexedDbForGoogle') === 'true';
+        // const useIndexedDbForLocal = localStorage.getItem('useIndexedDbForLocal') !== 'false';
+
+        // let tokenData = null;
+
+        // // Decide if we need a token BEFORE anything else.
+        // // A token is needed for any Google Drive operation.
+        // const needsToken = useGoogleDb;
+        // if (needsToken) {
+        //     tokenData = checkAuth();
+        //     if (!tokenData) return; // checkAuth() handles redirection
+        // }
+
+        // initializeLoad();
+        // const loaderTitle = document.getElementById('loader-title');
+        // try {
+        //     if (useGoogleDb) {
+        //         if (loaderTitle) loaderTitle.textContent = "Google Drive";
+        //         if (useIndexedDbForGoogle) {
+        //             // GDrive mode with DB: Sync first, then load from DB.
+        //             await runGoogleDriveSync(); // This function now internally checks the setting.
+        //             loaderText.textContent = "Fetching updated data from DB...";
+        //             await fetchAllDataLocal();
+        //             await renderUI({ boardParseError: false });
+        //         } else {
+        //             // GDrive mode without DB: Fetch directly for the session.
+        //             const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
+        //             await renderUI({ boardParseError });
+        //         }
+        //     } else if (useLocalFolder) {
+        //         if (loaderTitle) loaderTitle.textContent = "Локална папка";
+        //         if (useIndexedDbForLocal) {
+        //             // Local Folder mode with DB: Sync from disk, then load from DB.
+        //             await runLocalSync(); // This function now internally checks the setting.
+        //             loaderText.textContent = "Fetching data from DB...";
+        //             await fetchAllDataLocal();
+        //             await renderUI({ boardParseError: false });
+        //         } else {
+        //             // Local Folder mode without DB: This is not a supported scenario as it needs the DB to function.
+        //             // We show a message and do nothing.
+        //             showToast("Режим 'Локална папка' изисква IndexedDB да е разрешена в настройките.", 10000);
+        //             loaderContainer.style.display = 'none'; // Hide loader
+        //             return;
+        //         }
+        //     } else {
+        //         // Fallback/Default: No mode selected, behave like GDrive without DB.
+        //         if (loaderTitle) loaderTitle.textContent = "Google Drive";
+        //         const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
+        //         await renderUI({ boardParseError });
+        //     }
+        // } catch (err) {
+        //     console.error("Error in listFiles:", err);
+        //     if (err.result && err.result.error && err.result.error.code === 401) {
+        //         showToast(_('errorSessionExpired'));
+        //         handleSignoutClick();
+        //     } else {
+        //         let errorMessage = _('errorProcessingFiles');
+        //         if (err.result && err.result.error) {
+        //             errorMessage += ` (Status: ${err.result.error.code} - ${err.result.error.message})`;
+        //         }
+        //         showToast(errorMessage);
+        //     }
+        // } finally {
+        //     loaderContainer.style.display = 'none';
+        //     document.body.style.backgroundImage = `url('Board.png')`;
+        //     notesContainer.style.backgroundImage = `url('Board.png')`;
+        //     currentBackground = 'Board.png';
+        // }
+    }
+
+    /**
+     * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
+     * Аналогична на fetchAllData, но за локален източник.
+     */
+    async function fetchAllDataFromLocalFolder() {
+        const handle = await getDirectoryHandle();
+        if (!handle) {
+            window.wasOpenedForMissingFolder = true; // Вдигаме флага
+            showToast(_('errorLocalFolderNotSelected'), 10000);
+            document.getElementById('settings-modal').classList.add('visible');
+            return { boardParseError: false };
+        }
+
+        let localBoards = [];
+        let localMedia = [];
+        let localNotes = [];
+        let boardParseError = false;
+
+        try {
+            for await (const entry of handle.values()) {
+                if (entry.kind !== 'file' || !entry.name.toLowerCase().endsWith('.txt')) continue;
+
+                // Показваме името на файла, който се обработва
+                loaderText.textContent = `${_('loadingFile')} ${entry.name}`;
+
+                const file = await entry.getFile();
+                const content = await file.text();
+                const fileObject = JSON.parse(content);
+                const lowerCaseName = entry.name.toLowerCase();
+
+                if (lowerCaseName.includes('board')) {
+                    localBoards.push(fileObject);
+                } else if (lowerCaseName.includes('media')) {
+                    localMedia.push(fileObject);
+                } else if (lowerCaseName.includes('note')) {
+                    localNotes.push({
+                        file: { name: entry.name },
+                        content: fileObject,
+                        rawData: { file: { name: entry.name }, res: { body: content } }
+                    });
+                }
+            }
+        } catch (e) {
+            console.error("Error parsing local files:", e);
+            boardParseError = true; // Set a general parse error flag
+            showToast(_('errorNoteParse'));
+        }
+
+        // Зареждаме данните в глобалните променливи
+        boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
+        mediaData = localMedia.flat();
+        allNotesData = localNotes;
+
+        return { boardParseError };
     }
 
 // =================================================================================
@@ -1800,7 +1898,14 @@ function toggleLocalFolderSectionVisibility(isVisible) {
 
         // --- Намираме бутона за затваряне и добавяме event listener ---
         const settingsCloseBtn = document.getElementById('settings-close-btn');
-        settingsCloseBtn.addEventListener('click', () => document.getElementById('settings-modal').classList.remove('visible'));
+        settingsCloseBtn.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+            // Ако прозорецът е бил отворен принудително, презареждаме данните.
+            if (window.wasOpenedForMissingFolder) {
+                window.wasOpenedForMissingFolder = false; // Нулираме флага
+                mainLogic(); // Извикваме основната логика отново
+            }
+        });
 
         // Add helper functions for DB management that were missing
         // --- Local Sync Folder ---
@@ -1997,6 +2102,21 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         contentEl.addEventListener('scroll', checkScroll);
         new ResizeObserver(checkScroll).observe(contentEl);
         return boardsNote;
+    }
+
+    /**
+     * Попълва падащото меню за избор на стартов борд в настройките.
+     */
+    function populateStartBoardSelect() {
+        const startBoardSelect = document.getElementById('start-board-select');
+        // Запазваме текущо избраната стойност
+        const currentValue = startBoardSelect.value;
+        // Изчистваме само опциите за бордове, запазваме "Всички", "Календар", "Напомняния"
+        Array.from(startBoardSelect.options).forEach(option => {
+            if (!['all', 'calendar', 'reminder'].includes(option.value)) {
+                option.remove();
+            }
+        });
     }
 
     function renderCalendarView() {
@@ -3036,4 +3156,7 @@ async function renderUI({ boardParseError }) {
     if (counterEl) {
         counterEl.textContent = notesCount;
     }
+    // Обновяваме списъка със стартови бордове в настройките
+    populateStartBoardSelect();
+    
 }
