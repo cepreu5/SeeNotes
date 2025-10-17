@@ -1964,6 +1964,10 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         const selectFolderBtn = document.getElementById('select-folder-btn');
         const folderNameDisplay = document.getElementById('local-sync-folder-name');
 
+        // --- DB Management Buttons ---
+        const createDbBtn = document.getElementById('create-db-btn');
+        const deleteDbBtn = document.getElementById('delete-db-btn');
+
         selectFolderBtn.addEventListener('click', async () => {
             const handle = await getDirectoryHandle(true); // Prompt user to select
             if (handle) {
@@ -2001,6 +2005,49 @@ function toggleLocalFolderSectionVisibility(isVisible) {
                 folderNameDisplay.textContent = _('folderNotSelected');
             }
         })();
+
+        // --- DB Button Logic ---
+        async function handleCreateDbClick() {
+            document.getElementById('settings-modal').classList.remove('visible');
+            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
+
+            const dbExists = await checkDbExists(NOTES_DB_NAME);
+            let proceed = false;
+
+            if (dbExists) {
+                proceed = await showConfirmation(_('confirmDbRecreate'));
+            } else {
+                proceed = true;
+            }
+
+            if (proceed) {
+                if (allNotesData.length === 0 && boardsData.length === 0) {
+                    showToast(_('dbCreateFailedNoData'), 10000);
+                    return;
+                }
+                if (dbExists) {
+                    await deleteNotesDB();
+                }
+                await bulkPutDB(BOARD_STORE_NAME, boardsData);
+                await bulkPutDB(MEDIA_STORE_NAME, mediaData);
+                const notesToStore = allNotesData.map(n => n.content);
+                await bulkPutDB(NOTE_STORE_NAME, notesToStore);
+                showToast(_('dbCreated'), 10000);
+            }
+        }
+
+        async function handleDeleteDbClick() {
+            document.getElementById('settings-modal').classList.remove('visible');
+            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
+
+            const confirmed = await showConfirmation(_('confirmDbDelete'));
+            if (confirmed) {
+                await deleteNotesDB();
+            }
+        }
+
+        createDbBtn.addEventListener('click', handleCreateDbClick);
+        deleteDbBtn.addEventListener('click', handleDeleteDbClick);
 
         /*async function checkDbExists(dbName) {
             // The modern `databases()` method is the most reliable.

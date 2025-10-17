@@ -1089,6 +1089,13 @@ pre, code {
     padding-right: 20px;
 }
 
+/* Специфичен стил, за да се подредят етикетът и бутонът за избор на папка вертикално */
+#local-sync-wrapper {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px; /* Добавя разстояние между етикета и бутона */
+}
+
 /* Renamed from #zoom-modal to #settings-modal */
 #settings-modal .modal-content-box {
     background-color: #cfe6f8;

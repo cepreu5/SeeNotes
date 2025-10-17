@@ -150,6 +150,11 @@
                 <div class="settings-section" id="db-section-wrapper" style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 20px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 15px;" data-key="dbManagementTitle">Управление на базата данни</label>
                     
+                    <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
+                        <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
+                        <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
+                    </div>
+
                     <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 15px;">
                         <label for="use-indexeddb-checkbox" data-key="useIndexedDb">Използвай IndexedDB</label>
                         <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
@@ -162,9 +167,10 @@
 
                     <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 15px;">
                         <label for="select-folder-btn" data-key="localSyncFolderLabel">Папка за локална синхронизация: </label>
-                        <button id="select-folder-btn" class="zoom-btn">Избери папка</button>
                         <span id="local-sync-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                        <button id="select-folder-btn" class="zoom-btn">Избери папка</button>
                     </div>
+
                 </div>
             </div>
             <div class="settings-close-btn-wrapper">

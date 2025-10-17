@@ -155,3 +155,6 @@ async function checkAuth() {
 
 Сигурност: Както споменах, вграждането на client_secret в уеб приложение е голям риск за сигурността. Правилният подход за уеб приложения е да се използва "Authorization Code Flow with PKCE", където client_secret не е необходим. Друга алтернатива е да имате бекенд компонент, който сигурно съхранява client_secret и извършва подновяването от името на клиента.
 Google Identity Services (GIS): Google препоръчва използването на тяхната нова библиотека (GIS), която може да управлява голяма част от този процес автоматично и по-сигурно.
+
+const label = document.querySelector('[data-key="localSyncFolderLabel"]');
+label.textContent = _(label.dataset.key); // или i18n[label.dataset.key]
