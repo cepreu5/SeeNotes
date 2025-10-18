@@ -239,25 +239,7 @@ main {
     box-sizing: border-box;
     background-color: transparent;
     z-index: 1; /* Ensure content is on top of the canvas */
-    padding-bottom: 20px; /* Add space at the bottom of the note content area */
 }
-
-.lock-icon-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 5;
-    color: rgba(0, 0, 0, 0.25);
-    pointer-events: none;
-}
-
-.lock-icon-overlay svg {
-    width: 100px;
-    height: 100px;
-    stroke-width: 1.5;
-}
-
 
 .note-content-wrapper > .note-content {
     margin: 0 10% 0 8%;
@@ -302,50 +284,6 @@ main {
     margin-bottom: 0; /* Премахва стандартния долен марджин на h3 */
 }
 
-.note-header-info {
-    position: absolute;
-    top: 25px; /* Position from the top of the note */
-    left: 0;
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    padding: 0 40px 0 20px; /* Horizontal padding */
-    box-sizing: border-box;
-    pointer-events: none; /* Make it non-interactive */
-    font-size: 12px;
-    font-weight: bold;
-    color: rgba(0, 0, 0, 0.6);
-}
-
-.note-header-date, .note-header-time {
-    display: flex;
-    align-items: center;
-    pointer-events: auto; /* Re-enable clicks on date/time elements */
-    gap: 5px; /* Space between icon and text */
-}
-
-.header-icon svg {
-    width: 16px;
-    height: 16px;
-    stroke-width: 2.5;
-    vertical-align: middle; /* Better alignment with text */
-}
-
-.datemod-header-date {
-    /* Тук могат да се добавят специфични стилове за датата на модификация в хедъра */
-    /* Например: font-style: italic; opacity: 0.8; */
-}
-
-/* Hide datemod in header when the body has this class */
-.hide-datemod .datemod-header-date {
-    display: none;
-}
-
-#show-datemod-checkbox {
-    width: 20px;
-    height: 20px;
-    cursor: pointer;
-}
 .note-content {
     flex-grow: 1;
     overflow-y: auto;
@@ -363,6 +301,7 @@ pre, code {
 .note-footer {
     flex-shrink: 0;
     padding-top: 1px;
+    margin-top: auto;
     border-top: 1px solid gray;
     display: flex;
     align-items: center;
@@ -370,7 +309,7 @@ pre, code {
     font-size: 12px; /* Задаване на фиксиран размер, който не се влияе от настройките */
     color: #666;
     min-height: 18px;
-    margin: 0 8% 7% 8%; /* top | right | bottom | left */
+    margin: 0 8% 12% 8%; /* Add horizontal and bottom margin */
 }
 
 .note-footer .date-display,
@@ -474,7 +413,7 @@ pre, code {
     position: relative;
     display: flex;
     flex-direction: column;
-    /* transition: background-color 0.3s ease; Smooth background color transition */
+    transition: background-color 0.3s ease; /* Smooth background color transition */
 }
 .popup-mode .modal-content-box {
     position: absolute; /* Allow top/left positioning */
@@ -483,7 +422,7 @@ pre, code {
 }
 
 #modal-body {
-    padding-top: 1px;
+    padding-top: 60px;
     padding-right: 10px;
     overflow-y: auto;
     white-space: pre-wrap;
@@ -524,22 +463,6 @@ pre, code {
     z-index: 1;
 }
 
-/* New style for board name in modal header */
-#modal-board-name {
-    position: absolute;
-    top: 12px; /* Moved 5px up */
-    right: 95px; /* Position to the left of the header buttons */
-    font-size: 1.1em;
-    font-weight: bold;
-    color: #333;
-    background-color: transparent;
-    padding: 5px 10px;
-    border-radius: 5px;
-    max-width: calc(100% - 150px); /* Prevent overlapping with title or buttons */
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
 .modal-header-btn:hover {
     background-color: #ddd;
 }
@@ -682,12 +605,6 @@ pre, code {
     flex-shrink: 0;
     margin: 0 5px;
     visibility: hidden; /* Hidden by default */
-}
-
-.scroll-arrow svg {
-    width: 24px;
-    height: 24px;
-    stroke-width: 2;
 }
 
 .scroll-arrow.visible {

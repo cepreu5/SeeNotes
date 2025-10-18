@@ -7,7 +7,7 @@
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.8'; // App version
+const version = '0.9'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -462,7 +462,7 @@ function initApp() {
         settingsButton.innerHTML = settingsIconSvg;
         scrollTopBtn.innerHTML = arrowSvg;
         signoutButton.addEventListener('click', handleSignoutClick);
-        reloadButton.addEventListener('click', () => listFiles());
+        reloadButton.addEventListener('click', () => mainLogic());
         settingsButton.addEventListener('click', () => {
             document.getElementById('settings-modal').classList.add('visible');
         });
@@ -797,7 +797,8 @@ function handleSignoutClick() {
      * Fetches only updated files from Google Drive since the last sync and updates IndexedDB.
      */
     async function runGoogleDriveSync() {
-        const useIndexedDb = localStorage.getItem('useIndexedDbForGoogle') === 'true';
+        // Коригирана проверка: използваме общата настройка 'useIndexedDb'
+        const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
         if (!useIndexedDb) {
             console.log("Skipping Google Drive sync because IndexedDB is disabled for this mode.");
             return;
@@ -865,18 +866,69 @@ function handleSignoutClick() {
                 // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
                 console.log("Mode: Direct from source (IndexedDB is OFF)");
                 if (useGoogleDb) {
+                    console.log("Source: Google Drive");
                     if (loaderTitle) loaderTitle.textContent = "Google Drive";
                     const { boardParseError } = await fetchAllData(null, false); // false -> не записвай в DB
                     await renderUI({ boardParseError });
                 } else if (useLocalFolder) {
+                    console.log("Source: Local Folder");
                     if (loaderTitle) loaderTitle.textContent = "Локална папка";
                     const { boardParseError } = await fetchAllDataFromLocalFolder();
                     await renderUI({ boardParseError });
                 }
             } else {
-                // --- РЕЖИМ 2: С IndexedDB (ще бъде имплементиран на следващи стъпки) ---
-                console.log("Mode: Using IndexedDB (logic to be implemented)");
-                // Празен блок, както е по задание
+                // --- РЕЖИМ 2: С IndexedDB
+                console.log("Mode: Using IndexedDB");
+                const dbExists = await checkDbExists(NOTES_DB_NAME);
+                let boardsInDb = [];
+                if (dbExists) {
+                    boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                }
+ 
+                if (!dbExists || boardsInDb.length === 0) {
+                    // Първоначално създаване на базата данни
+                    console.log("DB is empty or does not exist. Performing initial data load.");
+                    if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
+                    loaderText.textContent = "Performing initial data load...";
+ 
+                    if (useGoogleDb) {
+                        console.log("Source for initial load: Google Drive");
+                        const { boardParseError } = await fetchAllData(null, true); // true -> запиши в DB
+                        await renderUI({ boardParseError });
+                    } else if (useLocalFolder) {
+                        console.log("Source for initial load: Local Folder");
+                        const { boardParseError } = await fetchAllDataFromLocalFolder(true); // true -> запиши в DB
+                        await saveConfig('lastUpdateTimestamp', Date.now());
+                        await renderUI({ boardParseError });
+                    }
+                    showToast(_('dbCreated'), 10000);
+                } else {
+                    // Базата съществува и има данни
+                    const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
+                    if (!updateFromSource) {
+                        // Просто зареждаме от базата, без синхронизация
+                        console.log("Loading directly from IndexedDB (sync is disabled).");
+                        if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
+                        loaderText.textContent = "Loading from local database...";
+                        await fetchAllDataLocal();
+                        await renderUI({ boardParseError: false });
+                    } else {
+                        // Синхронизираме от източника, след което зареждаме от базата
+                        console.log("Syncing from source (sync is enabled).");
+                        if (useGoogleDb) {
+                            console.log("Sync source: Google Drive");
+                            if (loaderTitle) loaderTitle.textContent = "Google Drive Sync";
+                            await runGoogleDriveSync();
+                        } else if (useLocalFolder) {
+                            console.log("Sync source: Local Folder");
+                            if (loaderTitle) loaderTitle.textContent = "Local Folder Sync";
+                            await runLocalSync();
+                        }
+                        loaderText.textContent = "Fetching updated data from DB...";
+                        await fetchAllDataLocal();
+                        await renderUI({ boardParseError: false });
+                    }
+                }
             }
         } catch (err) {
             console.error("Error in mainLogic:", err);
@@ -966,7 +1018,7 @@ function handleSignoutClick() {
      * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
      * Аналогична на fetchAllData, но за локален източник.
      */
-    async function fetchAllDataFromLocalFolder() {
+    async function fetchAllDataFromLocalFolder(saveToDb = false) {
         const handle = await getDirectoryHandle();
         if (!handle) {
             window.wasOpenedForMissingFolder = true; // Вдигаме флага
@@ -1015,6 +1067,13 @@ function handleSignoutClick() {
         mediaData = localMedia.flat();
         allNotesData = localNotes;
 
+        // Ако е указано, записваме данните в IndexedDB
+        if (saveToDb) {
+            await bulkPutDB(BOARD_STORE_NAME, boardsData);
+            await bulkPutDB(MEDIA_STORE_NAME, mediaData);
+            await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
+        }
+
         return { boardParseError };
     }
 
@@ -1062,12 +1121,12 @@ async function runLocalSync() {
     const updateDate = lastUpdateTimestamp ? new Date(lastUpdateTimestamp) : null;
     let updatedCount = 0;
     const handle = await getDirectoryHandle();
-    if (!handle) {
-        return; // getDirectoryHandle will show a toast if needed.
-    }
+    if (!handle) return;
+
     loaderText.textContent = updateDate ? `Updating files since ${updateDate.toLocaleString()}...` : "Performing full initial sync...";
-    // Perform sync only if the setting is enabled
-    if (localStorage.getItem('updateIndexedDb') !== 'false') {
+
+    // Коригирана проверка: използваме 'updateFromSource' вместо старата 'updateIndexedDb'
+    if (localStorage.getItem('updateFromSource') !== 'false') {
         updatedCount = await processDirectoryContent(lastUpdateTimestamp);
         await saveConfig('lastUpdateTimestamp', Date.now());
     } else {
@@ -1219,12 +1278,6 @@ async function processDirectoryContent(minModificationDate) {
         } catch (error) {
             console.error(`Error processing local file '${entry.name}':`, error);
         }
-    }
-    // Bulk update the stores that have new/updated data
-    const updateIndexedDb = localStorage.getItem('updateIndexedDb') !== 'false';
-    if (!updateIndexedDb) {
-        console.log("IndexedDB update is disabled in settings. Skipping database write.");
-        return;
     }
     for (const storeName in stores) {
         if (stores[storeName].length > 0) {
@@ -1964,10 +2017,6 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         const selectFolderBtn = document.getElementById('select-folder-btn');
         const folderNameDisplay = document.getElementById('local-sync-folder-name');
 
-        // --- DB Management Buttons ---
-        const createDbBtn = document.getElementById('create-db-btn');
-        const deleteDbBtn = document.getElementById('delete-db-btn');
-
         selectFolderBtn.addEventListener('click', async () => {
             const handle = await getDirectoryHandle(true); // Prompt user to select
             if (handle) {
@@ -2005,49 +2054,6 @@ function toggleLocalFolderSectionVisibility(isVisible) {
                 folderNameDisplay.textContent = _('folderNotSelected');
             }
         })();
-
-        // --- DB Button Logic ---
-        async function handleCreateDbClick() {
-            document.getElementById('settings-modal').classList.remove('visible');
-            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
-
-            const dbExists = await checkDbExists(NOTES_DB_NAME);
-            let proceed = false;
-
-            if (dbExists) {
-                proceed = await showConfirmation(_('confirmDbRecreate'));
-            } else {
-                proceed = true;
-            }
-
-            if (proceed) {
-                if (allNotesData.length === 0 && boardsData.length === 0) {
-                    showToast(_('dbCreateFailedNoData'), 10000);
-                    return;
-                }
-                if (dbExists) {
-                    await deleteNotesDB();
-                }
-                await bulkPutDB(BOARD_STORE_NAME, boardsData);
-                await bulkPutDB(MEDIA_STORE_NAME, mediaData);
-                const notesToStore = allNotesData.map(n => n.content);
-                await bulkPutDB(NOTE_STORE_NAME, notesToStore);
-                showToast(_('dbCreated'), 10000);
-            }
-        }
-
-        async function handleDeleteDbClick() {
-            document.getElementById('settings-modal').classList.remove('visible');
-            await new Promise(resolve => setTimeout(resolve, 150)); // Wait for modal to close
-
-            const confirmed = await showConfirmation(_('confirmDbDelete'));
-            if (confirmed) {
-                await deleteNotesDB();
-            }
-        }
-
-        createDbBtn.addEventListener('click', handleCreateDbClick);
-        deleteDbBtn.addEventListener('click', handleDeleteDbClick);
 
         /*async function checkDbExists(dbName) {
             // The modern `databases()` method is the most reliable.
@@ -2512,6 +2518,245 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         return html;
     }
 
+    /**
+     * Обработва и създава UI за прикачен файл от локална папка.
+     * @param {object} attachment - Обектът на прикачения файл.
+     * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
+     * @param {object} iconData - SVG иконата за типа на файла.
+     */
+    async function handleLocalAttachment(attachment, attachmentWrapper, iconData) {
+        const iconDiv = document.createElement('div');
+        iconDiv.innerHTML = iconData.svg;
+
+        const filename = attachment.path ? attachment.path.split('/').pop() : '';
+
+        const createLocalLink = async (folderName, textPrefix) => {
+            const link = document.createElement('a');
+            link.href = '#';
+            link.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!filename) return;
+                try {
+                    const subDir = await dirHandle.getDirectoryHandle(folderName);
+                    const fileHandle = await subDir.getFileHandle(filename);
+                    const file = await fileHandle.getFile();
+                    window.open(URL.createObjectURL(file), '_blank');
+                } catch (err) {
+                    console.error(`Could not open local file ${folderName}/${filename}`, err);
+                    showToast(_('errorOpenFile').replace('{filename}', filename));
+                }
+            };
+            link.textContent = textPrefix + filename;
+            return link;
+        };
+
+        switch (attachment.type) {
+            case 1: // Image
+                attachmentWrapper.appendChild(await createLocalLink('Images', 'Images/'));
+                break;
+            case 2: // Sound
+                const soundTextContainer = document.createElement('div');
+                soundTextContainer.style.flexGrow = '1';
+                soundTextContainer.style.flexShrink = '1';
+                soundTextContainer.style.minWidth = '0';
+                soundTextContainer.appendChild(await createLocalLink('Sound', 'Sound/'));
+                const soundLine2 = document.createElement('div');
+                soundLine2.textContent = attachment.description || '';
+                soundTextContainer.appendChild(soundLine2);
+                attachmentWrapper.appendChild(soundTextContainer);
+                break;
+            case 3: // Other
+                attachmentWrapper.appendChild(await createLocalLink('Other', 'Other/'));
+                break;
+            case 4: // Video
+                const videoTextContainer = document.createElement('div');
+                videoTextContainer.style.flexGrow = '1';
+                videoTextContainer.style.flexShrink = '1';
+                videoTextContainer.style.minWidth = '0';
+                videoTextContainer.appendChild(await createLocalLink('Video', 'Video/'));
+                const videoLine2 = document.createElement('div');
+                videoLine2.textContent = attachment.description || '';
+                videoTextContainer.appendChild(videoLine2);
+                attachmentWrapper.appendChild(videoTextContainer);
+                break;
+            case 5: // Location
+                const parts = attachment.path.split('|');
+                if (parts.length >= 3) {
+                    const textContainer = document.createElement('div');
+                    const line1 = document.createElement('span');
+                    line1.textContent = `${parts[0]}, ${parts[1]}`;
+                    textContainer.appendChild(line1);
+                    const line2 = document.createElement('div');
+                    line2.textContent = parts[2];
+                    textContainer.appendChild(line2);
+                    attachmentWrapper.appendChild(textContainer);
+                }
+                break;
+        }
+
+        iconDiv.style.cursor = 'pointer';
+        iconDiv.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const attachmentDataString = JSON.stringify(attachment, null, 2);
+            showModal(attachmentDataString);
+        });
+        attachmentWrapper.prepend(iconDiv);
+    }
+
+    /**
+     * Обработва и създава UI за прикачен файл от Google Drive.
+     * @param {object} attachment - Обектът на прикачения файл.
+     * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
+     * @param {object} iconData - SVG иконата за типа на файла.
+     */
+    async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData) {
+        const iconDiv = document.createElement('div');
+        iconDiv.innerHTML = iconData.svg;
+
+        if (!attachment.path) {
+            iconDiv.style.cursor = 'pointer';
+            iconDiv.addEventListener('click', (e) => { e.stopPropagation(); showModal(JSON.stringify(attachment, null, 2)); });
+            attachmentWrapper.prepend(iconDiv);
+            return;
+        }
+
+        const filename = attachment.path.split('/').pop();
+        const link = document.createElement('a');
+
+        // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
+        const setupLink = (folderName, textPrefix) => {
+            link.href = '#'; // href вече не сочи директно към файла.
+            link.textContent = textPrefix + filename;
+            link.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
+            link.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
+            link.title = `Click to open ${filename} from Google Drive`;
+
+            link.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!checkAuth()) return;
+
+                showToast(`${_('loadingFile')} ${link.dataset.fileName}...`, 2000);
+                const fileId = await getFileID(folderIds[link.dataset.folderName], link.dataset.fileName);
+                if (fileId) {
+                    window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer');
+                } else {
+                    showToast(_('errorFetchFileId').replace('{fileName}', link.dataset.fileName));
+                }
+            };
+        };
+
+        const showPreview = async (folderName) => {
+            const noteEl = attachmentWrapper.closest('.note');
+            if (!noteEl || noteEl.querySelector('.image-preview-overlay')) return;
+
+            const titleEl = noteEl.querySelector('h3');
+            const fileId = await getFileID(folderIds[folderName], filename);
+            if (!fileId) {
+                showToast(folderName === 'Images' ? _('imgNotFound') : _('videoNotFound'));
+                return;
+            }
+            try {
+                const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink' });
+                const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                if (thumbnailUrl) {
+                    if (titleEl) titleEl.style.visibility = 'hidden';
+                    const overlay = document.createElement('div');
+                    overlay.className = 'image-preview-overlay';
+                    Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px' });
+                    overlay.addEventListener('click', () => window.open(link.href, '_blank'));
+                    const img = document.createElement('img');
+                    img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                    Object.assign(img.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
+                    overlay.appendChild(img);
+                    const closeButton = document.createElement('button');
+                    closeButton.className = 'view-button';
+                    closeButton.innerHTML = eyeOffIconSvg;
+                    Object.assign(closeButton.style, { position: 'absolute', top: '10px', right: '10px' });
+                    const svg = closeButton.querySelector('svg');
+                    if (svg) svg.style.stroke = 'white';
+                    closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); if (titleEl) titleEl.style.visibility = 'visible'; });
+                    overlay.appendChild(closeButton);
+                    noteEl.appendChild(overlay);
+                } else {
+                    showToast(folderName === 'Images' ? _('noImgPreview') : _('noVideoPreview'));
+                }
+            } catch (err) {
+                console.error(`Error fetching ${folderName} preview:`, err);
+                const errorKey = folderName === 'Images' ? 'errorImgPreview' : 'errorVideoPreview';
+                showToast(_(errorKey).replace('{error}', (err.message || err)));
+            }
+        };
+
+        switch (attachment.type) {
+            case 1: // Image
+                setupLink('Images', 'Images/');
+                iconDiv.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    showPreview('Images');
+                });
+                attachmentWrapper.appendChild(link);
+                break;
+            case 2: // Sound
+                setupLink('Sound', 'Sound/');
+                const soundTextContainer = document.createElement('div');
+                soundTextContainer.style.flexGrow = '1';
+                soundTextContainer.style.flexShrink = '1';
+                soundTextContainer.style.minWidth = '0';
+                soundTextContainer.appendChild(link);
+                const soundLine2 = document.createElement('div');
+                soundLine2.textContent = attachment.description || '';
+                soundTextContainer.appendChild(soundLine2);
+                attachmentWrapper.appendChild(soundTextContainer);
+                break;
+            case 3: // Other
+                setupLink('Other', 'Other/');
+                attachmentWrapper.appendChild(link);
+                break;
+            case 4: // Video
+                setupLink('Video', 'Video/');
+                const videoTextContainer = document.createElement('div');
+                videoTextContainer.style.flexGrow = '1';
+                videoTextContainer.style.flexShrink = '1';
+                videoTextContainer.style.minWidth = '0';
+                videoTextContainer.appendChild(link);
+                const videoLine2 = document.createElement('div');
+                videoLine2.textContent = attachment.description || '';
+                videoTextContainer.appendChild(videoLine2);
+                iconDiv.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    showPreview('Video');
+                });
+                attachmentWrapper.appendChild(videoTextContainer);
+                break;
+            case 5: // Location
+                const parts = attachment.path.split('|');
+                if (parts.length >= 3) {
+                    const textContainer = document.createElement('div');
+                    const line1 = document.createElement('span');
+                    line1.textContent = `${parts[0]}, ${parts[1]}`;
+                    textContainer.appendChild(line1);
+                    const line2 = document.createElement('div');
+                    line2.textContent = parts[2];
+                    textContainer.appendChild(line2);
+                    attachmentWrapper.appendChild(textContainer);
+                }
+                break;
+        }
+
+        if (attachment.type !== 1 && attachment.type !== 4) { // Add generic info click for non-preview types
+            iconDiv.style.cursor = 'pointer';
+            iconDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showModal(JSON.stringify(attachment, null, 2));
+            });
+        }
+        attachmentWrapper.prepend(iconDiv);
+    }
+
     async function createNoteElement(noteRawData) {
         const { file, res } = noteRawData;
         const note = document.createElement('div');
@@ -2653,402 +2898,20 @@ function toggleLocalFolderSectionVisibility(isVisible) {
                 contentEl.appendChild(separator);
                 await Promise.all(attachments.map(async attachment => {
                     const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-                    const useLocalDb = localStorage.getItem('useLocalDb') === 'true';
-
-                    if (iconData) {
-                        const attachmentWrapper = document.createElement('div');
-                        attachmentWrapper.style.display = 'flex';
-                        attachmentWrapper.style.alignItems = 'center';
-                        attachmentWrapper.style.gap = '5px';
-                        const iconDiv = document.createElement('div');
-
-                        if (attachment.type === 3 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const link = document.createElement('a');
-                            
-                            if (useLocalDb && dirHandle) {
-                                link.href = '#';
-                                link.onclick = async (e) => {
-                                    e.preventDefault();
-                                e.stopPropagation();
-                                    try {
-                                        const otherDir = await dirHandle.getDirectoryHandle('Other');
-                                        const fileHandle = await otherDir.getFileHandle(filename);
-                                        const file = await fileHandle.getFile();
-                                        window.open(URL.createObjectURL(file), '_blank');
-                                    } catch (err) {
-                                        console.error(`Could not open local file Other/${filename}`, err);
-                                        showToast(`Could not open local file: ${filename}`);
-                                    }
-                                };
-                            } else if (attachment.gdid) {
-                                // Only try to get Google Drive file ID if NOT in local DB mode
-                                if (!useLocalDb) {
-                                    const fileId = await getFileID(folderIds['Other'], filename);
-                                    if (fileId) {
-                                        link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                        link.target = '_blank';
-                                        link.rel = 'noopener noreferrer';
-                                    } else {
-                                        link.href = '#'; // Fallback if file ID not found
-                                    }
-                                } else {
-                                    link.href = '#'; // Fallback if file ID not found
-                                }
-                                link.onclick = (e) => {
-                                    // Спираме разпространението, за да не се отвори модалът на бележката
-                                    e.stopPropagation();
-                                    if (!checkAuth()) e.preventDefault(); // Prevent navigation if not authenticated
-                                };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-                            link.title = link.href;
-                            link.textContent = 'Other/' + filename;
-                            attachmentWrapper.appendChild(link);
-                            iconDiv.innerHTML = iconData.svg;
-                            iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', (e) => {
-                                const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                e.stopPropagation();
-                                showModal(attachmentDataString);
-                            });
-                        } else if (attachment.type === 5 && attachment.path) {
-                            const parts = attachment.path.split('|');
-                            if (parts.length >= 3) {
-                                const textContainer = document.createElement('div');
-                                const line1 = document.createElement('span');
-                                line1.textContent = `${parts[0]}, ${parts[1]}`;
-                                textContainer.appendChild(line1);
-                                const line2 = document.createElement('div');
-                                line2.textContent = parts[2];
-                                textContainer.appendChild(line2);
-                                attachmentWrapper.appendChild(textContainer);
-                                iconDiv.innerHTML = iconData.svg;
-                                iconDiv.style.cursor = 'pointer';
-                                iconDiv.addEventListener('click', (e) => {
-                                    const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                    e.stopPropagation();
-                                    showModal(attachmentDataString);
-                                });
-                            }
-                        }
-                        if (attachment.type === 1 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const link = document.createElement('a');
-
-                            if (useLocalDb && dirHandle) {
-                                link.href = '#';
-                                link.onclick = async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    try {
-                                        const imagesDir = await dirHandle.getDirectoryHandle('Images');
-                                        const fileHandle = await imagesDir.getFileHandle(filename);
-                                        const file = await fileHandle.getFile();
-                                        window.open(URL.createObjectURL(file), '_blank');
-                                    } catch (err) {
-                                        console.error(`Could not open local file Images/${filename}`, err);
-                                        showToast(`Could not open local file: ${filename}`);
-                                    }
-                                };
-                                link.target = '_blank';
-                            } else if (attachment.gdid) {
-                                // Only try to get Google Drive file ID if NOT in local DB mode
-                                if (!useLocalDb) {
-                                    const fileId = await getFileID(folderIds['Images'], filename);
-                                    if (fileId) {
-                                        link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                        link.target = '_blank';
-                                        link.rel = 'noopener noreferrer';
-                                    } else {
-                                        link.href = '#';
-                                    }
-                                } else {
-                                    link.href = '#';
-                                }
-                                link.onclick = (e) => {
-                                    e.stopPropagation();
-                                    if (!checkAuth()) e.preventDefault();
-                                };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-
-                            link.title = link.href;
-                            link.textContent = 'Images/' + filename;
-                            iconDiv.innerHTML = iconData.svg;
-                            iconDiv.addEventListener('click', async (e) => {
-                                if (useLocalDb) return; // Preview is not available in local mode
-                                e.stopPropagation();
-                                e.preventDefault();
-                                const noteEl = attachmentWrapper.closest('.note');
-                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
-                                    return;
-                                }
-                                const titleEl = noteEl.querySelector('h3');
-                                const fileId = await getFileID(folderIds['Images'], filename);
-                                if (!fileId) {
-                                    showToast('Image file not found for preview.');
-                                    return;
-                                }
-                                try {
-                                    const fileMetadata = await gapi.client.drive.files.get({
-                                        fileId: fileId,
-                                        fields: 'thumbnailLink'
-                                    });
-                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-                                    if (thumbnailUrl) {
-                                        if (titleEl) titleEl.style.visibility = 'hidden';
-                                        const overlay = document.createElement('div');
-                                        overlay.className = 'image-preview-overlay';
-                                        Object.assign(overlay.style, {
-                                            position: 'absolute',
-                                            top: '0', left: '0',
-                                            width: '100%', height: '100%',
-                                            backgroundColor: 'rgba(0,0,0,0.85)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: '10',
-                                            borderRadius: '8px'
-                                        });
-                                        overlay.addEventListener('click', () => {
-                                            window.open(link.href, '_blank');
-                                        });
-                                        const img = document.createElement('img');
-                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                                        Object.assign(img.style, {
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            padding: '10px',
-                                            boxSizing: 'border-box'
-                                        });
-                                        overlay.appendChild(img);
-                                        const closeButton = document.createElement('button');
-                                        closeButton.className = 'view-button';
-                                        closeButton.innerHTML = eyeOffIconSvg;
-                                        Object.assign(closeButton.style, {
-                                            position: 'absolute',
-                                            top: '10px',
-                                            right: '10px',
-                                        });
-                                        const svg = closeButton.querySelector('svg');
-                                        if(svg) svg.style.stroke = 'white';
-                                        closeButton.addEventListener('click', (ev) => {
-                                            ev.stopPropagation();
-                                            overlay.remove();
-                                            if (titleEl) titleEl.style.visibility = 'visible';
-                                        });
-                                        overlay.appendChild(closeButton);
-                                        noteEl.appendChild(overlay);
-                                    } else {
-                                        showToast('No preview available for this image.');
-                                    }
-                                } catch (err) {
-                                    console.error('Error fetching image preview:', err);
-                                    showToast('Error loading image preview: ' + (err.message || err));
-                                }
-                            });
-                            attachmentWrapper.appendChild(link);
-                        }
-                        attachmentWrapper.prepend(iconDiv);
-                        if (attachment.type === 2 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const textContainer = document.createElement('div');
-                            textContainer.style.flexGrow = '1';
-                            textContainer.style.flexShrink = '1';
-                            textContainer.style.minWidth = '0';
-                            const link = document.createElement('a');
-
-                            if (useLocalDb && dirHandle) {
-                                link.href = '#';
-                                link.onclick = async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    try {
-                                        const soundDir = await dirHandle.getDirectoryHandle('Sound');
-                                        const fileHandle = await soundDir.getFileHandle(filename);
-                                        const file = await fileHandle.getFile();
-                                        window.open(URL.createObjectURL(file), '_blank');
-                                    } catch (err) {
-                                        console.error(`Could not open local file Sound/${filename}`, err);
-                                        showToast(`Could not open local file: ${filename}`);
-                                    }
-                                };
-                                link.target = '_blank';
-                            } else if (attachment.gdid) {
-                                // Only try to get Google Drive file ID if NOT in local DB mode
-                                if (!useLocalDb) {
-                                    const fileId = await getFileID(folderIds['Sound'], filename);
-                                    if (fileId) {
-                                        link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                        link.target = '_blank';
-                                        link.rel = 'noopener noreferrer';
-                                    } else {
-                                        link.href = '#';
-                                    }
-                                } else {
-                                    link.href = '#';
-                                }
-                                link.onclick = (e) => {
-                                    e.stopPropagation();
-                                    if (!checkAuth()) e.preventDefault();
-                                };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-
-                            link.title = link.href;
-                            link.textContent = 'Sound/' + filename;
-                            textContainer.appendChild(link);
-                            const line2 = document.createElement('div');
-                            line2.textContent = attachment.description || '';
-                            textContainer.appendChild(line2);
-                            iconDiv.innerHTML = iconData.svg;
-                            iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', (e) => {
-                                const attachmentDataString = JSON.stringify(attachment, null, 2);
-                                e.stopPropagation();
-                                showModal(attachmentDataString);
-                            });
-                            attachmentWrapper.appendChild(textContainer);
-                        }
-                        if (attachment.type === 4 && attachment.path) {
-                            const filename = attachment.path.split('/').pop();
-                            const textContainer = document.createElement('div');
-                            textContainer.style.flexGrow = '1';
-                            textContainer.style.flexShrink = '1';
-                            textContainer.style.minWidth = '0';
-                            const link = document.createElement('a');
-
-                            if (useLocalDb && dirHandle) {
-                                link.href = '#';
-                                link.onclick = async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    try {
-                                        const videoDir = await dirHandle.getDirectoryHandle('Video');
-                                        const fileHandle = await videoDir.getFileHandle(filename);
-                                        const file = await fileHandle.getFile();
-                                        window.open(URL.createObjectURL(file), '_blank');
-                                    } catch (err) {
-                                        console.error(`Could not open local file Video/${filename}`, err);
-                                        showToast(`Could not open local file: ${filename}`);
-                                    }
-                                };
-                                link.target = '_blank';
-                            } else if (attachment.gdid) {
-                                // Only try to get Google Drive file ID if NOT in local DB mode
-                                if (!useLocalDb) {
-                                    const fileId = await getFileID(folderIds['Video'], filename);
-                                    if (fileId) {
-                                        link.href = `https://drive.google.com/file/d/${fileId}/view`;
-                                        link.target = '_blank';
-                                        link.rel = 'noopener noreferrer';
-                                    } else {
-                                        link.href = '#';
-                                    }
-                                } else {
-                                    link.href = '#';
-                                }
-                                link.onclick = (e) => {
-                                    e.stopPropagation();
-                                    if (!checkAuth()) e.preventDefault();
-                                };
-                            } else {
-                                link.href = '#';
-                                link.onclick = (e) => e.preventDefault();
-                            }
-
-                            link.title = link.href;
-                            link.textContent = 'Video/' + filename;
-                            textContainer.appendChild(link);
-                            const line2 = document.createElement('div');
-                            line2.textContent = attachment.description || '';
-                            textContainer.appendChild(line2);
-                            iconDiv.innerHTML = iconData.svg;
-                            iconDiv.addEventListener('click', async (e) => {
-                                if (useLocalDb) return; // Preview is not available in local mode
-                                e.stopPropagation();
-                                e.preventDefault();
-                                const noteEl = attachmentWrapper.closest('.note');
-                                if (!noteEl || noteEl.querySelector('.image-preview-overlay')) {
-                                    return;
-                                }
-                                const titleEl = noteEl.querySelector('h3');
-                                const fileId = await getFileID(folderIds['Video'], filename);
-                                if (!fileId) {
-                                    showToast('Video file not found for preview.');
-                                    return;
-                                }
-                                try {
-                                    const fileMetadata = await gapi.client.drive.files.get({
-                                        fileId: fileId,
-                                        fields: 'thumbnailLink'
-                                    });
-                                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-                                    if (thumbnailUrl) {
-                                        if (titleEl) titleEl.style.visibility = 'hidden';
-                                        const overlay = document.createElement('div');
-                                        overlay.className = 'image-preview-overlay';
-                                        Object.assign(overlay.style, {
-                                            position: 'absolute',
-                                            top: '0', left: '0',
-                                            width: '100%', height: '100%',
-                                            backgroundColor: 'rgba(0,0,0,0.85)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            zIndex: '10',
-                                            borderRadius: '8px'
-                                        });
-                                        overlay.addEventListener('click', () => {
-                                            window.open(link.href, '_blank');
-                                        });
-                                        const img = document.createElement('img');
-                                        img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                                        Object.assign(img.style, {
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            padding: '10px',
-                                            boxSizing: 'border-box'
-                                        });
-                                        overlay.appendChild(img);
-                                        const closeButton = document.createElement('button');
-                                        closeButton.className = 'view-button';
-                                        closeButton.innerHTML = eyeOffIconSvg;
-                                        Object.assign(closeButton.style, {
-                                            position: 'absolute',
-                                            top: '10px',
-                                            right: '10px',
-                                        });
-                                        const svg = closeButton.querySelector('svg');
-                                        if(svg) svg.style.stroke = 'white';
-                                        closeButton.addEventListener('click', (ev) => {
-                                            ev.stopPropagation();
-                                            overlay.remove();
-                                            if (titleEl) titleEl.style.visibility = 'visible';
-                                        });
-                                        overlay.appendChild(closeButton);
-                                        noteEl.appendChild(overlay);
-                                    } else {
-                                        showToast('No preview available for this video.');
-                                    }
-                                } catch (err) {
-                                    console.error('Error fetching video preview:', err);
-                                    showToast('Error loading video preview: ' + (err.message || err));
-                                }
-                            });
-                            attachmentWrapper.appendChild(textContainer);
-                        }
-                        contentEl.appendChild(attachmentWrapper);
+                    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+                    if (!iconData) return;
+                    const attachmentWrapper = document.createElement('div');
+                    attachmentWrapper.style.display = 'flex';
+                    attachmentWrapper.style.alignItems = 'center';
+                    attachmentWrapper.style.gap = '5px';
+                    if (useLocalFolder && dirHandle) {
+                        // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
+                        await handleLocalAttachment(attachment, attachmentWrapper, iconData);
+                    } else {
+                        // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
+                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
                     }
+                    contentEl.appendChild(attachmentWrapper);
                 }));
             }
         }
@@ -3279,6 +3142,6 @@ async function renderUI({ boardParseError }) {
         counterEl.textContent = notesCount;
     }
     // Обновяваме списъка със стартови бордове в настройките
-    populateStartBoardSelect();
+    // populateStartBoardSelect();
     
 }
