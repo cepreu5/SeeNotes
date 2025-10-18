@@ -146,23 +146,23 @@
                     <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
                 </div>
 
+                <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 15px;">
+                    <label for="use-indexeddb-checkbox" data-key="useIndexedDb">База данни</label>
+                    <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
+                </div>
+
                 <!-- DB Management Section -->
                 <div class="settings-section" id="db-section-wrapper" style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 20px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 15px;" data-key="dbManagementTitle">Управление на базата данни</label>
                     
                     <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
-                        <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
+                        <!--button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button-->
                         <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
                     </div>
 
-                    <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 15px;">
-                        <label for="use-indexeddb-checkbox" data-key="useIndexedDb">Използвай IndexedDB</label>
-                        <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
-                    </div>
-
-                    <div class="zoom-control-wrapper" id="update-from-source-wrapper" style="padding-left: 20px;">
+                    <div class="zoom-control-wrapper" id="update-from-source-wrapper" style="padding-left: 20px;" hidden>
                         <label for="update-from-source-checkbox" data-key="updateFromSource">Обновяване от източника</label>
-                        <input type="checkbox" id="update-from-source-checkbox" class="settings-checkbox">
+                        <input type="checkbox" id="update-from-source-checkbox" class="settings-checkbox" checked="true" disabled>
                     </div>
 
                     <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 15px;">

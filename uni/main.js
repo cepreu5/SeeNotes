@@ -152,6 +152,7 @@ const translations = {
             dbDeleteFailed: 'Failed to delete local database.',
             createDbButton: 'Create',
             deleteDbButton: 'Delete',
+            confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
             dbManagementTitle: 'Database Management'
         },
         bg: {
@@ -240,6 +241,7 @@ const translations = {
             dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
             createDbButton: 'Създай',
             deleteDbButton: 'Изтрий',
+            confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
             dbManagementTitle: 'Управление на базата данни'
         }
     };
@@ -314,7 +316,7 @@ function showToast(message, duration = 10000) {
     const toast = document.getElementById('toastNotification');
     toast.textContent = message;
     toast.classList.add('show');
-    toastTimeout = setTimeout(hideToast, duration);
+    toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
 }
 
 function showMessagePopup(message, showInput = false) {
@@ -808,28 +810,34 @@ function handleSignoutClick() {
         const updateOnly = localStorage.getItem('updateFromGoogleDrive') !== 'false';
         // Get the timestamp only if "update only" is checked
         if (updateOnly) {
-            lastSyncTimestamp = await getConfig('lastGoogleDriveSyncTimestamp');
+            lastSyncTimestamp = await getConfig('lastGDTimestamp');
         }
         // This will be null if updateOnly is false or if no timestamp is found,
         // triggering a full sync in those cases.
         const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
+
         if (updateOnly && modifiedSince) {
             console.log(`Checking for Google Drive updates since ${modifiedSince}`);
+            loaderText.textContent = `Проверка за промени в Google Drive от ${new Date(lastSyncTimestamp).toLocaleString()}...`;
         } else {
             console.log('Performing full initial sync from Google Drive to local DB.');
+            loaderText.textContent = 'Първоначална синхронизация с Google Drive...';
         }
+
         const folderId = await getFolderID();
         if (!folderId) {
             showToast(_('errorFolderNotFound'));
             return;
         }
         const syncFile = async (filename, storeName) => {
+            loaderText.textContent = `Проверка на ${filename}...`;
             const files = await fetchFiles(filename, folderId, null, modifiedSince);
             if (files.length > 0) {
                 updatedFilesCount += files.length;
                 console.log(`Found ${files.length} updated '${filename}' file(s).`);
                 const parsedData = await parseFileResults(files, filename);
                 if (parsedData.data.length > 0) {
+                    loaderText.textContent = `Записване на промените от ${filename}...`;
                     await bulkPutDB(storeName, parsedData.data, true); // Incremental update
                 }
             }
@@ -837,15 +845,10 @@ function handleSignoutClick() {
         await syncFile('board.txt', BOARD_STORE_NAME);
         await syncFile('media.txt', MEDIA_STORE_NAME);
         await syncFile('note.txt', NOTE_STORE_NAME);
-        // Show toast only for incremental updates (when a timestamp was actually used)
-        if (updateOnly && modifiedSince) {
-            const message = updatedFilesCount > 0
-                ? _('gdriveUpdatesFound').replace('{count}', updatedFilesCount)
-                : _('gdriveNoUpdates');
-            showToast(message, 10000);
-        }
-        await saveConfig('lastGoogleDriveSyncTimestamp', Date.now());
+        await saveConfig('lastGDTimestamp', Date.now());
+        loaderText.textContent = 'Синхронизацията приключи. Зареждане на данни...';
         console.log('Google Drive sync finished.');
+        return updatedFilesCount;
     }
 
     /**
@@ -894,31 +897,36 @@ function handleSignoutClick() {
                     if (useGoogleDb) {
                         console.log("Source for initial load: Google Drive");
                         const { boardParseError } = await fetchAllData(null, true); // true -> запиши в DB
+                        await saveConfig('lastGDTimestamp', Date.now());
                         await renderUI({ boardParseError });
                     } else if (useLocalFolder) {
                         console.log("Source for initial load: Local Folder");
                         const { boardParseError } = await fetchAllDataFromLocalFolder(true); // true -> запиши в DB
-                        await saveConfig('lastUpdateTimestamp', Date.now());
+                        await saveConfig('lastLocalTimestamp', Date.now());
                         await renderUI({ boardParseError });
                     }
                     showToast(_('dbCreated'), 10000);
                 } else {
                     // Базата съществува и има данни
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
-                    if (!updateFromSource) {
-                        // Просто зареждаме от базата, без синхронизация
+                    /*if (!updateFromSource) { // винаги ще е с update
+                        // Просто зареждаме от базата, без update
                         console.log("Loading directly from IndexedDB (sync is disabled).");
                         if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
                         loaderText.textContent = "Loading from local database...";
                         await fetchAllDataLocal();
                         await renderUI({ boardParseError: false });
-                    } else {
+                    } else {*/
                         // Синхронизираме от източника, след което зареждаме от базата
                         console.log("Syncing from source (sync is enabled).");
                         if (useGoogleDb) {
                             console.log("Sync source: Google Drive");
                             if (loaderTitle) loaderTitle.textContent = "Google Drive Sync";
-                            await runGoogleDriveSync();
+                            const updatedCount = await runGoogleDriveSync();
+                            const message = updatedCount > 0
+                                ? _('gdriveUpdatesFound').replace('{count}', updatedCount)
+                                : _('gdriveNoUpdates');
+                            showToast(message, 10000);
                         } else if (useLocalFolder) {
                             console.log("Sync source: Local Folder");
                             if (loaderTitle) loaderTitle.textContent = "Local Folder Sync";
@@ -927,13 +935,14 @@ function handleSignoutClick() {
                         loaderText.textContent = "Fetching updated data from DB...";
                         await fetchAllDataLocal();
                         await renderUI({ boardParseError: false });
-                    }
+                    // }
                 }
             }
         } catch (err) {
             console.error("Error in mainLogic:", err);
             showToast(_('errorProcessingFiles'));
         } finally {
+            loaderText.textContent = ''; // Изчистваме текста за прогреса
             loaderContainer.style.display = 'none';
             document.body.style.backgroundImage = `url('Board.png')`;
             notesContainer.style.backgroundImage = `url('Board.png')`;
@@ -1117,8 +1126,8 @@ async function runLocalSync() {
         return;
     }
 
-    const lastUpdateTimestamp = await getConfig('lastUpdateTimestamp');
-    const updateDate = lastUpdateTimestamp ? new Date(lastUpdateTimestamp) : null;
+    const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
+    const updateDate = lastLocalTimestamp ? new Date(lastLocalTimestamp) : null;
     let updatedCount = 0;
     const handle = await getDirectoryHandle();
     if (!handle) return;
@@ -1127,8 +1136,8 @@ async function runLocalSync() {
 
     // Коригирана проверка: използваме 'updateFromSource' вместо старата 'updateIndexedDb'
     if (localStorage.getItem('updateFromSource') !== 'false') {
-        updatedCount = await processDirectoryContent(lastUpdateTimestamp);
-        await saveConfig('lastUpdateTimestamp', Date.now());
+        updatedCount = await processDirectoryContent(lastLocalTimestamp);
+        await saveConfig('lastLocalTimestamp', Date.now());
     } else {
         console.log("Skipping local file scan because IndexedDB update is disabled.");
         loaderText.textContent = _('skippedFileScan');
@@ -1154,11 +1163,8 @@ async function runLocalSync() {
 async function validateFolderContent(directoryHandle) {
     const boardPattern = /^board.*\.txt$/i;
     const notePattern = /^note.*\.txt$/i;
-    const mediaPattern = /^media.*\.txt$/i;
     let boardFileCount = 0;
     let noteFileCount = 0;
-    let mediaFileCount = 0;
-    let noFileCount = 0;
     try {
         for await (const entry of directoryHandle.values()) {
             if (entry.kind === 'file') {
@@ -1166,25 +1172,21 @@ async function validateFolderContent(directoryHandle) {
                     boardFileCount++;
                 } else if (notePattern.test(entry.name)) {
                     noteFileCount++;
-                } else if (mediaPattern.test(entry.name)) {
-                    mediaFileCount++;
-                } else noFileCount++;
+                }
+                // Прекъсваме проверката веднага щом условията са изпълнени
+                if (boardFileCount >= 1 && noteFileCount >= 3) {
+                    console.log(`Validation successful: Found at least 1 board file and 3 note files.`);
+                    return { isValid: true, reason: null };
+                }
             }
         }
     } catch (error) {
         console.error("Error during folder validation:", error);
-        // При грешка приемаме, че не е валидна, за да сме сигурни.
         return { isValid: false, reason: 'error' };
     }
-    // Проверяваме дали са изпълнени новите условия.
-    if (boardFileCount >= 1 && noteFileCount > 5) {
-        if (noFileCount > 0) console.log(`Found ${noFileCount} NO file(s)`, 10013);
-        console.log(`Validation successful: Found ${boardFileCount} board file(s), ${noteFileCount} note file(s), and ${mediaFileCount} media file(s).`);
-        return { isValid: true, reason: null };
-    } else {
-        console.warn(`Validation failed: Found ${boardFileCount} board file(s) and ${noteFileCount} note file(s). Required: >=1 board, >5 notes.`);
-        return { isValid: false, reason: 'criteria_not_met' };
-    }
+    // Ако цикълът приключи без да са изпълнени условията
+    console.warn(`Validation failed: Found ${boardFileCount} board file(s) and ${noteFileCount} note file(s). Required: >=1 board, >=3 notes.`);
+    return { isValid: false, reason: 'criteria_not_met' };
 }
 
 
@@ -1957,7 +1959,7 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         // Define toggle function with correct grouping
         const toggleUpdateOptionsVisibility = () => {
             const isLocalMode = document.getElementById('use-local-db-checkbox').checked;
-            const isDbEnabled = useIndexedDbCheckbox.checked;
+            // const isDbEnabled = useIndexedDbCheckbox.checked;
             // DB Management section is visible only if IndexedDB is enabled
             dbSectionWrapper.style.display = isDbEnabled ? 'block' : 'none';
             // "Update from source" is visible only if IndexedDB is enabled
@@ -1973,7 +1975,7 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         // Add event listeners
         useIndexedDbCheckbox.addEventListener('change', () => {
             localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
-            toggleUpdateOptionsVisibility(); // Now safe to call
+            // toggleUpdateOptionsVisibility(); // Now safe to call
             showToast(_('settingSaved'), 2000);
         });
 
@@ -1995,12 +1997,34 @@ function toggleLocalFolderSectionVisibility(isVisible) {
             showToast(_('settingSaved'), 2000);
         });
 
-        // Logic to show/hide "Update" checkbox
-        const toggleUpdateCheckboxVisibility = () => {
-            const isDbEnabled = useIndexedDbCheckbox.checked;
-            updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
-        };        
+       // --- DB Management Buttons ---
+        const createDbBtn = document.getElementById('create-db-btn');
+        const deleteDbBtn = document.getElementById('delete-db-btn');
 
+        /*createDbBtn.addEventListener('click', async () => {
+            // Logic for creating DB can be added here if needed,
+            // but the main logic already handles creation.
+            showToast("Базата данни се създава автоматично при първоначално зареждане с включено IndexedDB.", 10000);
+        });*/
+
+        deleteDbBtn.addEventListener('click', async () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+            // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
+            await new Promise(resolve => setTimeout(resolve, 150));
+            const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
+            if (confirmedDataDelete) {
+                const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'));
+                if (confirmedConfigDelete) {
+                    // Потребителят иска да изтрие всичко, включително настройките
+                    await deleteNotesDB();
+                } else {
+                    // Потребителят иска да изтрие само данните, но да запази настройките
+                    await clearDbStores();
+                }
+            showToast(_('dbDeleted'), 10000);
+            }
+        });
+        
         // --- Намираме бутона за затваряне и добавяме event listener ---
         const settingsCloseBtn = document.getElementById('settings-close-btn');
         settingsCloseBtn.addEventListener('click', () => {
@@ -2018,30 +2042,37 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         const folderNameDisplay = document.getElementById('local-sync-folder-name');
 
         selectFolderBtn.addEventListener('click', async () => {
-            const handle = await getDirectoryHandle(true); // Prompt user to select
-            if (handle) {
-                // --- ВАЛИДАЦИЯ НА СЪДЪРЖАНИЕТО ---
-                const validationResult = await validateFolderContent(handle);
-                if (!validationResult.isValid) {
-                    let warningMessage = `Папката '${handle.name}' не изглежда като валидна папка с данни.`;
-                    if (validationResult.reason === 'criteria_not_met') {
-                        warningMessage += " Необходимо е да съдържа поне 1 'board' файл и повече от 5 'note' файла.";
-                    } else if (validationResult.reason === 'error') {
-                        warningMessage += " Възникна грешка при проверката.";
+            try {
+                const handle = await window.showDirectoryPicker();
+                if (handle) {
+                    // --- ВАЛИДАЦИЯ НА СЪДЪРЖАНИЕТО ---
+                    const validationResult = await validateFolderContent(handle);
+                    if (!validationResult.isValid) {
+                        let warningMessage = `Папката '${handle.name}' не изглежда като валидна папка с данни.`;
+                        if (validationResult.reason === 'criteria_not_met') {
+                            warningMessage += " Необходимо е да съдържа поне 1 'board' файл и 3 'note' файла.";
+                        } else if (validationResult.reason === 'error') {
+                            warningMessage += " Възникна грешка при проверката.";
+                        }
+                        showToast(warningMessage, 15000); // Показваме предупреждението за по-дълго
+                        return; // Спираме изпълнението и се връщаме за нов избор.
                     }
-                    showToast(warningMessage, 15000); // Показваме предупреждението за по-дълго
-                    return; // Спираме изпълнението и се връщаме за нов избор.
+                    // --- КРАЙ НА ВАЛИДАЦИЯТА ---
+
+                    // Валидацията е успешна, сега запазваме.
+                    await saveConfig('directoryHandle', handle);
+                    dirHandle = handle; // Актуализираме и глобалната променлива.
+
+                    folderNameDisplay.textContent = handle.name;
+                    folderNameDisplay.title = handle.name;
+                    showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
+                    await mainLogic(); // Презареждаме данните от новоизбраната папка
                 }
-                // --- КРАЙ НА ВАЛИДАЦИЯТА ---
-
-                // Валидацията е успешна, сега запазваме.
-                await saveConfig('directoryHandle', handle);
-                dirHandle = handle; // Актуализираме и глобалната променлива.
-
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-                await runLocalSync(); // Run initial sync immediately
+            } catch (error) {
+                // Потребителят е затворил диалога за избор на папка (AbortError)
+                if (error.name !== 'AbortError') {
+                    console.error("Error selecting directory:", error);
+                }
             }
         });
 
@@ -3024,7 +3055,7 @@ async function getAllFromDB(storeName) {
 
 /**
  * Запазва стойност в config store-a.
- * @param {string} key - Ключ (напр. 'directoryHandle', 'lastUpdateTimestamp').
+ * @param {string} key - Ключ (напр. 'directoryHandle', 'lastLocalTimestamp').
  * @param {*} value - Стойността за запис.
  */
 async function saveConfig(key, value) {
@@ -3111,6 +3142,28 @@ function deleteNotesDB() {
  * Deletes the entire IndexedDB database.
  * @returns {Promise<void>}
  */
+async function clearDbStores() {
+    try {
+        const db = await openNotesDB();
+        const storesToClear = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME];
+        const transaction = db.transaction(storesToClear, 'readwrite');
+
+        const clearPromises = storesToClear.map(storeName => {
+            return new Promise((resolve, reject) => {
+                const request = transaction.objectStore(storeName).clear();
+                request.onsuccess = resolve;
+                request.onerror = reject;
+            });
+        });
+
+        await Promise.all(clearPromises);
+        console.log('Data stores cleared, config preserved.');
+    } catch (error) {
+        console.error('Failed to clear data stores:', error);
+        showToast(_('dbDeleteFailed'), 10000);
+    }
+}
+
 /*function deleteNotesDB() {
     return new Promise((resolve, reject) => {
         const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
