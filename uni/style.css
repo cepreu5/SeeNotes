@@ -239,7 +239,78 @@ main {
     box-sizing: border-box;
     background-color: transparent;
     z-index: 1; /* Ensure content is on top of the canvas */
-    padding-bottom: 20px; /* Add space at the bottom of the note content area */
+    padding-bottom: 10px; /* Add space at the bottom of the note content area */
+}
+
+.note-content-wrapper > .note-content {
+    margin: 0 10% 10% 8%;
+}
+
+.note-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    word-wrap: break-word;    
+    /* Font size is now inherited from .note */
+    white-space: pre-wrap;
+}
+
+pre, code {
+    font-size: 100%; /* Match the surrounding text size */
+}
+
+.note-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.note-content::-webkit-scrollbar-track {
+    background: #e9c7a6;
+}
+
+.note-content::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.note-content::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.note-content a,
+#modal-body a {
+    color: #007bff;
+    text-decoration: none;
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: text-bottom;
+    cursor: pointer;
+}
+
+.note-content a:hover {
+    text-decoration: underline;
+}
+
+.note-footer {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px; /* Разстояние между иконите */
+    position: absolute; /* Позиционираме го абсолютно спрямо .note */
+    bottom: 5px;        /* Позиция от долния край (12px - 10px) */
+    left: 0;
+    right: 0;
+    /*border-top: 1px solid rgba(0, 0, 0, 0.15);*/
+}
+
+.footer-icon svg {
+    width: 25px; /* Леко увеличаваме размера за по-добра видимост */
+    height: 25px; /* Увеличаваме височината за по-добра видимост */
+    stroke: #070707; /* По-тъмен цвят за иконите */
+    stroke-width: 1.5;
 }
 
 .lock-icon-overlay {
@@ -259,10 +330,6 @@ main {
 }
 
 
-.note-content-wrapper > .note-content {
-    margin: 0 10% 0 8%;
-}
-
 /* Specific styles for the boards note to make it a full-width panel */
 .boards-note, .note.boards-note {
     height: auto; /* Auto-adjust height based on content */
@@ -280,17 +347,6 @@ main {
     user-select: none; /* Prevent text selection on the board panel */
     box-sizing: border-box; /* Ensure padding is included in width */
 }
-
-/*.note h3 {
-    margin-top: 20%;
-    font-size: 1.1em;
-    flex-shrink: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    /~ Margin is now controlled by .note-content-wrapper > h3 ~/
-    margin: 0;
-}*/
 
 .note-title-truncated {
     margin-top: 50px;
@@ -348,50 +404,7 @@ main {
     cursor: pointer;
     vertical-align: middle; /* Better alignment with the label text */
 }
-.note-content {
-    flex-grow: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    word-wrap: break-word;    
-    /* Font size is now inherited from .note */
-    white-space: pre-wrap;
-}
 
-
-pre, code {
-    font-size: 100%; /* Match the surrounding text size */
-}
-
-.note-footer {
-    flex-shrink: 0;
-    padding-top: 1px;
-    border-top: 1px solid gray;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 12px; /* Задаване на фиксиран размер, който не се влияе от настройките */
-    color: #666;
-    min-height: 18px;
-    margin: 0 8% 7% 8%; /* top | right | bottom | left */
-}
-
-.note-footer .date-display,
-.note-footer .board-display {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-}
-
-.note-footer .board-display {
-    margin-right: 10px;
-}
-
-.note-footer svg {
-    width: 16px;
-    height: 16px;
-    stroke: #666;
-    margin-right: 5px;
-}
 
 .view-button {
     background: none;
@@ -405,40 +418,6 @@ pre, code {
     height: 16px;
     stroke: #555;
     cursor: pointer;
-}
-
-.note-content::-webkit-scrollbar {
-    width: 8px;
-}
-
-.note-content::-webkit-scrollbar-track {
-    background: #e9c7a6;
-}
-
-.note-content::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 4px;
-}
-
-.note-content::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
-.note-content a,
-#modal-body a {
-    color: #007bff;
-    text-decoration: none;
-    display: inline-block;
-    max-width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    vertical-align: text-bottom;
-    cursor: pointer;
-}
-
-.note-content a:hover {
-    text-decoration: underline;
 }
 
 .modal-overlay {

@@ -2955,6 +2955,34 @@ function toggleLocalFolderSectionVisibility(isVisible) {
         });
         contentWrapper.appendChild(titleWrapper);
         contentWrapper.appendChild(contentEl);
+
+        // --- Създаване на футър с икони за прикачени файлове ---
+        if (!isHiddenNote && noteGdid) {
+            const attachments = mediaData.filter(media => media.noteid === noteGdid);
+            const uniqueTypes = [...new Set(attachments.map(att => att.type))];
+
+            if (uniqueTypes.length > 0) {
+                const footerEl = document.createElement('div');
+                footerEl.className = 'note-footer';
+
+                uniqueTypes.sort((a, b) => a - b).forEach(type => {
+                    const iconData = attachmentIcons.find(icon => icon.type === type);
+                    if (iconData) {
+                        const iconDiv = document.createElement('div');
+                        iconDiv.className = 'footer-icon';
+                        iconDiv.innerHTML = iconData.svg;
+                        // Find the SVG inside and set its background color
+                        const svg = iconDiv.querySelector('svg');
+                        if (svg) {
+                            svg.style.backgroundColor = noteBgColor;
+                        }
+                        footerEl.appendChild(iconDiv);
+                    }
+                });
+                note.appendChild(footerEl); // Преместваме футъра да е директен наследник на .note
+            }
+        }
+
         return note;
     }
 
