@@ -288,8 +288,7 @@ async function startApp() {
     
     document.body.style.display = 'block';
     initApp(); // Инициализира UI елементите и event listeners
-    await createBoardsUI([], false);
-    await createSettingsUI([], false); // Предварително създава UI на настройките
+    await createBoardsUI([], false); // Предварително създава UI на настройките
     mainLogic(); // Извиква новата основна логика за зареждане на данни
 }
 
@@ -1751,6 +1750,393 @@ async function processDirectoryContent(minModificationDate) {
         contentWrapper.style.minHeight = '0';
         const contentEl = document.createElement('div');
         contentEl.className = 'board-menu-container';
+        const zoomValueDisplay = document.createElement('span');
+        zoomValueDisplay.id = 'zoom-value-display';
+        const zoomModalBody = document.getElementById('settings-modal-body');
+        // zoomModalBody.innerHTML = ''; // This should remain commented out
+
+        // --- Намираме Zoom контролите, които вече са в HTML ---
+        const scaleSlider = document.getElementById('scaleSlider');
+        const scaleInput = document.getElementById('scaleInput');
+        const applyBtn = document.getElementById('applyZoomBtn');
+
+        const updateZoom = (value) => {
+            value = Math.max(25, Math.min(175, parseInt(value, 10)));
+            if (isNaN(value)) value = 100;
+            notesContainer.style.zoom = value / 100;
+            zoomValueDisplay.textContent = ` ${value}%`;
+            scaleSlider.value = value;
+            scaleInput.value = value;
+        };
+
+        // --- Намираме Font Size и Datemod, които вече са в HTML ---
+        const noteFontSizeInput = document.getElementById('note-font-size-input');
+        const modalFontSizeInput = document.getElementById('modal-font-size-input');
+        const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
+
+        const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
+            const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
+            fontSizes.forEach(size => {
+                const option = document.createElement('option');
+                option.value = size;
+                option.textContent = `${size}px`;
+                selectElement.appendChild(option);
+            });
+            selectElement.value = localStorage.getItem(storageKey) || defaultValue;
+            // Apply initial value
+            targetUpdate(selectElement.value);
+            selectElement.addEventListener('change', () => {
+                const value = selectElement.value;
+                localStorage.setItem(storageKey, value);
+                targetUpdate(value);
+                showToast(_('settingSaved'), 2000);
+            });
+        };
+        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
+        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`);
+
+        showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
+        showDatemodCheckbox.addEventListener('change', () => {
+            const isChecked = showDatemodCheckbox.checked;
+            localStorage.setItem('showDatemod', isChecked);
+            document.body.classList.toggle('hide-datemod', !isChecked);
+            showToast(_('settingSaved'), 2000);
+        });
+
+        // --- Намираме "Start Board" и "Max Searches", които вече са в HTML ---
+        const startBoardSelect = document.getElementById('start-board-select');
+        const maxSearchesInput = document.getElementById('max-searches-input');
+
+        maxSearchesInput.addEventListener('change', () => {
+            let newValue = parseInt(maxSearchesInput.value, 10);
+            if (isNaN(newValue) || newValue < 0) newValue = 0;
+            if (newValue > 20) newValue = 20;
+            maxSavedSearches = newValue;
+            localStorage.setItem('maxSavedSearches', newValue);
+            // Trim existing searches if new limit is smaller
+            if (savedSearches.length > maxSavedSearches) {
+                savedSearches.length = maxSavedSearches;
+                localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+            }
+            showToast(_('settingSaved'), 2000);
+        });
+
+        // Попълваме опциите за "Start Board"
+        startBoardSelect.innerHTML = `
+            <option value="all">${_('allBoards')}</option>
+            <option value="calendar">${_('calendar')}</option>
+            <option value="reminder">${_('reminder')}</option>
+        `;
+        boardsData.forEach(board => {
+            if (board.gdid && board.title) {
+                const option = new Option(board.title, board.gdid);
+                startBoardSelect.appendChild(option);
+            }
+        });
+        startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
+        startBoardSelect.addEventListener('change', () => {
+            localStorage.setItem('startBoard', startBoardSelect.value);
+            showToast(_('settingSaved'), 2000);
+        });
+
+        // Задаваме стойност и event listener за "Max Searches"
+        maxSearchesInput.value = maxSavedSearches;
+
+        let savedZoom = localStorage.getItem('zoomLevel');
+        if (savedZoom) {
+            scaleSlider.value = savedZoom;
+            updateZoom(savedZoom);
+        } else {
+            updateZoom(scaleSlider.value);
+        }
+
+        applyBtn.addEventListener('click', () => {
+            const zoomValue = scaleInput.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+            showToast(_('settingSaved'), 2000);
+        });
+
+        scaleSlider.addEventListener('input', () => {
+            const zoomValue = scaleSlider.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+        });
+
+        scaleInput.addEventListener('change', () => {
+            const zoomValue = scaleInput.value;
+            updateZoom(zoomValue);
+            localStorage.setItem('zoomLevel', zoomValue);
+        });
+        scaleSlider.addEventListener('click', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                let currentValue = parseInt(scaleSlider.value, 10);
+                let newValue;
+                if (currentValue % 10 === 0) {
+                    newValue = currentValue + 10;
+                } else {
+                    newValue = Math.round(currentValue / 10) * 10;
+                }
+                const max = parseInt(scaleSlider.max, 10);
+                const min = parseInt(scaleSlider.min, 10);
+                if (newValue > max) newValue = max;
+                if (newValue < min) newValue = min;
+                scaleSlider.value = newValue;
+                updateZoom(newValue);
+                localStorage.setItem('zoomLevel', newValue);
+            }
+        });
+
+        // --- Local folder ---
+        const useLocalDbWrapper = document.getElementById('local-db-wrapper');
+        const useLocalDbLabel = document.getElementById('use-local-db-label');
+        const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
+        const useGoogleDbWrapper = document.getElementById('google-db-wrapper');
+        const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
+        const useGoogleDbLabel = document.getElementById('use-google-db-label');
+
+        // Задаваме началното състояние и превода
+        useLocalDbLabel.textContent = _('useLocalDbLabel');
+        useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
+
+        // Добавяме event listener
+        useLocalDbCheckbox.addEventListener('change', () => {
+            const isChecked = useLocalDbCheckbox.checked;
+            const googleDbCheckbox = document.getElementById('use-google-db-checkbox');
+            const dbSectionWrapper = document.querySelector('.settings-section'); // Секцията за управление на базата данни
+
+            if (isChecked) {
+                googleDbCheckbox.checked = false;
+                localStorage.setItem('useGoogleDb', 'false');
+                localStorage.setItem('useLocalDb', 'true');
+                if (dbSectionWrapper) dbSectionWrapper.style.display = 'block'; // Показва секцията
+            } else {
+                // Предотвратява изключването, ако и другата отметка е изключена
+                if (!googleDbCheckbox.checked) {
+                    useLocalDbCheckbox.checked = true;
+                    return;
+                }
+                localStorage.setItem('useLocalDb', 'false');
+                if (dbSectionWrapper) dbSectionWrapper.style.display = 'none'; // Скрива секцията
+            }
+
+            showToast(_('settingSaved'), 10000);
+        });
+
+// Нова функция за управление на видимостта на секцията под "Локална папка"
+function toggleLocalFolderSectionVisibility(isVisible) {
+    const localFolderSection = document.querySelector('#local-folder-section'); // Уверете се, че секцията има този ID
+    if (localFolderSection) {
+        localFolderSection.style.display = isVisible ? 'block' : 'none';
+    }
+}
+        // --- Google Drive ---
+        // Намираме елементите, които вече съществуват във viewer.html
+        /*const useGoogleDbWrapper = document.getElementById('google-db-wrapper');
+        const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
+        const useGoogleDbLabel = document.getElementById('use-google-db-label');*/
+
+        // Задаваме началното състояние и превода
+        useGoogleDbLabel.textContent = _('useGoogleDbLabel');
+        useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false'; // По подразбиране е true
+
+        // --- DB Section Elements (moved up) ---
+        const dbSectionWrapper = document.getElementById('db-section-wrapper');
+        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+        const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
+        const updateFromSourceCheckbox = document.getElementById('update-from-source-checkbox');
+
+        // --- Toggle Visibility Function (moved up) ---
+        /*const toggleUpdateOptionsVisibility = () => {
+            const isDbEnabled = useIndexedDbCheckbox.checked;
+            // DB Management section is visible only if IndexedDB is enabled
+            dbSectionWrapper.style.display = isDbEnabled ? 'block' : 'none';
+            // "Update from source" is visible only if IndexedDB is enabled
+            updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
+        };*/
+
+        // Define toggle function with correct grouping
+        const toggleUpdateOptionsVisibility = () => {
+            const isLocalMode = document.getElementById('use-local-db-checkbox').checked;
+            // const isDbEnabled = useIndexedDbCheckbox.checked;
+            // DB Management section is visible only if IndexedDB is enabled
+            dbSectionWrapper.style.display = isDbEnabled ? 'block' : 'none';
+            // "Update from source" is visible only if IndexedDB is enabled
+            updateFromSourceWrapper.style.display = isDbEnabled ? 'flex' : 'none';
+            // "Local sync folder" is visible only if in local mode AND IndexedDB is enabled
+            // localSyncWrapper.style.display = (isLocalMode && isDbEnabled) ? 'flex' : 'none';
+        };
+
+        // Set initial states
+        useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+        updateFromSourceCheckbox.checked = localStorage.getItem('updateFromSource') !== 'false';
+
+        // Add event listeners
+        useIndexedDbCheckbox.addEventListener('change', () => {
+            localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
+            // toggleUpdateOptionsVisibility(); // Now safe to call
+            showToast(_('settingSaved'), 2000);
+        });
+
+        updateFromSourceCheckbox.addEventListener('change', () => {
+            localStorage.setItem('updateFromSource', updateFromSourceCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+        // --- End of DB Section ---
+
+
+        // Добавяме event listener
+        useGoogleDbCheckbox.addEventListener('change', () => {
+            if (useGoogleDbCheckbox.checked) {
+                document.getElementById('use-local-db-checkbox').checked = false;
+                localStorage.setItem('useLocalDb', 'false');
+                localStorage.setItem('useGoogleDb', 'true');
+            }
+            toggleUpdateOptionsVisibility();
+            showToast(_('settingSaved'), 2000);
+        });
+
+       // --- DB Management Buttons ---
+        const createDbBtn = document.getElementById('create-db-btn');
+        const deleteDbBtn = document.getElementById('delete-db-btn');
+
+        /*createDbBtn.addEventListener('click', async () => {
+            // Logic for creating DB can be added here if needed,
+            // but the main logic already handles creation.
+            showToast("Базата данни се създава автоматично при първоначално зареждане с включено IndexedDB.", 10000);
+        });*/
+
+        deleteDbBtn.addEventListener('click', async () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+            // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
+            await new Promise(resolve => setTimeout(resolve, 150));
+            const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
+            if (confirmedDataDelete) {
+                const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'));
+                if (confirmedConfigDelete) {
+                    // Потребителят иска да изтрие всичко, включително настройките
+                    await deleteNotesDB();
+                } else {
+                    // Потребителят иска да изтрие само данните, но да запази настройките
+                    await clearDbStores();
+                }
+            showToast(_('dbDeleted'), 10000);
+            }
+        });
+        
+        // --- Намираме бутона за затваряне и добавяме event listener ---
+        const settingsCloseBtn = document.getElementById('settings-close-btn');
+        settingsCloseBtn.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+            // Ако прозорецът е бил отворен принудително, презареждаме данните.
+            if (window.wasOpenedForMissingFolder) {
+                window.wasOpenedForMissingFolder = false; // Нулираме флага
+                mainLogic(); // Извикваме основната логика отново
+            }
+        });
+
+        // Add helper functions for DB management that were missing
+        // --- Local Sync Folder ---
+        const selectFolderBtn = document.getElementById('select-folder-btn');
+        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+
+        selectFolderBtn.addEventListener('click', async () => {
+            try {
+                const handle = await window.showDirectoryPicker();
+                if (handle) {
+                    // --- ВАЛИДАЦИЯ НА СЪДЪРЖАНИЕТО ---
+                    const validationResult = await validateFolderContent(handle);
+                    if (!validationResult.isValid) {
+                        let warningMessage = `Папката '${handle.name}' не изглежда като валидна папка с данни.`;
+                        if (validationResult.reason === 'criteria_not_met') {
+                            warningMessage += " Необходимо е да съдържа поне 1 'board' файл и 3 'note' файла.";
+                        } else if (validationResult.reason === 'error') {
+                            warningMessage += " Възникна грешка при проверката.";
+                        }
+                        showToast(warningMessage, 15000); // Показваме предупреждението за по-дълго
+                        return; // Спираме изпълнението и се връщаме за нов избор.
+                    }
+                    // --- КРАЙ НА ВАЛИДАЦИЯТА ---
+
+                    // Валидацията е успешна, сега запазваме.
+                    await saveConfig('directoryHandle', handle);
+                    dirHandle = handle; // Актуализираме и глобалната променлива.
+
+                    folderNameDisplay.textContent = handle.name;
+                    folderNameDisplay.title = handle.name;
+                    showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
+                    await mainLogic(); // Презареждаме данните от новоизбраната папка
+                }
+            } catch (error) {
+                // Потребителят е затворил диалога за избор на папка (AbortError)
+                if (error.name !== 'AbortError') {
+                    console.error("Error selecting directory:", error);
+                }
+            }
+        });
+
+        (async () => {
+            const handle = await getDirectoryHandle(); // This won't prompt the user
+            if (handle) {
+                folderNameDisplay.textContent = handle.name;
+                folderNameDisplay.title = handle.name;
+            } else {
+                folderNameDisplay.textContent = _('folderNotSelected');
+            }
+        })();
+
+        /*async function checkDbExists(dbName) {
+            // The modern `databases()` method is the most reliable.
+            if (window.indexedDB.databases) {
+                const dbs = await indexedDB.databases();
+                return dbs.some(db => db.name === dbName);
+            }
+            // Fallback for older browsers that don't support `databases()`.
+            console.warn("checkDbExists: indexedDB.databases() is not supported. Using a fallback check.");
+            return new Promise(resolve => {
+                const req = indexedDB.open(dbName);
+                let existed = true;
+                req.onupgradeneeded = () => {
+                    existed = false; // This event is only triggered if the DB doesn't exist or needs upgrading.
+                };
+                req.onsuccess = () => {
+                    req.result.close();
+                    // If the DB was created just now, delete it to leave no trace.
+                    if (!existed) {
+                        indexedDB.deleteDatabase(dbName);
+                    }
+                    resolve(existed);
+                };
+                // If we can't even open it, assume it doesn't exist or is inaccessible.
+                req.onerror = () => resolve(false);
+            });
+        }*/
+
+        /**
+         * Deletes the entire IndexedDB database.
+         * @returns {Promise<void>}
+         */
+        /*function deleteNotesDB() {
+            return new Promise((resolve, reject) => {
+                console.log(`Attempting to delete database: ${NOTES_DB_NAME}`);
+                const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+
+                deleteRequest.onsuccess = () => {
+                    console.log(`Database '${NOTES_DB_NAME}' deleted successfully.`);
+                    resolve();
+                };
+                deleteRequest.onerror = (event) => {
+                    console.error(`Error deleting database:`, event.target.error);
+                    reject(event.target.error);
+                };
+                deleteRequest.onblocked = () => {
+                    console.warn("Database deletion is blocked. Please close other tabs with this app open.");
+                    showToast("Database deletion is blocked. Please close other tabs with this app open.", 10000);
+                    reject(new Error("Database deletion blocked."));
+                };
+            });
+        }*/
         if (boardParseError) {
             const errorEl = document.createElement('div');
             errorEl.style.color = 'red';
@@ -1760,7 +2146,6 @@ async function processDirectoryContent(minModificationDate) {
         }
         contentWrapper.appendChild(contentEl);
         boardsNote.appendChild(contentWrapper);
-
         const allButtonLinks = [];
         const allBoardsLink = document.createElement('span');
         allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
@@ -1770,7 +2155,6 @@ async function processDirectoryContent(minModificationDate) {
         allBoardsText.textContent = _('allBoards');
         const allBoardsIcon = document.createElement('span');
         allBoardsIcon.classList.add('board-icon-in-button');
-
         allBoardsLink.appendChild(allBoardsText);
         /**
          * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
@@ -1874,304 +2258,24 @@ async function processDirectoryContent(minModificationDate) {
         return boardsNote;
     }
 
-    async function createSettingsUI(boardsData, boardParseError) {
-        const settingsModalBody = document.getElementById('settings-modal-body');
-        // --- Get Element References ---
-        const scaleSlider = document.getElementById('scaleSlider');
-        const scaleInput = document.getElementById('scaleInput');
-        const noteFontSizeInput = document.getElementById('note-font-size-input');
-        const modalFontSizeInput = document.getElementById('modal-font-size-input');
-        const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
-        // const startBoardSelect = document.getElementById('start-board-select');
-        const maxSearchesInput = document.getElementById('max-searches-input');
-        const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
-        const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
-        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-        const updateFromSourceCheckbox = document.getElementById('update-from-source-checkbox');
-        const dbSectionWrapper = document.getElementById('db-section-wrapper');
-        const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
-        const selectFolderBtn = document.getElementById('select-folder-btn');
-        const folderNameDisplay = document.getElementById('local-sync-folder-name');
-        const settingsCloseBtn = document.getElementById('settings-close-btn');
-        if (!settingsModalBody.dataset.initialized) {
-
-            // Zooom
-            const updateZoom = (value) => {
-                value = Math.max(25, Math.min(175, parseInt(value, 10)));
-                if (isNaN(value)) value = 100;
-                notesContainer.style.zoom = value / 100;
-                scaleSlider.value = value;
-                scaleInput.value = value;
-            };
-            let savedZoom = localStorage.getItem('zoomLevel');
-            if (savedZoom) {
-                scaleSlider.value = savedZoom;
-                updateZoom(savedZoom);
-            } else {
-                updateZoom(scaleSlider.value);
-            }
-            const applyBtn = document.getElementById('applyZoomBtn');
-            applyBtn.addEventListener('click', () => {
-                const zoomValue = scaleInput.value;
-                updateZoom(zoomValue);
-                localStorage.setItem('zoomLevel', zoomValue);
-                showToast(_('settingSaved'), 2000);
-            });
-            scaleInput.addEventListener('change', () => {
-                const zoomValue = scaleInput.value;
-                updateZoom(zoomValue);
-                localStorage.setItem('zoomLevel', zoomValue);
-            });
-            scaleSlider.addEventListener('input', () => {
-                const zoomValue = scaleSlider.value;
-                updateZoom(zoomValue);
-                localStorage.setItem('zoomLevel', zoomValue);
-            });
-            scaleSlider.addEventListener('click', (e) => {
-                if (e.ctrlKey) {
-                    e.preventDefault();
-                    let currentValue = parseInt(scaleSlider.value, 10);
-                    let newValue;
-                    if (currentValue % 10 === 0) {
-                        newValue = currentValue + 10;
-                    } else {
-                        newValue = Math.round(currentValue / 10) * 10;
-                    }
-                    const max = parseInt(scaleSlider.max, 10);
-                    const min = parseInt(scaleSlider.min, 10);
-                    if (newValue > max) newValue = max;
-                    if (newValue < min) newValue = min;
-                    scaleSlider.value = newValue;
-                    updateZoom(newValue);
-                    localStorage.setItem('zoomLevel', newValue);
-                }
-            });
-
-            // Fonts
-            const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
-                const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
-                fontSizes.forEach(size => {
-                    const option = document.createElement('option');
-                    option.value = size;
-                    option.textContent = `${size}px`;
-                    selectElement.appendChild(option);
-                });
-                selectElement.value = localStorage.getItem(storageKey) || defaultValue;
-                // Apply initial value
-                targetUpdate(selectElement.value);
-                selectElement.addEventListener('change', () => {
-                    const value = selectElement.value;
-                    localStorage.setItem(storageKey, value);
-                    targetUpdate(value);
-                    showToast(_('settingSaved'), 2000);
-                });
-            };
-            setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
-            setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`);
-
-            // Date
-            showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
-            showDatemodCheckbox.addEventListener('change', () => {
-                const isChecked = showDatemodCheckbox.checked;
-                localStorage.setItem('showDatemod', isChecked);
-                document.body.classList.toggle('hide-datemod', !isChecked);
-                showToast(_('settingSaved'), 2000);
-            });
-
-            // Start Board
-            let startBoardSelect; // Declare here to be accessible in the whole function
-            startBoardSelect = document.getElementById('start-board-select');
-            startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
-            startBoardSelect.addEventListener('change', () => {
-                localStorage.setItem('startBoard', startBoardSelect.value);
-                showToast(_('settingSaved'), 2000);
-            });
-
-            // Max Searches
-            // let maxSearchesInput; // Declare here as well
-            maxSearchesInput.value = maxSavedSearches;
-            maxSearchesInput.addEventListener('change', () => {
-                let newValue = parseInt(maxSearchesInput.value, 10);
-                if (isNaN(newValue) || newValue < 0) newValue = 0;
-                if (newValue > 20) newValue = 20;
-                maxSavedSearches = newValue;
-                localStorage.setItem('maxSavedSearches', newValue);
-                // Trim existing searches if new limit is smaller
-                if (savedSearches.length > maxSavedSearches) {
-                    savedSearches.length = maxSavedSearches;
-                    localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-                }
-                showToast(_('settingSaved'), 2000);
-            });
-
-            // Local folder
-            const useLocalDbWrapper = document.getElementById('local-db-wrapper');
-            const useLocalDbLabel = document.getElementById('use-local-db-label');
-            const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
-            // Добавяме event listener
-            useLocalDbCheckbox.addEventListener('change', () => {
-                const isChecked = useLocalDbCheckbox.checked;
-                const googleDbCheckbox = document.getElementById('use-google-db-checkbox');
-                if (isChecked) {
-                    googleDbCheckbox.checked = false;
-                    localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('useLocalDb', 'true');
-                } else {
-                    // Предотвратява изключването, ако и другата отметка е изключена
-                    if (!googleDbCheckbox.checked) {
-                        useLocalDbCheckbox.checked = true;
-                        return;
-                    }
-                    localStorage.setItem('useLocalDb', 'false');
-                }
-                // Винаги извикваме тази функция, за да се опресни правилно UI
-                // toggleUpdateOptionsVisibility();
-                showToast(_('settingSaved'), 10000);
-            });
-
-            // Google Drive
-            const useGoogleDbWrapper = document.getElementById('google-db-wrapper');
-            const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
-            const useGoogleDbLabel = document.getElementById('use-google-db-label');
-            useGoogleDbCheckbox.addEventListener('change', () => {
-                const isChecked = useGoogleDbCheckbox.checked;
-                if (isChecked) {
-                    useLocalDbCheckbox.checked = false;
-                    localStorage.setItem('useLocalDb', 'false');
-                } else if (!useLocalDbCheckbox.checked) {
-                    useGoogleDbCheckbox.checked = true; // Prevent unchecking if it's the only one
-                    return;
-                }
-                localStorage.setItem('useGoogleDb', useGoogleDbCheckbox.checked);
-                // toggleUpdateOptionsVisibility();
-                showToast(_('settingSaved'), 2000);
-            });
-
-            // indexedDB
-            const dbSectionWrapper = document.getElementById('db-section-wrapper');
-            const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-            // Add event listeners
-            useIndexedDbCheckbox.addEventListener('change', () => {
-                localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-            // --- End of DB Section ---
-
-            // DB delete
-            // const createDbBtn = document.getElementById('create-db-btn');
-            /*createDbBtn.addEventListener('click', async () => {
-                // Logic for creating DB can be added here if needed,
-                // but the main logic already handles creation.
-                showToast("Базата данни се създава автоматично при първоначално зареждане с включено IndexedDB.", 10000);
-            });*/
-            const deleteDbBtn = document.getElementById('delete-db-btn');
-            deleteDbBtn.addEventListener('click', async () => {
-                document.getElementById('settings-modal').classList.remove('visible');
-                // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
-                await new Promise(resolve => setTimeout(resolve, 150));
-                const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
-                if (confirmedDataDelete) {
-                    const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'));
-                    if (confirmedConfigDelete) {
-                        // Потребителят иска да изтрие всичко, включително настройките
-                        await deleteNotesDB();
-                    } else {
-                        // Потребителят иска да изтрие само данните, но да запази настройките
-                        await clearDbStores();
-                    }
-                showToast(_('dbDeleted'), 10000);
-                }
-            });
-
-            // Set initial states from localStorage
-            useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false'; // Default to true
-            useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
-
-            // --- Local Sync Folder ---
-            const selectFolderBtn = document.getElementById('select-folder-btn');
-            const folderNameDisplay = document.getElementById('local-sync-folder-name');
-            selectFolderBtn.addEventListener('click', async () => {
-                try {
-                    const handle = await window.showDirectoryPicker();
-                    if (handle) {
-                        const validationResult = await validateFolderContent(handle);
-                        if (!validationResult.isValid) {
-                            let warningMessage = `Папката '${handle.name}' не изглежда като валидна папка с данни.`;
-                            if (validationResult.reason === 'criteria_not_met') {
-                                warningMessage += " Необходимо е да съдържа поне 1 'board' файл и 3 'note' файла.";
-                            }
-                            showToast(warningMessage, 15000);
-                            return;
-                        }
-                        await saveConfig('directoryHandle', handle);
-                        dirHandle = handle;
-                        folderNameDisplay.textContent = handle.name;
-                        folderNameDisplay.title = handle.name;
-                        showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-                        await mainLogic();
-                    }
-                } catch (error) {
-                    if (error.name !== 'AbortError') {
-                        console.error("Error selecting directory:", error);
-                    }
-                }
-            });
-            
-            // Close
-            const settingsCloseBtn = document.getElementById('settings-close-btn');
-            settingsCloseBtn.addEventListener('click', () => {
-                document.getElementById('settings-modal').classList.remove('visible');
-                // Ако прозорецът е бил отворен принудително, презареждаме данните.
-                if (window.wasOpenedForMissingFolder) {
-                    window.wasOpenedForMissingFolder = false; // Нулираме флага
-                    mainLogic(); // Извикваме основната логика отново
-                }
-            });
-            settingsModalBody.dataset.initialized = true;
-        } // край на if (!settingsModalBody.dataset.initialized)
-
-        // Тази част се изпълнява ВИНАГИ, за да обнови списъка с бордове
-        /*startBoardSelect = document.getElementById('start-board-select');
-        const currentValue = startBoardSelect.value;
-        // Изчистваме само опциите за бордове
-        Array.from(startBoardSelect.options).forEach(option => {
-            if (!['all', 'calendar', 'reminder'].includes(option.value)) {
-                option.remove();
-            }
-        });
-        boardsData.forEach(board => {
-            if (board.gdid && board.title) {
-                startBoardSelect.add(new Option(board.title, board.gdid));
-            }
-        });
-        startBoardSelect.value = currentValue;*/
-
-        // Add helper functions for DB management that were missing
-        (async () => {
-            const handle = await getDirectoryHandle(); // This won't prompt the user
-            if (handle) {
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-            } else {
-                folderNameDisplay.textContent = _('folderNotSelected');
-            }
-        })();
-    }
-
     /**
      * Попълва падащото меню за избор на стартов борд в настройките.
      */
     function populateStartBoardSelect() {
         const startBoardSelect = document.getElementById('start-board-select');
-        const currentValue = startBoardSelect.value; // Запазваме текущо избраната стойност
-        // Изчистваме напълно списъка, преди да го попълним наново
-        startBoardSelect.innerHTML = `
-            <option value="all">${_('allBoards')}</option>
-            <option value="calendar">${_('calendar')}</option>
-            <option value="reminder">${_('reminder')}</option>
-        `;
-        boardsData.forEach(board => { if (board.gdid && board.title) startBoardSelect.add(new Option(board.title, board.gdid)); });
-        startBoardSelect.value = currentValue; // Възстановяваме старата стойност
+        // Запазваме текущо избраната стойност
+        const currentValue = startBoardSelect.value;
+        // Изчистваме само опциите за бордове, запазваме "Всички", "Календар", "Напомняния"
+        Array.from(startBoardSelect.options).forEach(option => {
+            if (!['all', 'calendar', 'reminder'].includes(option.value)) {
+                option.remove();
+            }
+        });
+
+        boardsData.forEach(board => {
+            if (board.gdid && board.title) startBoardSelect.add(new Option(board.title, board.gdid));
+        });
+        startBoardSelect.value = currentValue; // Опитваме се да възстановим старата стойност
     }
 
     function renderCalendarView() {
@@ -2866,9 +2970,12 @@ async function processDirectoryContent(minModificationDate) {
                     if (iconData) {
                         const iconDiv = document.createElement('div');
                         iconDiv.className = 'footer-icon';
-                        iconDiv.innerHTML = iconData.svg;                        
-                        iconDiv.style.borderRadius = '5px'; // Добавяме заобляне на ъглите
-                        iconDiv.style.backgroundColor = noteBgColor;
+                        iconDiv.innerHTML = iconData.svg;
+                        // Find the SVG inside and set its background color
+                        const svg = iconDiv.querySelector('svg');
+                        if (svg) {
+                            svg.style.backgroundColor = noteBgColor;
+                        }
                         footerEl.appendChild(iconDiv);
                     }
                 });
@@ -3116,6 +3223,6 @@ async function renderUI({ boardParseError }) {
         counterEl.textContent = notesCount;
     }
     // Обновяваме списъка със стартови бордове в настройките
-    populateStartBoardSelect();
+    // populateStartBoardSelect();
     
 }
