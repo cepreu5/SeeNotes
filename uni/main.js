@@ -268,6 +268,12 @@ const translations = {
 
 // --- Основна стартова функция ---
 async function startApp() {
+    // Първо инициализираме UI, за да се покаже веднага
+    document.body.style.display = 'block';
+    initApp(); // Инициализира UI елементите и event listeners
+    await createSettingsUI([], false); // Предварително създава UI на настройките
+    await createBoardsUI([], false);
+
     const tokenData = checkAuth();
     if (!tokenData) {
         return; // Спира, ако проверката за автентикация не успее/пренасочи
@@ -286,10 +292,6 @@ async function startApp() {
     await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
     gapi.client.setToken({ access_token: authToken.access_token });
     
-    document.body.style.display = 'block';
-    initApp(); // Инициализира UI елементите и event listeners
-    await createBoardsUI([], false);
-    await createSettingsUI([], false); // Предварително създава UI на настройките
     mainLogic(); // Извиква новата основна логика за зареждане на данни
 }
 
@@ -447,7 +449,6 @@ function initApp() {
         });
         updateSignoutTooltip();
     }
-
     function updateSignoutTooltip() {
         const email = sessionStorage.getItem('google_auth_email_hint');
         const signoutBtn = document.getElementById('signout_button');
@@ -495,13 +496,12 @@ function initApp() {
                 searchMode = 'content';
                 searchModeToggle.innerHTML = noteIconSvg; // Icon for Content Search
                 searchModeToggle.title = _('searchByContentTooltip');
-                searchBox.placeholder = `${_('searchPlaceholder')} ${_('searchInContent')}...`;
             } else {
                 searchMode = 'title';
                 searchModeToggle.innerHTML = boardIconSvg; // Icon for Title Search
                 searchModeToggle.title = _('searchByTitleTooltip');
-                searchBox.placeholder = `${_('searchPlaceholder')} ${_('searchInTitles')}...`;
             }
+            updateSearchPlaceholder(); // Актуализираме placeholder-а
             applyFilters();
         });
         saveSearchBtn = document.createElement('span');
@@ -608,13 +608,33 @@ function initApp() {
             settingsTitle.textContent += `${version}`;
         }
         // Set initial placeholder text correctly
-        searchBox.placeholder = `${_('searchPlaceholder')} ${_('searchInTitles')}...`;
+        updateSearchPlaceholder();
         // Hide saved searches popup when clicking outside
         document.addEventListener('click', (e) => {
             if (savedSearchesPopup.style.display === 'block' && !searchWrapper.contains(e.target)) {
                 savedSearchesPopup.style.display = 'none';
             }
         });
+}
+
+    /**
+     * Актуализира текста в полето за търсене, за да покаже текущия режим.
+     */
+    function updateSearchPlaceholder() {
+        const searchInput = document.getElementById('search-box');
+        if (!searchInput) return;
+
+        let prefix = '';
+        if (currentBoardFilter !== 'all' && currentBoardFilter !== 'calendar') {
+            const board = boardsData.find(b => b.gdid === currentBoardFilter);
+            if (board) prefix = `[${board.title}]: `;
+        }
+
+        if (searchMode === 'title') {
+            searchInput.placeholder = `${prefix}${_('searchPlaceholder')} ${_('searchInTitles')}...`;
+        } else {
+            searchInput.placeholder = `${prefix}${_('searchPlaceholder')} ${_('searchInContent')}...`;
+        }
     }
 
     function saveSearchTerm(term) {
@@ -945,6 +965,7 @@ function handleSignoutClick() {
         } finally {
             loaderText.textContent = ''; // Изчистваме текста за прогреса
             loaderContainer.style.display = 'none';
+            updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`;
             notesContainer.style.backgroundImage = `url('Board.png')`;
         }
@@ -1490,13 +1511,6 @@ async function processDirectoryContent(minModificationDate) {
             if (board) {
                 searchInput.placeholder = `[${board.title}]: ${_('searchPlaceholder')}`;
             }
-        } else {
-            // Reset to default placeholder for 'all', considering the current search mode
-            if (searchMode === 'title') {
-                searchInput.placeholder = `${_('searchPlaceholder')} ${_('searchInTitles')}...`;
-            } else {
-                searchInput.placeholder = `${_('searchPlaceholder')} ${_('searchInContent')}...`;
-            }
         }
         if (boardId === 'all') {
             // For the 'all' view, clear the inline style to let the default CSS background apply.
@@ -1521,7 +1535,7 @@ async function processDirectoryContent(minModificationDate) {
             notesContainer.style.backgroundImage = `url('${newBackground}')`;
             currentBackground = newBackground;
         }
-
+        updateSearchPlaceholder();
         if (boardId === 'all') {
             scrollTopBtn.innerHTML = arrowSvg;
         }  else if (boardId === 'reminder') {
@@ -1537,6 +1551,7 @@ async function processDirectoryContent(minModificationDate) {
         // This part is no longer needed as calendar has its own view
         notesContainer.classList.remove('calendar-view');
     }
+
     function applySearchFilter() {
         applyFilters();
     }
