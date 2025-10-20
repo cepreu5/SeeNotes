@@ -160,15 +160,16 @@
                         <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
                     </div>
 
-                    <!-- div class="zoom-control-wrapper" id="update-from-source-wrapper" style="padding-left: 20px;" hidden>
-                        <label for="update-from-source-checkbox" data-key="updateFromSource">Обновяване от източника</label>
-                        <input type="checkbox" id="update-from-source-checkbox" class="settings-checkbox" checked="true" disabled>
-                    </div -->
-
-                    <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 15px;">
+                    <div class="zoom-control-wrapper sync-wrapper" id="local-sync-wrapper" style="margin-top: 15px;">
                         <label for="select-folder-btn" data-key="localSyncFolderLabel">Папка за локална синхронизация: </label>
                         <span id="local-sync-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                        <button id="select-folder-btn" class="zoom-btn">Избери папка</button>
+                        <button id="select-folder-btn" class="zoom-btn">Избери</button>
+                    </div>
+
+                    <div class="zoom-control-wrapper sync-wrapper" id="arh-wrapper" style="margin-top: 15px;">
+                        <label for="select-arh-btn" data-key="arhFolderLabel">Папка за архив: </label>
+                        <span id="arh-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                        <button id="select-arh-btn" class="zoom-btn">Избери</button>
                     </div>
 
                 </div>
@@ -178,24 +179,6 @@
             </div>
         </div>
     </div>
-
-
-    <!--svg width="0" height="0" style="position:absolute">
-        <defs>
-            <symbol id="icon-arrow-left" viewBox="0 0 24 24">
-                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
-            </symbol>
-            <symbol id="icon-arrow-right" viewBox="0 0 24 24">
-                <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
-            </symbol>
-        </defs>
-    </svg-->
-
-    <!--script src="config.js"></script>
-    <script src="auth.js"></script>
-    <script src="drive-api.js"></script>
-    <script src="local-data.js"></script>
-    <script src="ui.js"></script-->
     <script src="main.js"></script>
 </body>
 </html>

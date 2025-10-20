@@ -116,6 +116,7 @@ const translations = {
             updateIndexedDbLabel: 'update',
             updateFromGoogleDriveLabel: 'update only',
             localSyncFolderLabel: 'Local sync folder:',
+            arhFolderLabel: 'Archive folder:',
             selectFolderButton: 'Select Folder',
             folderNotSelected: 'Not selected',
             modalFontSizeLabel: 'Modal Font Size:',
@@ -126,6 +127,7 @@ const translations = {
             searchInContent: 'in content',
             errorLocalFolderNotSelected: 'Local sync folder not selected. Please select one in Settings.',
             folderSelectedForSync: 'Folder \'{folderName}\' selected for local sync.',
+            folderSelectedForArh: 'Folder \'{folderName}\' selected for archive reading.',
             localDataLoaded: 'Local data loaded.',
             localDbUpdated: 'Local database updated from Google Drive.',
             errorGoogleLibs: 'Error loading Google libraries.',
@@ -206,6 +208,7 @@ const translations = {
             updateIndexedDbLabel: 'обновяване',
             updateFromGoogleDriveLabel: 'само обновяване',
             localSyncFolderLabel: 'Папка за локална синхронизация:',
+            arhFolderLabel: 'Папка за архив:',
             selectFolderButton: 'Избери папка',
             folderNotSelected: 'Не е избрана',
             modalFontSizeLabel: 'Размер шрифт (преглед):',
@@ -215,6 +218,7 @@ const translations = {
             searchInContent: 'в съдържанието',
             errorLocalFolderNotSelected: 'Папката за локална синхронизация не е избрана. Моля, изберете такава от Настройки.',
             folderSelectedForSync: 'Папка \'{folderName}\' е избрана за локална синхронизация.',
+            folderSelectedForArh: 'Папка \'{folderName}\' е избрана за четене от архив.',
             localDataLoaded: 'Локалните данни са заредени.',
             localDbUpdated: 'Локалната база е обновена от Google Drive.',
             errorGoogleLibs: 'Грешка при зареждане на библиотеките на Google.',
@@ -1211,6 +1215,35 @@ async function validateFolderContent(directoryHandle) {
     return { isValid: false, reason: 'criteria_not_met' };
 }
 
+async function validateArhFolderContent(directoryHandle) {
+    const boardPattern = /^boards.*\.bcp$/i;
+    const notePattern = /^notes.*\.bcp$/i;
+    let boardsFile = false;
+    let notesFile = false
+    try {
+        for await (const entry of directoryHandle.values()) {
+            if (entry.kind === 'file') {
+                if (boardPattern.test(entry.name)) {
+                    boardsFile = true;
+                } else if (notePattern.test(entry.name)) {
+                    notesFile = true;
+                }
+                // Прекъсваме проверката веднага щом условията са изпълнени
+                if (boardsFile && notesFile) {
+                    console.log(`Arh validation successful: Found files.`);
+                    return { isValid: true, reason: null };
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Error during arh folder validation:", error);
+        return { isValid: false, reason: 'error' };
+    }
+    // Ако цикълът приключи без да са изпълнени условията
+    console.warn('Arh validation failed: Not found boards.bcp or notes.bcp.');
+    return { isValid: false, reason: 'criteria_not_met' };
+}
+
 
 /**
  * Взима handle на директория - от паметта, от IndexedDB или чрез избор от потребителя.
@@ -2124,6 +2157,37 @@ async function processDirectoryContent(minModificationDate) {
                         folderNameDisplay.title = handle.name;
                         showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
                         await mainLogic();
+                    }
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        console.error("Error selecting directory:", error);
+                    }
+                }
+            });
+
+            // --- Archive Folder Setting ---
+            const selectArhBtn = document.getElementById('select-arh-btn');
+            const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+            selectArhBtn.addEventListener('click', async () => {
+                try {
+                    const handle = await window.showDirectoryPicker(); // Prompt user to select
+                    if (handle) {
+                        const validationArh = await validateArhFolderContent(handle);
+                        if (!validationArh.isValid) {
+                            let warningMessage = `Папката '${handle.name}' не изглежда като валидна папка с архив.`;
+                            if (validationArh.reason === 'criteria_not_met') {
+                                warningMessage += " Необходимо е да съдържа boards.bcp и notes.bcp.";
+                            }
+                            showToast(warningMessage, 15000);
+                            return;
+                        }
+                        arhFolderNameDisplay.textContent = handle.name;
+                        arhFolderNameDisplay.title = handle.name;
+                        await saveConfig('arhHandle', handle);
+                        dirHandle = handle;
+                        showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 10000);
+                        readArh();
+                        await renderUI();
                     }
                 } catch (error) {
                     if (error.name !== 'AbortError') {

@@ -1072,7 +1072,7 @@ pre, code {
 }
 
 /* Специфичен стил, за да се подредят етикетът и бутонът за избор на папка вертикално */
-#local-sync-wrapper {
+.sync-wrapper {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px; /* Добавя разстояние между етикета и бутона */
