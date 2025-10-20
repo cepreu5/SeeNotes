@@ -2185,9 +2185,18 @@ async function processDirectoryContent(minModificationDate) {
                         arhFolderNameDisplay.title = handle.name;
                         await saveConfig('arhHandle', handle);
                         dirHandle = handle;
-                        showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 10000);
-                        readArh();
-                        await renderUI();
+                        document.getElementById('settings-modal').classList.remove('visible');
+                        showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
+                        const oldBoardsNote = document.querySelector('header .boards-note');
+                        if (oldBoardsNote) {
+                            oldBoardsNote.remove();
+                        }
+
+                        // initializeLoad(); // 1. Изчистваме стария UI и показваме loader-a
+                        const success = await readArh(dirHandle);
+                        if (success) {
+                            await renderUI({ boardParseError: false }); // 2. Показваме новия UI с данните от архива
+                        }
                     }
                 } catch (error) {
                     if (error.name !== 'AbortError') {
@@ -3196,5 +3205,86 @@ async function renderUI({ boardParseError }) {
     }
     // Обновяваме списъка със стартови бордове в настройките
     populateStartBoardSelect();
-    
+}
+
+/**
+ * Чете архивни данни (boards.bcp, notes.bcp, medias.bcp) от подадена директория
+ * и попълва глобалните променливи boardsData, allNotesData и mediaData.
+ *
+ * @param {FileSystemDirectoryHandle} dirHandle - Handle към директорията, съдържаща .bcp файловете.
+ * @returns {Promise<boolean>} Връща true при успех, false при провал.
+ */
+async function readArh(dirHandle) {
+    if (!dirHandle) {
+        console.error("readArh: Не е подаден валиден handle на директория.");
+        showToast("Не е избрана папка за архив.", 10000);
+        return false;
+    }
+
+    console.log(`Започва четене на архив от папка: ${dirHandle.name}`);
+    let success = true;
+
+    try {
+        // 1. Четене на boards.bcp
+        const boardsFileHandle = await dirHandle.getFileHandle('boards.bcp');
+        const boardsFile = await boardsFileHandle.getFile();
+        const boardsContent = await boardsFile.text();
+        boardsData = JSON.parse(boardsContent);
+        console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
+
+        // 2. Четене на notes.bcp
+        const notesFileHandle = await dirHandle.getFileHandle('notes.bcp');
+        const notesFile = await notesFileHandle.getFile();
+        const notesContent = await notesFile.text();
+        const notesArray = JSON.parse(notesContent);
+
+        // Преобразуване в структурата, очаквана от приложението за allNotesData
+        allNotesData = notesArray.map(noteObject => {
+            const rawData = {
+                file: { name: 'notes.bcp (архив)' },
+                res: { body: JSON.stringify(noteObject) }
+            };
+            return {
+                file: rawData.file,
+                content: noteObject,
+                rawData: rawData
+            };
+        });
+        console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
+
+        // 3. Четене на medias.bcp (ако съществува)
+        try {
+            const mediaFileHandle = await dirHandle.getFileHandle('medias.bcp');
+            const mediaFile = await mediaFileHandle.getFile();
+            const mediaContent = await mediaFile.text();
+            mediaData = JSON.parse(mediaContent);
+            console.log(`Успешно заредени ${mediaData.length} медийни файла от medias.bcp.`);
+        } catch (mediaError) {
+            if (mediaError.name === 'NotFoundError') {
+                console.log("Файл 'medias.bcp' не е намерен. Продължаваме без него.");
+                mediaData = []; // Нулираме mediaData, ако файлът липсва
+            } else {
+                throw mediaError; // Хвърляме други грешки нагоре
+            }
+        }
+
+    } catch (error) {
+        success = false;
+        if (error.name === 'NotFoundError') {
+            console.error(`Грешка: Файл 'boards.bcp' или 'notes.bcp' не е намерен в папката '${dirHandle.name}'.`);
+            showToast(`Задължителен архивен файл не е намерен.`, 10000);
+        } else if (error instanceof SyntaxError) {
+            console.error("Грешка при парсване на JSON съдържание от архивен файл:", error);
+            showToast("Архивните файлове съдържат невалидни данни.", 10000);
+        } else {
+            console.error("Възникна неочаквана грешка при четене на архива:", error);
+            showToast("Грешка при четене на архива.", 10000);
+        }
+    }
+
+    if (success) {
+        console.log("Четенето на архива приключи успешно.");
+    }
+
+    return success;
 }
