@@ -31,6 +31,7 @@ let maxSavedSearches = 20;
 let currentModalContent = '';
 let maxWidthForButtons = 0; // За менюто с бордове
 let toastTimeout, isShowingToast = false;
+let dbExists = false; // Флаг за съществуването на IndexedDB
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -286,16 +287,14 @@ async function startApp() {
     await createSettingsUI([], false); // Предварително създава UI на настройките
     await createBoardsUI([], false);
 
+    // Проверяваме за базата данни САМО веднъж при стартиране
+    dbExists = await checkDbExists(NOTES_DB_NAME);
+
     const tokenData = checkAuth();
     if (!tokenData) {
         return; // Спира, ако проверката за автентикация не успее/пренасочи
     }
 
-    // Записваме имейла на потребителя в базата данни за бъдеща употреба
-    const userEmail = sessionStorage.getItem('google_auth_email_hint');
-    if (userEmail) {
-        await saveConfig('userEmail', userEmail);
-    }
     // Зарежда Google API скрипта преди да се използва gapi
     try {
         await loadScript('https://apis.google.com/js/api.js');
@@ -309,8 +308,10 @@ async function startApp() {
     await new Promise(resolve => gapi.load('client', resolve));
     await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
     gapi.client.setToken({ access_token: authToken.access_token });
-    
-    mainLogic(); // Извиква новата основна логика за зареждане на данни
+
+    // Проверяваме за съответствие на потребителя преди да заредим данните
+    await userCheck();
+    mainLogic();
 }
 
 function _(key) {
@@ -818,7 +819,8 @@ function handleSignoutClick() {
     async function loadAndParseFile(filename, folderId, modifiedSince = null) {
         loaderText.textContent = _('loadingFile') + ` ${filename}`;
         const results = await fetchFiles(filename, folderId, null, modifiedSince);
-        return await parseFileResults(results, filename);
+        const { data, parseError } = await parseFileResults(results, filename);
+        return { data, parseError }; // Връщаме обекта, за да може fetchAllData да го обработи
     }
 
     async function fetchAllData(folderIdFromPrompt, saveToDb = true, modifiedSince = null) {
@@ -845,7 +847,7 @@ function handleSignoutClick() {
         }
         // Proceed with fetching from Google Drive
         const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId, modifiedSince);
-        boardsData = boardFileData;
+        boardsData = boardFileData; // This was the issue. boardFileData is an object {data, parseError}.
         if (saveToDb) {
             await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
         }
@@ -930,6 +932,56 @@ function handleSignoutClick() {
         return updatedFilesCount;
     }
 
+/**
+ * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
+ * Ако има несъответствие, превключва приложението в ограничен режим.
+ */
+async function userCheck() {
+    if (!dbExists) { // Използваме флага
+        // Базата не съществува, не правим нищо.
+        // Потребителят ще бъде записан при първоначалното създаване на базата.
+        return; // Продължаваме нормално
+    }
+
+    // Базата съществува, продължаваме с проверката на потребителя
+    const storedUserEmail = await getConfig('userEmail');
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+
+    // Проверяваме за несъответствие само ако има записан потребител в базата
+    if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
+        await handleUserMismatch();
+    }
+}
+
+/**
+ * Обработва случая на несъответствие на потребители.
+ * Показва съобщение и заключва настройките за управление на данни.
+ */
+async function handleUserMismatch() {
+    showToast("Съществуващата база е създадена с друго потребителско име, данните ще се заредят от Google Drive", 15000);
+
+    // Принудително превключваме към режим "Google Drive" без IndexedDB
+    localStorage.setItem('useIndexedDb', 'false');
+    localStorage.setItem('useGoogleDb', 'true');
+    localStorage.setItem('useLocalDb', 'false');
+
+    // Деактивираме контролите в настройките
+    const settingsModal = document.getElementById('settings-modal');
+    const controlsToDisable = [
+        'use-indexeddb-checkbox', 'use-local-db-checkbox',
+        'create-db-btn', 'delete-db-btn',
+        'select-folder-btn', 'select-arh-btn'
+    ];
+
+    controlsToDisable.forEach(id => {
+        const el = settingsModal.querySelector(`#${id}`);
+        if (el) el.disabled = true;
+    });
+
+    const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
+    if (googleDbCheckbox) googleDbCheckbox.checked = true;
+}
+
     /**
      * Основна логика за зареждане на данни в приложението.
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
@@ -961,9 +1013,8 @@ function handleSignoutClick() {
             } else {
                 // --- РЕЖИМ 2: С IndexedDB
                 console.log("Mode: Using IndexedDB");
-                const dbExists = await checkDbExists(NOTES_DB_NAME);
                 let boardsInDb = [];
-                if (dbExists) {
+                if (dbExists) { // Използваме флага
                     boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
                 }
  
@@ -977,11 +1028,21 @@ function handleSignoutClick() {
                         console.log("Source for initial load: Google Drive");
                         const { boardParseError } = await fetchAllData(null, true); // true -> запиши в DB
                         await saveConfig('lastGDTimestamp', Date.now());
+                        // Записваме потребителя СЛЕД като базата е създадена
+                        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+                        if (currentUserEmail) { // Базата вече е създадена, можем да запишем
+                            await saveConfig('userEmail', currentUserEmail);
+                        }
                         await renderUI({ boardParseError });
                     } else if (useLocalFolder) {
                         console.log("Source for initial load: Local Folder");
                         const { boardParseError } = await fetchAllDataFromLocalFolder(true); // true -> запиши в DB
                         await saveConfig('lastLocalTimestamp', Date.now());
+                        // Записваме потребителя СЛЕД като базата е създадена
+                        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+                        if (currentUserEmail) { // Базата вече е създадена, можем да запишем
+                            await saveConfig('userEmail', currentUserEmail);
+                        }
                         await renderUI({ boardParseError });
                     }
                     showToast(_('dbCreated'), 10000);
@@ -2212,6 +2273,8 @@ async function processDirectoryContent(minModificationDate) {
             // indexedDB
             const dbSectionWrapper = document.getElementById('db-section-wrapper');
             const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+            // Задаваме първоначалното състояние на чекбокса от localStorage
+            useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
             // Add event listeners
             useIndexedDbCheckbox.addEventListener('change', () => {
                 localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
@@ -2227,8 +2290,7 @@ async function processDirectoryContent(minModificationDate) {
                     return;
                 }
 
-                const dbExists = await checkDbExists(NOTES_DB_NAME);
-                let confirmed = false;
+                let confirmed = false; // dbExists вече е наличен като глобален флаг
 
                 if (dbExists) {
                     document.getElementById('settings-modal').classList.remove('visible');
@@ -2243,6 +2305,11 @@ async function processDirectoryContent(minModificationDate) {
                         await bulkPutDB(BOARD_STORE_NAME, boardsData);
                         await bulkPutDB(MEDIA_STORE_NAME, mediaData);
                         await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
+                        // Добавяме и запис на потребителя в config хранилището
+                        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+                        if (currentUserEmail) {
+                            await saveConfig('userEmail', currentUserEmail);
+                        }
                         showToast(_('dbCreated'), 10000);
                     } catch (error) {
                         console.error("Failed to create/recreate DB:", error);
@@ -2358,28 +2425,31 @@ async function processDirectoryContent(minModificationDate) {
     }
 
     // Тази част се изпълнява ВИНАГИ, за да се покаже актуалното име на избраните папки
-        (async () => {
+    (async () => {
+        if (dbExists) { // Използваме флага
             const handle = await getDirectoryHandle(); // This won't prompt the user
             if (handle) {
+                const folderNameDisplay = document.getElementById('local-sync-folder-name');
                 folderNameDisplay.textContent = handle.name;
                 folderNameDisplay.title = handle.name;
-            } else {
-                folderNameDisplay.textContent = _('folderNotSelected');
             }
-        })();
+        } else {
+            document.getElementById('local-sync-folder-name').textContent = _('folderNotSelected');
+        }
+    })();
 
     }
 
     (async () => {
         const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-        const arhHandle = await getConfig('arhHandle');
-        if (arhHandle) {
-            const verifiedHandle = await verifyPermission(arhHandle);
-            if (verifiedHandle) {
-                arhFolderNameDisplay.textContent = verifiedHandle.name;
-                arhFolderNameDisplay.title = verifiedHandle.name;
-            } else {
-                arhFolderNameDisplay.textContent = _('folderNotSelected');
+        if (dbExists) {
+            const arhHandle = await getConfig('arhHandle');
+            if (arhHandle) {
+                const verifiedHandle = await verifyPermission(arhHandle);
+                if (verifiedHandle) {
+                    arhFolderNameDisplay.textContent = verifiedHandle.name;
+                    arhFolderNameDisplay.title = verifiedHandle.name;
+                }
             }
         } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
     })();
@@ -3165,7 +3235,11 @@ function openNotesDB() {
  * @returns {Promise<void>}
  */
 async function bulkPutDB(storeName, data, incremental = false) {
-    if (!data || !Array.isArray(data) || data.length === 0) return;
+    // Ако данните не са масив, ги превръщаме в такъв.
+    if (data && !Array.isArray(data)) {
+        data = [data];
+    }
+    if (!data || data.length === 0) return;
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([storeName], 'readwrite');
