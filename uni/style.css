@@ -456,12 +456,23 @@ pre, code {
     border-radius: 8px;
     width: 90%; /* Задаваме ширината да е 90% от екрана */
     max-width: 90%;
-    min-height: 30%;
+    min-height: 10%;
     max-height: 80vh;
     position: relative;
     display: flex;
     flex-direction: column;
     /* transition: background-color 0.3s ease; Smooth background color transition */
+}
+
+/* "Дръжка" за преоразмеряване на модалния прозорец */
+.modal-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    cursor: se-resize;
+    z-index: 2; /* Трябва да е над съдържанието */
 }
 
 .popup-mode {

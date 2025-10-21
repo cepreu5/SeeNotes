@@ -1,5 +1,4 @@
 // terser main.js --compress --mangle --toplevel --output mainn.js
-// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -156,7 +155,6 @@ const translations = {
             createDbButton: 'Create',
             deleteDbButton: 'Delete',
             confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
-            orderLabel: 'Order:',
             dbManagementTitle: 'Database Management'
         },
         bg: {
@@ -248,7 +246,6 @@ const translations = {
             createDbButton: 'Създай',
             deleteDbButton: 'Изтрий',
             confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
-            orderLabel: 'Подреждане:',
             dbManagementTitle: 'Управление на базата данни'
         }
     };
@@ -600,6 +597,46 @@ function initApp() {
             if (!contentModal.classList.contains('visible')) {
                 modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 12}px`;
             }
+        });
+
+        // --- Modal Resizing Logic ---
+        const modalContentBox = contentModal.querySelector('.modal-content-box');
+        const resizeHandle = contentModal.querySelector('.modal-resize-handle');
+
+        resizeHandle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const startX = e.clientX;
+            const startY = e.clientY;
+            const startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
+            const startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
+
+            function doDrag(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const newWidth = startWidth + e.clientX - startX;
+                const newHeight = startHeight + e.clientY - startY;
+                // Задаваме минимални размери, за да не изчезне прозорецът
+                modalContentBox.style.width = newWidth + 'px';
+                modalContentBox.style.height = newHeight + 'px';
+                // Премахваме max-width/height, за да позволим разширяване
+                modalContentBox.style.maxWidth = 'none';
+                modalContentBox.style.maxHeight = 'none';
+            }
+
+            function stopDrag(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                document.documentElement.removeEventListener('mousemove', doDrag, false);
+                document.documentElement.removeEventListener('mouseup', stopDrag, false);
+                // Запазваме новите размери в localStorage
+                localStorage.setItem('modalWidth', modalContentBox.style.width);
+                localStorage.setItem('modalHeight', modalContentBox.style.height);
+            }
+
+            document.documentElement.addEventListener('mousemove', doDrag, false);
+            document.documentElement.addEventListener('mouseup', stopDrag, false);
         });
         // Load saved searches and settings from localStorage
         lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
@@ -1214,7 +1251,7 @@ async function validateFolderContent(directoryHandle) {
         return { isValid: false, reason: 'error' };
     }
     // Ако цикълът приключи без да са изпълнени условията
-    console.warn(`Validation failed: Found ${boardFileCount} board file(s) and ${noteFileCount} note file(s). Required: >=1 board, >=3 notes.`);
+    console.log(`Validation failed: Found ${boardFileCount} board file(s) and ${noteFileCount} note file(s). Required: >=1 board, >=3 notes.`);
     return { isValid: false, reason: 'criteria_not_met' };
 }
 
@@ -1243,7 +1280,7 @@ async function validateArhFolderContent(directoryHandle) {
         return { isValid: false, reason: 'error' };
     }
     // Ако цикълът приключи без да са изпълнени условията
-    console.warn('Arh validation failed: Not found boards.bcp or notes.bcp.');
+    console.log('Arh validation failed: Not found boards.bcp or notes.bcp.');
     return { isValid: false, reason: 'criteria_not_met' };
 }
 
@@ -1364,6 +1401,24 @@ async function processDirectoryContent(minModificationDate) {
             noteColor = options.color;
         }
         // --- Board Name Display in Modal ---
+        const modalContentBox = contentModal.querySelector('.modal-content-box');
+
+        // Прилагаме запазените размери, ако съществуват
+        const savedWidth = localStorage.getItem('modalWidth');
+        const savedHeight = localStorage.getItem('modalHeight');
+
+        if (savedWidth && savedHeight) {
+            modalContentBox.style.width = savedWidth;
+            modalContentBox.style.height = savedHeight;
+            modalContentBox.style.maxWidth = 'none';
+            modalContentBox.style.maxHeight = 'none';
+        } else {
+            // Връщаме към CSS стойностите по подразбиране, ако няма запазен размер
+            modalContentBox.style.width = '';
+            modalContentBox.style.height = '';
+            modalContentBox.style.maxWidth = '';
+            modalContentBox.style.maxHeight = '';
+        }
         const modalBoardNameEl = document.getElementById('modal-board-name');
         if (options && options.boardId) {
             const board = boardsData.find(b => b.gdid === options.boardId);
@@ -1390,7 +1445,6 @@ async function processDirectoryContent(minModificationDate) {
         }
         modalBody.innerHTML = displayContent;
         // Set modal background color
-        const modalContentBox = contentModal.querySelector('.modal-content-box');
         if (noteColor) {
             modalContentBox.style.backgroundColor = noteColor;
         } else {
@@ -1617,10 +1671,10 @@ async function processDirectoryContent(minModificationDate) {
         }
 
         // Връщаме boards-note винаги най-отгоре в DOM дървото на контейнера
-        /*const boardsNote = document.querySelector('header .boards-note');
+        const boardsNote = document.querySelector('header .boards-note');
         if (boardsNote) {
             document.querySelector('header').appendChild(boardsNote);
-        }*/
+        }
     }
 
     function applySearchFilter() {
@@ -1736,7 +1790,7 @@ async function processDirectoryContent(minModificationDate) {
             if (files && files.length > 0) {
                 return files[0].id;
             } else {
-                console.warn(`File '${fileName}' not found in folder '${folderId}'.`);
+                console.log(`File '${fileName}' not found in folder '${folderId}'.`);
                 return null;
             }
         } catch (error) {
@@ -1784,7 +1838,7 @@ async function processDirectoryContent(minModificationDate) {
             if (files && files.length > 0) {
                 return files[0].id;
             } else {
-                console.warn("Folder 'multinotes_data' not found.");
+                console.log("Folder 'multinotes_data' not found.");
                 return null;
             }
         } catch (error) {
