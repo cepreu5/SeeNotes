@@ -1555,6 +1555,7 @@ async function processDirectoryContent(minModificationDate) {
     
     function showAllBoardsModal(anchorElement) {
         const modalContent = document.createElement('div');
+        const boardsModal = document.getElementById('boards-menu-modal');
         // Use CSS class for styling
         modalContent.className = 'all-boards-modal-container';
         const createLink = (text, boardId, classes = []) => {
@@ -1566,7 +1567,7 @@ async function processDirectoryContent(minModificationDate) {
             link.classList.add('board-filter-link', ...classes);
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                document.getElementById('content-modal').classList.remove('visible');
+                boardsModal.classList.remove('visible');
                 filterNotesByBoard(boardId);
             });
             return link;
@@ -1589,12 +1590,13 @@ async function processDirectoryContent(minModificationDate) {
             }
         });
 
-        modalBody.innerHTML = '';
-        modalBody.appendChild(modalContent);
-        const modalBox = contentModal.querySelector('.modal-content-box');
+        const boardsModalBody = document.getElementById('boards-menu-modal-body');
+        boardsModalBody.innerHTML = '';
+        boardsModalBody.appendChild(modalContent);
+        const modalBox = boardsModal.querySelector('.modal-content-box');
         if (anchorElement) {
             const rect = anchorElement.getBoundingClientRect();
-            contentModal.classList.add('popup-mode');
+            boardsModal.classList.add('popup-mode');
             modalBox.style.top = `${rect.bottom + 5}px`; // Position below the button
             modalBox.style.transform = 'none'; // Override centering transform
             modalBox.style.width = 'auto';
@@ -1615,13 +1617,9 @@ async function processDirectoryContent(minModificationDate) {
                 }
             }
         } else {
-            contentModal.classList.remove('popup-mode'); // Revert to default centered modal
+            boardsModal.classList.remove('popup-mode'); // Revert to default centered modal
         }
-        // Hide the copy button as it's not relevant for this view
-        copyBtn.style.display = 'none';
-        // Ensure the close button is visible
-        contentModal.querySelector('.modal-close').style.display = 'flex';
-        contentModal.classList.add('visible');
+        boardsModal.classList.add('visible');
     }
 
     function formatDate(dateString) {

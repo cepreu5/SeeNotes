@@ -737,23 +737,20 @@ pre, code {
 }
 
 /* Remove the large top padding from the modal body when showing the board list */
-.modal-content-box:has(.all-boards-modal-container) #modal-body {
-    padding-top: 0px;
+.modal-content-box:has(.all-boards-modal-container) #boards-menu-modal-body {
     padding-right: 0px;
 }
 
 /* Apply background to the parent modal box when it contains the board list */
-.modal-content-box:has(.all-boards-modal-container) {
+.popup-mode .modal-content-box {
     background-image: url('Frame.jpg');
-    width: 95%;
     max-width: 95%;
     margin-left: 5px;
 }
 
 /* Make the close button visible on the textured background */
-.modal-content-box:has(.all-boards-modal-container) .modal-close {
-    background-color: #d6d6d6; /* Same color as header buttons for consistency */
-    opacity: 0.8;
+.popup-mode .modal-close {
+    background-color: #d6d6d6; /* Same color as header buttons */
     right: 10px; /* Fine-tuned position closer to the edge */
 }
 
@@ -765,6 +762,7 @@ pre, code {
 .selected-board {
     font-weight: bold;
     background-color: #007bff;
+    text-decoration: underline;
     /* border: 3px solid #f70202 !important; Add a thick border to the selected board */
     color: #fff;
 }
