@@ -454,15 +454,17 @@ pre, code {
     padding-bottom: 10px;
     padding-left: 10px;
     border-radius: 8px;
-    width: 95%;
-    max-width: 900px;
+    width: 90%; /* Задаваме ширината да е 90% от екрана */
+    max-width: 90%;
+    min-height: 30%;
     max-height: 80vh;
     position: relative;
     display: flex;
     flex-direction: column;
     /* transition: background-color 0.3s ease; Smooth background color transition */
 }
-.popup-mode .modal-content-box {
+
+.popup-mode {
     position: absolute; /* Allow top/left positioning */
     max-width: none; /* Override max-width to allow it to be sized by content */
     width: auto; /* Let content define width */
@@ -634,25 +636,37 @@ pre, code {
 }
 
 .scrolling-menu-wrapper {
-    display: flex;
+    display: grid; /* Промяна на flex към grid за по-добър контрол */
+    grid-template-columns: auto 1fr; /* Първата колона (стрелката) е с авто-ширина, втората (менюто) заема останалото място */
     align-items: center;
     width: 100%;
 }
 
 .board-menu-container {
-    display: flex;
-    flex-wrap: nowrap; /* Prevent wrapping */
-    overflow-x: auto;   /* Allow scrolling */
+    display: flex; /* Остава flex, за да се подредят бутоните на един ред */
+    flex-wrap: nowrap;
+    overflow-x: auto;   /* Позволява хоризонтално скролиране */
     scroll-behavior: smooth; /* Smooth scrolling on button click */
     gap: 5px;
-    flex-grow: 1;
-    padding: 5px 0; /* Add some vertical padding */
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    padding: 5px 0 0px; /* Намалява разстоянието отдолу до 3px */
+    /* Премахваме правилата, които скриват скролбара */
+    scrollbar-color: #aaa #555; /* thumb track - за Firefox */
+    scrollbar-width: thin;      /* за Firefox */
 }
 
+/* Стилизиране на скролбара за Webkit-базирани браузъри (Chrome, Edge, Safari) */
 .board-menu-container::-webkit-scrollbar {
-    display: none; /* Hide scrollbar for Chrome, Safari and Opera */
+    height: 8px; /* Височина на скролбара */
+}
+
+.board-menu-container::-webkit-scrollbar-track {
+    background: #555; /* Тъмно сив фон, както е поискано */
+    border-radius: 4px;
+}
+
+.board-menu-container::-webkit-scrollbar-thumb {
+    background: #aaa; /* По-светъл плъзгач за контраст */
+    border-radius: 4px;
 }
 
 .scroll-arrow {
@@ -953,7 +967,6 @@ pre, code {
     border-radius: 8px;
     text-align: center;
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    max-width: 400px;
     width: 90%;
 }
 

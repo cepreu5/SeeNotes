@@ -1,4 +1,5 @@
 // terser main.js --compress --mangle --toplevel --output mainn.js
+// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -110,7 +111,7 @@ const translations = {
             maxSearchesLabel: 'Saved Searches:',
             clearSearchesTooltip: 'Clear search history',
             noteFontSizeLabel: 'Note Font Size:',
-            showDatemodLabel: 'Show modification date:',
+            showDatemodLabel: 'Show modification/calendar date:',
             useLocalDbLabel: 'Local folder:',
             useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'update',
@@ -147,7 +148,7 @@ const translations = {
             localUpdatesFound: '{count} file(s) updated from local disk.',
             localNoUpdates: 'No new updates from local disk.',
             confirmDbRecreate: 'The local database already exists. Do you want to delete it and create a new one from the current data?',
-            confirmDbDelete: 'Are you sure you want to delete the local database? This action cannot be undone.',
+            confirmDbDelete: 'Are you sure you want to delete the local database?',
             dbCreated: 'Local database created successfully.',
             dbCreateFailedNoData: 'Cannot create database. No data loaded in memory.',
             dbDeleted: 'Local database deleted successfully.',
@@ -155,6 +156,7 @@ const translations = {
             createDbButton: 'Create',
             deleteDbButton: 'Delete',
             confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
+            orderLabel: 'Order:',
             dbManagementTitle: 'Database Management'
         },
         bg: {
@@ -202,7 +204,7 @@ const translations = {
             maxSearchesLabel: 'Запазени търсения:',
             clearSearchesTooltip: 'Изчисти историята на търсенията',
             noteFontSizeLabel: 'Размер шрифт (бележка):',
-            showDatemodLabel: 'Покажи дата на модификация:',
+            showDatemodLabel: 'Покажи дата на промяна/календар',
             useLocalDbLabel: 'Локална папка:',
             useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'обновяване',
@@ -238,7 +240,7 @@ const translations = {
             localUpdatesFound: 'Обновени са {count} файла от локалния диск.',
             localNoUpdates: 'Няма нови промени в локалния диск.',
             confirmDbRecreate: 'Локалната база данни вече съществува. Искате ли да я изтриете и да създадете нова от текущите данни?',
-            confirmDbDelete: 'Сигурни ли сте, че искате да изтриете локалната база данни? Това действие е необратимо.',
+            confirmDbDelete: 'Сигурни ли сте, че искате да изтриете локалната база данни?',
             dbCreated: 'Локалната база данни е създадена успешно.',
             dbCreateFailedNoData: 'Базата не може да бъде създадена. Няма заредени данни в паметта.',
             dbDeleted: 'Локалната база данни е изтрита успешно.',
@@ -246,6 +248,7 @@ const translations = {
             createDbButton: 'Създай',
             deleteDbButton: 'Изтрий',
             confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
+            orderLabel: 'Подреждане:',
             dbManagementTitle: 'Управление на базата данни'
         }
     };
@@ -1583,6 +1586,41 @@ async function processDirectoryContent(minModificationDate) {
         // Add or remove a class from the container to control child visibility
         // This part is no longer needed as calendar has its own view
         notesContainer.classList.remove('calendar-view');
+
+        // Scroll the main board menu to the selected board
+        const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardId}"]`);
+        if (selectedButtonInMenu) {
+            selectedButtonInMenu.scrollIntoView({
+                behavior: 'smooth',
+                inline: 'center',
+                block: 'nearest'
+            });
+        }
+    }
+
+    /**
+     * Сортира и пренарежда видимите бележки в DOM.
+     * @param {Array<Object>} visibleNotes - Масив от обекти, съдържащи {element, numord}.
+     */
+    function sortAndReorderNotes(visibleNotes) {
+        // Сортираме видимите бележки по numord
+        visibleNotes.sort((a, b) => {
+            const numordA = (a.numord !== undefined && a.numord !== null) ? a.numord : Infinity;
+            const numordB = (b.numord !== undefined && b.numord !== null) ? b.numord : Infinity;
+            return numordA - numordB;
+        });
+
+        // Подреждаме елементите в DOM според сортирания ред
+        // Започваме отзад-напред, за да вмъкваме в началото, което е по-ефективно
+        for (let i = visibleNotes.length - 1; i >= 0; i--) {
+            notesContainer.prepend(visibleNotes[i].element);
+        }
+
+        // Връщаме boards-note винаги най-отгоре в DOM дървото на контейнера
+        /*const boardsNote = document.querySelector('header .boards-note');
+        if (boardsNote) {
+            document.querySelector('header').appendChild(boardsNote);
+        }*/
     }
 
     function applySearchFilter() {
@@ -1591,57 +1629,49 @@ async function processDirectoryContent(minModificationDate) {
 
     function applyFilters() {
         const searchTerm = searchBox.value.toLowerCase();
-        const notes = notesContainer.getElementsByClassName('note');
+        const notes = Array.from(notesContainer.getElementsByClassName('note'));
+        const visibleNotes = [];
+
         let visibleCount = 0;
+
         for (const note of notes) {
-            // Keep the boards note visible regardless of the filter
             if (note.classList.contains('boards-note')) {
                 continue;
             }
-            let isVisibleByBoard = false;
+
             const extraInfo = note.dataset.extraInfo;
-            if (currentBoardFilter === 'all') {
-                isVisibleByBoard = true;
-            }  else if (currentBoardFilter === 'reminder') {
-                if (extraInfo) {
-                    try {
-                        const data = JSON.parse(extraInfo);
-                        if (data.timer && data.timer !== 0) {
-                            isVisibleByBoard = true;
-                        }
-                    } catch (e) {
-                        console.error('Error parsing extraInfo for note:', e);
-                    }
+            let data = {};
+            try {
+                if (extraInfo) data = JSON.parse(extraInfo);
+            } catch (e) { console.error('Error parsing extraInfo for note:', e); }
+
+            const isVisibleByBoard = (currentBoardFilter === 'all') ||
+                                     (currentBoardFilter === 'reminder' && data.timer && data.timer !== 0) ||
+                                     (data.boardid === currentBoardFilter);
+
+            const isVisibleBySearch = (() => {
+                if (!searchTerm) return true;
+                if (searchMode === 'title') {
+                    const titleEl = note.querySelector('h3');
+                    return titleEl ? titleEl.textContent.toLowerCase().includes(searchTerm) : false;
+                } else { // searchMode === 'content'
+                    const contentEl = note.querySelector('.note-content');
+                    return contentEl ? contentEl.textContent.toLowerCase().includes(searchTerm) : false;
                 }
-            } else if (extraInfo) {
-                try {
-                    const data = JSON.parse(extraInfo);
-                    if (data.boardid === currentBoardFilter) {
-                        isVisibleByBoard = true;
-                    }
-                } catch (e) {
-                    console.error('Error parsing extraInfo for note:', e);
-                }
-            }
-            let isVisibleBySearch = false;
-            if (searchMode === 'title') {
-                const titleEl = note.querySelector('h3');
-                if (titleEl) {
-                    const title = titleEl.textContent.toLowerCase();
-                    isVisibleBySearch = title.includes(searchTerm);
-                }
-            } else { // searchMode === 'content'
-                const contentEl = note.querySelector('.note-content');
-                if (contentEl) {
-                    isVisibleBySearch = contentEl.textContent.toLowerCase().includes(searchTerm);
-                }
-            }
+            })();
+
             if (isVisibleByBoard && isVisibleBySearch) {
-                note.style.display = 'flex';
+                visibleNotes.push({ element: note, numord: data.numord });
                 visibleCount++;
+                note.style.display = 'flex'; // Показваме го временно, за да се избегне "премигване"
             } else {
                 note.style.display = 'none';
             }
+        }
+
+        // Сортираме само ако опцията е включена
+        if (localStorage.getItem('enableNoteSorting') === 'true') {
+            sortAndReorderNotes(visibleNotes);
         }
         const noteCounter = document.getElementById('note-counter');
         if (noteCounter) {
@@ -1732,7 +1762,7 @@ async function processDirectoryContent(minModificationDate) {
                 if (files && files.length > 0) {
                     folderIds[name] = files[0].id;
                 } else {
-                    console.warn(`Folder '${name}' not found within 'multinotes_data'.`);
+                    console.log(`Folder '${name}' not found within 'multinotes_data'.`);
                     folderIds[name] = "";
                 }
             }
@@ -1871,7 +1901,13 @@ async function processDirectoryContent(minModificationDate) {
         reminderLink.dataset.boardid = 'reminder';
         reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder'); });
         allButtonLinks.push(reminderLink);
-        boardsData.forEach(board => {
+        // Сортираме бордовете по полето numord, преди да създадем бутоните
+        boardsData.sort((a, b) => {
+            const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+            const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+            return numordA - numordB;
+        })
+        .forEach(board => {
             if (!board.title || !board.gdid) return;
             const link = document.createElement('span');
             link.textContent = board.title;
@@ -1912,6 +1948,7 @@ async function processDirectoryContent(minModificationDate) {
         // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
         addAllBoardsModalEvents(leftArrow, () => { showAllBoardsModal(leftArrow); });
         scrollWrapper.appendChild(leftArrow);
+        // The contentEl (which holds the buttons) goes inside the scrollWrapper
         scrollWrapper.appendChild(contentEl);
         contentWrapper.appendChild(scrollWrapper);
         const checkScroll = () => {
@@ -1930,6 +1967,7 @@ async function processDirectoryContent(minModificationDate) {
         const noteFontSizeInput = document.getElementById('note-font-size-input');
         const modalFontSizeInput = document.getElementById('modal-font-size-input');
         const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
+        const orderCheckbox = document.getElementById('order-checkbox');
         // const startBoardSelect = document.getElementById('start-board-select');
         const maxSearchesInput = document.getElementById('max-searches-input');
         const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
@@ -2023,6 +2061,14 @@ async function processDirectoryContent(minModificationDate) {
                 const isChecked = showDatemodCheckbox.checked;
                 localStorage.setItem('showDatemod', isChecked);
                 document.body.classList.toggle('hide-datemod', !isChecked);
+                showToast(_('settingSaved'), 2000);
+            });
+
+            // Order checkbox
+            orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
+            orderCheckbox.addEventListener('change', () => {
+                localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
+                applyFilters(); // Re-apply filters to sort/unsort immediately
                 showToast(_('settingSaved'), 2000);
             });
 
@@ -2209,6 +2255,7 @@ async function processDirectoryContent(minModificationDate) {
             const settingsCloseBtn = document.getElementById('settings-close-btn');
             settingsCloseBtn.addEventListener('click', () => {
                 document.getElementById('settings-modal').classList.remove('visible');
+            // Премахваме флага, ако е бил зададен
                 // Ако прозорецът е бил отворен принудително, презареждаме данните.
                 if (window.wasOpenedForMissingFolder) {
                     window.wasOpenedForMissingFolder = false; // Нулираме флага
@@ -2216,25 +2263,9 @@ async function processDirectoryContent(minModificationDate) {
                 }
             });
             settingsModalBody.dataset.initialized = true;
-        } // край на if (!settingsModalBody.dataset.initialized)
+    }
 
-        // Тази част се изпълнява ВИНАГИ, за да обнови списъка с бордове
-        /*startBoardSelect = document.getElementById('start-board-select');
-        const currentValue = startBoardSelect.value;
-        // Изчистваме само опциите за бордове
-        Array.from(startBoardSelect.options).forEach(option => {
-            if (!['all', 'calendar', 'reminder'].includes(option.value)) {
-                option.remove();
-            }
-        });
-        boardsData.forEach(board => {
-            if (board.gdid && board.title) {
-                startBoardSelect.add(new Option(board.title, board.gdid));
-            }
-        });
-        startBoardSelect.value = currentValue;*/
-
-        // Add helper functions for DB management that were missing
+    // Тази част се изпълнява ВИНАГИ, за да се покаже актуалното име на избраните папки
         (async () => {
             const handle = await getDirectoryHandle(); // This won't prompt the user
             if (handle) {
@@ -2244,7 +2275,23 @@ async function processDirectoryContent(minModificationDate) {
                 folderNameDisplay.textContent = _('folderNotSelected');
             }
         })();
+
     }
+
+    (async () => {
+        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+        const arhHandle = await getConfig('arhHandle');
+        if (arhHandle) {
+            const verifiedHandle = await verifyPermission(arhHandle);
+            if (verifiedHandle) {
+                arhFolderNameDisplay.textContent = verifiedHandle.name;
+                arhFolderNameDisplay.title = verifiedHandle.name;
+            } else {
+                arhFolderNameDisplay.textContent = _('folderNotSelected');
+            }
+        } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+    })();
+
 
     /**
      * Попълва падащото меню за избор на стартов борд в настройките.
