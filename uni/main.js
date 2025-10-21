@@ -982,6 +982,29 @@ async function handleUserMismatch() {
     if (googleDbCheckbox) googleDbCheckbox.checked = true;
 }
 
+/**
+ * Създава или пресъздава цялата база данни от данните, заредени в паметта.
+ * @returns {Promise<boolean>} Връща true при успех и false при грешка.
+ */
+async function createDatabaseFromMemory() {
+    if (boardsData.length === 0 && allNotesData.length === 0) {
+        showToast(_('dbCreateFailedNoData'), 10000);
+        return false;
+    }
+    try {
+        await bulkPutDB(BOARD_STORE_NAME, boardsData);
+        await bulkPutDB(MEDIA_STORE_NAME, mediaData);
+        await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
+        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+        if (currentUserEmail) {
+            await saveConfig('userEmail', currentUserEmail);
+        }
+        return true;
+    } catch (error) {
+        console.error("Failed to create/recreate DB from memory:", error);
+        return false;
+    }
+}
     /**
      * Основна логика за зареждане на данни в приложението.
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
@@ -2285,34 +2308,20 @@ async function processDirectoryContent(minModificationDate) {
             // DB delete
             const createDbBtn = document.getElementById('create-db-btn');
             createDbBtn.addEventListener('click', async () => {
-                if (boardsData.length === 0 && allNotesData.length === 0) {
-                    showToast(_('dbCreateFailedNoData'), 10000);
-                    return;
-                }
-
-                let confirmed = false; // dbExists вече е наличен като глобален флаг
+                let confirmed = false;
 
                 if (dbExists) {
                     document.getElementById('settings-modal').classList.remove('visible');
                     await new Promise(resolve => setTimeout(resolve, 150));
                     confirmed = await showConfirmation(_('confirmDbRecreate'));
                 } else {
-                    confirmed = true; // No DB exists, so we can create it without confirmation.
+                    confirmed = true;
                 }
 
                 if (confirmed) {
-                    try {
-                        await bulkPutDB(BOARD_STORE_NAME, boardsData);
-                        await bulkPutDB(MEDIA_STORE_NAME, mediaData);
-                        await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
-                        // Добавяме и запис на потребителя в config хранилището
-                        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-                        if (currentUserEmail) {
-                            await saveConfig('userEmail', currentUserEmail);
-                        }
+                    const success = await createDatabaseFromMemory();
+                    if (success) {
                         showToast(_('dbCreated'), 10000);
-                    } catch (error) {
-                        console.error("Failed to create/recreate DB:", error);
                     }
                 }
             });
