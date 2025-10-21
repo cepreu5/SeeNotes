@@ -98,25 +98,29 @@ const translations = {
             // promptFolderId: 'Please enter the Google Drive Folder ID:',
             // folderIdInputPlaceholder: 'Google Drive Folder ID',
             zoomLabel: 'Zoom:',
+            orderLabel: 'Order notes:',
+            useArhDbLabel: 'Archive:',
             calendar: 'Calendar',
             settingsTitle: 'Settings',
             reminder: 'Reminders',
             searchSavedTip: 'Save search',
             startBoardLabel: 'Start Board:',
-            settingSaved: 'Setting saved!',
+            settingSaved: 'Setting saved',
             submitButton: 'Confirm',
             searchSaved: 'Search saved',
-            allBoardsCtrlClickTooltip: 'Ctrl-click for all',
+            allBoardsCtrlClickTooltip: 'Ctrl-click - menu',
             maxSearchesLabel: 'Saved Searches:',
             clearSearchesTooltip: 'Clear search history',
             noteFontSizeLabel: 'Note Font Size:',
             showDatemodLabel: 'Show modification/calendar date:',
+            dataManagementTitle: 'Data Loading',
             useLocalDbLabel: 'Local folder:',
             useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'update',
             updateFromGoogleDriveLabel: 'update only',
             localSyncFolderLabel: 'Local sync folder:',
             arhFolderLabel: 'Archive folder:',
+            useIndexedDbLabel: 'Database:',
             selectFolderButton: 'Select Folder',
             folderNotSelected: 'Not selected',
             modalFontSizeLabel: 'Modal Font Size:',
@@ -190,25 +194,29 @@ const translations = {
             // folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
             searchSavedTip: 'Запомни търсенето',
             zoomLabel: 'Мащаб:',
+            useArhDbLabel: 'Архив:',
+            orderLabel: 'Подреждане на бележките:',
             calendar: 'Календар',
             settingsTitle: 'Настройки',
             reminder: 'Напомняния',
             submitButton: 'Потвърди',
             startBoardLabel: 'Стартов борд:',
-            settingSaved: 'Настройката е запазена!',
+            settingSaved: 'Настройката е запазена',
             searchSaved: 'Търсенето е запазено',
             closeButton: 'Затвори',
-            allBoardsCtrlClickTooltip: 'Ctrl-клик за всички',
+            allBoardsCtrlClickTooltip: 'Ctrl-клик - меню',
             maxSearchesLabel: 'Запазени търсения:',
             clearSearchesTooltip: 'Изчисти историята на търсенията',
             noteFontSizeLabel: 'Размер шрифт (бележка):',
             showDatemodLabel: 'Покажи дата на промяна/календар',
+            dataManagementTitle: 'Четене на данни',
             useLocalDbLabel: 'Локална папка:',
             useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'обновяване',
             updateFromGoogleDriveLabel: 'само обновяване',
             localSyncFolderLabel: 'Папка за локална синхронизация:',
             arhFolderLabel: 'Папка за архив:',
+            useIndexedDbLabel: 'База данни:',
             selectFolderButton: 'Избери папка',
             folderNotSelected: 'Не е избрана',
             modalFontSizeLabel: 'Размер шрифт (преглед):',
@@ -281,6 +289,12 @@ async function startApp() {
     const tokenData = checkAuth();
     if (!tokenData) {
         return; // Спира, ако проверката за автентикация не успее/пренасочи
+    }
+
+    // Записваме имейла на потребителя в базата данни за бъдеща употреба
+    const userEmail = sessionStorage.getItem('google_auth_email_hint');
+    if (userEmail) {
+        await saveConfig('userEmail', userEmail);
     }
     // Зарежда Google API скрипта преди да се използва gapi
     try {
@@ -2206,12 +2220,36 @@ async function processDirectoryContent(minModificationDate) {
             // --- End of DB Section ---
 
             // DB delete
-            // const createDbBtn = document.getElementById('create-db-btn');
-            /*createDbBtn.addEventListener('click', async () => {
-                // Logic for creating DB can be added here if needed,
-                // but the main logic already handles creation.
-                showToast("Базата данни се създава автоматично при първоначално зареждане с включено IndexedDB.", 10000);
-            });*/
+            const createDbBtn = document.getElementById('create-db-btn');
+            createDbBtn.addEventListener('click', async () => {
+                if (boardsData.length === 0 && allNotesData.length === 0) {
+                    showToast(_('dbCreateFailedNoData'), 10000);
+                    return;
+                }
+
+                const dbExists = await checkDbExists(NOTES_DB_NAME);
+                let confirmed = false;
+
+                if (dbExists) {
+                    document.getElementById('settings-modal').classList.remove('visible');
+                    await new Promise(resolve => setTimeout(resolve, 150));
+                    confirmed = await showConfirmation(_('confirmDbRecreate'));
+                } else {
+                    confirmed = true; // No DB exists, so we can create it without confirmation.
+                }
+
+                if (confirmed) {
+                    try {
+                        await bulkPutDB(BOARD_STORE_NAME, boardsData);
+                        await bulkPutDB(MEDIA_STORE_NAME, mediaData);
+                        await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
+                        showToast(_('dbCreated'), 10000);
+                    } catch (error) {
+                        console.error("Failed to create/recreate DB:", error);
+                    }
+                }
+            });
+
             const deleteDbBtn = document.getElementById('delete-db-btn');
             deleteDbBtn.addEventListener('click', async () => {
                 document.getElementById('settings-modal').classList.remove('visible');
