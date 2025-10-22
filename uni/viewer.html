@@ -157,23 +157,32 @@
                         <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
                     </div>
 
+                    <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 15px;">
+                        <label for="use-indexeddb-checkbox" data-key="useIndexedDbLabel">База данни:</label>
+                        <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
+                    </div>
+
+            <!-- Accordion for Advanced Settings -->
+            <div class="accordion" style="margin-top: 15px; border-top: 1px solid #404040; padding-top: 10px;">
+                <div class="accordion-header">
+                    <span data-key="advancedSettings">За напреднали</span>
+                    <span class="accordion-arrow">▼</span>
+                </div>
+                <div class="accordion-content">
+
+
                     <div class="zoom-control-wrapper" style="margin-top: 10px;" id="local-db-wrapper">
                         <label for="use-local-db-checkbox" style="margin-right: 10px;" data-key="useLocalDbLabel" id="use-local-db-label">Локална папка:</label>
                         <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
                         <span id="local-sync-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
                     </div>
 
-                    <div class="zoom-control-wrapper" style="margin-top: 10px; border-bottom: 1px solid #ccc; padding-bottom: 10px;" id="arh-db-wrapper">
+                    <div class="zoom-control-wrapper" style="margin-top: 10px; padding-bottom: 10px;" id="arh-db-wrapper">
                         <label for="use-arh-db-checkbox" style="margin-right: 10px;" data-key="useArhDbLabel" id="use-arh-db-label">Архив:</label>
                         <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
                         <span id="arh-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
                     </div>
 
-                    <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 15px;">
-                        <label for="use-indexeddb-checkbox" data-key="useIndexedDbLabel">База данни:</label>
-                        <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
-                    </div>
-                </div>
                 <!-- DB Management Section -->
                 <div class="settings-section" id="db-section-wrapper" style="margin-top: 15px; border-top: 1px solid #404040; padding-top: 15px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 15px;" data-key="dbManagementTitle">Управление на базата данни</label>
@@ -183,17 +192,19 @@
                         <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
                     </div>
 
-                    <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 15px;">
-                        <button id="select-folder-btn" class="zoom-btn" data-key="localSyncFolderLabel">Папка за локална синхронизация:</button>
+                            <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 15px;">
+                                <button id="select-folder-btn" class="zoom-btn" data-key="localSyncFolderLabel">Папка за локална синхронизация:</button>
+                            </div>
+                            <div class="zoom-control-wrapper" id="arh-wrapper" style="margin-top: 15px; margin-bottom: 10px;">
+                                <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Папка за архив:</button>
+                            </div>
+                        </div>
                     </div>
-
-                    <div class="zoom-control-wrapper" id="arh-wrapper" style="margin-top: 15px;">
-                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Папка за архив:</button>
-                    </div>
-
                 </div>
             </span>
-            </div>
+                </div>
+
+        </div>
             <div class="settings-close-btn-wrapper">
                 <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
             </div>

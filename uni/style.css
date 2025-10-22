@@ -239,7 +239,7 @@ main {
     box-sizing: border-box;
     background-color: transparent;
     z-index: 1; /* Ensure content is on top of the canvas */
-    padding-bottom: 10px; /* Add space at the bottom of the note content area */
+    padding-bottom: 15px; /* Add space at the bottom of the note content area */
 }
 
 .note-content-wrapper > .note-content {
@@ -308,13 +308,13 @@ pre, code {
 
 .footer-icon {
     background-color: transparent; /* Гарантираме, че фонът е прозрачен */
-    padding: 2px; /* Добавяме малко отстояние, за да не са залепени иконите */
+    padding: 0px; /* Добавяме малко отстояние, за да не са залепени иконите */
 }
 
 .footer-icon svg {
     width: 25px; /* Леко увеличаваме размера за по-добра видимост */
     height: 25px; /* Увеличаваме височината за по-добра видимост */
-    stroke: #070707; /* По-тъмен цвят за иконите */
+    stroke: #000; /* По-тъмен цвят за иконите */
     stroke-width: 1.5;
 }
 
@@ -1414,4 +1414,35 @@ pre, code {
     .day-name-short {
         display: inline; /* Show short names on small screens */
     }
+}
+
+/* Accordion Styles */
+.accordion-header {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /*font-weight: bold;*/
+    font-style: italic;
+    color: #1f3b52;
+    padding: 5px 0;
+}
+
+.accordion-arrow {
+    transition: transform 0.3s ease;
+}
+
+.accordion.active .accordion-arrow {
+    transform: rotate(180deg);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    /* Add some styling to the content area */
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+    padding: 0 10px; /* Horizontal padding when open */
+    margin-top: 5px;
 }

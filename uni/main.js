@@ -115,12 +115,13 @@ const translations = {
             noteFontSizeLabel: 'Note Font Size:',
             showDatemodLabel: 'Show modification/calendar date:',
             dataManagementTitle: 'Data Loading',
+            advancedSettings: 'Advanced Settings',
             useLocalDbLabel: 'Local folder:',
             useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'update',
             updateFromGoogleDriveLabel: 'update only',
-            localSyncFolderLabel: 'Local sync folder:',
-            arhFolderLabel: 'Archive folder:',
+            localSyncFolderLabel: 'Local sync folder',
+            arhFolderLabel: 'Archive folder',
             useIndexedDbLabel: 'Database:',
             selectFolderButton: 'Select Folder',
             folderNotSelected: 'Not selected',
@@ -158,6 +159,7 @@ const translations = {
             dbDeleted: 'Local database deleted successfully.',
             dbDeleteFailed: 'Failed to delete local database.',
             createDbButton: 'Create',
+            permissionDenied: 'Permission Denied',
             deleteDbButton: 'Delete',
             confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
             dbManagementTitle: 'Database Management'
@@ -211,12 +213,13 @@ const translations = {
             noteFontSizeLabel: 'Размер шрифт (бележка):',
             showDatemodLabel: 'Покажи дата на промяна/календар',
             dataManagementTitle: 'Четене на данни',
+            advancedSettings: 'Разширени настройки',
             useLocalDbLabel: 'Локална папка:',
             useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'обновяване',
             updateFromGoogleDriveLabel: 'само обновяване',
-            localSyncFolderLabel: 'Папка за локална синхронизация:',
-            arhFolderLabel: 'Папка за архив:',
+            localSyncFolderLabel: 'Папка за локална синхронизация',
+            arhFolderLabel: 'Папка за архив',
             useIndexedDbLabel: 'База данни:',
             selectFolderButton: 'Избери папка',
             folderNotSelected: 'Не е избрана',
@@ -253,6 +256,7 @@ const translations = {
             dbDeleted: 'Локалната база данни е изтрита успешно.',
             dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
             createDbButton: 'Създай',
+            permissionDenied: 'Няма разрешение',
             deleteDbButton: 'Изтрий',
             confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
             dbManagementTitle: 'Управление на базата данни'
@@ -848,7 +852,9 @@ function handleSignoutClick() {
         // Proceed with fetching from Google Drive
         const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId, modifiedSince);
         boardsData = boardFileData; // This was the issue. boardFileData is an object {data, parseError}.
+        // Проверяваме дали трябва да запишем в базата и дали тя е съществувала, но е била празна.
         if (saveToDb) {
+            if (dbExists) showToast(_('dbPopulated'), 10000); // Показваме съобщението тук
             await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
         }
         const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId, modifiedSince);
@@ -967,8 +973,11 @@ async function handleUserMismatch() {
 
     // Деактивираме контролите в настройките
     const settingsModal = document.getElementById('settings-modal');
+    // Проверяваме дали модалът за настройки изобщо съществува в DOM
+    if (!settingsModal) return;
+
     const controlsToDisable = [
-        'use-indexeddb-checkbox', 'use-local-db-checkbox',
+        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
         'create-db-btn', 'delete-db-btn',
         'select-folder-btn', 'select-arh-btn'
     ];
@@ -977,6 +986,13 @@ async function handleUserMismatch() {
         const el = settingsModal.querySelector(`#${id}`);
         if (el) el.disabled = true;
     });
+
+    // Деактивираме и целия акордеон за разширени настройки
+    const accordionHeader = settingsModal.querySelector('.accordion-header');
+    if (accordionHeader) {
+        accordionHeader.style.pointerEvents = 'none';
+        accordionHeader.style.opacity = '0.5';
+    }
 
     const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
     if (googleDbCheckbox) googleDbCheckbox.checked = true;
@@ -1068,7 +1084,10 @@ async function createDatabaseFromMemory() {
                         }
                         await renderUI({ boardParseError });
                     }
-                    showToast(_('dbCreated'), 10000);
+                    // Показваме съобщението за създаване само ако базата не е съществувала преди това.
+                    if (!dbExists) { // Съобщението за попълване вече е преместено
+                        showToast(_('dbCreated'), 10000);
+                    }
                 } else {
                     // Базата съществува и има данни
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
@@ -1242,6 +1261,7 @@ async function createDatabaseFromMemory() {
 
         // Ако е указано, записваме данните в IndexedDB
         if (saveToDb) {
+            if (dbExists) showToast(_('dbPopulated'), 10000); // Показваме съобщението и тук
             await bulkPutDB(BOARD_STORE_NAME, boardsData);
             await bulkPutDB(MEDIA_STORE_NAME, mediaData);
             await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
@@ -2122,6 +2142,7 @@ async function processDirectoryContent(minModificationDate) {
         const maxSearchesInput = document.getElementById('max-searches-input');
         const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
         const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
+        const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
         const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
         const updateFromSourceCheckbox = document.getElementById('update-from-source-checkbox');
         const dbSectionWrapper = document.getElementById('db-section-wrapper');
@@ -2248,47 +2269,51 @@ async function processDirectoryContent(minModificationDate) {
                 showToast(_('settingSaved'), 2000);
             });
 
-            // Local folder
-            const useLocalDbWrapper = document.getElementById('local-db-wrapper');
-            const useLocalDbLabel = document.getElementById('use-local-db-label');
-            const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
-            // Добавяме event listener
-            useLocalDbCheckbox.addEventListener('change', () => {
-                const isChecked = useLocalDbCheckbox.checked;
-                const googleDbCheckbox = document.getElementById('use-google-db-checkbox');
-                if (isChecked) {
-                    googleDbCheckbox.checked = false;
-                    localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('useLocalDb', 'true');
-                } else {
-                    // Предотвратява изключването, ако и другата отметка е изключена
-                    if (!googleDbCheckbox.checked) {
-                        useLocalDbCheckbox.checked = true;
-                        return;
-                    }
-                    localStorage.setItem('useLocalDb', 'false');
-                }
-                // Винаги извикваме тази функция, за да се опресни правилно UI
-                // toggleUpdateOptionsVisibility();
-                showToast(_('settingSaved'), 10000);
-            });
+            // --- New Data Source Selection Logic ---
+            const dataSources = [
+                { checkbox: useGoogleDbCheckbox, key: 'useGoogleDb' },
+                { checkbox: useLocalDbCheckbox, key: 'useLocalDb' },
+                { checkbox: useArhDbCheckbox, key: 'useArhDb' }
+            ];
 
-            // Google Drive
-            const useGoogleDbWrapper = document.getElementById('google-db-wrapper');
-            const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
-            const useGoogleDbLabel = document.getElementById('use-google-db-label');
-            useGoogleDbCheckbox.addEventListener('change', () => {
-                const isChecked = useGoogleDbCheckbox.checked;
-                if (isChecked) {
-                    useLocalDbCheckbox.checked = false;
-                    localStorage.setItem('useLocalDb', 'false');
-                } else if (!useLocalDbCheckbox.checked) {
-                    useGoogleDbCheckbox.checked = true; // Prevent unchecking if it's the only one
+            const handleDataSourceChange = (changedCheckbox, changedKey) => {
+                // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
+                if (!changedCheckbox.checked && !dbExists) {
+                    // Не позволяваме премахването, като връщаме отметката
+                    changedCheckbox.checked = true;
+                    // Може да добавим и съобщение, но за сега просто предотвратяваме действието
                     return;
                 }
-                localStorage.setItem('useGoogleDb', useGoogleDbCheckbox.checked);
-                // toggleUpdateOptionsVisibility();
+
+                if (changedCheckbox.checked) {
+                    // Uncheck all other data sources
+                    dataSources.forEach(({ checkbox, key }) => {
+                        if (key !== changedKey) {
+                            checkbox.checked = false;
+                            localStorage.setItem(key, 'false');
+                        }
+                    });
+
+                    // Автоматично отваряне на диалога за избор на папка, ако не е избрана
+                    if (changedKey === 'useLocalDb') {
+                        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+                        if (folderNameDisplay.textContent === _('folderNotSelected')) {
+                            document.getElementById('select-folder-btn').click();
+                        }
+                    } else if (changedKey === 'useArhDb') {
+                        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+                        if (arhFolderNameDisplay.textContent === _('folderNotSelected')) {
+                            document.getElementById('select-arh-btn').click();
+                        }
+                    }
+                }
+                // Save the state of the changed checkbox
+                localStorage.setItem(changedKey, changedCheckbox.checked);
                 showToast(_('settingSaved'), 2000);
+            };
+
+            dataSources.forEach(({ checkbox, key }) => {
+                checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key));
             });
 
             // indexedDB
@@ -2301,6 +2326,22 @@ async function processDirectoryContent(minModificationDate) {
                 localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
                 showToast(_('settingSaved'), 2000);
             });
+
+            // Accordion logic
+            const accordionHeader = document.querySelector('.accordion-header');
+            if (accordionHeader) {
+                accordionHeader.addEventListener('click', () => {
+                    const accordion = accordionHeader.parentElement;
+                    accordion.classList.toggle('active');
+                    const content = accordion.querySelector('.accordion-content');
+                    if (content.style.maxHeight) {
+                        content.style.maxHeight = null;
+                    } else {
+                        content.style.maxHeight = content.scrollHeight + "px";
+                    }
+                });
+            }
+
             // --- End of DB Section ---
 
             // DB delete
@@ -2346,6 +2387,7 @@ async function processDirectoryContent(minModificationDate) {
             // Set initial states from localStorage
             useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false'; // Default to true
             useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
+            useArhDbCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
 
             // --- Local Sync Folder ---
             const selectFolderBtn = document.getElementById('select-folder-btn');
@@ -2433,15 +2475,16 @@ async function processDirectoryContent(minModificationDate) {
 
     // Тази част се изпълнява ВИНАГИ, за да се покаже актуалното име на избраните папки
     (async () => {
-        if (dbExists) { // Използваме флага
-            const handle = await getDirectoryHandle(); // This won't prompt the user
-            if (handle) {
-                const folderNameDisplay = document.getElementById('local-sync-folder-name');
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-            }
+        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+        // Опитваме се да вземем handle от паметта или от базата данни.
+        // getDirectoryHandle вече има вградена логика за това.
+        const handle = await getDirectoryHandle(); 
+
+        if (handle) {
+            folderNameDisplay.textContent = handle.name;
+            folderNameDisplay.title = handle.name;
         } else {
-            document.getElementById('local-sync-folder-name').textContent = _('folderNotSelected');
+            folderNameDisplay.textContent = _('folderNotSelected');
         }
     })();
 
@@ -2449,14 +2492,16 @@ async function processDirectoryContent(minModificationDate) {
 
     (async () => {
         const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-        if (dbExists) {
-            const arhHandle = await getConfig('arhHandle');
-            if (arhHandle) {
-                const verifiedHandle = await verifyPermission(arhHandle);
-                if (verifiedHandle) {
-                    arhFolderNameDisplay.textContent = verifiedHandle.name;
-                    arhFolderNameDisplay.title = verifiedHandle.name;
-                }
+        const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
+        if (arhHandle) {
+            // Проверяваме дали имаме разрешение, без да питаме потребителя отново
+            const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
+            if (permission === 'granted') {
+                arhFolderNameDisplay.textContent = arhHandle.name;
+                arhFolderNameDisplay.title = arhHandle.name;
+            } else { 
+                arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
+                arhFolderNameDisplay.style.color = 'red';
             }
         } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
     })();
@@ -3407,6 +3452,13 @@ async function renderUI({ boardParseError }) {
     if (boardsData.length > 0 || boardParseError) {
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
+
+    // КЛЮЧОВА СТЪПКА: Принудително премахваме старото меню с бордове, ако съществува.
+    const oldBoardsNote = document.querySelector('header .boards-note');
+    if (oldBoardsNote) {
+        oldBoardsNote.remove();
+    }
+
     const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData.rawData)));
     let notesCount = 0;
     noteElements.forEach(noteEl => {
