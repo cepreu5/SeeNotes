@@ -1,4 +1,5 @@
 // terser main.js --compress --mangle --toplevel --output mainn.js
+// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -158,6 +159,7 @@ const translations = {
             dbCreateFailedNoData: 'Cannot create database. No data loaded in memory.',
             dbDeleted: 'Local database deleted successfully.',
             dbDeleteFailed: 'Failed to delete local database.',
+            noUpdateMode: 'Attachment links will not be active.',
             createDbButton: 'Create',
             permissionDenied: 'Permission Denied',
             deleteDbButton: 'Delete',
@@ -255,6 +257,7 @@ const translations = {
             dbCreateFailedNoData: 'Базата не може да бъде създадена. Няма заредени данни в паметта.',
             dbDeleted: 'Локалната база данни е изтрита успешно.',
             dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
+            noUpdateMode: 'Приложенията към бележките няма да се отварят.',
             createDbButton: 'Създай',
             permissionDenied: 'Няма разрешение',
             deleteDbButton: 'Изтрий',
@@ -288,8 +291,8 @@ async function startApp() {
     // Първо инициализираме UI, за да се покаже веднага
     document.body.style.display = 'block';
     initApp(); // Инициализира UI елементите и event listeners
-    await createSettingsUI([], false); // Предварително създава UI на настройките
     await createBoardsUI([], false);
+    await createSettingsUI([], false); // Предварително създава UI на настройките
 
     // Проверяваме за базата данни САМО веднъж при стартиране
     dbExists = await checkDbExists(NOTES_DB_NAME);
@@ -854,7 +857,6 @@ function handleSignoutClick() {
         boardsData = boardFileData; // This was the issue. boardFileData is an object {data, parseError}.
         // Проверяваме дали трябва да запишем в базата и дали тя е съществувала, но е била празна.
         if (saveToDb) {
-            if (dbExists) showToast(_('dbPopulated'), 10000); // Показваме съобщението тук
             await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
         }
         const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId, modifiedSince);
@@ -878,6 +880,7 @@ function handleSignoutClick() {
         });
         if (saveToDb && notesToStoreInDB.length > 0) {
             await bulkPutDB(NOTE_STORE_NAME, notesToStoreInDB); // Sync to DB
+            showToast(_('dbPopulated'), 10000);
         }
         return { boardParseError };
     }
@@ -910,7 +913,6 @@ function handleSignoutClick() {
             console.log('Performing full initial sync from Google Drive to local DB.');
             loaderText.textContent = 'Първоначална синхронизация с Google Drive...';
         }
-
         const folderId = await getFolderID();
         if (!folderId) {
             showToast(_('errorFolderNotFound'));
@@ -943,19 +945,17 @@ function handleSignoutClick() {
  * Ако има несъответствие, превключва приложението в ограничен режим.
  */
 async function userCheck() {
-    if (!dbExists) { // Използваме флага
+    if (!dbExists) {
         // Базата не съществува, не правим нищо.
         // Потребителят ще бъде записан при първоначалното създаване на базата.
-        return; // Продължаваме нормално
+        return;
     }
-
     // Базата съществува, продължаваме с проверката на потребителя
     const storedUserEmail = await getConfig('userEmail');
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-
     // Проверяваме за несъответствие само ако има записан потребител в базата
     if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
-        await handleUserMismatch();
+        await handleUserMismatch(storedUserEmail);
     }
 }
 
@@ -963,37 +963,37 @@ async function userCheck() {
  * Обработва случая на несъответствие на потребители.
  * Показва съобщение и заключва настройките за управление на данни.
  */
-async function handleUserMismatch() {
-    showToast("Съществуващата база е създадена с друго потребителско име, данните ще се заредят от Google Drive", 15000);
-
+async function handleUserMismatch(storedUser) {
+    showToast(`Съществуващата база е създадена с потребителско име ${storedUser}, данните ще се заредят от Google Drive`, 15000);
     // Принудително превключваме към режим "Google Drive" без IndexedDB
     localStorage.setItem('useIndexedDb', 'false');
     localStorage.setItem('useGoogleDb', 'true');
     localStorage.setItem('useLocalDb', 'false');
-
     // Деактивираме контролите в настройките
     const settingsModal = document.getElementById('settings-modal');
     // Проверяваме дали модалът за настройки изобщо съществува в DOM
     if (!settingsModal) return;
-
     const controlsToDisable = [
         'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
-        'create-db-btn', 'delete-db-btn',
+        'create-db-btn', // 'delete-db-btn',
         'select-folder-btn', 'select-arh-btn'
     ];
-
     controlsToDisable.forEach(id => {
         const el = settingsModal.querySelector(`#${id}`);
-        if (el) el.disabled = true;
+        if (el) {
+            // Ако елементът е чекбокс, първо го изключваме
+            if (el.type === 'checkbox') {
+                el.checked = false;
+            }
+            el.disabled = true;
+        }
     });
-
     // Деактивираме и целия акордеон за разширени настройки
     const accordionHeader = settingsModal.querySelector('.accordion-header');
     if (accordionHeader) {
         accordionHeader.style.pointerEvents = 'none';
         accordionHeader.style.opacity = '0.5';
     }
-
     const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
     if (googleDbCheckbox) googleDbCheckbox.checked = true;
 }
@@ -1693,6 +1693,17 @@ async function processDirectoryContent(minModificationDate) {
     });
 
     function filterNotesByBoard(boardId) {
+        // --- Проверка за съществуващ борд ---
+        // Ако boardId не е специален изглед ('all', 'calendar', 'reminder')
+        // и не съществува в boardsData, превключваме към 'all'.
+        const specialBoards = ['all', 'calendar', 'reminder'];
+        if (!specialBoards.includes(boardId)) {
+            const boardExists = boardsData.some(b => b.gdid === boardId);
+            if (!boardExists) {
+                console.warn(`Board with ID '${boardId}' not found. Defaulting to 'all'.`);
+                boardId = 'all';
+            }
+        }
         const searchInput = document.getElementById('search-box'); // The search input field
 
         if (boardId === 'calendar') {
@@ -2310,6 +2321,16 @@ async function processDirectoryContent(minModificationDate) {
                 // Save the state of the changed checkbox
                 localStorage.setItem(changedKey, changedCheckbox.checked);
                 showToast(_('settingSaved'), 2000);
+
+                // --- Управление на новия флаг noUpdate ---
+                const isAnySourceActive = dataSources.some(ds => ds.checkbox.checked);
+                const noUpdate = !isAnySourceActive;
+
+                localStorage.setItem('noUpdate', noUpdate);
+
+                if (noUpdate) {
+                    showToast(_('noUpdateMode'), 5000);
+                }
             };
 
             dataSources.forEach(({ checkbox, key }) => {
@@ -2381,6 +2402,8 @@ async function processDirectoryContent(minModificationDate) {
                         await clearDbStores();
                     }
                 showToast(_('dbDeleted'), 10000);
+                // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
+                localStorage.removeItem('startBoard');
                 }
             });
 
@@ -2810,6 +2833,13 @@ async function processDirectoryContent(minModificationDate) {
             const link = document.createElement('a');
             link.href = '#';
             link.onclick = async (e) => {
+                // Проверяваме флага noUpdate
+                const noUpdate = localStorage.getItem('noUpdate') === 'true';
+                if (noUpdate) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return; // Прекратяваме изпълнението, ако флагът е вдигнат
+                }
                 e.preventDefault();
                 e.stopPropagation();
                 if (!filename) return;
@@ -2873,6 +2903,13 @@ async function processDirectoryContent(minModificationDate) {
 
         iconDiv.style.cursor = 'pointer';
         iconDiv.addEventListener('click', (e) => {
+            // Проверяваме флага noUpdate
+            const noUpdate = localStorage.getItem('noUpdate') === 'true';
+            if (noUpdate) {
+                e.preventDefault();
+                e.stopPropagation();
+                return; // Прекратяваме изпълнението, ако флагът е вдигнат
+            }
             e.stopPropagation();
             const attachmentDataString = JSON.stringify(attachment, null, 2);
             showModal(attachmentDataString);
@@ -2909,6 +2946,13 @@ async function processDirectoryContent(minModificationDate) {
             link.title = `Click to open ${filename} from Google Drive`;
 
             link.onclick = async (e) => {
+                // Проверяваме флага noUpdate
+                const noUpdate = localStorage.getItem('noUpdate') === 'true';
+                if (noUpdate) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return; // Прекратяваме изпълнението, ако флагът е вдигнат
+                }
                 e.preventDefault();
                 e.stopPropagation();
                 if (!checkAuth()) return;
@@ -2969,6 +3013,13 @@ async function processDirectoryContent(minModificationDate) {
             case 1: // Image
                 setupLink('Images', 'Images/');
                 iconDiv.addEventListener('click', (e) => {
+                    // Проверяваме флага noUpdate
+                    const noUpdate = localStorage.getItem('noUpdate') === 'true';
+                    if (noUpdate) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return; // Прекратяваме изпълнението, ако флагът е вдигнат
+                    }
                     e.stopPropagation();
                     e.preventDefault();
                     showPreview('Images');
@@ -3003,6 +3054,13 @@ async function processDirectoryContent(minModificationDate) {
                 videoTextContainer.appendChild(videoLine2);
                 iconDiv.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    // Проверяваме флага noUpdate
+                    const noUpdate = localStorage.getItem('noUpdate') === 'true';
+                    if (noUpdate) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return; // Прекратяваме изпълнението, ако флагът е вдигнат
+                    }
                     e.preventDefault();
                     showPreview('Video');
                 });
@@ -3026,6 +3084,13 @@ async function processDirectoryContent(minModificationDate) {
         if (attachment.type !== 1 && attachment.type !== 4) { // Add generic info click for non-preview types
             iconDiv.style.cursor = 'pointer';
             iconDiv.addEventListener('click', (e) => {
+                // Проверяваме флага noUpdate
+                const noUpdate = localStorage.getItem('noUpdate') === 'true';
+                if (noUpdate) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return; // Прекратяваме изпълнението, ако флагът е вдигнат
+                }
                 e.stopPropagation();
                 showModal(JSON.stringify(attachment, null, 2));
             });
