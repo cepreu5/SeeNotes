@@ -1024,6 +1024,22 @@ async function createDatabaseFromMemory() {
         return false;
     }
 }
+
+/**
+ * Финализира процеса по създаване на база данни, като записва
+ * необходимата конфигурация (timestamps, потребител).
+ */
+async function finalizeDbCreation() {
+    const now = Date.now();
+    await saveConfig('lastGDTimestamp', now);
+    await saveConfig('lastLocalTimestamp', now);
+
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+    if (currentUserEmail) {
+        await saveConfig('userEmail', currentUserEmail);
+    }
+}
+
     /**
      * Основна логика за зареждане на данни в приложението.
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
@@ -1035,10 +1051,30 @@ async function createDatabaseFromMemory() {
         // Взимаме актуалните настройки от localStorage
         const useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
         const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+        const useArhDb = localStorage.getItem('useArhDb') === 'true';
         const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
 
         try {
-            if (!useIndexedDb) {
+            if (useArhDb) {
+                // --- РЕЖИМ 0: Зареждане от Архив ---
+                console.log("Mode: Archive");
+                if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
+                const arhHandle = await getConfig('arhHandle');
+                if (arhHandle) {
+                    const verifiedHandle = await verifyPermission(arhHandle);
+                    if (verifiedHandle) {
+                        const success = await readArh(verifiedHandle);
+                        if (success) {
+                            await renderUI({ boardParseError: false });
+                        }
+                    } else {
+                        showToast(_('permissionDenied'), 10000);
+                    }
+                } else {
+                    showToast("Моля, изберете папка за архив от настройките.", 10000);
+                    document.getElementById('settings-modal').classList.add('visible');
+                }
+            } else if (!useIndexedDb) {
                 // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
                 console.log("Mode: Direct from source (IndexedDB is OFF)");
                 if (useGoogleDb) {
@@ -1069,22 +1105,12 @@ async function createDatabaseFromMemory() {
                     if (useGoogleDb) {
                         console.log("Source for initial load: Google Drive");
                         const { boardParseError } = await fetchAllData(null, true); // true -> запиши в DB
-                        await saveConfig('lastGDTimestamp', Date.now());
-                        // Записваме потребителя СЛЕД като базата е създадена
-                        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-                        if (currentUserEmail) { // Базата вече е създадена, можем да запишем
-                            await saveConfig('userEmail', currentUserEmail);
-                        }
+                        await finalizeDbCreation();
                         await renderUI({ boardParseError });
                     } else if (useLocalFolder) {
                         console.log("Source for initial load: Local Folder");
                         const { boardParseError } = await fetchAllDataFromLocalFolder(true); // true -> запиши в DB
-                        await saveConfig('lastLocalTimestamp', Date.now());
-                        // Записваме потребителя СЛЕД като базата е създадена
-                        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-                        if (currentUserEmail) { // Базата вече е създадена, можем да запишем
-                            await saveConfig('userEmail', currentUserEmail);
-                        }
+                        await finalizeDbCreation();
                         await renderUI({ boardParseError });
                     }
                     // Показваме съобщението за създаване само ако базата не е съществувала преди това.
@@ -2402,6 +2428,12 @@ async function processDirectoryContent(minModificationDate) {
                     if (confirmedConfigDelete) {
                         // Потребителят иска да изтрие всичко, включително настройките
                         await deleteNotesDB();
+                        // Нулираме UI елементите за избраните папки
+                        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+                        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+                        if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
+                        if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
+                        dirHandle = null; // Нулираме и handle-a в паметта
                     } else {
                         // Потребителят иска да изтрие само данните, но да запази настройките
                         await clearDbStores();
@@ -2465,20 +2497,12 @@ async function processDirectoryContent(minModificationDate) {
                         }
                         arhFolderNameDisplay.textContent = handle.name;
                         arhFolderNameDisplay.title = handle.name;
-                        await saveConfig('arhHandle', handle);
-                        dirHandle = handle;
+                        await saveConfig('arhHandle', handle); // Запазваме избраната папка
                         document.getElementById('settings-modal').classList.remove('visible');
                         showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
-                        const oldBoardsNote = document.querySelector('header .boards-note');
-                        if (oldBoardsNote) {
-                            oldBoardsNote.remove();
-                        }
-
-                        // initializeLoad(); // 1. Изчистваме стария UI и показваме loader-a
-                        const success = await readArh(dirHandle);
-                        if (success) {
-                            await renderUI({ boardParseError: false }); // 2. Показваме новия UI с данните от архива
-                        }
+                        // След избор, просто презареждаме основната логика,
+                        // която вече ще види, че е избран режим "Архив".
+                        mainLogic();
                     }
                 } catch (error) {
                     if (error.name !== 'AbortError') {
