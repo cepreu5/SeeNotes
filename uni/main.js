@@ -560,10 +560,7 @@ function initApp() {
             if (event.isTrusted) triggerSearch(true);
         });
         searchBox.addEventListener('focus', () => {
-            if (savedSearches.length > 0) {
-                renderSavedSearchesPopup(); // This will now just populate the div
-                document.getElementById('saved-searches-popup').style.display = 'block';
-            }
+            renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
         });
 
         saveSearchBtn.addEventListener('click', (e) => {
@@ -575,6 +572,7 @@ function initApp() {
                 saveSearchBtn.classList.add('saved-animation');
                 setTimeout(() => saveSearchBtn.classList.remove('saved-animation'), 600);
                 renderSavedSearchesPopup(); // Re-render to show the new term immediately
+                document.getElementById('saved-searches-popup').style.display = 'block';
             }
         });
         copyBtn.innerHTML = copyIconSvg;
@@ -730,8 +728,9 @@ function initApp() {
         const contentContainer = document.createElement('div');
         contentContainer.className = 'saved-searches-content';
         popup.appendChild(contentContainer);
-        // Combine last search with saved searches for display
-        const allSearchesForDisplay = [lastSearchTerm, ...savedSearches];
+        // Комбинираме последното търсене със запазените и премахваме дубликати,
+        // за да сме сигурни, че всяко търсене се показва само веднъж.
+        const allSearchesForDisplay = [...new Set([lastSearchTerm, ...savedSearches])];
         allSearchesForDisplay.forEach((term, index) => {
             if (index > 0 && !term) return; // Don't show empty saved searches
             const item = document.createElement('div');
@@ -1011,10 +1010,14 @@ async function createDatabaseFromMemory() {
         await bulkPutDB(BOARD_STORE_NAME, boardsData);
         await bulkPutDB(MEDIA_STORE_NAME, mediaData);
         await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
+        const now = Date.now();
+        await saveConfig('lastGDTimestamp', now);
+        await saveConfig('lastLocalTimestamp', now);
         const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
         if (currentUserEmail) {
             await saveConfig('userEmail', currentUserEmail);
         }
+        dbExists = true;
         return true;
     } catch (error) {
         console.error("Failed to create/recreate DB from memory:", error);
@@ -2290,6 +2293,7 @@ async function processDirectoryContent(minModificationDate) {
             const handleDataSourceChange = (changedCheckbox, changedKey) => {
                 // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
                 if (!changedCheckbox.checked && !dbExists) {
+                    showToast("Трябва да има избран поне един източник на данни, когато не се използва База данни.", 5000);
                     // Не позволяваме премахването, като връщаме отметката
                     changedCheckbox.checked = true;
                     // Може да добавим и съобщение, но за сега просто предотвратяваме действието
@@ -2382,6 +2386,7 @@ async function processDirectoryContent(minModificationDate) {
                     const success = await createDatabaseFromMemory();
                     if (success) {
                         showToast(_('dbCreated'), 10000);
+                        dbExists = true;
                     }
                 }
             });
@@ -2890,13 +2895,28 @@ async function processDirectoryContent(minModificationDate) {
                 const parts = attachment.path.split('|');
                 if (parts.length >= 3) {
                     const textContainer = document.createElement('div');
-                    const line1 = document.createElement('span');
-                    line1.textContent = `${parts[0]}, ${parts[1]}`;
-                    textContainer.appendChild(line1);
+                    const lat = parts[0];
+                    const lng = parts[1];
+                    const label = parts[2];
+
+                    const link = document.createElement('a');
+                    link.textContent = `${lat}, ${lng}`;
+                    link.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.onclick = (e) => e.stopPropagation(); // Предотвратява отварянето на модала на бележката
+
+                    textContainer.appendChild(link);
                     const line2 = document.createElement('div');
-                    line2.textContent = parts[2];
+                    line2.textContent = label;
                     textContainer.appendChild(line2);
                     attachmentWrapper.appendChild(textContainer);
+                    // Добавяме onclick на иконата, за да покаже JSON данните
+                    iconDiv.style.cursor = 'pointer';
+                    iconDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showModal(JSON.stringify(attachment, null, 2));
+                    });
                 }
                 break;
         }
@@ -3070,13 +3090,28 @@ async function processDirectoryContent(minModificationDate) {
                 const parts = attachment.path.split('|');
                 if (parts.length >= 3) {
                     const textContainer = document.createElement('div');
-                    const line1 = document.createElement('span');
-                    line1.textContent = `${parts[0]}, ${parts[1]}`;
-                    textContainer.appendChild(line1);
+                    const lat = parts[0];
+                    const lng = parts[1];
+                    const label = parts[2];
+
+                    const link = document.createElement('a');
+                    link.textContent = `${lat}, ${lng}`;
+                    link.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.onclick = (e) => e.stopPropagation(); // Предотвратява отварянето на модала на бележката
+
+                    textContainer.appendChild(link);
                     const line2 = document.createElement('div');
-                    line2.textContent = parts[2];
+                    line2.textContent = label;
                     textContainer.appendChild(line2);
                     attachmentWrapper.appendChild(textContainer);
+                    // Добавяме onclick на иконата, за да покаже JSON данните
+                    iconDiv.style.cursor = 'pointer';
+                    iconDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showModal(JSON.stringify(attachment, null, 2));
+                    });
                 }
                 break;
         }
