@@ -158,6 +158,8 @@ const translations = {
             dbCreated: 'Local database created successfully.',
             dbCreateFailedNoData: 'Cannot create database. No data loaded in memory.',
             dbDeleted: 'Local database deleted successfully.',
+            confirmCreateDbFromArh: 'The local database is empty or does not exist. Do you want to create a new one from the current archive data?',
+            loadedFromArhNoDb: 'Loading directly from archive (no offline support).',
             dbDeleteFailed: 'Failed to delete local database.',
             noUpdateMode: 'Attachment links will not be active.',
             createDbButton: 'Create',
@@ -256,6 +258,8 @@ const translations = {
             dbCreated: 'Локалната база данни е създадена успешно.',
             dbCreateFailedNoData: 'Базата не може да бъде създадена. Няма заредени данни в паметта.',
             dbDeleted: 'Локалната база данни е изтрита успешно.',
+            confirmCreateDbFromArh: 'Локалната база данни е празна или не съществува. Искате ли да създадете нова от текущите архивни данни?',
+            loadedFromArhNoDb: 'Зареждане директно от архив (без офлайн поддръжка).',
             dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
             noUpdateMode: 'Приложенията към бележките няма да се отварят.',
             createDbButton: 'Създай',
@@ -1045,34 +1049,86 @@ async function finalizeDbCreation() {
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
      */
     async function mainLogic() {
-        initializeLoad(); // Нулира състоянието и показва зареждащия екран
-        const loaderTitle = document.getElementById('loader-title');
+        initializeLoad(); // Resets state and shows the loader screen
+        const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
 
         // Взимаме актуалните настройки от localStorage
         const useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
         const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
         const useArhDb = localStorage.getItem('useArhDb') === 'true';
         const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-
+        // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
+        let boardsInDb = [];
+        if (useIndexedDb) {
+            dbExists = await checkDbExists(NOTES_DB_NAME);
+            if (dbExists) {
+                boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+            }
+        }
         try {
             if (useArhDb) {
                 // --- РЕЖИМ 0: Зареждане от Архив ---
                 console.log("Mode: Archive");
                 if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
                 const arhHandle = await getConfig('arhHandle');
-                if (arhHandle) {
-                    const verifiedHandle = await verifyPermission(arhHandle);
-                    if (verifiedHandle) {
-                        const success = await readArh(verifiedHandle);
-                        if (success) {
-                            await renderUI({ boardParseError: false });
-                        }
-                    } else {
-                        showToast(_('permissionDenied'), 10000);
-                    }
-                } else {
+                if (!arhHandle) {
                     showToast("Моля, изберете папка за архив от настройките.", 10000);
                     document.getElementById('settings-modal').classList.add('visible');
+                    return; // Stop execution if no archive handle
+                }
+                const verifiedHandle = await verifyPermission(arhHandle);
+                if (!verifiedHandle) {
+                    showToast(_('permissionDenied'), 10000);
+                    return; // Stop execution if no permission
+                }
+
+                if (useIndexedDb) {
+                    // Archive + IndexedDB mode
+                    console.log("Mode: Archive + IndexedDB");
+                    if (!dbExists || boardsInDb.length === 0) {
+                        // DB is empty or does not exist, prompt for creation from archive
+                        const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
+                        if (confirmed) {
+                            loaderText.textContent = "Creating DB from archive...";
+                            const success = await readArh(verifiedHandle); // Read archive into memory
+                            if (success) {
+                                const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
+                                if (dbCreatedSuccessfully) {
+                                    showToast(_('dbCreated'), 10000);
+                                    await fetchAllDataLocal(); // Load from the newly created DB
+                                    await renderUI({ boardParseError: false });
+                                } else {
+                                    showToast(_('dbCreateFailedNoData'), 10000);
+                                    // Fallback to direct archive load if DB creation fails
+                                    await readArh(verifiedHandle); // Re-read archive into memory for direct display
+                                    await renderUI({ boardParseError: false });
+                                }
+                            } else {
+                                // If reading archive failed, cannot create DB.
+                                showToast("Failed to read archive, cannot create DB.", 10000);
+                                // What to do here? Maybe just show an empty UI or an error.
+                            }
+                        } else {
+                            // User declined to create DB, load directly from archive for this session
+                            showToast(_('loadedFromArhNoDb'), 10000);
+                            const success = await readArh(verifiedHandle);
+                            if (success) {
+                                await renderUI({ boardParseError: false });
+                            }
+                        }
+                    } else {
+                        // DB exists and has data, load from DB
+                        loaderText.textContent = "Loading from local database...";
+                        await fetchAllDataLocal();
+                        await renderUI({ boardParseError: false });
+                    }
+                } else {
+                    // Archive mode without IndexedDB
+                    console.log("Mode: Archive (no IndexedDB)");
+                    const success = await readArh(verifiedHandle);
+                    if (success) {
+                        await renderUI({ boardParseError: false });
+                    }
                 }
             } else if (!useIndexedDb) {
                 // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
@@ -1091,10 +1147,6 @@ async function finalizeDbCreation() {
             } else {
                 // --- РЕЖИМ 2: С IndexedDB
                 console.log("Mode: Using IndexedDB");
-                let boardsInDb = [];
-                if (dbExists) { // Използваме флага
-                    boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                }
  
                 if (!dbExists || boardsInDb.length === 0) {
                     // Първоначално създаване на базата данни
@@ -1108,7 +1160,7 @@ async function finalizeDbCreation() {
                         await finalizeDbCreation();
                         await renderUI({ boardParseError });
                     } else if (useLocalFolder) {
-                        console.log("Source for initial load: Local Folder");
+                        console.log("Source for initial load: Local Folder"); // This is a duplicate, already handled above
                         const { boardParseError } = await fetchAllDataFromLocalFolder(true); // true -> запиши в DB
                         await finalizeDbCreation();
                         await renderUI({ boardParseError });
@@ -1118,7 +1170,7 @@ async function finalizeDbCreation() {
                         showToast(_('dbCreated'), 10000);
                     }
                 } else {
-                    // Базата съществува и има данни
+                    // DB exists and has data, sync from source then load from DB
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
                     /*if (!updateFromSource) { // винаги ще е с update
                         // Просто зареждаме от базата, без update
@@ -1156,8 +1208,8 @@ async function finalizeDbCreation() {
             loaderText.textContent = ''; // Изчистваме текста за прогреса
             loaderContainer.style.display = 'none';
             updateSearchPlaceholder();
-            document.body.style.backgroundImage = `url('Board.png')`;
-            notesContainer.style.backgroundImage = `url('Board.png')`;
+            document.body.style.backgroundImage = `url('Board.png')`; // Reset background
+            notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
         }
     }
 

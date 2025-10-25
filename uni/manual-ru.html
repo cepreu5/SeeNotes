@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Руководство по данным</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 20px auto; padding: 0 15px; }
+        h3 { color: #0056b3; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+        h4 { color: #1f3b52; }
+        ul { list-style-type: none; padding-left: 0; }
+        li { margin-bottom: 15px; }
+        strong { color: #000; }
+        code { background-color: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+    <h3>Источники данных</h3>
+    <p>Вы можете загружать свои заметки из трех мест:</p>
+    <ul>
+        <li>
+            <h4>1. Google Drive (Основной режим)</h4>
+            <p>Ваши файлы (<code>board.txt</code>, <code>note.txt</code> и т.д.) находятся в папке <code>multinotes_data</code> на вашем Google Drive. Это рекомендуемый режим для большинства пользователей.</p>
+        </li>
+        <li>
+            <h4>2. Локальная папка</h4>
+            <p>Приложение читает те же файлы, но из папки на вашем компьютере. <strong>Обычно это папка, которую приложение Google Drive for Desktop синхронизирует на вашем компьютере, что позволяет работать в офлайн-режиме.</strong></p>
+        </li>
+        <li>
+            <h4>3. Архив</h4>
+            <p>Специальный режим "только для чтения", который загружает данные из архивных файлов (<code>.bcp</code>). <strong>Эти файлы происходят из ZIP-архива, созданного самим приложением (например, мобильной версией), который вы перенесли и распаковали на своем компьютере.</strong></p>
+        </li>
+    </ul>
+
+</body>
+</html>
