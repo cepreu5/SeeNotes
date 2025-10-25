@@ -1493,7 +1493,9 @@ async function getDirectoryHandle(promptUser = false) {
     if (dirHandle) return dirHandle;
 
     try {
-        const savedHandle = await getConfig('directoryHandle');
+        let savedHandle = null;
+        if (localStorage.getItem('useLocalDb') === 'true') savedHandle = await getConfig('directoryHandle');
+        if (localStorage.getItem('useArhDb') === 'true') savedHandle = await getConfig('arhHandle');
         if (savedHandle) {
             const verifiedHandle = await verifyPermission(savedHandle);
             if (verifiedHandle) {
@@ -3013,6 +3015,110 @@ async function processDirectoryContent(minModificationDate) {
         attachmentWrapper.prepend(iconDiv);
     }
 
+    async function handleArhAttachment(attachment, attachmentWrapper, iconData) {
+        const archiveFolderName = dirHandle.name;
+        const iconDiv = document.createElement('div');
+        iconDiv.innerHTML = iconData.svg;
+        const filename = attachment.path;
+        const createArhLink = async (folderName, textPrefix) => {
+            const link = document.createElement('a');
+            link.href = '#';
+            link.onclick = async (e) => {
+                // Проверяваме флага noUpdate
+                const noUpdate = localStorage.getItem('noUpdate') === 'true';
+                if (noUpdate) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return; // Прекратяваме изпълнението, ако флагът е вдигнат
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                if (!filename) return;
+                try {
+                    // const subDir = await dirHandle.getDirectoryHandle(folderName);
+                    const fileHandle = await dirHandle.getFileHandle(filename);
+                    const file = await fileHandle.getFile();
+                    window.open(URL.createObjectURL(file), '_blank');
+                } catch (err) {
+                    console.error(`Could not open local file ${folderName}/${filename}`, err);
+                    showToast(_('errorOpenFile').replace('{filename}', filename));
+                }
+            };
+            link.textContent = textPrefix + filename;
+            return link;
+        };
+        switch (attachment.type) {
+            case 1: // Image
+                attachmentWrapper.appendChild(await createArhLink('', `${archiveFolderName}/`));
+                break;
+            case 2: // Sound
+                const soundTextContainer = document.createElement('div');
+                soundTextContainer.style.flexGrow = '1';
+                soundTextContainer.style.flexShrink = '1';
+                soundTextContainer.style.minWidth = '0';
+                soundTextContainer.appendChild(await createArhLink('', `${archiveFolderName}/`));
+                const soundLine2 = document.createElement('div');
+                soundLine2.textContent = attachment.description || '';
+                soundTextContainer.appendChild(soundLine2);
+                attachmentWrapper.appendChild(soundTextContainer);
+                break;
+            case 3: // Other
+                attachmentWrapper.appendChild(await createArhLink('', `${archiveFolderName}/`));
+                break;
+            case 4: // Video
+                const videoTextContainer = document.createElement('div');
+                videoTextContainer.style.flexGrow = '1';
+                videoTextContainer.style.flexShrink = '1';
+                videoTextContainer.style.minWidth = '0';
+                videoTextContainer.appendChild(await createArhLink('', `${archiveFolderName}/`));
+                const videoLine2 = document.createElement('div');
+                videoLine2.textContent = attachment.description || '';
+                videoTextContainer.appendChild(videoLine2);
+                attachmentWrapper.appendChild(videoTextContainer);
+                break;
+            case 5: // Location
+                const parts = attachment.path.split('|');
+                if (parts.length >= 3) {
+                    const textContainer = document.createElement('div');
+                    const lat = parts[0];
+                    const lng = parts[1];
+                    const label = parts[2];
+                    const link = document.createElement('a');
+                    link.textContent = `${lat}, ${lng}`;
+                    link.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.onclick = (e) => e.stopPropagation(); // Предотвратява отварянето на модала на бележката
+                    textContainer.appendChild(link);
+                    const line2 = document.createElement('div');
+                    line2.textContent = label;
+                    textContainer.appendChild(line2);
+                    attachmentWrapper.appendChild(textContainer);
+                    // Добавяме onclick на иконата, за да покаже JSON данните
+                    iconDiv.style.cursor = 'pointer';
+                    iconDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showModal(JSON.stringify(attachment, null, 2));
+                    });
+                }
+                break;
+        }
+        iconDiv.style.cursor = 'pointer';
+        iconDiv.addEventListener('click', (e) => {
+            // Проверяваме флага noUpdate
+            const noUpdate = localStorage.getItem('noUpdate') === 'true';
+            if (noUpdate) {
+                e.preventDefault();
+                e.stopPropagation();
+                return; // Прекратяваме изпълнението, ако флагът е вдигнат
+            }
+            e.stopPropagation();
+            const attachmentDataString = JSON.stringify(attachment, null, 2);
+            showModal(attachmentDataString);
+        });
+        attachmentWrapper.prepend(iconDiv);
+    }
+
     /**
      * Обработва и създава UI за прикачен файл от Google Drive.
      * @param {object} attachment - Обектът на прикачения файл.
@@ -3215,6 +3321,7 @@ async function processDirectoryContent(minModificationDate) {
         note.className = 'note note-item';
         let fileContent = '';
         let noteGdid = null;
+        let noteID = null;
         let noteColor = null;
         let textSpan = null;
         let extraData = {};
@@ -3225,6 +3332,7 @@ async function processDirectoryContent(minModificationDate) {
             if (content && typeof content.notetxt !== 'undefined') {
                 fileContent = content.notetxt;
                 noteGdid = content.gdid;
+                noteID = content.id;
                 noteColor = content.color;
                 if (content.text_span) {
                     textSpan = content.text_span;
@@ -3341,31 +3449,41 @@ async function processDirectoryContent(minModificationDate) {
                 contentEl.innerHTML = renderNoteContent(displayContent);
             }
         }
-        if (!isHiddenNote && noteGdid) {
-            const attachments = mediaData.filter(media => media.noteid === noteGdid);
-            if (attachments.length > 0) {
-                const separator = document.createElement('hr');
-                separator.style.marginTop = '10px';
-                separator.style.marginBottom = '10px';
-                contentEl.appendChild(separator);
-                await Promise.all(attachments.map(async attachment => {
-                    const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-                    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-                    if (!iconData) return;
-                    const attachmentWrapper = document.createElement('div');
-                    attachmentWrapper.style.display = 'flex';
-                    attachmentWrapper.style.alignItems = 'center';
-                    attachmentWrapper.style.gap = '5px';
-                    if (useLocalFolder && dirHandle) {
-                        // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
-                        await handleLocalAttachment(attachment, attachmentWrapper, iconData);
-                    } else {
-                        // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
-                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-                    }
-                    contentEl.appendChild(attachmentWrapper);
-                }));
-            }
+        const useArhDb = localStorage.getItem('useArhDb') === 'true'; // @@ няма нужда да е тук, но да е за всеки случай
+        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+        let attachments = [];
+        if (!isHiddenNote && noteGdid && useLocalFolder) {
+            attachments = mediaData.filter(media => media.noteid === noteGdid);
+        }
+        if (!isHiddenNote && noteID && useArhDb) {
+            attachments = mediaData.filter(media => +media.noteid === +noteID);
+        }
+        if (attachments.length > 0) {
+            const separator = document.createElement('hr');
+            separator.style.marginTop = '10px';
+            separator.style.marginBottom = '10px';
+            contentEl.appendChild(separator);
+            await Promise.all(attachments.map(async attachment => {
+                const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
+                const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+                const useArhDb = localStorage.getItem('useArhDb') === 'true';
+                if (!iconData) return;
+                const attachmentWrapper = document.createElement('div');
+                attachmentWrapper.style.display = 'flex';
+                attachmentWrapper.style.alignItems = 'center';
+                attachmentWrapper.style.gap = '5px';
+                if (useArhDb && dirHandle) {
+                    // --- ЛОГИКА ЗА АРХИВ ---
+                    await handleArhAttachment(attachment, attachmentWrapper, iconData);
+                } else if (useLocalFolder && dirHandle) {
+                    // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
+                    await handleLocalAttachment(attachment, attachmentWrapper, iconData);
+                } else {
+                    // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
+                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
+                }
+                contentEl.appendChild(attachmentWrapper);
+            }));
         }
         note.addEventListener('click', (e) => {
             const noteEl = e.currentTarget;
@@ -3379,7 +3497,13 @@ async function processDirectoryContent(minModificationDate) {
 
         // --- Създаване на футър с икони за прикачени файлове ---
         if (!isHiddenNote && noteGdid) {
-            const attachments = mediaData.filter(media => media.noteid === noteGdid);
+            let attachments = [];
+            if (!isHiddenNote && noteGdid && useLocalFolder) {
+                attachments = mediaData.filter(media => media.noteid === noteGdid);
+            }
+            if (!isHiddenNote && noteID && useArhDb) {
+                attachments = mediaData.filter(media => +media.noteid === +noteID);  // @@  филтриране, но няма проблем
+            }
             const uniqueTypes = [...new Set(attachments.map(att => att.type))];
 
             if (uniqueTypes.length > 0) {
