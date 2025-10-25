@@ -2579,21 +2579,6 @@ async function processDirectoryContent(minModificationDate) {
             settingsModalBody.dataset.initialized = true;
     }
 
-    // Тази част се изпълнява ВИНАГИ, за да се покаже актуалното име на избраните папки
-    (async () => {
-        const folderNameDisplay = document.getElementById('local-sync-folder-name');
-        // Опитваме се да вземем handle от паметта или от базата данни.
-        // getDirectoryHandle вече има вградена логика за това.
-        const handle = await getDirectoryHandle(); 
-
-        if (handle) {
-            folderNameDisplay.textContent = handle.name;
-            folderNameDisplay.title = handle.name;
-        } else {
-            folderNameDisplay.textContent = _('folderNotSelected');
-        }
-    })();
-
     }
 
     (async () => {
@@ -2610,6 +2595,21 @@ async function processDirectoryContent(minModificationDate) {
                 arhFolderNameDisplay.style.color = 'red';
             }
         } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+    })();
+
+    // Асинхронно зареждане на името на папката за локална синхронизация
+    (async () => {
+        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+        const syncHandle = await getConfig('directoryHandle'); // Четем директно handle-a за синхронизация
+        if (syncHandle) {
+            const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
+            if (permission === 'granted') {
+                folderNameDisplay.textContent = syncHandle.name;
+                folderNameDisplay.title = syncHandle.name;
+            } else {
+                folderNameDisplay.textContent = _('permissionDenied');
+            }
+        } else { folderNameDisplay.textContent = _('folderNotSelected'); }
     })();
 
 
@@ -2906,218 +2906,120 @@ async function processDirectoryContent(minModificationDate) {
      * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
      * @param {object} iconData - SVG иконата за типа на файла.
      */
-    async function handleLocalAttachment(attachment, attachmentWrapper, iconData) {
-        const iconDiv = document.createElement('div');
-        iconDiv.innerHTML = iconData.svg;
+async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local') {
+    const iconDiv = document.createElement('div');
+    iconDiv.innerHTML = iconData.svg;
 
-        const filename = attachment.path ? attachment.path.split('/').pop() : '';
+    const filename = attachment.path ? attachment.path.split('/').pop() : '';
+    const archiveFolderName = dirHandle.name;
 
-        const createLocalLink = async (folderName, textPrefix) => {
-            const link = document.createElement('a');
-            link.href = '#';
-            link.onclick = async (e) => {
-                // Проверяваме флага noUpdate
-                const noUpdate = localStorage.getItem('noUpdate') === 'true';
-                if (noUpdate) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return; // Прекратяваме изпълнението, ако флагът е вдигнат
-                }
-                e.preventDefault();
-                e.stopPropagation();
-                if (!filename) return;
-                try {
-                    const subDir = await dirHandle.getDirectoryHandle(folderName);
-                    const fileHandle = await subDir.getFileHandle(filename);
-                    const file = await fileHandle.getFile();
-                    window.open(URL.createObjectURL(file), '_blank');
-                } catch (err) {
-                    console.error(`Could not open local file ${folderName}/${filename}`, err);
-                    showToast(_('errorOpenFile').replace('{filename}', filename));
-                }
-            };
-            link.textContent = textPrefix + filename;
-            return link;
-        };
-
-        switch (attachment.type) {
-            case 1: // Image
-                attachmentWrapper.appendChild(await createLocalLink('Images', 'Images/'));
-                break;
-            case 2: // Sound
-                const soundTextContainer = document.createElement('div');
-                soundTextContainer.style.flexGrow = '1';
-                soundTextContainer.style.flexShrink = '1';
-                soundTextContainer.style.minWidth = '0';
-                soundTextContainer.appendChild(await createLocalLink('Sound', 'Sound/'));
-                const soundLine2 = document.createElement('div');
-                soundLine2.textContent = attachment.description || '';
-                soundTextContainer.appendChild(soundLine2);
-                attachmentWrapper.appendChild(soundTextContainer);
-                break;
-            case 3: // Other
-                attachmentWrapper.appendChild(await createLocalLink('Other', 'Other/'));
-                break;
-            case 4: // Video
-                const videoTextContainer = document.createElement('div');
-                videoTextContainer.style.flexGrow = '1';
-                videoTextContainer.style.flexShrink = '1';
-                videoTextContainer.style.minWidth = '0';
-                videoTextContainer.appendChild(await createLocalLink('Video', 'Video/'));
-                const videoLine2 = document.createElement('div');
-                videoLine2.textContent = attachment.description || '';
-                videoTextContainer.appendChild(videoLine2);
-                attachmentWrapper.appendChild(videoTextContainer);
-                break;
-            case 5: // Location
-                const parts = attachment.path.split('|');
-                if (parts.length >= 3) {
-                    const textContainer = document.createElement('div');
-                    const lat = parts[0];
-                    const lng = parts[1];
-                    const label = parts[2];
-
-                    const link = document.createElement('a');
-                    link.textContent = `${lat}, ${lng}`;
-                    link.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
-                    link.target = '_blank';
-                    link.rel = 'noopener noreferrer';
-                    link.onclick = (e) => e.stopPropagation(); // Предотвратява отварянето на модала на бележката
-
-                    textContainer.appendChild(link);
-                    const line2 = document.createElement('div');
-                    line2.textContent = label;
-                    textContainer.appendChild(line2);
-                    attachmentWrapper.appendChild(textContainer);
-                    // Добавяме onclick на иконата, за да покаже JSON данните
-                    iconDiv.style.cursor = 'pointer';
-                    iconDiv.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        showModal(JSON.stringify(attachment, null, 2));
-                    });
-                }
-                break;
-        }
-
-        iconDiv.style.cursor = 'pointer';
-        iconDiv.addEventListener('click', (e) => {
-            // Проверяваме флага noUpdate
+    const createLink = async (folderName, textPrefix) => {
+        const link = document.createElement('a');
+        link.href = '#';
+        link.onclick = async (e) => {
             const noUpdate = localStorage.getItem('noUpdate') === 'true';
             if (noUpdate) {
                 e.preventDefault();
                 e.stopPropagation();
-                return; // Прекратяваме изпълнението, ако флагът е вдигнат
+                return;
             }
+            e.preventDefault();
             e.stopPropagation();
-            const attachmentDataString = JSON.stringify(attachment, null, 2);
-            showModal(attachmentDataString);
-        });
-        attachmentWrapper.prepend(iconDiv);
+            if (!filename) return;
+            try {
+                const fileHandle = mode === 'local'
+                    ? await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(filename)
+                    : await dirHandle.getFileHandle(attachment.path);
+                const file = await fileHandle.getFile();
+                window.open(URL.createObjectURL(file), '_blank');
+            } catch (err) {
+                console.error(`Could not open local file ${folderName}/${filename}`, err);
+                showToast(_('errorOpenFile').replace('{filename}', filename));
+            }
+        };
+        link.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
+        return link;
+    };
+
+    const appendWithDescription = async (folder, prefix, description) => {
+        const container = document.createElement('div');
+        container.style.flexGrow = '1';
+        container.style.flexShrink = '1';
+        container.style.minWidth = '0';
+        container.appendChild(await createLink(folder, prefix));
+        const line2 = document.createElement('div');
+        line2.textContent = description || '';
+        container.appendChild(line2);
+        attachmentWrapper.appendChild(container);
+    };
+
+    switch (attachment.type) {
+        case 1: // Image
+            attachmentWrapper.appendChild(await createLink(
+                mode === 'local' ? 'Images' : '',
+                mode === 'local' ? 'Images/' : `${archiveFolderName}/`
+            ));
+            break;
+        case 2: // Sound
+            await appendWithDescription(
+                mode === 'local' ? 'Sound' : '',
+                mode === 'local' ? 'Sound/' : `${archiveFolderName}/`,
+                attachment.description
+            );
+            break;
+        case 3: // Other
+            attachmentWrapper.appendChild(await createLink(
+                mode === 'local' ? 'Other' : '',
+                mode === 'local' ? 'Other/' : `${archiveFolderName}/`
+            ));
+            break;
+        case 4: // Video
+            await appendWithDescription(
+                mode === 'local' ? 'Video' : '',
+                mode === 'local' ? 'Video/' : `${archiveFolderName}/`,
+                attachment.description
+            );
+            break;
+        case 5: // Location
+            const parts = attachment.path.split('|');
+            if (parts.length >= 3) {
+                const [lat, lng, label] = parts;
+                const textContainer = document.createElement('div');
+                const link = document.createElement('a');
+                link.textContent = `${lat}, ${lng}`;
+                link.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.onclick = (e) => e.stopPropagation();
+                textContainer.appendChild(link);
+                const line2 = document.createElement('div');
+                line2.textContent = label;
+                textContainer.appendChild(line2);
+                attachmentWrapper.appendChild(textContainer);
+
+                iconDiv.style.cursor = 'pointer';
+                iconDiv.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showModal(JSON.stringify(attachment, null, 2));
+                });
+            }
+            break;
     }
 
-    async function handleArhAttachment(attachment, attachmentWrapper, iconData) {
-        const archiveFolderName = dirHandle.name;
-        const iconDiv = document.createElement('div');
-        iconDiv.innerHTML = iconData.svg;
-        const filename = attachment.path;
-        const createArhLink = async (folderName, textPrefix) => {
-            const link = document.createElement('a');
-            link.href = '#';
-            link.onclick = async (e) => {
-                // Проверяваме флага noUpdate
-                const noUpdate = localStorage.getItem('noUpdate') === 'true';
-                if (noUpdate) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return; // Прекратяваме изпълнението, ако флагът е вдигнат
-                }
-                e.preventDefault();
-                e.stopPropagation();
-                if (!filename) return;
-                try {
-                    // const subDir = await dirHandle.getDirectoryHandle(folderName);
-                    const fileHandle = await dirHandle.getFileHandle(filename);
-                    const file = await fileHandle.getFile();
-                    window.open(URL.createObjectURL(file), '_blank');
-                } catch (err) {
-                    console.error(`Could not open local file ${folderName}/${filename}`, err);
-                    showToast(_('errorOpenFile').replace('{filename}', filename));
-                }
-            };
-            link.textContent = textPrefix + filename;
-            return link;
-        };
-        switch (attachment.type) {
-            case 1: // Image
-                attachmentWrapper.appendChild(await createArhLink('', `${archiveFolderName}/`));
-                break;
-            case 2: // Sound
-                const soundTextContainer = document.createElement('div');
-                soundTextContainer.style.flexGrow = '1';
-                soundTextContainer.style.flexShrink = '1';
-                soundTextContainer.style.minWidth = '0';
-                soundTextContainer.appendChild(await createArhLink('', `${archiveFolderName}/`));
-                const soundLine2 = document.createElement('div');
-                soundLine2.textContent = attachment.description || '';
-                soundTextContainer.appendChild(soundLine2);
-                attachmentWrapper.appendChild(soundTextContainer);
-                break;
-            case 3: // Other
-                attachmentWrapper.appendChild(await createArhLink('', `${archiveFolderName}/`));
-                break;
-            case 4: // Video
-                const videoTextContainer = document.createElement('div');
-                videoTextContainer.style.flexGrow = '1';
-                videoTextContainer.style.flexShrink = '1';
-                videoTextContainer.style.minWidth = '0';
-                videoTextContainer.appendChild(await createArhLink('', `${archiveFolderName}/`));
-                const videoLine2 = document.createElement('div');
-                videoLine2.textContent = attachment.description || '';
-                videoTextContainer.appendChild(videoLine2);
-                attachmentWrapper.appendChild(videoTextContainer);
-                break;
-            case 5: // Location
-                const parts = attachment.path.split('|');
-                if (parts.length >= 3) {
-                    const textContainer = document.createElement('div');
-                    const lat = parts[0];
-                    const lng = parts[1];
-                    const label = parts[2];
-                    const link = document.createElement('a');
-                    link.textContent = `${lat}, ${lng}`;
-                    link.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
-                    link.target = '_blank';
-                    link.rel = 'noopener noreferrer';
-                    link.onclick = (e) => e.stopPropagation(); // Предотвратява отварянето на модала на бележката
-                    textContainer.appendChild(link);
-                    const line2 = document.createElement('div');
-                    line2.textContent = label;
-                    textContainer.appendChild(line2);
-                    attachmentWrapper.appendChild(textContainer);
-                    // Добавяме onclick на иконата, за да покаже JSON данните
-                    iconDiv.style.cursor = 'pointer';
-                    iconDiv.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        showModal(JSON.stringify(attachment, null, 2));
-                    });
-                }
-                break;
-        }
-        iconDiv.style.cursor = 'pointer';
-        iconDiv.addEventListener('click', (e) => {
-            // Проверяваме флага noUpdate
-            const noUpdate = localStorage.getItem('noUpdate') === 'true';
-            if (noUpdate) {
-                e.preventDefault();
-                e.stopPropagation();
-                return; // Прекратяваме изпълнението, ако флагът е вдигнат
-            }
+    iconDiv.style.cursor = 'pointer';
+    iconDiv.addEventListener('click', (e) => {
+        const noUpdate = localStorage.getItem('noUpdate') === 'true';
+        if (noUpdate) {
+            e.preventDefault();
             e.stopPropagation();
-            const attachmentDataString = JSON.stringify(attachment, null, 2);
-            showModal(attachmentDataString);
-        });
-        attachmentWrapper.prepend(iconDiv);
-    }
+            return;
+        }
+        e.stopPropagation();
+        showModal(JSON.stringify(attachment, null, 2));
+    });
+
+    attachmentWrapper.prepend(iconDiv);
+}
 
     /**
      * Обработва и създава UI за прикачен файл от Google Drive.
@@ -3474,10 +3376,10 @@ async function processDirectoryContent(minModificationDate) {
                 attachmentWrapper.style.gap = '5px';
                 if (useArhDb && dirHandle) {
                     // --- ЛОГИКА ЗА АРХИВ ---
-                    await handleArhAttachment(attachment, attachmentWrapper, iconData);
+                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
                 } else if (useLocalFolder && dirHandle) {
                     // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
-                    await handleLocalAttachment(attachment, attachmentWrapper, iconData);
+                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
                 } else {
                     // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
                     await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
