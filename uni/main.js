@@ -3353,7 +3353,11 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         }
         const useArhDb = localStorage.getItem('useArhDb') === 'true'; // @@ няма нужда да е тук, но да е за всеки случай
         const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+        const useGD = localStorage.getItem('useGoogleDb') === 'true';
         let attachments = [];
+        if (!isHiddenNote && noteGdid && useGD) {
+            attachments = mediaData.filter(media => media.noteid === noteGdid);
+        }
         if (!isHiddenNote && noteGdid && useLocalFolder) {
             attachments = mediaData.filter(media => media.noteid === noteGdid);
         }
@@ -3401,6 +3405,10 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         if (!isHiddenNote && noteGdid) {
             let attachments = [];
             if (!isHiddenNote && noteGdid && useLocalFolder) {
+                attachments = mediaData.filter(media => media.noteid === noteGdid);
+            }
+            const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
+            if (!isHiddenNote && noteGdid && useGoogleDb) {
                 attachments = mediaData.filter(media => media.noteid === noteGdid);
             }
             if (!isHiddenNote && noteID && useArhDb) {
