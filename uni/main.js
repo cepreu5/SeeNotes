@@ -303,27 +303,9 @@ async function startApp() {
     // Проверяваме за базата данни САМО веднъж при стартиране
     dbExists = await checkDbExists(NOTES_DB_NAME);
 
-    const tokenData = checkAuth();
-    if (!tokenData) {
-        return; // Спира, ако проверката за автентикация не успее/пренасочи
-    }
-
-    // Зарежда Google API скрипта преди да се използва gapi
-    try {
-        await loadScript('https://apis.google.com/js/api.js');
-    } catch (error) {
-        console.error("Failed to load Google API script", error);
-        showToast("Error loading Google libraries.");
-        return;
-    }
-    // Имаме валиден токен, инициализираме GAPI клиента
-    authToken = tokenData; // Задаваме глобалния authToken
-    await new Promise(resolve => gapi.load('client', resolve));
-    await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
-    gapi.client.setToken({ access_token: authToken.access_token });
-
-    // Проверяваме за съответствие на потребителя преди да заредим данните
-    await userCheck();
+    // Проверката за потребител и основната логика се извикват директно.
+    // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
+    // само ако е необходимо.
     mainLogic();
 }
 
@@ -1075,6 +1057,28 @@ async function finalizeDbCreation() {
             }
         }
         try {
+            // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE API ---
+            // Зареждаме API-то само ако ще работим с Google Drive.
+            if (useGoogleDb) {
+                const tokenData = checkAuth();
+                if (!tokenData) {
+                    // checkAuth вече е пренасочил към login.html, спираме изпълнението.
+                    loaderContainer.style.display = 'none';
+                    return;
+                }
+                try {
+                    await loadScript('https://apis.google.com/js/api.js');
+                } catch (error) {
+                    throw new Error(_('errorGoogleLibs'));
+                }
+                authToken = tokenData;
+                await new Promise(resolve => gapi.load('client', resolve));
+                await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+                gapi.client.setToken({ access_token: authToken.access_token });
+                // Проверяваме за съответствие на потребителя само ако използваме Google Drive
+                await userCheck();
+            }
+
             if (useArhDb) {
                 // --- РЕЖИМ 0: Зареждане от Архив ---
                 console.log("Mode: Archive");
@@ -1090,6 +1094,7 @@ async function finalizeDbCreation() {
                     showToast(_('permissionDenied'), 10000);
                     return; // Stop execution if no permission
                 }
+                dirHandle = verifiedHandle; // <-- ДОБАВЕН РЕД
 
                 if (useIndexedDb) {
                     // Archive + IndexedDB mode
@@ -1181,14 +1186,6 @@ async function finalizeDbCreation() {
                 } else {
                     // DB exists and has data, sync from source then load from DB
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
-                    /*if (!updateFromSource) { // винаги ще е с update
-                        // Просто зареждаме от базата, без update
-                        console.log("Loading directly from IndexedDB (sync is disabled).");
-                        if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
-                        loaderText.textContent = "Loading from local database...";
-                        await fetchAllDataLocal();
-                        await renderUI({ boardParseError: false });
-                    } else {*/
                         // Синхронизираме от източника, след което зареждаме от базата
                         console.log("Syncing from source (sync is enabled).");
                         if (useGoogleDb) {
@@ -1213,6 +1210,7 @@ async function finalizeDbCreation() {
         } catch (err) {
             console.error("Error in mainLogic:", err);
             showToast(_('errorProcessingFiles'));
+            loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
         } finally {
             loaderText.textContent = ''; // Изчистваме текста за прогреса
             loaderContainer.style.display = 'none';
@@ -1220,80 +1218,6 @@ async function finalizeDbCreation() {
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
             notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
         }
-    }
-
-    async function listFiles(folderIdFromPrompt) {
-        // const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
-        // const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-
-        // const useIndexedDbForGoogle = localStorage.getItem('useIndexedDbForGoogle') === 'true';
-        // const useIndexedDbForLocal = localStorage.getItem('useIndexedDbForLocal') !== 'false';
-
-        // let tokenData = null;
-
-        // // Decide if we need a token BEFORE anything else.
-        // // A token is needed for any Google Drive operation.
-        // const needsToken = useGoogleDb;
-        // if (needsToken) {
-        //     tokenData = checkAuth();
-        //     if (!tokenData) return; // checkAuth() handles redirection
-        // }
-
-        // initializeLoad();
-        // const loaderTitle = document.getElementById('loader-title');
-        // try {
-        //     if (useGoogleDb) {
-        //         if (loaderTitle) loaderTitle.textContent = "Google Drive";
-        //         if (useIndexedDbForGoogle) {
-        //             // GDrive mode with DB: Sync first, then load from DB.
-        //             await runGoogleDriveSync(); // This function now internally checks the setting.
-        //             loaderText.textContent = "Fetching updated data from DB...";
-        //             await fetchAllDataLocal();
-        //             await renderUI({ boardParseError: false });
-        //         } else {
-        //             // GDrive mode without DB: Fetch directly for the session.
-        //             const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
-        //             await renderUI({ boardParseError });
-        //         }
-        //     } else if (useLocalFolder) {
-        //         if (loaderTitle) loaderTitle.textContent = "Локална папка";
-        //         if (useIndexedDbForLocal) {
-        //             // Local Folder mode with DB: Sync from disk, then load from DB.
-        //             await runLocalSync(); // This function now internally checks the setting.
-        //             loaderText.textContent = "Fetching data from DB...";
-        //             await fetchAllDataLocal();
-        //             await renderUI({ boardParseError: false });
-        //         } else {
-        //             // Local Folder mode without DB: This is not a supported scenario as it needs the DB to function.
-        //             // We show a message and do nothing.
-        //             showToast("Режим 'Локална папка' изисква IndexedDB да е разрешена в настройките.", 10000);
-        //             loaderContainer.style.display = 'none'; // Hide loader
-        //             return;
-        //         }
-        //     } else {
-        //         // Fallback/Default: No mode selected, behave like GDrive without DB.
-        //         if (loaderTitle) loaderTitle.textContent = "Google Drive";
-        //         const { boardParseError } = await fetchAllData(folderIdFromPrompt, false);
-        //         await renderUI({ boardParseError });
-        //     }
-        // } catch (err) {
-        //     console.error("Error in listFiles:", err);
-        //     if (err.result && err.result.error && err.result.error.code === 401) {
-        //         showToast(_('errorSessionExpired'));
-        //         handleSignoutClick();
-        //     } else {
-        //         let errorMessage = _('errorProcessingFiles');
-        //         if (err.result && err.result.error) {
-        //             errorMessage += ` (Status: ${err.result.error.code} - ${err.result.error.message})`;
-        //         }
-        //         showToast(errorMessage);
-        //     }
-        // } finally {
-        //     loaderContainer.style.display = 'none';
-        //     document.body.style.backgroundImage = `url('Board.png')`;
-        //     notesContainer.style.backgroundImage = `url('Board.png')`;
-        //     currentBackground = 'Board.png';
-        // }
     }
 
     /**
@@ -1499,12 +1423,13 @@ async function validateArhFolderContent(directoryHandle) {
  * @returns {Promise<FileSystemDirectoryHandle|null>}
  */
 async function getDirectoryHandle(promptUser = false) {
-    if (dirHandle) return dirHandle;
-
     try {
-        let savedHandle = null;
-        if (localStorage.getItem('useLocalDb') === 'true') savedHandle = await getConfig('directoryHandle');
-        if (localStorage.getItem('useArhDb') === 'true') savedHandle = await getConfig('arhHandle');
+        // Определяме кой handle да заредим въз основа на активната настройка в localStorage
+        const useLocal = localStorage.getItem('useLocalDb') === 'true';
+        const useArh = localStorage.getItem('useArhDb') === 'true';
+        const configKey = useLocal ? 'directoryHandle' : (useArh ? 'arhHandle' : null);
+
+        const savedHandle = configKey ? await getConfig(configKey) : null;
         if (savedHandle) {
             const verifiedHandle = await verifyPermission(savedHandle);
             if (verifiedHandle) {
@@ -2580,6 +2505,7 @@ async function processDirectoryContent(minModificationDate) {
                         }
                         arhFolderNameDisplay.textContent = handle.name;
                         arhFolderNameDisplay.title = handle.name;
+                        dirHandle = handle; // <--- ДОБАВЕН РЕД
                         await saveConfig('arhHandle', handle); // Запазваме избраната папка
                         document.getElementById('settings-modal').classList.remove('visible');
                         showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
@@ -2966,6 +2892,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             e.preventDefault();
             e.stopPropagation();
             if (!filename) return;
+            console.log(`Opening file: ${folderName}/${filename}   DirHandle:`, dirHandle);
             try {
                 const fileHandle = mode === 'local'
                     ? await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(filename)
@@ -3257,7 +3184,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         attachmentWrapper.prepend(iconDiv);
     }
 
-    async function createNoteElement(noteRawData) {
+        async function createNoteElement(noteRawData) {
         const { file, res } = noteRawData;
         const note = document.createElement('div');
         note.className = 'note note-item';
@@ -3418,6 +3345,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 attachmentWrapper.style.display = 'flex';
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
+                console.log('Processing attachments:', attachment, 'UseLocalFolder:', useLocalFolder, 'UseArhDb:', useArhDb, 'DirHandle:', dirHandle);
                 if (useArhDb && dirHandle) {
                     // --- ЛОГИКА ЗА АРХИВ ---
                     await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
@@ -3444,14 +3372,14 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         // --- Създаване на футър с икони за прикачени файлове ---
         if (!isHiddenNote && noteGdid) {
             let attachments = [];
-            if (useLocalFolder) {
+            if (!isHiddenNote && noteGdid && useLocalFolder) {
                 attachments = mediaData.filter(media => media.noteid === noteGdid);
             }
             const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
-            if (useGoogleDb) {
+            if (!isHiddenNote && noteGdid && useGoogleDb) {
                 attachments = mediaData.filter(media => media.noteid === noteGdid);
             }
-            if (useArhDb) {
+            if (!isHiddenNote && noteID && useArhDb) {
                 attachments = mediaData.filter(media => +media.noteid === +noteID);  // @@  филтриране, но няма проблем
             }
             const uniqueTypes = [...new Set(attachments.map(att => att.type))];
