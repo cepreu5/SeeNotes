@@ -33,6 +33,7 @@ let currentModalContent = '';
 let maxWidthForButtons = 0; // За менюто с бордове
 let toastTimeout, isShowingToast = false;
 let dbExists = false; // Флаг за съществуването на IndexedDB
+let settingsInitialState = {}; // Запомня състоянието на настройките при отваряне
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -57,6 +58,7 @@ const settingsIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24
 const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+const GDSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
 const attachmentIcons = [
     { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
     { type: 2, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24" ><circle cx="7" cy="12" r="4" /><circle cx="17" cy="12" r="4"/><line x1="6" y1="16" x2="18" y2="16" stroke="black" stroke-width="1" /></svg>` },
@@ -121,8 +123,8 @@ const translations = {
             useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'update',
             updateFromGoogleDriveLabel: 'update only',
-            localSyncFolderLabel: 'Local sync folder',
-            arhFolderLabel: 'Archive folder',
+            localSyncFolderLabel: 'Select local folder',
+            arhFolderLabel: 'Select archive folder',
             useIndexedDbLabel: 'Database:',
             selectFolderButton: 'Select Folder',
             folderNotSelected: 'Not selected',
@@ -215,15 +217,15 @@ const translations = {
             maxSearchesLabel: 'Запазени търсения:',
             clearSearchesTooltip: 'Изчисти историята на търсенията',
             noteFontSizeLabel: 'Размер шрифт (бележка):',
-            showDatemodLabel: 'Покажи дата на промяна/календар',
+            showDatemodLabel: 'Покажи дата на промяна/календар:',
             dataManagementTitle: 'Четене на данни',
             advancedSettings: 'Разширени настройки',
             useLocalDbLabel: 'Локална папка:',
             useGoogleDbLabel: 'Google Drive:',
             updateIndexedDbLabel: 'обновяване',
             updateFromGoogleDriveLabel: 'само обновяване',
-            localSyncFolderLabel: 'Папка за локална синхронизация',
-            arhFolderLabel: 'Папка за архив',
+            localSyncFolderLabel: 'Избери локална папка',
+            arhFolderLabel: 'Избери архивна папка',
             useIndexedDbLabel: 'База данни:',
             selectFolderButton: 'Избери папка',
             folderNotSelected: 'Не е избрана',
@@ -498,6 +500,13 @@ function initApp() {
         signoutButton.addEventListener('click', handleSignoutClick);
         reloadButton.addEventListener('click', () => mainLogic());
         settingsButton.addEventListener('click', () => {
+            // Запомняме началното състояние на чекбоксовете при отваряне на настройките
+            settingsInitialState = {
+                useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
+                useLocalDb: document.getElementById('use-local-db-checkbox').checked,
+                useArhDb: document.getElementById('use-arh-db-checkbox').checked,
+                useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
+            };
             document.getElementById('settings-modal').classList.add('visible');
         });
         window.onscroll = () => {
@@ -2439,10 +2448,30 @@ async function processDirectoryContent(minModificationDate) {
                     const accordion = accordionHeader.parentElement;
                     accordion.classList.toggle('active');
                     const content = accordion.querySelector('.accordion-content');
+                    const settingsModalBody = document.getElementById('settings-modal-body');
                     if (content.style.maxHeight) {
                         content.style.maxHeight = null;
+                        if (settingsModalBody) {
+                            settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара, ако е бил скрит
+                        }
                     } else {
                         content.style.maxHeight = content.scrollHeight + "px";
+                        // Скролираме модала надолу, за да видим отворената секция
+                        if (settingsModalBody) {
+                            // Временно скриваме скролбара, докато се скролира
+                            settingsModalBody.style.overflowY = 'hidden';
+                            // Изчакваме анимацията на акордеона да завърши (300ms)
+                            setTimeout(() => {
+                                settingsModalBody.scrollTo({
+                                    top: settingsModalBody.scrollHeight,
+                                    behavior: 'smooth'
+                                });
+                                // Изчакваме и скролирането да приключи (още около 500ms)
+                                setTimeout(() => {
+                                    settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара
+                                }, 500);
+                            }, 300);
+                        }
                     }
                 });
             }
@@ -2568,11 +2597,22 @@ async function processDirectoryContent(minModificationDate) {
             // Close
             const settingsCloseBtn = document.getElementById('settings-close-btn');
             settingsCloseBtn.addEventListener('click', () => {
+                const currentState = {
+                    useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
+                    useLocalDb: document.getElementById('use-local-db-checkbox').checked,
+                    useArhDb: document.getElementById('use-arh-db-checkbox').checked,
+                    useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
+                };
+
                 document.getElementById('settings-modal').classList.remove('visible');
-            // Премахваме флага, ако е бил зададен
+
+                const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
+
                 // Ако прозорецът е бил отворен принудително, презареждаме данните.
                 if (window.wasOpenedForMissingFolder) {
                     window.wasOpenedForMissingFolder = false; // Нулираме флага
+                    mainLogic(); // Извикваме основната логика отново
+                } else if (hasChanged) {
                     mainLogic(); // Извикваме основната логика отново
                 }
             });
@@ -2618,7 +2658,7 @@ async function processDirectoryContent(minModificationDate) {
      */
     function populateStartBoardSelect() {
         const startBoardSelect = document.getElementById('start-board-select');
-        const currentValue = startBoardSelect.value; // Запазваме текущо избраната стойност
+        const savedValue = localStorage.getItem('startBoard') || 'all'; // Взимаме запазената стойност или 'all' по подразбиране
         // Изчистваме напълно списъка, преди да го попълним наново
         startBoardSelect.innerHTML = `
             <option value="all">${_('allBoards')}</option>
@@ -2626,7 +2666,7 @@ async function processDirectoryContent(minModificationDate) {
             <option value="reminder">${_('reminder')}</option>
         `;
         boardsData.forEach(board => { if (board.gdid && board.title) startBoardSelect.add(new Option(board.title, board.gdid)); });
-        startBoardSelect.value = currentValue; // Възстановяваме старата стойност
+        startBoardSelect.value = savedValue; // Задаваме правилната стойност
     }
 
     function renderCalendarView() {
@@ -3404,14 +3444,14 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         // --- Създаване на футър с икони за прикачени файлове ---
         if (!isHiddenNote && noteGdid) {
             let attachments = [];
-            if (!isHiddenNote && noteGdid && useLocalFolder) {
+            if (useLocalFolder) {
                 attachments = mediaData.filter(media => media.noteid === noteGdid);
             }
             const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
-            if (!isHiddenNote && noteGdid && useGoogleDb) {
+            if (useGoogleDb) {
                 attachments = mediaData.filter(media => media.noteid === noteGdid);
             }
-            if (!isHiddenNote && noteID && useArhDb) {
+            if (useArhDb) {
                 attachments = mediaData.filter(media => +media.noteid === +noteID);  // @@  филтриране, но няма проблем
             }
             const uniqueTypes = [...new Set(attachments.map(att => att.type))];

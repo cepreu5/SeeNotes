@@ -1215,16 +1215,17 @@ pre, code {
 .settings-close-btn-wrapper {
     display: flex;
     justify-content: flex-end;
-    margin-top: 25px; /* Increased margin for better separation */
+    margin-top: 10px; /* Increased margin for better separation */
     width: 100%; /* Ensure the wrapper takes full width to allow alignment */
 }
 .start-board-select {
     padding: 8px;
     border-radius: 4px;
-    border: 1px solid #1f3b52;
-    background-color: #eef5fb;
+    border: 1px solid #060606;
+    background-color: #dadada;
     font-size: 1em;
     flex-grow: 1;
+    min-width: 200px;
 }
 
 .start-board-select:focus {
@@ -1441,9 +1442,9 @@ pre, code {
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.3s ease-out;
-    /* Add some styling to the content area */
-    background-color: rgba(0, 0, 0, 0.05);
-    border-radius: 4px;
+    /* Add some styling to the content area
+    background-color: rgba(0, 0, 0, 0.05);  
+    border-radius: 4px;*/
     padding: 0 10px; /* Horizontal padding when open */
-    margin-top: 5px;
+    margin-top: 0px;
 }
