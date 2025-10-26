@@ -157,11 +157,14 @@ const translations = {
             localNoUpdates: 'No new updates from local disk.',
             confirmDbRecreate: 'The local database already exists. Do you want to delete it and create a new one from the current data?',
             confirmDbDelete: 'Are you sure you want to delete the local database?',
-            dbCreated: 'Local database created successfully.',
+            dbPopulated: 'Notes loaded into the database.',
+            dbCreated: 'Database created successfully.',
             dbCreateFailedNoData: 'Cannot create database. No data loaded in memory.',
-            dbDeleted: 'Local database deleted successfully.',
+            errorDbSourceMismatch: 'Mismatch between the database and the data source. Attachment links will not be available.',
+            dbDeleted: 'Database deleted successfully.',
             confirmCreateDbFromArh: 'The local database is empty or does not exist. Do you want to create a new one from the current archive data?',
-            loadedFromArhNoDb: 'Loading directly from archive (no offline support).',
+            loadedFromArhNoDb: 'Loading directly from archive.',
+            errorDbOnlyAndEmpty: 'You have selected Database only, but it is empty. Please select another data source.',
             dbDeleteFailed: 'Failed to delete local database.',
             noUpdateMode: 'Attachment links will not be active.',
             createDbButton: 'Create',
@@ -239,6 +242,8 @@ const translations = {
             folderSelectedForArh: 'Папка \'{folderName}\' е избрана за четене от архив.',
             localDataLoaded: 'Локалните данни са заредени.',
             localDbUpdated: 'Локалната база е обновена от Google Drive.',
+            dbPopulated: 'Бележките са заредени в базата данни.',
+            dbCreated: 'Базата данни е създадена успешно.',
             errorGoogleLibs: 'Грешка при зареждане на библиотеките на Google.',
             loadedFromLocalNoDrive: 'Заредени са данни от локалното хранилище. Няма връзка с Google Drive.',
             imgNotFound: 'Файлът с изображение не е намерен за преглед.',
@@ -258,10 +263,12 @@ const translations = {
             confirmDbRecreate: 'Локалната база данни вече съществува. Искате ли да я изтриете и да създадете нова от текущите данни?',
             confirmDbDelete: 'Сигурни ли сте, че искате да изтриете локалната база данни?',
             dbCreated: 'Локалната база данни е създадена успешно.',
+            errorDbSourceMismatch: 'Несъответствие между базата данни и източника на данни. Линковете към приложенията няма да са достъпни.',            
             dbCreateFailedNoData: 'Базата не може да бъде създадена. Няма заредени данни в паметта.',
             dbDeleted: 'Локалната база данни е изтрита успешно.',
             confirmCreateDbFromArh: 'Локалната база данни е празна или не съществува. Искате ли да създадете нова от текущите архивни данни?',
-            loadedFromArhNoDb: 'Зареждане директно от архив (без офлайн поддръжка).',
+            loadedFromArhNoDb: 'Зареждане директно от архив.',
+            errorDbOnlyAndEmpty: 'Избрали сте само База данни, но тя е празна. Моля, изберете друг източник на данни.',
             dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
             noUpdateMode: 'Приложенията към бележките няма да се отварят.',
             createDbButton: 'Създай',
@@ -824,9 +831,8 @@ function handleSignoutClick() {
         return { data, parseError }; // Връщаме обекта, за да може fetchAllData да го обработи
     }
 
-    async function fetchAllData(folderIdFromPrompt, saveToDb = true, modifiedSince = null) {
+    async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
         let folderId = folderIdFromPrompt || await getFolderID();
-
         if (!folderId) {
             // Try to load from local DB as a fallback
             // Only attempt this if IndexedDB is actually enabled for Google Drive mode.
@@ -848,34 +854,19 @@ function handleSignoutClick() {
         }
         // Proceed with fetching from Google Drive
         const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId, modifiedSince);
-        boardsData = boardFileData; // This was the issue. boardFileData is an object {data, parseError}.
-        // Проверяваме дали трябва да запишем в базата и дали тя е съществувала, но е била празна.
-        if (saveToDb) {
-            await bulkPutDB(BOARD_STORE_NAME, boardsData); // Sync to DB
-        }
+        boardsData = boardFileData;
         const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId, modifiedSince);
         mediaData = mediaFileData;
-        if (saveToDb) {
-            await bulkPutDB(MEDIA_STORE_NAME, mediaData); // Sync to DB
-        }
         const onNoteProgress = (loaded, total) => {
             loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
         };
         loaderText.textContent = _('loadingFile') + ' note.txt...';
         const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress, modifiedSince);
-        // Clear the progress text after files are fetched
         loaderText.textContent = _('loadingFile');
-        // We need to process the raw data for both the UI and the DB
-        const notesToStoreInDB = [];
         allNotesData = noteResults.map(r => {
             const content = JSON.parse(r.res.body);
-            notesToStoreInDB.push(content);
             return { file: r.file, content: content, rawData: r };
         });
-        if (saveToDb && notesToStoreInDB.length > 0) {
-            await bulkPutDB(NOTE_STORE_NAME, notesToStoreInDB); // Sync to DB
-            showToast(_('dbPopulated'), 10000);
-        }
         return { boardParseError };
     }
 
@@ -1012,6 +1003,11 @@ async function createDatabaseFromMemory() {
         if (currentUserEmail) {
             await saveConfig('userEmail', currentUserEmail);
         }
+
+        // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА)
+        const useArh = localStorage.getItem('useArhDb') === 'true';
+        const noteIdType = useArh ? 'id' : 'gdid';
+        await saveConfig('dbNoteIdType', noteIdType);
         dbExists = true;
         return true;
     } catch (error) {
@@ -1055,6 +1051,25 @@ async function finalizeDbCreation() {
             if (dbExists) {
                 boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
             }
+
+            // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
+            // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
+            if (dbExists && boardsInDb.length > 0) {
+                const dbNoteIdType = await getConfig('dbNoteIdType');
+                if (dbNoteIdType) { // Проверяваме само ако типът е записан
+                    if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
+                        showToast(_('errorDbSourceMismatch'), 15000);
+                    }
+                }
+            }
+        }
+
+        // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
+        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
+            showToast(_('errorDbOnlyAndEmpty'), 15000);
+            document.getElementById('settings-modal').classList.add('visible');
+            loaderContainer.style.display = 'none'; // Скриваме лоудъра
+            return; // Прекратяваме изпълнението
         }
         try {
             // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE API ---
@@ -1167,22 +1182,19 @@ async function finalizeDbCreation() {
                     console.log("DB is empty or does not exist. Performing initial data load.");
                     if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
                     loaderText.textContent = "Performing initial data load...";
- 
+
                     if (useGoogleDb) {
                         console.log("Source for initial load: Google Drive");
-                        const { boardParseError } = await fetchAllData(null, true); // true -> запиши в DB
-                        await finalizeDbCreation();
-                        await renderUI({ boardParseError });
+                    const { boardParseError } = await fetchAllData(null);
+                    await createDatabaseFromMemory();
+                    await renderUI({ boardParseError });
                     } else if (useLocalFolder) {
-                        console.log("Source for initial load: Local Folder"); // This is a duplicate, already handled above
-                        const { boardParseError } = await fetchAllDataFromLocalFolder(true); // true -> запиши в DB
-                        await finalizeDbCreation();
-                        await renderUI({ boardParseError });
+                    console.log("Source for initial load: Local Folder");
+                    const { boardParseError } = await fetchAllDataFromLocalFolder();
+                    await createDatabaseFromMemory();
+                    await renderUI({ boardParseError });
                     }
-                    // Показваме съобщението за създаване само ако базата не е съществувала преди това.
-                    if (!dbExists) { // Съобщението за попълване вече е преместено
-                        showToast(_('dbCreated'), 10000);
-                    }
+                showToast(_('dbCreated'), 10000);
                 } else {
                     // DB exists and has data, sync from source then load from DB
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
@@ -1224,7 +1236,7 @@ async function finalizeDbCreation() {
      * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
      * Аналогична на fetchAllData, но за локален източник.
      */
-    async function fetchAllDataFromLocalFolder(saveToDb = false) {
+    async function fetchAllDataFromLocalFolder() {
         const handle = await getDirectoryHandle();
         if (!handle) {
             window.wasOpenedForMissingFolder = true; // Вдигаме флага
@@ -1272,14 +1284,6 @@ async function finalizeDbCreation() {
         boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
         mediaData = localMedia.flat();
         allNotesData = localNotes;
-
-        // Ако е указано, записваме данните в IndexedDB
-        if (saveToDb) {
-            if (dbExists) showToast(_('dbPopulated'), 10000); // Показваме съобщението и тук
-            await bulkPutDB(BOARD_STORE_NAME, boardsData);
-            await bulkPutDB(MEDIA_STORE_NAME, mediaData);
-            await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
-        }
 
         return { boardParseError };
     }
@@ -2407,12 +2411,17 @@ async function processDirectoryContent(minModificationDate) {
             const createDbBtn = document.getElementById('create-db-btn');
             createDbBtn.addEventListener('click', async () => {
                 let confirmed = false;
-
-                if (dbExists) {
+ 
+                // Проверяваме дали базата съществува И дали не е празна.
+                const boardsInDb = dbExists ? await getAllFromDB(BOARD_STORE_NAME) : [];
+ 
+                if (dbExists && boardsInDb.length > 0) {
+                    // Показваме диалог за потвърждение само ако базата съществува и има данни.
                     document.getElementById('settings-modal').classList.remove('visible');
                     await new Promise(resolve => setTimeout(resolve, 150));
                     confirmed = await showConfirmation(_('confirmDbRecreate'));
                 } else {
+                    // Ако базата не съществува или е празна, продължаваме директно със създаването.
                     confirmed = true;
                 }
 
@@ -3321,16 +3330,23 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         const useArhDb = localStorage.getItem('useArhDb') === 'true'; // @@ няма нужда да е тук, но да е за всеки случай
         const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
         const useGD = localStorage.getItem('useGoogleDb') === 'true';
+        const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
         let attachments = [];
-        if (!isHiddenNote && noteGdid && useGD) {
-            attachments = mediaData.filter(media => media.noteid === noteGdid);
+
+        if (useIndexedDb) {
+            // Когато използваме база данни, трябва да знаем как е създадена.
+            const dbNoteIdType = await getConfig('dbNoteIdType') || 'gdid'; // 'gdid' по подразбиране за стари бази
+            if (dbNoteIdType === 'id') {
+                attachments = mediaData.filter(media => +media.noteid === +noteID);
+            } else { // 'gdid'
+                attachments = mediaData.filter(media => media.noteid === noteGdid);
+            }
+        } else {
+            // Когато четем директно, логиката зависи от текущия режим.
+            if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteID);
+            else if (useLocalFolder || useGD) attachments = mediaData.filter(media => media.noteid === noteGdid);
         }
-        if (!isHiddenNote && noteGdid && useLocalFolder) {
-            attachments = mediaData.filter(media => media.noteid === noteGdid);
-        }
-        if (!isHiddenNote && noteID && useArhDb) {
-            attachments = mediaData.filter(media => +media.noteid === +noteID);
-        }
+
         if (attachments.length > 0) {
             const separator = document.createElement('hr');
             separator.style.marginTop = '10px';
