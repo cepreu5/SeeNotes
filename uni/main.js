@@ -103,6 +103,14 @@ const translations = {
             // folderIdInputPlaceholder: 'Google Drive Folder ID',
             zoomLabel: 'Zoom:',
             orderLabel: 'Order notes:',
+            sortByNumber: 'by number',
+            sortByColor: 'by color',
+            sortByCreationDate: 'by creation date',
+            sortByModificationDate: 'by modification date',
+            sortByCalendarDate: 'by calendar date',
+            sortByAlphabetical: 'alphabetically',
+            sortInReverse: 'in reverse order',
+            sortRemindersTop: 'reminders on top',
             useArhDbLabel: 'Archive:',
             calendar: 'Calendar',
             settingsTitle: 'Settings',
@@ -2269,9 +2277,24 @@ async function processDirectoryContent(minModificationDate) {
 
             // Order checkbox
             orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
+            const sortingOptionsSection = document.getElementById('sorting-options-section');
+
+            // Function to toggle visibility of the sorting options
+            const toggleSortingOptions = () => {
+                if (orderCheckbox.checked) {
+                    sortingOptionsSection.style.display = 'block';
+                } else {
+                    sortingOptionsSection.style.display = 'none';
+                }
+            };
+
+            // Initial check
+            toggleSortingOptions();
+
             orderCheckbox.addEventListener('change', () => {
                 localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
-                applyFilters(); // Re-apply filters to sort/unsort immediately
+                toggleSortingOptions();
+                applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
                 showToast(_('settingSaved'), 2000);
             });
 
