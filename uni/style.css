@@ -344,6 +344,7 @@ pre, code {
 .footer-icon {
     background-color: transparent; /* Гарантираме, че фонът е прозрачен */
     padding: 0px; /* Добавяме малко отстояние, за да не са залепени иконите */
+    height: 25px;
 }
 
 .footer-icon svg {
@@ -1103,6 +1104,7 @@ pre, code {
     margin-right: 5px; /* Add space to the right, before the buttons */
     margin-top: 12px;
     margin-bottom: 12px;
+    cursor: pointer; /* Make it look clickable */
 }
 
 #zoom-modal .modal-content-box {

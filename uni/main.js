@@ -697,6 +697,28 @@ function initApp() {
                 savedSearchesPopup.style.display = 'none';
             }
         });
+
+        // Добавяме event listener за показване на системна информация при клик на брояча
+        const noteCounter = document.getElementById('note-counter');
+        noteCounter.addEventListener('click', async () => {
+            try {
+                const userEmail = await getConfig('userEmail') || 'Няма данни';
+                const lastGDTimestamp = await getConfig('lastGDTimestamp');
+                const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
+                const dbNoteIdType = await getConfig('dbNoteIdType') || 'Няма данни';
+                const dbSource = await getConfig('dbSource') || 'Няма данни';
+
+                const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : 'Няма данни';
+                const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : 'Няма данни';
+
+                const content = `Потребител: ${userEmail}\nПоследна Google Drive синхронизация: ${gdDate}\nПоследна локална синхронизация: ${localDate}\nВръзка към приложенията: ${dbNoteIdType}\nБазата е създадена от: ${dbSource}`;
+
+                showModal({ raw: content, color: '#f0f0f0' });
+            } catch (error) {
+                console.error("Error fetching system info:", error);
+                showToast("Грешка при извличане на системна информация.");
+            }
+        });
 }
 
     /**
@@ -1022,8 +1044,18 @@ async function createDatabaseFromMemory() {
 
         // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА)
         const useArh = localStorage.getItem('useArhDb') === 'true';
+        const useLocal = localStorage.getItem('useLocalDb') === 'true';
+
         const noteIdType = useArh ? 'id' : 'gdid';
         await saveConfig('dbNoteIdType', noteIdType);
+
+        // ЗАПИСВАМЕ И ИЗТОЧНИКА НА ДАННИ
+        let dbSource = 'Google Drive'; // По подразбиране
+        if (useArh) dbSource = 'Архив';
+        else if (useLocal) dbSource = 'Локална папка';
+
+        await saveConfig('dbSource', dbSource);
+
         dbExists = true;
         return true;
     } catch (error) {
@@ -1118,11 +1150,34 @@ function updateModeButton() {
             if (dbExists && boardsInDb.length > 0) {
                 const dbNoteIdType = await getConfig('dbNoteIdType');
                 if (dbNoteIdType) { // Проверяваме само ако типът е записан
-                    if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
-                        showToast(_('errorDbSourceMismatch'), 15000);
+                    // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
+                    const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
+                    if (isAnySourceActive) {
+                        if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
+                            showToast(_('errorDbSourceMismatch'), 15000);
+                        }
                     }
                 }
             }
+
+            // ПРОВЕРКА ЗА ДОСТЪП ДО ПРИКАЧЕНИ ФАЙЛОВЕ В РЕЖИМ "САМО БАЗА ДАННИ"
+            if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
+                const dbSource = await getConfig('dbSource');
+                if (dbSource === 'Локална папка') {
+                    const handle = await getConfig('directoryHandle');
+                    if (!handle || await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+                        showToast(_('noUpdateMode'), 10000);
+                    }
+                } else if (dbSource === 'Архив') {
+                    const handle = await getConfig('arhHandle');
+                    if (!handle || await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+                        showToast(_('noUpdateMode'), 10000);
+                    }
+                }
+                // Ако базата е от Google Drive, не правим нищо, защото линковете ще работят,
+                // стига потребителят да е логнат (което се проверява по-късно).
+            }
+
         }
 
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
@@ -2420,16 +2475,6 @@ async function processDirectoryContent(minModificationDate) {
                 // Save the state of the changed checkbox
                 localStorage.setItem(changedKey, changedCheckbox.checked);
                 showToast(_('settingSaved'), 2000);
-
-                // --- Управление на новия флаг noUpdate ---
-                const isAnySourceActive = dataSources.some(ds => ds.checkbox.checked);
-                const noUpdate = !isAnySourceActive;
-
-                localStorage.setItem('noUpdate', noUpdate);
-
-                if (noUpdate) {
-                    showToast(_('noUpdateMode'), 5000);
-                }
             };
 
             dataSources.forEach(({ checkbox, key }) => {
@@ -2564,7 +2609,8 @@ async function processDirectoryContent(minModificationDate) {
                         folderNameDisplay.textContent = handle.name;
                         folderNameDisplay.title = handle.name;
                         showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-                        await mainLogic();
+                        document.getElementById('settings-modal').classList.remove('visible');
+                        mainLogic();
                     }
                 } catch (error) {
                     if (error.name !== 'AbortError') {
@@ -3431,18 +3477,19 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             contentEl.appendChild(separator);
             await Promise.all(attachments.map(async attachment => {
                 const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-                const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-                const useArhDb = localStorage.getItem('useArhDb') === 'true';
                 if (!iconData) return;
                 const attachmentWrapper = document.createElement('div');
                 attachmentWrapper.style.display = 'flex';
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
-                console.log('Processing attachments:', attachment, 'UseLocalFolder:', useLocalFolder, 'UseArhDb:', useArhDb, 'DirHandle:', dirHandle);
-                if (useArhDb && dirHandle) {
+
+                const dbSource = await getConfig('dbSource');
+                const isDbOnlyMode = useIndexedDb && !useGD && !useLocalFolder && !useArhDb;
+
+                if ((useArhDb && dirHandle) || (isDbOnlyMode && dbSource === 'Архив' && dirHandle)) {
                     // --- ЛОГИКА ЗА АРХИВ ---
                     await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                } else if (useLocalFolder && dirHandle) {
+                } else if ((useLocalFolder && dirHandle) || (isDbOnlyMode && dbSource === 'Локална папка' && dirHandle)) {
                     // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
                     await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
                 } else {

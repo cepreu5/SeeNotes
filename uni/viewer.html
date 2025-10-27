@@ -57,7 +57,7 @@
         </div>
         <div id="header-buttons">
             <div id="note-counter" class="note-counter">0</div>
-            <button id="mode_button" class="header-btn" title="Текущ режим">
+            <button id="mode_button" class="header-btn" title="Режим" data-key-title="modeButtonTooltip" onclick="document.getElementById('settings_button').click();">
                 <!-- Иконата се вмъква от JS -->
             </button>
             <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Настройки">
@@ -231,13 +231,14 @@
                             </label>
                             <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
                         </div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;" data-key="dbManagementTitle">Управление на базата данни</label>
+                        <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;" data-key="dbManagementTitle">
+                            Управление на базата данни</label>
                         
                         <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
                             <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
                             <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
                         </div>
-
+                    </div>
                     <!-- Accordion  -->
                     <div class="accordion" style="margin-top: 15px;">
                         <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
@@ -248,7 +249,7 @@
                         <div class="accordion-content">
                             <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
                                 <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
-                                <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel" id="use-local-db-label" style="flex-basis: 100px; flex-shrink: 0;">
+                                <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel" id="use-local-db-label" style="flex-basis: 120px; flex-shrink: 0;">
                                     Локална папка:
                                 </label>
                                 <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
@@ -257,7 +258,7 @@
 
                             <div class="zoom-control-wrapper" style="margin-top: 10px; padding-bottom: 10px;" id="arh-db-wrapper">
                                 <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
-                                <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel" id="use-arh-db-label" style="flex-basis: 100px; flex-shrink: 0;">
+                                <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel" id="use-arh-db-label" style="flex-basis: 120px; flex-shrink: 0;">
                                     Архив:
                                 </label>
                                 <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
@@ -278,7 +279,6 @@
                     </div>
                 </span>
             </div>
-        </div>
         <div class="settings-close-btn-wrapper">
             <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
         </div>
