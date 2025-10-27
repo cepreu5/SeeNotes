@@ -216,6 +216,14 @@ const translations = {
             zoomLabel: 'Мащаб:',
             useArhDbLabel: 'Архив:',
             orderLabel: 'Подреждане на бележките:',
+            sortByNumber: 'по номер',
+            sortByColor: 'по цвят',
+            sortByCreationDate: 'по дата на създаване',
+            sortByModificationDate: 'по дата на редактиране',
+            sortByCalendarDate: 'по дата в календара',
+            sortByAlphabetical: 'по азбучен ред',
+            sortInReverse: 'в обратен ред',
+            sortRemindersTop: 'напомняния най-отгоре',
             calendar: 'Календар',
             settingsTitle: 'Настройки',
             reminder: 'Напомняния',
@@ -1039,6 +1047,51 @@ async function finalizeDbCreation() {
     }
 }
 
+/**
+ * Актуализира иконата и tooltip-а на бутона за режим, за да покаже текущия източник на данни.
+ */
+function updateModeButton() {
+    const modeButton = document.getElementById('mode_button');
+    if (!modeButton) return;
+
+    const useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false';
+    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    const useArhDb = localStorage.getItem('useArhDb') === 'true';
+    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+
+    let iconSrc = '';
+    let title = '';
+
+    if (useArhDb) {
+        iconSrc = 'Zip.png';
+        title = 'Режим: Архив';
+    } else if (useLocalFolder) {
+        iconSrc = 'Folder.png';
+        title = 'Режим: Локална папка';
+    } else if (useGoogleDb) {
+        iconSrc = 'GDrive.png';
+        title = 'Режим: Google Drive';
+    } else if (useIndexedDb) {
+        // Случай, когато е избрана само база данни
+        iconSrc = 'Database.png';
+        title = 'Режим: База данни';
+    }
+
+    if (useIndexedDb && (useGoogleDb || useLocalFolder || useArhDb)) {
+        title += ' + База данни';
+    }
+
+    let buttonHtml = `<img src="${iconSrc}" alt="${title}" style="width:24px; height:24px;">`;
+
+    // Добавяме иконата за база данни, само ако е в комбинация с друг източник
+    if (useIndexedDb && (useGoogleDb || useLocalFolder || useArhDb)) {
+        buttonHtml += `<img src="Database.png" alt="Database enabled" style="width:20px; height:20px;">`;
+    }
+
+    modeButton.innerHTML = buttonHtml;
+    modeButton.title = title;
+}
+
     /**
      * Основна логика за зареждане на данни в приложението.
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
@@ -1237,6 +1290,7 @@ async function finalizeDbCreation() {
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
             notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
+            updateModeButton(); // Актуализираме иконата за режим
         }
     }
 
