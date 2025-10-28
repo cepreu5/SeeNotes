@@ -1,5 +1,6 @@
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
+let debug = true; // Глобален флаг за дебъг режим
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -22,7 +23,6 @@ let authToken = null;
 let tokenClient;
 let dirHandle = null; // За локален достъп до файловата система
 
-let debug = false; // Глобален флаг за дебъг режим
 // --- Състояние на търсенето ---
 let searchMode = 'title';
 let lastSearchTerm = "";
@@ -1433,10 +1433,22 @@ function updateGlobalStateFlags() {
                     });
                 }
             }
-        } catch (e) {
-            console.error("Error parsing local files:", e);
-            boardParseError = true; // Set a general parse error flag
-            showToast(_('errorNoteParse'));
+        } catch (err) {
+            if (err.name === 'NotFoundError') {
+                console.error("Local folder not found:", err);
+                showToast("Избраната локална папка не е намерена. Моля, изберете нова.", 15000);
+                // Изчистваме невалидния handle от базата данни
+                await saveConfig('directoryHandle', null);
+                // Отваряме настройките, за да може потребителят да избере нова папка
+                document.getElementById('settings-modal').classList.add('visible');
+                // Нулираме и UI елемента, показващ името на папката
+                const folderNameDisplay = document.getElementById('local-sync-folder-name');
+                if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
+            } else {
+                console.error("Error parsing local files:", err);
+                showToast(_('errorNoteParse'));
+            }
+            boardParseError = true; // Вдигаме флага за грешка и в двата случая
         }
 
         // Зареждаме данните в глобалните променливи
@@ -2693,7 +2705,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             };
 
             dataSources.forEach(({ checkbox, key }) => {
-                checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key));
+                checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key)); // Вече е async
             });
 
             // indexedDB
