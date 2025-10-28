@@ -34,6 +34,8 @@ let maxWidthForButtons = 0; // За менюто с бордове
 let toastTimeout, isShowingToast = false;
 let dbExists = false; // Флаг за съществуването на IndexedDB
 let settingsInitialState = {}; // Запомня състоянието на настройките при отваряне
+let dbSourceGlobal = null; // Запомня откъде е създадена базата
+let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -706,12 +708,20 @@ function initApp() {
                 const lastGDTimestamp = await getConfig('lastGDTimestamp');
                 const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
                 const dbNoteIdType = await getConfig('dbNoteIdType') || 'Няма данни';
-                const dbSource = await getConfig('dbSource') || 'Няма данни';
+                const dbSourceValue = await getConfig('dbSource');
+                let dbSourceText = 'Няма данни';
+                if (dbSourceValue === 1) {
+                    dbSourceText = 'Google Drive';
+                } else if (dbSourceValue === 2) {
+                    dbSourceText = 'Локална папка';
+                } else if (dbSourceValue === 3) {
+                    dbSourceText = 'Архив';
+                }
 
                 const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : 'Няма данни';
                 const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : 'Няма данни';
 
-                const content = `Потребител: ${userEmail}\nПоследна Google Drive синхронизация: ${gdDate}\nПоследна локална синхронизация: ${localDate}\nВръзка към приложенията: ${dbNoteIdType}\nБазата е създадена от: ${dbSource}`;
+                const content = `Потребител: ${userEmail}\nПоследна Google Drive синхронизация: ${gdDate}\nПоследна локална синхронизация: ${localDate}\nВръзка към приложенията: ${dbNoteIdType}\nБазата е създадена от: ${dbSourceText}`;
 
                 showModal({ raw: content, color: '#f0f0f0' });
             } catch (error) {
@@ -1049,10 +1059,10 @@ async function createDatabaseFromMemory() {
         const noteIdType = useArh ? 'id' : 'gdid';
         await saveConfig('dbNoteIdType', noteIdType);
 
-        // ЗАПИСВАМЕ И ИЗТОЧНИКА НА ДАННИ
-        let dbSource = 'Google Drive'; // По подразбиране
-        if (useArh) dbSource = 'Архив';
-        else if (useLocal) dbSource = 'Локална папка';
+        // ЗАПИСВАМЕ И ИЗТОЧНИКА НА ДАННИ (1: GD, 2: Local, 3: Arh)
+        let dbSource = 1; // Google Drive by default
+        if (useArh) dbSource = 3; // Archive
+        else if (useLocal) dbSource = 2; // Local Folder
 
         await saveConfig('dbSource', dbSource);
 
@@ -1129,6 +1139,8 @@ function updateModeButton() {
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
      */
     async function mainLogic() {
+        dbSourceGlobal = null; // Нулираме глобалните променливи
+        dbNoteIdTypeGlobal = null;
         initializeLoad(); // Resets state and shows the loader screen
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
 
@@ -1148,6 +1160,10 @@ function updateModeButton() {
             // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
             // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
             if (dbExists && boardsInDb.length > 0) {
+                // Извличаме конфигурацията на базата САМО ВЕДНЪЖ тук
+                dbSourceGlobal = await getConfig('dbSource');
+                dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
+
                 const dbNoteIdType = await getConfig('dbNoteIdType');
                 if (dbNoteIdType) { // Проверяваме само ако типът е записан
                     // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
@@ -1163,14 +1179,20 @@ function updateModeButton() {
             // ПРОВЕРКА ЗА ДОСТЪП ДО ПРИКАЧЕНИ ФАЙЛОВЕ В РЕЖИМ "САМО БАЗА ДАННИ"
             if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
                 const dbSource = await getConfig('dbSource');
-                if (dbSource === 'Локална папка') {
+                if (dbSource === 2) { // 2: Локална папка (Local Folder)
                     const handle = await getConfig('directoryHandle');
-                    if (!handle || await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                    if (verifiedHandle) {
+                        dirHandle = verifiedHandle; // Задаваме handle, за да работят линковете
+                    } else {
                         showToast(_('noUpdateMode'), 10000);
                     }
-                } else if (dbSource === 'Архив') {
+                } else if (dbSource === 3) { // 3: Архив (Archive)
                     const handle = await getConfig('arhHandle');
-                    if (!handle || await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                    if (verifiedHandle) {
+                        dirHandle = verifiedHandle; // Задаваме handle, за да работят линковете
+                    } else {
                         showToast(_('noUpdateMode'), 10000);
                     }
                 }
@@ -1270,6 +1292,8 @@ function updateModeButton() {
                 } else {
                     // Archive mode without IndexedDB
                     console.log("Mode: Archive (no IndexedDB)");
+                    // КЛЮЧОВА СТЪПКА: Задаваме dirHandle и при директно четене
+                    dirHandle = verifiedHandle;
                     const success = await readArh(verifiedHandle);
                     if (success) {
                         await renderUI({ boardParseError: false });
@@ -2446,10 +2470,8 @@ async function processDirectoryContent(minModificationDate) {
                     showToast("Трябва да има избран поне един източник на данни, когато не се използва База данни.", 5000);
                     // Не позволяваме премахването, като връщаме отметката
                     changedCheckbox.checked = true;
-                    // Може да добавим и съобщение, но за сега просто предотвратяваме действието
                     return;
                 }
-
                 if (changedCheckbox.checked) {
                     // Uncheck all other data sources
                     dataSources.forEach(({ checkbox, key }) => {
@@ -2458,7 +2480,6 @@ async function processDirectoryContent(minModificationDate) {
                             localStorage.setItem(key, 'false');
                         }
                     });
-
                     // Автоматично отваряне на диалога за избор на папка, ако не е избрана
                     if (changedKey === 'useLocalDb') {
                         const folderNameDisplay = document.getElementById('local-sync-folder-name');
@@ -3015,12 +3036,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         const link = document.createElement('a');
         link.href = '#';
         link.onclick = async (e) => {
-            const noUpdate = localStorage.getItem('noUpdate') === 'true';
-            if (noUpdate) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
             e.preventDefault();
             e.stopPropagation();
             if (!filename) return;
@@ -3056,26 +3071,26 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         case 1: // Image
             attachmentWrapper.appendChild(await createLink(
                 mode === 'local' ? 'Images' : '',
-                mode === 'local' ? 'Images/' : `${archiveFolderName}/`
+                mode === 'local' ? 'Images/' : '' // `${archiveFolderName}/`
             ));
             break;
         case 2: // Sound
             await appendWithDescription(
                 mode === 'local' ? 'Sound' : '',
-                mode === 'local' ? 'Sound/' : `${archiveFolderName}/`,
+                mode === 'local' ? 'Sound/' : '', // `${archiveFolderName}/`
                 attachment.description
             );
             break;
         case 3: // Other
             attachmentWrapper.appendChild(await createLink(
                 mode === 'local' ? 'Other' : '',
-                mode === 'local' ? 'Other/' : `${archiveFolderName}/`
+                mode === 'local' ? 'Other/' : '' // `${archiveFolderName}/`
             ));
             break;
         case 4: // Video
             await appendWithDescription(
                 mode === 'local' ? 'Video' : '',
-                mode === 'local' ? 'Video/' : `${archiveFolderName}/`,
+                mode === 'local' ? 'Video/' : '', // `${archiveFolderName}/`
                 attachment.description
             );
             break;
@@ -3107,12 +3122,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
 
     iconDiv.style.cursor = 'pointer';
     iconDiv.addEventListener('click', (e) => {
-        const noUpdate = localStorage.getItem('noUpdate') === 'true';
-        if (noUpdate) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-        }
         e.stopPropagation();
         showModal(JSON.stringify(attachment, null, 2));
     });
@@ -3149,13 +3158,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             link.title = `Click to open ${filename} from Google Drive`;
 
             link.onclick = async (e) => {
-                // Проверяваме флага noUpdate
-                const noUpdate = localStorage.getItem('noUpdate') === 'true';
-                if (noUpdate) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return; // Прекратяваме изпълнението, ако флагът е вдигнат
-                }
                 e.preventDefault();
                 e.stopPropagation();
                 if (!checkAuth()) return;
@@ -3173,13 +3175,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         const showPreview = async (folderName) => {
             const noteEl = attachmentWrapper.closest('.note');
             if (!noteEl || noteEl.querySelector('.image-preview-overlay')) return;
-
-            const titleEl = noteEl.querySelector('h3');
-            const fileId = await getFileID(folderIds[folderName], filename);
-            if (!fileId) {
-                showToast(folderName === 'Images' ? _('imgNotFound') : _('videoNotFound'));
-                return;
-            }
             try {
                 const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink' });
                 const thumbnailUrl = fileMetadata.result.thumbnailLink;
@@ -3216,13 +3211,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             case 1: // Image
                 setupLink('Images', 'Images/');
                 iconDiv.addEventListener('click', (e) => {
-                    // Проверяваме флага noUpdate
-                    const noUpdate = localStorage.getItem('noUpdate') === 'true';
-                    if (noUpdate) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return; // Прекратяваме изпълнението, ако флагът е вдигнат
-                    }
                     e.stopPropagation();
                     e.preventDefault();
                     showPreview('Images');
@@ -3257,13 +3245,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 videoTextContainer.appendChild(videoLine2);
                 iconDiv.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    // Проверяваме флага noUpdate
-                    const noUpdate = localStorage.getItem('noUpdate') === 'true';
-                    if (noUpdate) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return; // Прекратяваме изпълнението, ако флагът е вдигнат
-                    }
                     e.preventDefault();
                     showPreview('Video');
                 });
@@ -3301,17 +3282,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
 
         if (attachment.type !== 1 && attachment.type !== 4) { // Add generic info click for non-preview types
             iconDiv.style.cursor = 'pointer';
-            iconDiv.addEventListener('click', (e) => {
-                // Проверяваме флага noUpdate
-                const noUpdate = localStorage.getItem('noUpdate') === 'true';
-                if (noUpdate) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return; // Прекратяваме изпълнението, ако флагът е вдигнат
-                }
-                e.stopPropagation();
-                showModal(JSON.stringify(attachment, null, 2));
-            });
         }
         attachmentWrapper.prepend(iconDiv);
     }
@@ -3483,16 +3453,27 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
 
-                const dbSource = await getConfig('dbSource');
                 const isDbOnlyMode = useIndexedDb && !useGD && !useLocalFolder && !useArhDb;
 
-                if ((useArhDb && dirHandle) || (isDbOnlyMode && dbSource === 'Архив' && dirHandle)) {
+                if (isDbOnlyMode) {
+                    // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
+                    // Използваме глобалните променливи, зададени в mainLogic.
+                    if (dbNoteIdTypeGlobal === 'id' && dbSourceGlobal === 3) { // Валидна комбинация за Архив
+                        await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
+                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 2) { // Валидна комбинация за Локална папка
+                        await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
+                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 1) { // Валидна комбинация за Google Drive
+                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
+                    }
+                    // При невалидна комбинация, не правим нищо и линкове не се създават.
+                    // Съобщението за грешка вече се показва от mainLogic.
+                } else if (useArhDb) {
                     // --- ЛОГИКА ЗА АРХИВ ---
                     await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                } else if ((useLocalFolder && dirHandle) || (isDbOnlyMode && dbSource === 'Локална папка' && dirHandle)) {
+                } else if (useLocalFolder) {
                     // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
                     await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                } else {
+                } else { // По подразбиране, ако не е нито един от горните, е Google Drive
                     // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
                     await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
                 }
