@@ -10,7 +10,7 @@ const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleuse
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const version = '0.9'; // App version
 
-// --- Глобално състояние на приложението ---
+// --- Глобално състояние на приложението --- 
 let allNotesData = []; // Съхранява всички бележки за календара
 let boardsData = []; // Съхранява данните за бордовете
 let mediaData = []; // Съхранява данните за медия
