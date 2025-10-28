@@ -168,44 +168,17 @@
                 </div>
                 <!-- Скрита секция за опции за сортиране -->
                 <div id="sorting-options-section" style="display: none;">
-                    <div class="sort-options-separator"></div>
-                    <div class="zoom-control-wrapper" style="margin-top: 5px; border-top: 1px solid #404040; padding-top: 10px;" >
-                        <label class="sort-option-label">
-                            <input type="radio" name="sort-criteria" value="numord" class="settings-checkbox" checked> <span data-key="sortByNumber">
-                            по номер</span></label>
-                    </div>
-                    <div class="zoom-control-wrapper">
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="color" class="settings-checkbox"> <span data-key="sortByColor">
-                            по цвят</span></label>
-                    </div>
-                    <div class="zoom-control-wrapper">
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="created" class="settings-checkbox"> <span data-key="sortByCreationDate">
-                            по дата на създаване</span></label>
-                    </div>
-                    <div class="zoom-control-wrapper">
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="modified" class="settings-checkbox"> <span data-key="sortByModificationDate">
-                            по дата на редактиране</span></label>
-                    </div>
-                    <div class="zoom-control-wrapper">
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="calendar" class="settings-checkbox"> <span data-key="sortByCalendarDate">
-                            по дата в календара</span></label>
-                    </div>
-                    <div class="zoom-control-wrapper">
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="alpha" class="settings-checkbox"> <span data-key="sortByAlphabetical">
-                            по азбучен ред</span></label>
-                    </div>
-
-                    <div class="sort-options-separator"></div>
-
-                    <div class="zoom-control-wrapper" style="margin-top: 5px; border-top: 1px solid #808080; padding-top: 5px;">
-                        <label class="sort-option-label">
-                        <input type="checkbox" id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">
-                            в обратен ред</span></label>
-                    </div>
-                    <div class="zoom-control-wrapper">
-                        <label class="sort-option-label">
-                        <input type="checkbox" id="sort-reminders-top-checkbox" class="settings-checkbox"> <span data-key="sortRemindersTop">
-                            напомняния най-отгоре</span></label>
+                    <!-- Нов, опростен flex контейнер за опциите за сортиране -->
+                    <div class="sort-options-container">
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="numord" class="settings-checkbox" checked> <span data-key="sortByNumber">по номер</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="color" class="settings-checkbox"> <span data-key="sortByColor">по цвят</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="created" class="settings-checkbox"> <span data-key="sortByCreationDate">по дата на създаване</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="modified" class="settings-checkbox"> <span data-key="sortByModificationDate">по дата на редактиране</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="calendar" class="settings-checkbox"> <span data-key="sortByCalendarDate">по дата в календара</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="alpha" class="settings-checkbox"> <span data-key="sortByAlphabetical">по азбучен ред</span></label>
+                        <!-- Преместваме и чекбоксовете тук, за да имат същия стил -->
+                        <label class="sort-option-label sort-option-separator"><input type="checkbox" id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">в обратен ред</span></label>
+                        <label class="sort-option-label"><input type="checkbox" id="sort-reminders-top-checkbox" class="settings-checkbox"> <span data-key="sortRemindersTop">напомняния най-отгоре</span></label>
                     </div>
                 </div>
 

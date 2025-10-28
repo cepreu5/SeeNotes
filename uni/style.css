@@ -948,6 +948,11 @@ pre, code {
             flex-direction: row !important;
             align-items: center !important; /* Поддържа вертикално центриране */
         }
+
+        /* Превключва грида за сортиране в една колона на тесни екрани */
+        .sort-criteria-grid {
+            grid-template-columns: 1fr;
+        }
     }
 
 /* Toast Notification */
@@ -1258,6 +1263,29 @@ pre, code {
 .modal-content-box.set-modal .corner-dot {
     /* Ensure dots are visible when .set-modal is applied dynamically */
     display: block;
+}
+
+/* Нов стил за контейнера на опциите за сортиране */
+.sort-options-container {
+    display: grid;
+    grid-template-columns: 1fr; /* 1 колона */
+    gap: 5px 15px; /* 5px вертикално, 15px хоризонтално разстояние */
+    padding-top: 10px;
+    border-top: 1px solid #404040;
+}
+
+/* Стил за етикетите вътре в контейнера за сортиране */
+.sort-options-container .sort-option-label {
+    white-space: nowrap; /* Гарантира, че текстът на етикета не се пренася */
+    display: flex;
+    align-items: center;
+}
+
+/* Стил за добавяне на разделител преди чекбоксовете за сортиране */
+.sort-option-separator {
+    border-top: 1px solid #808080;
+    margin-top: 5px;
+    padding-top: 10px;
 }
 
 .settings-close-btn-wrapper {
