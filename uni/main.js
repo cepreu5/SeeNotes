@@ -22,6 +22,7 @@ let authToken = null;
 let tokenClient;
 let dirHandle = null; // За локален достъп до файловата система
 
+let debug = false; // Глобален флаг за дебъг режим
 // --- Състояние на търсенето ---
 let searchMode = 'title';
 let lastSearchTerm = "";
@@ -2448,7 +2449,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             if (board.status === 1) link.style.color = 'red';
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                if (e.ctrlKey) { showModal(JSON.stringify(board, null, 2)); } 
+                if (debug && e.ctrlKey) { showModal(JSON.stringify(board, null, 2)); }
                 else { e.preventDefault(); filterNotesByBoard(board.gdid); }
             });
             allButtonLinks.push(link);
@@ -3255,10 +3256,10 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
 
     switch (attachment.type) {
         case 1: // Image
-            attachmentWrapper.appendChild(await createLink(
-                mode === 'local' ? 'Images' : '',
-                mode === 'local' ? 'Images/' : '' // `${archiveFolderName}/`
-            ));
+            const imgLink = await createLink(mode === 'local' ? 'Images' : '', mode === 'local' ? 'Images/' : '');
+            attachmentWrapper.appendChild(imgLink);
+            // Добавяме липсващата логика за преглед при клик на иконата
+            addInNotePreviewListener(iconDiv, attachment.path, mode, false);
             break;
         case 2: // Sound
             await appendWithDescription(
@@ -3274,11 +3275,11 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             ));
             break;
         case 4: // Video
-            await appendWithDescription(
-                mode === 'local' ? 'Video' : '',
-                mode === 'local' ? 'Video/' : '', // `${archiveFolderName}/`
-                attachment.description
-            );
+            const videoContainer = document.createElement('div');
+            videoContainer.appendChild(await createLink(mode === 'local' ? 'Video' : '', mode === 'local' ? 'Video/' : ''));
+            videoContainer.appendChild(document.createTextNode(attachment.description || ''));
+            attachmentWrapper.appendChild(videoContainer);
+            addInNotePreviewListener(iconDiv, attachment.path, mode, true);
             break;
         case 5: // Location
             const parts = attachment.path.split('|');
@@ -3306,11 +3307,14 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             break;
     }
 
-    iconDiv.style.cursor = 'pointer';
-    iconDiv.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showModal(JSON.stringify(attachment, null, 2));
-    });
+    // Добавяме стандартния listener за показване на JSON данни само в дебъг режим
+    if (debug) {
+        iconDiv.style.cursor = 'pointer';
+        iconDiv.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showModal(JSON.stringify(attachment, null, 2));
+        });
+    }
 
     attachmentWrapper.prepend(iconDiv);
 }
@@ -3504,8 +3508,10 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         headerTime.className = 'note-header-time';
         // Add click listener to the date to show full note data
         headerDate.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
+            if (debug) {
+                e.stopPropagation();
+                showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
+            }
         });
         if (extraData.timer) {
             const dateText = formatDate(extraData.timer);
@@ -3671,8 +3677,15 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                                     // Ако dbSourceGlobal е 1 (Google Drive), sourceMode остава 'gdrive'
                                 }
 
-                                if (sourceMode === 'gdrive') { // Активираме превюто само ако източникът е Google Drive
-                                    const fileIdentifier = firstAttachmentOfType.pathGD; // За GDrive винаги използваме pathGD
+                                // Връщаме оригиналната, работеща логика за Google Drive
+                                if (sourceMode === 'gdrive') {
+                                    const fileIdentifier = firstAttachmentOfType.pathGD;
+                                    const isVideo = type === 4;
+                                    addInNotePreviewListener(iconDiv, fileIdentifier, sourceMode, isVideo);
+                                }
+                                // Добавяме отделна, нова логика само за Локална папка
+                                else if (sourceMode === 'local') {
+                                    const fileIdentifier = firstAttachmentOfType.path; // За локален режим използваме 'path'
                                     const isVideo = type === 4;
                                     addInNotePreviewListener(iconDiv, fileIdentifier, sourceMode, isVideo);
                                 }
