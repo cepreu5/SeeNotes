@@ -1875,7 +1875,7 @@ async function processDirectoryContent(minModificationDate) {
         searchInput.value = ''; // Clear the search box
         saveSearchBtn.style.display = 'none'; // Hide the save icon
         currentBoardFilter = boardId;
-        applyFilters();
+        // applyFilters();
         document.querySelectorAll('.board-filter-link').forEach(link => {
             link.classList.remove('selected-board');
             if (link.dataset.boardid === boardId) {
@@ -3043,7 +3043,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             try {
                 const fileHandle = mode === 'local'
                     ? await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(filename)
-                    : await dirHandle.getFileHandle(attachment.path);
+                    : await dirHandle.getFileHandle(filename); // Винаги използваме filename
                 const file = await fileHandle.getFile();
                 window.open(URL.createObjectURL(file), '_blank');
             } catch (err) {
@@ -3147,6 +3147,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         }
 
         const filename = attachment.path.split('/').pop();
+        const fileId = attachment.pathGD; // Вече имаме fileId директно в attachment обекта.
         const link = document.createElement('a');
 
         // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
@@ -3163,7 +3164,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 if (!checkAuth()) return;
 
                 showToast(`${_('loadingFile')} ${link.dataset.fileName}...`, 2000);
-                const fileId = await getFileID(folderIds[link.dataset.folderName], link.dataset.fileName);
+                // const fileId = await getFileID(folderIds[link.dataset.folderName], link.dataset.fileName);
                 if (fileId) {
                     window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer');
                 } else {
@@ -3179,7 +3180,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink' });
                 const thumbnailUrl = fileMetadata.result.thumbnailLink;
                 if (thumbnailUrl) {
-                    if (titleEl) titleEl.style.visibility = 'hidden';
                     const overlay = document.createElement('div');
                     overlay.className = 'image-preview-overlay';
                     Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px' });
@@ -3194,7 +3194,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                     Object.assign(closeButton.style, { position: 'absolute', top: '10px', right: '10px' });
                     const svg = closeButton.querySelector('svg');
                     if (svg) svg.style.stroke = 'white';
-                    closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); if (titleEl) titleEl.style.visibility = 'visible'; });
+                    closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
                     overlay.appendChild(closeButton);
                     noteEl.appendChild(overlay);
                 } else {
@@ -3491,18 +3491,9 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         contentWrapper.appendChild(contentEl);
 
         // --- Създаване на футър с икони за прикачени файлове ---
-        if (!isHiddenNote && noteGdid) {
-            let attachments = [];
-            if (!isHiddenNote && noteGdid && useLocalFolder) {
-                attachments = mediaData.filter(media => media.noteid === noteGdid);
-            }
-            const useGoogleDb = localStorage.getItem('useGoogleDb') === 'true';
-            if (!isHiddenNote && noteGdid && useGoogleDb) {
-                attachments = mediaData.filter(media => media.noteid === noteGdid);
-            }
-            if (!isHiddenNote && noteID && useArhDb) {
-                attachments = mediaData.filter(media => +media.noteid === +noteID);  // @@  филтриране, но няма проблем
-            }
+        // Проверяваме дали има прикачени файлове (масивът `attachments` вече е попълнен правилно по-горе)
+        // и дали бележката има идентификатор.
+        if (!isHiddenNote && (noteGdid || noteID) && attachments.length > 0) {
             const uniqueTypes = [...new Set(attachments.map(att => att.type))];
 
             if (uniqueTypes.length > 0) {
@@ -3736,15 +3727,6 @@ async function clearDbStores() {
         showToast(_('dbDeleteFailed'), 10000);
     }
 }
-
-/*function deleteNotesDB() {
-    return new Promise((resolve, reject) => {
-        const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
-        deleteRequest.onsuccess = () => resolve();
-        deleteRequest.onerror = (event) => reject(event.target.error);
-        deleteRequest.onblocked = () => reject(new Error("Database deletion blocked."));
-    });
-}*/
 
 async function renderUI({ boardParseError }) {
     let boardsNoteElement = null;
