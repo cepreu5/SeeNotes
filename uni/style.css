@@ -938,6 +938,16 @@ pre, code {
             height: auto; /* Let content define height */
             max-height: 90vh; /* Still prevent it from being too tall */
         }
+
+        /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
+        #google-db-wrapper,
+        #use-indexeddb-wrapper,
+        #db-buttons-wrapper,
+        #local-db-wrapper,
+        #arh-db-wrapper {
+            flex-direction: row !important;
+            align-items: center !important; /* Поддържа вертикално центриране */
+        }
     }
 
 /* Toast Notification */
