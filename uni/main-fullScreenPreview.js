@@ -1670,6 +1670,63 @@ async function processDirectoryContent(minModificationDate) {
 // V. СЪЗДАВАНЕ И УПРАВЛЕНИЕ НА UI ЕЛЕМЕНТИ
 // =================================================================================
 
+    /**
+     * Генерира и връща HTML елемент със списък на всички прикачени файлове за дадена бележка.
+     * @param {string|number} noteId - ID на бележката (може да е gdid или числово id).
+     * @param {string|number} noteGdid - GDID на бележката.
+     * @returns {Promise<HTMLElement|null>} Връща div елемент с файловете или null, ако няма.
+     */
+    async function generateAttachmentsHTML(noteId, noteGdid) {
+        const useArhDb = localStorage.getItem('useArhDb') === 'true';
+        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+        const useGD = localStorage.getItem('useGoogleDb') === 'true';
+        const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+        let attachments = [];
+
+        // Логика за намиране на правилните прикачени файлове
+        if (useIndexedDb) {
+            const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid';
+            if (dbNoteIdType === 'id') {
+                attachments = mediaData.filter(media => +media.noteid === +noteId);
+            } else { // 'gdid'
+                attachments = mediaData.filter(media => media.noteid === noteGdid);
+            }
+        } else {
+            if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
+            else if (useLocalFolder || useGD) attachments = mediaData.filter(media => media.noteid === noteGdid);
+        }
+
+        if (attachments.length === 0) {
+            return null;
+        }
+
+        const attachmentsContainer = document.createElement('div');
+        const separator = document.createElement('hr');
+        separator.style.marginTop = '10px';
+        separator.style.marginBottom = '10px';
+        attachmentsContainer.appendChild(separator);
+
+        for (const attachment of attachments) {
+            const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
+            if (!iconData) continue;
+
+            const attachmentWrapper = document.createElement('div');
+            attachmentWrapper.style.display = 'flex';
+            attachmentWrapper.style.alignItems = 'center';
+            attachmentWrapper.style.gap = '5px';
+            attachmentWrapper.style.marginTop = '5px';
+
+            if (useArhDb) {
+                await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
+            } else if (useLocalFolder) {
+                await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
+            } else {
+                await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
+            }
+            attachmentsContainer.appendChild(attachmentWrapper);
+        }
+        return attachmentsContainer;
+    }
     function showModal(options) {
         let rawContent, formatString, displayContent, noteColor, noteId, noteGdid;
         if (typeof options === 'string') {
@@ -1737,55 +1794,12 @@ async function processDirectoryContent(minModificationDate) {
         }
         contentModal.classList.add('visible');
 
-        // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
-        // Проверяваме дали имаме ID-та, за да търсим прикачени файлове
-        if (noteId || noteGdid) {
-            const useArhDb = localStorage.getItem('useArhDb') === 'true';
-            const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-            const useGD = localStorage.getItem('useGoogleDb') === 'true';
-            const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-            let attachments = [];
-
-            if (useIndexedDb) {
-                const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid';
-                if (dbNoteIdType === 'id') {
-                    attachments = mediaData.filter(media => +media.noteid === +noteId);
-                } else { // 'gdid'
-                    attachments = mediaData.filter(media => media.noteid === noteGdid);
-                }
-            } else {
-                if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
-                else if (useLocalFolder || useGD) attachments = mediaData.filter(media => media.noteid === noteGdid);
+        // --- ИЗПОЛЗВАНЕ НА НОВАТА ФУНКЦИЯ ---
+        generateAttachmentsHTML(noteId, noteGdid).then(attachmentsEl => {
+            if (attachmentsEl) {
+                modalBody.appendChild(attachmentsEl);
             }
-
-            if (attachments.length > 0) {
-                const separator = document.createElement('hr');
-                separator.style.marginTop = '10px';
-                separator.style.marginBottom = '10px';
-                modalBody.appendChild(separator);
-
-                attachments.forEach(async attachment => {
-                    const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-                    if (!iconData) return;
-
-                    const attachmentWrapper = document.createElement('div');
-                    attachmentWrapper.style.display = 'flex';
-                    attachmentWrapper.style.alignItems = 'center';
-                    attachmentWrapper.style.gap = '5px';
-                    attachmentWrapper.style.marginTop = '5px';
-
-                    if (useArhDb) {
-                        await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                    } else if (useLocalFolder) {
-                        await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                    } else {
-                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-                    }
-                    modalBody.appendChild(attachmentWrapper);
-                });
-            }
-        }
-        // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
+        });
 
         copyBtn.innerHTML = copyIconSvg;
     }
@@ -3123,12 +3137,30 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         attachmentWrapper.appendChild(container);
     };
 
+    // Функция за показване на преглед (за локални файлове)
+    const showLocalPreview = async (folderName, fileName) => {
+        try {
+            const fileHandle = await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(fileName);
+            const file = await fileHandle.getFile();
+            const fileURL = URL.createObjectURL(file);
+            showImageVideoOverlay(fileURL, file.type.startsWith('video'));
+        } catch (err) {
+            console.error(`Could not open local file for preview ${folderName}/${fileName}`, err);
+        }
+    };
+
     switch (attachment.type) {
         case 1: // Image
             attachmentWrapper.appendChild(await createLink(
                 mode === 'local' ? 'Images' : '',
                 mode === 'local' ? 'Images/' : '' // `${archiveFolderName}/`
             ));
+            iconDiv.style.cursor = 'pointer';
+            iconDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (mode === 'local') showLocalPreview('Images', filename);
+            });
             break;
         case 2: // Sound
             await appendWithDescription(
@@ -3261,15 +3293,65 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 const errorKey = folderName === 'Images' ? 'errorImgPreview' : 'errorVideoPreview';
                 showToast(_(errorKey).replace('{error}', (err.message || err)));
             }
+        }
+        const showGdrivePreview = async (folderName) => {
+            const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink' });
+            const thumbnailUrl = fileMetadata.result.thumbnailLink;
+            if (thumbnailUrl) {
+                const isVideo = folderName === 'Video';
+                showImageVideoOverlay(thumbnailUrl.replace(/=s\d+/, '=s1600'), isVideo);
+            } else {
+                showToast(folderName === 'Images' ? _('noImgPreview') : _('noVideoPreview'));
+            }
+        };
+
+        const showImageVideoOverlay = (src, isVideo) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'image-preview-overlay';
+            // Стил за овърлей върху целия екран
+            Object.assign(overlay.style, { position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '2000', cursor: 'pointer' });
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.remove();
+            });
+
+            const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
+            mediaElement.src = src;
+            if (isVideo) {
+                mediaElement.controls = true;
+                mediaElement.autoplay = true;
+            }
+            Object.assign(mediaElement.style, { maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', border: '2px solid white', borderRadius: '5px' });
+
+            overlay.appendChild(mediaElement);
+
+            const closeButton = document.createElement('button');
+            closeButton.className = 'view-button';
+            closeButton.innerHTML = eyeOffIconSvg;
+            Object.assign(closeButton.style, { position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px' });
+            const svg = closeButton.querySelector('svg');
+            if (svg) {
+                svg.style.stroke = 'white';
+                svg.style.width = '30px';
+                svg.style.height = '30px';
+            }
+            closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
+            overlay.appendChild(closeButton);
+            document.body.appendChild(overlay);
         };
 
         switch (attachment.type) {
             case 1: // Image
+                iconDiv.style.cursor = 'pointer';
                 setupLink('Images', 'Images/');
                 iconDiv.addEventListener('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    showPreview('Images');
+                    try {
+                        showGdrivePreview('Images');
+                    } catch (err) {
+                        console.error(`Error fetching image preview:`, err);
+                        showToast(_('errorImgPreview').replace('{error}', (err.message || err)));
+                    }
                 });
                 attachmentWrapper.appendChild(link);
                 break;
@@ -3301,8 +3383,14 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 videoTextContainer.appendChild(videoLine2);
                 iconDiv.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    e.preventDefault();
-                    showPreview('Video');
+                    iconDiv.style.cursor = 'pointer';
+                    e.preventDefault();                    
+                    try {
+                        showGdrivePreview('Video');
+                    } catch (err) {
+                        console.error(`Error fetching video preview:`, err);
+                        showToast(_('errorVideoPreview').replace('{error}', (err.message || err)));
+                    }
                 });
                 attachmentWrapper.appendChild(videoTextContainer);
                 break;
@@ -3477,65 +3565,12 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             }
         }
         const useArhDb = localStorage.getItem('useArhDb') === 'true'; // @@ няма нужда да е тук, но да е за всеки случай
-        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-        const useGD = localStorage.getItem('useGoogleDb') === 'true';
-        const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-        let attachments = [];
 
-        if (useIndexedDb) {
-            // Когато използваме база данни, трябва да знаем как е създадена.
-            const dbNoteIdType = await getConfig('dbNoteIdType') || 'gdid'; // 'gdid' по подразбиране за стари бази
-            if (dbNoteIdType === 'id') {
-                attachments = mediaData.filter(media => +media.noteid === +noteID);
-            } else { // 'gdid'
-                attachments = mediaData.filter(media => media.noteid === noteGdid);
-            }
-        } else {
-            // Когато четем директно, логиката зависи от текущия режим.
-            if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteID);
-            else if (useLocalFolder || useGD) attachments = mediaData.filter(media => media.noteid === noteGdid);
-        }
-
-        if (attachments.length > 0) {
-            const separator = document.createElement('hr');
-            separator.style.marginTop = '10px';
-            separator.style.marginBottom = '10px';
-            contentEl.appendChild(separator);
-            await Promise.all(attachments.map(async attachment => {
-                const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-                if (!iconData) return;
-                const attachmentWrapper = document.createElement('div');
-                attachmentWrapper.style.display = 'flex';
-                attachmentWrapper.style.alignItems = 'center';
-                attachmentWrapper.style.gap = '5px';
-
-                const isDbOnlyMode = useIndexedDb && !useGD && !useLocalFolder && !useArhDb;
-
-                if (isDbOnlyMode) {
-                    // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
-                    // Използваме глобалните променливи, зададени в mainLogic.
-                    if (dbNoteIdTypeGlobal === 'id' && dbSourceGlobal === 3) { // Валидна комбинация за Архив
-                        await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 2) { // Валидна комбинация за Локална папка
-                        await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 1) { // Валидна комбинация за Google Drive
-                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-                    }
-                    // При невалидна комбинация, не правим нищо и линкове не се създават.
-                    // Съобщението за грешка вече се показва от mainLogic.
-                } else if (useArhDb) {
-                    // --- ЛОГИКА ЗА АРХИВ ---
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                } else if (useLocalFolder) {
-                    // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                } else { // По подразбиране, ако не е нито един от горните, е Google Drive
-                    // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
-                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-                }
-                contentEl.appendChild(attachmentWrapper);
-            }));
-        }
+        // --- ИЗПОЛЗВАНЕ НА НОВАТА ФУНКЦИЯ ---
+        const attachmentsEl = await generateAttachmentsHTML(noteID, noteGdid);
+        if (attachmentsEl) {
+            contentEl.appendChild(attachmentsEl);
+    }
         note.addEventListener('click', (e) => {
             const noteEl = e.currentTarget;
             if (!e.target.closest('.note-footer')) {
@@ -3556,7 +3591,10 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         // --- Създаване на футър с икони за прикачени файлове ---
         // Проверяваме дали има прикачени файлове (масивът `attachments` вече е попълнен правилно по-горе)
         // и дали бележката има идентификатор.
-        if (!isHiddenNote && (noteGdid || noteID) && attachments.length > 0) {
+        // Променяме проверката да използваме резултата от новата функция
+        if (!isHiddenNote && (noteGdid || noteID)) {
+            // Взимаме типовете директно от mediaData, както преди
+            const attachments = mediaData.filter(m => m.noteid === noteGdid || +m.noteid === +noteID);
             const uniqueTypes = [...new Set(attachments.map(att => att.type))];
 
             if (uniqueTypes.length > 0) {
