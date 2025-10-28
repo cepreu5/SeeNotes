@@ -237,12 +237,14 @@ main {
     width: 250px;
     height: 250px;
     display: flex;
-    flex-direction: column;
+    flex-direction: column; /* Това ще подреди wrapper-а и футъра вертикално */
     /*background-color: var(--note-bg-0);*/
     font-size: var(--note-font-size); /* Set base font size for the whole note */
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
     text-align: left;
     cursor: pointer; /* Added for pointer cursor on hover */
+    padding-bottom: 35px; /* Добавяме padding отдолу, за да направим място за футъра */
+    box-sizing: border-box; /* Гарантираме, че padding-ът е включен в общата височина */
 }
 
 .note-item {
@@ -268,12 +270,12 @@ main {
     display: flex;
     flex-direction: column;
     width: 100%;
-    height: 100%;
+    height: 100%; /* Wrapper-ът продължава да заема 100% от намаленото налично пространство */
     padding-top: 0px;
     box-sizing: border-box;
     background-color: transparent;
-    z-index: 1; /* Ensure content is on top of the canvas */
-    padding-bottom: 15px; /* Add space at the bottom of the note content area */
+    z-index: 1; /* Гарантираме, че съдържанието е над canvas-а */
+    flex-grow: 1; /* Позволяваме на wrapper-а да се разшири и да запълни свободното място */
 }
 
 .note-content-wrapper > .note-content {
@@ -332,13 +334,13 @@ pre, code {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 10px; /* Разстояние между иконите */
-    position: absolute; /* Позиционираме го абсолютно спрямо .note */
-    bottom: 5px;        /* Позиция от долния край (12px - 10px) */
+    gap: 10px;
+    position: absolute; /* Остава абсолютно позициониран */
+    bottom: 5px;        /* Запазваме позицията отдолу */
     left: 0;
     right: 0;
-    padding-bottom: 2px;
-    /*border-top: 1px solid rgba(0, 0, 0, 0.15);*/
+    height: 30px;       /* Задаваме фиксирана височина на футъра */
+    z-index: 2;         /* Задаваме по-висок z-index, за да е винаги отгоре */
 }
 
 .footer-icon {

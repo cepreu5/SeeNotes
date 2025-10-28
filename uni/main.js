@@ -10,7 +10,7 @@ const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleuse
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const version = '0.9'; // App version
 
-// --- Глобално състояние на приложението --- 
+// --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
 let boardsData = []; // Съхранява данните за бордовете
 let mediaData = []; // Съхранява данните за медия
@@ -35,6 +35,12 @@ let toastTimeout, isShowingToast = false;
 let dbExists = false; // Флаг за съществуването на IndexedDB
 let settingsInitialState = {}; // Запомня състоянието на настройките при отваряне
 let dbSourceGlobal = null; // Запомня откъде е създадена базата
+
+// --- Глобални флагове за състоянието (заместват многократните localStorage.getItem()) ---
+let useGoogleDb = true;
+let useLocalFolder = false;
+let useArhDb = false;
+let useIndexedDb = false;
 let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
@@ -1093,14 +1099,16 @@ async function finalizeDbCreation() {
  * Актуализира иконата и tooltip-а на бутона за режим, за да покаже текущия източник на данни.
  */
 function updateModeButton() {
+    // Тази функция се извиква преди mainLogic, затова трябва да прочете актуалните стойности.
+    const currentUseGoogleDb = localStorage.getItem('useGoogleDb') !== 'false';
+    const currentUseLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
+    const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+
     const modeButton = document.getElementById('mode_button');
     if (!modeButton) return;
 
-    const useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false';
-    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-    const useArhDb = localStorage.getItem('useArhDb') === 'true';
-    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-
+    // Използваме локалните константи, прочетени току-що
     let iconSrc = '';
     let title = '';
 
@@ -1110,28 +1118,39 @@ function updateModeButton() {
     } else if (useLocalFolder) {
         iconSrc = 'Folder.png';
         title = 'Режим: Локална папка';
-    } else if (useGoogleDb) {
+    } else if (currentUseGoogleDb) {
         iconSrc = 'GDrive.png';
         title = 'Режим: Google Drive';
-    } else if (useIndexedDb) {
+    } else if (currentUseIndexedDb) {
         // Случай, когато е избрана само база данни
         iconSrc = 'Database.png';
         title = 'Режим: База данни';
     }
 
-    if (useIndexedDb && (useGoogleDb || useLocalFolder || useArhDb)) {
+    if (currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb)) {
         title += ' + База данни';
     }
 
     let buttonHtml = `<img src="${iconSrc}" alt="${title}" style="width:24px; height:24px;">`;
 
     // Добавяме иконата за база данни, само ако е в комбинация с друг източник
-    if (useIndexedDb && (useGoogleDb || useLocalFolder || useArhDb)) {
+    if (currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb)) {
         buttonHtml += `<img src="Database.png" alt="Database enabled" style="width:20px; height:20px;">`;
     }
 
     modeButton.innerHTML = buttonHtml;
     modeButton.title = title;
+}
+
+/**
+ * Обновява глобалните променливи за режим на работа от localStorage.
+ * Извиква се, за да се синхронизира състоянието на приложението с настройките.
+ */
+function updateGlobalStateFlags() {
+    useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
+    useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    useArhDb = localStorage.getItem('useArhDb') === 'true';
+    useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
 }
 
     /**
@@ -1144,11 +1163,7 @@ function updateModeButton() {
         initializeLoad(); // Resets state and shows the loader screen
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
 
-        // Взимаме актуалните настройки от localStorage
-        const useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
-        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-        const useArhDb = localStorage.getItem('useArhDb') === 'true';
-        const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+        updateGlobalStateFlags(); // Обновяваме глобалните променливи
 
         updateModeButton(); // Актуализираме иконата за режим веднага
 
@@ -1666,6 +1681,108 @@ async function processDirectoryContent(minModificationDate) {
     return updatedCount;
 }
 
+/**
+ * Показва модален прозорец на цял екран за преглед на изображение или видео.
+ * @param {string} src - URL адресът на медийния файл.
+ * @param {boolean} isVideo - True, ако файлът е видео.
+ */
+function showImageVideoOverlay(src, isVideo = false) {
+    const overlay = document.createElement('div');
+    overlay.className = 'fullscreen-preview-overlay';
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
+    mediaElement.src = src;
+    if (isVideo) {
+        mediaElement.controls = true;
+        mediaElement.autoplay = true;
+    }
+    overlay.appendChild(mediaElement);
+
+    const closeButton = document.createElement('button');
+    closeButton.className = 'modal-close';
+    closeButton.innerHTML = '&times;';
+    closeButton.addEventListener('click', () => overlay.remove());
+    overlay.appendChild(closeButton);
+
+    document.body.appendChild(overlay);
+}
+
+/**
+ * Извлича URL за преглед от Google Drive и показва овърлей.
+ * @param {string} fileId - ID на файла в Google Drive.
+ * @param {boolean} isVideo - True, ако файлът е видео.
+ */
+async function showGdrivePreview(fileId, isVideo = false) {
+    if (!fileId) throw new Error("No file ID provided for Google Drive preview.");
+    const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink, webContentLink' });
+    const thumbnailUrl = fileMetadata.result.thumbnailLink;
+    if (thumbnailUrl) {
+        showImageVideoOverlay(thumbnailUrl.replace(/=s\d+/, '=s1600'), isVideo);
+    } else {
+        throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+    }
+}
+
+async function showLocalPreview(folderName, fileName, mode) {
+    const fileHandle = await (await dirHandle.getDirectoryHandle(folderName, { create: false })).getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    showImageVideoOverlay(URL.createObjectURL(file), file.type.startsWith('video'));
+}
+
+/**
+ * Показва преглед на изображение/видео в рамките на самата бележка.
+ * @param {HTMLElement} noteElement - DOM елементът на бележката.
+ * @param {string} fileIdOrPath - ID на файла (Google Drive) или път до файла (локален/архив).
+ * @param {string} sourceMode - 'gdrive', 'local' или 'archive'.
+ * @param {boolean} isVideo - Дали файлът е видео.
+ */
+async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo) {
+    if (!noteElement || noteElement.querySelector('.image-preview-overlay')) return;
+
+    let mediaUrl;
+    const folderName = isVideo ? 'Video' : 'Images';
+
+    try {
+        if (sourceMode === 'gdrive') {
+            const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
+            const thumbnailUrl = fileMetadata.result.thumbnailLink;
+            if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+            mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
+        } else { // 'local' or 'archive'
+            const fileName = fileIdOrPath.split('/').pop();
+            const fileHandle = await (await dirHandle.getDirectoryHandle(folderName, { create: false })).getFileHandle(fileName);
+            const file = await fileHandle.getFile();
+            mediaUrl = URL.createObjectURL(file);
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'image-preview-overlay'; // Този клас вече съществува
+        Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px' });
+
+        const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
+        mediaElement.src = mediaUrl;
+        if (isVideo) mediaElement.controls = true;
+        Object.assign(mediaElement.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
+        overlay.appendChild(mediaElement);
+
+        const closeButton = document.createElement('button');
+        closeButton.className = 'view-button';
+        closeButton.innerHTML = eyeOffIconSvg;
+        Object.assign(closeButton.style, { position: 'absolute', top: '10px', right: '10px' });
+        closeButton.querySelector('svg').style.stroke = 'white';
+        closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
+        overlay.appendChild(closeButton);
+
+        noteElement.appendChild(overlay);
+    } catch (err) {
+        console.error(`Error showing in-note preview:`, err);
+        showToast(_(isVideo ? 'errorVideoPreview' : 'errorImgPreview').replace('{error}', (err.message || err)));
+    }
+}
+
 // =================================================================================
 // V. СЪЗДАВАНЕ И УПРАВЛЕНИЕ НА UI ЕЛЕМЕНТИ
 // =================================================================================
@@ -1740,10 +1857,6 @@ async function processDirectoryContent(minModificationDate) {
         // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
         // Проверяваме дали имаме ID-та, за да търсим прикачени файлове
         if (noteId || noteGdid) {
-            const useArhDb = localStorage.getItem('useArhDb') === 'true';
-            const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-            const useGD = localStorage.getItem('useGoogleDb') === 'true';
-            const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
             let attachments = [];
 
             if (useIndexedDb) {
@@ -1755,7 +1868,7 @@ async function processDirectoryContent(minModificationDate) {
                 }
             } else {
                 if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
-                else if (useLocalFolder || useGD) attachments = mediaData.filter(media => media.noteid === noteGdid);
+                else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
             }
 
             if (attachments.length > 0) {
@@ -2746,6 +2859,7 @@ async function processDirectoryContent(minModificationDate) {
                 // Ако прозорецът е бил отворен принудително, презареждаме данните.
                 if (window.wasOpenedForMissingFolder) {
                     window.wasOpenedForMissingFolder = false; // Нулираме флага
+                    updateGlobalStateFlags(); // Обновяваме флаговете преди да извикаме mainLogic
                     mainLogic(); // Извикваме основната логика отново
                 } else if (hasChanged) {
                     mainLogic(); // Извикваме основната логика отново
@@ -3229,52 +3343,19 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             };
         };
 
-        const showPreview = async (folderName) => {
-            const noteEl = attachmentWrapper.closest('.note');
-            if (!noteEl || noteEl.querySelector('.image-preview-overlay')) return;
-            try {
-                const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink' });
-                const thumbnailUrl = fileMetadata.result.thumbnailLink;
-                if (thumbnailUrl) {
-                    const overlay = document.createElement('div');
-                    overlay.className = 'image-preview-overlay';
-                    Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px' });
-                    overlay.addEventListener('click', () => window.open(link.href, '_blank'));
-                    const img = document.createElement('img');
-                    img.src = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                    Object.assign(img.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
-                    overlay.appendChild(img);
-                    const closeButton = document.createElement('button');
-                    closeButton.className = 'view-button';
-                    closeButton.innerHTML = eyeOffIconSvg;
-                    Object.assign(closeButton.style, { position: 'absolute', top: '10px', right: '10px' });
-                    const svg = closeButton.querySelector('svg');
-                    if (svg) svg.style.stroke = 'white';
-                    closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
-                    overlay.appendChild(closeButton);
-                    noteEl.appendChild(overlay);
-                } else {
-                    showToast(folderName === 'Images' ? _('noImgPreview') : _('noVideoPreview'));
-                }
-            } catch (err) {
-                console.error(`Error fetching ${folderName} preview:`, err);
-                const errorKey = folderName === 'Images' ? 'errorImgPreview' : 'errorVideoPreview';
-                showToast(_(errorKey).replace('{error}', (err.message || err)));
-            }
-        };
-
         switch (attachment.type) {
             case 1: // Image
-                setupLink('Images', 'Images/');
+                setupLink('Images', '');
                 iconDiv.addEventListener('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    showPreview('Images');
+                    const noteElement = e.currentTarget.closest('.note');
+                    showInNotePreview(noteElement, fileId, 'gdrive', false);
                 });
                 attachmentWrapper.appendChild(link);
                 break;
             case 2: // Sound
-                setupLink('Sound', 'Sound/');
+                setupLink('Sound', '');
                 const soundTextContainer = document.createElement('div');
                 soundTextContainer.style.flexGrow = '1';
                 soundTextContainer.style.flexShrink = '1';
@@ -3286,11 +3367,11 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 attachmentWrapper.appendChild(soundTextContainer);
                 break;
             case 3: // Other
-                setupLink('Other', 'Other/');
+                setupLink('Other', '');
                 attachmentWrapper.appendChild(link);
                 break;
             case 4: // Video
-                setupLink('Video', 'Video/');
+                setupLink('Video', '');
                 const videoTextContainer = document.createElement('div');
                 videoTextContainer.style.flexGrow = '1';
                 videoTextContainer.style.flexShrink = '1';
@@ -3302,7 +3383,8 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 iconDiv.addEventListener('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    showPreview('Video');
+                    const noteElement = e.currentTarget.closest('.note');
+                    showInNotePreview(noteElement, fileId, 'gdrive', true);
                 });
                 attachmentWrapper.appendChild(videoTextContainer);
                 break;
@@ -3476,15 +3558,12 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 contentEl.innerHTML = renderNoteContent(displayContent);
             }
         }
-        const useArhDb = localStorage.getItem('useArhDb') === 'true'; // @@ няма нужда да е тук, но да е за всеки случай
-        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-        const useGD = localStorage.getItem('useGoogleDb') === 'true';
-        const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
         let attachments = [];
 
         if (useIndexedDb) {
             // Когато използваме база данни, трябва да знаем как е създадена.
-            const dbNoteIdType = await getConfig('dbNoteIdType') || 'gdid'; // 'gdid' по подразбиране за стари бази
+            // Използваме глобалната променлива, която е заредена в mainLogic
+            const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid'; // 'gdid' е fallback за стари бази
             if (dbNoteIdType === 'id') {
                 attachments = mediaData.filter(media => +media.noteid === +noteID);
             } else { // 'gdid'
@@ -3493,7 +3572,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         } else {
             // Когато четем директно, логиката зависи от текущия режим.
             if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteID);
-            else if (useLocalFolder || useGD) attachments = mediaData.filter(media => media.noteid === noteGdid);
+            else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
         }
 
         if (attachments.length > 0) {
@@ -3509,7 +3588,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
 
-                const isDbOnlyMode = useIndexedDb && !useGD && !useLocalFolder && !useArhDb;
+                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
 
                 if (isDbOnlyMode) {
                     // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
@@ -3562,15 +3641,47 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             if (uniqueTypes.length > 0) {
                 const footerEl = document.createElement('div');
                 footerEl.className = 'note-footer';
-
+ 
                 uniqueTypes.sort((a, b) => a - b).forEach(type => {
                     const iconData = attachmentIcons.find(icon => icon.type === type);
                     if (iconData) {
                         const iconDiv = document.createElement('div');
                         iconDiv.className = 'footer-icon';
-                        iconDiv.innerHTML = iconData.svg;                        
+                        iconDiv.innerHTML = iconData.svg;
                         iconDiv.style.borderRadius = '5px'; // Добавяме заобляне на ъглите
                         iconDiv.style.backgroundColor = noteBgColor;
+ 
+                        // --- ДОБАВЕНА ЛОГИКА ЗА КЛИК ---
+                        // Добавяме preview само за снимки (type 1) и видео (type 4)
+                        if (type === 1 || type === 4) {
+                            iconDiv.style.cursor = 'pointer';
+                            iconDiv.addEventListener('click', async (e) => {
+                                e.stopPropagation();
+ 
+                                // Намираме първия прикачен файл от този тип за дадената бележка
+                                const firstAttachmentOfType = attachments.find(att => att.type === type);
+                                if (!firstAttachmentOfType) return;
+ 
+                                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+                                let sourceMode = 'gdrive'; // По подразбиране
+ 
+                                if (isDbOnlyMode) {
+                                    if (dbSourceGlobal === 3) sourceMode = 'archive';
+                                    else if (dbSourceGlobal === 2) sourceMode = 'local';
+                                } else {
+                                    if (useArhDb) sourceMode = 'archive';
+                                    else if (useLocalFolder) sourceMode = 'local';
+                                }
+ 
+                                // Извикваме новата функция за преглед в бележката
+                                const noteElement = e.currentTarget.closest('.note');
+                                const fileIdentifier = sourceMode === 'gdrive' ? firstAttachmentOfType.pathGD : firstAttachmentOfType.path;
+                                const isVideo = type === 4;
+                                await showInNotePreview(noteElement, fileIdentifier, sourceMode, isVideo);
+                            });
+                        }
+                        // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
+ 
                         footerEl.appendChild(iconDiv);
                     }
                 });
@@ -3802,7 +3913,6 @@ async function renderUI({ boardParseError }) {
     if (oldBoardsNote) {
         oldBoardsNote.remove();
     }
-
     const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData.rawData)));
     let notesCount = 0;
     noteElements.forEach(noteEl => {
