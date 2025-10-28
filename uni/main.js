@@ -1783,6 +1783,22 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
     }
 }
 
+/**
+ * Добавя event listener към елемент за показване на преглед в бележката.
+ * @param {HTMLElement} element - DOM елементът, към който да се добави listener (напр. икона).
+ * @param {string} fileIdentifier - ID на файла (Google Drive) или път до файла (локален/архив).
+ * @param {string} sourceMode - 'gdrive', 'local' или 'archive'.
+ * @param {boolean} isVideo - Дали файлът е видео.
+ */
+function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) {
+    element.style.cursor = 'pointer';
+    element.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const noteElement = e.currentTarget.closest('.note');
+        showInNotePreview(noteElement, fileIdentifier, sourceMode, isVideo);
+    });
+}
 // =================================================================================
 // V. СЪЗДАВАНЕ И УПРАВЛЕНИЕ НА UI ЕЛЕМЕНТИ
 // =================================================================================
@@ -3345,13 +3361,8 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
 
         switch (attachment.type) {
             case 1: // Image
-                setupLink('Images', '');
-                iconDiv.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const noteElement = e.currentTarget.closest('.note');
-                    showInNotePreview(noteElement, fileId, 'gdrive', false);
-                });
+                setupLink('Images', ''); // Продължаваме да създаваме линка за отваряне в нов таб
+                addInNotePreviewListener(iconDiv, fileId, 'gdrive', false);
                 attachmentWrapper.appendChild(link);
                 break;
             case 2: // Sound
@@ -3380,12 +3391,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 const videoLine2 = document.createElement('div');
                 videoLine2.textContent = attachment.description || '';
                 videoTextContainer.appendChild(videoLine2);
-                iconDiv.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const noteElement = e.currentTarget.closest('.note');
-                    showInNotePreview(noteElement, fileId, 'gdrive', true);
-                });
+                addInNotePreviewListener(iconDiv, fileId, 'gdrive', true);
                 attachmentWrapper.appendChild(videoTextContainer);
                 break;
             case 5: // Location
@@ -3651,36 +3657,27 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                         iconDiv.style.borderRadius = '5px'; // Добавяме заобляне на ъглите
                         iconDiv.style.backgroundColor = noteBgColor;
  
-                        // --- ДОБАВЕНА ЛОГИКА ЗА КЛИК ---
-                        // Добавяме preview само за снимки (type 1) и видео (type 4)
+                        // Добавяме preview само за снимки (type 1) и видео (type 4),
+                        // и само ако текущият режим на работа е Google Drive.
                         if (type === 1 || type === 4) {
-                            iconDiv.style.cursor = 'pointer';
-                            iconDiv.addEventListener('click', async (e) => {
-                                e.stopPropagation();
- 
-                                // Намираме първия прикачен файл от този тип за дадената бележка
-                                const firstAttachmentOfType = attachments.find(att => att.type === type);
-                                if (!firstAttachmentOfType) return;
- 
-                                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+                            const firstAttachmentOfType = attachments.find(att => att.type === type);
+                            if (firstAttachmentOfType) {
                                 let sourceMode = 'gdrive'; // По подразбиране
- 
-                                if (isDbOnlyMode) {
-                                    if (dbSourceGlobal === 3) sourceMode = 'archive';
-                                    else if (dbSourceGlobal === 2) sourceMode = 'local';
-                                } else {
-                                    if (useArhDb) sourceMode = 'archive';
-                                    else if (useLocalFolder) sourceMode = 'local';
+                                if (useArhDb) sourceMode = 'archive'; // Ако е архив, източникът е архив
+                                else if (useLocalFolder) sourceMode = 'local'; // Ако е локална папка, източникът е локален
+                                else if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb) { // Ако е само IndexedDB
+                                    if (dbSourceGlobal === 3) sourceMode = 'archive'; // И базата е от архив
+                                    else if (dbSourceGlobal === 2) sourceMode = 'local'; // Или базата е от локална папка
+                                    // Ако dbSourceGlobal е 1 (Google Drive), sourceMode остава 'gdrive'
                                 }
- 
-                                // Извикваме новата функция за преглед в бележката
-                                const noteElement = e.currentTarget.closest('.note');
-                                const fileIdentifier = sourceMode === 'gdrive' ? firstAttachmentOfType.pathGD : firstAttachmentOfType.path;
-                                const isVideo = type === 4;
-                                await showInNotePreview(noteElement, fileIdentifier, sourceMode, isVideo);
-                            });
+
+                                if (sourceMode === 'gdrive') { // Активираме превюто само ако източникът е Google Drive
+                                    const fileIdentifier = firstAttachmentOfType.pathGD; // За GDrive винаги използваме pathGD
+                                    const isVideo = type === 4;
+                                    addInNotePreviewListener(iconDiv, fileIdentifier, sourceMode, isVideo);
+                                }
+                            }
                         }
-                        // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
  
                         footerEl.appendChild(iconDiv);
                     }
