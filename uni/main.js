@@ -22,6 +22,7 @@ let currentCalendarDate = new Date();
 let authToken = null;
 let tokenClient;
 let dirHandle = null; // За локален достъп до файловата система
+let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 
 // --- Състояние на търсенето ---
 let searchMode = 'title';
@@ -326,6 +327,17 @@ const translations = {
 
 // --- Основна стартова функция ---
 async function startApp() {
+    // --- Задаване на настройки по подразбиране при първо стартиране ---
+    // Ако никога не са задавани настройки за източник на данни,
+    // избираме Google Drive + База данни по подразбиране.
+    if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
+        localStorage.setItem('useGoogleDb', 'true');
+        localStorage.setItem('useIndexedDb', 'true');
+    }
+
+    // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
+    updateGlobalStateFlags();
+
     // Първо инициализираме UI, за да се покаже веднага
     document.body.style.display = 'block';
     initApp(); // Инициализира UI елементите и event listeners
@@ -933,8 +945,9 @@ function handleSignoutClick() {
         const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
         if (!useIndexedDb) {
             console.log("Skipping Google Drive sync because IndexedDB is disabled for this mode.");
-            return;
+            return 0;
         }
+
         let updatedFilesCount = 0;
         let lastSyncTimestamp = null;
         const updateOnly = localStorage.getItem('updateFromGoogleDrive') !== 'false';
@@ -956,24 +969,27 @@ function handleSignoutClick() {
         const folderId = await getFolderID();
         if (!folderId) {
             showToast(_('errorFolderNotFound'));
-            return;
+            return 0;
         }
-        const syncFile = async (filename, storeName) => {
+        const syncFile = async (filename, storeName, isNote = false) => {
             loaderText.textContent = `Проверка на ${filename}...`;
             const files = await fetchFiles(filename, folderId, null, modifiedSince);
             if (files.length > 0) {
                 updatedFilesCount += files.length;
                 console.log(`Found ${files.length} updated '${filename}' file(s).`);
-                const parsedData = await parseFileResults(files, filename);
-                if (parsedData.data.length > 0) {
+                const { data } = await parseFileResults(files, filename);
+                if (data.length > 0) {
                     loaderText.textContent = `Записване на промените от ${filename}...`;
-                    await bulkPutDB(storeName, parsedData.data, true); // Incremental update
+                    await bulkPutDB(storeName, data, true);
+                    if (isNote) {
+                        data.forEach(note => updatedNoteGdims.push(note.gdid));
+                    }
                 }
             }
         };
-        await syncFile('board.txt', BOARD_STORE_NAME);
-        await syncFile('media.txt', MEDIA_STORE_NAME);
-        await syncFile('note.txt', NOTE_STORE_NAME);
+        await syncFile('board.txt', BOARD_STORE_NAME, false);
+        await syncFile('media.txt', MEDIA_STORE_NAME, false);
+        await syncFile('note.txt', NOTE_STORE_NAME, true); // Подаваме флаг, че това са бележки
         await saveConfig('lastGDTimestamp', Date.now());
         loaderText.textContent = 'Синхронизацията приключи. Зареждане на данни...';
         console.log('Google Drive sync finished.');
@@ -1039,6 +1055,36 @@ async function handleUserMismatch(storedUser) {
 }
 
 /**
+ * Активира контролите в настройките, които може да са били деактивирани
+ * от `handleUserMismatch`. Извиква се след изтриване на базата данни.
+ */
+function enableSettingsControls() {
+    const settingsModal = document.getElementById('settings-modal');
+    if (!settingsModal) return;
+
+    const controlsToEnable = [
+        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
+        'create-db-btn', 'select-folder-btn', 'select-arh-btn'
+    ];
+
+    controlsToEnable.forEach(id => {
+        const el = settingsModal.querySelector(`#${id}`);
+        if (el) {
+            el.disabled = false;
+        }
+    });
+
+    // Активираме и акордеона за разширени настройки
+    const accordionHeader = settingsModal.querySelector('.accordion-header');
+    if (accordionHeader) {
+        accordionHeader.style.pointerEvents = 'auto';
+        accordionHeader.style.opacity = '1';
+    }
+
+    console.log("Settings controls have been re-enabled after DB deletion.");
+}
+
+/**
  * Създава или пресъздава цялата база данни от данните, заредени в паметта.
  * @returns {Promise<boolean>} Връща true при успех и false при грешка.
  */
@@ -1051,9 +1097,6 @@ async function createDatabaseFromMemory() {
         await bulkPutDB(BOARD_STORE_NAME, boardsData);
         await bulkPutDB(MEDIA_STORE_NAME, mediaData);
         await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
-        const now = Date.now();
-        await saveConfig('lastGDTimestamp', now);
-        await saveConfig('lastLocalTimestamp', now);
         const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
         if (currentUserEmail) {
             await saveConfig('userEmail', currentUserEmail);
@@ -1070,6 +1113,15 @@ async function createDatabaseFromMemory() {
         let dbSource = 1; // Google Drive by default
         if (useArh) dbSource = 3; // Archive
         else if (useLocal) dbSource = 2; // Local Folder
+
+        // Запазваме timestamp само за източника, от който създаваме базата.
+        // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
+        const now = Date.now();
+        if (dbSource === 1) { // Google Drive
+            await saveConfig('lastGDTimestamp', now);
+        } else if (dbSource === 2) { // Local Folder
+            await saveConfig('lastLocalTimestamp', now);
+        }
 
         await saveConfig('dbSource', dbSource);
 
@@ -1160,11 +1212,33 @@ function updateGlobalStateFlags() {
      */
     async function mainLogic() {
         dbSourceGlobal = null; // Нулираме глобалните променливи
+        updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
+        // Винаги обновяваме глобалните флагове в началото на mainLogic,
+        // за да сме сигурни, че работим с актуалните настройки.
+        updateGlobalStateFlags();
+        // Винаги нулираме състоянието на контролите в настройките при презареждане.
+        // Ако има нужда, userCheck() ще ги деактивира отново.
+        enableSettingsControls();
+
         dbNoteIdTypeGlobal = null;
         initializeLoad(); // Resets state and shows the loader screen
-        const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
 
-        updateGlobalStateFlags(); // Обновяваме глобалните променливи
+        // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
+        // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
+        const tokenData = checkAuth();
+        if (!tokenData) {
+            loaderContainer.style.display = 'none';
+            return; // Прекратяваме, checkAuth вече е пренасочил.
+        }
+        authToken = tokenData;
+
+        // Проверяваме за съвпадение на потребителя, ако има локална база.
+        // Тази функция може да промени настройките в localStorage.
+        await userCheck();
+        // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
+        updateGlobalStateFlags();
+
+        const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
 
         updateModeButton(); // Актуализираме иконата за режим веднага
 
@@ -1229,17 +1303,6 @@ function updateGlobalStateFlags() {
             return; // Прекратяваме изпълнението
         }
         try {
-            // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ ---
-            // Винаги проверяваме дали потребителят е логнат, независимо от режима.
-            const tokenData = checkAuth();
-            if (!tokenData) {
-                // checkAuth вече е пренасочил към login.html, спираме изпълнението.
-                loaderContainer.style.display = 'none';
-                return;
-            }
-            authToken = tokenData;
-            await userCheck(); // Проверяваме за съответствие на потребителя, ако има база данни.
-
             // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
             // Зареждаме API-то само ако ще работим с Google Drive.
             if (useGoogleDb) {
@@ -1362,21 +1425,25 @@ function updateGlobalStateFlags() {
                         // Синхронизираме от източника, след което зареждаме от базата
                         console.log("Syncing from source (sync is enabled).");
                         if (useGoogleDb) {
-                            console.log("Sync source: Google Drive");
                             if (loaderTitle) loaderTitle.textContent = "Google Drive Sync";
                             const updatedCount = await runGoogleDriveSync();
-                            const message = updatedCount > 0
-                                ? _('gdriveUpdatesFound').replace('{count}', updatedCount)
-                                : _('gdriveNoUpdates');
-                            showToast(message, 10000);
+                            showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 10000);
                         } else if (useLocalFolder) {
-                            console.log("Sync source: Local Folder");
                             if (loaderTitle) loaderTitle.textContent = "Local Folder Sync";
-                            await runLocalSync();
+                            const updatedCount = await runLocalSync();
+                            showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 10000);
                         }
-                        loaderText.textContent = "Fetching updated data from DB...";
+
+                        // След синхронизация, винаги зареждаме ВСИЧКИ данни от базата
                         await fetchAllDataLocal();
+
+                        // Създаваме UI с всички данни
                         await renderUI({ boardParseError: false });
+
+                        // Ако има обновени бележки, автоматично филтрираме по тях
+                        if (updatedNoteGdims.length > 0) {
+                            filterNotesByBoard('new-updates');
+                        }
                     // }
                 }
             }
@@ -1385,7 +1452,11 @@ function updateGlobalStateFlags() {
             showToast(_('errorProcessingFiles'));
             loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
         } finally {
+            // Изчистваме текстовете в лоудъра, преди да го скрием
+            const loaderTitle = document.getElementById('loader-title');
+            if (loaderTitle) loaderTitle.textContent = '';
             loaderText.textContent = ''; // Изчистваме текста за прогреса
+
             loaderContainer.style.display = 'none';
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
@@ -1498,14 +1569,14 @@ async function runLocalSync() {
     const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
     if (!useIndexedDb) {
         console.log("Skipping local sync because IndexedDB is disabled for this mode.");
-        return;
+        return 0;
     }
 
     const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
     const updateDate = lastLocalTimestamp ? new Date(lastLocalTimestamp) : null;
     let updatedCount = 0;
     const handle = await getDirectoryHandle();
-    if (!handle) return;
+    if (!handle) return 0;
 
     loaderText.textContent = updateDate ? `Updating files since ${updateDate.toLocaleString()}...` : "Performing full initial sync...";
 
@@ -1524,6 +1595,7 @@ async function runLocalSync() {
             : _('localNoUpdates');
         showToast(message, 3000);
     }
+    return updatedCount;
 }
 
 /**
@@ -1681,6 +1753,8 @@ async function processDirectoryContent(minModificationDate) {
                         stores[MEDIA_STORE_NAME].push(fileObject);
                     } else if (lowerCaseName.includes('note')) {
                         stores[NOTE_STORE_NAME].push(fileObject);
+                        // Попълваме масива с обновените бележки
+                        updatedNoteGdims.push(fileObject.gdid);
                     }
                 }
             }
@@ -2064,9 +2138,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
     function filterNotesByBoard(boardId) {
         // --- Проверка за съществуващ борд ---
-        // Ако boardId не е специален изглед ('all', 'calendar', 'reminder')
+        // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
         // и не съществува в boardsData, превключваме към 'all'.
-        const specialBoards = ['all', 'calendar', 'reminder'];
+        const specialBoards = ['all', 'calendar', 'reminder', 'new-updates'];
         if (!specialBoards.includes(boardId)) {
             const boardExists = boardsData.some(b => b.gdid === boardId);
             if (!boardExists) {
@@ -2093,6 +2167,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // Update search box placeholder based on the selected board
         if (boardId === 'reminder') {
             searchInput.placeholder = `[${_('reminder')}]: ${_('searchPlaceholder')}`;
+        } else if (boardId === 'new-updates') {
+            searchInput.placeholder = `[Нови]: ${_('searchPlaceholder')}`;
         } else if (boardId !== 'all' && boardId !== 'calendar') {
             const board = boardsData.find(b => b.gdid === boardId);
             if (board) {
@@ -2127,6 +2203,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             scrollTopBtn.innerHTML = arrowSvg;
         }  else if (boardId === 'reminder') {
             scrollTopBtn.innerHTML = _('reminder') + " " + arrowSvg;
+        } else if (boardId === 'new-updates') {
+            scrollTopBtn.innerHTML = "Нови " + arrowSvg;
         } else {
             const board = boardsData.find(b => b.gdid === boardId);
             if (board) {
@@ -2180,6 +2258,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
             const isVisibleByBoard = (currentBoardFilter === 'all') ||
                                      (currentBoardFilter === 'reminder' && data.timer && data.timer !== 0) ||
+                                     (currentBoardFilter === 'new-updates' && updatedNoteGdims.includes(data.gdid)) ||
                                      (data.boardid === currentBoardFilter);
 
             const isVisibleBySearch = (() => {
@@ -2481,6 +2560,17 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         calendarLink.dataset.boardid = 'calendar';
         calendarLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('calendar'); });
         allButtonLinks.push(calendarLink);
+
+        // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
+        if (updatedNoteGdims.length > 0) {
+            const newUpdatesLink = document.createElement('span');
+            newUpdatesLink.textContent = `Нови (${updatedNoteGdims.length})`;
+            newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
+            newUpdatesLink.dataset.boardid = 'new-updates';
+            newUpdatesLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('new-updates'); });
+            allButtonLinks.push(newUpdatesLink);
+        }
+
         const reminderLink = document.createElement('span');
         reminderLink.textContent = _('reminder');
         reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
@@ -2867,6 +2957,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                         const arhFolderNameDisplay = document.getElementById('arh-folder-name');
                         if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
                         if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
+                        dbExists = false; // Актуализираме глобалния флаг
+                        enableSettingsControls(); // Активираме контролите
                         dirHandle = null; // Нулираме и handle-a в паметта
                     } else {
                         // Потребителят иска да изтрие само данните, но да запази настройките
