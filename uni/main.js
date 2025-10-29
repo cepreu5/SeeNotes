@@ -2154,24 +2154,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
      * @param {Array<Object>} visibleNotes - Масив от обекти, съдържащи {element, numord}.
      */
     function sortAndReorderNotes(visibleNotes) {
-        // Сортираме видимите бележки по numord
-        visibleNotes.sort((a, b) => {
-            const numordA = (a.numord !== undefined && a.numord !== null) ? a.numord : Infinity;
-            const numordB = (b.numord !== undefined && b.numord !== null) ? b.numord : Infinity;
-            return numordA - numordB;
-        });
-
-        // Подреждаме елементите в DOM според сортирания ред
-        // Започваме отзад-напред, за да вмъкваме в началото, което е по-ефективно
-        for (let i = visibleNotes.length - 1; i >= 0; i--) {
-            notesContainer.prepend(visibleNotes[i].element);
-        }
-
-        // Връщаме boards-note винаги най-отгоре в DOM дървото на контейнера
-        const boardsNote = document.querySelector('header .boards-note');
-        if (boardsNote) {
-            document.querySelector('header').appendChild(boardsNote);
-        }
+        // Тази функция вече е празна, логиката е преместена в applyFilters
     }
 
     function applySearchFilter() {
@@ -2181,7 +2164,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
     function applyFilters() {
         const searchTerm = searchBox.value.toLowerCase();
         const notes = Array.from(notesContainer.getElementsByClassName('note'));
-        const visibleNotes = [];
 
         let visibleCount = 0;
 
@@ -2212,18 +2194,71 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             })();
 
             if (isVisibleByBoard && isVisibleBySearch) {
-                visibleNotes.push({ element: note, numord: data.numord });
                 visibleCount++;
-                note.style.display = 'flex'; // Показваме го временно, за да се избегне "премигване"
+                note.style.display = 'flex';
             } else {
                 note.style.display = 'none';
             }
         }
 
-        // Сортираме само ако опцията е включена
+        // --- НОВА ЛОГИКА ЗА СОРТИРАНЕ ---
         if (localStorage.getItem('enableNoteSorting') === 'true') {
-            sortAndReorderNotes(visibleNotes);
+            const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note)[style*="display: flex"]'));
+            const sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
+            const sortInReverse = localStorage.getItem('sortInReverse') === 'true';
+            const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
+
+            visibleNotes.sort((noteA, noteB) => {
+                const dataA = JSON.parse(noteA.dataset.extraInfo || '{}');
+                const dataB = JSON.parse(noteB.dataset.extraInfo || '{}');
+
+                // 1. Приоритет за напомнянията
+                if (sortRemindersTop) {
+                    const isReminderA = dataA.timer && dataA.timer !== 0;
+                    const isReminderB = dataB.timer && dataB.timer !== 0;
+                    if (isReminderA && !isReminderB) return -1;
+                    if (!isReminderA && isReminderB) return 1;
+                }
+
+                // 2. Основно сортиране
+                let valA, valB;
+                if (sortCriteria === 'alpha') {
+                    valA = noteA.querySelector('h3')?.textContent.trim().toLowerCase() || '';
+                    valB = noteB.querySelector('h3')?.textContent.trim().toLowerCase() || '';
+                } else {
+                    valA = dataA[sortCriteria];
+                    valB = dataB[sortCriteria];
+                }
+
+                // Обработка на null/undefined стойности, за да са винаги накрая
+                const aExists = valA !== null && valA !== undefined && valA !== '';
+                const bExists = valB !== null && valB !== undefined && valB !== '';
+
+                if (!aExists && bExists) return 1;
+                if (aExists && !bExists) return -1;
+                if (!aExists && !bExists) return 0;
+
+                // Сравнение
+                if (valA < valB) return -1;
+                if (valA > valB) return 1;
+                return 0;
+            });
+
+            // 3. Обръщане на реда
+            if (sortInReverse) {
+                visibleNotes.reverse();
+            }
+
+            // Пренареждане в DOM
+            visibleNotes.forEach(note => notesContainer.appendChild(note));
         }
+
+        // Връщаме boards-note винаги най-отгоре
+        const boardsNote = document.querySelector('.boards-note');
+        if (boardsNote) {
+            document.querySelector('header').appendChild(boardsNote);
+        }
+
         const noteCounter = document.getElementById('note-counter');
         if (noteCounter) {
             noteCounter.textContent = visibleCount;
@@ -2636,6 +2671,38 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 // Animate arrow rotation
                 sortingArrow.style.transition = 'transform 0.3s ease';
                 sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+            });
+
+            // Sorting options
+            const sortCriteriaRadios = document.querySelectorAll('input[name="sort-criteria"]');
+            const savedSortCriteria = localStorage.getItem('sortCriteria') || 'numord';
+            sortCriteriaRadios.forEach(radio => {
+                if (radio.value === savedSortCriteria) {
+                    radio.checked = true;
+                }
+                radio.addEventListener('change', () => {
+                    if (radio.checked) {
+                        localStorage.setItem('sortCriteria', radio.value);
+                        applyFilters();
+                        showToast(_('settingSaved'), 2000);
+                    }
+                });
+            });
+
+            const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
+            sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
+            sortReverseCheckbox.addEventListener('change', () => {
+                localStorage.setItem('sortInReverse', sortReverseCheckbox.checked);
+                applyFilters();
+                showToast(_('settingSaved'), 2000);
+            });
+
+            const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
+            sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
+            sortRemindersTopCheckbox.addEventListener('change', () => {
+                localStorage.setItem('sortRemindersTop', sortRemindersTopCheckbox.checked);
+                applyFilters();
+                showToast(_('settingSaved'), 2000);
             });
 
             // Start Board
