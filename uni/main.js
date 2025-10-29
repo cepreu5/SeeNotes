@@ -2208,6 +2208,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             const sortInReverse = localStorage.getItem('sortInReverse') === 'true';
             const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
 
+            const sortOrder = sortInReverse ? -1 : 1;
+
             visibleNotes.sort((noteA, noteB) => {
                 const dataA = JSON.parse(noteA.dataset.extraInfo || '{}');
                 const dataB = JSON.parse(noteB.dataset.extraInfo || '{}');
@@ -2225,6 +2227,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 if (sortCriteria === 'alpha') {
                     valA = noteA.querySelector('h3')?.textContent.trim().toLowerCase() || '';
                     valB = noteB.querySelector('h3')?.textContent.trim().toLowerCase() || '';
+                } else if (['date', 'datemod', 'calendarDate'].includes(sortCriteria)) {
+                    valA = dataA[sortCriteria] ? new Date(dataA[sortCriteria]) : null;
+                    valB = dataB[sortCriteria] ? new Date(dataB[sortCriteria]) : null;
                 } else {
                     valA = dataA[sortCriteria];
                     valB = dataB[sortCriteria];
@@ -2238,16 +2243,11 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 if (aExists && !bExists) return -1;
                 if (!aExists && !bExists) return 0;
 
-                // Сравнение
-                if (valA < valB) return -1;
-                if (valA > valB) return 1;
-                return 0;
+                // Сравнение с отчитане на посоката
+                if (valA < valB) return -1 * sortOrder;
+                if (valA > valB) return 1 * sortOrder;
+                return 0; // Елементите са равни
             });
-
-            // 3. Обръщане на реда
-            if (sortInReverse) {
-                visibleNotes.reverse();
-            }
 
             // Пренареждане в DOM
             visibleNotes.forEach(note => notesContainer.appendChild(note));
