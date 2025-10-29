@@ -1229,26 +1229,28 @@ function updateGlobalStateFlags() {
             return; // Прекратяваме изпълнението
         }
         try {
-            // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE API ---
+            // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ ---
+            // Винаги проверяваме дали потребителят е логнат, независимо от режима.
+            const tokenData = checkAuth();
+            if (!tokenData) {
+                // checkAuth вече е пренасочил към login.html, спираме изпълнението.
+                loaderContainer.style.display = 'none';
+                return;
+            }
+            authToken = tokenData;
+            await userCheck(); // Проверяваме за съответствие на потребителя, ако има база данни.
+
+            // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
             // Зареждаме API-то само ако ще работим с Google Drive.
             if (useGoogleDb) {
-                const tokenData = checkAuth();
-                if (!tokenData) {
-                    // checkAuth вече е пренасочил към login.html, спираме изпълнението.
-                    loaderContainer.style.display = 'none';
-                    return;
-                }
                 try {
                     await loadScript('https://apis.google.com/js/api.js');
                 } catch (error) {
                     throw new Error(_('errorGoogleLibs'));
                 }
-                authToken = tokenData;
                 await new Promise(resolve => gapi.load('client', resolve));
                 await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
                 gapi.client.setToken({ access_token: authToken.access_token });
-                // Проверяваме за съответствие на потребителя само ако използваме Google Drive
-                await userCheck();
             }
 
             if (useArhDb) {
@@ -2617,24 +2619,23 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             // Order checkbox
             orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
             const sortingOptionsSection = document.getElementById('sorting-options-section');
-
-            // Function to toggle visibility of the sorting options
-            const toggleSortingOptions = () => {
-                if (orderCheckbox.checked) {
-                    sortingOptionsSection.style.display = 'block';
-                } else {
-                    sortingOptionsSection.style.display = 'none';
-                }
-            };
-
-            // Initial check
-            toggleSortingOptions();
-
+            const sortingArrow = document.getElementById('sorting-arrow');
+ 
+            // Event listener for the checkbox itself
             orderCheckbox.addEventListener('change', () => {
                 localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
-                toggleSortingOptions();
                 applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
                 showToast(_('settingSaved'), 2000);
+            });
+ 
+            // Event listener for the arrow ONLY
+            sortingArrow.addEventListener('click', () => {
+                const isActive = sortingOptionsSection.style.display === 'block';
+                sortingOptionsSection.style.display = isActive ? 'none' : 'block';
+ 
+                // Animate arrow rotation
+                sortingArrow.style.transition = 'transform 0.3s ease';
+                sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
             });
 
             // Start Board

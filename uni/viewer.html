@@ -161,11 +161,13 @@
                     <input type="checkbox" id="show-datemod-checkbox" class="settings-checkbox">
                 </div>
 
-                <div class="zoom-control-wrapper" style="margin-top: 10px;">
-                    <label for="order-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="orderLabel">
-                        Подреждане:</label>
+                <div class="zoom-control-wrapper" style="margin-top: 5px;">
+                    <label for="order-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">
+                        Подреждане на бележките:</label>
                     <input type="checkbox" id="order-checkbox" class="settings-checkbox">
+                    <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
                 </div>
+                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px; border: none; border-top: 1px solid #000;">
                 <!-- Скрита секция за опции за сортиране -->
                 <div id="sorting-options-section" style="display: none;">
                     <!-- Нов, опростен flex контейнер за опциите за сортиране -->
@@ -182,9 +184,8 @@
                     </div>
                 </div>
 
-
                 <span hiden>
-                    <div class="settings-section" id="db-section-wrapper" style="margin-top: 15px; border-top: 1px solid #404040; padding-top: 15px;">
+                    <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
                         <label style="font-weight: bold; display: block; margin-bottom: 10px;" data-key="dataManagementTitle">Четене на данни</label>
                         <div class="zoom-control-wrapper" style="margin-top: 0px;" id="google-db-wrapper">
                             <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
@@ -218,7 +219,7 @@
                         <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
                             <span data-key="advancedSettings">Разширени настройки</span>
                             <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
-                            <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px; border: none; border-top: 1px solid #020202;">
+                            <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px; border: none; border-top: 1px solid #000;">
                         </div>
                         <div class="accordion-content">
                             <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
