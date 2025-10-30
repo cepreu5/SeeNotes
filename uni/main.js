@@ -222,6 +222,8 @@ const translations = {
             initialDataLoad: 'Initial data load...',
             creatingDbFromArh: 'Creating database from archive data...',
             errorReadArh: 'Error reading from archive.',
+            syncTitleGD: 'Sync with Google Drive',
+            syncTitleLocal: 'Sync with Local Folder',
             errorArhFolderNotSelected: 'Please select an archive folder from settings.'
         },
         bg: {
@@ -367,6 +369,8 @@ const translations = {
             initialDataLoad: 'Първоначално зареждане на данни...',
             creatingDbFromArh: 'Създаване на база данни от архива...',
             errorReadArh: 'Грешка при четене от архива.',
+            syncTitleGD: 'Синхронизиране с Google Drive',
+            syncTitleLocal: 'Синхронизиране с Локална папка',
             errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.'
         }
     };
@@ -2543,8 +2547,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         allNotesData = [];
         notesContainer.innerHTML = '';
         loaderContainer.style.display = 'block';
-        currentBoardFilter = localStorage.getItem('startBoard') || 'all';
-        currentBoardFilter = 'all';
+        currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
         const popup = document.getElementById('board-filter-popup');
         if (popup) {
             popup.classList.remove('visible');
@@ -2870,8 +2873,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
             // Start Board
             let startBoardSelect; // Declare here to be accessible in the whole function
-            startBoardSelect = document.getElementById('start-board-select');
-            startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
+            startBoardSelect = document.getElementById('start-board-select'); 
+            startBoardSelect.value = localStorage.getItem('startBoard') || 'Main';
             startBoardSelect.addEventListener('change', () => {
                 localStorage.setItem('startBoard', startBoardSelect.value);
                 showToast(_('settingSaved'), 2000);
@@ -3031,7 +3034,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                         if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
                         if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
                         dbExists = false; // Актуализираме глобалния флаг
-                        enableSettingsControls(); // Активираме контролите
                         dirHandle = null; // Нулираме и handle-a в паметта
                     } else {
                         // Потребителят иска да изтрие само данните, но да запази настройките
@@ -3124,6 +3126,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
                 document.getElementById('settings-modal').classList.remove('visible');
 
+                // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
+                updateModeButton();
+
                 const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
 
                 // Ако прозорецът е бил отворен принудително, презареждаме данните.
@@ -3177,14 +3182,19 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
      */
     function populateStartBoardSelect() {
         const startBoardSelect = document.getElementById('start-board-select');
-        const savedValue = localStorage.getItem('startBoard') || 'all'; // Взимаме запазената стойност или 'all' по подразбиране
+        const savedValue = localStorage.getItem('startBoard') || 'Main'; // Взимаме запазената стойност или 'Main' по подразбиране
         // Изчистваме напълно списъка, преди да го попълним наново
         startBoardSelect.innerHTML = `
             <option value="all">${_('allBoards')}</option>
             <option value="calendar">${_('calendar')}</option>
             <option value="reminder">${_('reminder')}</option>
         `;
-        boardsData.forEach(board => { if (board.gdid && board.title) startBoardSelect.add(new Option(board.title, board.gdid)); });
+        boardsData.forEach(board => {
+            if (board.title) {
+                const optionValue = board.title === 'Main' ? 'Main' : board.gdid;
+                if (optionValue) startBoardSelect.add(new Option(board.title, optionValue));
+            }
+        });
         startBoardSelect.value = savedValue; // Задаваме правилната стойност
     }
 
@@ -4190,7 +4200,18 @@ async function renderUI({ boardParseError }) {
     if (boardsNoteElement) {
         document.querySelector('header').appendChild(boardsNoteElement);
     }
-    filterNotesByBoard(localStorage.getItem('startBoard') || 'all');
+    // Проверяваме дали трябва да филтрираме по 'Main' и намираме неговия ID
+    if (currentBoardFilter === 'Main') {
+        const mainBoard = boardsData.find(b => b.title === 'Main');
+        if (mainBoard) {
+            currentBoardFilter = mainBoard.gdid; // Сменяме 'Main' с реалния gdid
+        } else {
+            currentBoardFilter = 'all'; // Ако по някаква причина няма борд 'Main', показваме всички
+        }
+    }
+    // Извикваме филтъра с вече актуализираната стойност на currentBoardFilter
+    filterNotesByBoard(currentBoardFilter);
+
     const counterEl = document.getElementById('note-counter');
     if (counterEl) {
         counterEl.textContent = notesCount;
