@@ -218,6 +218,10 @@ const translations = {
             errorDbDeletionBlocked: 'Database deletion is blocked. Please close other tabs with this app open.',
             errorFetchingFolderIds: 'Error fetching folder IDs.',
             errorFetchingFileId: 'Error fetching file ID for {fileName}.',
+            fetchingFromDb: 'Fetching data from the database...',
+            initialDataLoad: 'Initial data load...',
+            creatingDbFromArh: 'Creating database from archive data...',
+            errorReadArh: 'Error reading from archive.',
             errorArhFolderNotSelected: 'Please select an archive folder from settings.'
         },
         bg: {
@@ -359,6 +363,10 @@ const translations = {
             errorDbDeletionBlocked: 'Изтриването на базата данни е блокирано. Моля, затворете другите отворени табове с това приложение.',
             errorFetchingFolderIds: 'Грешка при извличане на ID-та на папки.',
             errorFetchingFileId: 'Грешка при извличане на ID на файл за {fileName}.',
+            fetchingFromDb: 'Зареждане от базата данни...',
+            initialDataLoad: 'Първоначално зареждане на данни...',
+            creatingDbFromArh: 'Създаване на база данни от архива...',
+            errorReadArh: 'Грешка при четене от архива.',
             errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.'
         }
     };
