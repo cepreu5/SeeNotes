@@ -9,6 +9,7 @@ let debug = true; // Глобален флаг за дебъг режим
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+const CLIENT_SECRET = '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'; // ВНИМАНИЕ: Риск за сигурността в клиентски код!
 const version = '0.9'; // App version
 
 // --- Глобално състояние на приложението ---
@@ -893,20 +894,67 @@ startApp();
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
-function checkAuth() {
+/**
+ * Подновява access token-а, използвайки refresh token.
+ * @returns {Promise<object>} Нов обект с данни за автентикация.
+ */
+async function refreshToken() {
+    const storedTokenString = sessionStorage.getItem('google_auth_token');
+    if (!storedTokenString) throw new Error('No token found for refresh.');
+
+    const tokenData = JSON.parse(storedTokenString);
+    const currentRefreshToken = tokenData.refresh_token;
+
+    if (!currentRefreshToken) {
+        throw new Error('No refresh token available. Full re-authentication is required.');
+    }
+
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            'client_id': CLIENT_ID,
+            'client_secret': CLIENT_SECRET, // **SECURITY RISK** - Secret should be on a server
+            'refresh_token': currentRefreshToken,
+            'grant_type': 'refresh_token'
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to refresh token:', errorData);
+        throw new Error(`Token refresh failed: ${errorData.error_description || response.statusText}`);
+    }
+
+    const newAuthData = await response.json();
+    // Google не винаги връща нов refresh_token, затова запазваме стария.
+    newAuthData.refresh_token = currentRefreshToken;
+    newAuthData.issued_at = Date.now(); // Задаваме ново време на издаване.
+
+    sessionStorage.setItem('google_auth_token', JSON.stringify(newAuthData));
+    return newAuthData;
+}
+
+async function checkAuth() {
     const storedTokenString = sessionStorage.getItem('google_auth_token');
     if (!storedTokenString) {
         window.location.href = 'login.html';
         return null; // Stop execution
     }
-    const tokenData = JSON.parse(storedTokenString);
+    let tokenData = JSON.parse(storedTokenString);
     const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
     if (isExpired) {
-        console.log("Token expired. Redirecting to login for re-authentication.");
-        sessionStorage.removeItem('google_auth_token');
-        // Redirect to login page with a parameter to trigger re-auth automatically
-        window.location.href = 'login.html?reauth=true';
-        return null; // Stop execution
+        try {
+            console.log('Access token expired, attempting to refresh...');
+            tokenData = await refreshToken();
+            console.log('Token refreshed successfully.');
+        } catch (error) {
+            console.error('Failed to refresh token, redirecting to login:', error);
+            sessionStorage.removeItem('google_auth_token');
+            showToast(_('errorSessionExpired'));
+            window.location.href = 'login.html';
+            return null; // Stop execution
+        }
     }
     return tokenData; // Token is valid
 }
