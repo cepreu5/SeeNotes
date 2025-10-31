@@ -916,63 +916,20 @@ startApp();
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
-/**
- * Подновява access token-а, използвайки refresh token.
- * @returns {Promise<object>} Нов обект с данни за автентикация.
- */
-async function refreshToken() {
-    const tokenData = JSON.parse(sessionStorage.getItem('google_auth_token') || '{}');
-    const localRefreshToken = tokenData.refresh_token;
-
-    if (!localRefreshToken) {
-        throw new Error('No refresh token available. Full re-authentication is required.');
-    }
-
-    // Извикваме нашата Netlify функция, вместо директно Google
-    const response = await fetch('/.netlify/functions/refreshToken', {
-        method: 'POST',
-        body: JSON.stringify({ refreshToken: localRefreshToken })
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to refresh token:', errorData);
-        // Ако токенът е невалиден (revoked), Google връща 'invalid_grant'
-        if (errorData.error === 'invalid_grant') {
-             throw new Error('Refresh token is invalid or has been revoked. Full re-authentication is required.');
-        }
-        throw new Error(`Token refresh failed: ${errorData.error_description || 'Server error'}`);
-    }
-
-    const newAuthData = await response.json();
-    // Google не винаги връща нов refresh_token, затова запазваме стария.
-    newAuthData.refresh_token = localRefreshToken;
-    newAuthData.issued_at = Date.now(); // Задаваме ново време на издаване.
-
-    sessionStorage.setItem('google_auth_token', JSON.stringify(newAuthData));
-    return newAuthData;
-}
-
-async function checkAuth() {
+function checkAuth() {
     const storedTokenString = sessionStorage.getItem('google_auth_token');
     if (!storedTokenString) {
         window.location.href = 'login.html';
         return null; // Stop execution
     }
-    let tokenData = JSON.parse(storedTokenString);
+    const tokenData = JSON.parse(storedTokenString);
     const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
     if (isExpired) {
-        try {
-            console.log('Access token expired, attempting to refresh...');
-            tokenData = await refreshToken();
-            console.log('Token refreshed successfully.');
-        } catch (error) {
-            console.error('Failed to refresh token, redirecting to login:', error);
-            sessionStorage.removeItem('google_auth_token');
-            showToast(_('errorSessionExpired'));
-            window.location.href = 'login.html';
-            return null; // Stop execution
-        }
+        console.log("Token expired. Redirecting to login for re-authentication.");
+        sessionStorage.removeItem('google_auth_token');
+        // Redirect to login page with a parameter to trigger re-auth automatically
+        window.location.href = 'login.html?reauth=true';
+        return null; // Stop execution
     }
     return tokenData; // Token is valid
 }
