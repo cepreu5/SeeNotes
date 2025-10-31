@@ -44,7 +44,7 @@
         .accordion-line {
             flex-grow: 1; /* Линията заема останалото пространство */
             border: none; /* Премахва стандартния стил на <hr> */
-            border-top: 1px solid #ccc; /* Добавя тънка линия */
+            border-top: 1px solid #000; /* Добавя тънка линия */
             margin-left: 10px; /* Разстояние между стрелката и линията */
         }
     </style>
@@ -167,7 +167,7 @@
                     <input type="checkbox" id="order-checkbox" class="settings-checkbox">
                     <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
                 </div>
-                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px; border: none; border-top: 1px solid #000;">
+                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
                 <!-- Скрита секция за опции за сортиране -->
                 <div id="sorting-options-section" style="display: none;">
                     <!-- Нов, опростен flex контейнер за опциите за сортиране -->
@@ -219,7 +219,7 @@
                         <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
                             <span data-key="advancedSettings">Разширени настройки</span>
                             <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
-                            <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px; border: none; border-top: 1px solid #000;">
+                            <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
                         </div>
                         <div class="accordion-content">
                             <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">

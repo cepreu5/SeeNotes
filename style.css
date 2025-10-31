@@ -160,16 +160,50 @@ header h1 {
     background-color: #d6d6d6;
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
     cursor: pointer;
-    width: 46px;
-    height: 46px;
     color: #000;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     /* Prevent text selection on buttons */
+    position: relative;
     -webkit-user-select: none; /* Safari */
     -moz-user-select: none;    /* Firefox */
     user-select: none;
+    padding: 11px; /* Задаваме padding, за да определим размера */
+    box-sizing: border-box; /* Гарантираме, че padding-ът е включен в размера */
+}
+
+/* Специфични стилове за бутона за режим, за да се адаптира към съдържанието */
+#mode_button {
+    width: auto; /* Премахваме фиксираната ширина */
+    height: auto; /* Премахваме фиксираната височина */
+    min-width: 46px; /* Гарантираме минимален размер, равен на другите бутони */
+    min-height: 46px;
+    gap: 5px; /* Разстояние между иконите, когато са две */
+    background-color: #9a9999;
+    border-radius: 25px; /* Заоблени ъгли, вместо елипса */
+}
+
+/* Wrapper for the mode icon to correctly position the overlay */
+.mode-icon-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px; /* Match the main icon size */
+    height: 24px;
+}
+
+/* Overlay for DB icon on mode button */
+.mode-db-overlay {
+    position: absolute;
+    bottom: -2px; /* Adjust for better visual placement */
+    right: -2px;  /* Adjust for better visual placement */
+    width: 14px;  /* Smaller size for proportion */
+    height: 14px;
+    background-color: rgba(214, 214, 214, 0.7); /* Semi-transparent background to lift it from the main icon */
+    border-radius: 50%;
+    border: 1px solid #888; /* Add a small border to define it */
 }
 
 .header-btn:hover {
@@ -203,12 +237,14 @@ main {
     width: 250px;
     height: 250px;
     display: flex;
-    flex-direction: column;
+    flex-direction: column; /* Това ще подреди wrapper-а и футъра вертикално */
     /*background-color: var(--note-bg-0);*/
     font-size: var(--note-font-size); /* Set base font size for the whole note */
     box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
     text-align: left;
     cursor: pointer; /* Added for pointer cursor on hover */
+    padding-bottom: 35px; /* Добавяме padding отдолу, за да направим място за футъра */
+    box-sizing: border-box; /* Гарантираме, че padding-ът е включен в общата височина */
 }
 
 .note-item {
@@ -234,12 +270,90 @@ main {
     display: flex;
     flex-direction: column;
     width: 100%;
-    height: 100%;
+    height: 100%; /* Wrapper-ът продължава да заема 100% от намаленото налично пространство */
     padding-top: 0px;
     box-sizing: border-box;
     background-color: transparent;
-    z-index: 1; /* Ensure content is on top of the canvas */
-    padding-bottom: 20px; /* Add space at the bottom of the note content area */
+    z-index: 1; /* Гарантираме, че съдържанието е над canvas-а */
+    flex-grow: 1; /* Позволяваме на wrapper-а да се разшири и да запълни свободното място */
+}
+
+.note-content-wrapper > .note-content {
+    margin: 0 10% 10% 8%;
+}
+
+.note-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    word-wrap: break-word;    
+    /* Font size is now inherited from .note */
+    white-space: pre-wrap;
+}
+
+pre, code {
+    font-size: 100%; /* Match the surrounding text size */
+}
+
+.note-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.note-content::-webkit-scrollbar-track {
+    background: #e9c7a6;
+}
+
+.note-content::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.note-content::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.note-content a,
+#modal-body a {
+    color: #007bff;
+    text-decoration: none;
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: text-bottom;
+    cursor: pointer;
+}
+
+.note-content a:hover {
+    text-decoration: underline;
+}
+
+.note-footer {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    position: absolute; /* Остава абсолютно позициониран */
+    bottom: 5px;        /* Запазваме позицията отдолу */
+    left: 0;
+    right: 0;
+    height: 30px;       /* Задаваме фиксирана височина на футъра */
+    z-index: 2;         /* Задаваме по-висок z-index, за да е винаги отгоре */
+}
+
+.footer-icon {
+    background-color: transparent; /* Гарантираме, че фонът е прозрачен */
+    padding: 0px; /* Добавяме малко отстояние, за да не са залепени иконите */
+    height: 25px;
+}
+
+.footer-icon svg {
+    width: 25px; /* Леко увеличаваме размера за по-добра видимост */
+    height: 25px; /* Увеличаваме височината за по-добра видимост */
+    stroke: #000; /* По-тъмен цвят за иконите */
+    stroke-width: 1.5;
 }
 
 .lock-icon-overlay {
@@ -259,10 +373,6 @@ main {
 }
 
 
-.note-content-wrapper > .note-content {
-    margin: 0 10% 0 8%;
-}
-
 /* Specific styles for the boards note to make it a full-width panel */
 .boards-note, .note.boards-note {
     height: auto; /* Auto-adjust height based on content */
@@ -280,17 +390,6 @@ main {
     user-select: none; /* Prevent text selection on the board panel */
     box-sizing: border-box; /* Ensure padding is included in width */
 }
-
-/*.note h3 {
-    margin-top: 20%;
-    font-size: 1.1em;
-    flex-shrink: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    /~ Margin is now controlled by .note-content-wrapper > h3 ~/
-    margin: 0;
-}*/
 
 .note-title-truncated {
     margin-top: 50px;
@@ -341,55 +440,14 @@ main {
     display: none;
 }
 
-#show-datemod-checkbox {
+/* New unified style for all checkboxes in the settings modal */
+.settings-checkbox {
     width: 20px;
     height: 20px;
     cursor: pointer;
-}
-.note-content {
-    flex-grow: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    word-wrap: break-word;    
-    /* Font size is now inherited from .note */
-    white-space: pre-wrap;
+    vertical-align: middle; /* Better alignment with the label text */
 }
 
-
-pre, code {
-    font-size: 100%; /* Match the surrounding text size */
-}
-
-.note-footer {
-    flex-shrink: 0;
-    padding-top: 1px;
-    border-top: 1px solid gray;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 12px; /* Задаване на фиксиран размер, който не се влияе от настройките */
-    color: #666;
-    min-height: 18px;
-    margin: 0 8% 7% 8%; /* top | right | bottom | left */
-}
-
-.note-footer .date-display,
-.note-footer .board-display {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-}
-
-.note-footer .board-display {
-    margin-right: 10px;
-}
-
-.note-footer svg {
-    width: 16px;
-    height: 16px;
-    stroke: #666;
-    margin-right: 5px;
-}
 
 .view-button {
     background: none;
@@ -403,40 +461,6 @@ pre, code {
     height: 16px;
     stroke: #555;
     cursor: pointer;
-}
-
-.note-content::-webkit-scrollbar {
-    width: 8px;
-}
-
-.note-content::-webkit-scrollbar-track {
-    background: #e9c7a6;
-}
-
-.note-content::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 4px;
-}
-
-.note-content::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
-.note-content a,
-#modal-body a {
-    color: #007bff;
-    text-decoration: none;
-    display: inline-block;
-    max-width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    vertical-align: text-bottom;
-    cursor: pointer;
-}
-
-.note-content a:hover {
-    text-decoration: underline;
 }
 
 .modal-overlay {
@@ -468,15 +492,28 @@ pre, code {
     padding-bottom: 10px;
     padding-left: 10px;
     border-radius: 8px;
-    width: 95%;
-    max-width: 900px;
+    width: 90%; /* Задаваме ширината да е 90% от екрана */
+    max-width: 90%;
+    min-height: 10%;
     max-height: 80vh;
     position: relative;
     display: flex;
     flex-direction: column;
     /* transition: background-color 0.3s ease; Smooth background color transition */
 }
-.popup-mode .modal-content-box {
+
+/* "Дръжка" за преоразмеряване на модалния прозорец */
+.modal-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    cursor: se-resize;
+    z-index: 2; /* Трябва да е над съдържанието */
+}
+
+.popup-mode {
     position: absolute; /* Allow top/left positioning */
     max-width: none; /* Override max-width to allow it to be sized by content */
     width: auto; /* Let content define width */
@@ -648,25 +685,37 @@ pre, code {
 }
 
 .scrolling-menu-wrapper {
-    display: flex;
+    display: grid; /* Промяна на flex към grid за по-добър контрол */
+    grid-template-columns: auto 1fr; /* Първата колона (стрелката) е с авто-ширина, втората (менюто) заема останалото място */
     align-items: center;
     width: 100%;
 }
 
 .board-menu-container {
-    display: flex;
-    flex-wrap: nowrap; /* Prevent wrapping */
-    overflow-x: auto;   /* Allow scrolling */
+    display: flex; /* Остава flex, за да се подредят бутоните на един ред */
+    flex-wrap: nowrap;
+    overflow-x: auto;   /* Позволява хоризонтално скролиране */
     scroll-behavior: smooth; /* Smooth scrolling on button click */
     gap: 5px;
-    flex-grow: 1;
-    padding: 5px 0; /* Add some vertical padding */
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    padding: 5px 0 0px; /* Намалява разстоянието отдолу до 3px */
+    /* Премахваме правилата, които скриват скролбара */
+    scrollbar-color: #aaa #555; /* thumb track - за Firefox */
+    scrollbar-width: thin;      /* за Firefox */
 }
 
+/* Стилизиране на скролбара за Webkit-базирани браузъри (Chrome, Edge, Safari) */
 .board-menu-container::-webkit-scrollbar {
-    display: none; /* Hide scrollbar for Chrome, Safari and Opera */
+    height: 8px; /* Височина на скролбара */
+}
+
+.board-menu-container::-webkit-scrollbar-track {
+    background: #555; /* Тъмно сив фон, както е поискано */
+    border-radius: 4px;
+}
+
+.board-menu-container::-webkit-scrollbar-thumb {
+    background: #aaa; /* По-светъл плъзгач за контраст */
+    border-radius: 4px;
 }
 
 .scroll-arrow {
@@ -726,23 +775,20 @@ pre, code {
 }
 
 /* Remove the large top padding from the modal body when showing the board list */
-.modal-content-box:has(.all-boards-modal-container) #modal-body {
-    padding-top: 0px;
+.modal-content-box:has(.all-boards-modal-container) #boards-menu-modal-body {
     padding-right: 0px;
 }
 
 /* Apply background to the parent modal box when it contains the board list */
-.modal-content-box:has(.all-boards-modal-container) {
+.popup-mode .modal-content-box {
     background-image: url('Frame.jpg');
-    width: 95%;
     max-width: 95%;
     margin-left: 5px;
 }
 
 /* Make the close button visible on the textured background */
-.modal-content-box:has(.all-boards-modal-container) .modal-close {
-    background-color: #d6d6d6; /* Same color as header buttons for consistency */
-    opacity: 0.8;
+.popup-mode .modal-close {
+    background-color: #d6d6d6; /* Same color as header buttons */
     right: 10px; /* Fine-tuned position closer to the edge */
 }
 
@@ -754,6 +800,7 @@ pre, code {
 .selected-board {
     font-weight: bold;
     background-color: #007bff;
+    text-decoration: underline;
     /* border: 3px solid #f70202 !important; Add a thick border to the selected board */
     color: #fff;
 }
@@ -891,6 +938,21 @@ pre, code {
             height: auto; /* Let content define height */
             max-height: 90vh; /* Still prevent it from being too tall */
         }
+
+        /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
+        #google-db-wrapper,
+        #use-indexeddb-wrapper,
+        #db-buttons-wrapper,
+        #local-db-wrapper,
+        #arh-db-wrapper {
+            flex-direction: row !important;
+            align-items: center !important; /* Поддържа вертикално центриране */
+        }
+
+        /* Превключва грида за сортиране в една колона на тесни екрани */
+        .sort-criteria-grid {
+            grid-template-columns: 1fr;
+        }
     }
 
 /* Toast Notification */
@@ -914,10 +976,8 @@ pre, code {
 /* Show the toast notification when it has the 'show' class */
 .toast-notification.show {
     visibility: visible; /* Show the snackbar */
-    /* Add animation: Take 0.5 seconds to fade in and out the snackbar.
-    However, delay the fade out process for 2.5 seconds */
-    -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s;
-    animation: fadein 0.5s, fadeout 0.5s 2.5s;
+    -webkit-animation: fadein 0.5s;
+    animation: fadein 0.5s;
 }
 
 /* Animations to fade the toast in and out */
@@ -969,8 +1029,8 @@ pre, code {
     border-radius: 8px;
     text-align: center;
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    max-width: 400px;
     width: 90%;
+    max-width: 400px;
 }
 
 .folder-id-prompt-popup p {
@@ -1062,6 +1122,7 @@ pre, code {
     margin-right: 5px; /* Add space to the right, before the buttons */
     margin-top: 12px;
     margin-bottom: 12px;
+    cursor: pointer; /* Make it look clickable */
 }
 
 #zoom-modal .modal-content-box {
@@ -1085,6 +1146,13 @@ pre, code {
     align-items: center;
     justify-content: flex-start;
     padding-right: 20px;
+}
+
+/* Специфичен стил, за да се подредят етикетът и бутонът за избор на папка вертикално */
+.sync-wrapper {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px; /* Добавя разстояние между етикета и бутона */
 }
 
 /* Renamed from #zoom-modal to #settings-modal */
@@ -1198,19 +1266,44 @@ pre, code {
     display: block;
 }
 
+/* Нов стил за контейнера на опциите за сортиране */
+.sort-options-container {
+    display: grid;
+    grid-template-columns: 1fr; /* 1 колона */
+    gap: 5px 15px; /* 5px вертикално, 15px хоризонтално разстояние */
+    padding-top: 0px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #404040;
+}
+
+/* Стил за етикетите вътре в контейнера за сортиране */
+.sort-options-container .sort-option-label {
+    white-space: nowrap; /* Гарантира, че текстът на етикета не се пренася */
+    display: flex;
+    align-items: center;
+}
+
+/* Стил за добавяне на разделител преди чекбоксовете за сортиране */
+.sort-option-separator {
+    border-top: 1px solid #808080;
+    margin-top: 5px;
+    padding-top: 10px;
+}
+
 .settings-close-btn-wrapper {
     display: flex;
     justify-content: flex-end;
-    margin-top: 25px; /* Increased margin for better separation */
+    margin-top: 10px; /* Increased margin for better separation */
     width: 100%; /* Ensure the wrapper takes full width to allow alignment */
 }
 .start-board-select {
     padding: 8px;
     border-radius: 4px;
-    border: 1px solid #1f3b52;
-    background-color: #eef5fb;
+    border: 1px solid #060606;
+    background-color: #dadada;
     font-size: 1em;
     flex-grow: 1;
+    min-width: 200px;
 }
 
 .start-board-select:focus {
@@ -1401,4 +1494,35 @@ pre, code {
     .day-name-short {
         display: inline; /* Show short names on small screens */
     }
+}
+
+/* Accordion Styles */
+.accordion-header {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /*font-weight: bold;*/
+    font-style: italic;
+    color: #1f3b52;
+    padding: 5px 0;
+}
+
+.accordion-arrow {
+    transition: transform 0.3s ease;
+}
+
+.accordion.active .accordion-arrow {
+    transform: rotate(180deg);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    /* Add some styling to the content area
+    background-color: rgba(0, 0, 0, 0.05);  
+    border-radius: 4px;*/
+    padding: 0 10px; /* Horizontal padding when open */
+    margin-top: 0px;
 }

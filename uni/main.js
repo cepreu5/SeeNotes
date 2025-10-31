@@ -9,7 +9,7 @@ let debug = true; // Глобален флаг за дебъг режим
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.9'; // App version
+const version = '0.10'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -224,6 +224,8 @@ const translations = {
             errorReadArh: 'Error reading from archive.',
             syncTitleGD: 'Sync with Google Drive',
             syncTitleLocal: 'Sync with Local Folder',
+            /*advHidden: 'Advanced settings are hidden.',
+            advShown: 'Advanced settings are shown.',*/
             errorArhFolderNotSelected: 'Please select an archive folder from settings.'
         },
         bg: {
@@ -371,6 +373,8 @@ const translations = {
             errorReadArh: 'Грешка при четене от архива.',
             syncTitleGD: 'Синхронизиране с Google Drive',
             syncTitleLocal: 'Синхронизиране с Локална папка',
+            /*advHidden: 'Разширените настройки са скрити.',
+            advShown: 'Разширените настройки са достъпни.',*/
             errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.'
         }
     };
@@ -800,7 +804,6 @@ function initApp() {
                         const isHidden = advancedSettingsSpan.hasAttribute('hidden');
                         advancedSettingsSpan.hidden = !isHidden;
                         localStorage.setItem('showAdvancedSettings', !isHidden);
-                        showToast(!isHidden ? 'Разширените настройки са скрити' : 'Разширените настройки са достъпни', 2000);
                     }
                 } else {
                     // Normal click opens settings
