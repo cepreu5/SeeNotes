@@ -789,6 +789,26 @@ function initApp() {
             }
         });
 
+        // --- Mode Button Logic (Ctrl-click for advanced) ---
+        const modeButton = document.getElementById('mode_button');
+        if (modeButton) {
+            modeButton.addEventListener('click', (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault(); // Prevent settings modal from opening
+                    const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+                    if (advancedSettingsSpan) {
+                        const isHidden = advancedSettingsSpan.hasAttribute('hidden');
+                        advancedSettingsSpan.hidden = !isHidden;
+                        localStorage.setItem('showAdvancedSettings', !isHidden);
+                        showToast(!isHidden ? 'Разширените настройки са скрити' : 'Разширените настройки са достъпни', 2000);
+                    }
+                } else {
+                    // Normal click opens settings
+                    document.getElementById('settings_button').click();
+                }
+            });
+        }
+
         // Добавяме event listener за показване на системна информация при клик на брояча
         const noteCounter = document.getElementById('note-counter');
         noteCounter.addEventListener('click', async () => {
@@ -1015,8 +1035,7 @@ function handleSignoutClick() {
         let folderId = folderIdFromPrompt || await getFolderID();
         if (!folderId) {
             // Try to load from local DB as a fallback
-            // Only attempt this if IndexedDB is actually enabled for Google Drive mode.
-            if (saveToDb) { // Проверяваме само флага, който е подаден
+            if (useIndexedDb && useGoogleDb) {
                 console.log("Main folder ID not found on Google Drive, attempting to load from local IndexedDB.");
                 try {
                     await fetchAllDataLocal();
@@ -3184,6 +3203,13 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 }
             });
             settingsModalBody.dataset.initialized = true;
+    }
+
+    // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
+    const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+    if (advancedSettingsSpan) {
+        const showAdvanced = localStorage.getItem('showAdvancedSettings') === 'true';
+        advancedSettingsSpan.hidden = !showAdvanced;
     }
 
     }
