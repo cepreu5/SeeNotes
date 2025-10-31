@@ -116,6 +116,7 @@
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
+                access_type: 'offline', // <-- КЛЮЧОВА ПРОМЯНА: Изискваме refresh_token
                 callback: async (tokenResponse) => {
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
@@ -158,6 +159,11 @@
 
         function handleAuthClick() {
             if (tokenClient) {
+                // Добавяме prompt: 'consent', за да сме сигурни, че ще получим refresh_token.
+                // Това е необходимо, за да може "тихата" авторизация да работи.
+                // Потребителят ще трябва да даде съгласие отново само веднъж.
+                // Добавяме prompt: 'consent', за да сме сигурни, че ще получим refresh_token,
+                // което е необходимо за "тихата" авторизация.
                 tokenClient.requestAccessToken({ prompt: 'consent' });
             } else {
                 console.error('Token client not initialized');
