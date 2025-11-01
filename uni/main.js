@@ -802,8 +802,8 @@ function initApp() {
                     const advancedSettingsSpan = document.getElementById('advanced-settings-span');
                     if (advancedSettingsSpan) {
                         const isHidden = advancedSettingsSpan.hasAttribute('hidden');
-                        advancedSettingsSpan.hidden = !isHidden;
-                        localStorage.setItem('showAdvancedSettings', !isHidden);
+                        advancedSettingsSpan.hidden = false;// !isHidden;
+                        localStorage.setItem('showAdvancedSettings', false);
                     }
                 } else {
                     // Normal click opens settings
@@ -1045,7 +1045,11 @@ function handleSignoutClick() {
         const updateOnly = localStorage.getItem('updateFromGoogleDrive') !== 'false';
         // Get the timestamp only if "update only" is checked
         if (updateOnly) {
-            lastSyncTimestamp = await getConfig('lastGDTimestamp');
+            // Първо опитваме от localStorage (по-бързо), после от IndexedDB
+            lastSyncTimestamp = localStorage.getItem('lastGDTimestamp') || await getConfig('lastGDTimestamp');
+            if (lastSyncTimestamp) {
+                lastSyncTimestamp = parseInt(lastSyncTimestamp, 10); // Уверяваме се, че е число
+            }
         }
         // This will be null if updateOnly is false or if no timestamp is found,
         // triggering a full sync in those cases.
@@ -1082,7 +1086,12 @@ function handleSignoutClick() {
         await syncFile('board.txt', BOARD_STORE_NAME, false);
         await syncFile('media.txt', MEDIA_STORE_NAME, false);
         await syncFile('note.txt', NOTE_STORE_NAME, true); // Подаваме флаг, че това са бележки
-        await saveConfig('lastGDTimestamp', Date.now());
+
+        // ЗАПИСВАМЕ TIMESTAMP-А НА ДВЕТЕ МЕСТА СЛЕД УСПЕШНА СИНХРОНИЗАЦИЯ
+        const now = Date.now();
+        await saveConfig('lastGDTimestamp', now);
+        localStorage.setItem('lastGDTimestamp', now);
+
         loaderText.textContent = _('syncFinishedLoadingData');
         console.log('Google Drive sync finished.');
         return updatedFilesCount;
@@ -1194,23 +1203,21 @@ async function createDatabaseFromMemory() {
             await saveConfig('userEmail', currentUserEmail);
         }
 
-        // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА)
-        const useArh = localStorage.getItem('useArhDb') === 'true';
-        const useLocal = localStorage.getItem('useLocalDb') === 'true';
-
-        const noteIdType = useArh ? 'id' : 'gdid';
+        // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
+        const noteIdType = useArhDb ? 'id' : 'gdid';
         await saveConfig('dbNoteIdType', noteIdType);
 
         // ЗАПИСВАМЕ И ИЗТОЧНИКА НА ДАННИ (1: GD, 2: Local, 3: Arh)
         let dbSource = 1; // Google Drive by default
-        if (useArh) dbSource = 3; // Archive
-        else if (useLocal) dbSource = 2; // Local Folder
+        if (useArhDb) dbSource = 3; // Archive
+        else if (useLocalFolder) dbSource = 2; // Local Folder
 
         // Запазваме timestamp само за източника, от който създаваме базата.
         // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
         const now = Date.now();
         if (dbSource === 1) { // Google Drive
-            await saveConfig('lastGDTimestamp', now);
+            await saveConfig('lastGDTimestamp', now); // В IndexedDB
+            localStorage.setItem('lastGDTimestamp', now); // И в localStorage
         } else if (dbSource === 2) { // Local Folder
             await saveConfig('lastLocalTimestamp', now);
         }
@@ -1298,6 +1305,21 @@ function updateGlobalStateFlags() {
     useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
 }
 
+/**
+ * Проверява дали е избран поне един източник на данни.
+ * Ако не е, показва съобщение и отваря настройките.
+ * @returns {boolean} Връща true, ако има избран източник, и false, ако няма.
+ */
+function validateDataSourceSelection() {
+    if (!useGoogleDb && !useLocalFolder && !useArhDb && !useIndexedDb) {
+        showToast(_('errorNoDataSourceSelected'), 15000);
+        document.getElementById('settings-modal').classList.add('visible');
+        loaderContainer.style.display = 'none'; // Скриваме лоудъра
+        return false; // Сигнализираме, че проверката е неуспешна
+    }
+    return true; // Всичко е наред
+}
+
     /**
      * Основна логика за зареждане на данни в приложението.
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
@@ -1305,14 +1327,25 @@ function updateGlobalStateFlags() {
     async function mainLogic() {
         dbSourceGlobal = null; // Нулираме глобалните променливи
         updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
-        // Винаги обновяваме глобалните флагове в началото на mainLogic,
-        // за да сме сигурни, че работим с актуалните настройки.
         updateGlobalStateFlags();
-        // Винаги нулираме състоянието на контролите в настройките при презареждане.
-        // Ако има нужда, userCheck() ще ги деактивира отново.
         enableSettingsControls();
 
-        dbNoteIdTypeGlobal = null;
+        // Извикваме новата функция за валидация
+        if (!validateDataSourceSelection()) return;
+
+        // --- ЗАДАВАНЕ НА ГЛОБАЛЕН ИЗТОЧНИК И ТИП ВРЪЗКА ЗА ТЕКУЩАТА СЕСИЯ ---
+        // Това е необходимо, за да работят коректно функции като createNoteElement,
+        // дори когато не се използва база данни.
+        if (useArhDb) {
+            dbSourceGlobal = 3; // 3: Архив
+            dbNoteIdTypeGlobal = 'id';
+        } else if (useLocalFolder) {
+            dbSourceGlobal = 2; // 2: Локална папка
+            dbNoteIdTypeGlobal = 'gdid';
+        } else if (useGoogleDb) {
+            dbSourceGlobal = 1; // 1: Google Drive
+            dbNoteIdTypeGlobal = 'gdid';
+        }
         initializeLoad(); // Resets state and shows the loader screen
 
         // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
@@ -1346,8 +1379,10 @@ function updateGlobalStateFlags() {
             // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
             if (dbExists && boardsInDb.length > 0) {
                 // Извличаме конфигурацията на базата САМО ВЕДНЪЖ тук
-                dbSourceGlobal = await getConfig('dbSource');
-                dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
+                // Взимаме стойностите от базата само ако не са зададени вече от активен източник (GD, Local, Arh).
+                // Това е важно за режим "само база данни".
+                if (dbSourceGlobal === null) dbSourceGlobal = await getConfig('dbSource');
+                if (dbNoteIdTypeGlobal === null) dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
 
                 const dbNoteIdType = await getConfig('dbNoteIdType');
                 if (dbNoteIdType) { // Проверяваме само ако типът е записан
@@ -1479,9 +1514,9 @@ function updateGlobalStateFlags() {
                 // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
                 console.log("Mode: Direct from source (IndexedDB is OFF)");
                 if (useGoogleDb) {
+                    // Нулираме dirHandle тук, за да сме сигурни, че няма да се използват стари handles от локален/архивен режим
+                    dirHandle = null;
                     console.log("Source: Google Drive");
-                    if (loaderTitle) loaderTitle.textContent = "Google Drive";
-                    console.log("Source: Google Drive"); 
                     if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
                     const { boardParseError } = await fetchAllData(null, false); // false -> не записвай в DB
                     await renderUI({ boardParseError });
@@ -2241,7 +2276,26 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // и не съществува в boardsData, превключваме към 'all'.
         const specialBoards = ['all', 'calendar', 'reminder', 'new-updates'];
         if (!specialBoards.includes(boardId)) {
+            // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
+            // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
+            // В другите режими - по текстов `gdid`.
+            // Бутоните за филтриране винаги подават `gdid`.
+            // Тази логика проверява дали бордът съществува и задава правилния
+            // идентификатор за филтриране (`currentBoardFilter`).
+
+            let boardToFilter = null;
+            // Търсим борда по gdid, който идва от клик на бутон
+            const board = boardsData.find(b => b.gdid === boardId);
+
+            if (board) {
+                // Ако сме в режим Архив, ще филтрираме по числовото `id`.
+                // В противен случай - по `gdid`.
+                boardToFilter = useArhDb ? board.id : board.gdid;
+            }
+
+            // Проверяваме дали сме намерили борд. `boardId` е оригиналният gdid от бутона.
             const boardExists = boardsData.some(b => b.gdid === boardId);
+
             if (!boardExists) {
                 console.warn(`Board with ID '${boardId}' not found. Defaulting to 'all'.`);
                 boardId = 'all';
@@ -2254,21 +2308,25 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             return;
         }
         searchInput.value = ''; // Clear the search box
-        saveSearchBtn.style.display = 'none'; // Hide the save icon
-        currentBoardFilter = boardId;
+        saveSearchBtn.style.display = 'none';
+
+        // Задаваме правилния филтър (числов id за Архив, gdid за другите)
+        currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useArhDb ? boardsData.find(b => b.gdid === boardId)?.id : boardId);
+
         applyFilters();
+
+        // Маркираме избрания бутон. `boardId` тук е оригиналният `gdid` от бутона.
         document.querySelectorAll('.board-filter-link').forEach(link => {
-            link.classList.remove('selected-board');
-            if (link.dataset.boardid === boardId) {
-                link.classList.add('selected-board');
-            }
+            link.classList.toggle('selected-board', link.dataset.boardid === boardId);
         });
+
         // Update search box placeholder based on the selected board
         if (boardId === 'reminder') {
             searchInput.placeholder = `[${_('reminder')}]: ${_('searchPlaceholder')}`;
         } else if (boardId === 'new-updates') { 
             searchInput.placeholder = `[${_('newUpdates')}]: ${_('searchPlaceholder')}`;
         } else if (boardId !== 'all' && boardId !== 'calendar') {
+            // Търсим по gdid, за да вземем заглавието
             const board = boardsData.find(b => b.gdid === boardId);
             if (board) {
                 searchInput.placeholder = `[${board.title}]: ${_('searchPlaceholder')}`;
@@ -2284,7 +2342,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             currentBackground = 'Board.png';
         } else {
             // For a specific board, set the background via inline style.
-            let newBackground = 'Board.png'; // Default
+            let newBackground = 'Board.png';
+            // Търсим по gdid, за да вземем фона
             const board = boardsData.find(b => b.gdid === boardId);
             if (board && board.backnum) {
                 switch (board.backnum) {
@@ -2305,6 +2364,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         } else if (boardId === 'new-updates') {
             scrollTopBtn.innerHTML = `${_('newUpdates')} ${arrowSvg}`;
         } else {
+            // Търсим по gdid, за да вземем заглавието
             const board = boardsData.find(b => b.gdid === boardId);
             if (board) {
                 scrollTopBtn.innerHTML = board.title + " " + arrowSvg;
@@ -2358,7 +2418,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             const isVisibleByBoard = (currentBoardFilter === 'all') ||
                                      (currentBoardFilter === 'reminder' && data.timer && data.timer !== 0) ||
                                      (currentBoardFilter === 'new-updates' && updatedNoteGdims.includes(data.gdid)) ||
-                                     (data.boardid === currentBoardFilter);
+                                     (data.boardid == currentBoardFilter); // Използваме '==' за да сравняваме число и стринг, ако се наложи
 
             const isVisibleBySearch = (() => {
                 if (!searchTerm) return true;
@@ -3125,6 +3185,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                         await saveConfig('arhHandle', handle); // Запазваме избраната папка
                         document.getElementById('settings-modal').classList.remove('visible');
                         showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
+                        // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
+                        updateGlobalStateFlags();
                         // След избор, просто презареждаме основната логика,
                         // която вече ще види, че е избран режим "Архив".
                         mainLogic();
@@ -4021,6 +4083,12 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
  * @returns {Promise<IDBDatabase>}
  */
 function openNotesDB() {
+    // --- КОРЕКЦИЯ: Предотвратяване на множество отворени връзки ---
+    // Ако вече имаме отворена и валидна връзка, използваме нея,
+    // вместо да отваряме нова, която може да блокира изтриването.
+    if (window.db && window.db.version) {
+        return Promise.resolve(window.db);
+    }
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
         request.onupgradeneeded = (event) => {
@@ -4039,7 +4107,11 @@ function openNotesDB() {
             }
             console.log("NotesDB structure is up to date.");
         };
-        request.onsuccess = (event) => resolve(event.target.result);
+        request.onsuccess = (event) => {
+            // Запазваме отворената връзка в глобална променлива
+            window.db = event.target.result;
+            resolve(window.db);
+        };
         request.onerror = (event) => reject("Error opening NotesDB: " + event.target.errorCode);
     });
 }
@@ -4157,27 +4229,24 @@ async function checkDbExists(dbName) {
 }
 
 function deleteNotesDB() {
+    // --- КОРЕКЦИЯ: По-надеждно изтриване на базата данни ---
+    // Първо затваряме всички известни връзки и изчакваме малко,
+    // за да дадем време на браузъра да освободи ресурсите, преди да изтрием.
+    // Това предотвратява 'onblocked' събитието.
     return new Promise((resolve, reject) => {
         if (window.db) {
-            window.db.close(); // Затваря връзката към базата данни
+            window.db.close();
             window.db = null;
+            console.log('Database connection closed.');
         }
-        console.log(`Attempting to delete database: ${NOTES_DB_NAME}`);
-        const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
-
-        deleteRequest.onsuccess = () => {
-            console.log(`Database '${NOTES_DB_NAME}' deleted successfully.`);
-            resolve();
-        };
-        deleteRequest.onerror = (event) => {
-            console.error(`Error deleting database:`, event.target.error);
-            reject(event.target.error);
-        };
-        deleteRequest.onblocked = () => {
-            console.warn("Database deletion is blocked. Please close other tabs with this app open.");
-            showToast(_('errorDbDeletionBlocked'), 10000);
-            reject(new Error("Database deletion blocked."));
-        };
+        // Изчакваме съвсем кратко, за да се обработи затварянето.
+        setTimeout(() => {
+            console.log(`Attempting to delete database: ${NOTES_DB_NAME}`);
+            const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+            deleteRequest.onsuccess = () => { console.log(`Database '${NOTES_DB_NAME}' deleted successfully.`); resolve(); };
+            deleteRequest.onerror = (event) => { console.error('Error deleting database:', event.target.error); reject(event.target.error); };
+            deleteRequest.onblocked = (event) => { console.warn('Database deletion is blocked.', event); showToast(_('errorDbDeletionBlocked'), 10000); reject(new Error('Database deletion blocked.')); };
+        }, 100); // 100ms закъснение е достатъчно.
     });
 }
 

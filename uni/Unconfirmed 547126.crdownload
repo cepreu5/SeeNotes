@@ -9,8 +9,7 @@ let debug = true; // Глобален флаг за дебъг режим
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const CLIENT_SECRET = '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'; // ВНИМАНИЕ: Риск за сигурността в клиентски код!
-const version = '0.9'; // App version
+const version = '0.10'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -98,7 +97,6 @@ const translations = {
             errorProcessingFiles: 'An error occurred while processing files.',
             errorInvalidResponse: 'Failed to load files. Make sure the folder exists and you have access.',
             errorRequestFailed: 'Request to Google Drive failed. See console for details.',
-            // errorFolderIdInvalid: 'Folder ID is invalid or empty.',
             errorFolderIdMissing: 'Folder ID not provided. File loading stopped.',
             errorTokenMissing: 'Access token not available. Please log in again.',
             errorSessionExpired: 'Your session has expired. Please log in again.',
@@ -110,8 +108,6 @@ const translations = {
             warningInvalidBoard: 'Warning: One or more board files are invalid and have been skipped.',
             confirmCreateDbYes: 'Yes',
             confirmCreateDbNo: 'No',
-            // promptFolderId: 'Please enter the Google Drive Folder ID:',
-            // folderIdInputPlaceholder: 'Google Drive Folder ID',
             zoomLabel: 'Zoom:',
             orderLabel: 'Order notes:',
             sortByNumber: 'by number',
@@ -188,7 +184,7 @@ const translations = {
             noUpdateMode: 'Attachment links will not be active.',
             createDbButton: 'Create',
             permissionDenied: 'Permission Denied',
-            deleteDbButton: 'Delete',
+            deleteDbButton: 'Delete',            
             confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
             dbManagementTitle: 'Database Management',
             userMismatchWarning: 'The existing database was created by user {user}, data will be loaded from Google Drive',
@@ -202,7 +198,35 @@ const translations = {
             checkedFilesCount: 'Checked {count} files...',
             invalidDataFolder: 'Folder \'{folderName}\' does not appear to be a valid data folder.',
             newUpdates: 'New',
-            requiredFilesForLocalFolder: 'It must contain at least 1 \'board\' file and 3 \'note\' files.'
+            requiredFilesForLocalFolder: 'It must contain at least 1 \'board\' file and 3 \'note\' files.',
+            okButton: 'OK',
+            noData: 'No data',
+            sourceGoogleDrive: 'Google Drive',
+            sourceLocalFolder: 'Local Folder',
+            sourceArchive: 'Archive',
+            sysInfoUser: 'User',
+            sysInfoLastGDSync: 'Last Google Drive Sync',
+            sysInfoLastLocalSync: 'Last Local Sync',
+            sysInfoAttachmentLinks: 'Attachment Links',
+            sysInfoDbCreatedFrom: 'DB created from',
+            errorSysInfo: 'Error fetching system info.',
+            errorNoDataSourceSelected: 'At least one data source must be selected when the database is not used.',
+            errorNoArchiveFolderSelected: 'No archive folder selected.',
+            errorReadingArchive: 'Error reading the archive.',
+            errorRequiredArchiveFileMissing: 'Required archive file not found.',
+            errorInvalidArchiveData: 'The archive files contain invalid data.',
+            errorDbDeletionBlocked: 'Database deletion is blocked. Please close other tabs with this app open.',
+            errorFetchingFolderIds: 'Error fetching folder IDs.',
+            errorFetchingFileId: 'Error fetching file ID for {fileName}.',
+            fetchingFromDb: 'Fetching data from the database...',
+            initialDataLoad: 'Initial data load...',
+            creatingDbFromArh: 'Creating database from archive data...',
+            errorReadArh: 'Error reading from archive.',
+            syncTitleGD: 'Sync with Google Drive',
+            syncTitleLocal: 'Sync with Local Folder',
+            /*advHidden: 'Advanced settings are hidden.',
+            advShown: 'Advanced settings are shown.',*/
+            errorArhFolderNotSelected: 'Please select an archive folder from settings.'
         },
         bg: {
             appTitle: 'CX MultiNotes Viewer',
@@ -221,7 +245,6 @@ const translations = {
             errorProcessingFiles: 'Възникна грешка при обработката на файловете.',
             errorInvalidResponse: 'Неуспешно зареждане на файловете. Уверете се, че папката съществува и имате достъп.',
             errorRequestFailed: 'Грешка при заявката към Google Drive. Виж конзолата за подробности.',
-            // errorFolderIdInvalid: 'Folder ID е невалиден или празен.',
             errorFolderIdMissing: 'Не е въведен ID. Зареждането на файлове е спряно.',
             errorTokenMissing: 'Няма достъпен токен. Моля, влезте отново.',
             errorSessionExpired: 'Вашата сесия е изтекла. Моля, влезте отново.',
@@ -233,8 +256,6 @@ const translations = {
             warningInvalidBoard: 'Внимание: Един или повече файлове за дефиниция на бордове са невалидни и бяха пропуснати.',
             confirmCreateDbYes: 'Да',
             confirmCreateDbNo: 'Не',
-            // promptFolderId: 'Моля, въведете ID на папката в Google Drive:',
-            // folderIdInputPlaceholder: 'Въведете Google Drive Folder ID',
             searchSavedTip: 'Запомни търсенето',
             zoomLabel: 'Мащаб:',
             useArhDbLabel: 'Архив:',
@@ -312,7 +333,7 @@ const translations = {
             noUpdateMode: 'Приложенията към бележките няма да се отварят.',
             createDbButton: 'Създай',
             permissionDenied: 'Няма разрешение',
-            deleteDbButton: 'Изтрий',
+            deleteDbButton: 'Изтрий',            
             confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
             dbManagementTitle: 'Управление на базата данни',
             userMismatchWarning: 'Съществуващата база е създадена с потребителско име {user}, данните ще се заредят от Google Drive',
@@ -326,7 +347,35 @@ const translations = {
             checkedFilesCount: 'Проверени {count} файла...',
             invalidDataFolder: 'Папката \'{folderName}\' не изглежда като валидна папка с данни.',
             newUpdates: 'Нови',
-            requiredFilesForLocalFolder: 'Необходимо е да съдържа поне 1 \'board\' файл и 3 \'note\' файла.'
+            requiredFilesForLocalFolder: 'Необходимо е да съдържа поне 1 \'board\' файл и 3 \'note\' файла.',
+            okButton: 'ОК',
+            noData: 'Няма данни',
+            sourceGoogleDrive: 'Google Drive',
+            sourceLocalFolder: 'Локална папка',
+            sourceArchive: 'Архив',
+            sysInfoUser: 'Потребител',
+            sysInfoLastGDSync: 'Последна Google Drive синхронизация',
+            sysInfoLastLocalSync: 'Последна локална синхронизация',
+            sysInfoAttachmentLinks: 'Връзка към приложенията',
+            sysInfoDbCreatedFrom: 'Базата е създадена от',
+            errorSysInfo: 'Грешка при извличане на системна информация.',
+            errorNoDataSourceSelected: 'Трябва да има избран поне един източник на данни, когато не се използва База данни.',
+            errorNoArchiveFolderSelected: 'Не е избрана папка за архив.',
+            errorReadingArchive: 'Грешка при четене на архива.',
+            errorRequiredArchiveFileMissing: 'Задължителен архивен файл не е намерен.',
+            errorInvalidArchiveData: 'Архивните файлове съдържат невалидни данни.',
+            errorDbDeletionBlocked: 'Изтриването на базата данни е блокирано. Моля, затворете другите отворени табове с това приложение.',
+            errorFetchingFolderIds: 'Грешка при извличане на ID-та на папки.',
+            errorFetchingFileId: 'Грешка при извличане на ID на файл за {fileName}.',
+            fetchingFromDb: 'Зареждане от базата данни...',
+            initialDataLoad: 'Първоначално зареждане на данни...',
+            creatingDbFromArh: 'Създаване на база данни от архива...',
+            errorReadArh: 'Грешка при четене от архива.',
+            syncTitleGD: 'Синхронизиране с Google Drive',
+            syncTitleLocal: 'Синхронизиране с Локална папка',
+            /*advHidden: 'Разширените настройки са скрити.',
+            advShown: 'Разширените настройки са достъпни.',*/
+            errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -417,7 +466,7 @@ function showMessagePopup(message, showInput = false) {
         folderIdInput.focus();
     } else {
         folderIdInput.style.display = 'none';
-        submitFolderIdBtn.textContent = 'OK';
+        submitFolderIdBtn.textContent = _('okButton');
     }
     folderIdPromptPopup.classList.add('show');
 }
@@ -744,33 +793,52 @@ function initApp() {
             }
         });
 
+        // --- Mode Button Logic (Ctrl-click for advanced) ---
+        const modeButton = document.getElementById('mode_button');
+        if (modeButton) {
+            modeButton.addEventListener('click', (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault(); // Prevent settings modal from opening
+                    const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+                    if (advancedSettingsSpan) {
+                        const isHidden = advancedSettingsSpan.hasAttribute('hidden');
+                        advancedSettingsSpan.hidden = !isHidden;
+                        localStorage.setItem('showAdvancedSettings', !isHidden);
+                    }
+                } else {
+                    // Normal click opens settings
+                    document.getElementById('settings_button').click();
+                }
+            });
+        }
+
         // Добавяме event listener за показване на системна информация при клик на брояча
         const noteCounter = document.getElementById('note-counter');
         noteCounter.addEventListener('click', async () => {
             try {
-                const userEmail = await getConfig('userEmail') || 'Няма данни';
+                const userEmail = await getConfig('userEmail') || _('noData');
                 const lastGDTimestamp = await getConfig('lastGDTimestamp');
                 const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
-                const dbNoteIdType = await getConfig('dbNoteIdType') || 'Няма данни';
+                const dbNoteIdType = await getConfig('dbNoteIdType') || _('noData');
                 const dbSourceValue = await getConfig('dbSource');
-                let dbSourceText = 'Няма данни';
+                let dbSourceText = _('noData');
                 if (dbSourceValue === 1) {
-                    dbSourceText = 'Google Drive';
+                    dbSourceText = _('sourceGoogleDrive');
                 } else if (dbSourceValue === 2) {
-                    dbSourceText = 'Локална папка';
+                    dbSourceText = _('sourceLocalFolder');
                 } else if (dbSourceValue === 3) {
-                    dbSourceText = 'Архив';
+                    dbSourceText = _('sourceArchive');
                 }
 
-                const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : 'Няма данни';
-                const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : 'Няма данни';
+                const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
+                const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
 
-                const content = `Потребител: ${userEmail}\nПоследна Google Drive синхронизация: ${gdDate}\nПоследна локална синхронизация: ${localDate}\nВръзка към приложенията: ${dbNoteIdType}\nБазата е създадена от: ${dbSourceText}`;
+                const content = `${_('sysInfoUser')}: ${userEmail}\n${_('sysInfoLastGDSync')}: ${gdDate}\n${_('sysInfoLastLocalSync')}: ${localDate}\n${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}\n${_('sysInfoDbCreatedFrom')}: ${dbSourceText}`;
 
                 showModal({ raw: content, color: '#f0f0f0' });
             } catch (error) {
                 console.error("Error fetching system info:", error);
-                showToast("Грешка при извличане на системна информация.");
+                showToast(_('errorSysInfo'));
             }
         });
 }
@@ -848,67 +916,20 @@ startApp();
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
-/**
- * Подновява access token-а, използвайки refresh token.
- * @returns {Promise<object>} Нов обект с данни за автентикация.
- */
-async function refreshToken() {
-    const storedTokenString = sessionStorage.getItem('google_auth_token');
-    if (!storedTokenString) throw new Error('No token found for refresh.');
-
-    const tokenData = JSON.parse(storedTokenString);
-    const currentRefreshToken = tokenData.refresh_token;
-
-    if (!currentRefreshToken) {
-        throw new Error('No refresh token available. Full re-authentication is required.');
-    }
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            'client_id': CLIENT_ID,
-            'client_secret': CLIENT_SECRET, // **SECURITY RISK** - Secret should be on a server
-            'refresh_token': currentRefreshToken,
-            'grant_type': 'refresh_token'
-        })
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to refresh token:', errorData);
-        throw new Error(`Token refresh failed: ${errorData.error_description || response.statusText}`);
-    }
-
-    const newAuthData = await response.json();
-    // Google не винаги връща нов refresh_token, затова запазваме стария.
-    newAuthData.refresh_token = currentRefreshToken;
-    newAuthData.issued_at = Date.now(); // Задаваме ново време на издаване.
-
-    sessionStorage.setItem('google_auth_token', JSON.stringify(newAuthData));
-    return newAuthData;
-}
-
-async function checkAuth() {
+function checkAuth() {
     const storedTokenString = sessionStorage.getItem('google_auth_token');
     if (!storedTokenString) {
         window.location.href = 'login.html';
         return null; // Stop execution
     }
-    let tokenData = JSON.parse(storedTokenString);
+    const tokenData = JSON.parse(storedTokenString);
     const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
     if (isExpired) {
-        try {
-            console.log('Access token expired, attempting to refresh...');
-            tokenData = await refreshToken();
-            console.log('Token refreshed successfully.');
-        } catch (error) {
-            console.error('Failed to refresh token, redirecting to login:', error);
-            sessionStorage.removeItem('google_auth_token');
-            showToast(_('errorSessionExpired'));
-            window.location.href = 'login.html';
-            return null; // Stop execution
-        }
+        console.log("Token expired. Redirecting to login for re-authentication.");
+        sessionStorage.removeItem('google_auth_token');
+        // Redirect to login page with a parameter to trigger re-auth automatically
+        window.location.href = 'login.html?reauth=true';
+        return null; // Stop execution
     }
     return tokenData; // Token is valid
 }
@@ -974,8 +995,7 @@ function handleSignoutClick() {
         let folderId = folderIdFromPrompt || await getFolderID();
         if (!folderId) {
             // Try to load from local DB as a fallback
-            // Only attempt this if IndexedDB is actually enabled for Google Drive mode.
-            if (saveToDb) { // Проверяваме само флага, който е подаден
+            if (useIndexedDb && useGoogleDb) {
                 console.log("Main folder ID not found on Google Drive, attempting to load from local IndexedDB.");
                 try {
                     await fetchAllDataLocal();
@@ -1394,7 +1414,7 @@ function updateGlobalStateFlags() {
                 if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
                 const arhHandle = await getConfig('arhHandle');
                 if (!arhHandle) {
-                    showToast("Моля, изберете папка за архив от настройките.", 10000);
+                    showToast(_('errorArhFolderNotSelected'), 10000);
                     document.getElementById('settings-modal').classList.add('visible');
                     return; // Stop execution if no archive handle
                 }
@@ -1412,7 +1432,7 @@ function updateGlobalStateFlags() {
                         // DB is empty or does not exist, prompt for creation from archive
                         const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
                         if (confirmed) {
-                            loaderText.textContent = "Creating DB from archive...";
+                            loaderText.textContent = _('creatingDbFromArh');
                             const success = await readArh(verifiedHandle); // Read archive into memory
                             if (success) {
                                 const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
@@ -1428,7 +1448,7 @@ function updateGlobalStateFlags() {
                                 }
                             } else {
                                 // If reading archive failed, cannot create DB.
-                                showToast("Failed to read archive, cannot create DB.", 10000);
+                                showToast(_('errorReadArh'), 10000);
                                 // What to do here? Maybe just show an empty UI or an error.
                             }
                         } else {
@@ -1441,7 +1461,7 @@ function updateGlobalStateFlags() {
                         }
                     } else {
                         // DB exists and has data, load from DB
-                        loaderText.textContent = "Loading from local database...";
+                        loaderText.textContent = _('loadingFromDb');
                         await fetchAllDataLocal();
                         await renderUI({ boardParseError: false });
                     }
@@ -1461,11 +1481,15 @@ function updateGlobalStateFlags() {
                 if (useGoogleDb) {
                     console.log("Source: Google Drive");
                     if (loaderTitle) loaderTitle.textContent = "Google Drive";
+                    console.log("Source: Google Drive"); 
+                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
                     const { boardParseError } = await fetchAllData(null, false); // false -> не записвай в DB
                     await renderUI({ boardParseError });
                 } else if (useLocalFolder) {
                     console.log("Source: Local Folder");
                     if (loaderTitle) loaderTitle.textContent = "Локална папка";
+                    console.log("Source: Local Folder"); 
+                    if (loaderTitle) loaderTitle.textContent = _('sourceLocalFolder');
                     const { boardParseError } = await fetchAllDataFromLocalFolder();
                     await renderUI({ boardParseError });
                 }
@@ -1477,7 +1501,7 @@ function updateGlobalStateFlags() {
                     // Първоначално създаване на базата данни
                     console.log("DB is empty or does not exist. Performing initial data load.");
                     if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
-                    loaderText.textContent = "Performing initial data load...";
+                    loaderText.textContent = _('initialDataLoad');
 
                     if (useGoogleDb) {
                         console.log("Source for initial load: Google Drive");
@@ -1497,16 +1521,17 @@ function updateGlobalStateFlags() {
                         // Синхронизираме от източника, след което зареждаме от базата
                         console.log("Syncing from source (sync is enabled).");
                         if (useGoogleDb) {
-                            if (loaderTitle) loaderTitle.textContent = "Google Drive Sync";
+                            if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
                             const updatedCount = await runGoogleDriveSync();
                             showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 10000);
                         } else if (useLocalFolder) {
-                            if (loaderTitle) loaderTitle.textContent = "Local Folder Sync";
+                            if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
                             const updatedCount = await runLocalSync();
                             showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 10000);
                         }
 
                         // След синхронизация, винаги зареждаме ВСИЧКИ данни от базата
+                        loaderText.textContent = _('fetchingFromDb');
                         await fetchAllDataLocal();
 
                         // Създаваме UI с всички данни
@@ -1581,7 +1606,7 @@ function updateGlobalStateFlags() {
         } catch (err) {
             if (err.name === 'NotFoundError') {
                 console.error("Local folder not found:", err);
-                showToast("Избраната локална папка не е намерена. Моля, изберете нова.", 15000);
+                showToast(_('errorLocalFolderNotFound'), 15000);
                 // Изчистваме невалидния handle от базата данни
                 await saveConfig('directoryHandle', null);
                 // Отваряме настройките, за да може потребителят да избере нова папка
@@ -2241,7 +2266,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // Update search box placeholder based on the selected board
         if (boardId === 'reminder') {
             searchInput.placeholder = `[${_('reminder')}]: ${_('searchPlaceholder')}`;
-        } else if (boardId === 'new-updates') {
+        } else if (boardId === 'new-updates') { 
             searchInput.placeholder = `[${_('newUpdates')}]: ${_('searchPlaceholder')}`;
         } else if (boardId !== 'all' && boardId !== 'calendar') {
             const board = boardsData.find(b => b.gdid === boardId);
@@ -2275,7 +2300,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         updateSearchPlaceholder();
         if (boardId === 'all') {
             scrollTopBtn.innerHTML = arrowSvg;
-        }  else if (boardId === 'reminder') {
+        } else if (boardId === 'reminder') {
             scrollTopBtn.innerHTML = `${_('reminder')} ${arrowSvg}`;
         } else if (boardId === 'new-updates') {
             scrollTopBtn.innerHTML = `${_('newUpdates')} ${arrowSvg}`;
@@ -2480,7 +2505,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             }
         } catch (error) {
             console.error(`Error fetching file ID for '${fileName}' in folder '${folderId}':`, error);
-            showToast(`Error fetching file ID for ${fileName}.`);
+            showToast(_('errorFetchingFileId').replace('{fileName}', fileName));
             return null;
         }
     }
@@ -2508,7 +2533,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             return multinotesDataId;
         } catch (error) {
             console.error("Error in getFolderID:", error);
-            showToast("Error fetching folder IDs.");
+            showToast(_('errorFetchingFolderIds'));
             return null;
         }
     }
@@ -2544,7 +2569,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         allNotesData = [];
         notesContainer.innerHTML = '';
         loaderContainer.style.display = 'block';
-    currentBoardFilter = localStorage.getItem('startBoard') || 'Main'; // Променяме default на 'Main'
+        currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
         const popup = document.getElementById('board-filter-popup');
         if (popup) {
             popup.classList.remove('visible');
@@ -2870,8 +2895,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
             // Start Board
             let startBoardSelect; // Declare here to be accessible in the whole function
-            startBoardSelect = document.getElementById('start-board-select');
-            startBoardSelect.value = localStorage.getItem('startBoard') || 'all';
+            startBoardSelect = document.getElementById('start-board-select'); 
+            startBoardSelect.value = localStorage.getItem('startBoard') || 'Main';
             startBoardSelect.addEventListener('change', () => {
                 localStorage.setItem('startBoard', startBoardSelect.value);
                 showToast(_('settingSaved'), 2000);
@@ -2904,7 +2929,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             const handleDataSourceChange = (changedCheckbox, changedKey) => {
                 // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
                 if (!changedCheckbox.checked && !dbExists) {
-                    showToast("Трябва да има избран поне един източник на данни, когато не се използва База данни.", 5000);
+                    showToast(_('errorNoDataSourceSelected'), 5000);
                     // Не позволяваме премахването, като връщаме отметката
                     changedCheckbox.checked = true;
                     return;
@@ -3031,7 +3056,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                         if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
                         if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
                         dbExists = false; // Актуализираме глобалния флаг
-                        enableSettingsControls(); // Активираме контролите
                         dirHandle = null; // Нулираме и handle-a в паметта
                     } else {
                         // Потребителят иска да изтрие само данните, но да запази настройките
@@ -3057,9 +3081,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     if (handle) {
                         const validationResult = await validateFolderContent(handle);
                         if (!validationResult.isValid) {
-                            let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
+                    let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
                             if (validationResult.reason === 'criteria_not_met') {
-                                warningMessage += " " + _('requiredFilesForLocalFolder');
+                        warningMessage += " " + _('requiredFilesForLocalFolder');
                             }
                             showToast(warningMessage, 15000);
                             return;
@@ -3088,9 +3112,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     if (handle) {
                         const validationArh = await validateArhFolderContent(handle);
                         if (!validationArh.isValid) {
-                            let warningMessage = `Папката '${handle.name}' не изглежда като валидна папка с архив.`;
+                            let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
                             if (validationArh.reason === 'criteria_not_met') {
-                                warningMessage += " Необходимо е да съдържа boards.bcp и notes.bcp.";
+                                warningMessage += " " + _('requiredFilesForLocalFolder');
                             }
                             showToast(warningMessage, 15000);
                             return;
@@ -3124,6 +3148,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
                 document.getElementById('settings-modal').classList.remove('visible');
 
+                // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
+                updateModeButton();
+
                 const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
 
                 // Ако прозорецът е бил отворен принудително, презареждаме данните.
@@ -3136,6 +3163,13 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 }
             });
             settingsModalBody.dataset.initialized = true;
+    }
+
+    // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
+    const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+    if (advancedSettingsSpan) {
+        const showAdvanced = localStorage.getItem('showAdvancedSettings') === 'true';
+        advancedSettingsSpan.hidden = !showAdvanced;
     }
 
     }
@@ -3177,14 +3211,19 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
      */
     function populateStartBoardSelect() {
         const startBoardSelect = document.getElementById('start-board-select');
-        const savedValue = localStorage.getItem('startBoard') || 'all'; // Взимаме запазената стойност или 'all' по подразбиране
+        const savedValue = localStorage.getItem('startBoard') || 'Main'; // Взимаме запазената стойност или 'Main' по подразбиране
         // Изчистваме напълно списъка, преди да го попълним наново
         startBoardSelect.innerHTML = `
             <option value="all">${_('allBoards')}</option>
             <option value="calendar">${_('calendar')}</option>
             <option value="reminder">${_('reminder')}</option>
         `;
-        boardsData.forEach(board => { if (board.gdid && board.title) startBoardSelect.add(new Option(board.title, board.gdid)); });
+        boardsData.forEach(board => {
+            if (board.title) {
+                const optionValue = board.title === 'Main' ? 'Main' : board.gdid;
+                if (optionValue) startBoardSelect.add(new Option(board.title, optionValue));
+            }
+        });
         startBoardSelect.value = savedValue; // Задаваме правилната стойност
     }
 
@@ -4119,6 +4158,10 @@ async function checkDbExists(dbName) {
 
 function deleteNotesDB() {
     return new Promise((resolve, reject) => {
+        if (window.db) {
+            window.db.close(); // Затваря връзката към базата данни
+            window.db = null;
+        }
         console.log(`Attempting to delete database: ${NOTES_DB_NAME}`);
         const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
 
@@ -4132,7 +4175,7 @@ function deleteNotesDB() {
         };
         deleteRequest.onblocked = () => {
             console.warn("Database deletion is blocked. Please close other tabs with this app open.");
-            showToast("Database deletion is blocked. Please close other tabs with this app open.", 10000);
+            showToast(_('errorDbDeletionBlocked'), 10000);
             reject(new Error("Database deletion blocked."));
         };
     });
@@ -4186,16 +4229,18 @@ async function renderUI({ boardParseError }) {
     if (boardsNoteElement) {
         document.querySelector('header').appendChild(boardsNoteElement);
     }
-
     // Проверяваме дали трябва да филтрираме по 'Main' и намираме неговия ID
-    let initialFilter = currentBoardFilter;
-    if (initialFilter === 'Main') {
+    if (currentBoardFilter === 'Main') {
         const mainBoard = boardsData.find(b => b.title === 'Main');
         if (mainBoard) {
-            initialFilter = mainBoard.gdid; // Сменяме 'Main' с реалния gdid
+            currentBoardFilter = mainBoard.gdid; // Сменяме 'Main' с реалния gdid
+        } else {
+            currentBoardFilter = 'all'; // Ако по някаква причина няма борд 'Main', показваме всички
         }
     }
-    filterNotesByBoard(initialFilter);
+    // Извикваме филтъра с вече актуализираната стойност на currentBoardFilter
+    filterNotesByBoard(currentBoardFilter);
+
     const counterEl = document.getElementById('note-counter');
     if (counterEl) {
         counterEl.textContent = notesCount;
@@ -4214,7 +4259,7 @@ async function renderUI({ boardParseError }) {
 async function readArh(dirHandle) {
     if (!dirHandle) {
         console.error("readArh: Не е подаден валиден handle на директория.");
-        showToast("Не е избрана папка за архив.", 10000);
+        showToast(_('errorNoArchiveFolderSelected'), 10000);
         return false;
     }
 
@@ -4269,13 +4314,13 @@ async function readArh(dirHandle) {
         success = false;
         if (error.name === 'NotFoundError') {
             console.error(`Грешка: Файл 'boards.bcp' или 'notes.bcp' не е намерен в папката '${dirHandle.name}'.`);
-            showToast(`Задължителен архивен файл не е намерен.`, 10000);
+            showToast(_('errorRequiredArchiveFileMissing'), 10000);
         } else if (error instanceof SyntaxError) {
             console.error("Грешка при парсване на JSON съдържание от архивен файл:", error);
-            showToast("Архивните файлове съдържат невалидни данни.", 10000);
+            showToast(_('errorInvalidArchiveData'), 10000);
         } else {
             console.error("Възникна неочаквана грешка при четене на архива:", error);
-            showToast("Грешка при четене на архива.", 10000);
+            showToast(_('errorReadingArchive'), 10000);
         }
     }
 
