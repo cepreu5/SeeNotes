@@ -1446,6 +1446,7 @@ function validateDataSourceSelection() {
             if (useArhDb) {
                 // --- РЕЖИМ 0: Зареждане от Архив ---
                 console.log("Mode: Archive");
+                if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
                 // --- КОРЕКЦИЯ: Задаваме правилното заглавие на лоудъра ---
                 // Преди: Показваше "Избери архивна папка", дори когато такава вече е избрана.
                 // Сега: Показва "Зареждане директно от архив", което е по-коректно.

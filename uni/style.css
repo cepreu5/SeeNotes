@@ -941,6 +941,12 @@ pre, code {
 
         /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
         #google-db-wrapper,
+        #max-searches,
+        #order-notes,
+        #show-date,
+        #modal-font-size,
+        #note-font-size,
+        #max-searches,
         #use-indexeddb-wrapper,
         #db-buttons-wrapper,
         #local-db-wrapper,
