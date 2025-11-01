@@ -66,6 +66,12 @@
             <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Презареди">
                 <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
             </button>
+            <!-- FEEDBACK BUTTON -->
+            <a id="feedback_button" href="mailto:multinotes.web@gmail.com" class="header-btn" data-key-title="feedbackButtonTooltip" title="Обратна връзка">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+            </a>
             <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Изход">
                 <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
             </button>
@@ -138,30 +144,31 @@
                     </select>
                 </div>
 
-                <div class="zoom-control-wrapper" style="margin-top: 10px;">
-                    <label for="max-searches-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="maxSearchesLabel">Запазени търсения:</label>
+                <div class="zoom-control-wrapper" id="max-searches" style="margin-top: 10px;">
+                    <label for="max-searches-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="maxSearchesLabel">
+                        Запазени търсения:</label>
                     <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
                 </div>
 
-                <div class="zoom-control-wrapper" style="margin-top: 10px;">
+                <div class="zoom-control-wrapper" id="note-font-size" style="margin-top: 10px;">
                     <label for="note-font-size-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="noteFontSizeLabel">
                         Размер шрифт (бележка):</label>
                     <select id="note-font-size-input" class="zoom-input-select" style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
                 </div>
 
-                <div class="zoom-control-wrapper" style="margin-top: 10px;">
+                <div class="zoom-control-wrapper" id="modal-font-size" style="margin-top: 10px;">
                     <label for="modal-font-size-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="modalFontSizeLabel">
                         Размер шрифт (преглед):</label>
                     <select id="modal-font-size-input" class="zoom-input-select" style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
                 </div>
 
-                <div class="zoom-control-wrapper" style="margin-top: 10px;">
+                <div class="zoom-control-wrapper" id="show-date" style="margin-top: 10px;">
                     <label for="show-datemod-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showDatemodLabel">
                         Дата</label>
                     <input type="checkbox" id="show-datemod-checkbox" class="settings-checkbox">
                 </div>
 
-                <div class="zoom-control-wrapper" style="margin-top: 5px;">
+                <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
                     <label for="order-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">
                         Подреждане на бележките:</label>
                     <input type="checkbox" id="order-checkbox" class="settings-checkbox">

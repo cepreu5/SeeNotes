@@ -226,7 +226,8 @@ const translations = {
             syncTitleLocal: 'Sync with Local Folder',
             /*advHidden: 'Advanced settings are hidden.',
             advShown: 'Advanced settings are shown.',*/
-            errorArhFolderNotSelected: 'Please select an archive folder from settings.'
+            errorArhFolderNotSelected: 'Please select an archive folder from settings.',
+            feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com'
         },
         bg: {
             appTitle: 'CX MultiNotes Viewer',
@@ -375,7 +376,8 @@ const translations = {
             syncTitleLocal: 'Синхронизиране с Локална папка',
             /*advHidden: 'Разширените настройки са скрити.',
             advShown: 'Разширените настройки са достъпни.',*/
-            errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.'
+            errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.',
+            feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com'
         }
     };
     let currentLang = localStorage.getItem('language') || 'bg';
@@ -581,6 +583,7 @@ function initApp() {
         });
         updateSignoutTooltip();
     }
+
     function updateSignoutTooltip() {
         const email = sessionStorage.getItem('google_auth_email_hint');
         const signoutBtn = document.getElementById('signout_button');
