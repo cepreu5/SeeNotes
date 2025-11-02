@@ -131,6 +131,7 @@ const translations = {
             maxSearchesLabel: 'Saved Searches:',
             clearSearchesTooltip: 'Clear search history',
             noteFontSizeLabel: 'Note Font Size:',
+            showBoardNoteCountLabel: 'Notes count in board:',
             showDatemodLabel: 'Show modification/calendar date:',
             dataManagementTitle: 'Data Loading',
             advancedSettings: 'Advanced Settings',
@@ -227,7 +228,6 @@ const translations = {
             /*advHidden: 'Advanced settings are hidden.',
             advShown: 'Advanced settings are shown.',*/
             errorArhFolderNotSelected: 'Please select an archive folder from settings.',
-            showBoardNoteCountLabel: 'Notes count in board:',
             feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com'
         },
         bg: {
@@ -282,6 +282,7 @@ const translations = {
             maxSearchesLabel: 'Запазени търсения:',
             clearSearchesTooltip: 'Изчисти историята на търсенията',
             noteFontSizeLabel: 'Размер шрифт (бележка):',
+            showBoardNoteCountLabel: 'Брой бележки в борда:',
             showDatemodLabel: 'Покажи дата на промяна/календар:',
             dataManagementTitle: 'Четене на данни',
             advancedSettings: 'Разширени настройки',
@@ -378,7 +379,6 @@ const translations = {
             /*advHidden: 'Разширените настройки са скрити.',
             advShown: 'Разширените настройки са достъпни.',*/
             errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.',
-            showBoardNoteCountLabel: 'Брой бележки в борда:',
             feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com'
         }
     };
@@ -2286,27 +2286,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
         // и не съществува в boardsData, превключваме към 'all'.
         const specialBoards = ['all', 'calendar', 'reminder', 'new-updates'];
-        if (!specialBoards.includes(boardId)) {
-            // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
-            // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
-            // В другите режими - по текстов `gdid`.
-            // Бутоните за филтриране винаги подават `gdid`.
-            // Тази логика проверява дали бордът съществува и задава правилния
-            // идентификатор за филтриране (`currentBoardFilter`).
-
-            let boardToFilter = null;
-            // Търсим борда по gdid, който идва от клик на бутон
-            const board = boardsData.find(b => b.gdid === boardId);
-
-            if (board) {
-                // Ако сме в режим Архив, ще филтрираме по числовото `id`.
-                // В противен случай - по `gdid`.
-                boardToFilter = useArhDb ? board.id : board.gdid;
-            }
-
-            // Проверяваме дали сме намерили борд. `boardId` е оригиналният gdid от бутона.
-            const boardExists = boardsData.some(b => b.gdid === boardId);
-
+        if (!specialBoards.includes(boardId)) { 
+            // Проверяваме дали подаденият boardId съществува като gdid (текст) или id (число)
+            const boardExists = boardsData.some(b => b.gdid === boardId || b.id == boardId);
             if (!boardExists) {
                 console.warn(`Board with ID '${boardId}' not found. Defaulting to 'all'.`);
                 boardId = 'all';
@@ -2321,14 +2303,22 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         searchInput.value = ''; // Clear the search box
         saveSearchBtn.style.display = 'none';
 
-        // Задаваме правилния филтър (числов id за Архив, gdid за другите)
-        currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useArhDb ? boardsData.find(b => b.gdid === boardId)?.id : boardId);
+        // --- КОРЕКЦИЯ: Задаваме правилния филтър (числов id за Архив, gdid за другите) ---
+        if (specialBoards.includes(boardId)) {
+            currentBoardFilter = boardId;
+        } else {
+            const board = boardsData.find(b => b.gdid === boardId);
+            // Ако сме в режим Архив, филтрираме по `id`, иначе по `gdid`.
+            currentBoardFilter = useArhDb ? board?.id : boardId;
+        }
 
         applyFilters();
 
-        // Маркираме избрания бутон. `boardId` тук е оригиналният `gdid` от бутона.
-        document.querySelectorAll('.board-filter-link').forEach(link => {
-            link.classList.toggle('selected-board', link.dataset.boardid === boardId);
+        // Маркираме избрания бутон. `boardId` тук може да е gdid или id.
+        // Бутоните винаги имат gdid в dataset, затова намираме правилния gdid, ако е нужно.
+        const buttonBoardId = typeof boardId === 'number' ? boardsData.find(b => b.id == boardId)?.gdid : boardId;
+        document.querySelectorAll('.board-filter-link').forEach(link => { 
+            link.classList.toggle('selected-board', link.dataset.boardid === buttonBoardId);
         });
 
         // Update search box placeholder based on the selected board
@@ -2337,8 +2327,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         } else if (boardId === 'new-updates') { 
             searchInput.placeholder = `[${_('newUpdates')}]: ${_('searchPlaceholder')}`;
         } else if (boardId !== 'all' && boardId !== 'calendar') {
-            // Търсим по gdid, за да вземем заглавието
-            const board = boardsData.find(b => b.gdid === boardId);
+            // Търсим по gdid или id, за да вземем заглавието
+            const board = boardsData.find(b => b.gdid === boardId || b.id == boardId);
             if (board) {
                 searchInput.placeholder = `[${board.title}]: ${_('searchPlaceholder')}`;
             }
@@ -2354,8 +2344,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         } else {
             // For a specific board, set the background via inline style.
             let newBackground = 'Board.png';
-            // Търсим по gdid, за да вземем фона
-            const board = boardsData.find(b => b.gdid === boardId);
+            // Търсим по gdid или id, за да вземем фона
+            const board = boardsData.find(b => b.gdid === boardId || b.id == boardId);
             if (board && board.backnum) {
                 switch (board.backnum) {
                     case 1: newBackground = 'Board1.png'; break;
@@ -2375,8 +2365,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         } else if (boardId === 'new-updates') {
             scrollTopBtn.innerHTML = `${_('newUpdates')} ${arrowSvg}`;
         } else {
-            // Търсим по gdid, за да вземем заглавието
-            const board = boardsData.find(b => b.gdid === boardId);
+            // Търсим по gdid или id, за да вземем заглавието
+            const board = boardsData.find(b => b.gdid === boardId || b.id == boardId);
             if (board) {
                 scrollTopBtn.innerHTML = board.title + " " + arrowSvg;
             }
@@ -2387,7 +2377,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         notesContainer.classList.remove('calendar-view');
 
         // Scroll the main board menu to the selected board
-        const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardId}"]`);
+        const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
         if (selectedButtonInMenu) {
             selectedButtonInMenu.scrollIntoView({
                 behavior: 'smooth',
@@ -2426,10 +2416,13 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 if (extraInfo) data = JSON.parse(extraInfo);
             } catch (e) { console.error('Error parsing extraInfo for note:', e); }
 
+            // --- КОРЕКЦИЯ: Използваме правилния идентификатор на бележката спрямо режима ---
+            const noteBoardIdentifier = data.boardid; // Винаги използваме boardid
+
             const isVisibleByBoard = (currentBoardFilter === 'all') ||
                                      (currentBoardFilter === 'reminder' && data.timer && data.timer !== 0) ||
                                      (currentBoardFilter === 'new-updates' && updatedNoteGdims.includes(data.gdid)) ||
-                                     (data.boardid == currentBoardFilter); // Използваме '==' за да сравняваме число и стринг, ако се наложи
+                                     (noteBoardIdentifier == currentBoardFilter); // Сравняваме правилния идентификатор
 
             const isVisibleBySearch = (() => {
                 if (!searchTerm) return true;
@@ -2749,10 +2742,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // Сортираме бордовете по полето numord, преди да създадем бутоните
         boardsData.sort((a, b) => {
             const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
-            const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
-            return numordA - numordB;
-        })
-        .forEach(board => {
+            const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity; return numordA - numordB;
+        }).forEach(board => {
             if (!board.title || !board.gdid) return;
             const noteCount = board.noteCount || 0;
             const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
@@ -2926,9 +2917,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
             // Order checkbox
             orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
-            const sortingOptionsSection = document.getElementById('sorting-options-section');
-            const sortingArrow = document.getElementById('sorting-arrow');
- 
+
             // Event listener for the checkbox itself
             orderCheckbox.addEventListener('change', () => {
                 localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
@@ -3250,6 +3239,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 }
             });
             settingsModalBody.dataset.initialized = true;
+        }
     }
 
     // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
@@ -3257,8 +3247,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
     if (advancedSettingsSpan) {
         const showAdvanced = localStorage.getItem('showAdvancedSettings') === 'true';
         advancedSettingsSpan.hidden = !showAdvanced;
-    }
-
     }
 
     (async () => {
@@ -4378,6 +4366,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     populateStartBoardSelect();
 }
+
 
 /**
  * Чете архивни данни (boards.bcp, notes.bcp, medias.bcp) от подадена директория
