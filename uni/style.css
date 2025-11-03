@@ -482,6 +482,7 @@ pre, code {
 
 /* New style for when the modal acts as a popup */
 .modal-overlay.popup-mode {
+    position: fixed;
     align-items: flex-start; /* Align to top */
     justify-content: flex-start; /* Align to left */
 }
@@ -777,6 +778,12 @@ pre, code {
 /* Remove the large top padding from the modal body when showing the board list */
 .modal-content-box:has(.all-boards-modal-container) #boards-menu-modal-body {
     padding-right: 0px;
+}
+
+/* Apply background specifically to the all-boards modal, regardless of popup-mode */
+#boards-menu-modal .modal-content-box {
+    background-image: url('Frame.jpg');
+    max-width: 95%;
 }
 
 /* Apply background to the parent modal box when it contains the board list */

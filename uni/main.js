@@ -22,6 +22,7 @@ let currentCalendarDate = new Date();
 let authToken = null;
 let tokenClient;
 let dirHandle = null; // За локален достъп до файловата система
+let isInitialLoad = true; // Флаг за първоначално зареждане
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 
 // --- Състояние на търсенето ---
@@ -1585,7 +1586,7 @@ function validateDataSourceSelection() {
 
                         // Ако има обновени бележки, автоматично филтрираме по тях
                         if (updatedNoteGdims.length > 0) {
-                            filterNotesByBoard('new-updates');
+                            filterNotesByBoard('new-updates', false);
                         }
                     // }
                 }
@@ -2161,73 +2162,33 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         copyBtn.innerHTML = copyIconSvg;
     }
 
-    
-    function showAllBoardsModal(anchorElement) {
+    function showAllBoardsModal() {
         const modalContent = document.createElement('div');
         const boardsModal = document.getElementById('boards-menu-modal');
         // Use CSS class for styling
         modalContent.className = 'all-boards-modal-container';
         const createLink = (text, boardId, classes = []) => {
-            const link = document.createElement('span'); // Use SPAN to match header buttons
+            const link = document.createElement('span');
             link.textContent = text;
-            // link.href = '#'; // Not needed for span
-            // Apply the same width as the header buttons
             link.style.width = `${maxWidthForButtons}px`;
             link.classList.add('board-filter-link', ...classes);
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 boardsModal.classList.remove('visible');
-                filterNotesByBoard(boardId);
+                // Извикваме филтъра с флаг за скролиране, защото изборът е от модал.
+                filterNotesByBoard(boardId, true);
             });
             return link;
         };
         modalContent.appendChild(createLink(_('allBoards'), 'all', ['all-boards-filter-btn']));
         modalContent.appendChild(createLink(_('calendar'), 'calendar', ['calendar-filter-btn']));
         modalContent.appendChild(createLink(_('reminder'), 'reminder', ['reminder-filter-btn']));
-        boardsData.forEach(board => {
-            if (board.title && board.gdid) {
-                const link = createLink(board.title, board.gdid);
-                // Apply custom colors from board definition (same as in header)
-                if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) {
-                    link.style.backgroundColor = `var(--board-bg-${board.color})`;
-                }
-                // Set text color to black by default, as per header logic
-                link.style.color = 'black';
-                // Override for status
-                if (board.status === 1) link.style.color = 'red';
-                modalContent.appendChild(link);
-            }
-        });
+        boardsData.forEach(board => { if (board.title && board.gdid) { const link = createLink(board.title, board.gdid); if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) { link.style.backgroundColor = `var(--board-bg-${board.color})`; } link.style.color = 'black'; if (board.status === 1) link.style.color = 'red'; modalContent.appendChild(link); } });
 
         const boardsModalBody = document.getElementById('boards-menu-modal-body');
         boardsModalBody.innerHTML = '';
         boardsModalBody.appendChild(modalContent);
-        const modalBox = boardsModal.querySelector('.modal-content-box');
-        if (anchorElement) {
-            const rect = anchorElement.getBoundingClientRect();
-            boardsModal.classList.add('popup-mode');
-            modalBox.style.top = `${rect.bottom + 5}px`; // Position below the button
-            modalBox.style.transform = 'none'; // Override centering transform
-            modalBox.style.width = 'auto';
-            
-            // Special handling for the right arrow to align its right edge
-            if (anchorElement.classList.contains('right-arrow')) {
-                modalBox.style.right = `${window.innerWidth - rect.right}px`;
-                modalBox.style.left = 'auto';
-            } else {
-                // Default behavior: align left, but check for overflow
-                const modalRect = modalBox.getBoundingClientRect();
-                const windowWidth = window.innerWidth;
-                modalBox.style.left = `${rect.left}px`; // Align with the anchor element
-                modalBox.style.right = 'auto'; // Unset right alignment
-                if (rect.left + modalRect.width > windowWidth - 10) {
-                    modalBox.style.left = 'auto';
-                    modalBox.style.right = '10px';
-                }
-            }
-        } else {
-            boardsModal.classList.remove('popup-mode'); // Revert to default centered modal
-        }
+        boardsModal.classList.remove('popup-mode'); // Revert to default centered modal
         boardsModal.classList.add('visible');
     }
 
@@ -2281,7 +2242,16 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         });
     });
 
-    function filterNotesByBoard(boardId) {
+    /**
+     * Филтрира бележките по избран борд.
+     * @param {string|number} boardId - ID-то на борда.
+     * @param {boolean} [shouldScroll=false] - Дали да се скролира менюто до избрания борд.
+     */
+    function filterNotesByBoard(boardId, shouldScroll = false) { // line 2341
+        // --- КОРЕКЦИЯ: Дефинираме buttonBoardId тук ---
+        // Независимо дали boardId е число (id) или текст (gdid), за бутона ни трябва gdid.
+        const buttonBoardId = typeof boardId === 'number' ? boardsData.find(b => b.id == boardId)?.gdid : boardId;
+
         // --- Проверка за съществуващ борд ---
         // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
         // и не съществува в boardsData, превключваме към 'all'.
@@ -2387,13 +2357,15 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         notesContainer.classList.remove('calendar-view');
 
         // Scroll the main board menu to the selected board
-        const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardId}"]`);
-        if (selectedButtonInMenu) {
-            selectedButtonInMenu.scrollIntoView({
-                behavior: 'smooth',
-                inline: 'center',
-                block: 'nearest'
-            });
+        if (shouldScroll) {
+            const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
+            if (selectedButtonInMenu) {
+                selectedButtonInMenu.scrollIntoView({
+                    behavior: 'smooth',
+                    inline: 'center',
+                    block: 'nearest'
+                });
+            }
         }
     }
 
@@ -2500,12 +2472,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
             // Пренареждане в DOM
             visibleNotes.forEach(note => notesContainer.appendChild(note));
-        }
-
-        // Връщаме boards-note винаги най-отгоре
-        const boardsNote = document.querySelector('.boards-note');
-        if (boardsNote) {
-            document.querySelector('header').appendChild(boardsNote);
         }
 
         const noteCounter = document.getElementById('note-counter');
@@ -2696,7 +2662,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 isLongPress = false;
                 longPressTimer = setTimeout(() => {
                     isLongPress = true;
-                    showAllBoardsModal(element);
+                    showAllBoardsModal();
                 }, 500);
                 // Only prevent default on touch to avoid unwanted scrolling while holding
                 if (e.type === 'touchstart') {
@@ -2717,17 +2683,17 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             element.addEventListener('touchend', endPress);
             element.addEventListener('click', (e) => {
                 if (isLongPress) return;
-                if (e.ctrlKey) showAllBoardsModal(element);
+                if (e.ctrlKey) showAllBoardsModal();
                 else if (singleClickCallback) singleClickCallback();
             });
         };
-        addAllBoardsModalEvents(allBoardsLink, () => filterNotesByBoard('all'));
+        addAllBoardsModalEvents(allBoardsLink, () => filterNotesByBoard('all', false));
         allButtonLinks.push(allBoardsLink);
         const calendarLink = document.createElement('span');
         calendarLink.textContent = _('calendar');
         calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
         calendarLink.dataset.boardid = 'calendar';
-        calendarLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('calendar'); });
+        calendarLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('calendar', false); });
         allButtonLinks.push(calendarLink);
 
         // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
@@ -2736,7 +2702,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             newUpdatesLink.textContent = `${_('newUpdates')} (${updatedNoteGdims.length})`;
             newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
             newUpdatesLink.dataset.boardid = 'new-updates';
-            newUpdatesLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('new-updates'); });
+            newUpdatesLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('new-updates', false); });
             allButtonLinks.push(newUpdatesLink);
         }
 
@@ -2744,7 +2710,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         reminderLink.textContent = _('reminder');
         reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
         reminderLink.dataset.boardid = 'reminder';
-        reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder'); });
+        reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder', false); });
         allButtonLinks.push(reminderLink);
         // Сортираме бордовете по полето numord, преди да създадем бутоните
         boardsData.sort((a, b) => {
@@ -2767,9 +2733,14 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             link.style.color = 'black';
             if (board.status === 1) link.style.color = 'red';
             link.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (debug && e.ctrlKey) { showModal(JSON.stringify(board, null, 2)); }
-                else { e.preventDefault(); filterNotesByBoard(board.gdid); }
+                e.preventDefault(); // Винаги предотвратяваме действието по подразбиране
+                if (debug && e.ctrlKey) {
+                    showModal(JSON.stringify(board, null, 2));
+                } else {
+                    // Първо се уверяваме, че целият бутон е видим
+                    e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest' });
+                    filterNotesByBoard(board.gdid, false); // След това филтрираме без допълнително скролиране
+                }
             });
             allButtonLinks.push(link);
         });
@@ -2794,16 +2765,15 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         leftArrow.className = 'scroll-arrow left-arrow'; // Keep class for styling
         leftArrow.innerHTML = boardIconSvg; // Use the board icon
         // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
-        addAllBoardsModalEvents(leftArrow, () => { showAllBoardsModal(leftArrow); });
+        addAllBoardsModalEvents(leftArrow, () => { showAllBoardsModal(); });
         scrollWrapper.appendChild(leftArrow);
-        // The contentEl (which holds the buttons) goes inside the scrollWrapper
         scrollWrapper.appendChild(contentEl);
         contentWrapper.appendChild(scrollWrapper);
-        const checkScroll = () => {
-            leftArrow.classList.toggle('visible', true); // The button is now always visible
-        };
-        contentEl.addEventListener('scroll', checkScroll);
-        new ResizeObserver(checkScroll).observe(contentEl);
+
+        // Лявата стрелка вече е винаги видима чрез CSS или директно добавяне на клас.
+        // Няма нужда от динамична проверка при скрол.
+        leftArrow.classList.add('visible');
+
         return boardsNote;
     }
 
@@ -3463,7 +3433,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 calendarContainer.style.display = 'none';
                 document.querySelector('header').style.display = 'flex';
                 notesContainer.style.display = 'flex';
-                filterNotesByBoard('all'); // Go back to all notes view
+                filterNotesByBoard('all', true); // Go back to all notes view
                 window.dispatchEvent(new Event('scroll')); // Trigger scroll to show/hide scrollTopBtn
             });
         });
@@ -4343,6 +4313,15 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             if (selectedButton) {
                 selectedButton.classList.add('selected-board');
             }
+            // --- КОРЕКЦИЯ: Добавяме скролиране до активния бутон ---
+            const selectedButtonInMenu = boardsNoteElement.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
+            if (selectedButtonInMenu) {
+                selectedButtonInMenu.scrollIntoView({
+                    behavior: 'smooth',
+                    inline: 'center',
+                    block: 'nearest'
+                });
+            }
         }
         return; // КЛЮЧОВА СТЪПКА: Прекратяваме функцията тук
     }
@@ -4370,7 +4349,12 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     
     // Прилагаме филтъра, СЛЕД като всички бележки са добавени в DOM
-    filterNotesByBoard(currentBoardFilter);
+    filterNotesByBoard(currentBoardFilter, true);
+    // Скролираме само при първоначално зареждане, за да позиционираме менюто.
+    // При последващи презареждания (F5, бутон), менюто запазва позицията си.
+    filterNotesByBoard(currentBoardFilter, isInitialLoad);
+    // След първото зареждане, флагът става false.
+    isInitialLoad = false;
 
     const counterEl = document.getElementById('note-counter');
     if (counterEl) {
