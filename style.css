@@ -482,6 +482,7 @@ pre, code {
 
 /* New style for when the modal acts as a popup */
 .modal-overlay.popup-mode {
+    position: fixed;
     align-items: flex-start; /* Align to top */
     justify-content: flex-start; /* Align to left */
 }
@@ -779,6 +780,12 @@ pre, code {
     padding-right: 0px;
 }
 
+/* Apply background specifically to the all-boards modal, regardless of popup-mode */
+#boards-menu-modal .modal-content-box {
+    background-image: url('Frame.jpg');
+    max-width: 95%;
+}
+
 /* Apply background to the parent modal box when it contains the board list */
 .popup-mode .modal-content-box {
     background-image: url('Frame.jpg');
@@ -941,6 +948,13 @@ pre, code {
 
         /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
         #google-db-wrapper,
+        #max-searches,
+        #order-notes,
+        #show-date,
+        #modal-font-size,
+        #note-font-size,
+        #max-searches,
+        #note-count,
         #use-indexeddb-wrapper,
         #db-buttons-wrapper,
         #local-db-wrapper,

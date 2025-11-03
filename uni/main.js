@@ -1,6 +1,7 @@
+// https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
-let debug = true; // Глобален флаг за дебъг режим
+let debug = false; // Глобален флаг за дебъг режим
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -9,7 +10,7 @@ let debug = true; // Глобален флаг за дебъг режим
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.10'; // App version
+const version = '0.11'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
