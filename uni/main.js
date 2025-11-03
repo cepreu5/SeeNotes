@@ -232,6 +232,9 @@ const translations = {
             advShown: 'Advanced settings are shown.',*/
             errorArhFolderNotSelected: 'Please select an archive folder from settings.',
             showBoardNoteCountLabel: 'Notes count in board:',
+            showBoardAll: 'Show board All:',
+            showBoardRemind: 'Show board Reminders:',
+
             feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com'
         },
         bg: {
@@ -385,6 +388,8 @@ const translations = {
             advShown: 'Разширените настройки са достъпни.',*/
             errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.',
             showBoardNoteCountLabel: 'Брой бележки в борда:',
+            showBoardAll: 'Покажи борд Всички:',
+            showBoardRemind: 'Покажи борд Напомняния:',
             feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com'
         }
     };
@@ -574,6 +579,11 @@ function addLongPressOrCtrlClick(element, callback) {
     element.addEventListener('mouseleave', endPress);
     element.addEventListener('touchstart', startPress, { passive: true });
     element.addEventListener('touchend', endPress);
+    element.addEventListener('click', (e) => {
+        if (e.ctrlKey) {
+            callback(e);
+        }
+    });
     element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
 }
 
@@ -2315,6 +2325,19 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
      * @param {boolean} [shouldScroll=false] - Дали да се скролира менюто до избрания борд.
      */
     function filterNotesByBoard(boardId, shouldScroll = false) { // line 2341
+        // --- ПРОВЕРКА ЗА КОНФЛИКТ: Стартов борд, който е скрит ---
+        // Ако стартовият борд е "Всички", но е скрит, избираме първия наличен борд.
+        if (boardId === 'all' && localStorage.getItem('showBoardAll') === 'false') {
+            // Взимаме първия видим борд (който не е специален)
+            const firstAvailableBoard = boardsData.find(b => b.gdid);
+            boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all'; // Fallback to 'all' if no other boards exist
+        }
+        // Същата логика за "Напомняния"
+        if (boardId === 'reminder' && localStorage.getItem('showBoardRemind') === 'false') {
+            const firstAvailableBoard = boardsData.find(b => b.gdid);
+            boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
+        }
+
         // --- КОРЕКЦИЯ: Дефинираме buttonBoardId тук ---
         // Независимо дали boardId е число (id) или текст (gdid), за бутона ни трябва gdid.
         const buttonBoardId = typeof boardId === 'number' ? boardsData.find(b => b.id == boardId)?.gdid : boardId;
@@ -2630,7 +2653,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 if (files && files.length > 0) {
                     folderIds[name] = files[0].id;
                 } else {
-                    console.log(`Folder '${name}' not found within 'multinotes_data'.`);
+                    console.log(`Folder '${name}' not found within 'Google Drive: multinotes_data'.`);
                     folderIds[name] = "";
                 }
             }
@@ -2706,56 +2729,54 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         contentWrapper.appendChild(contentEl);
         boardsNote.appendChild(contentWrapper);
 
-        const allButtonLinks = [];
-        const allBoardsLink = document.createElement('span');
-        allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
-        allBoardsLink.dataset.boardid = 'all';
-        allBoardsLink.title = _('allBoardsCtrlClickTooltip');
-        const allBoardsText = document.createElement('span');
-        allBoardsText.textContent = _('allBoards');
-        const allBoardsIcon = document.createElement('span');
-        allBoardsIcon.classList.add('board-icon-in-button');
-
-        allBoardsLink.appendChild(allBoardsText);
-        /**
-         * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
-         * @param {HTMLElement} element The element to attach events to.
-         * @param {Function} [singleClickCallback] An optional callback for a regular single click.
-         */
-        const addAllBoardsModalEvents = (element, singleClickCallback) => {
-            let longPressTimer;
-            let isLongPress = false;
-            const startPress = (e) => {
-                isLongPress = false;
-                longPressTimer = setTimeout(() => {
-                    isLongPress = true;
-                    showAllBoardsModal();
-                }, 500);
-                // Only prevent default on touch to avoid unwanted scrolling while holding
-                if (e.type === 'touchstart') {
-                    e.preventDefault();
-                }
-            };
-            const endPress = (e) => {
-                clearTimeout(longPressTimer);
-                // If it's a touchend and not a long press, trigger the single click action
-                if (e.type === 'touchend' && !isLongPress) {
-                    if (singleClickCallback) singleClickCallback();
-                }
-            };
-            element.addEventListener('mousedown', startPress);
-            element.addEventListener('mouseup', endPress);
-            element.addEventListener('mouseleave', endPress);
-            element.addEventListener('touchstart', startPress);
-            element.addEventListener('touchend', endPress);
-            element.addEventListener('click', (e) => {
-                if (isLongPress) return;
-                if (e.ctrlKey) showAllBoardsModal();
-                else if (singleClickCallback) singleClickCallback();
-            });
+    /**
+     * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
+     * @param {HTMLElement} element The element to attach events to.
+     * @param {Function} [singleClickCallback] An optional callback for a regular single click.
+     */
+    const addAllBoardsModalEvents = (element, singleClickCallback) => {
+        let longPressTimer;
+        let isLongPress = false;
+        const startPress = (e) => {
+            isLongPress = false;
+            longPressTimer = setTimeout(() => {
+                isLongPress = true;
+                showAllBoardsModal();
+            }, 500);
+            // Only prevent default on touch to avoid unwanted scrolling while holding
+            if (e.type === 'touchstart') {
+                e.preventDefault();
+            }
         };
-        addAllBoardsModalEvents(allBoardsLink, () => filterNotesByBoard('all', false));
-        allButtonLinks.push(allBoardsLink);
+        const endPress = (e) => {
+            clearTimeout(longPressTimer);
+            // If it's a touchend and not a long press, trigger the single click action
+            if (e.type === 'touchend' && !isLongPress) {
+                if (singleClickCallback) singleClickCallback();
+            }
+        };
+        element.addEventListener('mousedown', startPress);
+        element.addEventListener('mouseup', endPress);
+        element.addEventListener('mouseleave', endPress);
+        element.addEventListener('touchstart', startPress);
+        element.addEventListener('touchend', endPress);
+        element.addEventListener('click', (e) => { if (isLongPress) return; if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(); });
+    };
+
+        const allButtonLinks = [];
+
+        // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ВСИЧКИ" ---
+        if (localStorage.getItem('showBoardAll') !== 'false') {
+            const allBoardsLink = document.createElement('span');
+            allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
+            allBoardsLink.dataset.boardid = 'all';
+            allBoardsLink.title = _('allBoardsCtrlClickTooltip');
+            const allBoardsText = document.createElement('span');
+            allBoardsText.textContent = _('allBoards');
+            allBoardsLink.appendChild(allBoardsText);
+            addAllBoardsModalEvents(allBoardsLink, () => filterNotesByBoard('all', false));
+            allButtonLinks.push(allBoardsLink);
+        }
         const showCount = localStorage.getItem('showBoardNoteCount') === 'true'; // This line is now correctly placed
         const calendarNoteCount = boardsData.calendarNoteCount || 0;
         const calendarLink = document.createElement('span');
@@ -2775,13 +2796,16 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             allButtonLinks.push(newUpdatesLink);
         }
 
-        const reminderNoteCount = boardsData.reminderNoteCount || 0;
-        const reminderLink = document.createElement('span');
-        reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
-        reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
-        reminderLink.dataset.boardid = 'reminder';
-        reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder', false); });
-        allButtonLinks.push(reminderLink);
+        // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
+        if (localStorage.getItem('showBoardRemind') !== 'false') {
+            const reminderNoteCount = boardsData.reminderNoteCount || 0;
+            const reminderLink = document.createElement('span');
+            reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
+            reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
+            reminderLink.dataset.boardid = 'reminder';
+            reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder', false); });
+            allButtonLinks.push(reminderLink);
+        }
         // Сортираме бордовете по полето numord, преди да създадем бутоните
         boardsData.sort((a, b) => {
             const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
@@ -2857,6 +2881,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
         const orderCheckbox = document.getElementById('order-checkbox');
         const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
+        const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
+        const showBoardRemindCheckbox = document.getElementById('remind-board-checkbox');
         // const startBoardSelect = document.getElementById('start-board-select');
         const maxSearchesInput = document.getElementById('max-searches-input');
         const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
@@ -2961,6 +2987,26 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     localStorage.setItem('showBoardNoteCount', showBoardNoteCountCheckbox.checked.toString());
                     showToast(_('settingSaved'), 2000);
                     renderUI({ boardParseError: false, rerenderOnlyMenu: true }); // Прегенерираме само менюто
+                });
+            }
+
+            // Show 'All' Board Checkbox
+            if (showBoardAllCheckbox) {
+                showBoardAllCheckbox.checked = localStorage.getItem('showBoardAll') !== 'false'; // Default to true
+                showBoardAllCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showBoardAll', showBoardAllCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+
+            // Show 'Reminders' Board Checkbox
+            if (showBoardRemindCheckbox) {
+                showBoardRemindCheckbox.checked = localStorage.getItem('showBoardRemind') !== 'false'; // Default to true
+                showBoardRemindCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showBoardRemind', showBoardRemindCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
                 });
             }
 
@@ -3190,6 +3236,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
                 localStorage.removeItem('startBoard');
                 }
+                // Независимо от избора, ако изтриването е успешно, активираме контролите
+                enableSettingsControls();
             });
 
             // Set initial states from localStorage
