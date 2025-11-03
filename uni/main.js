@@ -2742,7 +2742,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     showModal(JSON.stringify(board, null, 2));
                 } else {
                     // Първо се уверяваме, че целият бутон е видим
-                    e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest' });
+                    e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
                     filterNotesByBoard(board.gdid, false); // След това филтрираме без допълнително скролиране
                 }
             });
@@ -4288,22 +4288,13 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             boardsData.forEach(board => {
                 const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
                 const boardIdToMatch = isArh ? board.id : board.gdid;
-                // Проверяваме дали настройката е включена, преди да броим
-                if (localStorage.getItem('showBoardNoteCount') === 'true') {
-                    board.noteCount = allNotesData.filter(note => note.content.boardid == boardIdToMatch).length;
-                } else {
-                    board.noteCount = 0; // Нулираме, ако е изключена
-                }
+                // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
+                board.noteCount = allNotesData.filter(note => note.content.boardid == boardIdToMatch).length;
             });
-            // Изчисляваме броячите за напомняния и календар, ако настройката е включена
-            if (localStorage.getItem('showBoardNoteCount') === 'true') {
-                boardsData.reminderNoteCount = allNotesData.filter(note => note.content.timer && note.content.timer > 0).length;
-                boardsData.calendarNoteCount = allNotesData.filter(note => note.content.calendarDate).length;
-            } else {
-                // Нулираме, ако е изключена
-                boardsData.reminderNoteCount = 0;
-                boardsData.calendarNoteCount = 0;
-            }
+
+            // ВИНАГИ изчисляваме броячите за напомняния и календар.
+            boardsData.reminderNoteCount = allNotesData.filter(note => note.content.timer && note.content.timer > 0).length;
+            boardsData.calendarNoteCount = allNotesData.filter(note => note.content.calendarDate).length;
         }
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
