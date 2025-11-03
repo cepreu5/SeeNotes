@@ -2689,8 +2689,10 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         };
         addAllBoardsModalEvents(allBoardsLink, () => filterNotesByBoard('all', false));
         allButtonLinks.push(allBoardsLink);
+        const showCount = localStorage.getItem('showBoardNoteCount') === 'true'; // This line is now correctly placed
+        const calendarNoteCount = boardsData.calendarNoteCount || 0;
         const calendarLink = document.createElement('span');
-        calendarLink.textContent = _('calendar');
+        calendarLink.textContent = showCount && calendarNoteCount > 0 ? `${_('calendar')} (${calendarNoteCount})` : _('calendar');
         calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
         calendarLink.dataset.boardid = 'calendar';
         calendarLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('calendar', false); });
@@ -2706,8 +2708,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             allButtonLinks.push(newUpdatesLink);
         }
 
+        const reminderNoteCount = boardsData.reminderNoteCount || 0;
         const reminderLink = document.createElement('span');
-        reminderLink.textContent = _('reminder');
+        reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
         reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
         reminderLink.dataset.boardid = 'reminder';
         reminderLink.addEventListener('click', (e) => { e.preventDefault(); filterNotesByBoard('reminder', false); });
@@ -4291,6 +4294,15 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                     board.noteCount = 0; // Нулираме, ако е изключена
                 }
             });
+            // Изчисляваме броячите за напомняния и календар, ако настройката е включена
+            if (localStorage.getItem('showBoardNoteCount') === 'true') {
+                boardsData.reminderNoteCount = allNotesData.filter(note => note.content.timer && note.content.timer > 0).length;
+                boardsData.calendarNoteCount = allNotesData.filter(note => note.content.calendarDate).length;
+            } else {
+                // Нулираме, ако е изключена
+                boardsData.reminderNoteCount = 0;
+                boardsData.calendarNoteCount = 0;
+            }
         }
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
