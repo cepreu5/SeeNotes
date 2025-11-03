@@ -218,6 +218,8 @@ const translations = {
             errorRequiredArchiveFileMissing: 'Required archive file not found.',
             errorInvalidArchiveData: 'The archive files contain invalid data.',
             errorDbDeletionBlocked: 'Database deletion is blocked. Please close other tabs with this app open.',
+            errorNoBoardFilesFound: 'No board files found in the selected folder. Please check your data source.',
+            errorNoNoteFilesFound: 'No note files found in the selected folder. Please check your data source.',
             errorFetchingFolderIds: 'Error fetching folder IDs.',
             errorFetchingFileId: 'Error fetching file ID for {fileName}.',
             fetchingFromDb: 'Fetching data from the database...',
@@ -369,6 +371,8 @@ const translations = {
             errorRequiredArchiveFileMissing: 'Задължителен архивен файл не е намерен.',
             errorInvalidArchiveData: 'Архивните файлове съдържат невалидни данни.',
             errorDbDeletionBlocked: 'Изтриването на базата данни е блокирано. Моля, затворете другите отворени табове с това приложение.',
+            errorNoBoardFilesFound: 'Не са намерени файлове за бордове в избраната папка. Моля, проверете източника на данни.',
+            errorNoNoteFilesFound: 'Не са намерени файлове за бележки в избраната папка. Моля, проверете източника на данни.',
             errorFetchingFolderIds: 'Грешка при извличане на ID-та на папки.',
             errorFetchingFileId: 'Грешка при извличане на ID на файл за {fileName}.',
             fetchingFromDb: 'Зареждане от базата данни...',
@@ -541,6 +545,36 @@ function showConfirmation(message) {
 
         popup.classList.add('show');
     });
+}
+
+/**
+ * Добавя event listeners към елемент за разпознаване на "long press" или Ctrl+клик.
+ * @param {HTMLElement} element - Елементът, към който да се добавят събитията.
+ * @param {Function} callback - Функцията, която да се изпълни при задействане.
+ */
+function addLongPressOrCtrlClick(element, callback) {
+    let longPressTimer;
+    let isLongPress = false;
+
+    const startPress = (e) => {
+        isLongPress = false;
+        // Започваме таймер за продължително натискане
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            callback(e); // Извикваме callback-а при long press
+        }, 500); // 500ms за long press
+    };
+
+    const endPress = () => {
+        clearTimeout(longPressTimer);
+    };
+
+    element.addEventListener('mousedown', startPress);
+    element.addEventListener('mouseup', endPress);
+    element.addEventListener('mouseleave', endPress);
+    element.addEventListener('touchstart', startPress, { passive: true });
+    element.addEventListener('touchend', endPress);
+    element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
 }
 
 function initApp() {
@@ -742,42 +776,59 @@ function initApp() {
         // --- Modal Resizing Logic ---
         const modalContentBox = contentModal.querySelector('.modal-content-box');
         const resizeHandle = contentModal.querySelector('.modal-resize-handle');
+        let startX, startY, startWidth, startHeight;
 
-        resizeHandle.addEventListener('mousedown', function(e) {
+        function doDrag(e) {
             e.preventDefault();
             e.stopPropagation();
+            const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+            const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+            const newWidth = startWidth + currentX - startX;
+            const newHeight = startHeight + currentY - startY;
+            modalContentBox.style.width = Math.max(150, newWidth) + 'px'; // Minimum width
+            modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
+            modalContentBox.style.maxWidth = 'none';
+            modalContentBox.style.maxHeight = 'none';
+        }
 
-            const startX = e.clientX;
-            const startY = e.clientY;
-            const startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
-            const startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
+        function stopDrag(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.documentElement.removeEventListener('mousemove', doDrag, false);
+            document.documentElement.removeEventListener('mouseup', stopDrag, false);
+            document.documentElement.removeEventListener('touchmove', doDrag, false);
+            document.documentElement.removeEventListener('touchend', stopDrag, false);
+            localStorage.setItem('modalWidth', modalContentBox.style.width);
+            localStorage.setItem('modalHeight', modalContentBox.style.height);
+        }
 
-            function doDrag(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const newWidth = startWidth + e.clientX - startX;
-                const newHeight = startHeight + e.clientY - startY;
-                // Задаваме минимални размери, за да не изчезне прозорецът
-                modalContentBox.style.width = newWidth + 'px';
-                modalContentBox.style.height = newHeight + 'px';
-                // Премахваме max-width/height, за да позволим разширяване
-                modalContentBox.style.maxWidth = 'none';
-                modalContentBox.style.maxHeight = 'none';
-            }
+        function startDrag(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            startX = e.touches ? e.touches[0].clientX : e.clientX;
+            startY = e.touches ? e.touches[0].clientY : e.clientY;
+            startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
+            startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
 
-            function stopDrag(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                document.documentElement.removeEventListener('mousemove', doDrag, false);
-                document.documentElement.removeEventListener('mouseup', stopDrag, false);
-                // Запазваме новите размери в localStorage
-                localStorage.setItem('modalWidth', modalContentBox.style.width);
-                localStorage.setItem('modalHeight', modalContentBox.style.height);
-            }
-
+            // Attach listeners for both mouse and touch
             document.documentElement.addEventListener('mousemove', doDrag, false);
             document.documentElement.addEventListener('mouseup', stopDrag, false);
-        });
+            document.documentElement.addEventListener('touchmove', doDrag, false);
+            document.documentElement.addEventListener('touchend', stopDrag, false);
+        }
+
+        // Attach start event for both mouse and touch
+        resizeHandle.addEventListener('mousedown', startDrag);
+        resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
+
+        // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
+        resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
+<path d="M12 2 L2 12" />
+<path d="M12 7 L7 12" />
+<!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
+<path d="M10 4 L4 4 L4 10" />
+</svg>`;
+
         // Load saved searches and settings from localStorage
         lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
         savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
@@ -802,22 +853,23 @@ function initApp() {
 
         // --- Mode Button Logic (Ctrl-click for advanced) ---
         const modeButton = document.getElementById('mode_button');
-        if (modeButton) {
-            modeButton.addEventListener('click', (e) => {
-                if (e.ctrlKey) {
-                    e.preventDefault(); // Prevent settings modal from opening
-                    const advancedSettingsSpan = document.getElementById('advanced-settings-span');
-                    if (advancedSettingsSpan) {
-                        const isHidden = advancedSettingsSpan.hasAttribute('hidden');
-                        advancedSettingsSpan.hidden = false;// !isHidden;
-                        localStorage.setItem('showAdvancedSettings', false);
-                    }
-                } else {
-                    // Normal click opens settings
-                    document.getElementById('settings_button').click();
+        modeButton.addEventListener('click', (e) => {
+            // При обикновен клик винаги отваряме настройките
+            document.getElementById('settings_button').click();
+        });
+
+        // Добавяме long press / ctrl-click за показване на разширените настройки
+        addLongPressOrCtrlClick(modeButton, (e) => {
+            e.preventDefault();
+            const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+            if (advancedSettingsSpan) {
+                const isHidden = advancedSettingsSpan.hasAttribute('hidden');
+                if (isHidden) {
+                    advancedSettingsSpan.removeAttribute('hidden');
+                    localStorage.setItem('showAdvancedSettings', 'true');
                 }
-            });
-        }
+            }
+        });
 
         // Добавяме event listener за показване на системна информация при клик на брояча
         const noteCounter = document.getElementById('note-counter');
@@ -1021,6 +1073,12 @@ function handleSignoutClick() {
         // Proceed with fetching from Google Drive
         const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId, modifiedSince);
         boardsData = boardFileData;
+
+        // Check for at least one board.txt file
+        if (boardsData.length === 0) {
+            showToast(_('errorNoBoardFilesFound'), 15000);
+            return { error: 'NO_BOARD_FILES' }; // Връщаме специален статус
+        }
         const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId, modifiedSince);
         mediaData = mediaFileData;
         const onNoteProgress = (loaded, total) => {
@@ -1033,6 +1091,12 @@ function handleSignoutClick() {
             const content = JSON.parse(r.res.body);
             return { file: r.file, content: content, rawData: r };
         });
+
+        if (allNotesData.length === 0) {
+            showToast(_('errorNoNoteFilesFound'));
+            return { error: 'NO_NOTE_FILES' }; // Връщаме специален статус
+        }
+
         return { boardParseError };
     }
 
@@ -1530,9 +1594,12 @@ function validateDataSourceSelection() {
                     // Нулираме dirHandle тук, за да сме сигурни, че няма да се използват стари handles от локален/архивен режим
                     dirHandle = null;
                     console.log("Source: Google Drive");
-                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
-                    const { boardParseError } = await fetchAllData(null, false); // false -> не записвай в DB
-                    await renderUI({ boardParseError });
+                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive'); 
+                    const result = await fetchAllData(null, false); // false -> не записвай в DB
+                    if (result.error) { // Проверяваме за грешка при зареждането
+                        return; // Прекратяваме, ако няма файлове
+                    }
+                    await renderUI({ boardParseError: result.boardParseError });
                 } else if (useLocalFolder) {
                     console.log("Source: Local Folder");
                     if (loaderTitle) loaderTitle.textContent = "Локална папка";
@@ -1553,9 +1620,13 @@ function validateDataSourceSelection() {
 
                     if (useGoogleDb) {
                         console.log("Source for initial load: Google Drive");
-                    const { boardParseError } = await fetchAllData(null);
-                    await createDatabaseFromMemory();
-                    await renderUI({ boardParseError });
+                        const result = await fetchAllData(null);
+                        if (result.error) { // Проверяваме за грешка при зареждането
+                            return; // Прекратяваме, ако няма файлове
+                        }
+                        await createDatabaseFromMemory();
+                        await renderUI({ boardParseError: result.boardParseError });
+
                     } else if (useLocalFolder) {
                     console.log("Source for initial load: Local Folder");
                     const { boardParseError } = await fetchAllDataFromLocalFolder();
