@@ -2237,30 +2237,25 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
     function showAllBoardsModal() {
         const modalContent = document.createElement('div');
         const boardsModal = document.getElementById('boards-menu-modal');
-        // Use CSS class for styling
         modalContent.className = 'all-boards-modal-container';
-        const createLink = (text, boardId, classes = []) => {
-            const link = document.createElement('span');
-            link.textContent = text;
-            link.style.width = `${maxWidthForButtons}px`;
-            link.classList.add('board-filter-link', ...classes);
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                boardsModal.classList.remove('visible');
-                // Извикваме филтъра с флаг за скролиране, защото изборът е от модал.
-                filterNotesByBoard(boardId, true);
-            });
-            return link;
-        };
-        modalContent.appendChild(createLink(_('allBoards'), 'all', ['all-boards-filter-btn']));
-        modalContent.appendChild(createLink(_('calendar'), 'calendar', ['calendar-filter-btn']));
-        modalContent.appendChild(createLink(_('reminder'), 'reminder', ['reminder-filter-btn']));
-        boardsData.forEach(board => { if (board.title && board.gdid) { const link = createLink(board.title, board.gdid); if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) { link.style.backgroundColor = `var(--board-bg-${board.color})`; } link.style.color = 'black'; if (board.status === 1) link.style.color = 'red'; modalContent.appendChild(link); } });
+
+        // Взимаме всички бутони от главното меню в хедъра
+        const headerMenuContainer = document.querySelector('header .board-menu-container');
+        if (!headerMenuContainer) return; // Предпазна мярка
+
+        const headerButtons = headerMenuContainer.querySelectorAll('.board-filter-link');
+
+        headerButtons.forEach(button => {
+            const clone = button.cloneNode(true);
+            // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
+            clone.style.width = `${maxWidthForButtons}px`;
+            clone.addEventListener('click', (e) => { e.preventDefault(); boardsModal.classList.remove('visible'); filterNotesByBoard(clone.dataset.boardid, true); });
+            modalContent.appendChild(clone);
+        });
 
         const boardsModalBody = document.getElementById('boards-menu-modal-body');
         boardsModalBody.innerHTML = '';
         boardsModalBody.appendChild(modalContent);
-        boardsModal.classList.remove('popup-mode'); // Revert to default centered modal
         boardsModal.classList.add('visible');
     }
 
