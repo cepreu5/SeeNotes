@@ -20,6 +20,7 @@ let folderIds = {}; // Съхранява ID-тата на папките за �
 let currentBoardFilter = 'all';
 let currentBackground = 'Board.png';
 let currentCalendarDate = new Date();
+let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
 let authToken = null;
 let tokenClient;
 let dirHandle = null; // За локален достъп до файловата система
@@ -661,15 +662,20 @@ function initApp() {
             document.getElementById('settings-modal').classList.add('visible');
         });
         window.onscroll = () => {
+            const weeklyCalendar = document.getElementById('weekly-calendar-container');
+            // Скриваме бутона, ако седмичният календар е видим
+            if (weeklyCalendar && weeklyCalendar.style.display !== 'none') {
+                scrollTopBtn.style.display = "none";
+                return;
+            }
+
             const isScrolled = document.body.scrollTop > 100 || document.documentElement.scrollTop > 100;
             if (currentBoardFilter !== 'all') {
                 scrollTopBtn.style.display = "flex";
+            } else if (isScrolled) {
+                scrollTopBtn.style.display = "flex";
             } else {
-                if (isScrolled) {
-                    scrollTopBtn.style.display = "flex";
-                } else {
-                    scrollTopBtn.style.display = "none";
-                }
+                scrollTopBtn.style.display = "none";
             }
         };
         scrollTopBtn.addEventListener('click', () => window.scrollTo({top: 0, behavior: 'smooth'}));
@@ -2375,7 +2381,12 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         const searchInput = document.getElementById('search-box'); // The search input field
 
         if (boardId === 'calendar') {
-            renderCalendarView();
+            // Проверяваме коя версия на календара да покажем
+            if (localStorage.getItem('showWeeklyCalendar') === 'true') {
+                renderWeeklyCalendarView();
+            } else {
+                renderCalendarView();
+            }
             return;
         }
         searchInput.value = ''; // Clear the search box
@@ -2882,6 +2893,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         const orderCheckbox = document.getElementById('order-checkbox');
         const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
         const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
+        const weeklyCalendarCheckbox = document.getElementById('weekly-calendar-checkbox');
         const showBoardRemindCheckbox = document.getElementById('remind-board-checkbox');
         // const startBoardSelect = document.getElementById('start-board-select');
         const maxSearchesInput = document.getElementById('max-searches-input');
@@ -3007,6 +3019,16 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     localStorage.setItem('showBoardRemind', showBoardRemindCheckbox.checked.toString());
                     showToast(_('settingSaved'), 2000);
                     renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+
+            // Weekly Calendar Checkbox
+            if (weeklyCalendarCheckbox) {
+                weeklyCalendarCheckbox.checked = localStorage.getItem('showWeeklyCalendar') === 'true';
+                weeklyCalendarCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showWeeklyCalendar', weeklyCalendarCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    // No need to rerender, it's checked on calendar view open
                 });
             }
 
@@ -3555,6 +3577,171 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 window.dispatchEvent(new Event('scroll')); // Trigger scroll to show/hide scrollTopBtn
             });
         });
+    }
+
+    /**
+     * Рендира алтернативен, списъчен (седмичен) изглед на календара.
+     */
+    function renderWeeklyCalendarView(startDate) {
+        document.querySelector('header').style.display = 'none';
+        notesContainer.style.display = 'none';
+        scrollTopBtn.style.display = 'none';
+
+        if (!startDate) {
+            // --- КОРЕКЦИЯ: Изчисляваме понеделника от текущата седмица ---
+            const today = new Date();
+            const day = today.getDay(); // 0=неделя, 1=понеделник, ...
+            // Изчисляваме разликата до понеделник. Ако е неделя (0), връщаме 6 дни назад.
+            const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(today.setDate(diff));
+            monday.setHours(0, 0, 0, 0); // Нормализираме часа
+            startDate = monday;
+        } else {
+            currentWeeklyViewDate = startDate; // Обновяваме глобалното състояние
+        }
+
+        let weeklyContainer = document.getElementById('weekly-calendar-container');
+        if (!weeklyContainer) {
+            weeklyContainer = document.createElement('div');
+            weeklyContainer.id = 'weekly-calendar-container';
+            document.querySelector('main').appendChild(weeklyContainer);
+        }
+        weeklyContainer.style.display = 'flex'; // Променяме на flex за по-добър контрол
+        weeklyContainer.style.flexDirection = 'column';
+        weeklyContainer.innerHTML = ''; // Изчистваме предишното съдържание
+
+        // --- КОРЕКЦИЯ: Генериране на динамично заглавие с месеца(ите) ---
+        const endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6); // Крайната дата на 7-дневния период
+
+        const startMonthName = startDate.toLocaleString(currentLang, { month: 'long' });
+        const endMonthName = endDate.toLocaleString(currentLang, { month: 'long' });
+        const startYear = startDate.getFullYear();
+        const endYear = endDate.getFullYear();
+
+        let titleText;
+        if (startMonthName === endMonthName) {
+            titleText = `${startMonthName} ${startYear}`;
+        } else if (startYear === endYear) {
+            titleText = `${startMonthName} - ${endMonthName} ${startYear}`;
+        } else {
+            titleText = `${startMonthName} ${startYear} - ${endMonthName} ${endYear}`;
+        }
+
+        // Създаваме хедър с бутон за затваряне
+        const header = document.createElement('div');
+        header.className = 'calendar-header'; // Използваме същия стил като другия календар
+        header.innerHTML = `<div class="calendar-nav-controls"><button class="close-calendar-btn">&times;</button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button></div><h2>${titleText}</h2>`;
+        weeklyContainer.appendChild(header);
+
+        header.querySelector('.close-calendar-btn').addEventListener('click', () => {
+            weeklyContainer.style.display = 'none';
+            document.querySelector('header').style.display = 'flex';
+            notesContainer.style.display = 'flex';
+            filterNotesByBoard('all', true);
+            window.dispatchEvent(new Event('scroll'));
+        });
+
+        header.querySelector('#prev-week-btn').addEventListener('click', () => {
+            const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
+            newStartDate.setDate(newStartDate.getDate() - 7); // Връщаме 7 дни назад
+            renderWeeklyCalendarView(newStartDate);
+        });
+
+        header.querySelector('#next-week-btn').addEventListener('click', () => {
+            const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
+            newStartDate.setDate(newStartDate.getDate() + 7); // Отиваме 7 дни напред
+            renderWeeklyCalendarView(newStartDate);
+        });
+
+        header.querySelector('#today-week-btn').addEventListener('click', () => {
+            renderWeeklyCalendarView(); // Показваме текущата седмица от понеделник
+        });
+
+        // Групираме бележките по дата
+        const notesByDate = new Map();
+        allNotesData.forEach(noteData => {
+            if (noteData.content.calendarDate) {
+                const dateStr = new Date(noteData.content.calendarDate).toISOString().split('T')[0];
+                if (!notesByDate.has(dateStr)) {
+                    notesByDate.set(dateStr, []);
+                }
+                notesByDate.get(dateStr).push(noteData.content.gdid);
+            }
+        });
+
+        const listContainer = document.createElement('div');
+        listContainer.className = 'weekly-list-container';
+        weeklyContainer.appendChild(listContainer);
+
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const daysToRender = 7; // Показваме 7 дни наведнъж
+        let todayRowElement = null;
+
+        for (let i = 0; i < daysToRender; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+
+            const dateStr = date.toISOString().split('T')[0];
+            const noteGdimsForDay = notesByDate.get(dateStr);
+
+            const dayRow = document.createElement('div');
+            dayRow.className = 'weekly-day-row';
+            if (date.getTime() === today.getTime()) {
+                dayRow.classList.add('today-row');
+                todayRowElement = dayRow; // Запазваме елемента за днешния ден
+            }
+
+            const dateInfo = document.createElement('div');
+            dateInfo.className = 'weekly-date-info';
+
+            // --- КОРЕКЦИЯ: Добавяме клас за почивните дни ---
+            const dayOfWeek = date.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Неделя, 6 = Събота
+                dateInfo.classList.add('weekend-day');
+            }
+
+            dateInfo.innerHTML = `
+                <div class="weekly-date-number">${date.getDate()}</div>
+                <div class="weekly-day-name">${date.toLocaleString(currentLang, { weekday: 'long' })}</div>
+            `;
+            dayRow.appendChild(dateInfo);
+
+            const notesContainerForRow = document.createElement('div');
+            notesContainerForRow.className = 'weekly-notes-container';
+
+            if (noteGdimsForDay) {
+                noteGdimsForDay.forEach(gdid => {
+                    const originalNote = document.querySelector(`.note[data-extra-info*='"gdid":"${gdid}"']`);
+                    if (originalNote) {
+                        const clone = originalNote.cloneNode(true);
+                        clone.classList.add('mini-note');
+                        // --- КОРЕКЦИЯ: Копираме съдържанието на canvas-а ---
+                        const originalCanvas = originalNote.querySelector('.note-background-canvas');
+                        const clonedCanvas = clone.querySelector('.note-background-canvas');
+                        if (originalCanvas && clonedCanvas) {
+                            const clonedCtx = clonedCanvas.getContext('2d');
+                            clonedCtx.drawImage(originalCanvas, 0, 0);
+                        }
+
+                        // --- КОРЕКЦИЯ: Добавяме event listener, който задейства клика на оригинала ---
+                        clone.addEventListener('click', (e) => {
+                            e.stopPropagation(); // Предотвратяваме други събития
+                            originalNote.click(); // Задействаме оригиналния клик
+                        });
+                        clone.style.display = 'flex';
+                        notesContainerForRow.appendChild(clone);
+                    }
+                });
+            }
+            dayRow.appendChild(notesContainerForRow);
+            listContainer.appendChild(dayRow);
+        }
+
+        // Скролираме до днешния ден, ако е видим
+        if (todayRowElement) {
+            todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
 
     function escapeHtml(text) {
