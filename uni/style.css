@@ -955,6 +955,9 @@ pre, code {
         #note-font-size,
         #max-searches,
         #note-count,
+        #all-board,
+        #remind-board,
+        #weekly-calendar,
         #use-indexeddb-wrapper,
         #db-buttons-wrapper,
         #local-db-wrapper,
@@ -1335,7 +1338,7 @@ pre, code {
 
 /* --- Calendar View Styles --- */
 #calendar-container {
-    padding: 1em;
+    padding: 5px;
     background-color: #fdf6e3;
     box-sizing: border-box; /* Crucial for correct scaling with padding */
 }
@@ -1611,15 +1614,34 @@ pre, code {
 
 /* --- Стил за брояча на бележки в седмичния календар --- */
 .weekly-note-counter {
-    font-size: 0.8em;
+    margin-top: 8px;
+    font-size: 1em;
     color: #555;
-    font-weight: normal;
+    font-weight: bold;
 }
 
 /* --- КОРЕКЦИЯ: Оцветяваме почивните дни в червено --- */
 .weekly-date-info.weekend-day .weekly-date-number,
 .weekly-date-info.weekend-day .weekly-day-name {
     color: red;
+}
+
+/* --- КОРЕКЦИЯ: Стил за дните без бележки --- */
+.weekly-date-info.no-notes-day {
+    flex-direction: row;      /* Подреждаме на един ред */
+    align-items: center;      /* Центрираме вертикално */
+    justify-content: left;  /* Центрираме хоризонтално */
+    gap: 8px;                 /* Добавяме разстояние между датата и деня */
+    width: 170px;             /* Увеличаваме ширината със 50px (120 + 50) */
+    padding: 5px;      /* Намаляваме вътрешното отстояние */
+    padding-left: 35px;
+    padding-top: 15px;   /* Запазваме горния padding за баланс */
+    margin-bottom: 5px; /* Добавяме разстояние отдолу */
+}
+
+.weekly-date-info.no-notes-day .weekly-date-number,
+.weekly-date-info.no-notes-day .weekly-day-name {
+    font-size: 1em; /* Уеднаквяваме размера на шрифта */
 }
 
 .weekly-notes-container {

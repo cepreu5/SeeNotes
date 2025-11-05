@@ -3438,7 +3438,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         calendarContainer.innerHTML = ''; // Clear previous content
         const year = currentCalendarDate.getFullYear();
         const month = currentCalendarDate.getMonth();
-        const monthName = currentCalendarDate.toLocaleString(currentLang, { month: 'long', year: 'numeric' });
+        const monthName = currentCalendarDate.toLocaleString(currentLang, { month: 'long' });
+        const titleText = `${monthName} ${year}`;
 
         // Header
         const calendarHeader = document.createElement('div');
@@ -3446,7 +3447,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         calendarHeader.innerHTML = `
             <button class="close-calendar-btn">&times;</button>
             <button id="prev-month-btn">&laquo;</button>
-            <h2>${monthName}</h2>
+            <h2>${titleText}</h2>
             <button id="next-month-btn">&raquo;</button>
             <button class="close-calendar-btn">&times;</button>
         `;
@@ -3677,6 +3678,18 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const daysToRender = 7; // Показваме 7 дни наведнъж
         let todayRowElement = null;
+        let weekHasNotes = false; // Флаг, който проверява дали в седмицата има бележки
+
+        // Първо обхождаме, за да проверим дали има поне един ден с бележки
+        for (let i = 0; i < daysToRender; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+            const dateStr = date.toISOString().split('T')[0];
+            if (notesByDate.has(dateStr)) {
+                weekHasNotes = true;
+                break;
+            }
+        }
 
         for (let i = 0; i < daysToRender; i++) {
             const date = new Date(startDate);
@@ -3734,8 +3747,11 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     }
                 });
             } else {
-                // --- КОРЕКЦИЯ: Добавяме разстояние под датата за редовете без бележки ---
-                dateInfo.style.marginBottom = '5px';
+                if (weekHasNotes) {
+                    dateInfo.classList.add('no-notes-day');
+                } else {
+                    dayRow.style.paddingBottom = '5px';
+                }
             }
             dayRow.appendChild(notesContainerForRow);
             listContainer.appendChild(dayRow);
