@@ -1567,9 +1567,9 @@ pre, code {
 
 .weekly-day-row {
     display: flex;
-    align-items: stretch; /* КЛЮЧОВ СТИЛ: Разпъва елементите по цялата височина на реда */
+    align-items: stretch; /* Връщаме stretch, за да се разпъват елементите по височина */
     justify-content: flex-start; /* Подравнява датата и бележките вляво */
-    padding: 10px 0;
+    padding: 0px 0;
     border-bottom: 1px solid #e0e0e0;
 }
 
@@ -1594,7 +1594,8 @@ pre, code {
     background-image: url('Notebook.png');
     background-size: cover; /* Разпъваме фона, за да покрие целия елемент */
     border-radius: 8px; /* Заобляме ъглите */
-    padding: 10px 5px; /* Добавяме малко вътрешно отстояние */
+    padding: 10px 5px; /* Връщаме нормалния padding */
+    /* margin-bottom: 0px; КОРЕКЦИЯ: Добавяме margin-bottom, за да създадем 10px разстояние отдолу */
     box-shadow: 1px 1px 3px rgba(0,0,0,0.2); /* Лека сянка за дълбочина */
 }
 
@@ -1608,6 +1609,13 @@ pre, code {
     font-weight: bold;
 }
 
+/* --- Стил за брояча на бележки в седмичния календар --- */
+.weekly-note-counter {
+    font-size: 0.8em;
+    color: #555;
+    font-weight: normal;
+}
+
 /* --- КОРЕКЦИЯ: Оцветяваме почивните дни в червено --- */
 .weekly-date-info.weekend-day .weekly-date-number,
 .weekly-date-info.weekend-day .weekly-day-name {
@@ -1618,7 +1626,8 @@ pre, code {
     display: flex;
     flex-wrap: nowrap; /* Предотвратява преминаването на нов ред */
     overflow-x: auto;  /* Добавя хоризонтален скрол, ако е необходимо */
-    padding-bottom: 10px; /* Добавя малко разстояние под бележките, за да не се застъпва скролбарът */
+    /* --- КОРЕКЦИЯ: Намаляваме разстоянията около скролбара --- */
+    max-height: 165px; /* КОРЕКЦИЯ: 150px за бележката + 8px за скролбара */
     /* --- СТИЛОВЕ ЗА СКРОЛБАР (копирани от .board-menu-container) --- */
     scrollbar-color: #aaa #555; /* thumb track - за Firefox */
     scrollbar-width: thin;      /* за Firefox */

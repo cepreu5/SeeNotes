@@ -3733,6 +3733,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                         notesContainerForRow.appendChild(clone);
                     }
                 });
+            } else {
+                // --- КОРЕКЦИЯ: Добавяме разстояние под датата за редовете без бележки ---
+                dateInfo.style.marginBottom = '5px';
             }
             dayRow.appendChild(notesContainerForRow);
             listContainer.appendChild(dayRow);
@@ -3742,6 +3745,26 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         if (todayRowElement) {
             todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+
+        // --- КОРЕКЦИЯ: Добавяме брояч, ако има повече бележки ---
+        // Тази проверка се прави след като елементите са в DOM, за да има реални размери.
+        listContainer.querySelectorAll('.weekly-day-row').forEach(row => {
+            const notesContainer = row.querySelector('.weekly-notes-container');
+            if (notesContainer) {
+                // Проверяваме дали има хоризонтален скрол
+                const hasOverflow = notesContainer.scrollWidth > notesContainer.clientWidth;
+                if (hasOverflow) {
+                    const totalNotes = notesContainer.children.length;
+                    const dateInfo = row.querySelector('.weekly-date-info');
+                    if (dateInfo && !dateInfo.querySelector('.weekly-note-counter')) {
+                        const counter = document.createElement('div');
+                        counter.className = 'weekly-note-counter';
+                        counter.textContent = `(${totalNotes})`;
+                        dateInfo.appendChild(counter);
+                    }
+                }
+            }
+        });
     }
 
     function escapeHtml(text) {
