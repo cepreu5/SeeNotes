@@ -565,8 +565,8 @@ pre, code {
 /* New style for board name in modal header */
 #modal-board-name {
     position: absolute;
-    top: 12px; /* Moved 5px up */
-    right: 95px; /* Position to the left of the header buttons */
+    top: 15px; /* Moved 5px up */
+    right: 141px; /* Position to the left of the new calculator button */
     font-size: 1.1em;
     font-weight: bold;
     color: #333;
@@ -593,11 +593,21 @@ pre, code {
     right: 57px;
 }
 
+#calculate-modal-btn {
+    right: 99px; /* 57px (copy) + 32px (width) + 10px (gap) */
+}
+
 #copy-modal-btn svg {
     width: 16px;
     height: 16px;
     stroke: #333;
 }
+
+/* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
+#calculate-modal-btn svg {
+    pointer-events: none; /* Иконата не "поглъща" клика */
+}
+
 
 #boards-table {
     width: 100%;
@@ -1351,6 +1361,7 @@ pre, code {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px; /* Добавяме разстояние между заглавието и бутоните */
     padding: 10px;
     background-image: url('Frame.jpg');
     border-bottom: 2px solid #d4c8a8;
@@ -1368,6 +1379,7 @@ pre, code {
     flex-grow: 1;
     text-align: center;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    cursor: pointer; /* Подсказва, че може да се кликне */
 }
 
 .calendar-header button {
@@ -1528,6 +1540,12 @@ pre, code {
     .day-name-short {
         display: inline; /* Show short names on small screens */
     }
+
+    /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
+    .calendar-header {
+        flex-direction: row-reverse; /* Обръщаме реда на елементите */
+    }
+
 }
 
 /* Accordion Styles */
@@ -1647,14 +1665,14 @@ pre, code {
 .weekly-notes-container {
     display: flex;
     flex-wrap: nowrap; /* Предотвратява преминаването на нов ред */
-    overflow-x: auto;  /* Добавя хоризонтален скрол, ако е необходимо */
+    overflow-x: auto; /* Добавя хоризонтален скрол, ако е необходимо */
+    gap: 10px; /* Добавяме разстояние между бележките */
     /* --- КОРЕКЦИЯ: Намаляваме разстоянията около скролбара --- */
     max-height: 165px; /* КОРЕКЦИЯ: 150px за бележката + 8px за скролбара */
     /* --- СТИЛОВЕ ЗА СКРОЛБАР (копирани от .board-menu-container) --- */
     scrollbar-color: #aaa #555; /* thumb track - за Firefox */
     scrollbar-width: thin;      /* за Firefox */
 }
-
 .weekly-notes-container::-webkit-scrollbar {
     height: 8px;
 }
@@ -1668,11 +1686,16 @@ pre, code {
 .mini-note {
     transform: scale(0.6);
     transform-origin: top left;
-    /* Връщаме отрицателните маржони, за да компенсираме празното пространство */
-    margin-right: -100px;
-    margin-bottom: -100px;
+    /* Премахваме отрицателните маржони */
     position: relative;
     z-index: 1;
+}
+
+/* --- КОРЕКЦИЯ: Опаковката, която решава проблема с презастъпването --- */
+.mini-note-wrapper {
+    width: 150px;  /* 250px * 0.6 */
+    height: 150px; /* 250px * 0.6 */
+    flex-shrink: 0; /* Предотвратява свиването на опаковката */
 }
 
 .mini-note .note-background-canvas {

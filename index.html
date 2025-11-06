@@ -98,6 +98,7 @@
     <div id="content-modal" class="modal-overlay">
         <div class="modal-content-box">
             <div id="modal-board-name"></div>
+            <button id="calculate-modal-btn" class="modal-header-btn" data-key-title="calculateTooltip" title="Изчисли израз"></button>
             <button id="copy-modal-btn" class="modal-header-btn" data-key-title="copyTooltip" title="Копирай съдържанието"></button>
             <button class="modal-close modal-header-btn">&times;</button>
             <div id="modal-body"></div>
@@ -172,6 +173,24 @@
                     <label for="show-board-note-count-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardNoteCountLabel">
                         Брой бележки в борда:</label>
                     <input type="checkbox" id="show-board-note-count-checkbox" class="settings-checkbox">
+                </div>
+
+                <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
+                    <label for="all-board-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardAll">
+                        Покажи борд Всички:</label>
+                    <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
+                </div>
+
+                <div class="zoom-control-wrapper" id="remind-board" style="margin-top: 10px;">
+                    <label for="remind-board-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardRemind">
+                        Покажи борд Напомняния:</label>
+                    <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
+                </div>
+
+                <div class="zoom-control-wrapper" id="weekly-calendar" style="margin-top: 10px;">
+                    <label for="weekly-calendar-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showWeeklyCalendar">
+                        Седмичен календар:</label>
+                    <input type="checkbox" id="weekly-calendar-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">

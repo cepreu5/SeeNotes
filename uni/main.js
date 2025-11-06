@@ -10,7 +10,7 @@ let debug = false; // Глобален флаг за дебъг режим
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.11'; // App version
+const version = '0.12'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -64,6 +64,7 @@ const NOTES_DB_VERSION = 3;
 const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M3 3l18 18"></path></svg>`;
 const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
+const calculatorIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="3" width="16" height="18" rx="2" /><rect x="8" y="7" width="8" height="3" rx="1" /><line x1="8" y1="14" x2="8" y2="14.01" /><line x1="12" y1="14" x2="12" y2="14.01" /><line x1="16" y1="14" x2="16" y2="14.01" /><line x1="8" y1="17" x2="8" y2="17.01" /><line x1="12" y1="17" x2="12" y2="17.01" /><line x1="16" y1="17" x2="16" y2="17.01" /></svg>`;
 const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
 const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
 const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
@@ -235,6 +236,13 @@ const translations = {
             showBoardNoteCountLabel: 'Notes count in board:',
             showBoardAll: 'Show board All:',
             showBoardRemind: 'Show board Reminders:',
+            calculateTooltip: 'Calculate expression',
+            invalidExpression: 'Invalid mathematical expression.',
+            errorClipboardRead: 'Could not read from clipboard.',
+            confirmNoteDelete: 'Are you sure you want to delete this note from the database? This action cannot be undone.',
+            noteDeletedSuccess: 'Note successfully deleted from the database.',
+            noteDeletedError: 'Error deleting note from the database.',
+            showWeeklyCalendar: 'Weekly calendar view:',
 
             feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com'
         },
@@ -391,6 +399,14 @@ const translations = {
             showBoardNoteCountLabel: 'Брой бележки в борда:',
             showBoardAll: 'Покажи борд Всички:',
             showBoardRemind: 'Покажи борд Напомняния:',
+            calculateTooltip: 'Изчисли израз',
+            invalidExpression: 'Невалиден математически израз.',
+            errorClipboardRead: 'Неуспешно четене от клипборда.',
+            confirmNoteDelete: 'Сигурни ли сте, че искате да изтриете тази бележка от базата данни? Това действие е необратимо.',
+            noteDeletedSuccess: 'Бележката е изтрита успешно от базата данни.',
+            noteDeletedError: 'Грешка при изтриване на бележка от базата данни.',
+            showWeeklyCalendar: 'Седмичен календар',
+
             feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com'
         }
     };
@@ -588,6 +604,66 @@ function addLongPressOrCtrlClick(element, callback) {
     element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
 }
 
+/**
+ * Обработва клик върху бутона за калкулатор в модалния прозорец.
+ * Взима маркирания текст, изчислява го като математически израз и замества селекцията с резултата.
+ */
+async function handleCalculateClick() {
+    const selection = window.getSelection();
+    const modalBody = document.getElementById('modal-body');
+    let expression = '';
+    let isFromClipboard = false;
+    let range = null;
+
+    // Проверяваме дали има маркиран текст в модалния прозорец
+    if (selection.rangeCount > 0 && selection.toString().trim() !== '') {
+        const tempRange = selection.getRangeAt(0);
+        if (modalBody.contains(tempRange.commonAncestorContainer)) {
+            expression = selection.toString().trim();
+            range = tempRange;
+        }
+    }
+
+    // Ако няма маркиран текст, опитваме да четем от клипборда
+    if (expression === '') {
+        try {
+            expression = await navigator.clipboard.readText();
+            expression = expression.trim();
+            isFromClipboard = true;
+        } catch (err) {
+            console.error('Failed to read clipboard contents: ', err);
+            showToast(_('errorClipboardRead'));
+            return;
+        }
+    }
+
+    if (expression === '') return;
+
+    try {
+        // Основна проверка за сигурност - позволяваме само определени символи
+        const sanitizedExpression = expression.replace(/[^0-9+\-*/().\s]/g, '');
+        if (sanitizedExpression !== expression) {
+            throw new Error("Invalid characters in expression.");
+        }
+
+        // Използваме Function конструктор, който е малко по-сигурен от директен eval()
+        const result = new Function('return ' + sanitizedExpression)();
+        const resultText = ` = ${result}`;
+
+        if (range && !isFromClipboard) {
+            // Ако имаме селекция, добавяме резултата след нея
+            range.collapse(false); // Свиваме обхвата до неговия край
+            range.insertNode(document.createTextNode(resultText));
+        } else {
+            // Ако е от клипборда, просто показваме резултата в toast
+            showToast(`${expression} = ${result}`, 5000);
+        }
+    } catch (error) {
+        showToast(_('invalidExpression'), 3000);
+        console.error("Calculation error:", error);
+    }
+}
+
 function initApp() {
     // Инициализация на DOM елементи
     signoutButton = document.getElementById('signout_button');
@@ -598,6 +674,9 @@ function initApp() {
     modalBody = document.getElementById('modal-body');
     copyBtn = document.getElementById('copy-modal-btn');
     scrollTopBtn = document.getElementById("scrollTopBtn");
+    // --- КОРЕКЦИЯ: Предотвратяваме контекстното меню в модала ---
+    modalBody.addEventListener('contextmenu', e => e.preventDefault());
+
     searchBox = document.getElementById('search-box');
     loaderContainer = document.getElementById('loader-container');
     loaderText = document.getElementById('loader-text');
@@ -745,6 +824,11 @@ function initApp() {
                 document.getElementById('saved-searches-popup').style.display = 'block';
             }
         });
+        // --- Calculator Button ---
+        const calculateBtn = document.getElementById('calculate-modal-btn');
+        calculateBtn.innerHTML = calculatorIconSvg;
+        calculateBtn.addEventListener('click', handleCalculateClick);
+
         copyBtn.innerHTML = copyIconSvg;
         copyBtn.addEventListener('click', () => {
             if (navigator.clipboard) {
@@ -1483,30 +1567,6 @@ function validateDataSourceSelection() {
                 }
             }
 
-            // ПРОВЕРКА ЗА ДОСТЪП ДО ПРИКАЧЕНИ ФАЙЛОВЕ В РЕЖИМ "САМО БАЗА ДАННИ"
-            if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
-                const dbSource = await getConfig('dbSource');
-                if (dbSource === 2) { // 2: Локална папка (Local Folder)
-                    const handle = await getConfig('directoryHandle');
-                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                    if (verifiedHandle) {
-                        dirHandle = verifiedHandle; // Задаваме handle, за да работят линковете
-                    } else {
-                        showToast(_('noUpdateMode'), 10000);
-                    }
-                } else if (dbSource === 3) { // 3: Архив (Archive)
-                    const handle = await getConfig('arhHandle');
-                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                    if (verifiedHandle) {
-                        dirHandle = verifiedHandle; // Задаваме handle, за да работят линковете
-                    } else {
-                        showToast(_('noUpdateMode'), 10000);
-                    }
-                }
-                // Ако базата е от Google Drive, не правим нищо, защото линковете ще работят,
-                // стига потребителят да е логнат (което се проверява по-късно).
-            }
-
         }
 
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
@@ -2069,12 +2129,16 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
     const folderName = isVideo ? 'Video' : 'Images';
 
     try {
-        if (sourceMode === 'gdrive') {
+        // --- КОРЕКЦИЯ: Проверяваме за gapi ПРЕДИ да го използваме ---
+        // Изпълняваме логиката за Google Drive, само ако gapi е заредено И sourceMode е 'gdrive'.
+        if (typeof gapi !== 'undefined' && gapi.client && sourceMode === 'gdrive') {
             const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
             const thumbnailUrl = fileMetadata.result.thumbnailLink;
             if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
             mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
         } else { // 'local' or 'archive'
+            // Тази част от кода вече ще се изпълнява правилно в офлайн режими,
+            // защото проверката за gapi по-горе ще е неуспешна.
             let fileHandle;
             const fileName = fileIdOrPath.split('/').pop();
             if (sourceMode === 'local') {
@@ -3445,11 +3509,13 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         const calendarHeader = document.createElement('div');
         calendarHeader.className = 'calendar-header';
         calendarHeader.innerHTML = `
-            <button class="close-calendar-btn">&times;</button>
-            <button id="prev-month-btn">&laquo;</button>
+            <div class="calendar-nav-controls">
+                <button class="close-calendar-btn">&times;</button>
+                <button id="prev-month-btn">&laquo;</button>
+                <button id="today-month-btn">${calendarIconSvg}</button>
+                <button id="next-month-btn">&raquo;</button>
+            </div>
             <h2>${titleText}</h2>
-            <button id="next-month-btn">&raquo;</button>
-            <button class="close-calendar-btn">&times;</button>
         `;
         calendarContainer.appendChild(calendarHeader);
         // Day names header
@@ -3504,6 +3570,16 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             if (day === todayDate && month === todayMonth && year === todayYear) {
                 dateNum.classList.add('today-date');
             }
+
+            // --- КОРЕКЦИЯ: Добавяме клик събитие за преход към седмичен изглед ---
+            dateNum.style.cursor = 'pointer';
+            dateNum.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const clickedDate = new Date(year, month, day);
+                calendarContainer.style.display = 'none'; // Затваряме месечния календар
+                renderWeeklyCalendarView(clickedDate);
+            });
+
             cell.appendChild(dateNum);
             const notesForDayContainer = document.createElement('div');
             notesForDayContainer.className = 'calendar-notes-container';
@@ -3565,6 +3641,12 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             renderCalendarView();
         });
 
+        // --- КОРЕКЦИЯ: Добавяме event listener за бутона "Днес" ---
+        document.getElementById('today-month-btn').addEventListener('click', () => {
+            currentCalendarDate = new Date(); // Връщаме се към днешна дата
+            renderCalendarView(); // Прерисуваме календара
+        });
+
         document.getElementById('next-month-btn').addEventListener('click', () => {
             currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
             renderCalendarView();
@@ -3583,23 +3665,24 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
     /**
      * Рендира алтернативен, списъчен (седмичен) изглед на календара.
      */
-    function renderWeeklyCalendarView(startDate) {
+    function renderWeeklyCalendarView(dateForWeek) {
         document.querySelector('header').style.display = 'none';
         notesContainer.style.display = 'none';
         scrollTopBtn.style.display = 'none';
 
-        if (!startDate) {
-            // --- КОРЕКЦИЯ: Изчисляваме понеделника от текущата седмица ---
-            const today = new Date();
-            const day = today.getDay(); // 0=неделя, 1=понеделник, ...
-            // Изчисляваме разликата до понеделник. Ако е неделя (0), връщаме 6 дни назад.
-            const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-            const monday = new Date(today.setDate(diff));
-            monday.setHours(0, 0, 0, 0); // Нормализираме часа
-            startDate = monday;
+        let startDate;
+        if (!dateForWeek) {
+            // Ако не е подадена дата, използваме днешната, за да намерим текущата седмица
+            dateForWeek = new Date();
         } else {
-            currentWeeklyViewDate = startDate; // Обновяваме глобалното състояние
+            currentWeeklyViewDate = dateForWeek; // Обновяваме глобалното състояние
         }
+
+        const tempDate = new Date(dateForWeek);
+        const day = tempDate.getDay();
+        const diff = tempDate.getDate() - day + (day === 0 ? -6 : 1);
+        startDate = new Date(tempDate.setDate(diff));
+        startDate.setHours(0, 0, 0, 0);
 
         let weeklyContainer = document.getElementById('weekly-calendar-container');
         if (!weeklyContainer) {
@@ -3634,6 +3717,14 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         header.className = 'calendar-header'; // Използваме същия стил като другия календар
         header.innerHTML = `<div class="calendar-nav-controls"><button class="close-calendar-btn">&times;</button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button></div><h2>${titleText}</h2>`;
         weeklyContainer.appendChild(header);
+
+        // --- КОРЕКЦИЯ: Добавяме клик събитие за преход към месечен изглед ---
+        const titleElement = header.querySelector('h2');
+        titleElement.addEventListener('click', () => {
+            weeklyContainer.style.display = 'none'; // Затваряме седмичния изглед
+            currentCalendarDate = new Date(startDate); // Задаваме месеца, който да се покаже
+            renderCalendarView(); // Отваряме месечния изглед
+        });
 
         header.querySelector('.close-calendar-btn').addEventListener('click', () => {
             weeklyContainer.style.display = 'none';
@@ -3737,13 +3828,20 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                             clonedCtx.drawImage(originalCanvas, 0, 0);
                         }
 
+                        // --- КОРЕКЦИЯ: Опаковаме клонинга в div с фиксирани размери ---
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'mini-note-wrapper';
+                        wrapper.appendChild(clone);
+
                         // --- КОРЕКЦИЯ: Добавяме event listener, който задейства клика на оригинала ---
-                        clone.addEventListener('click', (e) => {
+                        wrapper.addEventListener('click', (e) => {
                             e.stopPropagation(); // Предотвратяваме други събития
                             originalNote.click(); // Задействаме оригиналния клик
                         });
+
+                        // --- КОРЕКЦИЯ: Гарантираме, че клонираната бележка винаги е видима ---
                         clone.style.display = 'flex';
-                        notesContainerForRow.appendChild(clone);
+                        notesContainerForRow.appendChild(wrapper);
                     }
                 });
             } else {
@@ -3918,6 +4016,29 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         link.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
+            
+            // --- КОРЕКЦИЯ: Зареждаме dirHandle при нужда в режим "Само база данни" ---
+            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+            if (isDbOnlyMode && !dirHandle) {
+                const dbSource = await getConfig('dbSource');
+                let handleKey = null;
+                if (dbSource === 2) handleKey = 'directoryHandle';
+                else if (dbSource === 3) handleKey = 'arhHandle';
+
+                if (handleKey) {
+                    const handle = await getConfig(handleKey);
+                    if (handle) {
+                        const verifiedHandle = await verifyPermission(handle);
+                        if (verifiedHandle) dirHandle = verifiedHandle;
+                    }
+                }
+                // Ако и след този опит нямаме handle, показваме съобщение и прекратяваме.
+                if (!dirHandle) {
+                    showToast(_('noUpdateMode'), 5000);
+                    return;
+                }
+            }
+
             if (!filename) return;
             console.log(`Opening file: ${folderName}/${filename}   DirHandle:`, dirHandle);
             try {
@@ -4325,20 +4446,39 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 contentEl.appendChild(attachmentWrapper);
             }));
         }
-        note.addEventListener('click', (e) => {
+        note.addEventListener('click', async (e) => {
             const noteEl = e.currentTarget;
+
+            // --- КОРЕКЦИЯ: Ctrl+клик за изтриване от базата данни ---
+            if (e.ctrlKey && useIndexedDb) {
+                e.stopPropagation();
+                e.preventDefault();
+
+                const confirmed = await showConfirmation(_('confirmNoteDelete'));
+                if (confirmed) {
+                    try {
+                        await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+                        noteEl.remove();
+                        const noteCounter = document.getElementById('note-counter');
+                        if (noteCounter) {
+                            noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
+                        }
+                        allNotesData = allNotesData.filter(n => n.content.gdid !== noteGdid);
+                        showToast(_('noteDeletedSuccess'), 3000);
+                    } catch (error) {
+                        console.error("Failed to delete note:", error);
+                        showToast(_('noteDeletedError'));
+                    }
+                }
+                return;
+            }
+
             if (!e.target.closest('.note-footer')) {
                 const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
-                showModal({
-                    raw: fileContent,
-                    format: textSpan,
-                    color: noteBgColor,
-                    boardId: extraData.boardid,
-                    id: noteID, // Подаваме ID
-                    gdid: noteGdid // Подаваме GDID
-                });
+                showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid });
             }
         });
+
         contentWrapper.appendChild(titleWrapper);
         contentWrapper.appendChild(contentEl);
 
@@ -4613,6 +4753,23 @@ async function clearDbStores() {
         console.error('Failed to clear data stores:', error);
         showToast(_('dbDeleteFailed'), 10000);
     }
+}
+
+/**
+ * Deletes a single record from a specified store by its key.
+ * @param {string} storeName - The name of the object store.
+ * @param {any} key - The key of the record to delete.
+ * @returns {Promise<void>}
+ */
+async function deleteFromDB(storeName, key) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.delete(key);
+        request.onsuccess = () => resolve();
+        request.onerror = (event) => reject(`Error deleting from ${storeName}: ` + event.target.error);
+    });
 }
 
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {

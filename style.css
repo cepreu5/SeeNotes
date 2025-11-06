@@ -565,8 +565,8 @@ pre, code {
 /* New style for board name in modal header */
 #modal-board-name {
     position: absolute;
-    top: 12px; /* Moved 5px up */
-    right: 95px; /* Position to the left of the header buttons */
+    top: 15px; /* Moved 5px up */
+    right: 141px; /* Position to the left of the new calculator button */
     font-size: 1.1em;
     font-weight: bold;
     color: #333;
@@ -593,11 +593,21 @@ pre, code {
     right: 57px;
 }
 
+#calculate-modal-btn {
+    right: 99px; /* 57px (copy) + 32px (width) + 10px (gap) */
+}
+
 #copy-modal-btn svg {
     width: 16px;
     height: 16px;
     stroke: #333;
 }
+
+/* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
+#calculate-modal-btn svg {
+    pointer-events: none; /* Иконата не "поглъща" клика */
+}
+
 
 #boards-table {
     width: 100%;
@@ -955,6 +965,9 @@ pre, code {
         #note-font-size,
         #max-searches,
         #note-count,
+        #all-board,
+        #remind-board,
+        #weekly-calendar,
         #use-indexeddb-wrapper,
         #db-buttons-wrapper,
         #local-db-wrapper,
@@ -1335,7 +1348,7 @@ pre, code {
 
 /* --- Calendar View Styles --- */
 #calendar-container {
-    padding: 1em;
+    padding: 5px;
     background-color: #fdf6e3;
     box-sizing: border-box; /* Crucial for correct scaling with padding */
 }
@@ -1348,10 +1361,17 @@ pre, code {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px; /* Добавяме разстояние между заглавието и бутоните */
     padding: 10px;
     background-image: url('Frame.jpg');
     border-bottom: 2px solid #d4c8a8;
-    margin-bottom: 10px;
+    margin-bottom: 0px;
+}
+
+.calendar-nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 5px; /* Разстояние между бутоните в групата */
 }
 
 .calendar-header h2 {
@@ -1359,6 +1379,7 @@ pre, code {
     flex-grow: 1;
     text-align: center;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    cursor: pointer; /* Подсказва, че може да се кликне */
 }
 
 .calendar-header button {
@@ -1376,10 +1397,21 @@ pre, code {
     background-color: #c0c0c0;
 }
 
-#close-calendar-btn {
+/* Стил за бутона "Днес" в седмичния календар, за да се центрира иконата */
+#today-week-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px; /* Намаляваме padding-а, за да е по-компактен */
+}
+
+/* Прилагаме стила за всички бутони за затваряне на календар */
+.close-calendar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 2em;
     line-height: 1;
-    padding-bottom: 5px;
 }
 
 .calendar-grid {
@@ -1508,6 +1540,12 @@ pre, code {
     .day-name-short {
         display: inline; /* Show short names on small screens */
     }
+
+    /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
+    .calendar-header {
+        flex-direction: row-reverse; /* Обръщаме реда на елементите */
+    }
+
 }
 
 /* Accordion Styles */
@@ -1539,4 +1577,127 @@ pre, code {
     border-radius: 4px;*/
     padding: 0 10px; /* Horizontal padding when open */
     margin-top: 0px;
+}
+
+/* --- Стилове за Седмичен Календар --- */
+.weekly-list-container {
+    overflow-y: auto;
+    flex-grow: 1;
+    padding: 10px;
+}
+
+.weekly-day-row {
+    display: flex;
+    align-items: stretch; /* Връщаме stretch, за да се разпъват елементите по височина */
+    justify-content: flex-start; /* Подравнява датата и бележките вляво */
+    padding: 0px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+/* --- КОРЕКЦИЯ: Премахваме двойното разстояние над първия ред --- */
+.weekly-day-row:first-child {
+    padding-top: 0;
+}
+
+.today-row {
+    background-color: var(--note-bg-0); /* #FBFF86 - жълт фон за днешния ден */
+    border-radius: 5px; /* Леко заобляне на ъглите */
+}
+
+.weekly-date-info {
+    flex-shrink: 0;
+    width: 120px; /* Увеличаваме ширината, за да се побере пълното име на деня */
+    text-align: center;
+    margin-right: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start; /* Подравнява съдържанието (дата, ден) в горния край */
+    background-image: url('Notebook.png');
+    background-size: cover; /* Разпъваме фона, за да покрие целия елемент */
+    border-radius: 8px; /* Заобляме ъглите */
+    padding: 10px 5px; /* Връщаме нормалния padding */
+    /* margin-bottom: 0px; КОРЕКЦИЯ: Добавяме margin-bottom, за да създадем 10px разстояние отдолу */
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.2); /* Лека сянка за дълбочина */
+}
+
+.weekly-date-number {
+    font-size: 1.8em; /* По-едър шрифт за датата */
+    font-weight: bold;
+}
+
+.weekly-day-name {
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+/* --- Стил за брояча на бележки в седмичния календар --- */
+.weekly-note-counter {
+    margin-top: 8px;
+    font-size: 1em;
+    color: #555;
+    font-weight: bold;
+}
+
+/* --- КОРЕКЦИЯ: Оцветяваме почивните дни в червено --- */
+.weekly-date-info.weekend-day .weekly-date-number,
+.weekly-date-info.weekend-day .weekly-day-name {
+    color: red;
+}
+
+/* --- КОРЕКЦИЯ: Стил за дните без бележки --- */
+.weekly-date-info.no-notes-day {
+    flex-direction: row;      /* Подреждаме на един ред */
+    align-items: center;      /* Центрираме вертикално */
+    justify-content: left;  /* Центрираме хоризонтално */
+    gap: 8px;                 /* Добавяме разстояние между датата и деня */
+    width: 170px;             /* Увеличаваме ширината със 50px (120 + 50) */
+    padding: 5px;      /* Намаляваме вътрешното отстояние */
+    padding-left: 35px;
+    padding-top: 15px;   /* Запазваме горния padding за баланс */
+    margin-bottom: 5px; /* Добавяме разстояние отдолу */
+}
+
+.weekly-date-info.no-notes-day .weekly-date-number,
+.weekly-date-info.no-notes-day .weekly-day-name {
+    font-size: 1em; /* Уеднаквяваме размера на шрифта */
+}
+
+.weekly-notes-container {
+    display: flex;
+    flex-wrap: nowrap; /* Предотвратява преминаването на нов ред */
+    overflow-x: auto; /* Добавя хоризонтален скрол, ако е необходимо */
+    gap: 10px; /* Добавяме разстояние между бележките */
+    /* --- КОРЕКЦИЯ: Намаляваме разстоянията около скролбара --- */
+    max-height: 165px; /* КОРЕКЦИЯ: 150px за бележката + 8px за скролбара */
+    /* --- СТИЛОВЕ ЗА СКРОЛБАР (копирани от .board-menu-container) --- */
+    scrollbar-color: #aaa #555; /* thumb track - за Firefox */
+    scrollbar-width: thin;      /* за Firefox */
+}
+.weekly-notes-container::-webkit-scrollbar {
+    height: 8px;
+}
+.weekly-notes-container::-webkit-scrollbar-track {
+    background: #555; border-radius: 4px;
+}
+.weekly-notes-container::-webkit-scrollbar-thumb {
+    background: #aaa; border-radius: 4px;
+}
+
+.mini-note {
+    transform: scale(0.6);
+    transform-origin: top left;
+    /* Премахваме отрицателните маржони */
+    position: relative;
+    z-index: 1;
+}
+
+/* --- КОРЕКЦИЯ: Опаковката, която решава проблема с презастъпването --- */
+.mini-note-wrapper {
+    width: 150px;  /* 250px * 0.6 */
+    height: 150px; /* 250px * 0.6 */
+    flex-shrink: 0; /* Предотвратява свиването на опаковката */
+}
+
+.mini-note .note-background-canvas {
+    z-index: -1; /* Гарантира, че фонът е зад съдържанието */
 }
