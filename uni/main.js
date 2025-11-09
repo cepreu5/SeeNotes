@@ -1,7 +1,7 @@
 // https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
-let debug = true; // Глобален флаг за дебъг режим
+let debug = false; // Глобален флаг за дебъг режим
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -10,7 +10,7 @@ let debug = true; // Глобален флаг за дебъг режим
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.12'; // App version
+const version = '0.13'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -25,6 +25,8 @@ let authToken = null;
 let tokenClient;
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
+let isLoadCancelled = false; // Флаг за прекратяване на зареждането
+let isCancellingLoad = false; // Флаг, който показва, че потребителят е натиснал "Отказ"
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 
 // --- Състояние на търсенето ---
@@ -81,336 +83,8 @@ const attachmentIcons = [
     { type: 4, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>` },
     { type: 5, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>` },
     { type: 6, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="10" r="2"/><path d="M8 16c0-1.33 2.67-2 4-2s4 .67 4 2"/></svg>` }
-];
+    ];
 
-// --- I18N ---
-const translations = {
-        en: {
-            appTitle: 'CX MultiNotes Viewer',
-            searchPlaceholder: 'Search', 
-            reloadButtonTooltip: 'Reload',
-            signoutButtonTooltip: 'Sign Out',
-            copyTooltip: 'Copy content',
-            topTooltip: 'Go to top',
-            allBoards: 'All',
-            boardsTitle: 'Boards',
-            viewFullContent: 'View full content',
-            loadingFile: 'Loading...', 
-            of: 'of',
-            noFilesFound: 'No text files found in the folder.',
-            skippedFileScan: 'Skipped DB update. Loading from DB...',
-            errorProcessingFiles: 'An error occurred while processing files.',
-            errorInvalidResponse: 'Failed to load files. Make sure the folder exists and you have access.',
-            errorRequestFailed: 'Request to Google Drive failed. See console for details.',
-            errorFolderIdMissing: 'Folder ID not provided. File loading stopped.',
-            errorTokenMissing: 'Access token not available. Please log in again.',
-            errorSessionExpired: 'Your session has expired. Please log in again.',
-            errorCopyFailed: 'Failed to copy content.',
-            errorNoteParse: "Error parsing JSON content.",
-            errorNoteFieldMissing: "Error: 'notetxt' field not found.",
-            errorInvalidFolderIdSession: 'Invalid Folder ID. Please sign out and sign in again.',
-            errorFolderNotFound: "The main folder multinotes_data was not found. Please check Google Drive.",
-            warningInvalidBoard: 'Warning: One or more board files are invalid and have been skipped.',
-            confirmCreateDbYes: 'Yes',
-            confirmCreateDbNo: 'No',
-            zoomLabel: 'Zoom:',
-            orderLabel: 'Order notes:',
-            sortByNumber: 'by number',
-            sortByColor: 'by color',
-            sortByCreationDate: 'by creation date',
-            sortByModificationDate: 'by modification date',
-            sortByCalendarDate: 'by calendar date',
-            sortByAlphabetical: 'alphabetically',
-            sortInReverse: 'in reverse order',
-            sortRemindersTop: 'reminders on top',
-            useArhDbLabel: 'Archive:',
-            calendar: 'Calendar',
-            settingsTitle: 'Settings',
-            reminder: 'Reminders',
-            searchSavedTip: 'Save search',
-            startBoardLabel: 'Start Board:',
-            settingSaved: 'Setting saved',
-            submitButton: 'Confirm',
-            searchSaved: 'Search saved',
-            allBoardsCtrlClickTooltip: 'Ctrl-click - menu',
-            maxSearchesLabel: 'Saved Searches:',
-            clearSearchesTooltip: 'Clear search history',
-            noteFontSizeLabel: 'Note Font Size:',
-            showDatemodLabel: 'Show modification/calendar date:',
-            dataManagementTitle: 'Data Loading',
-            advancedSettings: 'Advanced Settings',
-            useLocalDbLabel: 'Local folder:',
-            useGoogleDbLabel: 'Google Drive:',
-            updateIndexedDbLabel: 'update',
-            updateFromGoogleDriveLabel: 'update only',
-            localSyncFolderLabel: 'Select local folder',
-            arhFolderLabel: 'Select archive folder',
-            useIndexedDbLabel: 'Database:',
-            selectFolderButton: 'Select Folder',
-            folderNotSelected: 'Not selected',
-            modalFontSizeLabel: 'Modal Font Size:',
-            closeButton: 'Close',
-            searchByTitleTooltip: 'Search by Title',
-            searchByContentTooltip: 'Search by Content',
-            searchInTitles: 'in titles',
-            searchInContent: 'in content',
-            errorLocalFolderNotSelected: 'Local sync folder not selected. Please select one in Settings.',
-            folderSelectedForSync: 'Folder \'{folderName}\' selected for local sync.',
-            folderSelectedForArh: 'Folder \'{folderName}\' selected for archive reading.',
-            localDataLoaded: 'Local data loaded.',
-            localDbUpdated: 'Local database updated from Google Drive.',
-            errorGoogleLibs: 'Error loading Google libraries.',
-            loadedFromLocalNoDrive: 'Loaded data from local storage. Could not connect to Google Drive.',
-            imgNotFound: 'Image file not found for preview.',
-            noImgPreview: 'No preview available for this image.',
-            errorImgPreview: 'Error loading image preview: {error}',
-            videoNotFound: 'Video file not found for preview.',
-            noVideoPreview: 'No preview available for this video.',
-            errorVideoPreview: 'Error loading video preview: {error}',
-            errorOpenFile: 'Could not open local file: {filename}',
-            errorFetchFolderIds: 'Error fetching folder IDs.',
-            errorFetchFileId: 'Error fetching file ID for {fileName}.',
-            confirmCreateLocalDb: 'Do you want to create a local database?',
-            gdriveUpdatesFound: '{count} file(s) updated from Google Drive.',
-            gdriveNoUpdates: 'No new updates from Google Drive.',
-            localUpdatesFound: '{count} file(s) updated from local disk.',
-            localNoUpdates: 'No new updates from local disk.',
-            confirmDbRecreate: 'The local database already exists. Do you want to delete it and create a new one from the current data?',
-            confirmDbDelete: 'Are you sure you want to delete the local database?',
-            dbPopulated: 'Notes loaded into the database.',
-            dbCreated: 'Database created successfully.',
-            dbCreateFailedNoData: 'Cannot create database. No data loaded in memory.',
-            errorDbSourceMismatch: 'Mismatch between the database and the data source. Attachment links will not be available.',
-            dbDeleted: 'Database deleted successfully.',
-            confirmCreateDbFromArh: 'The local database is empty or does not exist. Do you want to create a new one from the current archive data?',
-            loadedFromArhNoDb: 'Loading directly from archive.',
-            errorDbOnlyAndEmpty: 'You have selected Database only, but it is empty. Please select another data source.',
-            dbDeleteFailed: 'Failed to delete local database.',
-            noUpdateMode: 'Attachment links will not be active.',
-            createDbButton: 'Create',
-            permissionDenied: 'Permission Denied',
-            deleteDbButton: 'Delete',            
-            confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
-            dbManagementTitle: 'Database Management',
-            userMismatchWarning: 'The existing database was created by user {user}, data will be loaded from Google Drive',
-            checkingForGDriveUpdates: 'Checking for Google Drive updates since:\n{date}',
-            initialGDriveSync: 'Initial sync with Google Drive...',
-            checkingFile: 'Checking {filename}...',
-            savingChangesFromFile: 'Saving changes from {filename}...',
-            syncFinishedLoadingData: 'Sync finished. Loading data...',
-            updatingFilesSince: 'Updating files since:\n{date}',
-            performingFullSync: 'Performing full initial sync...',
-            checkedFilesCount: 'Checked {count} files...',
-            invalidDataFolder: 'Folder \'{folderName}\' does not appear to be a valid data folder.',
-            newUpdates: 'New',
-            requiredFilesForLocalFolder: 'It must contain at least 1 \'board\' file and 3 \'note\' files.',
-            okButton: 'OK',
-            noData: 'No data',
-            sourceGoogleDrive: 'Google Drive',
-            sourceLocalFolder: 'Local Folder',
-            sourceArchive: 'Archive',
-            sysInfoUser: 'User',
-            sysInfoLastGDSync: 'Last Google Drive Sync',
-            sysInfoLastLocalSync: 'Last Local Sync',
-            sysInfoAttachmentLinks: 'Attachment Links',
-            sysInfoDbCreatedFrom: 'DB created from',
-            errorSysInfo: 'Error fetching system info.',
-            errorNoDataSourceSelected: 'At least one data source must be selected when the database is not used.',
-            errorNoArchiveFolderSelected: 'No archive folder selected.',
-            errorReadingArchive: 'Error reading the archive.',
-            errorRequiredArchiveFileMissing: 'Required archive file not found.',
-            errorInvalidArchiveData: 'The archive files contain invalid data.',
-            errorDbDeletionBlocked: 'Database deletion is blocked. Please close other tabs with this app open.',
-            errorNoBoardFilesFound: 'No board files found in the selected folder. Please check your data source.',
-            errorNoNoteFilesFound: 'No note files found in the selected folder. Please check your data source.',
-            errorFetchingFolderIds: 'Error fetching folder IDs.',
-            errorFetchingFileId: 'Error fetching file ID for {fileName}.',
-            fetchingFromDb: 'Fetching data from the database...',
-            initialDataLoad: 'Initial data load...',
-            creatingDbFromArh: 'Creating database from archive data...',
-            errorReadArh: 'Error reading from archive.',
-            syncTitleGD: 'Sync with Google Drive',
-            syncTitleLocal: 'Sync with Local Folder',
-            /*advHidden: 'Advanced settings are hidden.',
-            advShown: 'Advanced settings are shown.',*/
-            errorArhFolderNotSelected: 'Please select an archive folder from settings.',
-            showBoardNoteCountLabel: 'Notes count in board:',
-            showBoardAll: 'Show board All:',
-            showBoardRemind: 'Show board Reminders:',
-            calculateTooltip: 'Calculate expression',
-            invalidExpression: 'Invalid mathematical expression.',
-            errorClipboardRead: 'Could not read from clipboard.',
-            confirmNoteDelete: 'Are you sure you want to delete this note from the database? This will not delete it from Google Drive.',
-            noteDeletedSuccess: 'Note successfully deleted from the database.',
-            noteDeletedError: 'Error deleting note from the database.',
-            showWeeklyCalendar: 'Weekly calendar view:',
-
-            feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com'
-        },
-        bg: {
-            appTitle: 'CX MultiNotes Viewer',
-            searchPlaceholder: 'Търсене', 
-            reloadButtonTooltip: 'Презареди',
-            signoutButtonTooltip: 'Изход',
-            copyTooltip: 'Копирай съдържанието',
-            topTooltip: 'Към началото',
-            allBoards: 'Всички',
-            boardsTitle: 'Бордове',
-            viewFullContent: 'Виж цялото съдържание',
-            loadingFile: 'Четене...', 
-            of: 'от',
-            noFilesFound: 'Няма намерени текстови файлове в папката.',
-            skippedFileScan: 'Пропускане на обновяването. Зареждане от базата...',
-            errorProcessingFiles: 'Възникна грешка при обработката на файловете.',
-            errorInvalidResponse: 'Неуспешно зареждане на файловете. Уверете се, че папката съществува и имате достъп.',
-            errorRequestFailed: 'Грешка при заявката към Google Drive. Виж конзолата за подробности.',
-            errorFolderIdMissing: 'Не е въведен ID. Зареждането на файлове е спряно.',
-            errorTokenMissing: 'Няма достъпен токен. Моля, влезте отново.',
-            errorSessionExpired: 'Вашата сесия е изтекла. Моля, влезте отново.',
-            errorCopyFailed: 'Неуспешно копиране на съдържанието.',
-            errorNoteParse: "Грешка при парсване на JSON съдържание.",
-            errorFolderNotFound: "Основната папка multinotes_data не е намерена. Моля, проверете в Google Drive.",
-            errorInvalidFolderIdSession: 'Невалиден Folder ID. Моля, излезте и влезте отново.',
-            errorNoteFieldMissing: "Грешка: липсва поле \'notetxt\'.",
-            warningInvalidBoard: 'Внимание: Един или повече файлове за дефиниция на бордове са невалидни и бяха пропуснати.',
-            confirmCreateDbYes: 'Да',
-            confirmCreateDbNo: 'Не',
-            searchSavedTip: 'Запомни търсенето',
-            zoomLabel: 'Мащаб:',
-            useArhDbLabel: 'Архив:',
-            orderLabel: 'Подреждане на бележките:',
-            sortByNumber: 'по номер',
-            sortByColor: 'по цвят',
-            sortByCreationDate: 'по дата на създаване',
-            sortByModificationDate: 'по дата на редактиране',
-            sortByCalendarDate: 'по дата в календара',
-            sortByAlphabetical: 'по азбучен ред',
-            sortInReverse: 'в обратен ред',
-            sortRemindersTop: 'напомняния най-отгоре',
-            calendar: 'Календар',
-            settingsTitle: 'Настройки',
-            reminder: 'Напомняния',
-            submitButton: 'Потвърди',
-            startBoardLabel: 'Стартов борд:',
-            settingSaved: 'Настройката е запазена',
-            searchSaved: 'Търсенето е запазено',
-            closeButton: 'Затвори',
-            allBoardsCtrlClickTooltip: 'Ctrl-клик - меню',
-            maxSearchesLabel: 'Запазени търсения:',
-            clearSearchesTooltip: 'Изчисти историята на търсенията',
-            noteFontSizeLabel: 'Размер шрифт (бележка):',
-            showDatemodLabel: 'Покажи дата на промяна/календар:',
-            dataManagementTitle: 'Четене на данни',
-            advancedSettings: 'Разширени настройки',
-            useLocalDbLabel: 'Локална папка:',
-            useGoogleDbLabel: 'Google Drive:',
-            updateIndexedDbLabel: 'обновяване',
-            updateFromGoogleDriveLabel: 'само обновяване',
-            localSyncFolderLabel: 'Избери локална папка',
-            arhFolderLabel: 'Избери архивна папка',
-            useIndexedDbLabel: 'База данни:',
-            selectFolderButton: 'Избери папка',
-            folderNotSelected: 'Не е избрана',
-            modalFontSizeLabel: 'Размер шрифт (преглед):',
-            searchByTitleTooltip: 'Търсене в заглавията',
-            searchByContentTooltip: 'Търсене в съдържанието',
-            searchInTitles: 'в заглавията',
-            searchInContent: 'в съдържанието',
-            errorLocalFolderNotSelected: 'Папката за локална синхронизация не е избрана. Моля, изберете такава от Настройки.',
-            folderSelectedForSync: 'Папка \'{folderName}\' е избрана за локална синхронизация.',
-            folderSelectedForArh: 'Папка \'{folderName}\' е избрана за четене от архив.',
-            localDataLoaded: 'Локалните данни са заредени.',
-            localDbUpdated: 'Локалната база е обновена от Google Drive.',
-            dbPopulated: 'Бележките са заредени в базата данни.',
-            dbCreated: 'Базата данни е създадена успешно.',
-            errorGoogleLibs: 'Грешка при зареждане на библиотеките на Google.',
-            loadedFromLocalNoDrive: 'Заредени са данни от локалното хранилище. Няма връзка с Google Drive.',
-            imgNotFound: 'Файлът с изображение не е намерен за преглед.',
-            noImgPreview: 'Няма наличен преглед за това изображение.',
-            errorImgPreview: 'Грешка при зареждане на преглед на изображение: {error}',
-            videoNotFound: 'Видео файлът не е намерен за преглед.',
-            noVideoPreview: 'Няма наличен преглед за това видео.',
-            errorVideoPreview: 'Грешка при зареждане на преглед на видео: {error}',
-            errorOpenFile: 'Неуспешно отваряне на локален файл: {filename}',
-            errorFetchFolderIds: 'Грешка при извличане на ID-та на папки.',
-            errorFetchFileId: 'Грешка при извличане на ID на файл за {fileName}.',
-            confirmCreateLocalDb: 'Искате ли да се създаде локална база?',
-            gdriveUpdatesFound: 'Обновени са {count} файла от Google Drive.',
-            gdriveNoUpdates: 'Няма нови промени в Google Drive.',
-            localUpdatesFound: 'Обновени са {count} файла от локалния диск.',
-            localNoUpdates: 'Няма нови промени в локалния диск.',
-            confirmDbRecreate: 'Локалната база данни вече съществува. Искате ли да я изтриете и да създадете нова от текущите данни?',
-            confirmDbDelete: 'Сигурни ли сте, че искате да изтриете локалната база данни?',
-            dbCreated: 'Локалната база данни е създадена успешно.',
-            errorDbSourceMismatch: 'Несъответствие между базата данни и източника на данни. Линковете към приложенията няма да са достъпни.',            
-            dbCreateFailedNoData: 'Базата не може да бъде създадена. Няма заредени данни в паметта.',
-            dbDeleted: 'Локалната база данни е изтрита успешно.',
-            confirmCreateDbFromArh: 'Локалната база данни е празна или не съществува. Искате ли да създадете нова от текущите архивни данни?',
-            loadedFromArhNoDb: 'Зареждане директно от архив.',
-            errorDbOnlyAndEmpty: 'Избрали сте само База данни, но тя е празна. Моля, изберете друг източник на данни.',
-            dbDeleteFailed: 'Неуспешно изтриване на локалната база данни.',
-            noUpdateMode: 'Приложенията към бележките няма да се отварят.',
-            createDbButton: 'Създай',
-            permissionDenied: 'Няма разрешение',
-            deleteDbButton: 'Изтрий',            
-            confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
-            dbManagementTitle: 'Управление на базата данни',
-            userMismatchWarning: 'Съществуващата база е създадена с потребителско име {user}, данните ще се заредят от Google Drive',
-            checkingForGDriveUpdates: 'Проверка за промени в Google Drive след:\n{date}',
-            initialGDriveSync: 'Първоначална синхронизация с Google Drive...',
-            checkingFile: 'Проверка на {filename}...',
-            savingChangesFromFile: 'Записване на промените от {filename}...',
-            syncFinishedLoadingData: 'Синхронизацията приключи. Зареждане на данни...',
-            updatingFilesSince: 'Обновяване на файлове след:\n{date}...',
-            performingFullSync: 'Извършване на пълна първоначална синхронизация...',
-            checkedFilesCount: 'Проверени {count} файла...',
-            invalidDataFolder: 'Папката \'{folderName}\' не изглежда като валидна папка с данни.',
-            newUpdates: 'Нови',
-            requiredFilesForLocalFolder: 'Необходимо е да съдържа поне 1 \'board\' файл и 3 \'note\' файла.',
-            okButton: 'ОК',
-            noData: 'Няма данни',
-            sourceGoogleDrive: 'Google Drive',
-            sourceLocalFolder: 'Локална папка',
-            sourceArchive: 'Архив',
-            sysInfoUser: 'Потребител',
-            sysInfoLastGDSync: 'Последна Google Drive синхронизация',
-            sysInfoLastLocalSync: 'Последна локална синхронизация',
-            sysInfoAttachmentLinks: 'Връзка към приложенията',
-            sysInfoDbCreatedFrom: 'Базата е създадена от',
-            errorSysInfo: 'Грешка при извличане на системна информация.',
-            errorNoDataSourceSelected: 'Трябва да има избран поне един източник на данни, когато не се използва База данни.',
-            errorNoArchiveFolderSelected: 'Не е избрана папка за архив.',
-            errorReadingArchive: 'Грешка при четене на архива.',
-            errorRequiredArchiveFileMissing: 'Задължителен архивен файл не е намерен.',
-            errorInvalidArchiveData: 'Архивните файлове съдържат невалидни данни.',
-            errorDbDeletionBlocked: 'Изтриването на базата данни е блокирано. Моля, затворете другите отворени табове с това приложение.',
-            errorNoBoardFilesFound: 'Не са намерени файлове за бордове в избраната папка. Моля, проверете източника на данни.',
-            errorNoNoteFilesFound: 'Не са намерени файлове за бележки в избраната папка. Моля, проверете източника на данни.',
-            errorFetchingFolderIds: 'Грешка при извличане на ID-та на папки.',
-            errorFetchingFileId: 'Грешка при извличане на ID на файл за {fileName}.',
-            fetchingFromDb: 'Зареждане от базата данни...',
-            initialDataLoad: 'Първоначално зареждане на данни...',
-            creatingDbFromArh: 'Създаване на база данни от архива...',
-            errorReadArh: 'Грешка при четене от архива.',
-            syncTitleGD: 'Синхронизиране с Google Drive',
-            syncTitleLocal: 'Синхронизиране с Локална папка',
-            /*advHidden: 'Разширените настройки са скрити.',
-            advShown: 'Разширените настройки са достъпни.',*/
-            errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.',
-            showBoardNoteCountLabel: 'Брой бележки в борда:',
-            showBoardAll: 'Покажи борд Всички:',
-            showBoardRemind: 'Покажи борд Напомняния:',
-            calculateTooltip: 'Изчисли израз',
-            invalidExpression: 'Невалиден математически израз.',
-            errorClipboardRead: 'Неуспешно четене от клипборда.',
-            confirmNoteDelete: 'Сигурни ли сте, че искате да изтриете тази бележка от базата данни? Това няма да я изтрие от Google Drive.',
-            noteDeletedSuccess: 'Бележката е изтрита успешно от базата данни.',
-            noteDeletedError: 'Грешка при изтриване на бележка от базата данни.',
-            showWeeklyCalendar: 'Седмичен календар',
-
-            feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com'
-        }
-    };
     let currentLang = localStorage.getItem('language') || 'bg';
     // --- Други константи ---
     const noteBackgrounds = [
@@ -694,6 +368,23 @@ function initApp() {
     loaderTitle.style.marginTop = '0';
     loaderTitle.style.marginBottom = '20px';
     loaderContainer.prepend(loaderTitle);
+
+    // --- Add Cancel Button to Loader ---
+    const cancelButton = document.createElement('button');
+    cancelButton.id = 'cancel-load-btn';
+    cancelButton.className = 'zoom-btn settings-close-btn'; // Reuse existing styles
+    cancelButton.style.marginTop = '20px';
+    cancelButton.dataset.key = 'cancelButton'; // For i18n
+    loaderContainer.appendChild(cancelButton);
+
+    cancelButton.addEventListener('click', () => {
+        console.log("Load operation cancelled by user.");
+        isCancellingLoad = true; // Вдигаме флага, че сме в процес на отказ
+        isLoadCancelled = true;
+        // Hide loader and show settings
+        loaderContainer.style.display = 'none';
+        document.getElementById('settings-modal').classList.add('visible');
+    });
 
     // Настройване на UI и езикови настройки
     const toast = document.getElementById('toastNotification');
@@ -1414,18 +1105,34 @@ async function userCheck() {
  * Показва съобщение и заключва настройките за управление на данни.
  */
 async function handleUserMismatch(storedUser) {
-    showToast(_('userMismatchWarning').replace('{user}', storedUser), 15000);
-    // Принудително превключваме към режим "Google Drive" без IndexedDB
+    // --- ОКОНЧАТЕЛНА КОРЕКЦИЯ: Динамично съобщение за източника ---
+    // Четем директно от localStorage, за да сме сигурни, че имаме актуалните настройки,
+    // ПРЕДИ да ги променим принудително.
+    let sourceText = '';
+    if (localStorage.getItem('useGoogleDb') !== 'false') {
+        sourceText = _('sourceGoogleDrive');
+    } else if (localStorage.getItem('useLocalDb') === 'true') {
+        sourceText = _('sourceLocalFolder');
+    } else if (localStorage.getItem('useArhDb') === 'true') {
+        sourceText = _('sourceArchive');
+    } else {
+        // Fallback, ако по някаква причина няма избран източник
+        sourceText = _('sourceGoogleDrive');
+    }
+    showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceText), 15000);
+
+    // Принудително превключваме към режим без IndexedDB
     localStorage.setItem('useIndexedDb', 'false');
-    localStorage.setItem('useGoogleDb', 'true');
-    localStorage.setItem('useLocalDb', 'false');
+    // localStorage.setItem('useGoogleDb', 'true');
+    // localStorage.setItem('useLocalDb', 'false');
     // Деактивираме контролите в настройките
     const settingsModal = document.getElementById('settings-modal');
     // Проверяваме дали модалът за настройки изобщо съществува в DOM
     if (!settingsModal) return;
     const controlsToDisable = [
-        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
-        'create-db-btn', // 'delete-db-btn',
+        'use-indexeddb-checkbox', // 'use-local-db-checkbox', 'use-arh-db-checkbox',
+        // 'create-db-btn', 
+        'delete-db-btn',
         'select-folder-btn', 'select-arh-btn'
     ];
     controlsToDisable.forEach(id => {
@@ -1439,13 +1146,13 @@ async function handleUserMismatch(storedUser) {
         }
     });
     // Деактивираме и целия акордеон за разширени настройки
-    const accordionHeader = settingsModal.querySelector('.accordion-header');
+    /*const accordionHeader = settingsModal.querySelector('.accordion-header');
     if (accordionHeader) {
         accordionHeader.style.pointerEvents = 'none';
         accordionHeader.style.opacity = '0.5';
     }
     const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
-    if (googleDbCheckbox) googleDbCheckbox.checked = true;
+    if (googleDbCheckbox) googleDbCheckbox.checked = true;*/
 }
 
 /**
@@ -1651,6 +1358,8 @@ function validateDataSourceSelection() {
      */
     async function mainLogic() {
         dbSourceGlobal = null; // Нулираме глобалните променливи
+        isCancellingLoad = false; // Нулираме флага за отказ при всяко ново зареждане
+        isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
         updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
         updateGlobalStateFlags();
         enableSettingsControls();
@@ -1677,6 +1386,7 @@ function validateDataSourceSelection() {
         // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
         const tokenData = checkAuth();
         if (!tokenData) {
+            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
             loaderContainer.style.display = 'none';
             return; // Прекратяваме, checkAuth вече е пренасочил.
         }
@@ -1685,6 +1395,7 @@ function validateDataSourceSelection() {
         // Проверяваме за съвпадение на потребителя, ако има локална база.
         // Тази функция може да промени настройките в localStorage.
         await userCheck();
+        if (isLoadCancelled) return;
         // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
         updateGlobalStateFlags();
 
@@ -1698,6 +1409,7 @@ function validateDataSourceSelection() {
             dbExists = await checkDbExists(NOTES_DB_NAME);
             if (dbExists) {
                 boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (isLoadCancelled) return;
             }
 
             // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
@@ -1745,6 +1457,7 @@ function validateDataSourceSelection() {
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
         if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
             showToast(_('errorDbOnlyAndEmpty'), 15000);
+            if (isLoadCancelled) return;
             document.getElementById('settings-modal').classList.add('visible');
             loaderContainer.style.display = 'none'; // Скриваме лоудъра
             return; // Прекратяваме изпълнението
@@ -1758,6 +1471,7 @@ function validateDataSourceSelection() {
                 } catch (error) {
                     throw new Error(_('errorGoogleLibs'));
                 }
+                if (isLoadCancelled) return;
                 await new Promise(resolve => gapi.load('client', resolve));
                 await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
                 gapi.client.setToken({ access_token: authToken.access_token });
@@ -1776,10 +1490,12 @@ function validateDataSourceSelection() {
                 const arhHandle = await getConfig('arhHandle');
                 if (!arhHandle) {
                     showToast(_('errorArhFolderNotSelected'), 10000);
+                    if (isLoadCancelled) return;
                     document.getElementById('settings-modal').classList.add('visible');
                     return; // Stop execution if no archive handle
                 }
                 const verifiedHandle = await verifyPermission(arhHandle);
+                if (isLoadCancelled) return;
                 if (!verifiedHandle) {
                     showToast(_('permissionDenied'), 10000);
                     return; // Stop execution if no permission
@@ -1794,11 +1510,14 @@ function validateDataSourceSelection() {
                         const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
                         if (confirmed) {
                             loaderText.textContent = _('creatingDbFromArh');
+                            if (isLoadCancelled) return;
                             const success = await readArh(verifiedHandle); // Read archive into memory
                             if (success) {
+                                if (isLoadCancelled) return;
                                 const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
                                 if (dbCreatedSuccessfully) {
                                     showToast(_('dbCreated'), 10000);
+                                    if (isLoadCancelled) return;
                                     await fetchAllDataLocal(); // Load from the newly created DB
                                     await renderUI({ boardParseError: false });
                                 } else {
@@ -1815,6 +1534,7 @@ function validateDataSourceSelection() {
                         } else {
                             // User declined to create DB, load directly from archive for this session
                             showToast(_('loadedFromArhNoDb'), 10000);
+                            if (isLoadCancelled) return;
                             const success = await readArh(verifiedHandle);
                             if (success) {
                                 await renderUI({ boardParseError: false });
@@ -1823,6 +1543,7 @@ function validateDataSourceSelection() {
                     } else {
                         // DB exists and has data, load from DB
                         loaderText.textContent = _('loadingFromDb');
+                        if (isLoadCancelled) return;
                         await fetchAllDataLocal();
                         await renderUI({ boardParseError: false });
                     }
@@ -1831,6 +1552,7 @@ function validateDataSourceSelection() {
                     console.log("Mode: Archive (no IndexedDB)");
                     // КЛЮЧОВА СТЪПКА: Задаваме dirHandle и при директно четене
                     dirHandle = verifiedHandle;
+                    if (isLoadCancelled) return;
                     const success = await readArh(verifiedHandle);
                     if (success) {
                         await renderUI({ boardParseError: false });
@@ -1843,7 +1565,8 @@ function validateDataSourceSelection() {
                     // Нулираме dirHandle тук, за да сме сигурни, че няма да се използват стари handles от локален/архивен режим
                     dirHandle = null;
                     console.log("Source: Google Drive");
-                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive'); 
+                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
+                    if (isLoadCancelled) return;
                     const result = await fetchAllData(null, false); // false -> не записвай в DB
                     if (result.error) { // Проверяваме за грешка при зареждането
                         return; // Прекратяваме, ако няма файлове
@@ -1869,6 +1592,7 @@ function validateDataSourceSelection() {
 
                     if (useGoogleDb) {
                         console.log("Source for initial load: Google Drive");
+                        if (isLoadCancelled) return;
                         const result = await fetchAllData(null);
                         if (result.error) { // Проверяваме за грешка при зареждането
                             return; // Прекратяваме, ако няма файлове
@@ -1890,16 +1614,19 @@ function validateDataSourceSelection() {
                         console.log("Syncing from source (sync is enabled).");
                         if (useGoogleDb) {
                             if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
+                            if (isLoadCancelled) return;
                             const updatedCount = await runGoogleDriveSync();
                             showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 10000);
                         } else if (useLocalFolder) {
                             if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
+                            if (isLoadCancelled) return;
                             const updatedCount = await runLocalSync();
                             showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 10000);
                         }
 
                         // След синхронизация, винаги зареждаме ВСИЧКИ данни от базата
                         loaderText.textContent = _('fetchingFromDb');
+                        if (isLoadCancelled) return;
                         await fetchAllDataLocal();
 
                         // Създаваме UI с всички данни
@@ -1917,6 +1644,7 @@ function validateDataSourceSelection() {
             showToast(_('errorProcessingFiles'));
             loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
         } finally {
+            if (isLoadCancelled) return; // Не скриваме лоудъра, ако е отказано, за да не "премигне"
             // Изчистваме текстовете в лоудъра, преди да го скрием
             const loaderTitle = document.getElementById('loader-title');
             if (loaderTitle) loaderTitle.textContent = '';
@@ -3645,6 +3373,14 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
                 const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
 
+                // --- КОРЕКЦИЯ: Предотвратяваме презареждане след "Отказ", САМО ако няма промени ---
+                // Ако сме отворили настройките чрез бутона "Отказ" И НЕ сме променили нищо,
+                // тогава не правим нищо повече.
+                if (isCancellingLoad && !hasChanged) {
+                    isCancellingLoad = false; // Нулираме флага за следващия път.
+                    return;
+                }
+
                 // Ако прозорецът е бил отворен принудително, презареждаме данните.
                 if (window.wasOpenedForMissingFolder) {
                     window.wasOpenedForMissingFolder = false; // Нулираме флага
@@ -4679,22 +4415,43 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
         let longPressTimer;
         let isLongPress = false;
-
+ 
         const handleNoteDelete = async (noteEl, e) => {
             e.stopPropagation();
             e.preventDefault();
             isLongPress = false;
             clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
-
-            if (!useIndexedDb) return; // Изтриването работи само с база данни
+ 
+            if (!useIndexedDb) return; // Изтриването работи само с база данни, тъй като променяме локалното състояние
 
             const confirmed = await showConfirmation(_('confirmNoteDelete'));
             if (confirmed) {
                 try {
                     await deleteFromDB(NOTE_STORE_NAME, noteGdid);
                     noteEl.remove();
+                    // Актуализираме общия брояч
                     const noteCounter = document.getElementById('note-counter');
                     if (noteCounter) noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
+
+                    // Актуализираме брояча на борда
+                    const boardIdOfDeletedNote = extraData.boardid;
+                    if (boardIdOfDeletedNote) {
+                        const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardIdOfDeletedNote}"]`);
+                        if (boardButton) {
+                            // Извличаме текущия брояч от текста на бутона (напр. "Име (5)")
+                            const match = boardButton.textContent.match(/\((\d+)\)/);
+                            if (match && match[1]) {
+                                const currentCount = parseInt(match[1], 10);
+                                if (currentCount > 1) {
+                                    boardButton.textContent = boardButton.textContent.replace(`(${currentCount})`, `(${currentCount - 1})`);
+                                } else {
+                                    // Ако броячът стане 0, премахваме го напълно
+                                    boardButton.textContent = boardButton.textContent.replace(/\s*\(\d+\)/, '');
+                                }
+                            }
+                        }
+                    }
+
                     allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
                     showToast(_('noteDeletedSuccess'), 3000);
                 } catch (error) {
@@ -4704,20 +4461,21 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             }
         };
 
+        // Обработва клик върху цялата бележка (с изключение на хедъра)
         const handleNoteClick = (e) => {
-            // Ако е Ctrl+клик, извикваме функцията за изтриване
-            if (e.ctrlKey && e.currentTarget) {
-                handleNoteDelete(e.currentTarget, e);
-                return;
-            }
-            // В противен случай, ако не е long press, отваряме модала
+            // Отваряме модала, само ако не е long press и кликът не е върху футъра
             if (!isLongPress && !e.target.closest('.note-footer')) {
                 const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
                 showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
             }
             isLongPress = false; // Нулираме флага след клик
         };
-
+ 
+        // Обработва клик върху хедъра (за изтриване)
+        const handleHeaderClick = (e) => {
+            if (e.ctrlKey) handleNoteDelete(note, e);
+        };
+ 
         const startPress = (e) => {
             isLongPress = false;
             // Стартираме таймер само за long press
@@ -4727,14 +4485,20 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             }, 500);
         };
 
-        const endPress = () => clearTimeout(longPressTimer);
-        
+        const endPress = (e) => {
+            clearTimeout(longPressTimer);
+            // Ако е било кратко натискане (не long press) върху хедъра, не правим нищо,
+            // за да не се отвори модалът.
+            if (!isLongPress && e.currentTarget === titleWrapper) {
+                e.stopPropagation();
+            }
+        };
+
+        // Закачаме събитията за изтриване само за хедъра
+        titleWrapper.addEventListener('click', handleHeaderClick);
+        addLongPressOrCtrlClick(titleWrapper, (e) => handleNoteDelete(note, e));
+        // Закачаме събитието за отваряне на модала за цялата бележка
         note.addEventListener('click', handleNoteClick);
-        note.addEventListener('mousedown', startPress);
-        note.addEventListener('mouseup', endPress);
-        note.addEventListener('mouseleave', endPress);
-        note.addEventListener('touchstart', startPress);
-        note.addEventListener('touchend', endPress);
         note.addEventListener('contextmenu', e => e.preventDefault());
 
         contentWrapper.appendChild(titleWrapper);

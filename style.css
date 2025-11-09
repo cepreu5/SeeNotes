@@ -115,6 +115,38 @@ header h1 {
     animation: save-spin 0.5s ease-in-out;
 }
 
+/* Анимация за зареждане на бутон */
+@keyframes button-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Стил за самата икона за зареждане в бутона */
+.board-loading-icon {
+    display: none; /* Скрита по подразбиране */
+    width: 16px;
+    height: 16px;
+    margin-left: 8px; /* Разстояние от текста */
+    vertical-align: middle;
+}
+
+/* Клас, който се добавя, за да се покаже иконата и да се стартира анимацията */
+.button-loading {
+    display: inline-block !important; /* Показваме иконата */
+    animation: button-spin 0.8s linear infinite;
+    transform-origin: center;
+}
+
+/* Стил за иконата за зареждане в бутона за режим */
+#mode-button-loading-icon {
+    display: none; /* Скрита по подразбиране */
+    width: 24px;   /* Същия размер като основната икона */
+    height: 24px;
+    position: absolute; /* Позиционираме я в центъра на бутона */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* Първоначално центриране */
+}
 /* Popup for saved searches */
 #saved-searches-popup {
     position: absolute;
@@ -172,38 +204,47 @@ header h1 {
     padding: 11px; /* Задаваме padding, за да определим размера */
     box-sizing: border-box; /* Гарантираме, че padding-ът е включен в размера */
 }
-
 /* Специфични стилове за бутона за режим, за да се адаптира към съдържанието */
 #mode_button {
     width: auto; /* Премахваме фиксираната ширина */
     height: auto; /* Премахваме фиксираната височина */
     min-width: 46px; /* Гарантираме минимален размер, равен на другите бутони */
     min-height: 46px;
-    gap: 5px; /* Разстояние между иконите, когато са две */
+    gap: 5px; /* Разстояние между елементите вътре в бутона (напр. icon-wrapper и loading icon) */
     background-color: #9a9999;
     border-radius: 25px; /* Заоблени ъгли, вместо елипса */
 }
-
 /* Wrapper for the mode icon to correctly position the overlay */
 .mode-icon-wrapper {
-    position: relative;
+    /* Remove fixed width/height to allow it to expand with content */
+    /* width: 24px; */
+    /* height: 24px; */
+    position: relative; /* Keep relative for potential future absolute children */
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px; /* Match the main icon size */
-    height: 24px;
+    gap: 2px; /* Малко разстояние между двете икони */
 }
-
 /* Overlay for DB icon on mode button */
 .mode-db-overlay {
-    position: absolute;
-    bottom: -2px; /* Adjust for better visual placement */
-    right: -2px;  /* Adjust for better visual placement */
-    width: 14px;  /* Smaller size for proportion */
-    height: 14px;
-    background-color: rgba(214, 214, 214, 0.7); /* Semi-transparent background to lift it from the main icon */
-    border-radius: 50%;
-    border: 1px solid #888; /* Add a small border to define it */
+    /* Премахваме абсолютното позициониране, за да е една до друга */
+    position: relative; /* Позволява ни да я местим спрямо нормалната й позиция */
+    top: 7px; /* Сваляме иконата 7px надолу */
+    margin-left: -15px; /* Придърпваме я наляво, за да застъпи първата */
+    width: 21px; /* 3px по-малка от основната икона (24px) */
+    height: 21px;
+}
+
+.mode-db-overlay img {
+    width: 100%;
+    height: 100%;
+}
+/* Когато mode_button зарежда, скриваме другите икони и показваме анимацията */
+.mode-button-loading #mode-button-loading-icon {
+    display: block !important;
+}
+.mode-button-loading .mode-icon-wrapper {
+    display: none !important;
 }
 
 .header-btn:hover {
@@ -566,12 +607,12 @@ pre, code {
 #modal-board-name {
     position: absolute;
     top: 15px; /* Moved 5px up */
-    right: 141px; /* Position to the left of the new calculator button */
+    /* right: 141px; Position to the left of the new calculator button */
     font-size: 1.1em;
     font-weight: bold;
     color: #333;
     background-color: transparent;
-    padding: 5px 10px;
+    padding: 5px 5px;
     border-radius: 5px;
     max-width: calc(100% - 150px); /* Prevent overlapping with title or buttons */
     white-space: nowrap;
@@ -590,11 +631,11 @@ pre, code {
 }
 
 #copy-modal-btn {
-    right: 57px;
+    right: 151px;
 }
 
 #calculate-modal-btn {
-    right: 99px; /* 57px (copy) + 32px (width) + 10px (gap) */
+    right: 193px; /* 57px (copy) + 32px (width) + 10px (gap) */
 }
 
 #copy-modal-btn svg {
@@ -602,6 +643,19 @@ pre, code {
     height: 16px;
     stroke: #333;
 }
+
+/* --- Бутони за навигация в модала --- */
+.modal-nav-btn {
+    font-size: 24px;
+    /*font-weight: bold;*/
+}
+
+/* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
+/* Бутон за затваряне (X) е на right: 15px */
+/* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
+#prev-note-btn { right: 99px; }
+#next-note-btn { right: 57px; } /* 57px + 32px + 10px */
+
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
 #calculate-modal-btn svg {
