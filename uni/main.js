@@ -193,12 +193,12 @@ const translations = {
             confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
             dbManagementTitle: 'Database Management',
             userMismatchWarning: 'The existing database was created by user {user}, data will be loaded from Google Drive',
-            checkingForGDriveUpdates: 'Checking for Google Drive updates since {date}...',
+            checkingForGDriveUpdates: 'Checking for Google Drive updates since:\n{date}',
             initialGDriveSync: 'Initial sync with Google Drive...',
             checkingFile: 'Checking {filename}...',
             savingChangesFromFile: 'Saving changes from {filename}...',
             syncFinishedLoadingData: 'Sync finished. Loading data...',
-            updatingFilesSince: 'Updating files since {date}...',
+            updatingFilesSince: 'Updating files since:\n{date}',
             performingFullSync: 'Performing full initial sync...',
             checkedFilesCount: 'Checked {count} files...',
             invalidDataFolder: 'Folder \'{folderName}\' does not appear to be a valid data folder.',
@@ -361,7 +361,7 @@ const translations = {
             checkingFile: 'Проверка на {filename}...',
             savingChangesFromFile: 'Записване на промените от {filename}...',
             syncFinishedLoadingData: 'Синхронизацията приключи. Зареждане на данни...',
-            updatingFilesSince: 'Обновяване на файлове от {date}...',
+            updatingFilesSince: 'Обновяване на файлове след:\n{date}...',
             performingFullSync: 'Извършване на пълна първоначална синхронизация...',
             checkedFilesCount: 'Проверени {count} файла...',
             invalidDataFolder: 'Папката \'{folderName}\' не изглежда като валидна папка с данни.',
@@ -1327,8 +1327,8 @@ function handleSignoutClick() {
             console.log(`Checking for Google Drive updates since ${modifiedSince}`);
             // --- КОРЕКЦИЯ: Преместваме съобщението в заглавието ---
             if (loaderTitle) {
-                const message = _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang));
-                loaderTitle.innerHTML = message.replace(/\n/g, '<br>');
+                loaderTitle.innerText = _('checkingForGDriveUpdates')
+                    .replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang));
             }
         } else {
             console.log('Performing full initial sync from Google Drive to local DB.');
@@ -1994,7 +1994,7 @@ async function runLocalSync() {
     const handle = await getDirectoryHandle();
     if (!handle) return 0;
 
-    loaderText.textContent = updateDate 
+    loaderText.innerText = updateDate 
         ? _('updatingFilesSince').replace('{date}', updateDate.toLocaleString()) 
         : _('performingFullSync');
 
