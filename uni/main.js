@@ -4632,7 +4632,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                     showToast(_('noteDeletedSuccess'), 3000);
                 } catch (error) {
                     console.error("Failed to delete note:", error);
-                    showToast(_('noteDeletedError')+" - ", + error.message, 15000);
+                    showToast(_('noteDeletedError') + " - " + error.message, 15000);
                 }
             }
         };
@@ -4663,7 +4663,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         note.addEventListener('mousedown', startPress);
         note.addEventListener('mouseup', endPress);
         note.addEventListener('mouseleave', endPress);
-        note.addEventListener('touchstart', startPress, { passive: true });
+        note.addEventListener('touchstart', startPress);
         note.addEventListener('touchend', endPress);
         note.addEventListener('contextmenu', e => e.preventDefault());
 
