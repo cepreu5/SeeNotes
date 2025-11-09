@@ -981,22 +981,32 @@ function initApp() {
 
         // --- Mode Button Logic (Ctrl-click for advanced) ---
         const modeButton = document.getElementById('mode_button');
-        modeButton.addEventListener('click', (e) => {
-            // --- НОВА ЛОГИКА: "Умен" бутон за синхронизация ---
-            updateGlobalStateFlags(); // Уверяваме се, че глобалните флагове са актуални
-            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-
-            if (isDbOnlyMode && dbExists) {
-                triggerSync(); // Извикваме новата, по-лека функция за синхронизация
+        modeButton.addEventListener('click', (e) => { // Обединена логика
+            if (e.ctrlKey) {
+                // Логика за Ctrl+клик: Показване на разширените настройки
+                e.preventDefault();
+                const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+                if (advancedSettingsSpan) {
+                    const isHidden = advancedSettingsSpan.hasAttribute('hidden');
+                    if (isHidden) {
+                        advancedSettingsSpan.removeAttribute('hidden');
+                        localStorage.setItem('showAdvancedSettings', 'true');
+                    }
+                }
             } else {
-                // При всички други режими, запазваме старото поведение - отваряне на настройките
-                document.getElementById('settings_button').click();
+                // Логика за обикновен клик: "Умен" бутон
+                updateGlobalStateFlags();
+                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+
+                if (isDbOnlyMode && dbExists) {
+                    triggerSync();
+                } else {
+                    document.getElementById('settings_button').click();
+                }
             }
         });
 
         /**
-         * Нова, лека функция, която стартира синхронизация и презарежда данните,
-         * без да презарежда целия UI. Извиква се от "умния" бутон.
          */
         async function triggerSync() {
             loaderContainer.style.display = 'block'; // Показваме статус панела
@@ -1056,20 +1066,6 @@ function initApp() {
 
             loaderContainer.style.display = 'none';
         }
-
-        // Добавяме long press / ctrl-click за показване на разширените настройки
-        addLongPressOrCtrlClick(modeButton, (e) => {
-            e.preventDefault();
-            const advancedSettingsSpan = document.getElementById('advanced-settings-span');
-            if (advancedSettingsSpan) {
-                const isHidden = advancedSettingsSpan.hasAttribute('hidden');
-                if (isHidden) {
-                    advancedSettingsSpan.removeAttribute('hidden');
-                    localStorage.setItem('showAdvancedSettings', 'true');
-                }
-            }
-        });
-
         // Добавяме event listener за показване на системна информация при клик на брояча
         const noteCounter = document.getElementById('note-counter');
         noteCounter.addEventListener('click', async () => {
@@ -1550,55 +1546,49 @@ function updateModeButton() {
     const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
     const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
 
-    const modeButton = document.getElementById('mode_button'); // Бутонът
+    const modeButton = document.getElementById('mode_button');
     if (!modeButton) return;
 
-    // Намираме или създаваме контейнера за иконите на режима
     let iconWrapper = modeButton.querySelector('.mode-icon-wrapper');
     if (!iconWrapper) {
         iconWrapper = document.createElement('div');
         iconWrapper.className = 'mode-icon-wrapper';
-        modeButton.prepend(iconWrapper); // Добавяме го в началото
+        modeButton.prepend(iconWrapper);
     }
 
-    // Използваме локалните константи, прочетени току-що
     let iconSrc = '';
     let title = '';
     
-    // --- НОВА ЛОГИКА: Проверяваме за комбинацията GD + DB ---
-    const isGoogleDriveWithDb = currentUseGoogleDb && currentUseIndexedDb;
+    // --- РАЗШИРЕНА ЛОГИКА: Проверяваме за всяка комбинация с база данни ---
+    const isCombinedWithDb = currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb);
 
-    // --- КОРЕКЦИЯ: Добавяме иконата за зареждане към бутона за режим ---
     if (!modeButton.querySelector('#mode-button-loading-icon')) {
         const loadingIcon = document.createElement('img');
         loadingIcon.src = 'Refresh.png';
         loadingIcon.id = 'mode-button-loading-icon';
         modeButton.appendChild(loadingIcon);
     }
-    
-    if (isGoogleDriveWithDb) {
-        // Когато имаме GD + DB, базата е основна, а GD е индикатор
+
+    if (isCombinedWithDb) {
+        // Когато имаме комбинация, базата е основна
         iconSrc = 'Database.png';
-        title = 'Режим: База данни + Google Drive';
+        if (currentUseGoogleDb) title = 'Режим: База данни + Google Drive';
+        else if (currentUseLocalFolder) title = 'Режим: База данни + Локална папка';
+        else if (currentUseArhDb) title = 'Режим: База данни + Архив';
     } else if (currentUseArhDb) {
         iconSrc = 'Zip.png';
         title = 'Режим: Архив';
     } else if (currentUseLocalFolder) {
         iconSrc = 'Folder.png';
         title = 'Режим: Локална папка';
-    } else if (currentUseGoogleDb) { // Само GD, без DB
+    } else if (currentUseGoogleDb) {
         iconSrc = 'GDrive.png';
         title = 'Режим: Google Drive';
-    } else if (currentUseIndexedDb) { // Само DB
+    } else if (currentUseIndexedDb) {
         iconSrc = 'Database.png';
         title = 'Режим: База данни';
     }
-    
-    // Добавяме "+ База данни" към tooltip-а за другите комбинации
-    if (currentUseIndexedDb && (currentUseLocalFolder || currentUseArhDb)) {
-        title += ' + База данни';
-    }
-    
+
     iconWrapper.innerHTML = '';
 
     const mainIcon = document.createElement('img');
@@ -1607,20 +1597,23 @@ function updateModeButton() {
     mainIcon.style.width = '24px';
     mainIcon.style.height = '24px';
     iconWrapper.appendChild(mainIcon);
-    
-    // Добавяме иконата за наслагване
-    if (isGoogleDriveWithDb) {
-        // За GD + DB, наслагването е иконата на GDrive
-        const gdOverlay = document.createElement('div');
-        gdOverlay.className = 'mode-db-overlay'; // Използваме същия клас за позициониране
-        gdOverlay.innerHTML = `<img src="GDrive.png" alt="Google Drive Sync">`;
-        iconWrapper.appendChild(gdOverlay);
-    } else if (currentUseIndexedDb && (currentUseLocalFolder || currentUseArhDb)) {
-        // За другите комбинации, наслагването е иконата на базата данни
-        const dbOverlay = document.createElement('div');
-        dbOverlay.className = 'mode-db-overlay';
-        dbOverlay.innerHTML = `<img src="Database.png" alt="Database enabled">`;
-        iconWrapper.appendChild(dbOverlay);
+
+    // Добавяме иконата за наслагване, ако сме в комбиниран режим
+    if (isCombinedWithDb) {
+        let overlaySrc = '';
+        let overlayAlt = '';
+        if (currentUseGoogleDb) {
+            overlaySrc = 'GDrive.png'; overlayAlt = 'Google Drive Sync';
+        } else if (currentUseLocalFolder) {
+            overlaySrc = 'Folder.png'; overlayAlt = 'Local Folder Sync';
+        } else if (currentUseArhDb) {
+            overlaySrc = 'Zip.png'; overlayAlt = 'Archive Source';
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'mode-db-overlay';
+        overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}">`;
+        iconWrapper.appendChild(overlay);
     }
     
     modeButton.title = title;

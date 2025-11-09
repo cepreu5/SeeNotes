@@ -230,9 +230,9 @@ header h1 {
 .mode-db-overlay {
     position: absolute;
     bottom: -2px; /* Позиционираме я леко извън основната икона */
-    right: -2px;
-    width: 14px;
-    height: 14px;
+    right: -4px;
+    width: 16px;
+    height: 16px;
     background-color: rgba(214, 214, 214, 0.7); /* Полупрозрачен фон, за да се отличава */
     border-radius: 50%; /* Правим я кръгла */
     border: 1px solid #888; /* С малка рамка за дефиниция */
