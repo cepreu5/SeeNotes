@@ -204,38 +204,35 @@ header h1 {
     padding: 11px; /* Задаваме padding, за да определим размера */
     box-sizing: border-box; /* Гарантираме, че padding-ът е включен в размера */
 }
-
 /* Специфични стилове за бутона за режим, за да се адаптира към съдържанието */
 #mode_button {
     width: auto; /* Премахваме фиксираната ширина */
     height: auto; /* Премахваме фиксираната височина */
     min-width: 46px; /* Гарантираме минимален размер, равен на другите бутони */
     min-height: 46px;
-    gap: 5px; /* Разстояние между иконите, когато са две */
+    gap: 5px; /* Разстояние между елементите вътре в бутона (напр. icon-wrapper и loading icon) */
     background-color: #9a9999;
     border-radius: 25px; /* Заоблени ъгли, вместо елипса */
 }
-
 /* Wrapper for the mode icon to correctly position the overlay */
 .mode-icon-wrapper {
-    position: relative;
+    /* Remove fixed width/height to allow it to expand with content */
+    /* width: 24px; */
+    /* height: 24px; */
+    position: relative; /* Keep relative for potential future absolute children */
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px; /* Match the main icon size */
-    height: 24px;
+    gap: 2px; /* Малко разстояние между двете икони */
 }
-
 /* Overlay for DB icon on mode button */
 .mode-db-overlay {
-    position: absolute;
-    bottom: -2px; /* Позиционираме я леко извън основната икона */
-    right: -4px;
-    width: 16px;
-    height: 16px;
-    background-color: rgba(214, 214, 214, 0.7); /* Полупрозрачен фон, за да се отличава */
-    border-radius: 50%; /* Правим я кръгла */
-    border: 1px solid #888; /* С малка рамка за дефиниция */
+    /* Премахваме абсолютното позициониране, за да е една до друга */
+    position: relative; /* Позволява ни да я местим спрямо нормалната й позиция */
+    top: 7px; /* Сваляме иконата 7px надолу */
+    margin-left: -15px; /* Придърпваме я наляво, за да застъпи първата */
+    width: 21px; /* 3px по-малка от основната икона (24px) */
+    height: 21px;
 }
 
 .mode-db-overlay img {
