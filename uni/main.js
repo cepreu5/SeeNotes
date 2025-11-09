@@ -4602,7 +4602,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                     showToast(_('noteDeletedSuccess'), 3000);
                 } catch (error) {
                     console.error("Failed to delete note:", error);
-                    showToast(_('noteDeletedError'));
+                    showToast(_('noteDeletedError'+" - ", + error));
                 }
             }
         };
