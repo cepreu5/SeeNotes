@@ -4680,11 +4680,10 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         let longPressTimer;
         let isLongPress = false;
 
-        const handleNoteDelete = async (e) => {
-            const noteEl = e.currentTarget;
+        const handleNoteDelete = async (noteEl, e) => {
             e.stopPropagation();
             e.preventDefault();
-            isLongPress = false; // Нулираме флага
+            isLongPress = false;
             clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
 
             if (!useIndexedDb) return; // Изтриването работи само с база данни
@@ -4707,8 +4706,8 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
 
         const handleNoteClick = (e) => {
             // Ако е Ctrl+клик, извикваме функцията за изтриване
-            if (e.ctrlKey) {
-                handleNoteDelete(e);
+            if (e.ctrlKey && e.currentTarget) {
+                handleNoteDelete(e.currentTarget, e);
                 return;
             }
             // В противен случай, ако не е long press, отваряме модала
@@ -4722,7 +4721,10 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         const startPress = (e) => {
             isLongPress = false;
             // Стартираме таймер само за long press
-            longPressTimer = setTimeout(() => { isLongPress = true; handleNoteDelete(e); }, 500);
+            const targetNoteElement = e.currentTarget;
+            longPressTimer = setTimeout(() => {
+                isLongPress = true; handleNoteDelete(targetNoteElement, e);
+            }, 500);
         };
 
         const endPress = () => clearTimeout(longPressTimer);
@@ -5121,10 +5123,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         currentBoardFilter = mainBoard ? mainBoard.gdid : 'all';
     }
     
-    // Прилагаме филтъра, СЛЕД като всички бележки са добавени в DOM
-    filterNotesByBoard(currentBoardFilter, true);
-    // Скролираме само при първоначално зареждане, за да позиционираме менюто.
-    // При последващи презареждания (F5, бутон), менюто запазва позицията си.
+    // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     filterNotesByBoard(currentBoardFilter, isInitialLoad);
     // След първото зареждане, флагът става false.
     isInitialLoad = false;
