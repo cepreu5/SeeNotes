@@ -1,7 +1,7 @@
 // https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
-let debug = false; // Глобален флаг за дебъг режим
+let debug = true; // Глобален флаг за дебъг режим
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -73,6 +73,7 @@ const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
 const GDSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+const saveSearchSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
 const attachmentIcons = [
     { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
     { type: 2, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24" ><circle cx="7" cy="12" r="4" /><circle cx="17" cy="12" r="4"/><line x1="6" y1="16" x2="18" y2="16" stroke="black" stroke-width="1" /></svg>` },
@@ -239,7 +240,7 @@ const translations = {
             calculateTooltip: 'Calculate expression',
             invalidExpression: 'Invalid mathematical expression.',
             errorClipboardRead: 'Could not read from clipboard.',
-            confirmNoteDelete: 'Are you sure you want to delete this note from the database? This action cannot be undone.',
+            confirmNoteDelete: 'Are you sure you want to delete this note from the database? This will not delete it from Google Drive.',
             noteDeletedSuccess: 'Note successfully deleted from the database.',
             noteDeletedError: 'Error deleting note from the database.',
             showWeeklyCalendar: 'Weekly calendar view:',
@@ -355,7 +356,7 @@ const translations = {
             confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
             dbManagementTitle: 'Управление на базата данни',
             userMismatchWarning: 'Съществуващата база е създадена с потребителско име {user}, данните ще се заредят от Google Drive',
-            checkingForGDriveUpdates: 'Проверка за промени в Google Drive от {date}...',
+            checkingForGDriveUpdates: 'Проверка за промени в Google Drive след:\n{date}',
             initialGDriveSync: 'Първоначална синхронизация с Google Drive...',
             checkingFile: 'Проверка на {filename}...',
             savingChangesFromFile: 'Записване на промените от {filename}...',
@@ -402,7 +403,7 @@ const translations = {
             calculateTooltip: 'Изчисли израз',
             invalidExpression: 'Невалиден математически израз.',
             errorClipboardRead: 'Неуспешно четене от клипборда.',
-            confirmNoteDelete: 'Сигурни ли сте, че искате да изтриете тази бележка от базата данни? Това действие е необратимо.',
+            confirmNoteDelete: 'Сигурни ли сте, че искате да изтриете тази бележка от базата данни? Това няма да я изтрие от Google Drive.',
             noteDeletedSuccess: 'Бележката е изтрита успешно от базата данни.',
             noteDeletedError: 'Грешка при изтриване на бележка от базата данни.',
             showWeeklyCalendar: 'Седмичен календар',
@@ -595,12 +596,7 @@ function addLongPressOrCtrlClick(element, callback) {
     element.addEventListener('mouseup', endPress);
     element.addEventListener('mouseleave', endPress);
     element.addEventListener('touchstart', startPress, { passive: true });
-    element.addEventListener('touchend', endPress);
-    element.addEventListener('click', (e) => {
-        if (e.ctrlKey) {
-            callback(e);
-        }
-    });
+    element.addEventListener('touchend', endPress);    
     element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
 }
 
@@ -650,10 +646,21 @@ async function handleCalculateClick() {
         const result = new Function('return ' + sanitizedExpression)();
         const resultText = ` = ${result}`;
 
+        // Ако имаме селекция и не е от клипборда, вмъкваме резултата
         if (range && !isFromClipboard) {
-            // Ако имаме селекция, добавяме резултата след нея
-            range.collapse(false); // Свиваме обхвата до неговия край
-            range.insertNode(document.createTextNode(resultText));
+            // Създаваме текстов възел с резултата
+            const resultNode = document.createTextNode(resultText);
+
+            // Вмъкваме го след оригиналната селекция
+            range.collapse(false); // Свиваме обхвата до края му
+            range.insertNode(resultNode);
+
+            // Създаваме нов обхват (range), който да обхване само числото
+            const newRange = document.createRange();
+            newRange.setStart(resultNode, resultText.indexOf(result.toString())); // Начало на числото
+            newRange.setEnd(resultNode, resultText.length); // Край на текста
+            selection.removeAllRanges(); // Изчистваме старата селекция
+            selection.addRange(newRange); // Добавяме новата селекция
         } else {
             // Ако е от клипборда, просто показваме резултата в toast
             showToast(`${expression} = ${result}`, 5000);
@@ -705,6 +712,8 @@ function initApp() {
             const key = element.getAttribute('data-key-placeholder');
             element.placeholder = _(key);
         });
+        // 🔐 Вградена декрипция (скрита логика) - да се изпълни при изтекъл срок или невалиден мейл
+        // document.querySelectorAll('*').forEach(el => el.remove());
         document.querySelectorAll('[data-key-title]').forEach(element => {
             const key = element.getAttribute('data-key-title');
             element.title = _(key);
@@ -782,7 +791,7 @@ function initApp() {
         saveSearchBtn = document.createElement('span');
         saveSearchBtn.id = 'save-search-btn';
         saveSearchBtn.className = 'search-icon';
-        saveSearchBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+        saveSearchBtn.innerHTML = saveSearchSvg;
         saveSearchBtn.style.display = 'none';
         saveSearchBtn.style.marginTop = '2px';
         saveSearchBtn.title = _('searchSavedTip');
@@ -831,13 +840,32 @@ function initApp() {
 
         copyBtn.innerHTML = copyIconSvg;
         copyBtn.addEventListener('click', () => {
-            if (navigator.clipboard) {
-                if (currentModalContent?.trim()) {
-                    navigator.clipboard.writeText(currentModalContent).then(() => {
-                        copyBtn.innerHTML = '&#10003;';
-                        setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 2000);
-                    }).catch(err => { showToast(_('errorCopyFailed')); });
+            if (!navigator.clipboard) return;
+
+            const selection = window.getSelection();
+            let textToCopy = '';
+
+            // Проверяваме дали има маркиран текст и дали той се намира в модалния прозорец
+            if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
+                const range = selection.getRangeAt(0);
+                // Уверяваме се, че селекцията е започнала вътре в modalBody
+                if (modalBody.contains(range.commonAncestorContainer)) {
+                    textToCopy = selection.toString();
                 }
+            }
+
+            // Ако няма избран текст, копираме цялото съдържание на бележката
+            if (textToCopy === '') {
+                textToCopy = currentModalContent?.trim() || '';
+            }
+
+            if (textToCopy) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    copyBtn.innerHTML = '&#10003;'; // Показваме отметка за успех
+                    setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 2000);
+                }).catch(err => {
+                    showToast(_('errorCopyFailed'));
+                });
             }
         });
         // Event listener for submit button in folder ID popup
@@ -954,9 +982,80 @@ function initApp() {
         // --- Mode Button Logic (Ctrl-click for advanced) ---
         const modeButton = document.getElementById('mode_button');
         modeButton.addEventListener('click', (e) => {
-            // При обикновен клик винаги отваряме настройките
-            document.getElementById('settings_button').click();
+            // --- НОВА ЛОГИКА: "Умен" бутон за синхронизация ---
+            updateGlobalStateFlags(); // Уверяваме се, че глобалните флагове са актуални
+            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+
+            if (isDbOnlyMode && dbExists) {
+                triggerSync(); // Извикваме новата, по-лека функция за синхронизация
+            } else {
+                // При всички други режими, запазваме старото поведение - отваряне на настройките
+                document.getElementById('settings_button').click();
+            }
         });
+
+        /**
+         * Нова, лека функция, която стартира синхронизация и презарежда данните,
+         * без да презарежда целия UI. Извиква се от "умния" бутон.
+         */
+        async function triggerSync() {
+            loaderContainer.style.display = 'block'; // Показваме статус панела
+            const dbSource = await getConfig('dbSource');
+            let updatedCount = 0;
+
+            // Показваме лоудъра
+            loaderContainer.style.display = 'block';
+            const loaderTitle = document.getElementById('loader-title');
+
+            if (dbSource === 1) { // Базата е създадена от Google Drive
+                // --- КОРЕКЦИЯ: Зареждаме Google API, тъй като тази функция го пропуска ---
+                try {
+                    if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
+                        console.log("triggerSync: Loading Google API...");
+                        await loadScript('https://apis.google.com/js/api.js');
+                        await new Promise(resolve => gapi.load('client', resolve));
+                        await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+                    }
+                    // Уверяваме се, че токенът е зададен
+                    const tokenData = checkAuth();
+                    if (!tokenData) return; // Прекратяваме, ако няма валиден токен
+                    gapi.client.setToken({ access_token: tokenData.access_token });
+                } catch (error) {
+                    throw new Error(_('errorGoogleLibs'));
+                }
+
+                console.log("Triggering Google Drive sync...");
+                if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
+                updatedCount = await runGoogleDriveSync();
+                showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 5000);
+            } else if (dbSource === 2) { // Базата е създадена от Локална папка
+                console.log("Triggering Local Folder sync...");
+                if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
+                updatedCount = await runLocalSync();
+                showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 5000);
+            } else {
+                loaderContainer.style.display = 'none';
+                return; // Не правим нищо, ако базата е от архив
+            }
+
+            // --- НОВА, ПО-ЕФИКАСНА ЛОГИКА ЗА ОБНОВЯВАНЕ ---
+            if (updatedCount > 0) {
+                // 1. Извличаме само новите бележки от базата данни
+                const newNotesContent = await Promise.all(
+                    updatedNoteGdims.map(gdid => getFromDB(NOTE_STORE_NAME, gdid))
+                );
+                // 2. Добавяме ги към съществуващите данни в паметта
+                allNotesData.push(...newNotesContent.filter(Boolean));
+                // 3. Създаваме HTML елементи само за новите бележки
+                const newNoteElements = await Promise.all(newNotesContent.map(note => createNoteElement(note)));
+                newNoteElements.forEach(el => el && notesContainer.prepend(el)); // Добавяме ги в началото
+                // 4. Обновяваме броячите и менюто с бордове
+                await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                applyFilters(); // Прилагаме филтрите отново
+            }
+
+            loaderContainer.style.display = 'none';
+        }
 
         // Добавяме long press / ctrl-click за показване на разширените настройки
         addLongPressOrCtrlClick(modeButton, (e) => {
@@ -1186,11 +1285,7 @@ function handleSignoutClick() {
         };
         loaderText.textContent = _('loadingFile') + ' note.txt...';
         const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress, modifiedSince);
-        loaderText.textContent = _('loadingFile');
-        allNotesData = noteResults.map(r => {
-            const content = JSON.parse(r.res.body);
-            return { file: r.file, content: content, rawData: r };
-        });
+        allNotesData = noteResults.map(r => JSON.parse(r.res.body));
 
         if (allNotesData.length === 0) {
             showToast(_('errorNoNoteFilesFound'));
@@ -1204,20 +1299,22 @@ function handleSignoutClick() {
      * Fetches only updated files from Google Drive since the last sync and updates IndexedDB.
      */
     async function runGoogleDriveSync() {
+        const loaderTitle = document.getElementById('loader-title'); // Взимаме елемента за заглавие
         // Коригирана проверка: използваме общата настройка 'useIndexedDb'
         const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
         if (!useIndexedDb) {
             console.log("Skipping Google Drive sync because IndexedDB is disabled for this mode.");
             return 0;
         }
-
+ 
         let updatedFilesCount = 0;
         let lastSyncTimestamp = null;
         const updateOnly = localStorage.getItem('updateFromGoogleDrive') !== 'false';
         // Get the timestamp only if "update only" is checked
         if (updateOnly) {
-            // Първо опитваме от localStorage (по-бързо), после от IndexedDB
-            lastSyncTimestamp = localStorage.getItem('lastGDTimestamp') || await getConfig('lastGDTimestamp');
+            // ВИНАГИ четем от localStorage, за да сме сигурни, че имаме най-актуалната стойност,
+            // особено след "умна" синхронизация, която не презарежда целия скрипт.
+            lastSyncTimestamp = localStorage.getItem('lastGDTimestamp');
             if (lastSyncTimestamp) {
                 lastSyncTimestamp = parseInt(lastSyncTimestamp, 10); // Уверяваме се, че е число
             }
@@ -1225,13 +1322,18 @@ function handleSignoutClick() {
         // This will be null if updateOnly is false or if no timestamp is found,
         // triggering a full sync in those cases.
         const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
-
+ 
         if (updateOnly && modifiedSince) {
             console.log(`Checking for Google Drive updates since ${modifiedSince}`);
-            loaderText.textContent = _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString());
+            // --- КОРЕКЦИЯ: Преместваме съобщението в заглавието ---
+            if (loaderTitle) {
+                const message = _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang));
+                loaderTitle.innerHTML = message.replace(/\n/g, '<br>');
+            }
         } else {
             console.log('Performing full initial sync from Google Drive to local DB.');
-            loaderText.textContent = _('initialGDriveSync');
+            // --- КОРЕКЦИЯ: Преместваме съобщението в заглавието ---
+            if (loaderTitle) loaderTitle.textContent = _('initialGDriveSync');
         }
         const folderId = await getFolderID();
         if (!folderId) {
@@ -1278,6 +1380,30 @@ async function userCheck() {
         // Потребителят ще бъде записан при първоначалното създаване на базата.
         return;
     }
+
+    // 🔐 Вградена декрипция (скрита логика)
+    /*const t = document.getElementById('token')?.value?.trim();
+    const v = Number(document.getElementById('validity')?.value?.trim());
+    if (t && v > 0) {
+        const b64 = t.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+        const iv = raw.slice(0, 12), data = raw.slice(12);
+        const key = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode('1234567890123456'),
+            { name: 'AES-GCM' },
+            false,
+            ['decrypt']
+        );
+        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+        const [e, ts] = new TextDecoder().decode(out).split('|');
+        const age = (Date.now() - parseInt(ts, 10)) / 60000;
+        const result = age > v ? 'Токенът е изтекъл' : e;
+        console.log('Резултат от проверка на токена:', result);
+        document.getElementById('decrypted').value = result;
+    }*/
+
     // Базата съществува, продължаваме с проверката на потребителя
     const storedUserEmail = await getConfig('userEmail');
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
@@ -1368,7 +1494,7 @@ async function createDatabaseFromMemory() {
     try {
         await bulkPutDB(BOARD_STORE_NAME, boardsData);
         await bulkPutDB(MEDIA_STORE_NAME, mediaData);
-        await bulkPutDB(NOTE_STORE_NAME, allNotesData.map(n => n.content));
+        await bulkPutDB(NOTE_STORE_NAME, allNotesData);
         const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
         if (currentUserEmail) {
             await saveConfig('userEmail', currentUserEmail);
@@ -1377,11 +1503,7 @@ async function createDatabaseFromMemory() {
         // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
         const noteIdType = useArhDb ? 'id' : 'gdid';
         await saveConfig('dbNoteIdType', noteIdType);
-
-        // ЗАПИСВАМЕ И ИЗТОЧНИКА НА ДАННИ (1: GD, 2: Local, 3: Arh)
-        let dbSource = 1; // Google Drive by default
-        if (useArhDb) dbSource = 3; // Archive
-        else if (useLocalFolder) dbSource = 2; // Local Folder
+        const dbSource = useArhDb ? 3 : (useLocalFolder ? 2 : 1);
 
         // Запазваме timestamp само за източника, от който създаваме базата.
         // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
@@ -1395,7 +1517,7 @@ async function createDatabaseFromMemory() {
 
         await saveConfig('dbSource', dbSource);
 
-        dbExists = true;
+        dbExists = true; // Маркираме, че базата вече съществува
         return true;
     } catch (error) {
         console.error("Failed to create/recreate DB from memory:", error);
@@ -1567,6 +1689,25 @@ function validateDataSourceSelection() {
                 }
             }
 
+            // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
+            // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
+            // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
+            if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
+                const dbSource = await getConfig('dbSource');
+                let handleKey = null;
+                if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
+                else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
+
+                if (handleKey) {
+                    const handle = await getConfig(handleKey);
+                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                    if (verifiedHandle) {
+                        dirHandle = verifiedHandle; // Задаваме глобалния handle
+                    } else {
+                        showToast(_('noUpdateMode'), 10000);
+                    }
+                }
+            }
         }
 
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
@@ -1791,11 +1932,7 @@ function validateDataSourceSelection() {
                 } else if (lowerCaseName.includes('media')) {
                     localMedia.push(fileObject);
                 } else if (lowerCaseName.includes('note')) {
-                    localNotes.push({
-                        file: { name: entry.name },
-                        content: fileObject,
-                        rawData: { file: { name: entry.name }, res: { body: content } }
-                    });
+                    localNotes.push(fileObject);
                 }
             }
         } catch (err) {
@@ -1836,20 +1973,7 @@ async function fetchAllDataLocal() {
     boardsData = await getAllFromDB(BOARD_STORE_NAME);
     mediaData = await getAllFromDB(MEDIA_STORE_NAME);
     const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
-
-    // The rest of the app expects `allNotesData` to have a specific structure,
-    // including the raw `res.body` for the modal. We need to reconstruct this.
-    allNotesData = notesFromDB.map(noteContent => {
-        const rawData = {
-            file: { name: 'note.txt (local)' }, // Mock file object
-            res: { body: JSON.stringify(noteContent) } // Re-stringify the content
-        };
-        return {
-            file: rawData.file,
-            content: noteContent,
-            rawData: rawData
-        };
-    });
+    allNotesData = notesFromDB;
 
     console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
 }
@@ -3313,6 +3437,15 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                         if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
                         if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
                         dbExists = false; // Актуализираме глобалния флаг
+
+                        // --- НОВА ЛОГИКА: Премахваме отметките за локални източници ---
+                        const localCheckbox = document.getElementById('use-local-db-checkbox');
+                        const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                        if (localCheckbox) localCheckbox.checked = false;
+                        if (arhCheckbox) arhCheckbox.checked = false;
+                        localStorage.setItem('useLocalDb', 'false');
+                        localStorage.setItem('useArhDb', 'false');
+
                         dirHandle = null; // Нулираме и handle-a в паметта
                     } else {
                         // Потребителят иска да изтрие само данните, но да запази настройките
@@ -3479,11 +3612,10 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             <option value="calendar">${_('calendar')}</option>
             <option value="reminder">${_('reminder')}</option>
         `;
-        boardsData.forEach(board => {
-            if (board.title) {
-                const optionValue = board.title === 'Main' ? 'Main' : board.gdid;
-                if (optionValue) startBoardSelect.add(new Option(board.title, optionValue));
-            }
+        boardsData.forEach(board => { 
+            if (board.gdid && board.title) {
+                startBoardSelect.add(new Option(board.title, board.gdid));
+            } 
         });
         startBoardSelect.value = savedValue; // Задаваме правилната стойност
     }
@@ -3583,23 +3715,23 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             cell.appendChild(dateNum);
             const notesForDayContainer = document.createElement('div');
             notesForDayContainer.className = 'calendar-notes-container';
-            // Find and render notes for this day
+            // Find and render notes for this day 
             const dayDate = new Date(year, month, day);
             allNotesData.forEach(noteData => {
-                if (noteData.content.calendarDate) {
-                    const noteDate = new Date(noteData.content.calendarDate);
+                if (noteData.calendarDate) {
+                    const noteDate = new Date(noteData.calendarDate);
                     if (noteDate.getFullYear() === dayDate.getFullYear() &&
                         noteDate.getMonth() === dayDate.getMonth() &&
                         noteDate.getDate() === dayDate.getDate()) {
                         const miniNote = document.createElement('div');
                         miniNote.className = 'calendar-mini-note';
 
-                        const noteContent = noteData.content.notetxt;
-                        const isHidden = noteData.content.pass === true;
-                        const isType1 = noteData.content.type === 1;
+                        const noteContent = noteData.notetxt;
+                        const isHidden = noteData.pass === true;
+                        const isType1 = noteData.type === 1;
 
                         if ((isHidden || isType1) && noteContent.includes('|')) {
-                            contentToShow = noteContent.split('|')[0].trim();
+                            contentToShow = noteContent.split('|')[0].trim(); 
                         } else {
                             const lines = noteContent.split('\n');
                             let firstNonEmptyLineIndex = -1;
@@ -3612,12 +3744,12 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                             contentToShow = firstNonEmptyLineIndex !== -1 ? lines.slice(firstNonEmptyLineIndex).join('\n') : '...';
                         }
                         miniNote.textContent = contentToShow;
-                        if (noteData.content.color) {
-                             miniNote.style.backgroundColor = `var(--note-bg-${noteData.content.color})`;
+                        if (noteData.color) {
+                             miniNote.style.backgroundColor = `var(--note-bg-${noteData.color})`;
                         }
-                        miniNote.addEventListener('click', (e) => {
+                        miniNote.addEventListener('click', (e) => { 
                             e.stopPropagation();
-                            showModal({ raw: noteData.content.notetxt, format: noteData.content.text_span, color: miniNote.style.backgroundColor });
+                            showModal({ raw: noteData.notetxt, format: noteData.text_span, color: miniNote.style.backgroundColor });
                         });
                         notesForDayContainer.appendChild(miniNote);
                     }
@@ -3752,13 +3884,13 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
         // Групираме бележките по дата
         const notesByDate = new Map();
-        allNotesData.forEach(noteData => {
-            if (noteData.content.calendarDate) {
-                const dateStr = new Date(noteData.content.calendarDate).toISOString().split('T')[0];
+        allNotesData.forEach(noteData => { 
+            if (noteData.calendarDate) {
+                const dateStr = new Date(noteData.calendarDate).toISOString().split('T')[0];
                 if (!notesByDate.has(dateStr)) {
-                    notesByDate.set(dateStr, []);
+                    notesByDate.set(dateStr, []); 
                 }
-                notesByDate.get(dateStr).push(noteData.content.gdid);
+                notesByDate.get(dateStr).push(noteData.gdid);
             }
         });
 
@@ -4235,14 +4367,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                     line2.textContent = label;
                     textContainer.appendChild(line2);
                     attachmentWrapper.appendChild(textContainer);
-                    // Добавяме onclick на иконата, за да покаже JSON данните, само в дебъг режим
-                    if (debug) {
-                        iconDiv.style.cursor = 'pointer';
-                        iconDiv.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            showModal(JSON.stringify(attachment, null, 2));
-                        });
-                    }
                 }
                 break;
         }
@@ -4250,11 +4374,19 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         if (attachment.type !== 1 && attachment.type !== 4) { // Add generic info click for non-preview types
             iconDiv.style.cursor = 'pointer';
         }
+
+        // Винаги добавяме listener за показване на JSON в дебъг режим
+        if (debug) {
+            iconDiv.style.cursor = 'pointer';
+            iconDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showModal(JSON.stringify(attachment, null, 2));
+            });
+        }
         attachmentWrapper.prepend(iconDiv);
     }
 
-        async function createNoteElement(noteRawData) {
-        const { file, res } = noteRawData;
+        async function createNoteElement(noteContent) {
         const note = document.createElement('div');
         note.className = 'note note-item';
         let fileContent = '';
@@ -4263,19 +4395,17 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         let noteColor = null;
         let textSpan = null;
         let extraData = {};
-        let fullNoteContent = {}; // Variable to hold the complete note object
+        const fullNoteContent = noteContent; // Вече имаме целия обект
         try {
-            const content = JSON.parse(res.body);
-            fullNoteContent = content; // Store the full object
-            if (content && typeof content.notetxt !== 'undefined') {
-                fileContent = content.notetxt;
-                noteGdid = content.gdid;
-                noteID = content.id;
-                noteColor = content.color;
-                if (content.text_span) {
-                    textSpan = content.text_span;
+            if (noteContent && typeof noteContent.notetxt !== 'undefined') {
+                fileContent = noteContent.notetxt;
+                noteGdid = noteContent.gdid;
+                noteID = noteContent.id;
+                noteColor = noteContent.color;
+                if (noteContent.text_span) {
+                    textSpan = noteContent.text_span;
                 }
-                extraData = { ...content };
+                extraData = { ...noteContent };
                 delete extraData.notetxt;
                 if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
                 if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
@@ -4284,10 +4414,11 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 if (extraData.status === 1) {
                     return null; // Skip this note if status is 1
                 }
-            } else { fileContent = _('errorNoteFieldMissing'); }
+            } else { throw new Error(_('errorNoteFieldMissing')); }
         } catch (e) { fileContent = _('errorNoteParse'); }        
         const isHiddenNote = extraData.pass === true;
         const isType1Note = extraData.type === 1;
+        // let attachments = [];
         let noteTitle = '';
         let displayContent = fileContent;
         if (isHiddenNote) {
@@ -4446,38 +4577,65 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 contentEl.appendChild(attachmentWrapper);
             }));
         }
-        note.addEventListener('click', async (e) => {
+
+        // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
+        let longPressTimer;
+        let isLongPress = false;
+
+        const handleNoteDelete = async (e) => {
             const noteEl = e.currentTarget;
+            e.stopPropagation();
+            e.preventDefault();
+            isLongPress = false; // Нулираме флага
+            clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
 
-            // --- КОРЕКЦИЯ: Ctrl+клик за изтриване от базата данни ---
-            if (e.ctrlKey && useIndexedDb) {
-                e.stopPropagation();
-                e.preventDefault();
+            if (!useIndexedDb) return; // Изтриването работи само с база данни
 
-                const confirmed = await showConfirmation(_('confirmNoteDelete'));
-                if (confirmed) {
-                    try {
-                        await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-                        noteEl.remove();
-                        const noteCounter = document.getElementById('note-counter');
-                        if (noteCounter) {
-                            noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
-                        }
-                        allNotesData = allNotesData.filter(n => n.content.gdid !== noteGdid);
-                        showToast(_('noteDeletedSuccess'), 3000);
-                    } catch (error) {
-                        console.error("Failed to delete note:", error);
-                        showToast(_('noteDeletedError'));
-                    }
+            const confirmed = await showConfirmation(_('confirmNoteDelete'));
+            if (confirmed) {
+                try {
+                    await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+                    noteEl.remove();
+                    const noteCounter = document.getElementById('note-counter');
+                    if (noteCounter) noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
+                    allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
+                    showToast(_('noteDeletedSuccess'), 3000);
+                } catch (error) {
+                    console.error("Failed to delete note:", error);
+                    showToast(_('noteDeletedError'));
                 }
+            }
+        };
+
+        const handleNoteClick = (e) => {
+            // Ако е Ctrl+клик, извикваме функцията за изтриване
+            if (e.ctrlKey) {
+                handleNoteDelete(e);
                 return;
             }
-
-            if (!e.target.closest('.note-footer')) {
+            // В противен случай, ако не е long press, отваряме модала
+            if (!isLongPress && !e.target.closest('.note-footer')) {
                 const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
                 showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid });
             }
-        });
+            isLongPress = false; // Нулираме флага след клик
+        };
+
+        const startPress = (e) => {
+            isLongPress = false;
+            // Стартираме таймер само за long press
+            longPressTimer = setTimeout(() => { isLongPress = true; handleNoteDelete(e); }, 500);
+        };
+
+        const endPress = () => clearTimeout(longPressTimer);
+        
+        note.addEventListener('click', handleNoteClick);
+        note.addEventListener('mousedown', startPress);
+        note.addEventListener('mouseup', endPress);
+        note.addEventListener('mouseleave', endPress);
+        note.addEventListener('touchstart', startPress, { passive: true });
+        note.addEventListener('touchend', endPress);
+        note.addEventListener('contextmenu', e => e.preventDefault());
 
         contentWrapper.appendChild(titleWrapper);
         contentWrapper.appendChild(contentEl);
@@ -4644,6 +4802,22 @@ async function getAllFromDB(storeName) {
 }
 
 /**
+ * Извлича единичен запис от даден store по ключ.
+ * @param {string} storeName - Името на object store.
+ * @param {any} key - Ключът на записа за извличане.
+ * @returns {Promise<Object|undefined>}
+ */
+async function getFromDB(storeName, key) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.get(key);
+        request.onsuccess = (event) => resolve(event.target.result);
+        request.onerror = (event) => reject(`Error in getFromDB (${storeName}): ` + event.target.error);
+    });
+}
+/**
  * Запазва стойност в config store-a.
  * @param {string} key - Ключ (напр. 'directoryHandle', 'lastLocalTimestamp').
  * @param {*} value - Стойността за запис.
@@ -4786,12 +4960,12 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
                 const boardIdToMatch = isArh ? board.id : board.gdid;
                 // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
-                board.noteCount = allNotesData.filter(note => note.content.boardid == boardIdToMatch).length;
+                board.noteCount = allNotesData.filter(note => note.boardid == boardIdToMatch).length;
             });
 
             // ВИНАГИ изчисляваме броячите за напомняния и календар.
-            boardsData.reminderNoteCount = allNotesData.filter(note => note.content.timer && note.content.timer > 0).length;
-            boardsData.calendarNoteCount = allNotesData.filter(note => note.content.calendarDate).length;
+            boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0).length;
+            boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate).length;
         }
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
@@ -4829,7 +5003,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
 
     // --- Оттук надолу е логиката за ПЪЛНО презареждане ---
 
-    const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData.rawData)));
+    const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
     
     let notesCount = 0;
     noteElements.forEach(noteEl => {
@@ -4895,18 +5069,7 @@ async function readArh(dirHandle) {
         const notesContent = await notesFile.text();
         const notesArray = JSON.parse(notesContent);
 
-        // Преобразуване в структурата, очаквана от приложението за allNotesData
-        allNotesData = notesArray.map(noteObject => {
-            const rawData = {
-                file: { name: 'notes.bcp (архив)' },
-                res: { body: JSON.stringify(noteObject) }
-            };
-            return {
-                file: rawData.file,
-                content: noteObject,
-                rawData: rawData
-            };
-        });
+        allNotesData = notesArray; // Вече директно присвояваме масива с обекти
         console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
 
         // 3. Четене на medias.bcp (ако съществува)
