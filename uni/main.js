@@ -2483,7 +2483,11 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             const clone = button.cloneNode(true);
             // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
             clone.style.width = `${maxWidthForButtons}px`;
-            clone.addEventListener('click', (e) => { e.preventDefault(); boardsModal.classList.remove('visible'); filterNotesByBoard(clone.dataset.boardid, true); });
+            clone.addEventListener('click', (e) => { 
+                e.preventDefault(); 
+                boardsModal.classList.remove('visible'); 
+                filterNotesByBoard(clone.dataset.boardid, true, e.currentTarget); 
+            });
             modalContent.appendChild(clone);
         });
 
@@ -2548,7 +2552,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
      * @param {string|number} boardId - ID-то на борда.
      * @param {boolean} [shouldScroll=false] - Дали да се скролира менюто до избрания борд.
      */
-    function filterNotesByBoard(boardId, shouldScroll = false) { // line 2341
+    async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement = null) {
         // --- ПРОВЕРКА ЗА КОНФЛИКТ: Стартов борд, който е скрит ---
         // Ако стартовият борд е "Всички", но е скрит, избираме първия наличен борд.
         if (boardId === 'all' && localStorage.getItem('showBoardAll') === 'false') {
@@ -2598,6 +2602,27 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         }
         const searchInput = document.getElementById('search-box'); // The search input field
 
+        // --- КОРЕКЦИЯ: Първо скролираме, после анимираме ---
+        // Преместваме логиката за скролиране в началото.
+        if (shouldScroll) {
+            const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
+            if (selectedButtonInMenu) {
+                // Използваме Promise, за да изчакаме анимацията на скролирането да приключи.
+                await new Promise(resolve => {
+                    const scrollEndHandler = () => {
+                        selectedButtonInMenu.removeEventListener('scroll', scrollEndHandler);
+                        resolve();
+                    };
+                    selectedButtonInMenu.addEventListener('scroll', scrollEndHandler);
+                    selectedButtonInMenu.scrollIntoView({
+                        behavior: 'smooth',
+                        inline: 'center',
+                        block: 'nearest'
+                    });
+                    setTimeout(resolve, 500); // Fallback, ако scroll събитието не се задейства
+                });
+            }
+        }
         if (boardId === 'calendar') {
             // Проверяваме коя версия на календара да покажем
             if (localStorage.getItem('showWeeklyCalendar') === 'true') {
@@ -2613,12 +2638,34 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // Задаваме правилния филтър (числов id за Архив, gdid за другите)
         currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useArhDb ? boardsData.find(b => b.gdid === boardId)?.id : boardId);
 
-        applyFilters();
+        // --- Анимация за бутона "Всички" ---
+        // Ако е подаден кликнат елемент, използваме него. В противен случай търсим основния бутон в хедъра.
+        // Това решава проблема с анимацията в pop-up менюто.
+        const allBoardsBtn = clickedElement && clickedElement.dataset.boardid === 'all' ? clickedElement : document.querySelector('header .all-boards-filter-btn');
+        const loadingIcon = allBoardsBtn ? allBoardsBtn.querySelector('.board-loading-icon') : null;
+
+        const runFilter = () => {
+            applyFilters();
+            // Скриваме анимацията СЛЕД като филтрирането е приключило
+            if (boardId === 'all' && loadingIcon) {
+                loadingIcon.classList.remove('button-loading');
+            }
+        };
+
+        if (boardId === 'all' && loadingIcon) {
+            loadingIcon.classList.add('button-loading');
+            // Използваме setTimeout, за да позволим на браузъра да рендира анимацията
+            // преди да започне тежката операция по филтриране.
+            setTimeout(runFilter, 20); // Леко увеличение за по-сигурно рендиране
+        } else {
+            runFilter(); // За всички други бутони, изпълняваме веднага
+        }
 
         // Маркираме избрания бутон. `boardId` тук е оригиналният `gdid` от бутона.
         document.querySelectorAll('.board-filter-link').forEach(link => {
             link.classList.toggle('selected-board', link.dataset.boardid === boardId);
         });
+
 
         // Update search box placeholder based on the selected board
         if (boardId === 'reminder') {
@@ -2674,18 +2721,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // Add or remove a class from the container to control child visibility
         // This part is no longer needed as calendar has its own view
         notesContainer.classList.remove('calendar-view');
-
-        // Scroll the main board menu to the selected board
-        if (shouldScroll) {
-            const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
-            if (selectedButtonInMenu) {
-                selectedButtonInMenu.scrollIntoView({
-                    behavior: 'smooth',
-                    inline: 'center',
-                    block: 'nearest'
-                });
-            }
-        }
     }
 
     /**
@@ -2980,8 +3015,8 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         const endPress = (e) => {
             clearTimeout(longPressTimer);
             // If it's a touchend and not a long press, trigger the single click action
-            if (e.type === 'touchend' && !isLongPress) {
-                if (singleClickCallback) singleClickCallback();
+                if (e.type === 'touchend' && !isLongPress && singleClickCallback) {
+                    singleClickCallback(e);
             }
         };
         element.addEventListener('mousedown', startPress);
@@ -2989,7 +3024,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         element.addEventListener('mouseleave', endPress);
         element.addEventListener('touchstart', startPress);
         element.addEventListener('touchend', endPress);
-        element.addEventListener('click', (e) => { if (isLongPress) return; if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(); });
+            element.addEventListener('click', (e) => { if (isLongPress) return; if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(e); });
     };
 
         const allButtonLinks = [];
@@ -3000,10 +3035,17 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
             allBoardsLink.dataset.boardid = 'all';
             allBoardsLink.title = _('allBoardsCtrlClickTooltip');
+
             const allBoardsText = document.createElement('span');
             allBoardsText.textContent = _('allBoards');
+
+            const loadingIcon = document.createElement('img');
+            loadingIcon.src = 'Refresh.png';
+            loadingIcon.className = 'board-loading-icon'; // Нов клас за стилизиране
+
             allBoardsLink.appendChild(allBoardsText);
-            addAllBoardsModalEvents(allBoardsLink, () => filterNotesByBoard('all', false));
+            allBoardsLink.appendChild(loadingIcon); // Добавяме иконата
+            addAllBoardsModalEvents(allBoardsLink, (e) => filterNotesByBoard('all', true, e.currentTarget));
             allButtonLinks.push(allBoardsLink);
         }
         const showCount = localStorage.getItem('showBoardNoteCount') === 'true'; // This line is now correctly placed
