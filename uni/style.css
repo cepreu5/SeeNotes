@@ -566,12 +566,12 @@ pre, code {
 #modal-board-name {
     position: absolute;
     top: 15px; /* Moved 5px up */
-    right: 141px; /* Position to the left of the new calculator button */
+    /* right: 141px; Position to the left of the new calculator button */
     font-size: 1.1em;
     font-weight: bold;
     color: #333;
     background-color: transparent;
-    padding: 5px 10px;
+    padding: 5px 5px;
     border-radius: 5px;
     max-width: calc(100% - 150px); /* Prevent overlapping with title or buttons */
     white-space: nowrap;
@@ -590,11 +590,11 @@ pre, code {
 }
 
 #copy-modal-btn {
-    right: 57px;
+    right: 151px;
 }
 
 #calculate-modal-btn {
-    right: 99px; /* 57px (copy) + 32px (width) + 10px (gap) */
+    right: 193px; /* 57px (copy) + 32px (width) + 10px (gap) */
 }
 
 #copy-modal-btn svg {
@@ -602,6 +602,19 @@ pre, code {
     height: 16px;
     stroke: #333;
 }
+
+/* --- Бутони за навигация в модала --- */
+.modal-nav-btn {
+    font-size: 24px;
+    /*font-weight: bold;*/
+}
+
+/* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
+/* Бутон за затваряне (X) е на right: 15px */
+/* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
+#prev-note-btn { right: 99px; }
+#next-note-btn { right: 57px; } /* 57px + 32px + 10px */
+
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
 #calculate-modal-btn svg {

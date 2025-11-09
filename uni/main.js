@@ -2322,7 +2322,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 // V. СЪЗДАВАНЕ И УПРАВЛЕНИЕ НА UI ЕЛЕМЕНТИ
 // =================================================================================
 
-    function showModal(options) {
+    function showModal(options, noteElement = null) {
         let rawContent, formatString, displayContent, noteColor, noteId, noteGdid;
         if (typeof options === 'string') {
             rawContent = options;
@@ -2436,6 +2436,36 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
 
         copyBtn.innerHTML = copyIconSvg;
+        // --- Логика за навигация между бележките ---
+        const prevBtn = document.getElementById('prev-note-btn');
+        const nextBtn = document.getElementById('next-note-btn');
+
+        if (noteElement) {
+            const visibleNotes = Array.from(notesContainer.querySelectorAll('.note-item[style*="display: flex"]'));
+            const currentIndex = visibleNotes.indexOf(noteElement);
+
+            const navigate = (direction) => {
+                const newIndex = currentIndex + direction;
+                if (newIndex >= 0 && newIndex < visibleNotes.length) {
+                    // Симулираме клик върху съседната бележка, за да се отвори в модала
+                    visibleNotes[newIndex].click();
+                }
+            };
+
+            prevBtn.onclick = () => navigate(-1);
+            nextBtn.onclick = () => navigate(1);
+
+            // Показваме/скриваме бутоните в зависимост от позицията
+            prevBtn.style.display = (currentIndex > 0) ? 'flex' : 'none';
+            nextBtn.style.display = (currentIndex < visibleNotes.length - 1) ? 'flex' : 'none';
+
+        } else {
+            // Ако не е подаден елемент на бележка (напр. за системна информация), скриваме бутоните
+            prevBtn.style.display = 'none';
+            nextBtn.style.display = 'none';
+            const boardNameEl = document.getElementById('modal-board-name');
+            if (boardNameEl) boardNameEl.style.left = '15px';
+        }
     }
 
     function showAllBoardsModal() {
@@ -4602,7 +4632,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                     showToast(_('noteDeletedSuccess'), 3000);
                 } catch (error) {
                     console.error("Failed to delete note:", error);
-                    showToast(_('noteDeletedError'+" - ", + error));
+                    showToast(_('noteDeletedError')+" - ", + error.message, 15000);
                 }
             }
         };
@@ -4616,7 +4646,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             // В противен случай, ако не е long press, отваряме модала
             if (!isLongPress && !e.target.closest('.note-footer')) {
                 const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
-                showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid });
+                showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
             }
             isLongPress = false; // Нулираме флага след клик
         };
