@@ -229,13 +229,18 @@ header h1 {
 /* Overlay for DB icon on mode button */
 .mode-db-overlay {
     position: absolute;
-    bottom: -2px; /* Adjust for better visual placement */
-    right: -2px;  /* Adjust for better visual placement */
-    width: 14px;  /* Smaller size for proportion */
+    bottom: -2px; /* Позиционираме я леко извън основната икона */
+    right: -2px;
+    width: 14px;
     height: 14px;
-    background-color: rgba(214, 214, 214, 0.7); /* Semi-transparent background to lift it from the main icon */
-    border-radius: 50%;
-    border: 1px solid #888; /* Add a small border to define it */
+    background-color: rgba(214, 214, 214, 0.7); /* Полупрозрачен фон, за да се отличава */
+    border-radius: 50%; /* Правим я кръгла */
+    border: 1px solid #888; /* С малка рамка за дефиниция */
+}
+
+.mode-db-overlay img {
+    width: 100%;
+    height: 100%;
 }
 /* Когато mode_button зарежда, скриваме другите икони и показваме анимацията */
 .mode-button-loading #mode-button-loading-icon {

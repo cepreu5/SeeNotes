@@ -1550,40 +1550,79 @@ function updateModeButton() {
     const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
     const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
 
-    const modeButton = document.getElementById('mode_button');
+    const modeButton = document.getElementById('mode_button'); // Бутонът
     if (!modeButton) return;
+
+    // Намираме или създаваме контейнера за иконите на режима
+    let iconWrapper = modeButton.querySelector('.mode-icon-wrapper');
+    if (!iconWrapper) {
+        iconWrapper = document.createElement('div');
+        iconWrapper.className = 'mode-icon-wrapper';
+        modeButton.prepend(iconWrapper); // Добавяме го в началото
+    }
 
     // Използваме локалните константи, прочетени току-що
     let iconSrc = '';
     let title = '';
+    
+    // --- НОВА ЛОГИКА: Проверяваме за комбинацията GD + DB ---
+    const isGoogleDriveWithDb = currentUseGoogleDb && currentUseIndexedDb;
 
-    if (useArhDb) {
+    // --- КОРЕКЦИЯ: Добавяме иконата за зареждане към бутона за режим ---
+    if (!modeButton.querySelector('#mode-button-loading-icon')) {
+        const loadingIcon = document.createElement('img');
+        loadingIcon.src = 'Refresh.png';
+        loadingIcon.id = 'mode-button-loading-icon';
+        modeButton.appendChild(loadingIcon);
+    }
+    
+    if (isGoogleDriveWithDb) {
+        // Когато имаме GD + DB, базата е основна, а GD е индикатор
+        iconSrc = 'Database.png';
+        title = 'Режим: База данни + Google Drive';
+    } else if (currentUseArhDb) {
         iconSrc = 'Zip.png';
         title = 'Режим: Архив';
-    } else if (useLocalFolder) {
+    } else if (currentUseLocalFolder) {
         iconSrc = 'Folder.png';
         title = 'Режим: Локална папка';
-    } else if (currentUseGoogleDb) {
+    } else if (currentUseGoogleDb) { // Само GD, без DB
         iconSrc = 'GDrive.png';
         title = 'Режим: Google Drive';
-    } else if (currentUseIndexedDb) {
-        // Случай, когато е избрана само база данни
+    } else if (currentUseIndexedDb) { // Само DB
         iconSrc = 'Database.png';
         title = 'Режим: База данни';
     }
-
-    if (currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb)) {
+    
+    // Добавяме "+ База данни" към tooltip-а за другите комбинации
+    if (currentUseIndexedDb && (currentUseLocalFolder || currentUseArhDb)) {
         title += ' + База данни';
     }
+    
+    iconWrapper.innerHTML = '';
 
-    let buttonHtml = `<img src="${iconSrc}" alt="${title}" style="width:24px; height:24px;">`;
-
-    // Добавяме иконата за база данни, само ако е в комбинация с друг източник
-    if (currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb)) {
-        buttonHtml += `<img src="Database.png" alt="Database enabled" style="width:20px; height:20px;">`;
+    const mainIcon = document.createElement('img');
+    mainIcon.src = iconSrc;
+    mainIcon.alt = title;
+    mainIcon.style.width = '24px';
+    mainIcon.style.height = '24px';
+    iconWrapper.appendChild(mainIcon);
+    
+    // Добавяме иконата за наслагване
+    if (isGoogleDriveWithDb) {
+        // За GD + DB, наслагването е иконата на GDrive
+        const gdOverlay = document.createElement('div');
+        gdOverlay.className = 'mode-db-overlay'; // Използваме същия клас за позициониране
+        gdOverlay.innerHTML = `<img src="GDrive.png" alt="Google Drive Sync">`;
+        iconWrapper.appendChild(gdOverlay);
+    } else if (currentUseIndexedDb && (currentUseLocalFolder || currentUseArhDb)) {
+        // За другите комбинации, наслагването е иконата на базата данни
+        const dbOverlay = document.createElement('div');
+        dbOverlay.className = 'mode-db-overlay';
+        dbOverlay.innerHTML = `<img src="Database.png" alt="Database enabled">`;
+        iconWrapper.appendChild(dbOverlay);
     }
-
-    modeButton.innerHTML = buttonHtml;
+    
     modeButton.title = title;
 }
 
@@ -2483,8 +2522,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             const clone = button.cloneNode(true);
             // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
             clone.style.width = `${maxWidthForButtons}px`;
-            clone.addEventListener('click', (e) => { 
+            clone.addEventListener('click', async (e) => { 
                 e.preventDefault(); 
+                // Връщаме старата логика: затваряме менюто веднага
                 boardsModal.classList.remove('visible'); 
                 filterNotesByBoard(clone.dataset.boardid, true, e.currentTarget); 
             });
@@ -2638,25 +2678,25 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // Задаваме правилния филтър (числов id за Архив, gdid за другите)
         currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useArhDb ? boardsData.find(b => b.gdid === boardId)?.id : boardId);
 
-        // --- Анимация за бутона "Всички" ---
-        // Ако е подаден кликнат елемент, използваме него. В противен случай търсим основния бутон в хедъра.
-        // Това решава проблема с анимацията в pop-up менюто.
-        const allBoardsBtn = clickedElement && clickedElement.dataset.boardid === 'all' ? clickedElement : document.querySelector('header .all-boards-filter-btn');
-        const loadingIcon = allBoardsBtn ? allBoardsBtn.querySelector('.board-loading-icon') : null;
+        // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
+        const modeButton = document.getElementById('mode_button');
+        const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
 
         const runFilter = () => {
             applyFilters();
-            // Скриваме анимацията СЛЕД като филтрирането е приключило
-            if (boardId === 'all' && loadingIcon) {
+            // Спираме анимацията СЛЕД като филтрирането е приключило
+            if (modeButton && loadingIcon) {
+                modeButton.classList.remove('mode-button-loading');
                 loadingIcon.classList.remove('button-loading');
             }
         };
 
-        if (boardId === 'all' && loadingIcon) {
+        if (modeButton && loadingIcon) {
+            modeButton.classList.add('mode-button-loading');
             loadingIcon.classList.add('button-loading');
             // Използваме setTimeout, за да позволим на браузъра да рендира анимацията
             // преди да започне тежката операция по филтриране.
-            setTimeout(runFilter, 20); // Леко увеличение за по-сигурно рендиране
+            setTimeout(runFilter, 10);
         } else {
             runFilter(); // За всички други бутони, изпълняваме веднага
         }
@@ -3024,7 +3064,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         element.addEventListener('mouseleave', endPress);
         element.addEventListener('touchstart', startPress);
         element.addEventListener('touchend', endPress);
-            element.addEventListener('click', (e) => { if (isLongPress) return; if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(e); });
+        element.addEventListener('click', (e) => { if (isLongPress) return; if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(e); });
     };
 
         const allButtonLinks = [];
@@ -3035,16 +3075,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
             allBoardsLink.dataset.boardid = 'all';
             allBoardsLink.title = _('allBoardsCtrlClickTooltip');
-
             const allBoardsText = document.createElement('span');
             allBoardsText.textContent = _('allBoards');
-
-            const loadingIcon = document.createElement('img');
-            loadingIcon.src = 'Refresh.png';
-            loadingIcon.className = 'board-loading-icon'; // Нов клас за стилизиране
-
             allBoardsLink.appendChild(allBoardsText);
-            allBoardsLink.appendChild(loadingIcon); // Добавяме иконата
             addAllBoardsModalEvents(allBoardsLink, (e) => filterNotesByBoard('all', true, e.currentTarget));
             allButtonLinks.push(allBoardsLink);
         }
