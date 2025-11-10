@@ -893,6 +893,7 @@ function loadScript(src) {
 
 function handleSignoutClick() {
     sessionStorage.removeItem('google_auth_token');
+    sessionStorage.setItem('logout_flag', 'true');
     window.location.href = 'login.html';
 }
 
@@ -1516,7 +1517,8 @@ function validateDataSourceSelection() {
                                 if (isLoadCancelled) return;
                                 const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
                                 if (dbCreatedSuccessfully) {
-                                    showToast(_('dbCreated'), 10000);
+                                    // showToast(_('dbCreated'), 10000);
+                                    enableSettingsControls()
                                     if (isLoadCancelled) return;
                                     await fetchAllDataLocal(); // Load from the newly created DB
                                     await renderUI({ boardParseError: false });
@@ -3241,6 +3243,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     const success = await createDatabaseFromMemory();
                     if (success) {
                         showToast(_('dbCreated'), 10000);
+                        enableSettingsControls()
                         dbExists = true;
                     }
                 }

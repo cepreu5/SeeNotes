@@ -37,6 +37,11 @@
             color: white;
             border-color: #4285F4;
         }
+        .settings-checkbox {
+            transform: scale(1.2);
+            margin-left: 5px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -48,6 +53,11 @@
         <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
         <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p>
         <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
+        <div style="margin-top: 15px;">
+            <label for="rememberMe" style="margin-right: 10px;" data-key="rememberMeLabel">
+                Запомни ме</label>
+            <input type="checkbox" id="rememberMe" class="settings-checkbox">
+        </div>
     </div>
 
     <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
@@ -61,6 +71,7 @@
                 appTitle: 'CX MultiNotes Viewer',
                 loginPrompt: 'Please sign in with Google to continue.',
                 authorizeButton: 'Authorize with Google',
+                rememberMeLabel: 'Remember me',
                 authFailed: 'Authentication failed. Please try again.',
                 gapiNotReady: 'Google authentication library is not ready. Please wait a moment and try again.'
             },
@@ -68,6 +79,7 @@
                 appTitle: 'CX MultiNotes Viewer',
                 loginPrompt: 'Моля, влезте с Google, за да продължите.',
                 authorizeButton: 'Вход с Google',
+                rememberMeLabel: 'Запомни ме',
                 authFailed: 'Удостоверяването не бе успешно. Моля, опитайте отново.',
                 gapiNotReady: 'Библиотеката за удостоверяване на Google не е готова. Моля, изчакайте малко и опитайте отново.'
             }
@@ -111,7 +123,7 @@
             return JSON.parse(jsonPayload);
         }
 
-        function gisLoaded() {
+        /*function gisLoaded() {
             // Initialize the client for the OAuth2 access token
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
@@ -154,7 +166,60 @@
             if (urlParams.get('reauth') === 'true') {
                 handleAuthClick();
             }
+        }*/
+
+function gisLoaded() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (tokenResponse) => {
+      if (tokenResponse && tokenResponse.access_token) {
+        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+
+        const rememberMe = document.getElementById('rememberMe')?.checked;
+        const storage = rememberMe ? sessionStorage : sessionStorage;
+        storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+
+        try {
+          const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+          });
+          if (userInfoResponse.ok) {
+            const userInfo = await userInfoResponse.json();
+            storage.setItem('google_auth_email_hint', userInfo.email);
+          }
+        } catch (error) {
+          console.error('Failed to fetch user info:', error);
         }
+        // Изчисти logout_flag след успешен login
+        sessionStorage.removeItem('logout_flag');
+        window.location.href = main;
+      } else {
+        console.error('Failed to get access token');
+        alert(_('authFailed'));
+      }
+    },
+    error_callback: (error) => {
+      console.error("GSI Error:", error);
+      alert(_('authFailed') + `\n\nError: ${error.type}`);
+    }
+  });
+
+  // Покажи интерфейса
+  document.getElementById('authorize_button').disabled = false;
+
+  // Ако потребителят не е излязъл — опитай silent login
+  const loggedOut = sessionStorage.getItem('logout_flag') === 'true';
+  if (!loggedOut) {
+    tokenClient.requestAccessToken({ prompt: 'none', login_hint: 'multinotes.web@gmail.com' });
+  }
+
+  // Ако има reauth=true, стартирай интерактивна автентикация
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('reauth') === 'true') {
+    handleAuthClick();
+  }
+}
 
         function handleAuthClick() {
             if (tokenClient) {
