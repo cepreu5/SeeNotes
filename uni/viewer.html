@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://accounts.google.com;">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com;">
     <style>
         #search-wrapper {
             display: flex;
@@ -47,6 +47,18 @@
             border-top: 1px solid #000; /* Добавя тънка линия */
             margin-left: 10px; /* Разстояние между стрелката и линията */
         }
+        /* Показваме лоудъра по подразбиране */
+        #loader-container {
+            display: none; /* Скриваме лоудъра по подразбиране */
+        }
+        /* Скриваме останалите елементи, за да избегнем "премигване" при зареждане */
+        #notes-container, #calendar-container {
+            visibility: hidden;
+        }
+        /* Скриваме и полето за търсене по подразбиране, за да не "премигва" */
+        #search-wrapper {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -79,7 +91,7 @@
     </header>
 
     <main>
-        <div id="loader-container" style="display: none;">
+        <div id="loader-container">
             <div class="loader"></div>
             <div id="loader-text"></div>
         </div>

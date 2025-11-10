@@ -1,7 +1,7 @@
 // https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
-let debug = false; // Глобален флаг за дебъг режим
+let debug = true; // Глобален флаг за дебъг режим
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -10,7 +10,7 @@ let debug = false; // Глобален флаг за дебъг режим
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.13'; // App version
+const version = '0.12'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -26,7 +26,6 @@ let tokenClient;
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
-let isCancellingLoad = false; // Флаг, който показва, че потребителят е натиснал "Отказ"
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 
 // --- Състояние на търсенето ---
@@ -379,7 +378,6 @@ function initApp() {
 
     cancelButton.addEventListener('click', () => {
         console.log("Load operation cancelled by user.");
-        isCancellingLoad = true; // Вдигаме флага, че сме в процес на отказ
         isLoadCancelled = true;
         // Hide loader and show settings
         loaderContainer.style.display = 'none';
@@ -893,7 +891,6 @@ function loadScript(src) {
 
 function handleSignoutClick() {
     sessionStorage.removeItem('google_auth_token');
-    sessionStorage.setItem('logout_flag', 'true');
     window.location.href = 'login.html';
 }
 
@@ -1106,34 +1103,18 @@ async function userCheck() {
  * Показва съобщение и заключва настройките за управление на данни.
  */
 async function handleUserMismatch(storedUser) {
-    // --- ОКОНЧАТЕЛНА КОРЕКЦИЯ: Динамично съобщение за източника ---
-    // Четем директно от localStorage, за да сме сигурни, че имаме актуалните настройки,
-    // ПРЕДИ да ги променим принудително.
-    let sourceText = '';
-    if (localStorage.getItem('useGoogleDb') !== 'false') {
-        sourceText = _('sourceGoogleDrive');
-    } else if (localStorage.getItem('useLocalDb') === 'true') {
-        sourceText = _('sourceLocalFolder');
-    } else if (localStorage.getItem('useArhDb') === 'true') {
-        sourceText = _('sourceArchive');
-    } else {
-        // Fallback, ако по някаква причина няма избран източник
-        sourceText = _('sourceGoogleDrive');
-    }
-    showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceText), 15000);
-
-    // Принудително превключваме към режим без IndexedDB
+    showToast(_('userMismatchWarning').replace('{user}', storedUser), 15000);
+    // Принудително превключваме към режим "Google Drive" без IndexedDB
     localStorage.setItem('useIndexedDb', 'false');
-    // localStorage.setItem('useGoogleDb', 'true');
-    // localStorage.setItem('useLocalDb', 'false');
+    localStorage.setItem('useGoogleDb', 'true');
+    localStorage.setItem('useLocalDb', 'false');
     // Деактивираме контролите в настройките
     const settingsModal = document.getElementById('settings-modal');
     // Проверяваме дали модалът за настройки изобщо съществува в DOM
     if (!settingsModal) return;
     const controlsToDisable = [
-        'use-indexeddb-checkbox', // 'use-local-db-checkbox', 'use-arh-db-checkbox',
-        // 'create-db-btn', 
-        'delete-db-btn',
+        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
+        'create-db-btn', // 'delete-db-btn',
         'select-folder-btn', 'select-arh-btn'
     ];
     controlsToDisable.forEach(id => {
@@ -1147,13 +1128,13 @@ async function handleUserMismatch(storedUser) {
         }
     });
     // Деактивираме и целия акордеон за разширени настройки
-    /*const accordionHeader = settingsModal.querySelector('.accordion-header');
+    const accordionHeader = settingsModal.querySelector('.accordion-header');
     if (accordionHeader) {
         accordionHeader.style.pointerEvents = 'none';
         accordionHeader.style.opacity = '0.5';
     }
     const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
-    if (googleDbCheckbox) googleDbCheckbox.checked = true;*/
+    if (googleDbCheckbox) googleDbCheckbox.checked = true;
 }
 
 /**
@@ -1359,7 +1340,6 @@ function validateDataSourceSelection() {
      */
     async function mainLogic() {
         dbSourceGlobal = null; // Нулираме глобалните променливи
-        isCancellingLoad = false; // Нулираме флага за отказ при всяко ново зареждане
         isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
         updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
         updateGlobalStateFlags();
@@ -1517,8 +1497,7 @@ function validateDataSourceSelection() {
                                 if (isLoadCancelled) return;
                                 const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
                                 if (dbCreatedSuccessfully) {
-                                    // showToast(_('dbCreated'), 10000);
-                                    enableSettingsControls()
+                                    showToast(_('dbCreated'), 10000);
                                     if (isLoadCancelled) return;
                                     await fetchAllDataLocal(); // Load from the newly created DB
                                     await renderUI({ boardParseError: false });
@@ -1652,10 +1631,16 @@ function validateDataSourceSelection() {
             if (loaderTitle) loaderTitle.textContent = '';
             loaderText.textContent = ''; // Изчистваме текста за прогреса
 
-            loaderContainer.style.display = 'none';
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
             notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
+            
+            // Скриваме лоудъра
+            loaderContainer.style.display = 'none';
+            // Показваме основните елементи, след като всичко е заредено
+            document.querySelector('header').style.visibility = 'visible';
+            document.querySelector('#search-wrapper').style.display = 'flex';
+            notesContainer.style.visibility = 'visible';
         }
     }
 
@@ -2721,8 +2706,13 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
     function initializeLoad() {
         boardsData = [];
         allNotesData = [];
-        notesContainer.innerHTML = '';
-        loaderContainer.style.display = 'block';
+        notesContainer.innerHTML = ''; // Продължаваме да изчистваме бележките
+        loaderContainer.style.display = 'block'; // Показваме лоудъра веднага
+        
+        // Задаваме първоначален текст, за да избегнем "премигване" на празен панел
+        const loaderTitle = document.getElementById('loader-title');
+        if (loaderTitle) loaderTitle.textContent = _('initialDataLoad');
+
         currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
         const popup = document.getElementById('board-filter-popup');
         if (popup) {
@@ -3243,7 +3233,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     const success = await createDatabaseFromMemory();
                     if (success) {
                         showToast(_('dbCreated'), 10000);
-                        enableSettingsControls()
                         dbExists = true;
                     }
                 }
@@ -3375,14 +3364,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 updateModeButton();
 
                 const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
-
-                // --- КОРЕКЦИЯ: Предотвратяваме презареждане след "Отказ", САМО ако няма промени ---
-                // Ако сме отворили настройките чрез бутона "Отказ" И НЕ сме променили нищо,
-                // тогава не правим нищо повече.
-                if (isCancellingLoad && !hasChanged) {
-                    isCancellingLoad = false; // Нулираме флага за следващия път.
-                    return;
-                }
 
                 // Ако прозорецът е бил отворен принудително, презареждаме данните.
                 if (window.wasOpenedForMissingFolder) {
