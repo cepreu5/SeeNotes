@@ -69,7 +69,6 @@ const calculatorIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
 const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
 const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
-const settingsIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /><circle cx="12" cy="12" r="3" /></svg>`;
 const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
@@ -114,6 +113,25 @@ async function startApp() {
         localStorage.setItem('useGoogleDb', 'true');
         localStorage.setItem('useIndexedDb', 'true');
     }
+
+        // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
+        // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
+        const tokenData = checkAuth();
+        if (!tokenData) {
+            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
+            loaderContainer.style.display = 'none';
+            return; // Прекратяваме, checkAuth вече е пренасочил.
+        }
+        authToken = tokenData;
+
+        // Проверяваме за съвпадение на потребителя, ако има локална база.
+        // Тази функция може да промени настройките в localStorage.
+        await userCheck();
+        if (isLoadCancelled) return;
+        // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
+        updateGlobalStateFlags();
+        
+
 
     // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
     updateGlobalStateFlags();
@@ -424,7 +442,6 @@ function initApp() {
         }
     }
 
-        settingsButton.innerHTML = settingsIconSvg;
         scrollTopBtn.innerHTML = arrowSvg;
         signoutButton.addEventListener('click', handleSignoutClick);
         reloadButton.addEventListener('click', () => mainLogic());
@@ -653,7 +670,7 @@ function initApp() {
 
 
         setLanguage(currentLang);
-        updateSignoutTooltip();
+        // updateSignoutTooltip();
         // Add app version to the settings modal title
         const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
         if (settingsTitle) {
@@ -1362,7 +1379,7 @@ function validateDataSourceSelection() {
             dbNoteIdTypeGlobal = 'gdid';
         }
         initializeLoad(); // Resets state and shows the loader screen
-
+/*
         // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
         // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
         const tokenData = checkAuth();
@@ -1379,7 +1396,7 @@ function validateDataSourceSelection() {
         if (isLoadCancelled) return;
         // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
         updateGlobalStateFlags();
-
+*/
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
 
         updateModeButton(); // Актуализираме иконата за режим веднага

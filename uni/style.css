@@ -1041,8 +1041,8 @@ pre, code {
     visibility: hidden; /* Hidden by default. */
     min-width: 250px; /* Set a default minimum width */
     transform: translateX(-50%);
-    background-color: #333; /* Black background color */
-    color: #fff; /* White text color */
+    background-color: #FBCB39;
+    color: #000;
     text-align: center; /* Centered text */
     border-radius: 8px; /* Rounded borders */
     padding: 16px; /* Padding */
@@ -1052,6 +1052,7 @@ pre, code {
     bottom: 30px; /* 30px from the bottom */
     font-size: 1.1em;
     box-shadow: 0 4px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);
+    cursor: pointer;
 }
 
 /* Show the toast notification when it has the 'show' class */
