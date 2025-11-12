@@ -99,12 +99,7 @@
 </head>
 <body>
     <header>
-        <div>
         <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
-        </div>
-        <div id="silent-login-message" style="display: none; position: absolute; left: 50%; transform: translateX(-50%); color: #FBCB39; text-shadow: 2px 2px 4px #000000;">
-            <h2 data-key="silentLoginMessage" style="margin: 0; font-size: 1.2em;">Автоматично удостоверяване...</h2>
-        </div>
     </header>
 
     <div class="login-box">
@@ -125,6 +120,7 @@
     <script type="text/javascript">
 
         const main = 'viewer.html';
+        const version = '0.12';
 
         // --- I18N ---
         const translations = {
@@ -133,14 +129,12 @@
                 loginPrompt: 'Please sign in with Google to continue.',
                 authorizeButton: 'Authorize with Google',
                 rememberMeLabel: 'Remember me',
-                silentLoginMessage: 'Authenticating automatically...',
                 authFailed: 'Authentication failed. Please try again.',
                 gapiNotReady: 'Google authentication library is not ready. Please wait a moment and try again.'
             },
             bg: {
                 appTitle: 'CX MultiNotes Viewer',
                 loginPrompt: 'Моля, влезте с Google, за да продължите.',
-                silentLoginMessage: 'Автоматично удостоверяване...',
                 authorizeButton: 'Вход с Google',
                 rememberMeLabel: 'Запомни ме',
                 authFailed: 'Удостоверяването не бе успешно. Моля, опитайте отново.',
@@ -157,11 +151,15 @@
 
             document.querySelectorAll('[data-key]').forEach(element => {
                 const key = element.getAttribute('data-key');
-                element.textContent = _(key);
+                // --- КОРЕКЦИЯ: Добавяме версията към главното заглавие ---
+                if (key === 'appTitle' && element.tagName === 'H1') {
+                    element.textContent = `${_(key)} ver. ${version}`;
+                } else {
+                    element.textContent = _(key);
+                }
             });
-            
-            document.getElementById('authorize_button').textContent = _('authorizeButton');
-            document.title = _('appTitle'); // Update title
+
+            // document.title = `${_('appTitle')} v${version}`; // Update page title with version
 
             // Update active button
             document.getElementById('lang-bg').classList.toggle('active', lang === 'bg');
@@ -270,21 +268,18 @@
             });
 
             const loginBox = document.querySelector('.login-box');
-            const silentLoginMessage = document.getElementById('silent-login-message');
-            const loggedOut = sessionStorage.getItem('logout_flag') === 'true';
             const loginHint = localStorage.getItem('google_login_hint'); // Взимаме запазения имейл
+            const rememberMe = document.getElementById('rememberMe');
 
-            if (!loggedOut && loginHint) {
-                // Показваме съобщението за автоматично влизане
-                silentLoginMessage.style.display = 'block';
+            // --- КОРЕКЦИЯ: Проверяваме и дали "Запомни ме" е било избрано ---
+            if (loginHint && rememberMe.checked) {
                 // Опитваме "тихо" влизане със запазения имейл
-                // Не подаваме callback тук, защото успешният резултат ще се обработи от глобалния callback.
+                // Успешният резултат ще се обработи от глобалния callback.
                 // Проваленият опит ще се обработи от error_callback, но за prompt: 'none' той не прави нищо,
                 // което ни позволява да покажем ръчно екрана за вход.
                 tokenClient.requestAccessToken({ prompt: 'none', login_hint: loginHint, error_callback: () => {
-                    // Ако "тихото" влизане се провали, скриваме съобщението
+                    // Ако "тихото" влизане се провали,
                     // и показваме стандартния екран за вход.
-                    silentLoginMessage.style.display = 'none';
                     loginBox.style.visibility = 'visible';
                     document.getElementById('authorize_button').disabled = false;
                 }});
@@ -296,11 +291,18 @@
             }
         }
 
+        // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const rememberMeCheckbox = document.getElementById('rememberMe');
+            rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
+        });
+
         function handleAuthClick() {
             if (tokenClient) {
-                // Премахваме 'prompt: consent', за да избегнем изричното искане на съгласие всеки път.
-                // Това ще покаже само избора на акаунт, ако е необходимо.
-                tokenClient.requestAccessToken();
+                // --- Опростена логика ---
+                // След като disableAutoSelect() е извикана при изход, вече не е нужно
+                // да се борим с кеширания потребител тук. Просто искаме токен.
+                tokenClient.requestAccessToken({ prompt: 'select_account' });
             } else {
                 console.error('Token client not initialized');
                 alert(_('gapiNotReady'));
@@ -313,6 +315,12 @@
             document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
             document.getElementById('lang-bg').addEventListener('click', () => setLanguage('bg'));
             document.getElementById('lang-en').addEventListener('click', () => setLanguage('en'));
+
+            // Запазваме състоянието на "Запомни ме" при промяна
+            const rememberMeCheckbox = document.getElementById('rememberMe');
+            rememberMeCheckbox.addEventListener('change', () => {
+                localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
+            });
         });
     </script>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"

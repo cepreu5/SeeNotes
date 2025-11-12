@@ -630,14 +630,6 @@ pre, code {
     box-sizing: border-box;
 }
 
-#copy-modal-btn {
-    right: 151px;
-}
-
-#calculate-modal-btn {
-    right: 193px; /* 57px (copy) + 32px (width) + 10px (gap) */
-}
-
 #copy-modal-btn svg {
     width: 16px;
     height: 16px;
@@ -655,7 +647,9 @@ pre, code {
 /* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
 #prev-note-btn { right: 99px; }
 #next-note-btn { right: 57px; } /* 57px + 32px + 10px */
-
+#copy-modal-btn { right: 151px; }
+#calculate-modal-btn { right: 193px; /* 57px (copy) + 32px (width) + 10px (gap) */ }
+#delete-modal-btn { right: 235px; /* 193px + 32px + 10px */ }
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
 #calculate-modal-btn svg {

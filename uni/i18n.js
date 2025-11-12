@@ -107,7 +107,7 @@ const translations = {
         deleteDbButton: 'Delete',            
         confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
         dbManagementTitle: 'Database Management',
-        userMismatchWarning: 'The existing database was created by user {user}, data will be loaded from {source}',
+        userMismatchWarning: 'The existing database was created by user {user}, data will be loaded from {source}.',
         checkingForGDriveUpdates: 'Checking for Google Drive updates since:\n{date}',
         initialGDriveSync: 'Initial sync with Google Drive...',
         checkingFile: 'Checking {filename}...',
@@ -129,6 +129,7 @@ const translations = {
         sysInfoLastLocalSync: 'Last Local Sync',
         sysInfoAttachmentLinks: 'Attachment Links',
         sysInfoDbCreatedFrom: 'DB created from',
+        sysInfoDbOwner: 'DB Owner',
         errorSysInfo: 'Error fetching system info.',
         errorNoDataSourceSelected: 'At least one data source must be selected when the database is not used.',
         errorNoArchiveFolderSelected: 'No archive folder selected.',
@@ -159,6 +160,7 @@ const translations = {
         noteDeletedSuccess: 'Note successfully deleted from the database.',
         noteDeletedError: 'Error deleting note from the database.',
         showWeeklyCalendar: 'Weekly calendar view:',
+        deleteNoteTooltip: 'Delete note',
 
         feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com',
         cancelButton: 'Cancel'
@@ -270,8 +272,8 @@ const translations = {
         permissionDenied: 'Няма разрешение',
         deleteDbButton: 'Изтрий',            
         confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
-        dbManagementTitle: 'Управление на базата данни',        
-        userMismatchWarning: 'Съществуващата база е създадена с потребителско име {user}, данните ще се заредят от {source}',
+        dbManagementTitle: 'Управление на базата данни',
+        userMismatchWarning: 'Съществуващата база е създадена с потребителско име {user}, данните ще се заредят от {source}.',
         checkingForGDriveUpdates: 'Проверка за промени в Google Drive след:\n{date}',
         initialGDriveSync: 'Първоначална синхронизация с Google Drive...',
         checkingFile: 'Проверка на {filename}...',
@@ -293,6 +295,7 @@ const translations = {
         sysInfoLastLocalSync: 'Последна локална синхронизация',
         sysInfoAttachmentLinks: 'Връзка към приложенията',
         sysInfoDbCreatedFrom: 'Базата е създадена от',
+        sysInfoDbOwner: 'Собственик на базата',
         errorSysInfo: 'Грешка при извличане на системна информация.',
         errorNoDataSourceSelected: 'Трябва да има избран поне един източник на данни, когато не се използва База данни.',
         errorNoArchiveFolderSelected: 'Не е избрана папка за архив.',
@@ -323,6 +326,7 @@ const translations = {
         noteDeletedSuccess: 'Бележката е изтрита успешно от базата данни.',
         noteDeletedError: 'Грешка при изтриване на бележка от базата данни.',
         showWeeklyCalendar: 'Седмичен календар',
+        deleteNoteTooltip: 'Изтрий бележката',
 
         feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com',
         cancelButton: 'Отказ'

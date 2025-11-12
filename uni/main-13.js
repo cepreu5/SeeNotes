@@ -1,88 +1,92 @@
 // https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
-let debug = true; // Глобален флаг за дебъг режим
+let debug = false; // Глобален флаг за дебъг режим
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
 // =================================================================================
 
-    // --- Конфигурация и версия ---
-    const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
-    const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-    const version = '0.12'; // App version
+// --- Конфигурация и версия ---
+const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+const version = '0.13'; // App version
 
-    // --- Глобално състояние на приложението ---
-    let allNotesData = []; // Съхранява всички бележки за календара
-    let boardsData = []; // Съхранява данните за бордовете
-    let mediaData = []; // Съхранява данните за медия
-    let folderIds = {}; // Съхранява ID-тата на папките за медия
-    let currentBoardFilter = 'all';
-    let currentBackground = 'Board.png';
-    let currentCalendarDate = new Date();
-    let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
-    let authToken = null;
-    let tokenClient;
-    let dirHandle = null; // За локален достъп до файловата система
-    let isInitialLoad = true; // Флаг за първоначално зареждане
-    let isLoadCancelled = false; // Флаг за прекратяване на зареждането
-    let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
+// --- Глобално състояние на приложението ---
+let allNotesData = []; // Съхранява всички бележки за календара
+let boardsData = []; // Съхранява данните за бордовете
+let mediaData = []; // Съхранява данните за медия
+let folderIds = {}; // Съхранява ID-тата на папките за медия
+let currentBoardFilter = 'all';
+let currentBackground = 'Board.png';
+let currentCalendarDate = new Date();
+let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
+let authToken = null;
+let tokenClient;
+let dirHandle = null; // За локален достъп до файловата система
+let isInitialLoad = true; // Флаг за първоначално зареждане
+let isLoadCancelled = false; // Флаг за прекратяване на зареждането
+let isCancellingLoad = false; // Флаг, който показва, че потребителят е натиснал "Отказ"
+let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 
-    // --- Състояние на търсенето ---
-    let searchMode = 'title';
-    let lastSearchTerm = "";
-    let savedSearches = [];
-    let maxSavedSearches = 20;
+// --- Състояние на търсенето ---
+let searchMode = 'title';
+let lastSearchTerm = "";
+let savedSearches = [];
+let maxSavedSearches = 20;
 
-    // --- Състояние на UI ---
-    let currentModalContent = '';
-    let maxWidthForButtons = 0; // За менюто с бордове
-    let toastTimeout, isShowingToast = false;
-    let dbExists = false; // Флаг за съществуването на IndexedDB
-    let settingsInitialState = {}; // Запомня състоянието на настройките при отваряне
-    let dbSourceGlobal = null; // Запомня откъде е създадена базата
+// --- Състояние на UI ---
+let currentModalContent = '';
+let maxWidthForButtons = 0; // За менюто с бордове
+let toastTimeout, isShowingToast = false;
+let dbExists = false; // Флаг за съществуването на IndexedDB
+let settingsInitialState = {}; // Запомня състоянието на настройките при отваряне
+let dbSourceGlobal = null; // Запомня откъде е създадена базата
 
-    // --- Глобални флагове за състоянието (заместват многократните localStorage.getItem()) ---
-    let useGoogleDb = true;
-    let useLocalFolder = false;
-    let useArhDb = false;
-    let useIndexedDb = false;
-    let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
+// --- Глобални флагове за състоянието (заместват многократните localStorage.getItem()) ---
+let useGoogleDb = true;
+let useLocalFolder = false;
+let useArhDb = false;
+let useIndexedDb = false;
+let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
 
-    // --- DOM елементи (ще бъдат инициализирани в initApp) ---
-    let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
-    let folderIdPromptPopup, folderIdInput, submitFolderIdBtn;
+// --- DOM елементи (ще бъдат инициализирани в initApp) ---
+let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
+let folderIdPromptPopup, folderIdInput, submitFolderIdBtn;
 
-    // --- IndexedDB Конфигурация ---
-    const NOTES_DB_NAME = 'NotesDB';
-    const BOARD_STORE_NAME = 'boards';
-    const MEDIA_STORE_NAME = 'media';
-    const NOTE_STORE_NAME = 'notes';
-    const CONFIG_STORE_NAME = 'config';
-    const NOTES_DB_VERSION = 3;
+// --- IndexedDB Конфигурация ---
+const NOTES_DB_NAME = 'NotesDB';
+const BOARD_STORE_NAME = 'boards';
+const MEDIA_STORE_NAME = 'media';
+const NOTE_STORE_NAME = 'notes';
+const CONFIG_STORE_NAME = 'config';
+const NOTES_DB_VERSION = 3;
 
-    // --- SVG икони ---
-    // const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
-    const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M3 3l18 18"></path></svg>`;
-    const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
-    const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
-    const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
-    const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
-    const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
-    const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
-    const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
-    // const GDSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
-    const saveSearchSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
-    const attachmentIcons = [
-        { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
-        { type: 2, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24" ><circle cx="7" cy="12" r="4" /><circle cx="17" cy="12" r="4"/><line x1="6" y1="16" x2="18" y2="16" stroke="black" stroke-width="1" /></svg>` },
-        { type: 3, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6"/></svg>` },
-        { type: 4, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>` },
-        { type: 5, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>` },
-        { type: 6, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="10" r="2"/><path d="M8 16c0-1.33 2.67-2 4-2s4 .67 4 2"/></svg>` }
+// --- SVG икони ---
+const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M3 3l18 18"></path></svg>`;
+const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
+const calculatorIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="3" width="16" height="18" rx="2" /><rect x="8" y="7" width="8" height="3" rx="1" /><line x1="8" y1="14" x2="8" y2="14.01" /><line x1="12" y1="14" x2="12" y2="14.01" /><line x1="16" y1="14" x2="16" y2="14.01" /><line x1="8" y1="17" x2="8" y2="17.01" /><line x1="12" y1="17" x2="12" y2="17.01" /><line x1="16" y1="17" x2="16" y2="17.01" /></svg>`;
+const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
+const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
+const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
+const settingsIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /><circle cx="12" cy="12" r="3" /></svg>`;
+const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
+const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
+const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+const GDSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+const saveSearchSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+const attachmentIcons = [
+    { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
+    { type: 2, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24" ><circle cx="7" cy="12" r="4" /><circle cx="17" cy="12" r="4"/><line x1="6" y1="16" x2="18" y2="16" stroke="black" stroke-width="1" /></svg>` },
+    { type: 3, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6"/></svg>` },
+    { type: 4, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>` },
+    { type: 5, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>` },
+    { type: 6, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="10" r="2"/><path d="M8 16c0-1.33 2.67-2 4-2s4 .67 4 2"/></svg>` }
     ];
 
     let currentLang = localStorage.getItem('language') || 'bg';
+    // --- Други константи ---
     const noteBackgrounds = [
         'wg1_1.png', // 0
         'wr1_1.png', // 1
@@ -102,344 +106,327 @@ let debug = true; // Глобален флаг за дебъг режим
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
 
-    // --- Основна стартова функция ---
-    async function startApp() {
-        // --- Задаване на настройки по подразбиране при първо стартиране ---
-        // Ако никога не са задавани настройки за източник на данни,
-        // избираме Google Drive + База данни по подразбиране.
-        if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
-            localStorage.setItem('useGoogleDb', 'true');
-            localStorage.setItem('useIndexedDb', 'true');
+// --- Основна стартова функция ---
+async function startApp() {
+    // --- Задаване на настройки по подразбиране при първо стартиране ---
+    // Ако никога не са задавани настройки за източник на данни,
+    // избираме Google Drive + База данни по подразбиране.
+    if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
+        localStorage.setItem('useGoogleDb', 'true');
+        localStorage.setItem('useIndexedDb', 'true');
+    }
+
+    // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
+    updateGlobalStateFlags();
+
+    // Първо инициализираме UI, за да се покаже веднага
+    document.body.style.display = 'block';
+    initApp(); // Инициализира UI елементите и event listeners
+    await createBoardsUI([], false);
+    await createSettingsUI([], false); // Предварително създава UI на настройките
+
+    // Проверяваме за базата данни САМО веднъж при стартиране
+    dbExists = await checkDbExists(NOTES_DB_NAME);
+
+    // Проверката за потребител и основната логика се извикват директно.
+    // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
+    // само ако е необходимо.
+    mainLogic();
+}
+
+function _(key) {
+    return translations[currentLang][key] || key;
+}
+
+function hideToast() {
+    const toast = document.getElementById('toastNotification');
+    if (toast.classList.contains('show')) {
+        clearTimeout(toastTimeout);
+        toast.classList.remove('show');
+        isShowingToast = false;
+    }
+}
+
+function showToast(message, duration = 10000) {
+    if (isShowingToast) {
+        hideToast();
+        // Short delay to allow the hide animation to finish before showing the new one
+        setTimeout(() => showToast(message, duration), 300);
+        return;
+    }
+    isShowingToast = true;
+    const toast = document.getElementById('toastNotification');
+    toast.textContent = message;
+    toast.classList.add('show');
+    toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
+}
+
+function showMessagePopup(message, showInput = false) {
+    folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
+    folderIdInput = document.getElementById('folderIdInput');
+    submitFolderIdBtn = document.getElementById('submitFolderIdBtn');
+    document.querySelector('#folderIdPromptPopup p').textContent = message;
+    if (showInput) {
+        folderIdInput.style.display = 'block';
+        submitFolderIdBtn.textContent = _('submitButton');
+        folderIdInput.value = '';
+        folderIdInput.focus();
+    } else {
+        folderIdInput.style.display = 'none';
+        submitFolderIdBtn.textContent = _('okButton');
+    }
+    folderIdPromptPopup.classList.add('show');
+}
+
+function hideFolderIdPrompt() {
+    if (folderIdPromptPopup) {
+        folderIdPromptPopup.classList.remove('show');
+    }
+}
+
+function handleSubmitFolderId() {
+    // If input is not visible, just close the popup
+    if (folderIdInput.style.display === 'none') {
+        hideFolderIdPrompt();
+        return;
+    }
+    // Logic for submitting the folder ID would go here
+}
+
+function showConfirmation(message) {
+    return new Promise(resolve => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        const messagePara = popup.querySelector('p');
+        const okButton = document.getElementById('submitFolderIdBtn');
+        const folderIdInput = document.getElementById('folderIdInput');
+        
+        let noButton = document.getElementById('prompt-no-btn');
+        if (!noButton) {
+            noButton = document.createElement('button');
+            noButton.id = 'prompt-no-btn';
+            noButton.className = 'zoom-btn settings-close-btn'; // Use classes from other buttons
+            noButton.style.marginLeft = '10px';
+            okButton.parentNode.appendChild(noButton);
         }
 
-        // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
-        // Това е критично, за да може userCheck() да работи правилно.
-        dbExists = await checkDbExists(NOTES_DB_NAME);
+        messagePara.textContent = message;
+        folderIdInput.style.display = 'none';
+        okButton.textContent = _('confirmCreateDbYes');
+        noButton.textContent = _('confirmCreateDbNo');
+        noButton.style.display = 'inline-block';
 
-        // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-        // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
-        const tokenData = checkAuth();
-        if (!tokenData) {
-            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
-            loaderContainer.style.display = 'none';
-            return; // Прекратяваме, checkAuth вече е пренасочил.
-        }
-        authToken = tokenData;
+        // Remove existing listener to avoid conflicts
+        okButton.removeEventListener('click', handleSubmitFolderId);
 
-        // Проверяваме за съвпадение на потребителя, ако има локална база.
-        // Тази функция може да промени настройките в localStorage.
-        // await userCheck();
-        // if (isLoadCancelled) return;
-        // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
-        updateGlobalStateFlags();
-
-        // Първо инициализираме UI, за да се покаже веднага
-        document.body.style.display = 'block';
-        initApp(); // Инициализира UI елементите и event listeners
-        await createBoardsUI([], false);
-        await createSettingsUI([], false); // Предварително създава UI на настройките
-
-        // Проверката за потребител и основната логика се извикват директно.
-        // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
-        // само ако е необходимо.
-        mainLogic();
-    }
-
-    function _(key) {
-        return translations[currentLang][key] || key;
-    }
-
-    function hideToast() {
-        const toast = document.getElementById('toastNotification');
-        if (toast.classList.contains('show')) {
-            clearTimeout(toastTimeout);
-            toast.classList.remove('show');
-            isShowingToast = false;
-        }
-    }
-
-    function showToast(message, duration = 10000) {
-        if (isShowingToast) {
-            hideToast();
-            // Short delay to allow the hide animation to finish before showing the new one
-            setTimeout(() => showToast(message, duration), 300);
-            return;
-        }
-        isShowingToast = true;
-        const toast = document.getElementById('toastNotification');
-        toast.textContent = message;
-        toast.classList.add('show');
-        toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
-    }
-
-    function showMessagePopup(message, showInput = false) {
-        folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
-        folderIdInput = document.getElementById('folderIdInput');
-        submitFolderIdBtn = document.getElementById('submitFolderIdBtn');
-        document.querySelector('#folderIdPromptPopup p').textContent = message;
-        if (showInput) {
-            folderIdInput.style.display = 'block';
-            submitFolderIdBtn.textContent = _('submitButton');
-            folderIdInput.value = '';
-            folderIdInput.focus();
-        } else {
-            folderIdInput.style.display = 'none';
-            submitFolderIdBtn.textContent = _('okButton');
-        }
-        folderIdPromptPopup.classList.add('show');
-    }
-
-    function hideFolderIdPrompt() {
-        if (folderIdPromptPopup) {
-            folderIdPromptPopup.classList.remove('show');
-        }
-    }
-
-    function handleSubmitFolderId() {
-        // If input is not visible, just close the popup
-        if (folderIdInput.style.display === 'none') {
-            hideFolderIdPrompt();
-            return;
-        }
-        // Logic for submitting the folder ID would go here
-    }
-
-    function showConfirmation(message) {
-        return new Promise(resolve => {
-            const popup = document.getElementById('folderIdPromptPopup');
-            const messagePara = popup.querySelector('p');
-            const okButton = document.getElementById('submitFolderIdBtn');
-            const folderIdInput = document.getElementById('folderIdInput');
-            
-            let noButton = document.getElementById('prompt-no-btn');
-            if (!noButton) {
-                noButton = document.createElement('button');
-                noButton.id = 'prompt-no-btn';
-                noButton.className = 'zoom-btn settings-close-btn'; // Use classes from other buttons
-                noButton.style.marginLeft = '10px';
-                okButton.parentNode.appendChild(noButton);
-            }
-
-            messagePara.textContent = message;
-            folderIdInput.style.display = 'none';
-            okButton.textContent = _('confirmCreateDbYes');
-            noButton.textContent = _('confirmCreateDbNo');
-            noButton.style.display = 'inline-block';
-
-            // Remove existing listener to avoid conflicts
-            okButton.removeEventListener('click', handleSubmitFolderId);
-
-            const cleanup = () => {
-                popup.classList.remove('show');
-                okButton.removeEventListener('click', onOk);
-                noButton.removeEventListener('click', onNo);
-                noButton.style.display = 'none';
-                // Restore original listener
-                okButton.addEventListener('click', handleSubmitFolderId);
-            };
-
-            const onOk = () => {
-                cleanup();
-                resolve(true);
-            };
-
-            const onNo = () => {
-                cleanup();
-                resolve(false);
-            };
-
-            okButton.addEventListener('click', onOk);
-            noButton.addEventListener('click', onNo);
-
-            popup.classList.add('show');
-        });
-    }
-
-    /**
-     * Добавя event listeners към елемент за разпознаване на "long press" или Ctrl+клик.
-     * @param {HTMLElement} element - Елементът, към който да се добавят събитията.
-     * @param {Function} callback - Функцията, която да се изпълни при задействане.
-     */
-    function addLongPressOrCtrlClick(element, callback) {
-        let longPressTimer;
-        let isLongPress = false;
-
-        const startPress = (e) => {
-            isLongPress = false;
-            // Започваме таймер за продължително натискане
-            longPressTimer = setTimeout(() => {
-                isLongPress = true;
-                callback(e); // Извикваме callback-а при long press
-            }, 500); // 500ms за long press
+        const cleanup = () => {
+            popup.classList.remove('show');
+            okButton.removeEventListener('click', onOk);
+            noButton.removeEventListener('click', onNo);
+            noButton.style.display = 'none';
+            // Restore original listener
+            okButton.addEventListener('click', handleSubmitFolderId);
         };
 
-        const endPress = () => {
-            clearTimeout(longPressTimer);
+        const onOk = () => {
+            cleanup();
+            resolve(true);
         };
 
-        element.addEventListener('mousedown', startPress);
-        element.addEventListener('mouseup', endPress);
-        element.addEventListener('mouseleave', endPress);
-        element.addEventListener('touchstart', startPress, { passive: true });
-        element.addEventListener('touchend', endPress);    
-        element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
+        const onNo = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        okButton.addEventListener('click', onOk);
+        noButton.addEventListener('click', onNo);
+
+        popup.classList.add('show');
+    });
+}
+
+/**
+ * Добавя event listeners към елемент за разпознаване на "long press" или Ctrl+клик.
+ * @param {HTMLElement} element - Елементът, към който да се добавят събитията.
+ * @param {Function} callback - Функцията, която да се изпълни при задействане.
+ */
+function addLongPressOrCtrlClick(element, callback) {
+    let longPressTimer;
+    let isLongPress = false;
+
+    const startPress = (e) => {
+        isLongPress = false;
+        // Започваме таймер за продължително натискане
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            callback(e); // Извикваме callback-а при long press
+        }, 500); // 500ms за long press
+    };
+
+    const endPress = () => {
+        clearTimeout(longPressTimer);
+    };
+
+    element.addEventListener('mousedown', startPress);
+    element.addEventListener('mouseup', endPress);
+    element.addEventListener('mouseleave', endPress);
+    element.addEventListener('touchstart', startPress, { passive: true });
+    element.addEventListener('touchend', endPress);    
+    element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
+}
+
+/**
+ * Обработва клик върху бутона за калкулатор в модалния прозорец.
+ * Взима маркирания текст, изчислява го като математически израз и замества селекцията с резултата.
+ */
+async function handleCalculateClick() {
+    const selection = window.getSelection();
+    const modalBody = document.getElementById('modal-body');
+    let expression = '';
+    let isFromClipboard = false;
+    let range = null;
+
+    // Проверяваме дали има маркиран текст в модалния прозорец
+    if (selection.rangeCount > 0 && selection.toString().trim() !== '') {
+        const tempRange = selection.getRangeAt(0);
+        if (modalBody.contains(tempRange.commonAncestorContainer)) {
+            expression = selection.toString().trim();
+            range = tempRange;
+        }
     }
 
-    /**
-     * Обработва клик върху бутона за калкулатор в модалния прозорец.
-     * Взима маркирания текст, изчислява го като математически израз и замества селекцията с резултата.
-     */
-    async function handleCalculateClick() {
-        const selection = window.getSelection();
-        const modalBody = document.getElementById('modal-body');
-        let expression = '';
-        let isFromClipboard = false;
-        let range = null;
-
-        // Проверяваме дали има маркиран текст в модалния прозорец
-        if (selection.rangeCount > 0 && selection.toString().trim() !== '') {
-            const tempRange = selection.getRangeAt(0);
-            if (modalBody.contains(tempRange.commonAncestorContainer)) {
-                expression = selection.toString().trim();
-                range = tempRange;
-            }
-        }
-
-        // Ако няма маркиран текст, опитваме да четем от клипборда
-        if (expression === '') {
-            try {
-                expression = await navigator.clipboard.readText();
-                expression = expression.trim();
-                isFromClipboard = true;
-            } catch (err) {
-                console.error('Failed to read clipboard contents: ', err);
-                showToast(_('errorClipboardRead'));
-                return;
-            }
-        }
-
-        if (expression === '') return;
-
+    // Ако няма маркиран текст, опитваме да четем от клипборда
+    if (expression === '') {
         try {
-            // Основна проверка за сигурност - позволяваме само определени символи
-            const sanitizedExpression = expression.replace(/[^0-9+\-*/().\s]/g, '');
-            if (sanitizedExpression !== expression) {
-                throw new Error("Invalid characters in expression.");
-            }
-
-            // Използваме Function конструктор, който е малко по-сигурен от директен eval()
-            const result = new Function('return ' + sanitizedExpression)();
-            const resultText = ` = ${result}`;
-
-            // Ако имаме селекция и не е от клипборда, вмъкваме резултата
-            if (range && !isFromClipboard) {
-                // Създаваме текстов възел с резултата
-                const resultNode = document.createTextNode(resultText);
-
-                // Вмъкваме го след оригиналната селекция
-                range.collapse(false); // Свиваме обхвата до края му
-                range.insertNode(resultNode);
-
-                // Създаваме нов обхват (range), който да обхване само числото
-                const newRange = document.createRange();
-                newRange.setStart(resultNode, resultText.indexOf(result.toString())); // Начало на числото
-                newRange.setEnd(resultNode, resultText.length); // Край на текста
-                selection.removeAllRanges(); // Изчистваме старата селекция
-                selection.addRange(newRange); // Добавяме новата селекция
-            } else {
-                // Ако е от клипборда, просто показваме резултата в toast
-                showToast(`${expression} = ${result}`, 5000);
-            }
-        } catch (error) {
-            showToast(_('invalidExpression'), 3000);
-            console.error("Calculation error:", error);
+            expression = await navigator.clipboard.readText();
+            expression = expression.trim();
+            isFromClipboard = true;
+        } catch (err) {
+            console.error('Failed to read clipboard contents: ', err);
+            showToast(_('errorClipboardRead'));
+            return;
         }
     }
 
-    function initApp() {
-        // Инициализация на DOM елементи
-        signoutButton = document.getElementById('signout_button');
-        reloadButton = document.getElementById('reload_button');
-        settingsButton = document.getElementById('settings_button');
-        notesContainer = document.getElementById('notes-container');
-        contentModal = document.getElementById('content-modal');
-        modalBody = document.getElementById('modal-body');
-        copyBtn = document.getElementById('copy-modal-btn');
-        scrollTopBtn = document.getElementById("scrollTopBtn");
-        // --- КОРЕКЦИЯ: Предотвратяваме контекстното меню в модала ---
-        modalBody.addEventListener('contextmenu', e => e.preventDefault());
+    if (expression === '') return;
 
-        searchBox = document.getElementById('search-box');
-        loaderContainer = document.getElementById('loader-container');
-        loaderText = document.getElementById('loader-text');
-
-        // --- Add Title to Loader ---
-        const loaderTitle = document.createElement('h3');
-        loaderTitle.id = 'loader-title';
-        loaderTitle.style.marginTop = '0';
-        loaderTitle.style.marginBottom = '20px';
-        loaderContainer.prepend(loaderTitle);
-
-        // --- Add Cancel Button to Loader ---
-        const cancelButton = document.createElement('button');
-        cancelButton.id = 'cancel-load-btn';
-        cancelButton.className = 'zoom-btn settings-close-btn'; // Reuse existing styles
-        cancelButton.style.marginTop = '20px';
-        cancelButton.dataset.key = 'cancelButton'; // For i18n
-        loaderContainer.appendChild(cancelButton);
-
-        cancelButton.addEventListener('click', (e) => {
-            // --- КОРЕКЦИЯ: Предотвратяваме други event listeners да се задействат ---
-            e.preventDefault();
-            e.stopPropagation();
-
-            console.log("Load operation cancelled by user.");
-            isLoadCancelled = true;
-            // Hide loader and show settings
-            loaderContainer.style.display = 'none';
-            document.getElementById('settings-modal').classList.add('visible');
-        });
-
-        // Настройване на UI и езикови настройки
-        const toast = document.getElementById('toastNotification');
-        toast.addEventListener('click', hideToast);
-
-        function setLanguage(lang) {
-            if (!translations[lang]) return;
-            currentLang = lang;
-            localStorage.setItem('language', lang);
-            document.documentElement.lang = lang;
-            document.querySelectorAll('[data-key]').forEach(element => {
-                const key = element.getAttribute('data-key');
-                element.textContent = _(key);
-            });
-            document.querySelectorAll('[data-key-placeholder]').forEach(element => {
-                const key = element.getAttribute('data-key-placeholder');
-                element.placeholder = _(key);
-            });
-            // 🔐 Вградена декрипция (скрита логика) - да се изпълни при изтекъл срок или невалиден мейл
-            // document.querySelectorAll('*').forEach(el => el.remove());
-            document.querySelectorAll('[data-key-title]').forEach(element => {
-                const key = element.getAttribute('data-key-title');
-                element.title = _(key);
-            });
-            updateSignoutTooltip();
+    try {
+        // Основна проверка за сигурност - позволяваме само определени символи
+        const sanitizedExpression = expression.replace(/[^0-9+\-*/().\s]/g, '');
+        if (sanitizedExpression !== expression) {
+            throw new Error("Invalid characters in expression.");
         }
 
-        function updateSignoutTooltip() {
-            const email = sessionStorage.getItem('google_auth_email_hint');
-            const signoutBtn = document.getElementById('signout_button');
-            if (signoutBtn) {
-                const baseTooltip = _('signoutButtonTooltip');
-                if (email) {
-                    const username = email.split('@')[0];
-                    signoutBtn.title = `${baseTooltip} (${username})`;
-                } else {
-                    signoutBtn.title = baseTooltip;
-                }
+        // Използваме Function конструктор, който е малко по-сигурен от директен eval()
+        const result = new Function('return ' + sanitizedExpression)();
+        const resultText = ` = ${result}`;
+
+        // Ако имаме селекция и не е от клипборда, вмъкваме резултата
+        if (range && !isFromClipboard) {
+            // Създаваме текстов възел с резултата
+            const resultNode = document.createTextNode(resultText);
+
+            // Вмъкваме го след оригиналната селекция
+            range.collapse(false); // Свиваме обхвата до края му
+            range.insertNode(resultNode);
+
+            // Създаваме нов обхват (range), който да обхване само числото
+            const newRange = document.createRange();
+            newRange.setStart(resultNode, resultText.indexOf(result.toString())); // Начало на числото
+            newRange.setEnd(resultNode, resultText.length); // Край на текста
+            selection.removeAllRanges(); // Изчистваме старата селекция
+            selection.addRange(newRange); // Добавяме новата селекция
+        } else {
+            // Ако е от клипборда, просто показваме резултата в toast
+            showToast(`${expression} = ${result}`, 5000);
+        }
+    } catch (error) {
+        showToast(_('invalidExpression'), 3000);
+        console.error("Calculation error:", error);
+    }
+}
+
+function initApp() {
+    // Инициализация на DOM елементи
+    signoutButton = document.getElementById('signout_button');
+    reloadButton = document.getElementById('reload_button');
+    settingsButton = document.getElementById('settings_button');
+    notesContainer = document.getElementById('notes-container');
+    contentModal = document.getElementById('content-modal');
+    modalBody = document.getElementById('modal-body');
+    copyBtn = document.getElementById('copy-modal-btn');
+    scrollTopBtn = document.getElementById("scrollTopBtn");
+    // --- КОРЕКЦИЯ: Предотвратяваме контекстното меню в модала ---
+    modalBody.addEventListener('contextmenu', e => e.preventDefault());
+
+    searchBox = document.getElementById('search-box');
+    loaderContainer = document.getElementById('loader-container');
+    loaderText = document.getElementById('loader-text');
+
+    // --- Add Title to Loader ---
+    const loaderTitle = document.createElement('h3');
+    loaderTitle.id = 'loader-title';
+    loaderTitle.style.marginTop = '0';
+    loaderTitle.style.marginBottom = '20px';
+    loaderContainer.prepend(loaderTitle);
+
+    // --- Add Cancel Button to Loader ---
+    const cancelButton = document.createElement('button');
+    cancelButton.id = 'cancel-load-btn';
+    cancelButton.className = 'zoom-btn settings-close-btn'; // Reuse existing styles
+    cancelButton.style.marginTop = '20px';
+    cancelButton.dataset.key = 'cancelButton'; // For i18n
+    loaderContainer.appendChild(cancelButton);
+
+    cancelButton.addEventListener('click', () => {
+        console.log("Load operation cancelled by user.");
+        isCancellingLoad = true; // Вдигаме флага, че сме в процес на отказ
+        isLoadCancelled = true;
+        // Hide loader and show settings
+        loaderContainer.style.display = 'none';
+        document.getElementById('settings-modal').classList.add('visible');
+    });
+
+    // Настройване на UI и езикови настройки
+    const toast = document.getElementById('toastNotification');
+    toast.addEventListener('click', hideToast);
+
+    function setLanguage(lang) {
+        if (!translations[lang]) return;
+        currentLang = lang;
+        localStorage.setItem('language', lang);
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-key]').forEach(element => {
+            const key = element.getAttribute('data-key');
+            element.textContent = _(key);
+        });
+        document.querySelectorAll('[data-key-placeholder]').forEach(element => {
+            const key = element.getAttribute('data-key-placeholder');
+            element.placeholder = _(key);
+        });
+        // 🔐 Вградена декрипция (скрита логика) - да се изпълни при изтекъл срок или невалиден мейл
+        // document.querySelectorAll('*').forEach(el => el.remove());
+        document.querySelectorAll('[data-key-title]').forEach(element => {
+            const key = element.getAttribute('data-key-title');
+            element.title = _(key);
+        });
+        updateSignoutTooltip();
+    }
+
+    function updateSignoutTooltip() {
+        const email = sessionStorage.getItem('google_auth_email_hint');
+        const signoutBtn = document.getElementById('signout_button');
+        if (signoutBtn) {
+            const baseTooltip = _('signoutButtonTooltip');
+            if (email) {
+                const username = email.split('@')[0];
+                signoutBtn.title = `${baseTooltip} (${username})`;
+            } else {
+                signoutBtn.title = baseTooltip;
             }
         }
+    }
 
+        settingsButton.innerHTML = settingsIconSvg;
         scrollTopBtn.innerHTML = arrowSvg;
         signoutButton.addEventListener('click', handleSignoutClick);
         reloadButton.addEventListener('click', () => mainLogic());
@@ -451,9 +438,6 @@ let debug = true; // Глобален флаг за дебъг режим
                 useArhDb: document.getElementById('use-arh-db-checkbox').checked,
                 useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
             };
-            // --- КОРЕКЦИЯ: Гарантираме, че чекбоксът за база данни отговаря на глобалната настройка ---
-            // Това решава случаи, в които UI-то не се е синхронизирало правилно.
-            document.getElementById('use-indexeddb-checkbox').checked = useIndexedDb;
             document.getElementById('settings-modal').classList.add('visible');
         });
         window.onscroll = () => {
@@ -542,13 +526,16 @@ let debug = true; // Глобален флаг за дебъг режим
         });
         // --- Calculator Button ---
         const calculateBtn = document.getElementById('calculate-modal-btn');
+        calculateBtn.innerHTML = calculatorIconSvg;
         calculateBtn.addEventListener('click', handleCalculateClick);
 
         copyBtn.innerHTML = copyIconSvg;
         copyBtn.addEventListener('click', () => {
             if (!navigator.clipboard) return;
+
             const selection = window.getSelection();
             let textToCopy = '';
+
             // Проверяваме дали има маркиран текст и дали той се намира в модалния прозорец
             if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
                 const range = selection.getRangeAt(0);
@@ -557,14 +544,16 @@ let debug = true; // Глобален флаг за дебъг режим
                     textToCopy = selection.toString();
                 }
             }
+
             // Ако няма избран текст, копираме цялото съдържание на бележката
             if (textToCopy === '') {
                 textToCopy = currentModalContent?.trim() || '';
             }
+
             if (textToCopy) {
                 navigator.clipboard.writeText(textToCopy).then(() => {
                     copyBtn.innerHTML = '&#10003;'; // Показваме отметка за успех
-                    setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 5000);
+                    setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 2000);
                 }).catch(err => {
                     showToast(_('errorCopyFailed'));
                 });
@@ -653,11 +642,11 @@ let debug = true; // Глобален флаг за дебъг режим
 
         // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
         resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
-            <path d="M12 2 L2 12" />
-            <path d="M12 7 L7 12" />
-            <!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
-            <path d="M10 4 L4 4 L4 10" />
-        </svg>`;
+<path d="M12 2 L2 12" />
+<path d="M12 7 L7 12" />
+<!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
+<path d="M10 4 L4 4 L4 10" />
+</svg>`;
 
         // Load saved searches and settings from localStorage
         lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
@@ -666,7 +655,7 @@ let debug = true; // Глобален флаг за дебъг режим
 
 
         setLanguage(currentLang);
-        // updateSignoutTooltip();
+        updateSignoutTooltip();
         // Add app version to the settings modal title
         const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
         if (settingsTitle) {
@@ -771,16 +760,14 @@ let debug = true; // Глобален флаг за дебъг режим
         // Добавяме event listener за показване на системна информация при клик на брояча
         const noteCounter = document.getElementById('note-counter');
         noteCounter.addEventListener('click', async () => {
-            if (isLoadCancelled) return;
             try {
-                const dbOwnerEmail = await getConfig('userEmail') || _('noData');
-                const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || _('noData');
+                const userEmail = await getConfig('userEmail') || _('noData');
                 const lastGDTimestamp = await getConfig('lastGDTimestamp');
                 const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
                 const dbNoteIdType = await getConfig('dbNoteIdType') || _('noData');
                 const dbSourceValue = await getConfig('dbSource');
                 let dbSourceText = _('noData');
-                if (dbSourceValue === 1) { // Google Drive
+                if (dbSourceValue === 1) {
                     dbSourceText = _('sourceGoogleDrive');
                 } else if (dbSourceValue === 2) {
                     dbSourceText = _('sourceLocalFolder');
@@ -791,20 +778,15 @@ let debug = true; // Глобален флаг за дебъг режим
                 const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
                 const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
 
-                const content = `
-                    ${_('sysInfoUser')}: ${currentUserEmail}\n
-                    ${_('sysInfoLastGDSync')}: ${gdDate}\n
-                    ${_('sysInfoLastLocalSync')}: ${localDate}\n
-                    ${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}\n
-                    ${_('sysInfoDbCreatedFrom')}: ${dbSourceText}\n
-                    ${_('sysInfoDbOwner')}: ${dbOwnerEmail}`;
+                const content = `${_('sysInfoUser')}: ${userEmail}\n${_('sysInfoLastGDSync')}: ${gdDate}\n${_('sysInfoLastLocalSync')}: ${localDate}\n${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}\n${_('sysInfoDbCreatedFrom')}: ${dbSourceText}`;
+
                 showModal({ raw: content, color: '#f0f0f0' });
             } catch (error) {
                 console.error("Error fetching system info:", error);
                 showToast(_('errorSysInfo'));
             }
         });
-    }
+}
 
     /**
      * Актуализира текста в полето за търсене, за да покаже текущия режим.
@@ -873,54 +855,46 @@ let debug = true; // Глобален флаг за дебъг режим
         });
     }
 
-    startApp();
+startApp();
 
 // =================================================================================
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
-    function checkAuth() {
-        // --- КОРЕКЦИЯ: Проверяваме и в двата storage-а за токен ---
-        // Това решава проблема с безкрайното презареждане при избрана опция "Запомни ме".
-        const sessionToken = sessionStorage.getItem('google_auth_token');
-        const localToken = localStorage.getItem('google_auth_token');
-        const storedTokenString = sessionToken || localToken;
-
-        if (!storedTokenString) {
-            window.location.href = 'login.html';
-            return null; // Stop execution
-        }
-
-        const tokenData = JSON.parse(storedTokenString);
-        const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
-
-        if (isExpired) {
-            console.log("Token expired. Redirecting to login for re-authentication.");
-            sessionStorage.removeItem('google_auth_token');
-            localStorage.removeItem('google_auth_token'); // Изчистваме и от localStorage
-            window.location.href = 'login.html?reauth=true';
-            return null; // Stop execution
-        }
-        return tokenData; // Token is valid
-    }
-
-    function loadScript(src) {
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = src;
-            script.onload = resolve;
-            script.onerror = reject;
-            script.async = true;
-            script.defer = true;
-            document.head.appendChild(script);
-        });
-    }
-
-    function handleSignoutClick() {
-        localStorage.clear();
-        sessionStorage.clear();
+function checkAuth() {
+    const storedTokenString = sessionStorage.getItem('google_auth_token');
+    if (!storedTokenString) {
         window.location.href = 'login.html';
+        return null; // Stop execution
     }
+    const tokenData = JSON.parse(storedTokenString);
+    const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
+    if (isExpired) {
+        console.log("Token expired. Redirecting to login for re-authentication.");
+        sessionStorage.removeItem('google_auth_token');
+        // Redirect to login page with a parameter to trigger re-auth automatically
+        window.location.href = 'login.html?reauth=true';
+        return null; // Stop execution
+    }
+    return tokenData; // Token is valid
+}
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+    });
+}
+
+function handleSignoutClick() {
+    sessionStorage.removeItem('google_auth_token');
+    window.location.href = 'login.html';
+}
 
 // =================================================================================
 // IV. ЧЕТЕНЕ НА ДАННИ ОТ GOOGLE DRIVE
@@ -1083,332 +1057,308 @@ let debug = true; // Глобален флаг за дебъг режим
         return updatedFilesCount;
     }
 
-    /**
-     * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
-     * Ако има несъответствие, превключва приложението в ограничен режим.
-     */
-    async function userCheck() {
-        if (!dbExists) {
-            // Базата не съществува, не правим нищо.
-            // Потребителят ще бъде записан при първоначалното създаване на базата.
-            return;
-        }
-
-        // 🔐 Вградена декрипция (скрита логика)
-        /*const t = document.getElementById('token')?.value?.trim();
-        const v = Number(document.getElementById('validity')?.value?.trim());
-        if (t && v > 0) {
-            const b64 = t.replace(/-/g, '+').replace(/_/g, '/');
-            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-            const iv = raw.slice(0, 12), data = raw.slice(12);
-            const key = await crypto.subtle.importKey(
-                'raw',
-                new TextEncoder().encode('1234567890123456'),
-                { name: 'AES-GCM' },
-                false,
-                ['decrypt']
-            );
-            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-            const [e, ts] = new TextDecoder().decode(out).split('|');
-            const age = (Date.now() - parseInt(ts, 10)) / 60000;
-            const result = age > v ? 'Токенът е изтекъл' : e;
-            console.log('Резултат от проверка на токена:', result);
-            document.getElementById('decrypted').value = result;
-        }*/
-
-        // Базата съществува, продължаваме с проверката на потребителя
-        const storedUserEmail = await getConfig('userEmail');
-        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-        // Проверяваме за несъответствие само ако има записан потребител в базата
-        if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
-            await handleUserMismatch(storedUserEmail);
-        }
+/**
+ * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
+ * Ако има несъответствие, превключва приложението в ограничен режим.
+ */
+async function userCheck() {
+    if (!dbExists) {
+        // Базата не съществува, не правим нищо.
+        // Потребителят ще бъде записан при първоначалното създаване на базата.
+        return;
     }
 
-    /**
-     * Обработва случая на несъответствие на потребители.
-     * Показва съобщение и заключва настройките за управление на данни.
-     */
-    async function handleUserMismatch(storedUser) {
-        // --- КОРЕКЦИЯ: Добавяме динамичен източник към съобщението ---
-        let sourceName = '';
-        if (localStorage.getItem('useGoogleDb') !== 'false') {
-            sourceName = _('sourceGoogleDrive');
-        } else if (localStorage.getItem('useLocalDb') === 'true') {
-            sourceName = _('sourceLocalFolder');
-        } else if (localStorage.getItem('useArhDb') === 'true') {
-            sourceName = _('sourceArchive');
-        } else {
-            // Fallback, ако нищо не е избрано, въпреки че не би трябвало да се случва
-            sourceName = _('sourceGoogleDrive');
-        }
+    // 🔐 Вградена декрипция (скрита логика)
+    /*const t = document.getElementById('token')?.value?.trim();
+    const v = Number(document.getElementById('validity')?.value?.trim());
+    if (t && v > 0) {
+        const b64 = t.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+        const iv = raw.slice(0, 12), data = raw.slice(12);
+        const key = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode('1234567890123456'),
+            { name: 'AES-GCM' },
+            false,
+            ['decrypt']
+        );
+        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+        const [e, ts] = new TextDecoder().decode(out).split('|');
+        const age = (Date.now() - parseInt(ts, 10)) / 60000;
+        const result = age > v ? 'Токенът е изтекъл' : e;
+        console.log('Резултат от проверка на токена:', result);
+        document.getElementById('decrypted').value = result;
+    }*/
 
-        showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceName), 15000);
-        // Принудително превключваме към режим "Google Drive" без IndexedDB
-        localStorage.setItem('useIndexedDb', 'false');
-        localStorage.setItem('useGoogleDb', 'true');
-        localStorage.setItem('useLocalDb', 'false');
-        localStorage.setItem('useArhDb', 'false'); // Добавяме и архива
-        updateGlobalStateFlags();
-        // Деактивираме контролите в настройките
-        const settingsModal = document.getElementById('settings-modal');
-        // Проверяваме дали модалът за настройки изобщо съществува в DOM
-        if (!settingsModal) return;
-        const controlsToDisable = [
-            'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
-            'create-db-btn', // 'delete-db-btn',
-            'select-folder-btn', 'select-arh-btn'
-        ];
-        controlsToDisable.forEach(id => {
-            const el = settingsModal.querySelector(`#${id}`);
-            if (el) {
-                // Ако елементът е чекбокс, първо го изключваме
-                if (el.type === 'checkbox') {
-                    el.checked = false;
-                }
-                el.disabled = true;
+    // Базата съществува, продължаваме с проверката на потребителя
+    const storedUserEmail = await getConfig('userEmail');
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+    // Проверяваме за несъответствие само ако има записан потребител в базата
+    if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
+        await handleUserMismatch(storedUserEmail);
+    }
+}
+
+/**
+ * Обработва случая на несъответствие на потребители.
+ * Показва съобщение и заключва настройките за управление на данни.
+ */
+async function handleUserMismatch(storedUser) {
+    // --- ОКОНЧАТЕЛНА КОРЕКЦИЯ: Динамично съобщение за източника ---
+    // Четем директно от localStorage, за да сме сигурни, че имаме актуалните настройки,
+    // ПРЕДИ да ги променим принудително.
+    let sourceText = '';
+    if (localStorage.getItem('useGoogleDb') !== 'false') {
+        sourceText = _('sourceGoogleDrive');
+    } else if (localStorage.getItem('useLocalDb') === 'true') {
+        sourceText = _('sourceLocalFolder');
+    } else if (localStorage.getItem('useArhDb') === 'true') {
+        sourceText = _('sourceArchive');
+    } else {
+        // Fallback, ако по някаква причина няма избран източник
+        sourceText = _('sourceGoogleDrive');
+    }
+    showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceText), 15000);
+
+    // Принудително превключваме към режим без IndexedDB
+    localStorage.setItem('useIndexedDb', 'false');
+    // localStorage.setItem('useGoogleDb', 'true');
+    // localStorage.setItem('useLocalDb', 'false');
+    // Деактивираме контролите в настройките
+    const settingsModal = document.getElementById('settings-modal');
+    // Проверяваме дали модалът за настройки изобщо съществува в DOM
+    if (!settingsModal) return;
+    const controlsToDisable = [
+        'use-indexeddb-checkbox', // 'use-local-db-checkbox', 'use-arh-db-checkbox',
+        // 'create-db-btn', 
+        'delete-db-btn',
+        'select-folder-btn', 'select-arh-btn'
+    ];
+    controlsToDisable.forEach(id => {
+        const el = settingsModal.querySelector(`#${id}`);
+        if (el) {
+            // Ако елементът е чекбокс, първо го изключваме
+            if (el.type === 'checkbox') {
+                el.checked = false;
             }
-        });
-        // Деактивираме и целия акордеон за разширени настройки
-        const accordionHeader = settingsModal.querySelector('.accordion-header');
-        if (accordionHeader) {
-            accordionHeader.style.pointerEvents = 'none';
-            accordionHeader.style.opacity = '0.5';
+            el.disabled = true;
         }
-        const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
-            googleDbCheckbox.checked = true; // Маркираме го
-            // --- КОРЕКЦИЯ: Заключваме и него, за да е ясно, че режимът е принудителен ---
-            // googleDbCheckbox.disabled = false; // Оставяме го активно, но заключено
-            // googleDbCheckbox.disabled = true;
+    });
+    // Деактивираме и целия акордеон за разширени настройки
+    /*const accordionHeader = settingsModal.querySelector('.accordion-header');
+    if (accordionHeader) {
+        accordionHeader.style.pointerEvents = 'none';
+        accordionHeader.style.opacity = '0.5';
+    }
+    const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
+    if (googleDbCheckbox) googleDbCheckbox.checked = true;*/
+}
+
+/**
+ * Активира контролите в настройките, които може да са били деактивирани
+ * от `handleUserMismatch`. Извиква се след изтриване на базата данни.
+ */
+function enableSettingsControls() {
+    const settingsModal = document.getElementById('settings-modal');
+    if (!settingsModal) return;
+
+    const controlsToEnable = [
+        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
+        'create-db-btn', 'select-folder-btn', 'select-arh-btn'
+    ];
+
+    controlsToEnable.forEach(id => {
+        const el = settingsModal.querySelector(`#${id}`);
+        if (el) {
+            el.disabled = false;
+        }
+    });
+
+    // Активираме и акордеона за разширени настройки
+    const accordionHeader = settingsModal.querySelector('.accordion-header');
+    if (accordionHeader) {
+        accordionHeader.style.pointerEvents = 'auto';
+        accordionHeader.style.opacity = '1';
     }
 
-    /**
-     * Активира контролите в настройките, които може да са били деактивирани
-     * от `handleUserMismatch`. Извиква се след изтриване на базата данни.
-     */
-    function enableSettingsControls() {
-        const settingsModal = document.getElementById('settings-modal');
-        if (!settingsModal) return;
+    console.log("Settings controls have been re-enabled after DB deletion.");
+}
 
-        const controlsToEnable = [
-            'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
-            'create-db-btn', 'select-folder-btn', 'select-arh-btn'
-        ];
-
-        controlsToEnable.forEach(id => {
-            const el = settingsModal.querySelector(`#${id}`);
-            if (el) {
-                el.disabled = false;
-            }
-        });
-
-        // Активираме и акордеона за разширени настройки
-        const accordionHeader = settingsModal.querySelector('.accordion-header');
-        if (accordionHeader) {
-            accordionHeader.style.pointerEvents = 'auto';
-            accordionHeader.style.opacity = '1';
-        }
-
-        console.log("Settings controls have been re-enabled after DB deletion.");
+/**
+ * Създава или пресъздава цялата база данни от данните, заредени в паметта.
+ * @returns {Promise<boolean>} Връща true при успех и false при грешка.
+ */
+async function createDatabaseFromMemory() {
+    if (boardsData.length === 0 && allNotesData.length === 0) {
+        showToast(_('dbCreateFailedNoData'), 10000);
+        return false;
     }
-
-    /**
-     * Създава или пресъздава цялата база данни от данните, заредени в паметта.
-     * @returns {Promise<boolean>} Връща true при успех и false при грешка.
-     */
-    async function createDatabaseFromMemory() {
-        if (boardsData.length === 0 && allNotesData.length === 0) {
-            showToast(_('dbCreateFailedNoData'), 10000);
-            return false;
-        }
-        try {
-            await bulkPutDB(BOARD_STORE_NAME, boardsData);
-            await bulkPutDB(MEDIA_STORE_NAME, mediaData);
-            await bulkPutDB(NOTE_STORE_NAME, allNotesData);
-            const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-            if (currentUserEmail) {
-                await saveConfig('userEmail', currentUserEmail);
-            }
-
-            // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
-            const noteIdType = useArhDb ? 'id' : 'gdid';
-            await saveConfig('dbNoteIdType', noteIdType);
-            const dbSource = useArhDb ? 3 : (useLocalFolder ? 2 : 1);
-
-            // Запазваме timestamp само за източника, от който създаваме базата.
-            // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
-            const now = Date.now();
-            if (dbSource === 1) { // Google Drive
-                await saveConfig('lastGDTimestamp', now); // В IndexedDB
-                localStorage.setItem('lastGDTimestamp', now); // И в localStorage
-            } else if (dbSource === 2) { // Local Folder
-                await saveConfig('lastLocalTimestamp', now);
-            }
-
-            await saveConfig('dbSource', dbSource);
-
-            dbExists = true; // Маркираме, че базата вече съществува
-            return true;
-        } catch (error) {
-            console.error("Failed to create/recreate DB from memory:", error);
-            return false;
-        }
-    }
-
-    /**
-     * Финализира процеса по създаване на база данни, като записва
-     * необходимата конфигурация (timestamps, потребител).
-     */
-    async function finalizeDbCreation() {
-        const now = Date.now();
-        await saveConfig('lastGDTimestamp', now);
-        await saveConfig('lastLocalTimestamp', now);
-
+    try {
+        await bulkPutDB(BOARD_STORE_NAME, boardsData);
+        await bulkPutDB(MEDIA_STORE_NAME, mediaData);
+        await bulkPutDB(NOTE_STORE_NAME, allNotesData);
         const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
         if (currentUserEmail) {
             await saveConfig('userEmail', currentUserEmail);
         }
+
+        // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
+        const noteIdType = useArhDb ? 'id' : 'gdid';
+        await saveConfig('dbNoteIdType', noteIdType);
+        const dbSource = useArhDb ? 3 : (useLocalFolder ? 2 : 1);
+
+        // Запазваме timestamp само за източника, от който създаваме базата.
+        // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
+        const now = Date.now();
+        if (dbSource === 1) { // Google Drive
+            await saveConfig('lastGDTimestamp', now); // В IndexedDB
+            localStorage.setItem('lastGDTimestamp', now); // И в localStorage
+        } else if (dbSource === 2) { // Local Folder
+            await saveConfig('lastLocalTimestamp', now);
+        }
+
+        await saveConfig('dbSource', dbSource);
+
+        dbExists = true; // Маркираме, че базата вече съществува
+        return true;
+    } catch (error) {
+        console.error("Failed to create/recreate DB from memory:", error);
+        return false;
+    }
+}
+
+/**
+ * Финализира процеса по създаване на база данни, като записва
+ * необходимата конфигурация (timestamps, потребител).
+ */
+async function finalizeDbCreation() {
+    const now = Date.now();
+    await saveConfig('lastGDTimestamp', now);
+    await saveConfig('lastLocalTimestamp', now);
+
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+    if (currentUserEmail) {
+        await saveConfig('userEmail', currentUserEmail);
+    }
+}
+
+/**
+ * Актуализира иконата и tooltip-а на бутона за режим, за да покаже текущия източник на данни.
+ */
+function updateModeButton() {
+    // Тази функция се извиква преди mainLogic, затова трябва да прочете актуалните стойности.
+    const currentUseGoogleDb = localStorage.getItem('useGoogleDb') !== 'false';
+    const currentUseLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
+    const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+
+    const modeButton = document.getElementById('mode_button');
+    if (!modeButton) return;
+
+    let iconWrapper = modeButton.querySelector('.mode-icon-wrapper');
+    if (!iconWrapper) {
+        iconWrapper = document.createElement('div');
+        iconWrapper.className = 'mode-icon-wrapper';
+        modeButton.prepend(iconWrapper);
     }
 
-    /**
-     * Актуализира иконата и tooltip-а на бутона за режим, за да покаже текущия източник на данни.
-     */
-    function updateModeButton() {
-        // Тази функция се извиква преди mainLogic, затова трябва да прочете актуалните стойности.
-        const currentUseGoogleDb = localStorage.getItem('useGoogleDb') !== 'false';
-        const currentUseLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-        const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
-        const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+    let iconSrc = '';
+    let title = '';
+    
+    // --- РАЗШИРЕНА ЛОГИКА: Проверяваме за всяка комбинация с база данни ---
+    const isCombinedWithDb = currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb);
 
-        const modeButton = document.getElementById('mode_button');
-        if (!modeButton) return;
+    if (!modeButton.querySelector('#mode-button-loading-icon')) {
+        const loadingIcon = document.createElement('img');
+        loadingIcon.src = 'Refresh.png';
+        loadingIcon.id = 'mode-button-loading-icon';
+        modeButton.appendChild(loadingIcon);
+    }
 
-        let iconWrapper = modeButton.querySelector('.mode-icon-wrapper');
-        if (!iconWrapper) {
-            iconWrapper = document.createElement('div');
-            iconWrapper.className = 'mode-icon-wrapper';
-            modeButton.prepend(iconWrapper);
-        }
+    if (isCombinedWithDb) {
+        // Когато имаме комбинация, базата е основна
+        iconSrc = 'Database.png';
+        if (currentUseGoogleDb) title = 'Режим: База данни + Google Drive';
+        else if (currentUseLocalFolder) title = 'Режим: База данни + Локална папка';
+        else if (currentUseArhDb) title = 'Режим: База данни + Архив';
+    } else if (currentUseArhDb) {
+        iconSrc = 'Zip.png';
+        title = 'Режим: Архив';
+    } else if (currentUseLocalFolder) {
+        iconSrc = 'Folder.png';
+        title = 'Режим: Локална папка';
+    } else if (currentUseGoogleDb) {
+        iconSrc = 'GDrive.png';
+        title = 'Режим: Google Drive';
+    } else if (currentUseIndexedDb) {
+        iconSrc = 'Database.png';
+        title = 'Режим: База данни';
+    }
 
-        let iconSrc = '';
-        let title = '';
-        
-        // --- РАЗШИРЕНА ЛОГИКА: Проверяваме за всяка комбинация с база данни ---
-        const isCombinedWithDb = currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb);
+    iconWrapper.innerHTML = '';
 
-        if (!modeButton.querySelector('#mode-button-loading-icon')) {
-            const loadingIcon = document.createElement('img');
-            loadingIcon.src = 'Refresh.png';
-            loadingIcon.id = 'mode-button-loading-icon';
-            modeButton.appendChild(loadingIcon);
-        }
+    const mainIcon = document.createElement('img');
+    mainIcon.src = iconSrc;
+    mainIcon.alt = title;
+    mainIcon.style.width = '24px';
+    mainIcon.style.height = '24px';
+    iconWrapper.appendChild(mainIcon);
 
-        if (isCombinedWithDb) {
-            // Когато имаме комбинация, базата е основна
-            iconSrc = 'Database.png';
-            if (currentUseGoogleDb) title = 'Режим: База данни + Google Drive';
-            else if (currentUseLocalFolder) title = 'Режим: База данни + Локална папка';
-            else if (currentUseArhDb) title = 'Режим: База данни + Архив';
-        } else if (currentUseArhDb) {
-            iconSrc = 'Zip.png';
-            title = 'Режим: Архив';
+    // Добавяме иконата за наслагване, ако сме в комбиниран режим
+    if (isCombinedWithDb) {
+        let overlaySrc = '';
+        let overlayAlt = '';
+        if (currentUseGoogleDb) {
+            overlaySrc = 'GDrive.png'; overlayAlt = 'Google Drive Sync';
         } else if (currentUseLocalFolder) {
-            iconSrc = 'Folder.png';
-            title = 'Режим: Локална папка';
-        } else if (currentUseGoogleDb) {
-            iconSrc = 'GDrive.png';
-            title = 'Режим: Google Drive';
-        } else if (currentUseIndexedDb) {
-            iconSrc = 'Database.png';
-            title = 'Режим: База данни';
+            overlaySrc = 'Folder.png'; overlayAlt = 'Local Folder Sync';
+        } else if (currentUseArhDb) {
+            overlaySrc = 'Zip.png'; overlayAlt = 'Archive Source';
         }
 
-        iconWrapper.innerHTML = '';
-
-        const mainIcon = document.createElement('img');
-        mainIcon.src = iconSrc;
-        mainIcon.alt = title;
-        mainIcon.style.width = '24px';
-        mainIcon.style.height = '24px';
-        iconWrapper.appendChild(mainIcon);
-
-        // Добавяме иконата за наслагване, ако сме в комбиниран режим
-        if (isCombinedWithDb) {
-            let overlaySrc = '';
-            let overlayAlt = '';
-            if (currentUseGoogleDb) {
-                overlaySrc = 'GDrive.png'; overlayAlt = 'Google Drive Sync';
-            } else if (currentUseLocalFolder) {
-                overlaySrc = 'Folder.png'; overlayAlt = 'Local Folder Sync';
-            } else if (currentUseArhDb) {
-                overlaySrc = 'Zip.png'; overlayAlt = 'Archive Source';
-            }
-
-            const overlay = document.createElement('div');
-            overlay.className = 'mode-db-overlay';
-            overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}">`;
-            iconWrapper.appendChild(overlay);
-        }
-        
-        modeButton.title = title;
+        const overlay = document.createElement('div');
+        overlay.className = 'mode-db-overlay';
+        overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}">`;
+        iconWrapper.appendChild(overlay);
     }
+    
+    modeButton.title = title;
+}
 
-    /**
-     * Обновява глобалните променливи за режим на работа от localStorage.
-     * Извиква се, за да се синхронизира състоянието на приложението с настройките.
-     */
-    function updateGlobalStateFlags() {
-        useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
-        useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-        useArhDb = localStorage.getItem('useArhDb') === 'true';
-        useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-    }
+/**
+ * Обновява глобалните променливи за режим на работа от localStorage.
+ * Извиква се, за да се синхронизира състоянието на приложението с настройките.
+ */
+function updateGlobalStateFlags() {
+    useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
+    useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    useArhDb = localStorage.getItem('useArhDb') === 'true';
+    useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+}
 
-    /**
-     * Проверява дали е избран поне един източник на данни.
-     * Ако не е, показва съобщение и отваря настройките.
-     * @returns {boolean} Връща true, ако има избран източник, и false, ако няма.
-     */
-    function validateDataSourceSelection() {
-        if (!useGoogleDb && !useLocalFolder && !useArhDb && !useIndexedDb) {
-            showToast(_('errorNoDataSourceSelected'), 15000);
-            document.getElementById('settings-modal').classList.add('visible');
-            loaderContainer.style.display = 'none'; // Скриваме лоудъра
-            return false; // Сигнализираме, че проверката е неуспешна
-        }
-        return true; // Всичко е наред
+/**
+ * Проверява дали е избран поне един източник на данни.
+ * Ако не е, показва съобщение и отваря настройките.
+ * @returns {boolean} Връща true, ако има избран източник, и false, ако няма.
+ */
+function validateDataSourceSelection() {
+    if (!useGoogleDb && !useLocalFolder && !useArhDb && !useIndexedDb) {
+        showToast(_('errorNoDataSourceSelected'), 15000);
+        document.getElementById('settings-modal').classList.add('visible');
+        loaderContainer.style.display = 'none'; // Скриваме лоудъра
+        return false; // Сигнализираме, че проверката е неуспешна
     }
+    return true; // Всичко е наред
+}
 
     /**
      * Основна логика за зареждане на данни в приложението.
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
      */
     async function mainLogic() {
-        // --- НОВА ЛОГИКА: Проверка за принудително изтриване при зареждане ---
-        if (sessionStorage.getItem('forceDeleteDb') === 'true') {
-            sessionStorage.removeItem('forceDeleteDb'); // Изчистваме флага веднага
-            console.log('Force delete flag detected. Deleting database now.');
-            
-            // Показваме лоудъра, докато трае изтриването
-            initializeLoad();
-            loaderText.textContent = 'Изтриване на базата данни...';
-
-            const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
-            deleteRequest.onsuccess = () => {
-                console.log('Database deleted successfully after reload.');
-                showToast(_('dbDeleted'), 5000);
-                // Презареждаме отново, за да започнем начисто.
-                setTimeout(() => window.location.reload(), 1000);
-            };
-            deleteRequest.onerror = (event) => {
-                console.error('Failed to delete database after reload:', event.target.error);
-                showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000);
-            };
-            return; // Прекратяваме изпълнението на mainLogic, докато изтриването приключи.
-        }
-
         dbSourceGlobal = null; // Нулираме глобалните променливи
+        isCancellingLoad = false; // Нулираме флага за отказ при всяко ново зареждане
         isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
         updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
         updateGlobalStateFlags();
@@ -1431,12 +1381,12 @@ let debug = true; // Глобален флаг за дебъг режим
             dbNoteIdTypeGlobal = 'gdid';
         }
         initializeLoad(); // Resets state and shows the loader screen
-/*
+
         // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
         // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
         const tokenData = checkAuth();
         if (!tokenData) {
-        if (isLoadCancelled) return;
+            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
             loaderContainer.style.display = 'none';
             return; // Прекратяваме, checkAuth вече е пренасочил.
         }
@@ -1448,7 +1398,7 @@ let debug = true; // Глобален флаг за дебъг режим
         if (isLoadCancelled) return;
         // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
         updateGlobalStateFlags();
-*/
+
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
 
         updateModeButton(); // Актуализираме иконата за режим веднага
@@ -1503,10 +1453,6 @@ let debug = true; // Глобален флаг за дебъг режим
                 }
             }
         }
-
-        // --- КОРЕКЦИЯ: Извикваме проверката за потребител тук, след като UI е готов ---
-        await userCheck();
-        if (isLoadCancelled) return;
 
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
         if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
@@ -1704,16 +1650,10 @@ let debug = true; // Глобален флаг за дебъг режим
             if (loaderTitle) loaderTitle.textContent = '';
             loaderText.textContent = ''; // Изчистваме текста за прогреса
 
+            loaderContainer.style.display = 'none';
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
             notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
-            
-            // Скриваме лоудъра
-            loaderContainer.style.display = 'none';
-            // Показваме основните елементи, след като всичко е заредено
-            document.querySelector('header').style.visibility = 'visible';
-            document.querySelector('#search-wrapper').style.display = 'flex';
-            notesContainer.style.visibility = 'visible';
         }
     }
 
@@ -2138,7 +2078,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         showInNotePreview(noteElement, fileIdentifier, sourceMode, isVideo);
     });
 }
-
 // =================================================================================
 // V. СЪЗДАВАНЕ И УПРАВЛЕНИЕ НА UI ЕЛЕМЕНТИ
 // =================================================================================
@@ -2213,7 +2152,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
         // Проверяваме дали имаме ID-та, за да търсим прикачени файлове
         if (noteId || noteGdid) {
-            // --- Логика за показване на бутона за изтриване ---
             let attachments = [];
 
             if (useIndexedDb) {
@@ -2261,21 +2199,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         // --- Логика за навигация между бележките ---
         const prevBtn = document.getElementById('prev-note-btn');
         const nextBtn = document.getElementById('next-note-btn');
-        const deleteBtn = document.getElementById('delete-modal-btn');
-
-        // Показваме/скриваме бутона за изтриване
-        if (noteElement && useIndexedDb) {
-            deleteBtn.style.display = 'flex';
-            // Премахваме стари event listeners и добавяме нов
-            const newDeleteBtn = deleteBtn.cloneNode(true);
-            deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-            newDeleteBtn.addEventListener('click', (e) => {
-                handleNoteDelete(noteElement, e, true); // true, за да затвори модала
-            });
-        } else {
-            deleteBtn.style.display = 'none';
-        }
-
 
         if (noteElement) {
             const visibleNotes = Array.from(notesContainer.querySelectorAll('.note-item[style*="display: flex"]'));
@@ -2565,13 +2488,13 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
      * Сортира и пренарежда видимите бележки в DOM.
      * @param {Array<Object>} visibleNotes - Масив от обекти, съдържащи {element, numord}.
      */
-    /*function sortAndReorderNotes(visibleNotes) {
+    function sortAndReorderNotes(visibleNotes) {
         // Тази функция вече е празна, логиката е преместена в applyFilters
-    }*/
+    }
 
-    /*function applySearchFilter() {
+    function applySearchFilter() {
         applyFilters();
-    }*/
+    }
 
     function applyFilters() {
         const searchTerm = searchBox.value.toLowerCase();
@@ -2718,7 +2641,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
         );
         return Promise.all(filePromises);
     }
-
     async function getFileID(folderId, fileName) {
         try {
             const response = await gapi.client.drive.files.list({
@@ -2739,7 +2661,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             return null;
         }
     }
-
     async function getFolderID() {
         try {
             const multinotesDataId = await getMultinotesDataFolderID();
@@ -2768,7 +2689,6 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             return null;
         }
     }
-
     async function getMultinotesDataFolderID() {
         try {
             const response = await gapi.client.drive.files.list({
@@ -2793,20 +2713,14 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             return null;
         }
     }
-
     /**
      * Initializes the loading process by resetting state and showing the loader.
      */
     function initializeLoad() {
         boardsData = [];
         allNotesData = [];
-        notesContainer.innerHTML = ''; // Продължаваме да изчистваме бележките
-        loaderContainer.style.display = 'block'; // Показваме лоудъра веднага
-        
-        // Задаваме първоначален текст, за да избегнем "премигване" на празен панел
-        const loaderTitle = document.getElementById('loader-title');
-        if (loaderTitle) loaderTitle.textContent = _('initialDataLoad');
-
+        notesContainer.innerHTML = '';
+        loaderContainer.style.display = 'block';
         currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
         const popup = document.getElementById('board-filter-popup');
         if (popup) {
@@ -3459,6 +3373,14 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
                 const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
 
+                // --- КОРЕКЦИЯ: Предотвратяваме презареждане след "Отказ", САМО ако няма промени ---
+                // Ако сме отворили настройките чрез бутона "Отказ" И НЕ сме променили нищо,
+                // тогава не правим нищо повече.
+                if (isCancellingLoad && !hasChanged) {
+                    isCancellingLoad = false; // Нулираме флага за следващия път.
+                    return;
+                }
+
                 // Ако прозорецът е бил отворен принудително, презареждаме данните.
                 if (window.wasOpenedForMissingFolder) {
                     window.wasOpenedForMissingFolder = false; // Нулираме флага
@@ -3471,16 +3393,15 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             settingsModalBody.dataset.initialized = true;
     }
 
-        // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
-        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
-        if (advancedSettingsSpan) {
-            const showAdvanced = localStorage.getItem('showAdvancedSettings') === 'true';
-            advancedSettingsSpan.hidden = !showAdvanced;
-        }
+    // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
+    const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+    if (advancedSettingsSpan) {
+        const showAdvanced = localStorage.getItem('showAdvancedSettings') === 'true';
+        advancedSettingsSpan.hidden = !showAdvanced;
+    }
 
     }
 
-    // Асинхронно зареждане на името на папката за архив
     (async () => {
         const arhFolderNameDisplay = document.getElementById('arh-folder-name');
         const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
@@ -3531,6 +3452,399 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             } 
         });
         startBoardSelect.value = savedValue; // Задаваме правилната стойност
+    }
+
+    function renderCalendarView() {
+        document.querySelector('header').style.display = 'none';
+        notesContainer.style.display = 'none';
+        scrollTopBtn.style.display = 'none';
+        let calendarContainer = document.getElementById('calendar-container');
+        if (!calendarContainer) {
+            calendarContainer = document.createElement('div');
+            calendarContainer.id = 'calendar-container';
+            document.querySelector('main').appendChild(calendarContainer);
+        }
+        calendarContainer.style.display = 'block';
+        calendarContainer.innerHTML = ''; // Clear previous content
+        const year = currentCalendarDate.getFullYear();
+        const month = currentCalendarDate.getMonth();
+        const monthName = currentCalendarDate.toLocaleString(currentLang, { month: 'long' });
+        const titleText = `${monthName} ${year}`;
+
+        // Header
+        const calendarHeader = document.createElement('div');
+        calendarHeader.className = 'calendar-header';
+        calendarHeader.innerHTML = `
+            <div class="calendar-nav-controls">
+                <button class="close-calendar-btn">&times;</button>
+                <button id="prev-month-btn">&laquo;</button>
+                <button id="today-month-btn">${calendarIconSvg}</button>
+                <button id="next-month-btn">&raquo;</button>
+            </div>
+            <h2>${titleText}</h2>
+        `;
+        calendarContainer.appendChild(calendarHeader);
+        // Day names header
+        const daysHeader = document.createElement('div');
+        daysHeader.className = 'calendar-days-header';
+        const days = currentLang === 'bg' ? ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        days.forEach((day, index) => {
+            const dayEl = document.createElement('div');
+            dayEl.className = 'calendar-day-name';
+            const longName = document.createElement('span');
+            longName.className = 'day-name-long';
+            longName.textContent = day;
+            const shortName = document.createElement('span');
+            shortName.className = 'day-name-short';
+            shortName.textContent = day.substring(0, 3);
+
+            dayEl.appendChild(longName);
+            dayEl.appendChild(shortName);
+
+            if (index >= 5) {
+                dayEl.classList.add('weekend-day');
+            }
+            daysHeader.appendChild(dayEl);
+        });
+        calendarContainer.appendChild(daysHeader);
+        // Get today's date components for comparison
+        const today = new Date();
+        const todayDate = today.getDate();
+        const todayMonth = today.getMonth();
+        const todayYear = today.getFullYear();
+        const firstDayOfMonth = new Date(year, month, 1);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        let startingDay = firstDayOfMonth.getDay(); // 0=Sun, 1=Mon...
+        if (startingDay === 0) startingDay = 7; // Make Sunday 7
+        // Grid for the actual days
+        const calendarGrid = document.createElement('div');
+        calendarGrid.className = 'calendar-grid';
+        // Create blank cells for days before the 1st
+        for (let i = 1; i < startingDay; i++) {
+            const blankCell = document.createElement('div');
+            blankCell.className = 'calendar-cell-blank';
+            calendarGrid.appendChild(blankCell);
+        }
+        // Create cells for each day of the month
+        for (let day = 1; day <= daysInMonth; day++) {
+            const cell = document.createElement('div');
+            cell.className = 'calendar-cell';
+            const dateNum = document.createElement('div');
+            dateNum.className = 'calendar-date-number';
+            dateNum.textContent = day;
+            // Check if the cell being rendered is today's date
+            if (day === todayDate && month === todayMonth && year === todayYear) {
+                dateNum.classList.add('today-date');
+            }
+
+            // --- КОРЕКЦИЯ: Добавяме клик събитие за преход към седмичен изглед ---
+            dateNum.style.cursor = 'pointer';
+            dateNum.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const clickedDate = new Date(year, month, day);
+                calendarContainer.style.display = 'none'; // Затваряме месечния календар
+                renderWeeklyCalendarView(clickedDate);
+            });
+
+            cell.appendChild(dateNum);
+            const notesForDayContainer = document.createElement('div');
+            notesForDayContainer.className = 'calendar-notes-container';
+            // Find and render notes for this day 
+            const dayDate = new Date(year, month, day);
+            allNotesData.forEach(noteData => {
+                if (noteData.calendarDate) {
+                    const noteDate = new Date(noteData.calendarDate);
+                    if (noteDate.getFullYear() === dayDate.getFullYear() &&
+                        noteDate.getMonth() === dayDate.getMonth() &&
+                        noteDate.getDate() === dayDate.getDate()) {
+                        const miniNote = document.createElement('div');
+                        miniNote.className = 'calendar-mini-note';
+
+                        const noteContent = noteData.notetxt;
+                        const isHidden = noteData.pass === true;
+                        const isType1 = noteData.type === 1;
+
+                        if ((isHidden || isType1) && noteContent.includes('|')) {
+                            contentToShow = noteContent.split('|')[0].trim(); 
+                        } else {
+                            const lines = noteContent.split('\n');
+                            let firstNonEmptyLineIndex = -1;
+                            for (let i = 0; i < lines.length; i++) {
+                                if (lines[i].trim() !== '') {
+                                    firstNonEmptyLineIndex = i;
+                                    break;
+                                }
+                            }
+                            contentToShow = firstNonEmptyLineIndex !== -1 ? lines.slice(firstNonEmptyLineIndex).join('\n') : '...';
+                        }
+                        miniNote.textContent = contentToShow;
+                        if (noteData.color) {
+                             miniNote.style.backgroundColor = `var(--note-bg-${noteData.color})`;
+                        }
+                        miniNote.addEventListener('click', (e) => { 
+                            e.stopPropagation();
+                            showModal({ raw: noteData.notetxt, format: noteData.text_span, color: miniNote.style.backgroundColor });
+                        });
+                        notesForDayContainer.appendChild(miniNote);
+                    }
+                }
+            });
+            cell.appendChild(notesForDayContainer);
+            calendarGrid.appendChild(cell);
+        }
+        calendarContainer.appendChild(calendarGrid);
+        // Make mini-notes square by setting their height equal to their calculated width
+        // Use setTimeout to ensure the browser has rendered the elements before we measure them.
+        setTimeout(() => {
+            document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
+                const width = miniNote.getBoundingClientRect().width;
+                if (width > 0) miniNote.style.height = `${width}px`;
+            });
+        }, 0);
+        // Event Listeners
+        document.getElementById('prev-month-btn').addEventListener('click', () => {
+            currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+            renderCalendarView();
+        });
+
+        // --- КОРЕКЦИЯ: Добавяме event listener за бутона "Днес" ---
+        document.getElementById('today-month-btn').addEventListener('click', () => {
+            currentCalendarDate = new Date(); // Връщаме се към днешна дата
+            renderCalendarView(); // Прерисуваме календара
+        });
+
+        document.getElementById('next-month-btn').addEventListener('click', () => {
+            currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+            renderCalendarView();
+        });
+        document.querySelectorAll('.close-calendar-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                calendarContainer.style.display = 'none';
+                document.querySelector('header').style.display = 'flex';
+                notesContainer.style.display = 'flex';
+                filterNotesByBoard('all', true); // Go back to all notes view
+                window.dispatchEvent(new Event('scroll')); // Trigger scroll to show/hide scrollTopBtn
+            });
+        });
+    }
+
+    /**
+     * Рендира алтернативен, списъчен (седмичен) изглед на календара.
+     */
+    function renderWeeklyCalendarView(dateForWeek) {
+        document.querySelector('header').style.display = 'none';
+        notesContainer.style.display = 'none';
+        scrollTopBtn.style.display = 'none';
+
+        let startDate;
+        if (!dateForWeek) {
+            // Ако не е подадена дата, използваме днешната, за да намерим текущата седмица
+            dateForWeek = new Date();
+        } else {
+            currentWeeklyViewDate = dateForWeek; // Обновяваме глобалното състояние
+        }
+
+        const tempDate = new Date(dateForWeek);
+        const day = tempDate.getDay();
+        const diff = tempDate.getDate() - day + (day === 0 ? -6 : 1);
+        startDate = new Date(tempDate.setDate(diff));
+        startDate.setHours(0, 0, 0, 0);
+
+        let weeklyContainer = document.getElementById('weekly-calendar-container');
+        if (!weeklyContainer) {
+            weeklyContainer = document.createElement('div');
+            weeklyContainer.id = 'weekly-calendar-container';
+            document.querySelector('main').appendChild(weeklyContainer);
+        }
+        weeklyContainer.style.display = 'flex'; // Променяме на flex за по-добър контрол
+        weeklyContainer.style.flexDirection = 'column';
+        weeklyContainer.innerHTML = ''; // Изчистваме предишното съдържание
+
+        // --- КОРЕКЦИЯ: Генериране на динамично заглавие с месеца(ите) ---
+        const endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6); // Крайната дата на 7-дневния период
+
+        const startMonthName = startDate.toLocaleString(currentLang, { month: 'long' });
+        const endMonthName = endDate.toLocaleString(currentLang, { month: 'long' });
+        const startYear = startDate.getFullYear();
+        const endYear = endDate.getFullYear();
+
+        let titleText;
+        if (startMonthName === endMonthName) {
+            titleText = `${startMonthName} ${startYear}`;
+        } else if (startYear === endYear) {
+            titleText = `${startMonthName} - ${endMonthName} ${startYear}`;
+        } else {
+            titleText = `${startMonthName} ${startYear} - ${endMonthName} ${endYear}`;
+        }
+
+        // Създаваме хедър с бутон за затваряне
+        const header = document.createElement('div');
+        header.className = 'calendar-header'; // Използваме същия стил като другия календар
+        header.innerHTML = `<div class="calendar-nav-controls"><button class="close-calendar-btn">&times;</button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button></div><h2>${titleText}</h2>`;
+        weeklyContainer.appendChild(header);
+
+        // --- КОРЕКЦИЯ: Добавяме клик събитие за преход към месечен изглед ---
+        const titleElement = header.querySelector('h2');
+        titleElement.addEventListener('click', () => {
+            weeklyContainer.style.display = 'none'; // Затваряме седмичния изглед
+            currentCalendarDate = new Date(startDate); // Задаваме месеца, който да се покаже
+            renderCalendarView(); // Отваряме месечния изглед
+        });
+
+        header.querySelector('.close-calendar-btn').addEventListener('click', () => {
+            weeklyContainer.style.display = 'none';
+            document.querySelector('header').style.display = 'flex';
+            notesContainer.style.display = 'flex';
+            filterNotesByBoard('all', true);
+            window.dispatchEvent(new Event('scroll'));
+        });
+
+        header.querySelector('#prev-week-btn').addEventListener('click', () => {
+            const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
+            newStartDate.setDate(newStartDate.getDate() - 7); // Връщаме 7 дни назад
+            renderWeeklyCalendarView(newStartDate);
+        });
+
+        header.querySelector('#next-week-btn').addEventListener('click', () => {
+            const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
+            newStartDate.setDate(newStartDate.getDate() + 7); // Отиваме 7 дни напред
+            renderWeeklyCalendarView(newStartDate);
+        });
+
+        header.querySelector('#today-week-btn').addEventListener('click', () => {
+            renderWeeklyCalendarView(); // Показваме текущата седмица от понеделник
+        });
+
+        // Групираме бележките по дата
+        const notesByDate = new Map();
+        allNotesData.forEach(noteData => { 
+            if (noteData.calendarDate) {
+                const dateStr = new Date(noteData.calendarDate).toISOString().split('T')[0];
+                if (!notesByDate.has(dateStr)) {
+                    notesByDate.set(dateStr, []); 
+                }
+                notesByDate.get(dateStr).push(noteData.gdid);
+            }
+        });
+
+        const listContainer = document.createElement('div');
+        listContainer.className = 'weekly-list-container';
+        weeklyContainer.appendChild(listContainer);
+
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const daysToRender = 7; // Показваме 7 дни наведнъж
+        let todayRowElement = null;
+        let weekHasNotes = false; // Флаг, който проверява дали в седмицата има бележки
+
+        // Първо обхождаме, за да проверим дали има поне един ден с бележки
+        for (let i = 0; i < daysToRender; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+            const dateStr = date.toISOString().split('T')[0];
+            if (notesByDate.has(dateStr)) {
+                weekHasNotes = true;
+                break;
+            }
+        }
+
+        for (let i = 0; i < daysToRender; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+
+            const dateStr = date.toISOString().split('T')[0];
+            const noteGdimsForDay = notesByDate.get(dateStr);
+
+            const dayRow = document.createElement('div');
+            dayRow.className = 'weekly-day-row';
+            if (date.getTime() === today.getTime()) {
+                dayRow.classList.add('today-row');
+                todayRowElement = dayRow; // Запазваме елемента за днешния ден
+            }
+
+            const dateInfo = document.createElement('div');
+            dateInfo.className = 'weekly-date-info';
+
+            // --- КОРЕКЦИЯ: Добавяме клас за почивните дни ---
+            const dayOfWeek = date.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Неделя, 6 = Събота
+                dateInfo.classList.add('weekend-day');
+            }
+
+            dateInfo.innerHTML = `
+                <div class="weekly-date-number">${date.getDate()}</div>
+                <div class="weekly-day-name">${date.toLocaleString(currentLang, { weekday: 'long' })}</div>
+            `;
+            dayRow.appendChild(dateInfo);
+
+            const notesContainerForRow = document.createElement('div');
+            notesContainerForRow.className = 'weekly-notes-container';
+
+            if (noteGdimsForDay) {
+                noteGdimsForDay.forEach(gdid => {
+                    const originalNote = document.querySelector(`.note[data-extra-info*='"gdid":"${gdid}"']`);
+                    if (originalNote) {
+                        const clone = originalNote.cloneNode(true);
+                        clone.classList.add('mini-note');
+                        // --- КОРЕКЦИЯ: Копираме съдържанието на canvas-а ---
+                        const originalCanvas = originalNote.querySelector('.note-background-canvas');
+                        const clonedCanvas = clone.querySelector('.note-background-canvas');
+                        if (originalCanvas && clonedCanvas) {
+                            const clonedCtx = clonedCanvas.getContext('2d');
+                            clonedCtx.drawImage(originalCanvas, 0, 0);
+                        }
+
+                        // --- КОРЕКЦИЯ: Опаковаме клонинга в div с фиксирани размери ---
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'mini-note-wrapper';
+                        wrapper.appendChild(clone);
+
+                        // --- КОРЕКЦИЯ: Добавяме event listener, който задейства клика на оригинала ---
+                        wrapper.addEventListener('click', (e) => {
+                            e.stopPropagation(); // Предотвратяваме други събития
+                            originalNote.click(); // Задействаме оригиналния клик
+                        });
+
+                        // --- КОРЕКЦИЯ: Гарантираме, че клонираната бележка винаги е видима ---
+                        clone.style.display = 'flex';
+                        notesContainerForRow.appendChild(wrapper);
+                    }
+                });
+            } else {
+                if (weekHasNotes) {
+                    dateInfo.classList.add('no-notes-day');
+                } else {
+                    dayRow.style.paddingBottom = '5px';
+                }
+            }
+            dayRow.appendChild(notesContainerForRow);
+            listContainer.appendChild(dayRow);
+        }
+
+        // Скролираме до днешния ден, ако е видим
+        if (todayRowElement) {
+            todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // --- КОРЕКЦИЯ: Добавяме брояч, ако има повече бележки ---
+        // Тази проверка се прави след като елементите са в DOM, за да има реални размери.
+        listContainer.querySelectorAll('.weekly-day-row').forEach(row => {
+            const notesContainer = row.querySelector('.weekly-notes-container');
+            if (notesContainer) {
+                // Проверяваме дали има хоризонтален скрол
+                const hasOverflow = notesContainer.scrollWidth > notesContainer.clientWidth;
+                if (hasOverflow) {
+                    const totalNotes = notesContainer.children.length;
+                    const dateInfo = row.querySelector('.weekly-date-info');
+                    if (dateInfo && !dateInfo.querySelector('.weekly-note-counter')) {
+                        const counter = document.createElement('div');
+                        counter.className = 'weekly-note-counter';
+                        counter.textContent = `(${totalNotes})`;
+                        dateInfo.appendChild(counter);
+                    }
+                }
+            }
+        });
     }
 
     function escapeHtml(text) {
@@ -3906,7 +4220,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         attachmentWrapper.prepend(iconDiv);
     }
 
-    async function createNoteElement(noteContent) {
+        async function createNoteElement(noteContent) {
         const note = document.createElement('div');
         note.className = 'note note-item';
         let fileContent = '';
@@ -4154,10 +4468,31 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
                 showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
             }
+            isLongPress = false; // Нулираме флага след клик
         };
  
         // Обработва клик върху хедъра (за изтриване)
-        const handleHeaderClick = (e) => { if (e.ctrlKey) handleNoteDelete(note, e); };
+        const handleHeaderClick = (e) => {
+            if (e.ctrlKey) handleNoteDelete(note, e);
+        };
+ 
+        const startPress = (e) => {
+            isLongPress = false;
+            // Стартираме таймер само за long press
+            const targetNoteElement = e.currentTarget;
+            longPressTimer = setTimeout(() => {
+                isLongPress = true; handleNoteDelete(targetNoteElement, e);
+            }, 500);
+        };
+
+        const endPress = (e) => {
+            clearTimeout(longPressTimer);
+            // Ако е било кратко натискане (не long press) върху хедъра, не правим нищо,
+            // за да не се отвори модалът.
+            if (!isLongPress && e.currentTarget === titleWrapper) {
+                e.stopPropagation();
+            }
+        };
 
         // Закачаме събитията за изтриване само за хедъра
         titleWrapper.addEventListener('click', handleHeaderClick);
@@ -4220,6 +4555,260 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
 
         return note;
     }
+
+    async function createColoredNoteBackground(color, src, width, height) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.src = (src >= 0 && src < noteBackgrounds.length)
+                ? noteBackgrounds[src]
+                : 'stl1_1.png';
+            image.onload = () => {
+                const canvas = document.createElement('canvas');
+                const w = canvas.width = width;
+                const h = canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = color;
+                ctx.fillRect(0, 0, w, h);
+                ctx.globalCompositeOperation = 'destination-in';
+                ctx.drawImage(image, 0, 0, w, h);
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.drawImage(image, 0, 0, w, h);
+                resolve(canvas); // Return the canvas element directly
+            };
+            image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+        });
+    }
+
+/**
+ * Отваря IndexedDB базата данни.
+ * @returns {Promise<IDBDatabase>}
+ */
+function openNotesDB() {
+    // --- КОРЕКЦИЯ: Предотвратяване на множество отворени връзки ---
+    // Ако вече имаме отворена и валидна връзка, използваме нея,
+    // вместо да отваряме нова, която може да блокира изтриването.
+    if (window.db && window.db.version) {
+        return Promise.resolve(window.db);
+    }
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
+                db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
+            }
+            if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+                db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
+            }
+            if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
+                db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
+            }
+            if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
+                db.createObjectStore(CONFIG_STORE_NAME);
+            }
+            console.log("NotesDB structure is up to date.");
+        };
+        request.onsuccess = (event) => {
+            // Запазваме отворената връзка в глобална променлива
+            window.db = event.target.result;
+            resolve(window.db);
+        };
+        request.onerror = (event) => reject("Error opening NotesDB: " + event.target.errorCode);
+    });
+}
+
+/**
+ * Записва (или обновява) масив от обекти в даден store.
+ * @param {string} storeName - Името на object store.
+ * @param {Array<Object>} data - Масив от данни за запис.
+ * @param {boolean} incremental - Ако е true, не изчиства store-a преди запис (put).
+ * @returns {Promise<void>}
+ */
+async function bulkPutDB(storeName, data, incremental = false) {
+    // Ако данните не са масив, ги превръщаме в такъв.
+    if (data && !Array.isArray(data)) {
+        data = [data];
+    }
+    if (!data || data.length === 0) return;
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const putData = () => {
+            data.forEach(item => {
+                store.put(item);
+            });
+        };
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = (event) => reject("DB Transaction Error: " + event.target.error);
+        if (incremental) {
+            putData();
+        } else {
+            store.clear().onsuccess = putData;
+        }
+    });
+}
+
+/**
+ * Извлича всички записи от даден store.
+ * @param {string} storeName - Името на object store.
+ * @returns {Promise<Array<Object>>}
+ */
+async function getAllFromDB(storeName) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.getAll();
+        request.onsuccess = (event) => resolve(event.target.result);
+        request.onerror = (event) => reject(`Error in getAllFromDB (${storeName}): ` + event.target.error);
+    });
+}
+
+/**
+ * Извлича единичен запис от даден store по ключ.
+ * @param {string} storeName - Името на object store.
+ * @param {any} key - Ключът на записа за извличане.
+ * @returns {Promise<Object|undefined>}
+ */
+async function getFromDB(storeName, key) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.get(key);
+        request.onsuccess = (event) => resolve(event.target.result);
+        request.onerror = (event) => reject(`Error in getFromDB (${storeName}): ` + event.target.error);
+    });
+}
+/**
+ * Запазва стойност в config store-a.
+ * @param {string} key - Ключ (напр. 'directoryHandle', 'lastLocalTimestamp').
+ * @param {*} value - Стойността за запис.
+ */
+async function saveConfig(key, value) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(CONFIG_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(CONFIG_STORE_NAME);
+        const request = store.put(value, key);
+        request.onsuccess = () => resolve();
+        request.onerror = (event) => reject('Error saving to config: ' + event.target.error);
+    });
+}
+
+/**
+ * Извлича стойност от config store-a.
+ * @param {string} key - Ключът за извличане.
+ * @returns {Promise<*>} - Стойността или undefined, ако не съществува.
+ */
+async function getConfig(key) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(CONFIG_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(CONFIG_STORE_NAME);
+        const request = store.get(key);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = (event) => reject('Error getting from config: ' + event.target.error);
+    });
+}
+
+/**
+ * Checks if an IndexedDB database exists.
+ * @param {string} dbName The name of the database.
+ * @returns {Promise<boolean>}
+ */
+async function checkDbExists(dbName) {
+    // The modern `databases()` method is the most reliable.
+    if (window.indexedDB.databases) {
+        const dbs = await indexedDB.databases();
+        return dbs.some(db => db.name === dbName);
+    }
+    // Fallback for older browsers that don't support `databases()`.
+    console.warn("checkDbExists: indexedDB.databases() is not supported. Using a fallback check.");
+    return new Promise(resolve => {
+        const req = indexedDB.open(dbName);
+        let existed = true;
+        req.onupgradeneeded = () => {
+            existed = false; // This event is only triggered if the DB doesn't exist or needs upgrading.
+        };
+        req.onsuccess = () => {
+            req.result.close();
+            // If the DB was created just now, delete it to leave no trace.
+            if (!existed) {
+                indexedDB.deleteDatabase(dbName);
+            }
+            resolve(existed);
+        };
+        // If we can't even open it, assume it doesn't exist or is inaccessible.
+        req.onerror = () => resolve(false);
+    });
+}
+
+function deleteNotesDB() {
+    // --- КОРЕКЦИЯ: По-надеждно изтриване на базата данни ---
+    // Първо затваряме всички известни връзки и изчакваме малко,
+    // за да дадем време на браузъра да освободи ресурсите, преди да изтрием.
+    // Това предотвратява 'onblocked' събитието.
+    return new Promise((resolve, reject) => {
+        if (window.db) {
+            window.db.close();
+            window.db = null;
+            console.log('Database connection closed.');
+        }
+        // Изчакваме съвсем кратко, за да се обработи затварянето.
+        setTimeout(() => {
+            console.log(`Attempting to delete database: ${NOTES_DB_NAME}`);
+            const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+            deleteRequest.onsuccess = () => { console.log(`Database '${NOTES_DB_NAME}' deleted successfully.`); resolve(); };
+            deleteRequest.onerror = (event) => { console.error('Error deleting database:', event.target.error); reject(event.target.error); };
+            deleteRequest.onblocked = (event) => { console.warn('Database deletion is blocked.', event); showToast(_('errorDbDeletionBlocked'), 10000); reject(new Error('Database deletion blocked.')); };
+        }, 100); // 100ms закъснение е достатъчно.
+    });
+}
+
+/**
+ * Deletes the entire IndexedDB database.
+ * @returns {Promise<void>}
+ */
+async function clearDbStores() {
+    try {
+        const db = await openNotesDB();
+        const storesToClear = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME];
+        const transaction = db.transaction(storesToClear, 'readwrite');
+
+        const clearPromises = storesToClear.map(storeName => {
+            return new Promise((resolve, reject) => {
+                const request = transaction.objectStore(storeName).clear();
+                request.onsuccess = resolve;
+                request.onerror = reject;
+            });
+        });
+
+        await Promise.all(clearPromises);
+        console.log('Data stores cleared, config preserved.');
+    } catch (error) {
+        console.error('Failed to clear data stores:', error);
+        showToast(_('dbDeleteFailed'), 10000);
+    }
+}
+
+/**
+ * Deletes a single record from a specified store by its key.
+ * @param {string} storeName - The name of the object store.
+ * @param {any} key - The key of the record to delete.
+ * @returns {Promise<void>}
+ */
+async function deleteFromDB(storeName, key) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.delete(key);
+        request.onsuccess = () => resolve();
+        request.onerror = (event) => reject(`Error deleting from ${storeName}: ` + event.target.error);
+    });
+}
 
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Изчистваме бележките само ако не презареждаме единствено менюто
