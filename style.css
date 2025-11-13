@@ -630,14 +630,6 @@ pre, code {
     box-sizing: border-box;
 }
 
-#copy-modal-btn {
-    right: 151px;
-}
-
-#calculate-modal-btn {
-    right: 193px; /* 57px (copy) + 32px (width) + 10px (gap) */
-}
-
 #copy-modal-btn svg {
     width: 16px;
     height: 16px;
@@ -655,7 +647,9 @@ pre, code {
 /* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
 #prev-note-btn { right: 99px; }
 #next-note-btn { right: 57px; } /* 57px + 32px + 10px */
-
+#copy-modal-btn { right: 151px; }
+#calculate-modal-btn { right: 193px; /* 57px (copy) + 32px (width) + 10px (gap) */ }
+#delete-modal-btn { right: 235px; /* 193px + 32px + 10px */ }
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
 #calculate-modal-btn svg {
@@ -1041,8 +1035,8 @@ pre, code {
     visibility: hidden; /* Hidden by default. */
     min-width: 250px; /* Set a default minimum width */
     transform: translateX(-50%);
-    background-color: #333; /* Black background color */
-    color: #fff; /* White text color */
+    background-color: #FBCB39;
+    color: #000;
     text-align: center; /* Centered text */
     border-radius: 8px; /* Rounded borders */
     padding: 16px; /* Padding */
@@ -1052,6 +1046,7 @@ pre, code {
     bottom: 30px; /* 30px from the bottom */
     font-size: 1.1em;
     box-shadow: 0 4px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);
+    cursor: pointer;
 }
 
 /* Show the toast notification when it has the 'show' class */
@@ -1754,4 +1749,43 @@ pre, code {
 
 .mini-note .note-background-canvas {
     z-index: -1; /* Гарантира, че фонът е зад съдържанието */
+}
+
+#search-wrapper {
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+.search-mode-btn {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.search-mode-btn svg {
+    width: 20px;
+    height: 20px;
+    stroke: #555;
+}
+#search-box {
+    padding-left: 35px !important; /* Make space for the icon */
+}
+.settings-icon-label {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Разстояние между иконата и текста */
+    margin-right: 10px;
+}
+.accordion-line {
+    flex-grow: 1; /* Линията заема останалото пространство */
+    border: none; /* Премахва стандартния стил на <hr> */
+    border-top: 1px solid #000; /* Добавя тънка линия */
+    margin-left: 10px; /* Разстояние между стрелката и линията */
 }
