@@ -1385,29 +1385,6 @@ let debug = true; // Глобален флаг за дебъг режим
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
      */
     async function mainLogic() {
-        // --- НОВА ЛОГИКА: Проверка за принудително изтриване при зареждане ---
-        if (sessionStorage.getItem('forceDeleteDb') === 'true') {
-            sessionStorage.removeItem('forceDeleteDb'); // Изчистваме флага веднага
-            console.log('Force delete flag detected. Deleting database now.');
-            
-            // Показваме лоудъра, докато трае изтриването
-            initializeLoad();
-            loaderText.textContent = 'Изтриване на базата данни...';
-
-            const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
-            deleteRequest.onsuccess = () => {
-                console.log('Database deleted successfully after reload.');
-                showToast(_('dbDeleted'), 5000);
-                // Презареждаме отново, за да започнем начисто.
-                setTimeout(() => window.location.reload(), 1000);
-            };
-            deleteRequest.onerror = (event) => {
-                console.error('Failed to delete database after reload:', event.target.error);
-                showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000);
-            };
-            return; // Прекратяваме изпълнението на mainLogic, докато изтриването приключи.
-        }
-
         dbSourceGlobal = null; // Нулираме глобалните променливи
         isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
         updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
@@ -3334,6 +3311,14 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
 
             const deleteDbBtn = document.getElementById('delete-db-btn');
             deleteDbBtn.addEventListener('click', async () => {
+                // --- КОРЕКЦИЯ: Запомняме дали сме в режим "Само база данни" ПРЕДИ изтриването ---
+                const isDbOnlyMode = 
+                    document.getElementById('use-indexeddb-checkbox').checked &&
+                    !document.getElementById('use-google-db-checkbox').checked &&
+                    !document.getElementById('use-local-db-checkbox').checked &&
+                    !document.getElementById('use-arh-db-checkbox').checked;
+
+                // Затваряме настройките, за да се видят диалозите за потвърждение
                 document.getElementById('settings-modal').classList.remove('visible');
                 // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
                 await new Promise(resolve => setTimeout(resolve, 150));
@@ -3363,11 +3348,21 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                         // Потребителят иска да изтрие само данните, но да запази настройките
                         await clearDbStores();
                     }
-                showToast(_('dbDeleted'), 10000);
-                // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
-                localStorage.removeItem('startBoard');
+                    // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
+                    localStorage.removeItem('startBoard');
+
+                    // --- КОРЕКЦИЯ: Обработка на случая "Само база данни" ---
+                    if (isDbOnlyMode) {
+                        showToast(_('dbDeleted'), 5000); // Показваме съобщението
+                        // Премахваме отметката и записваме промяната
+                        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+                        useIndexedDbCheckbox.checked = false;
+                        localStorage.setItem('useIndexedDb', 'false');
+                        // Отваряме настройките отново, за да може потребителят да избере нов източник
+                        document.getElementById('settings-modal').classList.add('visible');
+                    }
                 }
-                // Независимо от избора, ако изтриването е успешно, активираме контролите
+                // Активираме контролите, в случай че са били деактивирани от userCheck
                 enableSettingsControls();
             });
 
@@ -4101,7 +4096,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
         let longPressTimer;
         let isLongPress = false;
- 
+
         const handleNoteDelete = async (noteEl, e) => {
             e.stopPropagation();
             e.preventDefault();

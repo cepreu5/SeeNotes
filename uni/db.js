@@ -1,12 +1,12 @@
     /**
      * Обработва изтриването на бележка.
      * @param {HTMLElement} noteEl - DOM елементът на бележката.
-     * @param {Event} e - Обектът на събитието.
+     * @param {Event} [e] - Обектът на събитието (опционален).
      * @param {boolean} fromModal - Дали функцията се извиква от модалния прозорец.
      */
-    async function handleNoteDelete(noteEl, e, fromModal = false) {
-        e.stopPropagation();
-        e.preventDefault();
+    async function handleNoteDelete(noteEl, e = null, fromModal = false) {
+        if (e) e.stopPropagation();
+        if (e) e.preventDefault();
 
         if (!useIndexedDb) return; // Изтриването работи само с база данни
 
@@ -14,16 +14,18 @@
         const noteGdid = extraInfo.gdid;
         if (!noteGdid) return;
 
+        // Ако е извикано от модала, първо го затваряме.
+        if (fromModal) {
+            document.getElementById('content-modal').classList.remove('visible');
+            // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
+            await new Promise(resolve => setTimeout(resolve, 150));
+        }
+
         const confirmed = await showConfirmation(_('confirmNoteDelete'));
         if (confirmed) {
             try {
                 await deleteFromDB(NOTE_STORE_NAME, noteGdid);
                 noteEl.remove();
-
-                // Ако е извикано от модала, затваряме го
-                if (fromModal) {
-                    document.getElementById('content-modal').classList.remove('visible');
-                }
 
                 // Актуализираме общия брояч
                 const noteCounter = document.getElementById('note-counter');
@@ -31,13 +33,16 @@
 
                 // Актуализираме брояча на борда
                 const boardIdOfDeletedNote = extraInfo.boardid;
-                const boardGdid = boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid || boardIdOfDeletedNote;
-                if (boardGdid) {
-                    const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardGdid}"]`);                    
+                // В режим Архив, boardid е число. В другите режими е gdid.
+                // Бутоните в менюто винаги използват gdid като data-boardid.
+                // Затова, ако сме в Архив, намираме gdid-то на борда по неговото id.
+                const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
+                if (boardGdidToUpdate) {
+                    const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardGdidToUpdate}"]`);
                     if (boardButton) {
                         const match = boardButton.textContent.match(/(.*)\s\((\d+)\)/);
                         if (match) {
-                            const boardName = match[1];
+                            const boardName = match[1].trim();
                             const currentCount = parseInt(match[2], 10);
                             boardButton.textContent = (currentCount > 1) ? `${boardName} (${currentCount - 1})` : boardName;
                         }
@@ -81,12 +86,6 @@
  * @returns {Promise<IDBDatabase>}
  */
 function openNotesDB() {
-    // --- КОРЕКЦИЯ: Предотвратяване на множество отворени връзки ---
-    // Ако вече имаме отворена и валидна връзка, използваме нея,
-    // вместо да отваряме нова, която може да блокира изтриването.
-    if (window.db && window.db.version) {
-        return Promise.resolve(window.db);
-    }
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
         request.onupgradeneeded = (event) => {
@@ -106,9 +105,7 @@ function openNotesDB() {
             console.log("NotesDB structure is up to date.");
         };
         request.onsuccess = (event) => {
-            // Запазваме отворената връзка в глобална променлива
-            window.db = event.target.result;
-            resolve(window.db);
+            resolve(event.target.result);
         };
         request.onerror = (event) => reject("Error opening NotesDB: " + event.target.errorCode);
     });
@@ -129,19 +126,24 @@ async function bulkPutDB(storeName, data, incremental = false) {
     if (!data || data.length === 0) return;
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        const putData = () => {
-            data.forEach(item => {
-                store.put(item);
-            });
-        };
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = (event) => reject("DB Transaction Error: " + event.target.error);
-        if (incremental) {
-            putData();
-        } else {
-            store.clear().onsuccess = putData;
+        try {
+            const transaction = db.transaction([storeName], 'readwrite');
+            const store = transaction.objectStore(storeName);
+            const putData = () => {
+                data.forEach(item => store.put(item));
+            };
+            transaction.oncomplete = () => { db.close(); resolve(); };
+            transaction.onerror = (event) => { db.close(); reject("DB Transaction Error: " + event.target.error); };
+            transaction.onabort = () => db.close(); // Затваряме и при прекратяване
+
+            if (incremental) {
+                putData();
+            } else {
+                store.clear().onsuccess = putData;
+            }
+        } catch (error) {
+            db.close();
+            reject(error);
         }
     });
 }
@@ -154,11 +156,18 @@ async function bulkPutDB(storeName, data, incremental = false) {
 async function getAllFromDB(storeName) {
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readonly');
-        const store = transaction.objectStore(storeName);
-        const request = store.getAll();
-        request.onsuccess = (event) => resolve(event.target.result);
-        request.onerror = (event) => reject(`Error in getAllFromDB (${storeName}): ` + event.target.error);
+        try {
+            const transaction = db.transaction([storeName], 'readonly');
+            const store = transaction.objectStore(storeName);
+            const request = store.getAll();
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => reject(`Error in getAllFromDB (${storeName}): ` + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
     });
 }
 
@@ -171,11 +180,18 @@ async function getAllFromDB(storeName) {
 async function getFromDB(storeName, key) {
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readonly');
-        const store = transaction.objectStore(storeName);
-        const request = store.get(key);
-        request.onsuccess = (event) => resolve(event.target.result);
-        request.onerror = (event) => reject(`Error in getFromDB (${storeName}): ` + event.target.error);
+        try {
+            const transaction = db.transaction([storeName], 'readonly');
+            const store = transaction.objectStore(storeName);
+            const request = store.get(key);
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => reject(`Error in getFromDB (${storeName}): ` + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
     });
 }
 
@@ -187,11 +203,18 @@ async function getFromDB(storeName, key) {
 async function saveConfig(key, value) {
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
-        const transaction = db.transaction(CONFIG_STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(CONFIG_STORE_NAME);
-        const request = store.put(value, key);
-        request.onsuccess = () => resolve();
-        request.onerror = (event) => reject('Error saving to config: ' + event.target.error);
+        try {
+            const transaction = db.transaction(CONFIG_STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(CONFIG_STORE_NAME);
+            const request = store.put(value, key);
+            request.onsuccess = () => resolve();
+            request.onerror = (event) => reject('Error saving to config: ' + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
     });
 }
 
@@ -203,11 +226,18 @@ async function saveConfig(key, value) {
 async function getConfig(key) {
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
-        const transaction = db.transaction(CONFIG_STORE_NAME, 'readonly');
-        const store = transaction.objectStore(CONFIG_STORE_NAME);
-        const request = store.get(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (event) => reject('Error getting from config: ' + event.target.error);
+        try {
+            const transaction = db.transaction(CONFIG_STORE_NAME, 'readonly');
+            const store = transaction.objectStore(CONFIG_STORE_NAME);
+            const request = store.get(key);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = (event) => reject('Error getting from config: ' + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
     });
 }
 
@@ -244,23 +274,15 @@ async function checkDbExists(dbName) {
 }
 
 function deleteNotesDB() {
-    // --- НОВА КОРЕКЦИЯ: Принудително затваряне на всички връзки чрез презареждане ---
-    // За да гарантираме, че абсолютно всички връзки към базата данни са затворени,
-    // презареждаме страницата със специален флаг. При следващото зареждане,
-    // приложението ще види флага и ще изтрие базата, преди да отвори нови връзки.
-    // Това е най-надеждният начин за избягване на 'onblocked' събитието.
-    return new Promise((resolve, reject) => {
-        // Задаваме флаг в sessionStorage, който ще бъде прочетен веднага след презареждането.
-        sessionStorage.setItem('forceDeleteDb', 'true');
-        
-        // Показваме съобщение на потребителя, че страницата ще се презареди.
-        showToast('Презареждане за изтриване на базата данни...', 5000);
-
-        // Изчакваме малко, за да може потребителят да види съобщението, и презареждаме.
-        setTimeout(() => {
-            window.location.reload();
-        }, 1500);
-    });
+    // --- ОКОНЧАТЕЛНА КОРЕКЦИЯ: Директно изтриване ---
+    // Тъй като вече не поддържаме постоянна отворена връзка,
+    // можем директно да извикаме изтриването.
+    const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+    deleteRequest.onsuccess = () => {
+        showToast(_('dbDeleted'), 3000);
+    };
+    deleteRequest.onerror = (event) => { showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000); };
+    deleteRequest.onblocked = (event) => { showToast(_('errorDbDeletionBlocked'), 10000); console.error('Database deletion is blocked unexpectedly:', event); };
 }
 
 /**
@@ -298,10 +320,17 @@ async function clearDbStores() {
 async function deleteFromDB(storeName, key) {
     const db = await openNotesDB();
     return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        const request = store.delete(key);
-        request.onsuccess = () => resolve();
-        request.onerror = (event) => reject(`Error deleting from ${storeName}: ` + event.target.error);
+        try {
+            const transaction = db.transaction([storeName], 'readwrite');
+            const store = transaction.objectStore(storeName);
+            const request = store.delete(key);
+            request.onsuccess = () => resolve();
+            request.onerror = (event) => reject(`Error deleting from ${storeName}: ` + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
     });
 }

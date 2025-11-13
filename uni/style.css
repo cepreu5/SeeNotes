@@ -1750,3 +1750,42 @@ pre, code {
 .mini-note .note-background-canvas {
     z-index: -1; /* Гарантира, че фонът е зад съдържанието */
 }
+
+#search-wrapper {
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+.search-mode-btn {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.search-mode-btn svg {
+    width: 20px;
+    height: 20px;
+    stroke: #555;
+}
+#search-box {
+    padding-left: 35px !important; /* Make space for the icon */
+}
+.settings-icon-label {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Разстояние между иконата и текста */
+    margin-right: 10px;
+}
+.accordion-line {
+    flex-grow: 1; /* Линията заема останалото пространство */
+    border: none; /* Премахва стандартния стил на <hr> */
+    border-top: 1px solid #000; /* Добавя тънка линия */
+    margin-left: 10px; /* Разстояние между стрелката и линията */
+}
