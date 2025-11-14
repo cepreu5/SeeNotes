@@ -25,7 +25,7 @@ let debug = true; // Глобален флаг за дебъг режим
     let currentCalendarDate = new Date();
     let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
     let authToken = null;
-    let tokenClient;
+    let token, pass = false; // tokenClient, 
     let dirHandle = null; // За локален достъп до файловата система
     let isInitialLoad = true; // Флаг за първоначално зареждане
     let isLoadCancelled = false; // Флаг за прекратяване на зареждането
@@ -102,11 +102,19 @@ let debug = true; // Глобален флаг за дебъг режим
     ];
 
 // =================================================================================
+// MODULES
+// =================================================================================
+
+// =================================================================================
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
 
     // --- Основна стартова функция ---
     async function startApp() {
+        // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
+        document.body.style.display = 'block';
+        initApp(); // Инициализира UI елементите и event listeners
+
         // --- Задаване на настройки по подразбиране при първо стартиране ---
         // Ако никога не са задавани настройки за източник на данни,
         // избираме Google Drive + База данни по подразбиране.
@@ -119,33 +127,25 @@ let debug = true; // Глобален флаг за дебъг режим
         // Това е критично, за да може userCheck() да работи правилно.
         dbExists = await checkDbExists(NOTES_DB_NAME);
 
-        // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-        // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
-        const tokenData = checkAuth();
-        if (!tokenData) {
+        // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
+        const authResult = await checkAuth();
+        if (!authResult || !authResult.pass) {
             if (isLoadCancelled) return; // Не прави нищо, ако е отказано
             loaderContainer.style.display = 'none';
-            return; // Прекратяваме, checkAuth вече е пренасочил.
+            // checkAuth вече е показал грешка или е пренасочил
+            return;
         }
-        authToken = tokenData;
-
-        // Проверяваме за съвпадение на потребителя, ако има локална база.
-        // Тази функция може да промени настройките в localStorage.
-        // await userCheck();
-        // if (isLoadCancelled) return;
+        authToken = authResult.tokenData;
         // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
         updateGlobalStateFlags();
 
-        // Първо инициализираме UI, за да се покаже веднага
-        document.body.style.display = 'block';
-        initApp(); // Инициализира UI елементите и event listeners
         await createBoardsUI([], false);
         await createSettingsUI([], false); // Предварително създава UI на настройките
 
         // Проверката за потребител и основната логика се извикват директно.
         // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
         // само ако е необходимо.
-        mainLogic();
+        await mainLogic();
     }
 
     function _(key) {
@@ -420,15 +420,12 @@ let debug = true; // Глобален флаг за дебъг режим
                 const key = element.getAttribute('data-key-placeholder');
                 element.placeholder = _(key);
             });
-            // 🔐 Вградена декрипция (скрита логика) - да се изпълни при изтекъл срок или невалиден мейл
-            // document.querySelectorAll('*').forEach(el => el.remove());
             document.querySelectorAll('[data-key-title]').forEach(element => {
                 const key = element.getAttribute('data-key-title');
                 element.title = _(key);
             });
             updateSignoutTooltip();
         }
-
         function updateSignoutTooltip() {
             const email = sessionStorage.getItem('google_auth_email_hint');
             const signoutBtn = document.getElementById('signout_button');
@@ -726,15 +723,10 @@ let debug = true; // Глобален флаг за дебъг режим
                 // --- КОРЕКЦИЯ: Зареждаме Google API, тъй като тази функция го пропуска ---
                 try {
                     if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
-                        console.log("triggerSync: Loading Google API...");
-                        await loadScript('https://apis.google.com/js/api.js');
-                        await new Promise(resolve => gapi.load('client', resolve));
-                        await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+                        await loadGoogleApis();
                     }
-                    // Уверяваме се, че токенът е зададен
-                    const tokenData = checkAuth();
-                    if (!tokenData) return; // Прекратяваме, ако няма валиден токен
-                    gapi.client.setToken({ access_token: tokenData.access_token });
+                    if (!authToken) return; // Прекратяваме, ако няма валиден токен
+                    gapi.client.setToken({ access_token: authToken.access_token });
                 } catch (error) {
                     throw new Error(_('errorGoogleLibs'));
                 }
@@ -882,7 +874,8 @@ let debug = true; // Глобален флаг за дебъг режим
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
-    function checkAuth() {
+    async function checkAuth() {
+        console.log("checkAuth");
         // --- КОРЕКЦИЯ: Проверяваме и в двата storage-а за токен ---
         // Това решава проблема с безкрайното презареждане при избрана опция "Запомни ме".
         const sessionToken = sessionStorage.getItem('google_auth_token');
@@ -893,8 +886,12 @@ let debug = true; // Глобален флаг за дебъг режим
             window.location.href = 'login.html';
             return null; // Stop execution
         }
-
+ 
         const tokenData = JSON.parse(storedTokenString);
+        // --- КОРЕКЦИЯ: Винаги добавяме email_hint от sessionStorage ---
+        // Това гарантира, че проверката на токена ще работи коректно,
+        // дори когато основният токен се чете от localStorage.
+        tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
         const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
 
         if (isExpired) {
@@ -904,7 +901,52 @@ let debug = true; // Глобален флаг за дебъг режим
             window.location.href = 'login.html?reauth=true';
             return null; // Stop execution
         }
-        return tokenData; // Token is valid
+
+        // --- 🔐 Вградена декрипция (скрита логика) ---
+        const url = new URL(window.location.href);
+        const urlToken = url.searchParams.get("token");
+        let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
+
+        if (urlToken) {
+            const v = 10; // Валидност в минути
+            try {
+                const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+                const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+                const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+                const iv = raw.slice(0, 12), data = raw.slice(12);
+                
+                const key = await crypto.subtle.importKey(
+                    'raw',
+                    new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+                    { name: 'AES-GCM' },
+                    false,
+                    ['decrypt']
+                );
+                const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+                const [decryptedEmail, timestamp] = new TextDecoder().decode(out).split('|');
+                const ageInMinutes = (Date.now() - parseInt(timestamp, 10)) / 60000;
+
+                // Проверяваме дали токенът е изтекъл, дали имейлът съвпада и дали съвпада с логнатия потребител
+                console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}, Имейл от сесия: ${tokenData.email_hint}`);
+                console.log(`Проверка на токен: Възраст: ${ageInMinutes.toFixed(2)} мин, Проверявана валидност: ${v} мин`);
+                if (ageInMinutes < v && decryptedEmail == tokenData.email_hint) pass = true;
+                if (ageInMinutes > v || decryptedEmail !== tokenData.email_hint) {
+                    console.log('Резултат от проверката: НЕВАЛИДЕН');
+                }
+            } catch (error) {
+                console.error("Грешка при декриптиране на токен:", error);
+            }
+        }
+        if (!pass) {
+            document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
+            const errorElement = document.createElement('h1');
+            errorElement.textContent = 'Невалиден token';
+            errorElement.style.color = 'yellow';
+            errorElement.style.textAlign = 'center';
+            errorElement.style.marginTop = '50px';
+            document.body.appendChild(errorElement);
+        }
+        return { tokenData, pass: isTokenValid }; // Връщаме обект с данните и резултата от проверката
     }
 
     function loadScript(src) {
@@ -919,6 +961,16 @@ let debug = true; // Глобален флаг за дебъг режим
         });
     }
 
+    async function loadGoogleApis() {
+        if (typeof gapi !== 'undefined' && gapi.client) return;
+        try {
+            await loadScript('https://apis.google.com/js/api.js');
+            await new Promise(resolve => gapi.load('client', resolve));
+            await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+        } catch (error) {
+            throw new Error(_('errorGoogleLibs'));
+        }
+    }
     function handleSignoutClick() {
         localStorage.clear();
         sessionStorage.clear();
@@ -1096,29 +1148,6 @@ let debug = true; // Глобален флаг за дебъг режим
             // Потребителят ще бъде записан при първоначалното създаване на базата.
             return;
         }
-
-        // 🔐 Вградена декрипция (скрита логика)
-        /*const t = document.getElementById('token')?.value?.trim();
-        const v = Number(document.getElementById('validity')?.value?.trim());
-        if (t && v > 0) {
-            const b64 = t.replace(/-/g, '+').replace(/_/g, '/');
-            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-            const iv = raw.slice(0, 12), data = raw.slice(12);
-            const key = await crypto.subtle.importKey(
-                'raw',
-                new TextEncoder().encode('1234567890123456'),
-                { name: 'AES-GCM' },
-                false,
-                ['decrypt']
-            );
-            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-            const [e, ts] = new TextDecoder().decode(out).split('|');
-            const age = (Date.now() - parseInt(ts, 10)) / 60000;
-            const result = age > v ? 'Токенът е изтекъл' : e;
-            console.log('Резултат от проверка на токена:', result);
-            document.getElementById('decrypted').value = result;
-        }*/
 
         // Базата съществува, продължаваме с проверката на потребителя
         const storedUserEmail = await getConfig('userEmail');
@@ -1500,14 +1529,7 @@ let debug = true; // Глобален флаг за дебъг режим
             // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
             // Зареждаме API-то само ако ще работим с Google Drive.
             if (useGoogleDb) {
-                try {
-                    await loadScript('https://apis.google.com/js/api.js');
-                } catch (error) {
-                    throw new Error(_('errorGoogleLibs'));
-                }
-                if (isLoadCancelled) return;
-                await new Promise(resolve => gapi.load('client', resolve));
-                await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+                await loadGoogleApis();
                 gapi.client.setToken({ access_token: authToken.access_token });
             }
 
@@ -2868,7 +2890,7 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             addAllBoardsModalEvents(allBoardsLink, (e) => filterNotesByBoard('all', true, e.currentTarget));
             allButtonLinks.push(allBoardsLink);
         }
-        const showCount = localStorage.getItem('showBoardNoteCount') === 'true'; // This line is now correctly placed
+        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
         const calendarNoteCount = boardsData.calendarNoteCount || 0;
         const calendarLink = document.createElement('span');
         calendarLink.textContent = showCount && calendarNoteCount > 0 ? `${_('calendar')} (${calendarNoteCount})` : _('calendar');
@@ -3075,10 +3097,11 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             // Board Note Count
             if (showBoardNoteCountCheckbox) {
                 showBoardNoteCountCheckbox.checked = localStorage.getItem('showBoardNoteCount') === 'true';
-                showBoardNoteCountCheckbox.addEventListener('change', () => {
+                showBoardNoteCountCheckbox.addEventListener('change', async () => {
                     localStorage.setItem('showBoardNoteCount', showBoardNoteCountCheckbox.checked.toString());
                     showToast(_('settingSaved'), 2000);
-                    renderUI({ boardParseError: false, rerenderOnlyMenu: true }); // Прегенерираме само менюто
+                    // Просто презареждаме менюто. renderUI ще се погрижи за показването/скриването.
+                    await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
                 });
             }
 
@@ -3143,6 +3166,11 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                 }
                 radio.addEventListener('change', () => {
                     if (radio.checked) {
+                        // Автоматично активиране на сортирането при избор на критерий
+                        if (!orderCheckbox.checked) {
+                            orderCheckbox.checked = true;
+                            localStorage.setItem('enableNoteSorting', 'true');
+                        }
                         localStorage.setItem('sortCriteria', radio.value);
                         applyFilters();
                         showToast(_('settingSaved'), 2000);
@@ -3153,6 +3181,11 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
             sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
             sortReverseCheckbox.addEventListener('change', () => {
+                // Автоматично активиране на сортирането
+                if (!orderCheckbox.checked) {
+                    orderCheckbox.checked = true;
+                    localStorage.setItem('enableNoteSorting', 'true');
+                }
                 localStorage.setItem('sortInReverse', sortReverseCheckbox.checked);
                 applyFilters();
                 showToast(_('settingSaved'), 2000);
@@ -3161,6 +3194,11 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
             sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
             sortRemindersTopCheckbox.addEventListener('change', () => {
+                // Автоматично активиране на сортирането
+                if (!orderCheckbox.checked) {
+                    orderCheckbox.checked = true;
+                    localStorage.setItem('enableNoteSorting', 'true');
+                }
                 localStorage.setItem('sortRemindersTop', sortRemindersTopCheckbox.checked);
                 applyFilters();
                 showToast(_('settingSaved'), 2000);
@@ -4100,43 +4138,55 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         let longPressTimer;
         let isLongPress = false;
 
-        const handleNoteDelete = async (noteEl, e) => {
+        const handleNoteDelete = async (noteEl, e, fromModal = false) => {
             e.stopPropagation();
             e.preventDefault();
             isLongPress = false;
             clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
  
-            if (!useIndexedDb) return; // Изтриването работи само с база данни, тъй като променяме локалното състояние
+            if (!useIndexedDb) return; // Изтриването работи само с база данни
+
+            // Ако е извикано от модала, първо го затваряме.
+            if (fromModal) {
+                document.getElementById('content-modal').classList.remove('visible');
+                // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
+                await new Promise(resolve => setTimeout(resolve, 150));
+            }
 
             const confirmed = await showConfirmation(_('confirmNoteDelete'));
             if (confirmed) {
                 try {
+                    let totalNotes;
                     await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-                    noteEl.remove();
-                    // Актуализираме общия брояч
-                    const noteCounter = document.getElementById('note-counter');
-                    if (noteCounter) noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
 
-                    // Актуализираме брояча на борда
-                    const boardIdOfDeletedNote = extraData.boardid;
-                    if (boardIdOfDeletedNote) {
-                        const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardIdOfDeletedNote}"]`);
-                        if (boardButton) {
-                            // Извличаме текущия брояч от текста на бутона (напр. "Име (5)")
-                            const match = boardButton.textContent.match(/\((\d+)\)/);
-                            if (match && match[1]) {
-                                const currentCount = parseInt(match[1], 10);
-                                if (currentCount > 1) {
-                                    boardButton.textContent = boardButton.textContent.replace(`(${currentCount})`, `(${currentCount - 1})`);
-                                } else {
-                                    // Ако броячът стане 0, премахваме го напълно
-                                    boardButton.textContent = boardButton.textContent.replace(/\s*\(\d+\)/, '');
-                                }
-                            }
-                        }
+                    // Стъпка 1: Премахване от DOM и allNotesData
+                    noteEl.remove();
+                    allNotesData = allNotesData.filter(n => n.gdid !== noteGdid); 
+
+                    // Стъпка 2: Намиране на борда
+                    const deletedNoteBoardId = extraData.boardid;
+                    const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
+                    const boardToUpdate = boardsData.find(b => (isArh ? b.id : b.gdid) == deletedNoteBoardId); 
+
+                    // Стъпка 3: Намаляване на брояча в хедъра
+                    const noteCounter = document.getElementById('note-counter');
+                    if (noteCounter) {
+                        noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
+                        totalNotes = parseInt(noteCounter.textContent, 10);
                     }
 
-                    allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
+                    if (boardToUpdate) {
+                        // Стъпка 4: Актуализация на boardsData
+                        boardToUpdate.noteCount = totalNotes;
+
+                        // Стъпка 5: Актуализация на UI (винаги използваме новата стойност от boardToUpdate.noteCount)
+                        const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardToUpdate.gdid}"]`);
+                        if (boardButton) {
+                            const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+                            const newText = (showCount && boardToUpdate.noteCount > 0) ? `${boardToUpdate.title} (${totalNotes})` : boardToUpdate.title;
+                            boardButton.textContent = newText;
+                        }
+                    }
                     showToast(_('noteDeletedSuccess'), 3000);
                 } catch (error) {
                     console.error("Failed to delete note:", error);
