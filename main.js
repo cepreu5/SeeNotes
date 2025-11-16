@@ -799,13 +799,15 @@ let pass = true;
                 const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
                 const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
 
-                const content = `
-                    ${_('sysInfoUser')}: ${currentUserEmail}\n
-                    ${_('sysInfoLastGDSync')}: ${gdDate}\n
-                    ${_('sysInfoLastLocalSync')}: ${localDate}\n
-                    ${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}\n
-                    ${_('sysInfoDbCreatedFrom')}: ${dbSourceText}\n
-                    ${_('sysInfoDbOwner')}: ${dbOwnerEmail}`;
+                // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
+                const content = [
+                    `${_('sysInfoUser')}: ${currentUserEmail}`,
+                    `${_('sysInfoLastGDSync')}: ${gdDate}`,
+                    `${_('sysInfoLastLocalSync')}: ${localDate}`,
+                    `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
+                    `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}`,
+                    `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`
+                ].join('\n');
                 showModal({ raw: content, color: '#f0f0f0' });
             } catch (error) {
                 console.error("Error fetching system info:", error);
@@ -1096,14 +1098,15 @@ let pass = true;
  
         let updatedFilesCount = 0;
         let lastSyncTimestamp = null;
-        const updateOnly = localStorage.getItem('updateFromGoogleDrive') !== 'false';
+        // Коригирана проверка: използваме общата настройка 'updateFromSource'
+        const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
         // Get the timestamp only if "update only" is checked
         if (updateOnly) {
-            // ВИНАГИ четем от localStorage, за да сме сигурни, че имаме най-актуалната стойност,
-            // особено след "умна" синхронизация, която не презарежда целия скрипт.
-            lastSyncTimestamp = localStorage.getItem('lastGDTimestamp');
-            if (lastSyncTimestamp) {
-                lastSyncTimestamp = parseInt(lastSyncTimestamp, 10); // Уверяваме се, че е число
+            // Винаги четем timestamp-а от IndexedDB, тъй като е персистентен.
+            // localStorage се изтрива при logout, което правеше тази стойност невалидна.
+            if (dbExists) {
+                lastSyncTimestamp = await getConfig('lastGDTimestamp');
+                if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
             }
         }
         // This will be null if updateOnly is false or if no timestamp is found,
