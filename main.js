@@ -896,7 +896,7 @@ let pass = true;
         const storedTokenString = sessionToken || localToken;
 
         if (!storedTokenString) {
-            window.location.href = 'login.html';
+            window.location.href = 'index.html';
             return null; // Stop execution
         }
  
@@ -911,7 +911,7 @@ let pass = true;
             console.log("Token expired. Redirecting to login for re-authentication.");
             sessionStorage.removeItem('google_auth_token');
             localStorage.removeItem('google_auth_token'); // Изчистваме и от localStorage
-            window.location.href = 'login.html?reauth=true';
+            window.location.href = 'index.html?reauth=true';
             return null; // Stop execution
         }
 
@@ -993,7 +993,7 @@ let pass = true;
     function handleSignoutClick() {
         localStorage.clear();
         sessionStorage.clear();
-        window.location.href = 'login.html';
+        window.location.href = 'index.html';
     }
 
 // =================================================================================
