@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <title>CX Viewer</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
+    <link rel="stylesheet" href="style.css">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google;">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
+         crossorigin="anonymous">
+    </script>
+</head>
+<body>
+    <header>
+        <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
+        <div id="search-wrapper">
+            <input type="search" id="search-box" data-key-placeholder="searchPlaceholder" placeholder="Търсене в заглавията...">
+        </div>
+        <div id="header-buttons">
+            <div id="note-counter" class="note-counter">0</div>
+            <button id="mode_button" class="header-btn" title="Режим" data-key-title="modeButtonTooltip">
+                <!-- Иконата се вмъква от JS -->
+            </button>
+            <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Настройки">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" />
+                    <circle cx="12" cy="12" r="3" />
+                </svg>
+            </button>
+            <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Презареди">
+                <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
+            </button>
+            <!-- FEEDBACK BUTTON -->
+            <a id="feedback_button" href="mailto:multinotes.web@gmail.com" class="header-btn" data-key-title="feedbackButtonTooltip" title="Обратна връзка">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+            </a>
+            <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Изход">
+                <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div id="loader-container">
+            <div class="loader"></div>
+            <div id="loader-text"></div>
+        </div>
+        <div id="notes-container"></div>
+        <div id="calendar-container" style="display: none;"></div>
+    </main>
+
+    <div id="folderIdPromptPopup" class="folder-id-prompt-popup">
+        <div class="popup-content">
+            <p data-key="promptFolderId"></p>
+            <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
+            <button id="submitFolderIdBtn" data-key="submitButton" title=""></button>
+        </div>
+    </div>
+
+    <div id="content-modal" class="modal-overlay">
+        <div class="modal-content-box">
+            <div id="modal-board-name"></div>
+            <button id="delete-modal-btn" class="modal-header-btn" data-key-title="deleteNoteTooltip" title="Изтрий бележката">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <line x1="4" y1="7" x2="20" y2="7" />
+                    <line x1="10" y1="11" x2="10" y2="17" />
+                    <line x1="14" y1="11" x2="14" y2="17" />
+                    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+                    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+                </svg>
+            </button>
+            <button id="calculate-modal-btn" class="modal-header-btn" data-key-title="calculateTooltip" title="Изчисли израз">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="3" width="16" height="18" rx="2" />
+                    <rect x="8" y="7" width="8" height="3" rx="1" />
+                    <line x1="8" y1="14" x2="8" y2="14.01" />
+                    <line x1="12" y1="14" x2="12" y2="14.01" />
+                    <line x1="16" y1="14" x2="16" y2="14.01" />
+                    <line x1="8" y1="17" x2="8" y2="17.01" />
+                    <line x1="12" y1="17" x2="12" y2="17.01" />
+                    <line x1="16" y1="17" x2="16" y2="17.01" />
+                </svg>
+            </button>
+            <button id="copy-modal-btn" class="modal-header-btn" data-key-title="copyTooltip" title="Копирай съдържанието"></button>
+            <button class="modal-close modal-header-btn">&times;</button>
+            <button id="prev-note-btn" class="modal-header-btn modal-nav-btn" title="Предишна бележка">&lt;</button>
+            <button id="next-note-btn" class="modal-header-btn modal-nav-btn" title="Следваща бележка">&gt;</button>
+            <div id="modal-body"></div>
+            <div class="modal-resize-handle"></div>
+        </div>
+    </div>
+
+    <!-- Нов, отделен модал за менюто с бордове -->
+    <div id="boards-menu-modal" class="modal-overlay">
+        <div class="modal-content-box">
+            <button class="modal-close modal-header-btn">&times;</button>
+            <div id="boards-menu-modal-body"></div>
+        </div>
+    </div>
+
+    <button id="scrollTopBtn" data-key-title="topTooltip" title="Към началото"></button>
+
+    <div id="toastNotification" class="toast-notification"></div>
+
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal-content-box set-modal">
+            <h2 data-key="settingsTitle">Настройки</h2>
+            <h3 class="modal-version">CX MultiNotes Viewer ver. </h3>
+            <button class="modal-close modal-header-btn">&times;</button>
+            <div class="corner-dot top-left"></div>
+            <div class="corner-dot top-right"></div>
+            <div class="corner-dot bottom-left"></div>
+            <div class="corner-dot bottom-right"></div>
+            <div id="settings-modal-body">
+                <div class="zoom-control-wrapper">
+                    <label for="scaleSlider" style="margin-right: 10px;" data-key="zoomLabel">Мащаб:</label>
+                    <div class="slider-container">
+                        <input type="range" id="scaleSlider" min="25" max="175" value="100">
+                        <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number">
+                        <span>%</span>
+                    </div>
+                    <button id="applyZoomBtn" class="zoom-btn" style="margin-left: 10px;" data-key="submitButton">Потвърди</button>
+                </div>
+
+                <div class="zoom-control-wrapper" style="margin-top: 0px;">
+                    <label for="start-board-select" style="margin-right: 10px;" data-key="startBoardLabel">Стартов борд:</label>
+                    <select id="start-board-select" class="start-board-select">
+                        <!-- Options will be populated by JS -->
+                    </select>
+                </div>
+
+                <div class="zoom-control-wrapper" id="max-searches" style="margin-top: 10px;">
+                    <label for="max-searches-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="maxSearchesLabel">
+                        Запазени търсения:</label>
+                    <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
+                </div>
+
+                <div class="zoom-control-wrapper" id="note-font-size" style="margin-top: 10px;">
+                    <label for="note-font-size-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="noteFontSizeLabel">
+                        Размер шрифт (бележка):</label>
+                    <select id="note-font-size-input" class="zoom-input-select" style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
+                </div>
+
+                <div class="zoom-control-wrapper" id="modal-font-size" style="margin-top: 10px;">
+                    <label for="modal-font-size-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="modalFontSizeLabel">
+                        Размер шрифт (преглед):</label>
+                    <select id="modal-font-size-input" class="zoom-input-select" style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
+                </div>
+
+                <div class="zoom-control-wrapper" id="show-date" style="margin-top: 10px;">
+                    <label for="show-datemod-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showDatemodLabel">
+                        Дата</label>
+                    <input type="checkbox" id="show-datemod-checkbox" class="settings-checkbox">
+                </div>
+
+                <div class="zoom-control-wrapper" id="note-count" style="margin-top: 10px;">
+                    <label for="show-board-note-count-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardNoteCountLabel">
+                        Брой бележки в борда:</label>
+                    <input type="checkbox" id="show-board-note-count-checkbox" class="settings-checkbox">
+                </div>
+
+                <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
+                    <label for="all-board-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardAll">
+                        Покажи борд Всички:</label>
+                    <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
+                </div>
+
+                <div class="zoom-control-wrapper" id="remind-board" style="margin-top: 10px;">
+                    <label for="remind-board-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardRemind">
+                        Покажи борд Напомняния:</label>
+                    <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
+                </div>
+
+                <div class="zoom-control-wrapper" id="weekly-calendar" style="margin-top: 10px;">
+                    <label for="weekly-calendar-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showWeeklyCalendar">
+                        Седмичен календар:</label>
+                    <input type="checkbox" id="weekly-calendar-checkbox" class="settings-checkbox">
+                </div>
+
+                <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
+                    <label for="order-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">
+                        Подреждане на бележките:</label>
+                    <input type="checkbox" id="order-checkbox" class="settings-checkbox">
+                    <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
+                </div>
+                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
+                <!-- Скрита секция за опции за сортиране -->
+                <div id="sorting-options-section" style="display: none;">
+                    <!-- Нов, опростен flex контейнер за опциите за сортиране -->
+                    <div class="sort-options-container">
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="numord" class="settings-checkbox" checked> <span data-key="sortByNumber">по номер</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="color" class="settings-checkbox"> <span data-key="sortByColor">по цвят</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="date" class="settings-checkbox"> <span data-key="sortByCreationDate">по дата на създаване</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="datemod" class="settings-checkbox"> <span data-key="sortByModificationDate">по дата на редактиране</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="calendarDate" class="settings-checkbox"> <span data-key="sortByCalendarDate">по дата в календара</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="alpha" class="settings-checkbox"> <span data-key="sortByAlphabetical">по азбучен ред</span></label>
+                        <!-- Преместваме и чекбоксовете тук, за да имат същия стил -->
+                        <label class="sort-option-label sort-option-separator"><input type="checkbox" id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">в обратен ред</span></label>
+                        <label class="sort-option-label"><input type="checkbox" id="sort-reminders-top-checkbox" class="settings-checkbox"> <span data-key="sortRemindersTop">напомняния най-отгоре</span></label>
+                    </div>
+                </div>
+
+                    <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 10px;" data-key="dataManagementTitle">Четене на данни</label>
+                        <div class="zoom-control-wrapper" style="margin-top: 0px;" id="google-db-wrapper">
+                            <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
+                            <img src="GDrive.png" alt="Google Drive" style="width:24px; height:24px; margin-right: 10px;">
+                            <label for="use-google-db-checkbox" class="settings-icon-label" data-key="useGoogleDbLabel" id="use-google-db-label" style="flex-basis: 100px; flex-shrink: 0;">
+                                Google Drive:
+                            </label>
+                            <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
+                        </div>
+
+                        <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 10px;">
+                            <img src="Rabbit.png" alt="Rabbit" style="width:20px; height:20px; margin-right: 2px;">
+                            <img src="Database.png" alt="Database" style="width:24px; height:24px; margin-right: 10px;">
+
+                            <label for="use-indexeddb-checkbox" class="settings-icon-label" data-key="useIndexedDbLabel" style="flex-basis: 100px; flex-shrink: 0;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                                База данни:
+                            </label>
+                            <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
+                        </div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;" data-key="dbManagementTitle">
+                            Управление на базата данни</label>
+                        
+                        <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
+                            <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
+                            <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
+                        </div>
+                    </div>
+                <span id="advanced-settings-span" hidden>
+                    <!-- Accordion  -->
+                    <div class="accordion" style="margin-top: 15px;">
+                        <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
+                            <span data-key="advancedSettings">Разширени настройки</span>
+                            <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
+                            <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
+                        </div>
+                        <div class="accordion-content">
+                            <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
+                                <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
+                                <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel" id="use-local-db-label" style="flex-basis: 120px; flex-shrink: 0;">
+                                    Локална папка:
+                                </label>
+                                <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
+                                <span id="local-sync-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                            </div>
+
+                            <div class="zoom-control-wrapper" style="margin-top: 10px; padding-bottom: 10px;" id="arh-db-wrapper">
+                                <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
+                                <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel" id="use-arh-db-label" style="flex-basis: 120px; flex-shrink: 0;">
+                                    Архив:
+                                </label>
+                                <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
+                                <span id="arh-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                            </div>
+
+                            <div class="settings-section" style="margin-top: 0px; ">
+                                <div style="display: flex; justify-content: center; gap: 10px;">
+                                    <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
+                                        <button id="select-folder-btn" class="zoom-btn" data-key="localSyncFolderLabel">Избери локална папка</button>
+                                    </div>
+                                    <div class="zoom-control-wrapper" id="arh-wrapper" style="margin-top: 0; margin-bottom: 0;">
+                                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Избери архивна папка</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                </span>
+                    </div>
+            </div>
+        <div class="settings-close-btn-wrapper">
+            <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
+        </div>
+        </div>
+    </div>
+    <script src="i18n.js"></script>
+    <script src="mainn.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Вертикална реклама 120х728 -->
+    <ins class="adsbygoogle"
+        style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
+        data-ad-client="ca-pub-5695216104083645"
+        data-ad-slot="3998280324">
+    </ins>
+    <script>
+        (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>    
+</body>
+</html>

@@ -36,7 +36,7 @@
             text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
         }
 
-        .login-box { margin-top: 100px; } /* Place login box in the main content area */
+        .login-box { margin-top: 20px; } /* Place login box in the main content area */
 
         .login-box { text-align: center; background: #FBCB39; padding: 40px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
 
@@ -184,51 +184,6 @@
             return JSON.parse(jsonPayload);
         }
 
-        /*function gisLoaded() {
-            // Initialize the client for the OAuth2 access token
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: async (tokenResponse) => {
-                    if (tokenResponse && tokenResponse.access_token) {
-                        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                        sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-
-                        // Fetch user email using the access token and save it
-                        try {
-                            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                                headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
-                            });
-                            if (userInfoResponse.ok) {
-                                const userInfo = await userInfoResponse.json();
-                                sessionStorage.setItem('google_auth_email_hint', userInfo.email);
-                            }
-                        } catch (error) {
-                            console.error('Failed to fetch user info:', error);
-                        }
-
-                        window.location.href = main;
-                    } else {
-                        console.error('Failed to get access token');
-                        alert(_('authFailed'));
-                    }
-                },
-                error_callback: (error) => {
-                    console.error("GSI Error:", error);
-                    alert(_('authFailed') + `\n\nError: ${error.type}`);
-                }
-            });
-
-            // Enable the button now that the client is ready
-            document.getElementById('authorize_button').disabled = false;
-
-            // If re-authenticating, trigger the flow immediately
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('reauth') === 'true') {
-                handleAuthClick();
-            }
-        }*/
-
         function gisLoaded() {
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
@@ -327,9 +282,10 @@
         crossorigin="anonymous"></script>
     <!-- Вертикална реклама 120х728 -->
     <ins class="adsbygoogle"
-        style="display:inline-block;width:120px;height:728px"
+        style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
         data-ad-client="ca-pub-5695216104083645"
-        data-ad-slot="3998280324"></ins>
+        data-ad-slot="3998280324">
+    </ins>
     <script>
         (adsbygoogle = window.adsbygoogle || []).push({});
     </script>    
