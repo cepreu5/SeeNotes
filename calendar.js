@@ -21,14 +21,15 @@
         calendarHeader.innerHTML = `
             <div class="calendar-nav-controls">
                 <button class="close-calendar-btn">&times;</button>
-                <button id="prev-month-btn">&laquo;</button>
+                <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
                 <button id="today-month-btn">${calendarIconSvg}</button>
-                <button id="next-month-btn">&raquo;</button>
+                <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${weeklyViewIconSvg}</button>
             </div>
-            <h2>${titleText}</h2>
+            <h2 style="cursor: default;">${titleText}</h2>
         `;
         calendarContainer.appendChild(calendarHeader);
         // Day names header
+
         const daysHeader = document.createElement('div');
         daysHeader.className = 'calendar-days-header';
         const days = currentLang === 'bg' ? ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -81,15 +82,6 @@
                 dateNum.classList.add('today-date');
             }
 
-            // --- КОРЕКЦИЯ: Добавяме клик събитие за преход към седмичен изглед ---
-            dateNum.style.cursor = 'pointer';
-            dateNum.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const clickedDate = new Date(year, month, day);
-                calendarContainer.style.display = 'none'; // Затваряме месечния календар
-                renderWeeklyCalendarView(clickedDate);
-            });
-
             cell.appendChild(dateNum);
             const notesForDayContainer = document.createElement('div');
             notesForDayContainer.className = 'calendar-notes-container';
@@ -127,7 +119,9 @@
                         }
                         miniNote.addEventListener('click', (e) => { 
                             e.stopPropagation();
-                            showModal({ raw: noteData.notetxt, format: noteData.text_span, color: miniNote.style.backgroundColor });
+                            // Подаваме и ID-тата, за да работят прикачните файлове.
+                            // --- КОРЕКЦИЯ: Премахваме подаването на originalNote, за да уеднаквим поведението със седмичния календар ---
+                            showModal({ raw: noteData.notetxt, format: noteData.text_span, color: miniNote.style.backgroundColor, id: noteData.id, gdid: noteData.gdid }, null, true);
                         });
                         notesForDayContainer.appendChild(miniNote);
                     }
@@ -151,7 +145,13 @@
             renderCalendarView();
         });
 
-        // --- КОРЕКЦИЯ: Добавяме event listener за бутона "Днес" ---
+        // Добавяме event listener за новия бутон за седмичен изглед
+        document.getElementById('weekly-view-btn').addEventListener('click', () => {
+            calendarContainer.style.display = 'none'; // Затваряме месечния изглед
+            renderWeeklyCalendarView(new Date()); // Отваряме седмичния изглед за текущата седмица
+        });
+
+        // Добавяме event listener за бутона "Днес" ---
         document.getElementById('today-month-btn').addEventListener('click', () => {
             currentCalendarDate = new Date(); // Връщаме се към днешна дата
             renderCalendarView(); // Прерисуваме календара
@@ -173,7 +173,7 @@
     }
 
     /**
-     * Рендира алтернативен, списъчен (седмичен) изглед на календара.
+     * Рендира седмичен изглед на календара.
      */
     function renderWeeklyCalendarView(dateForWeek) {
         document.querySelector('header').style.display = 'none';
@@ -204,7 +204,7 @@
         weeklyContainer.style.flexDirection = 'column';
         weeklyContainer.innerHTML = ''; // Изчистваме предишното съдържание
 
-        // --- КОРЕКЦИЯ: Генериране на динамично заглавие с месеца(ите) ---
+        // Генериране на динамично заглавие с месеца(ите) ---
         const endDate = new Date(startDate);
         endDate.setDate(startDate.getDate() + 6); // Крайната дата на 7-дневния период
 
@@ -225,16 +225,19 @@
         // Създаваме хедър с бутон за затваряне
         const header = document.createElement('div');
         header.className = 'calendar-header'; // Използваме същия стил като другия календар
-        header.innerHTML = `<div class="calendar-nav-controls"><button class="close-calendar-btn">&times;</button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button></div><h2>${titleText}</h2>`;
+        header.innerHTML = `<div class="calendar-nav-controls"><button class="close-calendar-btn">&times;</button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default;">${titleText}</h2>`;
         weeklyContainer.appendChild(header);
 
-        // --- КОРЕКЦИЯ: Добавяме клик събитие за преход към месечен изглед ---
-        const titleElement = header.querySelector('h2');
-        titleElement.addEventListener('click', () => {
+        // Добавяме клик събитие за преход към месечен изглед ---
+        const goToMonthView = () => { 
             weeklyContainer.style.display = 'none'; // Затваряме седмичния изглед
             currentCalendarDate = new Date(startDate); // Задаваме месеца, който да се покаже
             renderCalendarView(); // Отваряме месечния изглед
-        });
+        };
+
+        // Добавяме същото събитие и към новия бутон
+        const monthViewBtn = header.querySelector('#month-view-btn');
+        monthViewBtn.addEventListener('click', goToMonthView);
 
         header.querySelector('.close-calendar-btn').addEventListener('click', () => {
             weeklyContainer.style.display = 'none';
@@ -264,8 +267,13 @@
         const notesByDate = new Map();
         allNotesData.forEach(noteData => { 
             if (noteData.calendarDate) {
-                const dateStr = new Date(noteData.calendarDate).toISOString().split('T')[0];
-                if (!notesByDate.has(dateStr)) {
+                // --- КОРЕКЦИЯ: Преобразуваме датата към UTC, за да избегнем проблеми с часовите зони ---
+                const noteDate = new Date(noteData.calendarDate);
+                // Създаваме нова дата, използвайки UTC компонентите на оригиналната дата.
+                // Това "премахва" часовата зона и третира датата като чиста календарна дата.
+                const utcDate = new Date(Date.UTC(noteDate.getFullYear(), noteDate.getMonth(), noteDate.getDate()));
+                const dateStr = utcDate.toISOString().split('T')[0];
+                if (!notesByDate.has(dateStr)) { 
                     notesByDate.set(dateStr, []); 
                 }
                 notesByDate.get(dateStr).push(noteData.gdid);
@@ -295,8 +303,11 @@
         for (let i = 0; i < daysToRender; i++) {
             const date = new Date(startDate);
             date.setDate(startDate.getDate() + i);
-
-            const dateStr = date.toISOString().split('T')[0];
+            
+            // --- КОРЕКЦИЯ: Прилагаме същата UTC логика и тук, за да има пълно съответствие ---
+            const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dateStr = utcDate.toISOString().split('T')[0];
+            
             const noteGdimsForDay = notesByDate.get(dateStr);
 
             const dayRow = document.createElement('div');
@@ -309,7 +320,7 @@
             const dateInfo = document.createElement('div');
             dateInfo.className = 'weekly-date-info';
 
-            // --- КОРЕКЦИЯ: Добавяме клас за почивните дни ---
+            // Добавяме клас за почивните дни ---
             const dayOfWeek = date.getDay();
             if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Неделя, 6 = Събота
                 dateInfo.classList.add('weekend-day');
@@ -330,7 +341,7 @@
                     if (originalNote) {
                         const clone = originalNote.cloneNode(true);
                         clone.classList.add('mini-note');
-                        // --- КОРЕКЦИЯ: Копираме съдържанието на canvas-а ---
+                        // Копираме съдържанието на canvas-а ---
                         const originalCanvas = originalNote.querySelector('.note-background-canvas');
                         const clonedCanvas = clone.querySelector('.note-background-canvas');
                         if (originalCanvas && clonedCanvas) {
@@ -338,18 +349,23 @@
                             clonedCtx.drawImage(originalCanvas, 0, 0);
                         }
 
-                        // --- КОРЕКЦИЯ: Опаковаме клонинга в div с фиксирани размери ---
+                        // Опаковаме клонинга в div с фиксирани размери ---
                         const wrapper = document.createElement('div');
                         wrapper.className = 'mini-note-wrapper';
                         wrapper.appendChild(clone);
-
-                        // --- КОРЕКЦИЯ: Добавяме event listener, който задейства клика на оригинала ---
-                        wrapper.addEventListener('click', (e) => {
-                            e.stopPropagation(); // Предотвратяваме други събития
-                            originalNote.click(); // Задействаме оригиналния клик
+                        
+                        // --- КОРЕКЦИЯ: Променяме начина на отваряне на бележката ---
+                        // Вместо да симулираме клик върху оригиналния елемент,
+                        // директно извикваме showModal с данните на бележката,
+                        // точно както го прави месечният календар.
+                        clone.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const noteData = allNotesData.find(note => note.gdid === gdid);
+                            if (noteData) {
+                                showModal({ raw: noteData.notetxt, format: noteData.text_span, color: clone.style.backgroundColor, id: noteData.id, gdid: noteData.gdid });
+                            }
                         });
-
-                        // --- КОРЕКЦИЯ: Гарантираме, че клонираната бележка винаги е видима ---
+                        // Гарантираме, че клонираната бележка винаги е видима ---
                         clone.style.display = 'flex';
                         notesContainerForRow.appendChild(wrapper);
                     }
@@ -370,7 +386,7 @@
             todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
-        // --- КОРЕКЦИЯ: Добавяме брояч, ако има повече бележки ---
+        // Добавяме брояч, ако има повече бележки ---
         // Тази проверка се прави след като елементите са в DOM, за да има реални размери.
         listContainer.querySelectorAll('.weekly-day-row').forEach(row => {
             const notesContainer = row.querySelector('.weekly-notes-container');

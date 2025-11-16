@@ -161,6 +161,10 @@ const translations = {
         noteDeletedError: 'Error deleting note from the database.',
         showWeeklyCalendar: 'Weekly calendar view:',
         deleteNoteTooltip: 'Delete note',
+        monthlyViewTooltip: 'Monthly View',
+        weeklyViewTooltip: 'Weekly View',
+        prevMonthTooltip: 'Previous Month',
+        nextMonthTooltip: 'Next Month',
 
         feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com',
         cancelButton: 'Cancel'
@@ -327,6 +331,10 @@ const translations = {
         noteDeletedError: 'Грешка при изтриване на бележка от базата данни.',
         showWeeklyCalendar: 'Седмичен календар',
         deleteNoteTooltip: 'Изтрий бележката',
+        monthlyViewTooltip: 'Месечен изглед',
+        weeklyViewTooltip: 'Седмичен изглед',
+        prevMonthTooltip: 'Предишен месец',
+        nextMonthTooltip: 'Следващ месец',
 
         feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com',
         cancelButton: 'Отказ'
