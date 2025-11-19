@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google;">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com;">
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
          crossorigin="anonymous">
     </script>
@@ -188,7 +188,9 @@
                     <input type="checkbox" id="order-checkbox" class="settings-checkbox">
                     <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
                 </div>
-                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
+
+                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
+
                 <!-- Скрита секция за опции за сортиране -->
                 <div id="sorting-options-section" style="display: none;">
                     <!-- Нов, опростен flex контейнер за опциите за сортиране -->
@@ -205,35 +207,36 @@
                     </div>
                 </div>
 
-                    <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
-                        <label style="font-weight: bold; display: block; margin-bottom: 10px;" data-key="dataManagementTitle">Четене на данни</label>
-                        <div class="zoom-control-wrapper" style="margin-top: 0px;" id="google-db-wrapper">
-                            <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
-                            <img src="GDrive.png" alt="Google Drive" style="width:24px; height:24px; margin-right: 10px;">
-                            <label for="use-google-db-checkbox" class="settings-icon-label" data-key="useGoogleDbLabel" id="use-google-db-label" style="flex-basis: 100px; flex-shrink: 0;">
-                                Google Drive:
-                            </label>
-                            <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
-                        </div>
-
-                        <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 10px;">
-                            <img src="Rabbit.png" alt="Rabbit" style="width:20px; height:20px; margin-right: 2px;">
-                            <img src="Database.png" alt="Database" style="width:24px; height:24px; margin-right: 10px;">
-
-                            <label for="use-indexeddb-checkbox" class="settings-icon-label" data-key="useIndexedDbLabel" style="flex-basis: 100px; flex-shrink: 0;">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
-                                База данни:
-                            </label>
-                            <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
-                        </div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;" data-key="dbManagementTitle">
-                            Управление на базата данни</label>
-                        
-                        <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
-                            <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
-                            <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
-                        </div>
+                <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 10px;" data-key="dataManagementTitle">Четене на данни</label>
+                    <div class="zoom-control-wrapper" style="margin-top: 0px;" id="google-db-wrapper">
+                        <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
+                        <img src="GDrive.png" alt="Google Drive" style="width:24px; height:24px; margin-right: 10px;">
+                        <label for="use-google-db-checkbox" class="settings-icon-label" data-key="useGoogleDbLabel" id="use-google-db-label" style="flex-basis: 100px; flex-shrink: 0;">
+                            Google Drive:
+                        </label>
+                        <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
                     </div>
+
+                    <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 10px;">
+                        <img src="Rabbit.png" alt="Rabbit" style="width:20px; height:20px; margin-right: 2px;">
+                        <img src="Database.png" alt="Database" style="width:24px; height:24px; margin-right: 10px;">
+
+                        <label for="use-indexeddb-checkbox" class="settings-icon-label" data-key="useIndexedDbLabel" style="flex-basis: 100px; flex-shrink: 0;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                            База данни:
+                        </label>
+                        <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
+                    </div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;" data-key="dbManagementTitle">
+                        Управление на базата данни
+                    </label>
+                    <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
+                        <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
+                        <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
+                    </div>
+                </div>
+
                 <span id="advanced-settings-span" hidden>
                     <!-- Accordion  -->
                     <div class="accordion" style="margin-top: 15px;">
@@ -242,6 +245,7 @@
                             <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
                             <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
                         </div>
+<script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"  data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#ffffff" ></script>
                         <div class="accordion-content">
                             <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
                                 <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
@@ -272,14 +276,15 @@
                                 </div>
                             </div>
                         </div>
-                </span>
                     </div>
+                </span>
             </div>
-        <div class="settings-close-btn-wrapper">
-            <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
-        </div>
+            <div class="settings-close-btn-wrapper">
+                <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
+            </div>
         </div>
     </div>
+
     <script src="i18n.js"></script>
     <script src="calendar.js"></script>
     <script src="db.js"></script>

@@ -8,10 +8,6 @@
 let debug = true; // Глобален флаг за дебъг режим
 let pass = true;
 
-// --- Demo Mode ---
-const DEMO_MODE = true;
-const DEMO_NOTE_LIMIT = 5;
-
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
 // =================================================================================
@@ -452,18 +448,15 @@ const DEMO_NOTE_LIMIT = 5;
         reloadButton.addEventListener('click', () => mainLogic());
         settingsButton.addEventListener('click', () => {
             // Запомняме началното състояние на чекбоксовете при отваряне на настройките
-            // --- КОРЕКЦИЯ: Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
-            document.getElementById('use-google-db-checkbox').checked = localStorage.getItem('useGoogleDb') !== 'false';
-            document.getElementById('use-local-db-checkbox').checked = localStorage.getItem('useLocalDb') === 'true';
-            document.getElementById('use-arh-db-checkbox').checked = localStorage.getItem('useArhDb') === 'true';
-            document.getElementById('use-indexeddb-checkbox').checked = localStorage.getItem('useIndexedDb') === 'true';
-
             settingsInitialState = {
                 useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
                 useLocalDb: document.getElementById('use-local-db-checkbox').checked,
                 useArhDb: document.getElementById('use-arh-db-checkbox').checked,
                 useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
             };
+            // --- КОРЕКЦИЯ: Гарантираме, че чекбоксът за база данни отговаря на глобалната настройка ---
+            // Това решава случаи, в които UI-то не се е синхронизирало правилно.
+            document.getElementById('use-indexeddb-checkbox').checked = useIndexedDb;
             document.getElementById('settings-modal').classList.add('visible');
         });
         window.onscroll = () => {
@@ -1442,37 +1435,6 @@ const DEMO_NOTE_LIMIT = 5;
     }
 
     /**
-     * Филтрира бележките, за да остави само по 5 за всеки борд (за демо версия).
-     */
-    function filterNotesForDemo() {
-        if (!DEMO_MODE) return; // Изпълнява се само ако демо флагът е активен
-
-        console.log("DEMO MODE: Filtering notes to 5 per board.");
-
-        if (!boardsData || boardsData.length === 0 || !allNotesData || allNotesData.length === 0) {
-            return;
-        }
-
-        const filteredNotes = new Set();
-        const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-
-        boardsData.forEach(board => {
-            const boardIdToMatch = isArh ? board.id : board.gdid;
-
-            const notesForBoard = allNotesData
-                .filter(note => note.boardid == boardIdToMatch)
-                .sort((a, b) => (a.numord || 0) - (b.numord || 0)) // Сортираме за консистентност
-                .slice(0, DEMO_NOTE_LIMIT); // Взимаме броя бележки от константата
-
-            notesForBoard.forEach(note => filteredNotes.add(note));
-        });
-
-        const originalCount = allNotesData.length;
-        allNotesData = Array.from(filteredNotes);
-        console.log(`DEMO MODE: Notes reduced from ${originalCount} to ${allNotesData.length}.`);
-    }
-
-    /**
      * Основна логика за зареждане на данни в приложението.
      * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
      */
@@ -1688,8 +1650,6 @@ const DEMO_NOTE_LIMIT = 5;
                     if (result.error) { // Проверяваме за грешка при зареждането
                         return; // Прекратяваме, ако няма файлове
                     }
-                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
-                    filterNotesForDemo();
                     await renderUI({ boardParseError: result.boardParseError });
                 } else if (useLocalFolder) {
                     console.log("Source: Local Folder");
@@ -1697,8 +1657,6 @@ const DEMO_NOTE_LIMIT = 5;
                     console.log("Source: Local Folder"); 
                     if (loaderTitle) loaderTitle.textContent = _('sourceLocalFolder');
                     const { boardParseError } = await fetchAllDataFromLocalFolder();
-                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
-                    filterNotesForDemo();
                     await renderUI({ boardParseError });
                 }
             } else {
@@ -1718,16 +1676,12 @@ const DEMO_NOTE_LIMIT = 5;
                         if (result.error) { // Проверяваме за грешка при зареждането
                             return; // Прекратяваме, ако няма файлове
                         }
-                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
-                        filterNotesForDemo();
                         await createDatabaseFromMemory();
                         await renderUI({ boardParseError: result.boardParseError });
 
                     } else if (useLocalFolder) {
                     console.log("Source for initial load: Local Folder");
                     const { boardParseError } = await fetchAllDataFromLocalFolder();
-                    // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
-                    filterNotesForDemo();
                     await createDatabaseFromMemory();
                     await renderUI({ boardParseError });
                     }
@@ -3360,16 +3314,9 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
             // Задаваме първоначалното състояние на чекбокса от localStorage
             useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
             // Add event listeners
-            useIndexedDbCheckbox.addEventListener('change', (e) => {
-                const isChecked = e.target.checked;
-                localStorage.setItem('useIndexedDb', isChecked);
-
-                // --- НОВА ЛОГИКА: Ако се сложи отметка, симулираме клик на "Създай" ---
-                if (isChecked) {
-                    document.getElementById('create-db-btn').click();
-                } else {
-                    showToast(_('settingSaved'), 2000);
-                }
+            useIndexedDbCheckbox.addEventListener('change', () => {
+                localStorage.setItem('useIndexedDb', useIndexedDbCheckbox.checked);
+                showToast(_('settingSaved'), 2000);
             });
 
             // Accordion logic
@@ -3478,22 +3425,25 @@ function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) 
                     // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
                     localStorage.removeItem('startBoard');
 
-                    // --- НОВА МИНИМАЛНА КОРЕКЦИЯ ---
-                    // След успешно изтриване, ВИНАГИ премахваме отметката и обновяваме localStorage.
-                    showToast(_('dbDeleted'), 5000);
-                    const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-                    useIndexedDbCheckbox.checked = false;
-                    localStorage.setItem('useIndexedDb', 'false');
-
-                    // --- КОРЕКЦИЯ: Актуализираме иконата за режим веднага ---
-                    updateModeButton();
-                } else {
-                    // Ако потребителят откаже изтриването, отваряме настройките отново, за да не остава празен екран.
-                    document.getElementById('settings-modal').classList.add('visible');
+                    // --- КОРЕКЦИЯ: Обработка на случая "Само база данни" ---
+                    if (isDbOnlyMode) {
+                        showToast(_('dbDeleted'), 5000); // Показваме съобщението
+                        // Премахваме отметката и записваме промяната
+                        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+                        useIndexedDbCheckbox.checked = false;
+                        localStorage.setItem('useIndexedDb', 'false');
+                        // Отваряме настройките отново, за да може потребителят да избере нов източник
+                        document.getElementById('settings-modal').classList.add('visible');
+                    }
                 }
                 // Активираме контролите, в случай че са били деактивирани от userCheck
                 enableSettingsControls();
             });
+
+            // Set initial states from localStorage
+            useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false'; // Default to true
+            useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
+            useArhDbCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
 
             // --- Local Sync Folder ---
             const selectFolderBtn = document.getElementById('select-folder-btn');
