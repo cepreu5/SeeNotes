@@ -2,7 +2,7 @@
 const translations = {
     en: {
         appTitle: 'CX MultiNotes Viewer',
-        searchPlaceholder: 'Search', 
+        searchPlaceholder: 'Search',
         reloadButtonTooltip: 'Reload',
         signoutButtonTooltip: 'Sign Out',
         copyTooltip: 'Copy content',
@@ -10,7 +10,7 @@ const translations = {
         allBoards: 'All',
         boardsTitle: 'Boards',
         viewFullContent: 'View full content',
-        loadingFile: 'Loading...', 
+        loadingFile: 'Loading...',
         of: 'of',
         noFilesFound: 'No text files found in the folder.',
         skippedFileScan: 'Skipped DB update. Loading from DB...',
@@ -104,7 +104,7 @@ const translations = {
         noUpdateMode: 'Attachment links will not be active.',
         createDbButton: 'Create',
         permissionDenied: 'Permission Denied',
-        deleteDbButton: 'Delete',            
+        deleteDbButton: 'Delete',
         confirmConfigDelete: 'Delete settings as well? (User, folder, etc.)',
         dbManagementTitle: 'Database Management',
         userMismatchWarning: 'The existing database was created by user {user}, data will be loaded from {source}.',
@@ -167,11 +167,11 @@ const translations = {
         nextMonthTooltip: 'Next Month',
 
         feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com',
-        cancelButton: 'Cancel'
+        cancelButton: 'Cancel',
     },
     bg: {
         appTitle: 'CX MultiNotes Viewer',
-        searchPlaceholder: 'Търсене', 
+        searchPlaceholder: 'Търсене',
         reloadButtonTooltip: 'Презареди',
         signoutButtonTooltip: 'Изход',
         copyTooltip: 'Копирай съдържанието',
@@ -179,7 +179,7 @@ const translations = {
         allBoards: 'Всички',
         boardsTitle: 'Бордове',
         viewFullContent: 'Виж цялото съдържание',
-        loadingFile: 'Четене...', 
+        loadingFile: 'Четене...',
         of: 'от',
         noFilesFound: 'Няма намерени текстови файлове в папката.',
         skippedFileScan: 'Пропускане на обновяването. Зареждане от базата...',
@@ -264,7 +264,7 @@ const translations = {
         confirmDbRecreate: 'Локалната база данни вече съществува. Искате ли да я изтриете и да създадете нова от текущите данни?',
         confirmDbDelete: 'Сигурни ли сте, че искате да изтриете локалната база данни?',
         dbCreated: 'Локалната база данни е създадена успешно.',
-        errorDbSourceMismatch: 'Несъответствие между базата данни и източника на данни. Линковете към приложенията няма да са достъпни.',            
+        errorDbSourceMismatch: 'Несъответствие между базата данни и източника на данни. Линковете към приложенията няма да са достъпни.',
         dbCreateFailedNoData: 'Базата не може да бъде създадена. Няма заредени данни в паметта.',
         dbDeleted: 'Локалната база данни е изтрита успешно.',
         confirmCreateDbFromArh: 'Локалната база данни е празна или не съществува. Искате ли да създадете нова от текущите архивни данни?',
@@ -274,7 +274,7 @@ const translations = {
         noUpdateMode: 'Приложенията към бележките няма да се отварят.',
         createDbButton: 'Създай',
         permissionDenied: 'Няма разрешение',
-        deleteDbButton: 'Изтрий',            
+        deleteDbButton: 'Изтрий',
         confirmConfigDelete: 'Да се изтрият ли и настройките? (Потребител, папка и др.)',
         dbManagementTitle: 'Управление на базата данни',
         userMismatchWarning: 'Съществуващата база е създадена с потребителско име {user}, данните ще се заредят от {source}.',
@@ -335,8 +335,7 @@ const translations = {
         weeklyViewTooltip: 'Седмичен изглед',
         prevMonthTooltip: 'Предишен месец',
         nextMonthTooltip: 'Следващ месец',
-
         feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com',
-        cancelButton: 'Отказ'
+        cancelButton: 'Отказ',
     }
 };
