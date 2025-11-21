@@ -583,6 +583,7 @@ code {
 .datemod-header-date {
     /* Тук могат да се добавят специфични стилове за датата на модификация в хедъра */
     /* Например: font-style: italic; opacity: 0.8; */
+    font-style: italic;
 }
 
 /* Hide datemod in header when the body has this class */
@@ -1519,10 +1520,6 @@ code {
 #settings-modal-body {
     flex-grow: 1;
     overflow-y: auto;
-}
-
-.slider-container span {
-    /* Spacing is now handled by the input's margin */
 }
 
 .zoom-btn {
