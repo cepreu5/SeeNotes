@@ -2845,7 +2845,9 @@ function applyFilters() {
         const isVisibleByBoard = (currentBoardFilter === 'all') ||
             (currentBoardFilter === 'reminder' && data.timer && data.timer !== 0) ||
             (currentBoardFilter === 'new-updates' && updatedNoteGdims.includes(data.gdid)) ||
-            (currentBoardFilter === 'with-photos' && note.dataset.hasAttachments === 'true') ||
+            // --- КОРЕКЦИЯ: Проверяваме за новия, специфичен атрибут за снимки ---
+            (currentBoardFilter === 'with-photos' && note.dataset.hasPhoto === 'true') ||
+            // --- Край на корекцията ---
             (currentBoardFilter === 'with-videos' && note.dataset.hasVideo === 'true') ||
             (currentBoardFilter === 'with-sounds' && note.dataset.hasSound === 'true') ||
             (currentBoardFilter === 'with-other' && note.dataset.hasOtherAttachments === 'true') ||
@@ -3293,18 +3295,18 @@ async function createBoardsUI(boardsData, boardParseError) {
     });
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
-    const leftArrow = document.createElement('button');
-    leftArrow.className = 'scroll-arrow left-arrow'; // Keep class for styling
-    leftArrow.innerHTML = boardIconSvg; // Use the board icon
+    const allBoardsBtn = document.createElement('button');
+    allBoardsBtn.className = 'board-menu-button'; // Ново, по-семантично име на класовете
+    allBoardsBtn.innerHTML = boardIconSvg; // Use the board icon
     // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
-    addAllBoardsModalEvents(leftArrow, () => { showAllBoardsModal(); });
-    scrollWrapper.appendChild(leftArrow);
+    addAllBoardsModalEvents(allBoardsBtn, () => { showAllBoardsModal(); });
+    scrollWrapper.appendChild(allBoardsBtn);
     scrollWrapper.appendChild(contentEl);
     contentWrapper.appendChild(scrollWrapper);
 
     // Лявата стрелка вече е винаги видима чрез CSS или директно добавяне на клас.
     // Няма нужда от динамична проверка при скрол.
-    leftArrow.classList.add('visible');
+    allBoardsBtn.classList.add('visible');
 
     return boardsNote;
 }
@@ -3318,6 +3320,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const modalFontSizeInput = document.getElementById('modal-font-size-input');
     const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
     const orderCheckbox = document.getElementById('order-checkbox');
+    const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
     const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
     const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
     const weeklyCalendarCheckbox = document.getElementById('weekly-calendar-checkbox');
@@ -3437,6 +3440,18 @@ async function createSettingsUI(boardsData, boardParseError) {
             localStorage.setItem('showDatemod', isChecked);
             document.body.classList.toggle('hide-datemod', !isChecked);
             showToast(_('settingSaved'), 2000);
+        });
+
+        // One-tap links
+        oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') !== 'false'; // Default to true
+        oneTapLinkCheckbox.addEventListener('change', () => {
+            const isChecked = oneTapLinkCheckbox.checked;
+            localStorage.setItem('oneTapLink', isChecked);
+            showToast(_('settingSaved'), 2000);
+            // Затваряме настройките, за да се вижда презареждането
+            document.getElementById('settings-modal').classList.remove('visible');
+            // Презареждаме бележките, за да се отрази промяната веднага
+            mainLogic();
         });
 
         // Board Note Count
@@ -3983,6 +3998,45 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
+/**
+ * Processes note content to handle links, code blocks, and newlines.
+ * @param {string} text - The raw text content of the note.
+ * @param {boolean} isForModal - Flag to indicate if the content is for the modal view.
+ * @returns {string} The processed HTML content.
+ */
+function processNoteContent(text, isForModal = false) { // isForModal is now used to decide about links
+    if (!text) return '';
+
+    // 1. Handle code blocks first, just like in renderNoteContent
+    const codeBlocks = [];
+    const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
+    const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
+        codeBlocks.push(escapeHtml(code)); // escapeHtml is crucial here
+        return '%%CODE_BLOCK%%';
+    });
+
+    // 2. Escape the rest of the text to prevent HTML injection
+    const escapedText = escapeHtml(textWithoutCode);
+
+    // 3. Decide whether to create links based on the setting and context (modal/card)
+    const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false'; // true by default
+    let html = escapedText;
+    if (isForModal || oneTapLinksEnabled) {
+        // Use the same regex as renderNoteContent to find URLs in the *escaped* text
+        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+        html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    }
+
+    // 4. Re-insert code blocks
+    codeBlocks.forEach(block => {
+        html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
+    });
+
+    // 5. Finally, replace newlines with <br>
+    // This needs to be done on the final HTML string, not on the escaped text
+    return html.replace(/\n/g, '<br>');
+}
+
 function renderNoteContent(text) {
     if (!text) return '';
     const codeBlocks = [];
@@ -4104,12 +4158,20 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
     const archiveFolderName = dirHandle.name;
 
     const createLink = async (folderName, textPrefix) => {
+        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+        const isForModal = !!attachmentWrapper.closest('#modal-body');
+
+        if (!isForModal && !oneTapLinksEnabled) {
+            const span = document.createElement('span');
+            span.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
+            return span;
+        }
+
         const link = document.createElement('a');
         link.href = '#';
         link.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
-
             // --- КОРЕКЦИЯ: Зареждаме dirHandle при нужда в режим "Само база данни" ---
             const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
             if (isDbOnlyMode && !dirHandle) {
@@ -4190,30 +4252,33 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             break;
         case 5: // Location
             const parts = attachment.path.split('|');
-            if (parts.length >= 3) {
-                const [lat, lng, label] = parts;
-                const textContainer = document.createElement('div');
-                const link = document.createElement('a');
-                link.textContent = `${lat}, ${lng}`;
-                link.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.onclick = (e) => e.stopPropagation();
-                textContainer.appendChild(link);
-                const line2 = document.createElement('div');
-                line2.textContent = label;
-                textContainer.appendChild(line2);
-                attachmentWrapper.appendChild(textContainer);
+            if (parts.length < 3) break;
 
-                // Показваме JSON само в дебъг режим
-                if (debug) {
-                    iconDiv.style.cursor = 'pointer';
-                    iconDiv.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        showModal(JSON.stringify(attachment, null, 2));
-                    });
-                }
+            const [lat, lng, label] = parts;
+            const textContainer = document.createElement('div');
+
+            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+            const isForModal = !!attachmentWrapper.closest('#modal-body');
+
+            let linkElement;
+            if (!isForModal && !oneTapLinksEnabled) {
+                linkElement = document.createElement('span');
+                linkElement.textContent = `${lat}, ${lng}`;
+            } else {
+                linkElement = document.createElement('a');
+                linkElement.textContent = `${lat}, ${lng}`;
+                linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                linkElement.target = '_blank';
+                linkElement.rel = 'noopener noreferrer';
+                linkElement.onclick = (e) => e.stopPropagation();
             }
+            textContainer.appendChild(linkElement);
+
+            const line2 = document.createElement('div');
+            line2.textContent = label;
+            textContainer.appendChild(line2);
+            attachmentWrapper.appendChild(textContainer);
+
             break;
     }
 
@@ -4248,60 +4313,73 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
 
     const filename = attachment.path.split('/').pop();
     const fileId = attachment.pathGD; // Вече имаме fileId директно в attachment обекта.
-    const link = document.createElement('a');
 
     // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
     const setupLink = (folderName, textPrefix) => {
-        link.href = '#'; // href вече не сочи директно към файла.
-        link.textContent = textPrefix + filename;
-        link.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
-        link.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
-        link.title = `Click to open ${filename} from Google Drive`;
+        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+        const isForModal = !!attachmentWrapper.closest('#modal-body');
 
-        link.onclick = async (e) => {
+        let linkElement;
+
+        if (!isForModal && !oneTapLinksEnabled) {
+            linkElement = document.createElement('span');
+            linkElement.textContent = textPrefix + filename;
+            return linkElement; // Връщаме span елемента
+        }
+
+        linkElement = document.createElement('a');
+        linkElement.href = '#'; // href вече не сочи директно към файла.
+        linkElement.textContent = textPrefix + filename;
+        linkElement.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
+        linkElement.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
+        linkElement.title = `Click to open ${filename} from Google Drive`;
+
+        linkElement.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
             if (!checkAuth()) return;
 
-            showToast(`${_('loadingFile')} ${link.dataset.fileName}...`, 2000);
-            // const fileId = await getFileID(folderIds[link.dataset.folderName], link.dataset.fileName);
+            showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
+            // const fileId = await getFileID(folderIds[linkElement.dataset.folderName], linkElement.dataset.fileName);
             if (fileId) {
                 window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer');
             } else {
-                showToast(_('errorFetchFileId').replace('{fileName}', link.dataset.fileName));
+                showToast(_('errorFetchFileId').replace('{fileName}', linkElement.dataset.fileName));
             }
         };
+
+        return linkElement; // Връщаме конфигурирания 'a' елемент
     };
 
     switch (attachment.type) {
         case 1: // Image
-            setupLink('Images', ''); // Продължаваме да създаваме линка за отваряне в нов таб
+            const imgLink = setupLink('Images', '');
             addInNotePreviewListener(iconDiv, fileId, 'gdrive', false);
-            attachmentWrapper.appendChild(link);
+            attachmentWrapper.appendChild(imgLink);
             break;
         case 2: // Sound
-            setupLink('Sound', '');
+            const soundLink = setupLink('Sound', '');
             const soundTextContainer = document.createElement('div');
             soundTextContainer.style.flexGrow = '1';
             soundTextContainer.style.flexShrink = '1';
             soundTextContainer.style.minWidth = '0';
-            soundTextContainer.appendChild(link);
+            soundTextContainer.appendChild(soundLink);
             const soundLine2 = document.createElement('div');
             soundLine2.textContent = attachment.description || '';
             soundTextContainer.appendChild(soundLine2);
             attachmentWrapper.appendChild(soundTextContainer);
             break;
         case 3: // Other
-            setupLink('Other', '');
-            attachmentWrapper.appendChild(link);
+            const otherLink = setupLink('Other', '');
+            attachmentWrapper.appendChild(otherLink);
             break;
         case 4: // Video
-            setupLink('Video', '');
+            const videoLink = setupLink('Video', '');
             const videoTextContainer = document.createElement('div');
             videoTextContainer.style.flexGrow = '1';
             videoTextContainer.style.flexShrink = '1';
             videoTextContainer.style.minWidth = '0';
-            videoTextContainer.appendChild(link);
+            videoTextContainer.appendChild(videoLink);
             const videoLine2 = document.createElement('div');
             videoLine2.textContent = attachment.description || '';
             videoTextContainer.appendChild(videoLine2);
@@ -4310,25 +4388,32 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
             break;
         case 5: // Location
             const parts = attachment.path.split('|');
-            if (parts.length >= 3) {
-                const textContainer = document.createElement('div');
-                const lat = parts[0];
-                const lng = parts[1];
-                const label = parts[2];
+            if (parts.length < 3) break;
 
-                const link = document.createElement('a');
-                link.textContent = `${lat}, ${lng}`;
-                link.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.onclick = (e) => e.stopPropagation(); // Предотвратява отварянето на модала на бележката
+            const [lat, lng, label] = parts;
+            const textContainer = document.createElement('div');
 
-                textContainer.appendChild(link);
-                const line2 = document.createElement('div');
-                line2.textContent = label;
-                textContainer.appendChild(line2);
-                attachmentWrapper.appendChild(textContainer);
+            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+            const isForModal = !!attachmentWrapper.closest('#modal-body');
+
+            let linkElement;
+            if (!isForModal && !oneTapLinksEnabled) {
+                linkElement = document.createElement('span');
+                linkElement.textContent = `${lat}, ${lng}`;
+            } else {
+                linkElement = document.createElement('a');
+                linkElement.textContent = `${lat}, ${lng}`;
+                linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                linkElement.target = '_blank';
+                linkElement.rel = 'noopener noreferrer';
+                linkElement.onclick = (e) => e.stopPropagation();
             }
+            textContainer.appendChild(linkElement);
+
+            const line2 = document.createElement('div');
+            line2.textContent = label;
+            textContainer.appendChild(line2);
+            attachmentWrapper.appendChild(textContainer);
             break;
     }
 
@@ -4470,15 +4555,16 @@ async function createNoteElement(noteContent) {
     const contentEl = document.createElement('div');
     contentEl.className = 'note-content';
 
+    const isForModal = (note.closest('#modal-body') !== null);
     if (isHiddenNote) {
         const pipeIndex = fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
-        contentEl.innerHTML = renderNoteContent(previewContent);
+        contentEl.innerHTML = processNoteContent(previewContent, isForModal);
     } else {
         if (textSpan && textSpan.trim() !== '') {
             contentEl.innerHTML = formatText(displayContent, textSpan);
         } else {
-            contentEl.innerHTML = renderNoteContent(displayContent);
+            contentEl.innerHTML = processNoteContent(displayContent, isForModal);
         }
     }
     let attachments = [];
@@ -4500,6 +4586,11 @@ async function createNoteElement(noteContent) {
 
     if (attachments.length > 0) {
         note.dataset.hasAttachments = 'true';
+        // --- КОРЕКЦИЯ: Добавяме специфична проверка за снимки (тип 1) ---
+        if (attachments.some(att => att.type === 1)) {
+            note.dataset.hasPhoto = 'true';
+        }
+        // --- Край на корекцията ---
         // Check for video attachments (type 4)
         if (attachments.some(att => att.type === 4)) {
             note.dataset.hasVideo = 'true';

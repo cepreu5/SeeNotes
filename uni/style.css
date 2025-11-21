@@ -937,7 +937,7 @@ code {
     border-radius: 4px;
 }
 
-.scroll-arrow {
+.board-menu-button {
     background-color: #d0e0ed;
     border: 1px solid #a9cce3;
     border-radius: 50%;
@@ -954,17 +954,17 @@ code {
     /* Hidden by default */
 }
 
-.scroll-arrow svg {
+.board-menu-button svg {
     width: 24px;
     height: 24px;
     stroke-width: 2;
 }
 
-.scroll-arrow.visible {
+.board-menu-button.visible {
     visibility: visible;
 }
 
-.scroll-arrow:hover {
+.board-menu-button:hover {
     background-color: #bdd9ef;
 }
 
