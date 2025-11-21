@@ -19,7 +19,7 @@ const DEMO_NOTE_LIMIT = 5;
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.15'; // App version
+const version = '0.16'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -37,6 +37,7 @@ let dirHandle = null; // За локален достъп до файловат�
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
+let tokenClient = null; // Client for silent auth refresh
 
 // --- Състояние на търсенето ---
 let searchMode = 'title';
@@ -901,6 +902,53 @@ function updateSignoutTooltip() {
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
+async function refreshAuthToken() {
+    const loginHint = localStorage.getItem('google_login_hint');
+    if (!loginHint) return null;
+
+    // Wait for Google library to load if not ready
+    if (typeof google === 'undefined') {
+        await new Promise(resolve => {
+            const interval = setInterval(() => {
+                if (typeof google !== 'undefined') {
+                    clearInterval(interval);
+                    resolve();
+                }
+            }, 100);
+        });
+    }
+
+    return new Promise((resolve) => {
+        if (!tokenClient) {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+                        // Update storage - prefer localStorage if it was there
+                        if (localStorage.getItem('google_auth_token')) {
+                            localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                        } else {
+                            sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                        }
+                        // Return success format matching checkAuth expectations
+                        resolve({ tokenData: tokenWithTimestamp, pass: true });
+                    } else {
+                        resolve(null);
+                    }
+                },
+                error_callback: (error) => {
+                    console.error("Silent refresh failed:", error);
+                    resolve(null);
+                }
+            });
+        }
+        // Request token silently
+        tokenClient.requestAccessToken({ prompt: 'none', login_hint: loginHint });
+    });
+}
+
 async function checkAuth() {
     console.log("checkAuth");
     // --- Проверяваме и в двата storage-а за токен ---
@@ -919,6 +967,13 @@ async function checkAuth() {
     tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
     const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
     if (isExpired) {
+        console.log("Token expired. Attempting silent refresh...");
+        const refreshResult = await refreshAuthToken();
+        if (refreshResult && refreshResult.pass) {
+            console.log("Silent refresh successful.");
+            return refreshResult;
+        }
+
         console.log("Token expired. Redirecting to login for re-authentication.");
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token'); // Изчистваме и от localStorage
@@ -1261,10 +1316,9 @@ async function runGoogleDriveSync() {
     await syncFile('media.txt', MEDIA_STORE_NAME, false);
     await syncFile('note.txt', NOTE_STORE_NAME, true); // Подаваме флаг, че това са бележки
 
-    // ЗАПИСВАМЕ TIMESTAMP-А НА ДВЕТЕ МЕСТА СЛЕД УСПЕШНА СИНХРОНИЗАЦИЯ
+    // ЗАПИСВАМЕ TIMESTAMP-А СЛЕД УСПЕШНА СИНХРОНИЗАЦИЯ
     const now = Date.now();
     await saveConfig('lastGDTimestamp', now);
-    localStorage.setItem('lastGDTimestamp', now);
 
     loaderText.textContent = _('syncFinishedLoadingData');
     console.log('Google Drive sync finished.');
@@ -1406,7 +1460,6 @@ async function createDatabaseFromMemory() {
         const now = Date.now();
         if (dbSource === 1) { // Google Drive
             await saveConfig('lastGDTimestamp', now); // В IndexedDB
-            localStorage.setItem('lastGDTimestamp', now); // И в localStorage
         } else if (dbSource === 2) { // Local Folder
             await saveConfig('lastLocalTimestamp', now);
         }
