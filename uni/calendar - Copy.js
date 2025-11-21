@@ -27,10 +27,7 @@ function renderCalendarView() {
     calendarHeader.className = 'calendar-header';
     calendarHeader.innerHTML = `
             <div class="calendar-nav-controls">
-                <button id="close-month-calendar-btn" class="close-calendar-btn">
-                    <span class="close-symbol">&times;</span>
-                    <img src="Refresh.png" class="close-loading-icon" style="display: none;">
-                </button>
+                <button id="close-month-calendar-btn" class="close-calendar-btn">&times;</button>
                 <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
                 <button id="today-month-btn">${calendarIconSvg}</button>
                 <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${weeklyViewIconSvg}</button>
@@ -185,50 +182,21 @@ function renderCalendarView() {
         currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
         renderCalendarView();
     });
-    document.getElementById('close-month-calendar-btn').addEventListener('click', (e) => {
-        // --- Анимация в бутона за затваряне ---
-        const closeBtn = e.currentTarget;
-        const closeSymbol = closeBtn.querySelector('.close-symbol');
-        const loadingIcon = closeBtn.querySelector('.close-loading-icon');
-
-        if (closeSymbol && loadingIcon) {
-            closeSymbol.style.display = 'none';
-            loadingIcon.style.display = 'inline';
-            loadingIcon.classList.add('button-loading');
-        }
-
+    document.getElementById('close-month-calendar-btn').addEventListener('click', () => {
         setTimeout(() => {
             requestAnimationFrame(() => {
-                calendarContainer.style.display = 'none';
+                calendarContainer.style.visibility = 'hidden';
                 document.querySelector('header').style.display = 'flex';
                 notesContainer.style.display = 'flex';
                 window.dispatchEvent(new Event('scroll'));
-
-                // Спираме анимацията
-                if (closeSymbol && loadingIcon) {
-                    loadingIcon.classList.remove('button-loading');
-                    loadingIcon.style.display = 'none';
-                    closeSymbol.style.display = 'inline';
-                }
-
-                // Актуализираме визуалното състояние на бутоните
-                document.querySelectorAll('.board-filter-link').forEach(btn => {
-                    btn.classList.remove('selected-board');
-                });
-                const activeButton = document.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
-                if (activeButton) {
-                    activeButton.classList.add('selected-board');
-                    activeButton.scrollIntoView({
-                        behavior: 'smooth',
-                        inline: 'center',
-                        block: 'nearest'
-                    });
-                }
             });
         }, 20);
     });
 }
 
+/**
+ * Рендира седмичен изглед на календара.
+ */
 function renderWeeklyCalendarView(dateForWeek) {
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
@@ -283,7 +251,7 @@ function renderWeeklyCalendarView(dateForWeek) {
     header.style.top = '0';
     header.style.zIndex = '100';
     header.style.backgroundColor = '#fdf6e3'; // Match background
-    header.innerHTML = `<div class="calendar-nav-controls"><button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span><img src="Refresh.png" class="close-loading-icon" style="display: none;"></button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default;">${titleText}</h2>`;
+    header.innerHTML = `<div class="calendar-nav-controls"><button id="close-week-calendar-btn" class="close-calendar-btn">&times;</button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default;">${titleText}</h2>`;
     weeklyContainer.appendChild(header);
 
     // Добавяме клик събитие за преход към месечен изглед ---
@@ -297,47 +265,11 @@ function renderWeeklyCalendarView(dateForWeek) {
     const monthViewBtn = header.querySelector('#month-view-btn');
     monthViewBtn.addEventListener('click', goToMonthView);
 
-    header.querySelector('.close-calendar-btn').addEventListener('click', (e) => {
-        // --- Анимация в бутона за затваряне ---
-        const closeBtn = e.currentTarget;
-        const closeSymbol = closeBtn.querySelector('.close-symbol');
-        const loadingIcon = closeBtn.querySelector('.close-loading-icon');
-
-        if (closeSymbol && loadingIcon) {
-            closeSymbol.style.display = 'none';
-            loadingIcon.style.display = 'inline';
-            loadingIcon.classList.add('button-loading');
-        }
-
-        setTimeout(() => {
-            requestAnimationFrame(() => {
-                weeklyContainer.style.display = 'none';
-                document.querySelector('header').style.display = 'flex';
-                notesContainer.style.display = 'flex';
-                window.dispatchEvent(new Event('scroll'));
-
-                // Спираме анимацията
-                if (closeSymbol && loadingIcon) {
-                    loadingIcon.classList.remove('button-loading');
-                    loadingIcon.style.display = 'none';
-                    closeSymbol.style.display = 'inline';
-                }
-
-                // Актуализираме визуалното състояние на бутоните
-                document.querySelectorAll('.board-filter-link').forEach(btn => {
-                    btn.classList.remove('selected-board');
-                });
-                const activeButton = document.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
-                if (activeButton) {
-                    activeButton.classList.add('selected-board');
-                    activeButton.scrollIntoView({
-                        behavior: 'smooth',
-                        inline: 'center',
-                        block: 'nearest'
-                    });
-                }
-            });
-        }, 20);
+    header.querySelector('.close-calendar-btn').addEventListener('click', () => {
+        weeklyContainer.style.display = 'none';
+        document.querySelector('header').style.display = 'flex';
+        notesContainer.style.display = 'flex';
+        window.dispatchEvent(new Event('scroll'));
     });
 
     header.querySelector('#prev-week-btn').addEventListener('click', () => {
@@ -497,5 +429,51 @@ function renderWeeklyCalendarView(dateForWeek) {
                 }
             }
         }
+    });
+}
+
+listContainer.appendChild(dayRow);
+    }
+
+// Скролираме до днешния ден, ако е видим
+if (todayRowElement) {
+    todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Добавяме брояч, ако има повече бележки ---
+// Тази проверка се прави след като елементите са в DOM, за да има реални размери.
+listContainer.querySelectorAll('.weekly-day-row').forEach(row => {
+    const notesContainer = row.querySelector('.weekly-notes-container');
+    if (notesContainer) {
+        // Проверяваме дали има хоризонтален скрол
+        const hasOverflow = notesContainer.scrollWidth > notesContainer.clientWidth;
+        if (hasOverflow) {
+            const totalNotes = notesContainer.children.length;
+            const dateInfo = row.querySelector('.weekly-date-info');
+            if (dateInfo && !dateInfo.querySelector('.weekly-note-counter')) {
+                const counter = document.createElement('div');
+                counter.className = 'weekly-note-counter';
+                counter.textContent = `(${totalNotes})`;
+                dateInfo.appendChild(counter);
+            }
+        }
+    }
+});
+}
+
+if (notesContainer) {
+    // Проверяваме дали има хоризонтален скрол
+    const hasOverflow = notesContainer.scrollWidth > notesContainer.clientWidth;
+    if (hasOverflow) {
+        const totalNotes = notesContainer.children.length;
+        const dateInfo = row.querySelector('.weekly-date-info');
+        if (dateInfo && !dateInfo.querySelector('.weekly-note-counter')) {
+            const counter = document.createElement('div');
+            counter.className = 'weekly-note-counter';
+            counter.textContent = `(${totalNotes})`;
+            dateInfo.appendChild(counter);
+        }
+    }
+}
     });
 }
