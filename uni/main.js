@@ -369,6 +369,16 @@ async function handleCalculateClick() {
 }
 
 function initApp() {
+    // Set default showBoardAll to false if not set
+    if (localStorage.getItem('showBoardAll') === null) {
+        localStorage.setItem('showBoardAll', 'false');
+    }
+
+    // Set default showWeeklyCalendar to true if not set
+    if (localStorage.getItem('showWeeklyCalendar') === null) {
+        localStorage.setItem('showWeeklyCalendar', 'true');
+    }
+
     // Инициализация на DOM елементи
     signoutButton = document.getElementById('signout_button');
     reloadButton = document.getElementById('reload_button');
