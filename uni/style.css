@@ -2153,3 +2153,54 @@ code {
     margin-left: 10px;
     /* Разстояние между стрелката и линията */
 }
+
+/* Style for the 'With Photos' board button */
+.photos-filter-btn {
+    background-color: #6f42c1;
+    /* Purple */
+    color: white;
+}
+
+.photos-filter-btn:hover {
+    background-color: #5a32a3;
+    color: white;
+}
+
+.photos-filter-btn.selected-board {
+    background-color: #4a2293;
+    color: white;
+}
+
+/* Style for the 'With Video' board button */
+.videos-filter-btn {
+    background-color: #e83e8c;
+    /* Pink */
+    color: white;
+}
+
+.videos-filter-btn:hover {
+    background-color: #d63384;
+    color: white;
+}
+
+.videos-filter-btn.selected-board {
+    background-color: #c2185b;
+    color: white;
+}
+
+/* Style for the 'Other Attachments' board button */
+.other-filter-btn {
+    background-color: #00796b;
+    /* Teal */
+    color: white;
+}
+
+.other-filter-btn:hover {
+    background-color: #00695c;
+    color: white;
+}
+
+.other-filter-btn.selected-board {
+    background-color: #004d40;
+    color: white;
+}

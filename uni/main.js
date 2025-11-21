@@ -109,6 +109,8 @@ const noteBackgrounds = [
     'stl2_1.png', // 10
     'stl3_1.png'  // 11
 ];
+// Времено решение за проблем със скролирането до последната бележка при презареждане от иконата на браузъра
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 // =================================================================================
 // MODULES
@@ -2650,7 +2652,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     // --- Проверка за съществуващ борд ---
     // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
     // и не съществува в boardsData, превключваме към 'all'.
-    const specialBoards = ['all', 'calendar', 'reminder', 'new-updates'];
+    const specialBoards = ['all', 'calendar', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
     if (!specialBoards.includes(boardId)) {
         // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
         // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
@@ -2744,6 +2746,14 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         searchInput.placeholder = `[${_('reminder')}]: ${_('searchPlaceholder')}`;
     } else if (boardId === 'new-updates') {
         searchInput.placeholder = `[${_('newUpdates')}]: ${_('searchPlaceholder')}`;
+    } else if (boardId === 'with-photos') {
+        searchInput.placeholder = `[${_('photosBoardTitle') || "With Photos"}]: ${_('searchPlaceholder')}`;
+    } else if (boardId === 'with-videos') {
+        searchInput.placeholder = `[${_('videosBoardTitle') || "With Video"}]: ${_('searchPlaceholder')}`;
+    } else if (boardId === 'with-sounds') {
+        searchInput.placeholder = `[${_('soundsBoardTitle') || "With Sounds"}]: ${_('searchPlaceholder')}`;
+    } else if (boardId === 'with-other') {
+        searchInput.placeholder = `[${_('otherBoardTitle') || "Other Attachments"}]: ${_('searchPlaceholder')}`;
     } else if (boardId !== 'all' && boardId !== 'calendar') {
         // Търсим по gdid, за да вземем заглавието
         const board = boardsData.find(b => b.gdid === boardId);
@@ -2782,6 +2792,14 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         scrollTopBtn.innerHTML = `${_('reminder')} ${arrowSvg}`;
     } else if (boardId === 'new-updates') {
         scrollTopBtn.innerHTML = `${_('newUpdates')} ${arrowSvg}`;
+    } else if (boardId === 'with-photos') {
+        scrollTopBtn.innerHTML = `${_('photosBoardTitle') || "With Photos"} ${arrowSvg}`;
+    } else if (boardId === 'with-videos') {
+        scrollTopBtn.innerHTML = `${_('videosBoardTitle') || "With Video"} ${arrowSvg}`;
+    } else if (boardId === 'with-sounds') {
+        scrollTopBtn.innerHTML = `${_('soundsBoardTitle') || "With Sounds"} ${arrowSvg}`;
+    } else if (boardId === 'with-other') {
+        scrollTopBtn.innerHTML = `${_('otherBoardTitle') || "Other Attachments"} ${arrowSvg}`;
     } else {
         // Търсим по gdid, за да вземем заглавието
         const board = boardsData.find(b => b.gdid === boardId);
@@ -2827,6 +2845,10 @@ function applyFilters() {
         const isVisibleByBoard = (currentBoardFilter === 'all') ||
             (currentBoardFilter === 'reminder' && data.timer && data.timer !== 0) ||
             (currentBoardFilter === 'new-updates' && updatedNoteGdims.includes(data.gdid)) ||
+            (currentBoardFilter === 'with-photos' && note.dataset.hasAttachments === 'true') ||
+            (currentBoardFilter === 'with-videos' && note.dataset.hasVideo === 'true') ||
+            (currentBoardFilter === 'with-sounds' && note.dataset.hasSound === 'true') ||
+            (currentBoardFilter === 'with-other' && note.dataset.hasOtherAttachments === 'true') ||
             (data.boardid == currentBoardFilter); // Използваме '==' за да сравняваме число и стринг, ако се наложи
 
         const isVisibleBySearch = (() => {
@@ -3166,6 +3188,62 @@ async function createBoardsUI(boardsData, boardParseError) {
         });
         allButtonLinks.push(reminderLink);
     }
+
+    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС СНИМКИ" ---
+    if (localStorage.getItem('showPhotosBoard') === 'true') {
+        const photosLink = document.createElement('span');
+        photosLink.textContent = _('photosBoardTitle') || "With Photos";
+        photosLink.classList.add('board-filter-link', 'photos-filter-btn');
+        photosLink.dataset.boardid = 'with-photos';
+        photosLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            filterNotesByBoard('with-photos', false);
+        });
+        allButtonLinks.push(photosLink);
+    }
+
+    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "С ВИДЕО" ---
+    if (localStorage.getItem('showVideosBoard') === 'true') {
+        const videosLink = document.createElement('span');
+        videosLink.textContent = _('videosBoardTitle') || "With Video";
+        videosLink.classList.add('board-filter-link', 'videos-filter-btn');
+        videosLink.dataset.boardid = 'with-videos';
+        videosLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            filterNotesByBoard('with-videos', false);
+        });
+        allButtonLinks.push(videosLink);
+    }
+
+    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС ЗВУК" ---
+    if (localStorage.getItem('showSoundsBoard') === 'true') {
+        const soundsLink = document.createElement('span');
+        soundsLink.textContent = _('soundsBoardTitle') || "With Sounds";
+        soundsLink.classList.add('board-filter-link', 'sounds-filter-btn');
+        soundsLink.dataset.boardid = 'with-sounds';
+        soundsLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            filterNotesByBoard('with-sounds', false);
+        });
+        allButtonLinks.push(soundsLink);
+    }
+
+    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ДРУГИ ПРИЛОЖЕНИЯ" ---
+    if (localStorage.getItem('showOtherBoard') === 'true') {
+        const otherLink = document.createElement('span');
+        otherLink.textContent = _('otherBoardTitle') || "Other Attachments";
+        otherLink.classList.add('board-filter-link', 'other-filter-btn');
+        otherLink.dataset.boardid = 'with-other';
+        otherLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            filterNotesByBoard('with-other', false);
+        });
+        allButtonLinks.push(otherLink);
+    }
     // Сортираме бордовете по полето numord, преди да създадем бутоните
     boardsData.sort((a, b) => {
         const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
@@ -3244,6 +3322,10 @@ async function createSettingsUI(boardsData, boardParseError) {
     const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
     const weeklyCalendarCheckbox = document.getElementById('weekly-calendar-checkbox');
     const showBoardRemindCheckbox = document.getElementById('remind-board-checkbox');
+    const showPhotosBoardCheckbox = document.getElementById('show-photos-board-checkbox');
+    const showVideosBoardCheckbox = document.getElementById('show-videos-board-checkbox');
+    const showSoundsBoardCheckbox = document.getElementById('show-sounds-board-checkbox');
+    const showOtherBoardCheckbox = document.getElementById('show-other-board-checkbox');
     // const startBoardSelect = document.getElementById('start-board-select');
     const maxSearchesInput = document.getElementById('max-searches-input');
     const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
@@ -3383,6 +3465,46 @@ async function createSettingsUI(boardsData, boardParseError) {
             showBoardRemindCheckbox.checked = localStorage.getItem('showBoardRemind') !== 'false'; // Default to true
             showBoardRemindCheckbox.addEventListener('change', () => {
                 localStorage.setItem('showBoardRemind', showBoardRemindCheckbox.checked.toString());
+                showToast(_('settingSaved'), 2000);
+                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+            });
+        }
+
+        // Show 'Photos' Board Checkbox
+        if (showPhotosBoardCheckbox) {
+            showPhotosBoardCheckbox.checked = localStorage.getItem('showPhotosBoard') === 'true';
+            showPhotosBoardCheckbox.addEventListener('change', () => {
+                localStorage.setItem('showPhotosBoard', showPhotosBoardCheckbox.checked.toString());
+                showToast(_('settingSaved'), 2000);
+                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+            });
+        }
+
+        // Show 'Videos' Board Checkbox
+        if (showVideosBoardCheckbox) {
+            showVideosBoardCheckbox.checked = localStorage.getItem('showVideosBoard') === 'true';
+            showVideosBoardCheckbox.addEventListener('change', () => {
+                localStorage.setItem('showVideosBoard', showVideosBoardCheckbox.checked.toString());
+                showToast(_('settingSaved'), 2000);
+                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+            });
+        }
+
+        // Show 'Sounds' Board Checkbox
+        if (showSoundsBoardCheckbox) {
+            showSoundsBoardCheckbox.checked = localStorage.getItem('showSoundsBoard') === 'true';
+            showSoundsBoardCheckbox.addEventListener('change', () => {
+                localStorage.setItem('showSoundsBoard', showSoundsBoardCheckbox.checked.toString());
+                showToast(_('settingSaved'), 2000);
+                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+            });
+        }
+
+        // Show 'Other' Board Checkbox
+        if (showOtherBoardCheckbox) {
+            showOtherBoardCheckbox.checked = localStorage.getItem('showOtherBoard') === 'true';
+            showOtherBoardCheckbox.addEventListener('change', () => {
+                localStorage.setItem('showOtherBoard', showOtherBoardCheckbox.checked.toString());
                 showToast(_('settingSaved'), 2000);
                 renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             });
@@ -4377,6 +4499,19 @@ async function createNoteElement(noteContent) {
     }
 
     if (attachments.length > 0) {
+        note.dataset.hasAttachments = 'true';
+        // Check for video attachments (type 4)
+        if (attachments.some(att => att.type === 4)) {
+            note.dataset.hasVideo = 'true';
+        }
+        // Check for sound attachments (type 2)
+        if (attachments.some(att => att.type === 2)) {
+            note.dataset.hasSound = 'true';
+        }
+        // Check for other attachments (not type 1 or 4)
+        if (attachments.some(att => att.type !== 1 && att.type !== 4 && att.type !== 2)) {
+            note.dataset.hasOtherAttachments = 'true';
+        }
         const separator = document.createElement('hr');
         separator.style.marginTop = '10px';
         separator.style.marginBottom = '10px';
