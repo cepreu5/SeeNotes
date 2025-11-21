@@ -1380,6 +1380,7 @@ async function handleUserMismatch(storedUser) {
     localStorage.setItem('useLocalDb', 'false');
     localStorage.setItem('useArhDb', 'false'); // Добавяме и архива
     updateGlobalStateFlags();
+    updateModeButton();
     // Деактивираме контролите в настройките
     const settingsModal = document.getElementById('settings-modal');
     // Проверяваме дали модалът за настройки изобщо съществува в DOM

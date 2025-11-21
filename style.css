@@ -1,5 +1,6 @@
 :root {
-    --note-font-size: 16px; /* Default font size for notes */
+    --note-font-size: 16px;
+    /* Default font size for notes */
     --note-bg-0: #FBFF86;
     --note-bg-1: #FF829E;
     --note-bg-2: #68FF97;
@@ -31,7 +32,8 @@ header {
     padding-bottom: 0.3em;
     /*border-bottom: 1px solid #eee;*/
     /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
-    /* margin-bottom: 1em; */ /* Removed to stick the boards note to the header */
+    /* margin-bottom: 1em; */
+    /* Removed to stick the boards note to the header */
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -48,17 +50,20 @@ header h1 {
 }
 
 #search-container {
-    position: relative; /* Needed for positioning the save button and popup */
+    position: relative;
+    /* Needed for positioning the save button and popup */
     flex-grow: 1;
     /*padding: 0 2em;*/
     display: flex;
     justify-content: center;
-    max-width: 400px; /* Prevent it from growing too wide */
+    max-width: 400px;
+    /* Prevent it from growing too wide */
     align-items: center;
 }
 
 #search-wrapper {
-    position: relative; /* New context for positioning icons */
+    position: relative;
+    /* New context for positioning icons */
     width: 100%;
     max-width: 400px;
     display: flex;
@@ -68,32 +73,38 @@ header h1 {
 #search-box {
     width: 100%;
     /* max-width and min-width are now on the wrapper */
-    padding: 8px 35px 8px 12px; /* Increased right padding for icons */
+    padding: 8px 35px 8px 12px;
+    /* Increased right padding for icons */
     border-radius: 20px;
     border: 1px solid #aaa;
     font-size: 1em;
     background-color: #d6d6d6;
-    box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
 }
 
 /* Change cursor to pointer on the search input's clear button (X) */
 #search-box::-webkit-search-cancel-button {
     position: relative;
-    right: 0px; /* Position it right next to the save icon */
+    right: 0px;
+    /* Position it right next to the save icon */
     cursor: pointer !important;
 }
 
 /* Icon for saving the search term */
 .search-icon {
     position: absolute;
-    top: 50%; 
-    right: 15px; /* Position from the right edge of the wrapper */
-    transform: translateY(-50%); /* Center it vertically */
-    cursor: pointer; /* Ensure cursor changes on hover */
+    top: 50%;
+    right: 15px;
+    /* Position from the right edge of the wrapper */
+    transform: translateY(-50%);
+    /* Center it vertically */
+    cursor: pointer;
+    /* Ensure cursor changes on hover */
     color: #555;
-    display: none; /* Hidden by default */
+    display: none;
+    /* Hidden by default */
     /* We need to give it a higher z-index to be clickable over the input's padding */
-    z-index: 2; 
+    z-index: 2;
 }
 
 .search-icon svg {
@@ -107,8 +118,13 @@ header h1 {
 
 /* Animation for the save icon */
 @keyframes save-spin {
-    from { transform: translateY(-50%) rotate(0deg); }
-    to   { transform: translateY(-50%) rotate(360deg); }
+    from {
+        transform: translateY(-50%) rotate(0deg);
+    }
+
+    to {
+        transform: translateY(-50%) rotate(360deg);
+    }
 }
 
 .saved-animation {
@@ -117,36 +133,64 @@ header h1 {
 
 /* Анимация за зареждане на бутон */
 @keyframes button-spin {
-    from { transform: translate(-50%, -50%) rotate(0deg); }
-    to   { transform: translate(-50%, -50%) rotate(360deg); }
+    from {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
 }
 
 /* Стил за самата икона за зареждане в бутона */
 .board-loading-icon {
-    display: none; /* Скрита по подразбиране */
+    display: none;
+    /* Скрита по подразбиране */
     width: 16px;
     height: 16px;
-    margin-left: 8px; /* Разстояние от текста */
+    margin-left: 8px;
+    /* Разстояние от текста */
     vertical-align: middle;
 }
 
 /* Клас, който се добавя, за да се покаже иконата и да се стартира анимацията */
 .button-loading {
-    display: inline-block !important; /* Показваме иконата */
+    display: inline-block !important;
+    /* Показваме иконата */
     animation: button-spin 0.8s linear infinite;
     transform-origin: center;
 }
 
 /* Стил за иконата за зареждане в бутона за режим */
 #mode-button-loading-icon {
-    display: none; /* Скрита по подразбиране */
-    width: 24px;   /* Същия размер като основната икона */
+    display: none;
+    /* Скрита по подразбиране */
+    width: 24px;
+    /* Същия размер като основната икона */
     height: 24px;
-    position: absolute; /* Позиционираме я в центъра на бутона */
+    position: absolute;
+    /* Позиционираме я в центъра на бутона */
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%); /* Първоначално центриране */
+    transform: translate(-50%, -50%);
+    /* Първоначално центриране */
 }
+
+/* Стил за бутона за затваряне на календара */
+.close-calendar-btn {
+    position: relative;
+}
+
+/* Стил за иконата за зареждане в бутона за затваряне на календара */
+.close-loading-icon {
+    width: 20px;
+    height: 20px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
 /* Popup for saved searches */
 #saved-searches-popup {
     position: absolute;
@@ -157,11 +201,13 @@ header h1 {
     background: linear-gradient(135deg, #E4E4E4, #858585);
     border: 1px solid #636363;
     border-radius: 3px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    z-index: 101; /* Above the header content */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 101;
+    /* Above the header content */
     max-height: 600px;
     overflow-y: auto;
-    display: none; /* Hidden by default */
+    display: none;
+    /* Hidden by default */
     padding: 15px;
 }
 
@@ -180,7 +226,8 @@ header h1 {
 .saved-search-item:first-child {
     font-style: italic;
     color: #3a5a78;
-    border-bottom: 1px solid #636363; /* Make separator stronger */
+    border-bottom: 1px solid #636363;
+    /* Make separator stronger */
 }
 
 
@@ -190,7 +237,7 @@ header h1 {
     border: 1px solid #aaa;
     border-radius: 50%;
     background-color: #d6d6d6;
-    box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
     cursor: pointer;
     color: #000;
     display: inline-flex;
@@ -198,40 +245,58 @@ header h1 {
     justify-content: center;
     /* Prevent text selection on buttons */
     position: relative;
-    -webkit-user-select: none; /* Safari */
-    -moz-user-select: none;    /* Firefox */
+    -webkit-user-select: none;
+    /* Safari */
+    -moz-user-select: none;
+    /* Firefox */
     user-select: none;
-    padding: 11px; /* Задаваме padding, за да определим размера */
-    box-sizing: border-box; /* Гарантираме, че padding-ът е включен в размера */
+    padding: 11px;
+    /* Задаваме padding, за да определим размера */
+    box-sizing: border-box;
+    /* Гарантираме, че padding-ът е включен в размера */
 }
+
 /* Специфични стилове за бутона за режим, за да се адаптира към съдържанието */
 #mode_button {
-    width: auto; /* Премахваме фиксираната ширина */
-    height: auto; /* Премахваме фиксираната височина */
-    min-width: 46px; /* Гарантираме минимален размер, равен на другите бутони */
+    width: auto;
+    /* Премахваме фиксираната ширина */
+    height: auto;
+    /* Премахваме фиксираната височина */
+    min-width: 46px;
+    /* Гарантираме минимален размер, равен на другите бутони */
     min-height: 46px;
-    gap: 5px; /* Разстояние между елементите вътре в бутона (напр. icon-wrapper и loading icon) */
+    gap: 5px;
+    /* Разстояние между елементите вътре в бутона (напр. icon-wrapper и loading icon) */
     background-color: #9a9999;
-    border-radius: 25px; /* Заоблени ъгли, вместо елипса */
+    border-radius: 25px;
+    /* Заоблени ъгли, вместо елипса */
 }
+
 /* Wrapper for the mode icon to correctly position the overlay */
 .mode-icon-wrapper {
     /* Remove fixed width/height to allow it to expand with content */
     /* width: 24px; */
     /* height: 24px; */
-    position: relative; /* Keep relative for potential future absolute children */
+    position: relative;
+    /* Keep relative for potential future absolute children */
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 2px; /* Малко разстояние между двете икони */
+    gap: 2px;
+    /* Малко разстояние между двете икони */
 }
+
 /* Overlay for DB icon on mode button */
 .mode-db-overlay {
     /* Премахваме абсолютното позициониране, за да е една до друга */
-    position: relative; /* Позволява ни да я местим спрямо нормалната й позиция */
-    top: 7px; /* Сваляме иконата 7px надолу */
-    margin-left: -15px; /* Придърпваме я наляво, за да застъпи първата */
-    width: 21px; /* 3px по-малка от основната икона (24px) */
+    position: relative;
+    /* Позволява ни да я местим спрямо нормалната й позиция */
+    top: 7px;
+    /* Сваляме иконата 7px надолу */
+    margin-left: -15px;
+    /* Придърпваме я наляво, за да застъпи първата */
+    width: 21px;
+    /* 3px по-малка от основната икона (24px) */
     height: 21px;
 }
 
@@ -239,10 +304,12 @@ header h1 {
     width: 100%;
     height: 100%;
 }
+
 /* Когато mode_button зарежда, скриваме другите икони и показваме анимацията */
 .mode-button-loading #mode-button-loading-icon {
     display: block !important;
 }
+
 .mode-button-loading .mode-icon-wrapper {
     display: none !important;
 }
@@ -278,14 +345,19 @@ main {
     width: 250px;
     height: 250px;
     display: flex;
-    flex-direction: column; /* Това ще подреди wrapper-а и футъра вертикално */
+    flex-direction: column;
+    /* Това ще подреди wrapper-а и футъра вертикално */
     /*background-color: var(--note-bg-0);*/
-    font-size: var(--note-font-size); /* Set base font size for the whole note */
-    box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
+    font-size: var(--note-font-size);
+    /* Set base font size for the whole note */
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
     text-align: left;
-    cursor: pointer; /* Added for pointer cursor on hover */
-    padding-bottom: 35px; /* Добавяме padding отдолу, за да направим място за футъра */
-    box-sizing: border-box; /* Гарантираме, че padding-ът е включен в общата височина */
+    cursor: pointer;
+    /* Added for pointer cursor on hover */
+    padding-bottom: 35px;
+    /* Добавяме padding отдолу, за да направим място за футъра */
+    box-sizing: border-box;
+    /* Гарантираме, че padding-ът е включен в общата височина */
 }
 
 .note-item {
@@ -304,22 +376,26 @@ main {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 0; /* Ensure it's behind the content wrapper */
+    z-index: 0;
+    /* Ensure it's behind the content wrapper */
 }
 
 .note-content-wrapper {
     display: flex;
     flex-direction: column;
     width: 100%;
-    height: 100%; /* Wrapper-ът продължава да заема 100% от намаленото налично пространство */
+    height: 100%;
+    /* Wrapper-ът продължава да заема 100% от намаленото налично пространство */
     padding-top: 0px;
     box-sizing: border-box;
     background-color: transparent;
-    z-index: 1; /* Гарантираме, че съдържанието е над canvas-а */
-    flex-grow: 1; /* Позволяваме на wrapper-а да се разшири и да запълни свободното място */
+    z-index: 1;
+    /* Гарантираме, че съдържанието е над canvas-а */
+    flex-grow: 1;
+    /* Позволяваме на wrapper-а да се разшири и да запълни свободното място */
 }
 
-.note-content-wrapper > .note-content {
+.note-content-wrapper>.note-content {
     margin: 0 10% 10% 8%;
 }
 
@@ -327,13 +403,15 @@ main {
     flex-grow: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    word-wrap: break-word;    
+    word-wrap: break-word;
     /* Font size is now inherited from .note */
     white-space: pre-wrap;
 }
 
-pre, code {
-    font-size: 100%; /* Match the surrounding text size */
+pre,
+code {
+    font-size: 100%;
+    /* Match the surrounding text size */
 }
 
 .note-content::-webkit-scrollbar {
@@ -376,24 +454,33 @@ pre, code {
     justify-content: center;
     align-items: center;
     gap: 10px;
-    position: absolute; /* Остава абсолютно позициониран */
-    bottom: 5px;        /* Запазваме позицията отдолу */
+    position: absolute;
+    /* Остава абсолютно позициониран */
+    bottom: 5px;
+    /* Запазваме позицията отдолу */
     left: 0;
     right: 0;
-    height: 30px;       /* Задаваме фиксирана височина на футъра */
-    z-index: 2;         /* Задаваме по-висок z-index, за да е винаги отгоре */
+    height: 30px;
+    /* Задаваме фиксирана височина на футъра */
+    z-index: 2;
+    /* Задаваме по-висок z-index, за да е винаги отгоре */
 }
 
 .footer-icon {
-    background-color: transparent; /* Гарантираме, че фонът е прозрачен */
-    padding: 0px; /* Добавяме малко отстояние, за да не са залепени иконите */
+    background-color: transparent;
+    /* Гарантираме, че фонът е прозрачен */
+    padding: 0px;
+    /* Добавяме малко отстояние, за да не са залепени иконите */
     height: 25px;
 }
 
 .footer-icon svg {
-    width: 25px; /* Леко увеличаваме размера за по-добра видимост */
-    height: 25px; /* Увеличаваме височината за по-добра видимост */
-    stroke: #000; /* По-тъмен цвят за иконите */
+    width: 25px;
+    /* Леко увеличаваме размера за по-добра видимост */
+    height: 25px;
+    /* Увеличаваме височината за по-добра видимост */
+    stroke: #000;
+    /* По-тъмен цвят за иконите */
     stroke-width: 1.5;
 }
 
@@ -415,21 +502,31 @@ pre, code {
 
 
 /* Specific styles for the boards note to make it a full-width panel */
-.boards-note, .note.boards-note {
-    height: auto; /* Auto-adjust height based on content */
+.boards-note,
+.note.boards-note {
+    height: auto;
+    /* Auto-adjust height based on content */
     margin: 0 0;
-    margin-left: -1em; /* Negative margin to span full width, counteracting header padding */
-    width: calc(100% + 2em); /* Adjust width to compensate for negative margins */
-    border-radius: 0; /* Remove rounded corners */
-    box-shadow: 0 5px 8px rgba(0,0,0,0.1); /* Add a subtle shadow */
+    margin-left: -1em;
+    /* Negative margin to span full width, counteracting header padding */
+    width: calc(100% + 2em);
+    /* Adjust width to compensate for negative margins */
+    border-radius: 0;
+    /* Remove rounded corners */
+    box-shadow: 0 5px 8px rgba(0, 0, 0, 0.1);
+    /* Add a subtle shadow */
     border: none;
     border-bottom: 1px solid #ccc;
     /*padding: 10px;*/
     background-image: url('Frame.jpg');
-    -webkit-user-select: none; /* Safari */
-    -moz-user-select: none;    /* Firefox */
-    user-select: none; /* Prevent text selection on the board panel */
-    box-sizing: border-box; /* Ensure padding is included in width */
+    -webkit-user-select: none;
+    /* Safari */
+    -moz-user-select: none;
+    /* Firefox */
+    user-select: none;
+    /* Prevent text selection on the board panel */
+    box-sizing: border-box;
+    /* Ensure padding is included in width */
 }
 
 .note-title-truncated {
@@ -439,36 +536,44 @@ pre, code {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-bottom: 0; /* Премахва стандартния долен марджин на h3 */
+    margin-bottom: 0;
+    /* Премахва стандартния долен марджин на h3 */
 }
 
 .note-header-info {
     position: absolute;
-    top: 25px; /* Position from the top of the note */
+    top: 25px;
+    /* Position from the top of the note */
     left: 0;
     width: 100%;
     display: flex;
     justify-content: space-between;
-    padding: 0 40px 0 20px; /* Horizontal padding */
+    padding: 0 40px 0 20px;
+    /* Horizontal padding */
     box-sizing: border-box;
-    pointer-events: none; /* Make it non-interactive */
+    pointer-events: none;
+    /* Make it non-interactive */
     font-size: 12px;
     font-weight: bold;
     color: rgba(0, 0, 0, 0.6);
 }
 
-.note-header-date, .note-header-time {
+.note-header-date,
+.note-header-time {
     display: flex;
     align-items: center;
-    pointer-events: auto; /* Re-enable clicks on date/time elements */
-    gap: 5px; /* Space between icon and text */
+    pointer-events: auto;
+    /* Re-enable clicks on date/time elements */
+    gap: 5px;
+    /* Space between icon and text */
 }
 
 .header-icon svg {
     width: 16px;
     height: 16px;
     stroke-width: 2.5;
-    vertical-align: middle; /* Better alignment with text */
+    vertical-align: middle;
+    /* Better alignment with text */
 }
 
 .datemod-header-date {
@@ -486,7 +591,8 @@ pre, code {
     width: 20px;
     height: 20px;
     cursor: pointer;
-    vertical-align: middle; /* Better alignment with the label text */
+    vertical-align: middle;
+    /* Better alignment with the label text */
 }
 
 
@@ -524,8 +630,10 @@ pre, code {
 /* New style for when the modal acts as a popup */
 .modal-overlay.popup-mode {
     position: fixed;
-    align-items: flex-start; /* Align to top */
-    justify-content: flex-start; /* Align to left */
+    align-items: flex-start;
+    /* Align to top */
+    justify-content: flex-start;
+    /* Align to left */
 }
 
 .modal-content-box {
@@ -534,7 +642,8 @@ pre, code {
     padding-bottom: 10px;
     padding-left: 10px;
     border-radius: 8px;
-    width: 90%; /* Задаваме ширината да е 90% от екрана */
+    width: 90%;
+    /* Задаваме ширината да е 90% от екрана */
     max-width: 90%;
     min-height: 10%;
     max-height: 80vh;
@@ -552,13 +661,17 @@ pre, code {
     width: 20px;
     height: 20px;
     cursor: se-resize;
-    z-index: 2; /* Трябва да е над съдържанието */
+    z-index: 2;
+    /* Трябва да е над съдържанието */
 }
 
 .popup-mode {
-    position: absolute; /* Allow top/left positioning */
-    max-width: none; /* Override max-width to allow it to be sized by content */
-    width: auto; /* Let content define width */
+    position: absolute;
+    /* Allow top/left positioning */
+    max-width: none;
+    /* Override max-width to allow it to be sized by content */
+    width: auto;
+    /* Let content define width */
 }
 
 #modal-body {
@@ -576,16 +689,19 @@ pre, code {
 }
 
 #modal-body::-webkit-scrollbar-track {
-    background: #c8a64b; /* Dark yellow background for the track */
+    background: #c8a64b;
+    /* Dark yellow background for the track */
 }
 
 #modal-body::-webkit-scrollbar-thumb {
-    background: #555; /* Darker handle for contrast */
+    background: #555;
+    /* Darker handle for contrast */
     border-radius: 5px;
 }
 
 #modal-body::-webkit-scrollbar-thumb:hover {
-    background: #333; /* Even darker on hover */
+    background: #333;
+    /* Even darker on hover */
 }
 
 .modal-header-btn {
@@ -606,7 +722,8 @@ pre, code {
 /* New style for board name in modal header */
 #modal-board-name {
     position: absolute;
-    top: 15px; /* Moved 5px up */
+    top: 15px;
+    /* Moved 5px up */
     /* right: 141px; Position to the left of the new calculator button */
     font-size: 1.1em;
     font-weight: bold;
@@ -614,11 +731,13 @@ pre, code {
     background-color: transparent;
     padding: 5px 5px;
     border-radius: 5px;
-    max-width: calc(100% - 150px); /* Prevent overlapping with title or buttons */
+    max-width: calc(100% - 150px);
+    /* Prevent overlapping with title or buttons */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
 .modal-header-btn:hover {
     background-color: #ddd;
 }
@@ -645,15 +764,32 @@ pre, code {
 /* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
 /* Бутон за затваряне (X) е на right: 15px */
 /* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
-#prev-note-btn { right: 235px; }
-#next-note-btn { right: 193px; }
-#delete-modal-btn { right: 151px; /* 193px + 32px + 10px */ }
-#copy-modal-btn { right: 99px; }
-#calculate-modal-btn { right: 57px; /* 57px (copy) + 32px (width) + 10px (gap) */ }
+#prev-note-btn {
+    right: 235px;
+}
+
+#next-note-btn {
+    right: 193px;
+}
+
+#delete-modal-btn {
+    right: 151px;
+    /* 193px + 32px + 10px */
+}
+
+#copy-modal-btn {
+    right: 99px;
+}
+
+#calculate-modal-btn {
+    right: 57px;
+    /* 57px (copy) + 32px (width) + 10px (gap) */
+}
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
 #calculate-modal-btn svg {
-    pointer-events: none; /* Иконата не "поглъща" клика */
+    pointer-events: none;
+    /* Иконата не "поглъща" клика */
 }
 
 
@@ -705,7 +841,7 @@ pre, code {
     background-color: #fbcb39;
     padding: 2em;
     border-radius: 10px;
-    box-shadow: 3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23);
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
     display: inline-block;
     width: 300px;
 }
@@ -730,6 +866,7 @@ pre, code {
     0% {
         transform: rotate(0deg);
     }
+
     100% {
         transform: rotate(360deg);
     }
@@ -744,36 +881,47 @@ pre, code {
 }
 
 .scrolling-menu-wrapper {
-    display: grid; /* Промяна на flex към grid за по-добър контрол */
-    grid-template-columns: auto 1fr; /* Първата колона (стрелката) е с авто-ширина, втората (менюто) заема останалото място */
+    display: grid;
+    /* Промяна на flex към grid за по-добър контрол */
+    grid-template-columns: auto 1fr;
+    /* Първата колона (стрелката) е с авто-ширина, втората (менюто) заема останалото място */
     align-items: center;
     width: 100%;
 }
 
 .board-menu-container {
-    display: flex; /* Остава flex, за да се подредят бутоните на един ред */
+    display: flex;
+    /* Остава flex, за да се подредят бутоните на един ред */
     flex-wrap: nowrap;
-    overflow-x: auto;   /* Позволява хоризонтално скролиране */
-    scroll-behavior: smooth; /* Smooth scrolling on button click */
+    overflow-x: auto;
+    /* Позволява хоризонтално скролиране */
+    scroll-behavior: smooth;
+    /* Smooth scrolling on button click */
     gap: 5px;
-    padding: 5px 0 0px; /* Намалява разстоянието отдолу до 3px */
+    padding: 5px 0 0px;
+    /* Намалява разстоянието отдолу до 3px */
     /* Премахваме правилата, които скриват скролбара */
-    scrollbar-color: #aaa #555; /* thumb track - за Firefox */
-    scrollbar-width: thin;      /* за Firefox */
+    scrollbar-color: #aaa #555;
+    /* thumb track - за Firefox */
+    scrollbar-width: thin;
+    /* за Firefox */
 }
 
 /* Стилизиране на скролбара за Webkit-базирани браузъри (Chrome, Edge, Safari) */
 .board-menu-container::-webkit-scrollbar {
-    height: 8px; /* Височина на скролбара */
+    height: 8px;
+    /* Височина на скролбара */
 }
 
 .board-menu-container::-webkit-scrollbar-track {
-    background: #555; /* Тъмно сив фон, както е поискано */
+    background: #555;
+    /* Тъмно сив фон, както е поискано */
     border-radius: 4px;
 }
 
 .board-menu-container::-webkit-scrollbar-thumb {
-    background: #aaa; /* По-светъл плъзгач за контраст */
+    background: #aaa;
+    /* По-светъл плъзгач за контраст */
     border-radius: 4px;
 }
 
@@ -789,7 +937,8 @@ pre, code {
     justify-content: center;
     flex-shrink: 0;
     margin: 0 5px;
-    visibility: hidden; /* Hidden by default */
+    visibility: hidden;
+    /* Hidden by default */
 }
 
 .scroll-arrow svg {
@@ -814,13 +963,19 @@ pre, code {
     border-radius: 4px;
     text-align: left;
     background-color: #bdd9ef;
-    font-size: 16px; /* Width will be set by JS */
-    flex-shrink: 0; /* Prevent buttons from shrinking */
-    cursor: pointer; /* Add pointer cursor to indicate clickability */
-    box-sizing: border-box; /* Ensure padding is included in the width set by JS */
+    font-size: 16px;
+    /* Width will be set by JS */
+    flex-shrink: 0;
+    /* Prevent buttons from shrinking */
+    cursor: pointer;
+    /* Add pointer cursor to indicate clickability */
+    box-sizing: border-box;
+    /* Ensure padding is included in the width set by JS */
 }
+
 .modal-body .board-filter-link {
-    display: inline-block; /* Allow width to be based on content */
+    display: inline-block;
+    /* Allow width to be based on content */
     width: auto;
     text-align: left;
 }
@@ -828,9 +983,12 @@ pre, code {
 /* Container for the Ctrl+Click modal with all boards */
 .all-boards-modal-container {
     display: flex;
-    flex-direction: row; /* Arrange items in rows */
-    flex-wrap: wrap; /* Allow wrapping to the next column */
-    gap: 10px; /* Space between buttons */
+    flex-direction: row;
+    /* Arrange items in rows */
+    flex-wrap: wrap;
+    /* Allow wrapping to the next column */
+    gap: 10px;
+    /* Space between buttons */
 }
 
 /* Remove the large top padding from the modal body when showing the board list */
@@ -853,8 +1011,10 @@ pre, code {
 
 /* Make the close button visible on the textured background */
 .popup-mode .modal-close {
-    background-color: #d6d6d6; /* Same color as header buttons */
-    right: 10px; /* Fine-tuned position closer to the edge */
+    background-color: #d6d6d6;
+    /* Same color as header buttons */
+    right: 10px;
+    /* Fine-tuned position closer to the edge */
 }
 
 .board-filter-link:hover {
@@ -877,9 +1037,12 @@ pre, code {
 
 /* Special style for the 'All' button when it's selected */
 .all-boards-filter-btn.selected-board {
-    background-color: #ffc107; /* Keep it orange even when selected */
-    color: #000; /* Default non-selected text color */
-    font-weight: bold; /* Keep it bold to indicate selection */
+    background-color: #ffc107;
+    /* Keep it orange even when selected */
+    color: #000;
+    /* Default non-selected text color */
+    font-weight: bold;
+    /* Keep it bold to indicate selection */
 }
 
 /* Style for the 'All' button to accommodate the icon */
@@ -887,14 +1050,16 @@ pre, code {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #ffc107; /* Orange color */
+    background-color: #ffc107;
+    /* Orange color */
 }
 
 /* Style for the icon inside the button */
 .board-icon-in-button svg {
     width: 18px;
     height: 18px;
-    stroke: #333; /* A slightly softer black */
+    stroke: #333;
+    /* A slightly softer black */
     vertical-align: middle;
     margin-left: 8px;
 }
@@ -903,10 +1068,12 @@ pre, code {
     background-color: darkblue;
     color: white;
 }
+
 .calendar-filter-btn:hover {
     background-color: #0000b3;
     color: white;
 }
+
 .calendar-filter-btn.selected-board {
     background-color: #000066;
     color: white;
@@ -916,10 +1083,12 @@ pre, code {
     background-color: red;
     color: white;
 }
+
 .reminder-filter-btn:hover {
     background-color: #ff3333;
     color: white;
 }
+
 .reminder-filter-btn.selected-board {
     background-color: #cc0000;
     color: white;
@@ -945,7 +1114,8 @@ pre, code {
 .board-filter-popup.visible {
     opacity: 0.7;
     transform: translateY(0);
-    pointer-events: auto; /* Re-enable pointer events when visible */
+    pointer-events: auto;
+    /* Re-enable pointer events when visible */
 }
 
 .board-filter-popup.visible:hover {
@@ -958,123 +1128,195 @@ pre, code {
         flex-direction: column;
         align-items: center;
     }
+
     /* Order for tablets (769px - 1030px) */
     /* header > div:first-child { order: 1; } Title */
-    #search-container { order: 3; }      /* Search Box */
-    #header-buttons { order: 2; }        /* Buttons */
-    .boards-note { order: 4; }           /* Board menu at the bottom */
+    #search-container {
+        order: 3;
+    }
+
+    /* Search Box */
+    #header-buttons {
+        order: 2;
+    }
+
+    /* Buttons */
+    .boards-note {
+        order: 4;
+    }
+
+    /* Board menu at the bottom */
 }
 
 @media (max-width: 768px) {
+
     /* Reorder elements for mobile view (up to 768px) */
     /* Title is already order 1 from the rule above */
-    #search-container { order: 3; }      /* Search Box moves down */
-    #header-buttons { order: 2; }        /* Buttons move up */
-    .boards-note { order: 4; } 
+    #search-container {
+        order: 3;
+    }
+
+    /* Search Box moves down */
+    #header-buttons {
+        order: 2;
+    }
+
+    /* Buttons move up */
+    .boards-note {
+        order: 4;
+    }
+
     /* .boards-note is already order 4 from the rule above */
 }
 
-    /*#search-container {
+/*#search-container {
         padding: 1em 0 0.5em;
     }*/
 
-    #header-buttons {
-        display: flex;
-        justify-content: center;
-        padding-top: 5px;
-        padding-bottom: 5px;
+#header-buttons {
+    display: flex;
+    justify-content: center;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+/* Responsive layout for settings modal on small screens */
+@media (max-width: 500px) {
+    .zoom-control-wrapper {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
     }
 
-    /* Responsive layout for settings modal on small screens */
-    @media (max-width: 500px) {
-        .zoom-control-wrapper {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 5px;
-        }
-        .zoom-control-wrapper {
-            margin-top: 15px !important; /* Reduce space between settings groups */
-        }
-        .zoom-control-wrapper label {
-            flex-basis: auto !important; /* Reset basis to prevent extra height */
-            text-align: left !important; /* Ensure labels are left-aligned */
-        }
-        #settings-modal .modal-content-box {
-            height: auto; /* Let content define height */
-            max-height: 90vh; /* Still prevent it from being too tall */
-        }
-
-        /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
-        #google-db-wrapper,
-        #max-searches,
-        #order-notes,
-        #show-date,
-        #modal-font-size,
-        #note-font-size,
-        #max-searches,
-        #note-count,
-        #all-board,
-        #remind-board,
-        #weekly-calendar,
-        #use-indexeddb-wrapper,
-        #db-buttons-wrapper,
-        #local-db-wrapper,
-        #arh-db-wrapper {
-            flex-direction: row !important;
-            align-items: center !important; /* Поддържа вертикално центриране */
-        }
-
-        /* Превключва грида за сортиране в една колона на тесни екрани */
-        .sort-criteria-grid {
-            grid-template-columns: 1fr;
-        }
+    .zoom-control-wrapper {
+        margin-top: 15px !important;
+        /* Reduce space between settings groups */
     }
+
+    .zoom-control-wrapper label {
+        flex-basis: auto !important;
+        /* Reset basis to prevent extra height */
+        text-align: left !important;
+        /* Ensure labels are left-aligned */
+    }
+
+    #settings-modal .modal-content-box {
+        height: auto;
+        /* Let content define height */
+        max-height: 90vh;
+        /* Still prevent it from being too tall */
+    }
+
+    /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
+    #google-db-wrapper,
+    #max-searches,
+    #order-notes,
+    #show-date,
+    #modal-font-size,
+    #note-font-size,
+    #max-searches,
+    #note-count,
+    #all-board,
+    #remind-board,
+    #weekly-calendar,
+    #use-indexeddb-wrapper,
+    #db-buttons-wrapper,
+    #local-db-wrapper,
+    #arh-db-wrapper {
+        flex-direction: row !important;
+        align-items: center !important;
+        /* Поддържа вертикално центриране */
+    }
+
+    /* Превключва грида за сортиране в една колона на тесни екрани */
+    .sort-criteria-grid {
+        grid-template-columns: 1fr;
+    }
+}
 
 /* Toast Notification */
 .toast-notification {
-    visibility: hidden; /* Hidden by default. */
-    min-width: 250px; /* Set a default minimum width */
+    visibility: hidden;
+    /* Hidden by default. */
+    min-width: 250px;
+    /* Set a default minimum width */
     transform: translateX(-50%);
     background-color: #FBCB39;
     color: #000;
-    text-align: center; /* Centered text */
-    border-radius: 8px; /* Rounded borders */
-    padding: 16px; /* Padding */
-    position: fixed; /* Sit on top of the screen */
-    z-index: 1001; /* Add a z-index if needed */
-    left: 50%; /* Center the snackbar */
-    bottom: 30px; /* 30px from the bottom */
+    text-align: center;
+    /* Centered text */
+    border-radius: 8px;
+    /* Rounded borders */
+    padding: 16px;
+    /* Padding */
+    position: fixed;
+    /* Sit on top of the screen */
+    z-index: 1001;
+    /* Add a z-index if needed */
+    left: 50%;
+    /* Center the snackbar */
+    bottom: 30px;
+    /* 30px from the bottom */
     font-size: 1.1em;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.16), 0 5px 8px rgba(0, 0, 0, 0.23);
     cursor: pointer;
 }
 
 /* Show the toast notification when it has the 'show' class */
 .toast-notification.show {
-    visibility: visible; /* Show the snackbar */
+    visibility: visible;
+    /* Show the snackbar */
     -webkit-animation: fadein 0.5s;
     animation: fadein 0.5s;
 }
 
 /* Animations to fade the toast in and out */
 @-webkit-keyframes fadein {
-    from {bottom: 0; opacity: 0;}
-    to {bottom: 30px; opacity: 1;}
+    from {
+        bottom: 0;
+        opacity: 0;
+    }
+
+    to {
+        bottom: 30px;
+        opacity: 1;
+    }
 }
 
 @keyframes fadein {
-    from {bottom: 0; opacity: 0;}
-    to {bottom: 30px; opacity: 1;}
+    from {
+        bottom: 0;
+        opacity: 0;
+    }
+
+    to {
+        bottom: 30px;
+        opacity: 1;
+    }
 }
 
 @-webkit-keyframes fadeout {
-    from {bottom: 30px; opacity: 1;}
-    to {bottom: 0; opacity: 0;}
+    from {
+        bottom: 30px;
+        opacity: 1;
+    }
+
+    to {
+        bottom: 0;
+        opacity: 0;
+    }
 }
 
 @keyframes fadeout {
-    from {bottom: 30px; opacity: 1;}
-    to {bottom: 0; opacity: 0;}
+    from {
+        bottom: 30px;
+        opacity: 1;
+    }
+
+    to {
+        bottom: 0;
+        opacity: 0;
+    }
 }
 
 /* Folder ID Prompt Popup */
@@ -1089,7 +1331,8 @@ pre, code {
     justify-content: center;
     align-items: center;
     z-index: 1000;
-    visibility: hidden; /* Hidden by default */
+    visibility: hidden;
+    /* Hidden by default */
     opacity: 0;
     transition: visibility 0s, opacity 0.3s ease-in-out;
 }
@@ -1104,7 +1347,7 @@ pre, code {
     padding: 30px;
     border-radius: 8px;
     text-align: center;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
     width: 90%;
     max-width: 400px;
 }
@@ -1146,46 +1389,50 @@ pre, code {
     border-top: 1px solid gray;
     display: flex;
     align-items: center;
-    justify-content: space-between; /* Align items to both ends */
+    justify-content: space-between;
+    /* Align items to both ends */
     font-size: 0.8em;
     color: #666;
     min-height: 18px;
-    padding-right: 10px; /* Add some padding on the right */
+    padding-right: 10px;
+    /* Add some padding on the right */
 }
 
 .slider-container {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 10px; /* Add some padding */
-  margin-top: 10px; /* Add some padding */
-  box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    /* Add some padding */
+    margin-top: 10px;
+    /* Add some padding */
+    box-sizing: border-box;
 }
 
 #scaleSlider {
-  appearance: none;
-  flex-grow: 1;
-  height: 5px;
-  background: linear-gradient(to right, #f1c40f, red);
-  border: 1px solid #17202a;
-  border-radius: 5px;
-  outline: none;
+    appearance: none;
+    flex-grow: 1;
+    height: 5px;
+    background: linear-gradient(to right, #f1c40f, red);
+    border: 1px solid #17202a;
+    border-radius: 5px;
+    outline: none;
 }
 
 #scaleSlider::-webkit-slider-thumb {
-  appearance: none;
-  width: 15px;
-  height: 15px;
-  background-color: #17202a;
-  border-radius: 50%;
-  cursor: pointer;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    background-color: #17202a;
+    border-radius: 50%;
+    cursor: pointer;
 }
 
 #scaleValue {
-  margin-left: 10px;
-  font-size: 1em;
-  color: black;
+    margin-left: 10px;
+    font-size: 1em;
+    color: black;
 }
 
 .note-counter {
@@ -1195,10 +1442,12 @@ pre, code {
     border-radius: 10px;
     font-size: 0.9em;
     font-weight: bold;
-    margin-right: 5px; /* Add space to the right, before the buttons */
+    margin-right: 5px;
+    /* Add space to the right, before the buttons */
     margin-top: 12px;
     margin-bottom: 12px;
-    cursor: pointer; /* Make it look clickable */
+    cursor: pointer;
+    /* Make it look clickable */
 }
 
 #zoom-modal .modal-content-box {
@@ -1228,7 +1477,8 @@ pre, code {
 .sync-wrapper {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px; /* Добавя разстояние между етикета и бутона */
+    gap: 8px;
+    /* Добавя разстояние между етикета и бутона */
 }
 
 /* Renamed from #zoom-modal to #settings-modal */
@@ -1272,25 +1522,31 @@ pre, code {
     cursor: pointer;
     font-size: 1em;
 }
+
 .zoom-btn:hover {
     background-color: #357ae8;
 }
 
 .zoom-input-number {
     width: 60px;
-    margin: 0 2px 0 10px; /* top, right, bottom, left */
+    margin: 0 2px 0 10px;
+    /* top, right, bottom, left */
     text-align: center;
     font-size: 1em;
     border: 1px solid #1f3b52;
     border-radius: 4px;
     background-color: #eef5fb;
-    -moz-appearance: textfield; /* Firefox */
-    appearance: none; /* Standard property to remove default appearance */
+    -moz-appearance: textfield;
+    /* Firefox */
+    appearance: none;
+    /* Standard property to remove default appearance */
 }
 
 .zoom-input-select {
-    width: 80px; /* Explicit width */
-    margin: 0 2px 0 10px; /* top, right, bottom, left */
+    width: 80px;
+    /* Explicit width */
+    margin: 0 2px 0 10px;
+    /* top, right, bottom, left */
     text-align: center;
     font-size: 1em;
     border: 1px solid #1f3b52;
@@ -1303,7 +1559,8 @@ pre, code {
 .zoom-input-number::-webkit-outer-spin-button,
 .zoom-input-number::-webkit-inner-spin-button {
     -webkit-appearance: none;
-    margin: 0; /* Safari */
+    margin: 0;
+    /* Safari */
 }
 
 .modal-version {
@@ -1317,25 +1574,40 @@ pre, code {
 }
 
 .set-modal {
-      background: linear-gradient(135deg, #858585, #E4E4E4);
-      border-radius: 3px;
-      padding: 20px;
-      position: relative;
-      height: 300px;
-    }
+    background: linear-gradient(135deg, #858585, #E4E4E4);
+    border-radius: 3px;
+    padding: 20px;
+    position: relative;
+    height: 300px;
+}
 
-    .corner-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: conic-gradient(#636363, #E4E4E4, #636363);
-      position: absolute;
-    }
+.corner-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: conic-gradient(#636363, #E4E4E4, #636363);
+    position: absolute;
+}
 
-    .top-left     { top: 5px; left: 5px; }
-    .top-right    { top: 5px; right: 5px; }
-    .bottom-left  { bottom: 5px; left: 5px; }
-    .bottom-right { bottom: 5px; right: 5px; }
+.top-left {
+    top: 5px;
+    left: 5px;
+}
+
+.top-right {
+    top: 5px;
+    right: 5px;
+}
+
+.bottom-left {
+    bottom: 5px;
+    left: 5px;
+}
+
+.bottom-right {
+    bottom: 5px;
+    right: 5px;
+}
 
 .modal-content-box.set-modal .corner-dot {
     /* Ensure dots are visible when .set-modal is applied dynamically */
@@ -1345,8 +1617,10 @@ pre, code {
 /* Нов стил за контейнера на опциите за сортиране */
 .sort-options-container {
     display: grid;
-    grid-template-columns: 1fr; /* 1 колона */
-    gap: 5px 15px; /* 5px вертикално, 15px хоризонтално разстояние */
+    grid-template-columns: 1fr;
+    /* 1 колона */
+    gap: 5px 15px;
+    /* 5px вертикално, 15px хоризонтално разстояние */
     padding-top: 0px;
     padding-bottom: 10px;
     border-bottom: 1px solid #404040;
@@ -1354,7 +1628,8 @@ pre, code {
 
 /* Стил за етикетите вътре в контейнера за сортиране */
 .sort-options-container .sort-option-label {
-    white-space: nowrap; /* Гарантира, че текстът на етикета не се пренася */
+    white-space: nowrap;
+    /* Гарантира, че текстът на етикета не се пренася */
     display: flex;
     align-items: center;
 }
@@ -1369,9 +1644,12 @@ pre, code {
 .settings-close-btn-wrapper {
     display: flex;
     justify-content: flex-end;
-    margin-top: 10px; /* Increased margin for better separation */
-    width: 100%; /* Ensure the wrapper takes full width to allow alignment */
+    margin-top: 10px;
+    /* Increased margin for better separation */
+    width: 100%;
+    /* Ensure the wrapper takes full width to allow alignment */
 }
+
 .start-board-select {
     padding: 8px;
     border-radius: 4px;
@@ -1388,7 +1666,8 @@ pre, code {
 
 /* New style for the close button to differentiate it */
 .settings-close-btn {
-    background-color: #6c757d; /* A neutral grey color */
+    background-color: #6c757d;
+    /* A neutral grey color */
 }
 
 .settings-close-btn:hover {
@@ -1399,18 +1678,21 @@ pre, code {
 #calendar-container {
     padding: 5px;
     background-color: #fdf6e3;
-    box-sizing: border-box; /* Crucial for correct scaling with padding */
+    box-sizing: border-box;
+    /* Crucial for correct scaling with padding */
 }
 
 #calendar-container * {
-    box-sizing: border-box; /* Crucial for correct scaling with padding */
+    box-sizing: border-box;
+    /* Crucial for correct scaling with padding */
 }
 
 .calendar-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 10px; /* Добавяме разстояние между заглавието и бутоните */
+    gap: 10px;
+    /* Добавяме разстояние между заглавието и бутоните */
     padding: 10px;
     background-image: url('Frame.jpg');
     border-bottom: 2px solid #d4c8a8;
@@ -1420,15 +1702,17 @@ pre, code {
 .calendar-nav-controls {
     display: flex;
     align-items: center;
-    gap: 5px; /* Разстояние между бутоните в групата */
+    gap: 5px;
+    /* Разстояние между бутоните в групата */
 }
 
 .calendar-header h2 {
     margin: 0;
     flex-grow: 1;
     text-align: center;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-    cursor: pointer; /* Подсказва, че може да се кликне */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    /* Подсказва, че може да се кликне */
 }
 
 .calendar-header button {
@@ -1439,7 +1723,7 @@ pre, code {
     height: 40px;
     font-size: 1.5em;
     cursor: pointer;
-    box-shadow: 2px 3px 5px rgba(0,0,0,0.16);
+    box-shadow: 2px 3px 5px rgba(0, 0, 0, 0.16);
 }
 
 .calendar-header button:hover {
@@ -1451,7 +1735,8 @@ pre, code {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 5px; /* Намаляваме padding-а, за да е по-компактен */
+    padding: 5px;
+    /* Намаляваме padding-а, за да е по-компактен */
 }
 
 /* Прилагаме стила за всички бутони за затваряне на календар */
@@ -1472,7 +1757,8 @@ pre, code {
 .calendar-days-header {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 5px; /* Same gap as the main grid */
+    gap: 5px;
+    /* Same gap as the main grid */
     margin-bottom: 5px;
 }
 
@@ -1485,7 +1771,8 @@ pre, code {
 }
 
 .day-name-short {
-    display: none; /* Hide short names by default */
+    display: none;
+    /* Hide short names by default */
 }
 
 .weekend-day {
@@ -1496,14 +1783,19 @@ pre, code {
     background: none;
     border: none;
 }
+
 .calendar-cell {
     position: relative;
     display: flex;
     flex-direction: column;
-    aspect-ratio: 1 / 1; /* This is the key: forces the element to be a square */
-    overflow: hidden; /* Prevent content from expanding the cell */
-    padding: 5px 5px 10px 5px; /* Restore padding for content alignment */
-    isolation: isolate; /* Create a new stacking context to contain the ::before pseudo-element */
+    aspect-ratio: 1 / 1;
+    /* This is the key: forces the element to be a square */
+    overflow: hidden;
+    /* Prevent content from expanding the cell */
+    padding: 5px 5px 10px 5px;
+    /* Restore padding for content alignment */
+    isolation: isolate;
+    /* Create a new stacking context to contain the ::before pseudo-element */
 }
 
 .calendar-cell::before {
@@ -1514,10 +1806,12 @@ pre, code {
     right: 0;
     bottom: 0;
     background-image: url('day1.png');
-    background-size: 100% 100%; /* Stretch to fill the cell */
+    background-size: 100% 100%;
+    /* Stretch to fill the cell */
     background-position: center;
     background-repeat: no-repeat;
-    z-index: -1; /* Place it behind the content */
+    z-index: -1;
+    /* Place it behind the content */
 }
 
 .calendar-date-number {
@@ -1525,7 +1819,7 @@ pre, code {
     color: #555;
     margin-top: 5px;
     /* margin-left: 5px; Re-added background for all dates */
-    background-color: rgb(194, 194, 194); 
+    background-color: rgb(194, 194, 194);
 }
 
 .today-date {
@@ -1538,21 +1832,26 @@ pre, code {
     margin-top: 5px;
     display: flex;
     flex-wrap: wrap;
-    gap: 4px; /* Creates space between the notes */
-    padding-right: 4px; /* Space between notes and scrollbar */
+    gap: 4px;
+    /* Creates space between the notes */
+    padding-right: 4px;
+    /* Space between notes and scrollbar */
 }
 
 /* Custom scrollbar for calendar cells */
 .calendar-notes-container::-webkit-scrollbar {
     width: 5px;
 }
+
 .calendar-notes-container::-webkit-scrollbar-track {
     background: transparent;
 }
+
 .calendar-notes-container::-webkit-scrollbar-thumb {
     background: #aaa;
     border-radius: 3px;
 }
+
 .calendar-notes-container::-webkit-scrollbar-thumb:hover {
     background: #888;
 }
@@ -1564,35 +1863,44 @@ pre, code {
     margin-bottom: 3px;
     background-color: var(--note-bg-0);
     cursor: pointer;
-    overflow: hidden; /* Hide text that overflows */
-    border: 1px solid rgba(0,0,0,0.1);
-    width: calc(50% - 2px); /* Two notes per row with a 4px gap */
-    height: 55px; /* Fixed height to create a square-like shape */
+    overflow: hidden;
+    /* Hide text that overflows */
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    width: calc(50% - 2px);
+    /* Two notes per row with a 4px gap */
+    height: 55px;
+    /* Fixed height to create a square-like shape */
     box-sizing: border-box;
     display: -webkit-box;
-    -webkit-line-clamp: 5; /* Limit text to 5 lines */
+    -webkit-line-clamp: 5;
+    /* Limit text to 5 lines */
     line-clamp: 5;
     -webkit-box-orient: vertical;
-    white-space: pre-wrap; /* Respect newlines */
+    white-space: pre-wrap;
+    /* Respect newlines */
     word-break: break-word;
 }
 
 .calendar-mini-note:hover {
     filter: brightness(95%);
-    border-color: rgba(0,0,0,0.3);
+    border-color: rgba(0, 0, 0, 0.3);
 }
 
 @media (max-width: 768px) {
     .day-name-long {
-        display: none; /* Hide long names on small screens */
+        display: none;
+        /* Hide long names on small screens */
     }
+
     .day-name-short {
-        display: inline; /* Show short names on small screens */
+        display: inline;
+        /* Show short names on small screens */
     }
 
     /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
     .calendar-header {
-        flex-direction: row-reverse; /* Обръщаме реда на елементите */
+        flex-direction: row-reverse;
+        /* Обръщаме реда на елементите */
     }
 
 }
@@ -1624,7 +1932,8 @@ pre, code {
     /* Add some styling to the content area
     background-color: rgba(0, 0, 0, 0.05);  
     border-radius: 4px;*/
-    padding: 0 10px; /* Horizontal padding when open */
+    padding: 0 10px;
+    /* Horizontal padding when open */
     margin-top: 0px;
 }
 
@@ -1637,8 +1946,10 @@ pre, code {
 
 .weekly-day-row {
     display: flex;
-    align-items: stretch; /* Връщаме stretch, за да се разпъват елементите по височина */
-    justify-content: flex-start; /* Подравнява датата и бележките вляво */
+    align-items: stretch;
+    /* Връщаме stretch, за да се разпъват елементите по височина */
+    justify-content: flex-start;
+    /* Подравнява датата и бележките вляво */
     padding: 0px 0;
     border-bottom: 1px solid #e0e0e0;
 }
@@ -1649,28 +1960,37 @@ pre, code {
 }
 
 .today-row {
-    background-color: var(--note-bg-0); /* #FBFF86 - жълт фон за днешния ден */
-    border-radius: 5px; /* Леко заобляне на ъглите */
+    background-color: var(--note-bg-0);
+    /* #FBFF86 - жълт фон за днешния ден */
+    border-radius: 5px;
+    /* Леко заобляне на ъглите */
 }
 
 .weekly-date-info {
     flex-shrink: 0;
-    width: 120px; /* Увеличаваме ширината, за да се побере пълното име на деня */
+    width: 120px;
+    /* Увеличаваме ширината, за да се побере пълното име на деня */
     text-align: center;
     margin-right: 20px;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start; /* Подравнява съдържанието (дата, ден) в горния край */
+    justify-content: flex-start;
+    /* Подравнява съдържанието (дата, ден) в горния край */
     background-image: url('Notebook.png');
-    background-size: cover; /* Разпъваме фона, за да покрие целия елемент */
-    border-radius: 8px; /* Заобляме ъглите */
-    padding: 10px 5px; /* Връщаме нормалния padding */
+    background-size: cover;
+    /* Разпъваме фона, за да покрие целия елемент */
+    border-radius: 8px;
+    /* Заобляме ъглите */
+    padding: 10px 5px;
+    /* Връщаме нормалния padding */
     /* margin-bottom: 0px; КОРЕКЦИЯ: Добавяме margin-bottom, за да създадем 10px разстояние отдолу */
-    box-shadow: 1px 1px 3px rgba(0,0,0,0.2); /* Лека сянка за дълбочина */
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+    /* Лека сянка за дълбочина */
 }
 
 .weekly-date-number {
-    font-size: 1.8em; /* По-едър шрифт за датата */
+    font-size: 1.8em;
+    /* По-едър шрифт за датата */
     font-weight: bold;
 }
 
@@ -1695,41 +2015,61 @@ pre, code {
 
 /* --- КОРЕКЦИЯ: Стил за дните без бележки --- */
 .weekly-date-info.no-notes-day {
-    flex-direction: row;      /* Подреждаме на един ред */
-    align-items: center;      /* Центрираме вертикално */
-    justify-content: left;  /* Центрираме хоризонтално */
-    gap: 8px;                 /* Добавяме разстояние между датата и деня */
-    width: 170px;             /* Увеличаваме ширината със 50px (120 + 50) */
-    padding: 5px;      /* Намаляваме вътрешното отстояние */
+    flex-direction: row;
+    /* Подреждаме на един ред */
+    align-items: center;
+    /* Центрираме вертикално */
+    justify-content: left;
+    /* Центрираме хоризонтално */
+    gap: 8px;
+    /* Добавяме разстояние между датата и деня */
+    width: 170px;
+    /* Увеличаваме ширината със 50px (120 + 50) */
+    padding: 5px;
+    /* Намаляваме вътрешното отстояние */
     padding-left: 35px;
-    padding-top: 15px;   /* Запазваме горния padding за баланс */
-    margin-bottom: 5px; /* Добавяме разстояние отдолу */
+    padding-top: 15px;
+    /* Запазваме горния padding за баланс */
+    margin-bottom: 5px;
+    /* Добавяме разстояние отдолу */
 }
 
 .weekly-date-info.no-notes-day .weekly-date-number,
 .weekly-date-info.no-notes-day .weekly-day-name {
-    font-size: 1em; /* Уеднаквяваме размера на шрифта */
+    font-size: 1em;
+    /* Уеднаквяваме размера на шрифта */
 }
 
 .weekly-notes-container {
     display: flex;
-    flex-wrap: nowrap; /* Предотвратява преминаването на нов ред */
-    overflow-x: auto; /* Добавя хоризонтален скрол, ако е необходимо */
-    gap: 10px; /* Добавяме разстояние между бележките */
+    flex-wrap: nowrap;
+    /* Предотвратява преминаването на нов ред */
+    overflow-x: auto;
+    /* Добавя хоризонтален скрол, ако е необходимо */
+    gap: 10px;
+    /* Добавяме разстояние между бележките */
     /* --- КОРЕКЦИЯ: Намаляваме разстоянията около скролбара --- */
-    max-height: 165px; /* КОРЕКЦИЯ: 150px за бележката + 8px за скролбара */
+    max-height: 165px;
+    /* КОРЕКЦИЯ: 150px за бележката + 8px за скролбара */
     /* --- СТИЛОВЕ ЗА СКРОЛБАР (копирани от .board-menu-container) --- */
-    scrollbar-color: #aaa #555; /* thumb track - за Firefox */
-    scrollbar-width: thin;      /* за Firefox */
+    scrollbar-color: #aaa #555;
+    /* thumb track - за Firefox */
+    scrollbar-width: thin;
+    /* за Firefox */
 }
+
 .weekly-notes-container::-webkit-scrollbar {
     height: 8px;
 }
+
 .weekly-notes-container::-webkit-scrollbar-track {
-    background: #555; border-radius: 4px;
+    background: #555;
+    border-radius: 4px;
 }
+
 .weekly-notes-container::-webkit-scrollbar-thumb {
-    background: #aaa; border-radius: 4px;
+    background: #aaa;
+    border-radius: 4px;
 }
 
 .mini-note {
@@ -1742,13 +2082,17 @@ pre, code {
 
 /* --- КОРЕКЦИЯ: Опаковката, която решава проблема с презастъпването --- */
 .mini-note-wrapper {
-    width: 150px;  /* 250px * 0.6 */
-    height: 150px; /* 250px * 0.6 */
-    flex-shrink: 0; /* Предотвратява свиването на опаковката */
+    width: 150px;
+    /* 250px * 0.6 */
+    height: 150px;
+    /* 250px * 0.6 */
+    flex-shrink: 0;
+    /* Предотвратява свиването на опаковката */
 }
 
 .mini-note .note-background-canvas {
-    z-index: -1; /* Гарантира, че фонът е зад съдържанието */
+    z-index: -1;
+    /* Гарантира, че фонът е зад съдържанието */
 }
 
 #search-wrapper {
@@ -1756,6 +2100,7 @@ pre, code {
     align-items: center;
     position: relative;
 }
+
 .search-mode-btn {
     position: absolute;
     left: 8px;
@@ -1769,23 +2114,33 @@ pre, code {
     align-items: center;
     justify-content: center;
 }
+
 .search-mode-btn svg {
     width: 20px;
     height: 20px;
     stroke: #555;
 }
+
 #search-box {
-    padding-left: 35px !important; /* Make space for the icon */
+    padding-left: 35px !important;
+    /* Make space for the icon */
 }
+
 .settings-icon-label {
     display: flex;
     align-items: center;
-    gap: 8px; /* Разстояние между иконата и текста */
+    gap: 8px;
+    /* Разстояние между иконата и текста */
     margin-right: 10px;
 }
+
 .accordion-line {
-    flex-grow: 1; /* Линията заема останалото пространство */
-    border: none; /* Премахва стандартния стил на <hr> */
-    border-top: 1px solid #000; /* Добавя тънка линия */
-    margin-left: 10px; /* Разстояние между стрелката и линията */
+    flex-grow: 1;
+    /* Линията заема останалото пространство */
+    border: none;
+    /* Премахва стандартния стил на <hr> */
+    border-top: 1px solid #000;
+    /* Добавя тънка линия */
+    margin-left: 10px;
+    /* Разстояние между стрелката и линията */
 }

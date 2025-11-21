@@ -1,385 +1,290 @@
 <!DOCTYPE html>
 <html lang="bg">
 <head>
-    <title data-key="appTitle">Login</title>
+    <title>CX Viewer</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
-    <style>
-        /* Скриваме кутията за вход по подразбиране, за да избегнем "премигване" 
-        .login-box {
-            visibility: hidden;
-        }*/
-        body {
-            max-width: 800px;
-            font-family: sans-serif; 
-            margin: 0; 
-            background-image: url('Frame.png'); 
-            height: 100vh;
-            display: grid;
-            grid-template-rows: auto 1fr auto; /* Header, Main Content, Footer */
-            place-items: center; /* Center items horizontally */
-            line-height: 1.6; color: #373636; margin: 20px auto; padding: 0 15px;
-        }
-        /* Центрираме панела за вход вертикално под хедъра */
-        header {
-            width: 100%;
-            padding: 1em;
-            padding-bottom: 0.3em;
-            display: flex;
-            justify-content: flex-start; /* Align title to the left */
-            align-items: center;
-            <!--background-image: url('Frame.jpg');-->
-            box-sizing: border-box;
-            position: relative; /* Необходимо за позициониране на съобщението */
-        }
-        header h1 {
-            margin: 0;
-            text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
-        }
-
-        .login-box { margin-top: 10px; } /* Place login box in the main content area */
-
-        .login-box { text-align: center; background: #FBCB39; padding: 40px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-
-        #authorize_button { 
-            font-size: 1.2em; padding: 10px 20px; cursor: pointer; background-color: #4285F4; 
-            color: white; border: none; border-radius: 4px;
-        }
-
-        #authorize_button:hover { background-color: #357ae8; }
-
-        #lang-switcher {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-
-        .lang-btn {
-            background: none;
-            border: 1px solid #747474;
-            color: #333;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 0.9em;
-        }
-
-        .lang-btn:first-child {
-            border-top-left-radius: 4px;
-            border-bottom-left-radius: 4px;
-        }
-
-        .lang-btn:last-child {
-            border-top-right-radius: 4px;
-            border-bottom-right-radius: 4px;
-            border-left: none;
-        }
-
-        .lang-btn.active {
-            background-color: #4285F4;
-            color: white;
-            border-color: #4285F4;
-        }
-
-        .settings-checkbox {
-            transform: scale(1.2);
-            vertical-align: middle;
-        }
-
-        /* Медийна заявка за тесни екрани (мобилни устройства) */
-        @media (max-width: 768px) {
-            header {
-                flex-direction: column; /* Подреждаме заглавието и съобщението едно под друго */
-                gap: 5px; /* Добавяме малко разстояние между тях */
-            }
-            #silent-login-message {
-                position: static; /* Премахваме абсолютното позициониране */
-                transform: none; /* Премахваме трансформацията */
-            }
-        }
-		.version-text {
-			font-size: 0.6em; /* Правим текста на версията малко по-малък */
-			font-weight: bold;
-            white-space: nowrap;
-		}
-		
-		h2, h3 { color: #0056b3; }
-		h2 { border-top: 2px solid #eee; padding-top: 1em; margin-top: 2em;}
-		h3 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-		h4 { color: #1f3b52; }
-		ul, ol { padding-left: 20px; }
-		li { margin-bottom: 10px; }
-		strong { color: #000; }
-		code { background-color: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: monospace; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #f2f2f2; }
-</style>
+    <link rel="stylesheet" href="style.css">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google;">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
+         crossorigin="anonymous">
+    </script>
 </head>
 <body>
     <header>
         <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
+        <div id="search-wrapper">
+            <input type="search" id="search-box" data-key-placeholder="searchPlaceholder" placeholder="Търсене в заглавията...">
+        </div>
+        <div id="header-buttons">
+            <div id="note-counter" class="note-counter">0</div>
+            <button id="mode_button" class="header-btn" title="Режим" data-key-title="modeButtonTooltip">
+                <!-- Иконата се вмъква от JS -->
+            </button>
+            <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Настройки">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" />
+                    <circle cx="12" cy="12" r="3" />
+                </svg>
+            </button>
+            <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Презареди">
+                <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
+            </button>
+            <!-- FEEDBACK BUTTON -->
+            <a id="feedback_button" href="mailto:multinotes.web@gmail.com" class="header-btn" data-key-title="feedbackButtonTooltip" title="Обратна връзка">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+            </a>
+            <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Изход">
+                <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
+            </button>
+        </div>
     </header>
 
-    <div class="login-box">
-        <div id="lang-switcher">
-            <button id="lang-bg" class="lang-btn">BG</button>
-            <button id="lang-en" class="lang-btn">EN</button>
+    <main>
+        <div id="loader-container">
+            <div class="loader"></div>
+            <div id="loader-text"></div>
         </div>
-        <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p>
-        <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
-        <div style="margin-top: 15px;">
-            <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">
-                Запомни ме</label>
-            <input type="checkbox" id="rememberMe" class="settings-checkbox">
+        <div id="notes-container"></div>
+        <div id="calendar-container" style="display: none;"></div>
+    </main>
+
+    <div id="folderIdPromptPopup" class="folder-id-prompt-popup">
+        <div class="popup-content">
+            <p data-key="promptFolderId"></p>
+            <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
+            <button id="submitFolderIdBtn" data-key="submitButton" title=""></button>
         </div>
     </div>
 
-    <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може да имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за Андроид, от всяко устройство.</p>
-    <section>
-        <p data-key="intro2"><strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без необходимост от инсталация и дори дава възможност за работа без връзка с интернет. Основният режим на работа използва локална база данни в браузъра, като осигурява оптимална производителност.</p>
-        <h3 data-key="modeDbTitle">Основен режим с локална база данни</h3>
-        <p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина, ефективност и независимост от интернет връзка.</p>
-        <ul>
-            <li data-key="modeDbPoint1">При първо стартиране приложението изтегля всички бележки от <strong>Google Drive</strong> и ги записва в локална база данни.</li>
-            <li data-key="modeDbPoint2">Всяко следващо зареждане става директно от тази база, като се прави проверка и се изтеглят само променените файлове след последната проверка, което съществено ускорява процеса.</li>
-            <li data-key="modeDbPoint3">Ако, след първоначално зареждане, махнете отметката на <strong>Google Drive</strong> в <strong>Настройки</strong>, ще може да работите без връзка с интернет и бележките ще се зареждат без забавяне, но няма да се прави проверка за нови и променени бележки. В този случай е полезно периодично да връщате отметката, за да актуализирате данните си.</li>
-        </ul>
-        <h3 data-key="modeNoDbTitle">Режим без база данни</h3>
-        <ul>
-            <li data-key="modeNoDbPoint1">Ако, след първоначално зареждане, махнете отметката от <strong>База данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google Drive</strong> при всяко следващо стартиране.</li>
-            <li data-key="modeNoDbPoint2">Винаги се показват най-актуалните данни.</li>
-            <li data-key="modeNoDbPoint3">По-бавно зареждане, изисква интернет връзка.</li>
-        </ul>
-        <h2 data-key="advancedModesTitle">Допълнителни режими (Разширени настройки)</h2>
-        <p data-key="advancedModesDesc">Чрез менюто <em><strong>Разширени настройки</strong></em> може да активирате алтернативни режими на работа, подходящи за специфични случаи. Тези режими могат да работят с или без изполване на локална база данни, в зависимост от вашите предпочитания.</p>
-        <h3 data-key="modeLocalTitle">Режим: Локална папка</h3>
-        <ul>
-            <li data-key="modeLocalPoint1">Режим, подходящ за потребители, които предпочитат да имат локално копие на бележките си и искат по-бърз достъп до тях.</li>
-            <li data-key="modeLocalPoint2">Данните се четат от папка на вашия компютър. Трябва да настроите приложението <strong>Google Drive for Desktop</strong> да синхронизира <strong>multinotes_data</strong> от <strong>Google Drive</strong> на компютъра ви (може да зададете наличност на данните и в офлайн режим) и да посочите синхронизираната папка в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Локална папка</strong>.</li>
-            <li data-key="modeLocalPoint3">Ако изберете този режим и поставите отметка в <strong>База данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-            <li data-key="modeLocalPoint4">Когато се използва този режим заедно с <strong>База данни</strong>, при всяко стартиране ще се прави проверка и новите и редактирани бележки ще допълват записаните в базата данни.</li>
-            <li data-key="modeLocalPoint5">Ако, след първоначално зареждане, махнете отметката на <strong>Локална папка</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да зареждате бележките си без забавяне, но няма да се прави проверка за нови и променени бележки. В този случай е полезно периодично да връщате отметката, за да актуализирате данните си.</li>
-        </ul>
-        <h3 data-key="modeArchiveTitle">Режим: Архив</h3>
-        <ul>
-            <li data-key="modeArchivePoint1">Подходящ за офлайн достъп до стари версии на бележките, показват се само бележките от архива.</li>
-            <li data-key="modeArchivePoint2">Този режим се използва, когато прехвърлите zip-архив с бележки, създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на данни</strong> -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Архив</strong>.</li>
-            <li data-key="modeArchivePoint3">Ако изберете този режим и поставите отметка в <strong>База данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-            <li data-key="modeArchivePoint4">Ако, след първоначално зареждане, махнете отметката на <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да зареждате бележките си без забавяне.</li>
-        </ul>
-    </section>
-    
-    <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
-    <script type="text/javascript">
+    <div id="content-modal" class="modal-overlay">
+        <div class="modal-content-box">
+            <div id="modal-board-name"></div>
+            <button id="prev-note-btn" class="modal-header-btn modal-nav-btn" title="Предишна бележка">&lt;</button>
+            <button id="next-note-btn" class="modal-header-btn modal-nav-btn" title="Следваща бележка">&gt;</button>
+            <button id="delete-modal-btn" class="modal-header-btn" data-key-title="deleteNoteTooltip" title="Изтрий бележката">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <line x1="4" y1="7" x2="20" y2="7" />
+                    <line x1="10" y1="11" x2="10" y2="17" />
+                    <line x1="14" y1="11" x2="14" y2="17" />
+                    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+                    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+                </svg>
+            </button>
+            <button id="calculate-modal-btn" class="modal-header-btn" data-key-title="calculateTooltip" title="Изчисли израз">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="3" width="16" height="18" rx="2" />
+                    <rect x="8" y="7" width="8" height="3" rx="1" />
+                    <line x1="8" y1="14" x2="8" y2="14.01" />
+                    <line x1="12" y1="14" x2="12" y2="14.01" />
+                    <line x1="16" y1="14" x2="16" y2="14.01" />
+                    <line x1="8" y1="17" x2="8" y2="17.01" />
+                    <line x1="12" y1="17" x2="12" y2="17.01" />
+                    <line x1="16" y1="17" x2="16" y2="17.01" />
+                </svg>
+            </button>
+            <button id="copy-modal-btn" class="modal-header-btn" data-key-title="copyTooltip" title="Копирай съдържанието"></button>
+            <button class="modal-close modal-header-btn">&times;</button>
+            <div id="modal-body"></div>
+            <div class="modal-resize-handle"></div>
+        </div>
+    </div>
 
-        const main = 'viewer.html';
-        const version = '0.15';
+    <!-- Нов, отделен модал за менюто с бордове -->
+    <div id="boards-menu-modal" class="modal-overlay">
+        <div class="modal-content-box">
+            <button class="modal-close modal-header-btn">&times;</button>
+            <div id="boards-menu-modal-body"></div>
+        </div>
+    </div>
 
-        // --- I18N ---
-        const translations = {
-            en: {
-                appTitle: 'CX MultiNotes Viewer',
-                loginPrompt: 'Please sign in with Google to continue.',
-                authorizeButton: 'Authorize with Google',
-                rememberMeLabel: 'Remember me',
-                authFailed: 'Authentication failed. Please try again.',
-                gapiNotReady: 'Google authentication library is not ready. Please wait a moment and try again.',
-                intro1: '<strong>CX MultiNotes Viewer</strong> is a browser-based application that allows you to access the information in notes created with the <strong>Multinotes</strong> app for Android, from any device.',
-                intro2: '<strong>CX MultiNotes Viewer</strong> provides quick access to your notes, without the need for installation, and even allows for offline work. The main mode of operation uses a local database in the browser, ensuring optimal performance.',
-                modeDbTitle: 'Main Mode with Local Database',
-                modeDbDesc: 'This mode is active by default and offers the best combination of speed, efficiency, and independence from an internet connection.',
-                modeDbPoint1: 'On first launch, the application downloads all notes from <strong>Google Drive</strong> and saves them to a local database.',
-                modeDbPoint2: 'Each subsequent load is done directly from this database, with a check to download only the files that have changed since the last check, which significantly speeds up the process.',
-                modeDbPoint3: 'If, after the initial load, you uncheck <strong>Google Drive</strong> in <strong>Settings</strong>, you will be able to work without an internet connection and the notes will load without delay, but no check for new and changed notes will be performed. In this case, it is useful to periodically re-check the box to update your data.',
-                modeNoDbTitle: 'Mode without Database',
-                modeNoDbPoint1: 'If, after the initial load, you uncheck <strong>Database</strong> in <strong>Settings</strong>, the notes are loaded directly from <strong>Google Drive</strong> on each subsequent launch.',
-                modeNoDbPoint2: 'The most up-to-date data is always displayed.',
-                modeNoDbPoint3: 'Slower loading, requires an internet connection.',
-                advancedModesTitle: 'Additional Modes (Advanced Settings)',
-                advancedModesDesc: 'Through the <em><strong>Advanced Settings</strong></em> menu, you can activate alternative modes of operation suitable for specific cases. These modes can work with or without using a local database, depending on your preferences.',
-                modeLocalTitle: 'Mode: Local Folder',
-                modeLocalPoint1: 'A mode suitable for users who prefer to have a local copy of their notes and want faster access to them.',
-                modeLocalPoint2: 'Data is read from a folder on your computer. You need to set up the <strong>Google Drive for Desktop</strong> application to synchronize <strong>multinotes_data</strong> from <strong>Google Drive</strong> to your computer (you can also make the data available offline) and specify the synchronized folder in <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Local Folder</strong>.',
-                modeLocalPoint3: 'If you select this mode and check <strong>Database</strong>, all notes will be saved to a local database on the first launch.',
-                modeLocalPoint4: 'When this mode is used with <strong>Database</strong>, a check will be performed on each launch, and new and edited notes will be added to the database.',
-                modeLocalPoint5: 'If, after the initial load, you uncheck <strong>Local Folder</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay, but no check for new and changed notes will be performed. In this case, it is useful to periodically re-check the box to update your data.',
-                modeArchiveTitle: 'Mode: Archive',
-                modeArchivePoint1: 'Suitable for offline access to old versions of notes; only notes from the archive are displayed.',
-                modeArchivePoint2: 'This mode is used when you transfer a zip archive of notes created by the <strong>Multinotes</strong> application with the <strong>Data Storage</strong> -> <strong>Backup Data</strong> option. Unzip it into a folder on your computer and specify it in <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Archive</strong>.',
-                modeArchivePoint3: 'If you select this mode and check <strong>Database</strong>, all notes will be saved to a local database on the first launch.',
-                modeArchivePoint4: 'If, after the initial load, you uncheck <strong>Archive</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay.'
-            },
-            bg: {
-                appTitle: 'CX MultiNotes Viewer',
-                loginPrompt: 'Моля, влезте с Google, за да продължите.',
-                authorizeButton: 'Вход с Google',
-                rememberMeLabel: 'Запомни ме',
-                authFailed: 'Удостоверяването не бе успешно. Моля, опитайте отново.',
-                gapiNotReady: 'Библиотеката за удостоверяване на Google не е готова. Моля, изчакайте малко и опитайте отново.',
-                intro1: '<strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може да имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за Андроид, от всяко устройство.',
-                intro2: '<strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без необходимост от инсталация и дори дава възможност за работа без връзка с интернет. Основният режим на работа използва локална база данни в браузъра, като осигурява оптимална производителност.',
-                modeDbTitle: 'Основен режим с локална база данни',
-                modeDbDesc: 'Този режим е активен по подразбиране и предлага най-добро съчетание между бързина, ефективност и независимост от интернет връзка.',
-                modeDbPoint1: 'При първо стартиране приложението изтегля всички бележки от <strong>Google Drive</strong> и ги записва в локална база данни.',
-                modeDbPoint2: 'Всяко следващо зареждане става директно от тази база, като се прави проверка и се изтеглят само променените файлове след последната проверка, което съществено ускорява процеса.',
-                modeDbPoint3: 'Ако, след първоначално зареждане, махнете отметката на <strong>Google Drive</strong> в <strong>Настройки</strong>, ще може да работите без връзка с интернет и бележките ще се зареждат без забавяне, но няма да се прави проверка за нови и променени бележки. В този случай е полезно периодично да връщате отметката, за да актуализирате данните си.',
-                modeNoDbTitle: 'Режим без база данни',
-                modeNoDbPoint1: 'Ако, след първоначално зареждане, махнете отметката от <strong>База данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google Drive</strong> при всяко следващо стартиране.',
-                modeNoDbPoint2: 'Винаги се показват най-актуалните данни.',
-                modeNoDbPoint3: 'По-бавно зареждане, изисква интернет връзка.',
-                advancedModesTitle: 'Допълнителни режими (Разширени настройки)',
-                advancedModesDesc: 'Чрез менюто <em><strong>Разширени настройки</strong></em> може да активирате алтернативни режими на работа, подходящи за специфични случаи. Тези режими могат да работят с или без изполване на локална база данни, в зависимост от вашите предпочитания.',
-                modeLocalTitle: 'Режим: Локална папка',
-                modeLocalPoint1: 'Режим, подходящ за потребители, които предпочитат да имат локално копие на бележките си и искат по-бърз достъп до тях.',
-                modeLocalPoint2: 'Данните се четат от папка на вашия компютър. Трябва да настроите приложението <strong>Google Drive for Desktop</strong> да синхронизира <strong>multinotes_data</strong> от <strong>Google Drive</strong> на компютъра ви (може да зададете наличност на данните и в офлайн режим) и да посочите синхронизираната папка в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Локална папка</strong>.',
-                modeLocalPoint3: 'Ако изберете този режим и поставите отметка в <strong>База данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.',
-                modeLocalPoint4: 'Когато се използва този режим заедно с <strong>База данни</strong>, при всяко стартиране ще се прави проверка и новите и редактирани бележки ще допълват записаните в базата данни.',
-                modeLocalPoint5: 'Ако, след първоначално зареждане, махнете отметката на <strong>Локална папка</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да зареждате бележките си без забавяне, но няма да се прави проверка за нови и променени бележки. В този случай е полезно периодично да връщате отметката, за да актуализирате данните си.',
-                modeArchiveTitle: 'Режим: Архив',
-                modeArchivePoint1: 'Подходящ за офлайн достъп до стари версии на бележките, показват се само бележките от архива.',
-                modeArchivePoint2: 'Този режим се използва, когато прехвърлите zip-архив с бележки, създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на данни</strong> -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Архив</strong>.',
-                modeArchivePoint3: 'Ако изберете този режим и поставите отметка в <strong>База данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.',
-                modeArchivePoint4: 'Ако, след първоначално зареждане, махнете отметката на <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да зареждате бележките си без забавяне.'
-            }
-        };
-        let currentLang = localStorage.getItem('language') || 'bg'; // Get from localStorage or default to bg
+    <button id="scrollTopBtn" data-key-title="topTooltip" title="Към началото"></button>
 
-        function setLanguage(lang) {
-            if (!translations[lang]) return;
-            currentLang = lang;
-            localStorage.setItem('language', lang);
-            document.documentElement.lang = lang; // Set lang attribute on html tag
+    <div id="toastNotification" class="toast-notification"></div>
 
-            document.querySelectorAll('[data-key]').forEach(element => {
-                const key = element.getAttribute('data-key');
-                // --- КОРЕКЦИЯ: Добавяме версията към главното заглавие ---
-                if (key === 'appTitle' && element.tagName === 'H1') {
-                    element.innerHTML = `${_(key)} <span class="version-text">ver. ${version}</span>`;
-                } else {
-                    element.innerHTML = _(key);
-                }
-            });
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal-content-box set-modal">
+            <h2 data-key="settingsTitle">Настройки</h2>
+            <h3 class="modal-version">CX MultiNotes Viewer ver. </h3>
+            <button class="modal-close modal-header-btn">&times;</button>
+            <div class="corner-dot top-left"></div>
+            <div class="corner-dot top-right"></div>
+            <div class="corner-dot bottom-left"></div>
+            <div class="corner-dot bottom-right"></div>
+            <div id="settings-modal-body">
+                <div class="zoom-control-wrapper">
+                    <label for="scaleSlider" style="margin-right: 10px;" data-key="zoomLabel">Мащаб:</label>
+                    <div class="slider-container">
+                        <input type="range" id="scaleSlider" min="25" max="175" value="100">
+                        <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number">
+                        <span>%</span>
+                    </div>
+                    <button id="applyZoomBtn" class="zoom-btn" style="margin-left: 10px;" data-key="submitButton">Потвърди</button>
+                </div>
 
-            // document.title = `${_('appTitle')} v${version}`; // Update page title with version
+                <div class="zoom-control-wrapper" style="margin-top: 0px;">
+                    <label for="start-board-select" style="margin-right: 10px;" data-key="startBoardLabel">Стартов борд:</label>
+                    <select id="start-board-select" class="start-board-select">
+                        <!-- Options will be populated by JS -->
+                    </select>
+                </div>
 
-            // Update active button
-            document.getElementById('lang-bg').classList.toggle('active', lang === 'bg');
-            document.getElementById('lang-en').classList.toggle('active', lang === 'en');
-        }
+                <div class="zoom-control-wrapper" id="max-searches" style="margin-top: 10px;">
+                    <label for="max-searches-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="maxSearchesLabel">
+                        Запазени търсения:</label>
+                    <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
+                </div>
 
-        function _(key) {
-            return translations[currentLang][key] || key;
-        }
+                <div class="zoom-control-wrapper" id="note-font-size" style="margin-top: 10px;">
+                    <label for="note-font-size-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="noteFontSizeLabel">
+                        Размер шрифт (бележка):</label>
+                    <select id="note-font-size-input" class="zoom-input-select" style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
+                </div>
 
-        // NOTE: Add your own Client ID here
-        const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
-        const SCOPES = 'https://www.googleapis.com/auth/drive.readonly email';
-        let tokenClient;
+                <div class="zoom-control-wrapper" id="modal-font-size" style="margin-top: 10px;">
+                    <label for="modal-font-size-input" style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;" data-key="modalFontSizeLabel">
+                        Размер шрифт (преглед):</label>
+                    <select id="modal-font-size-input" class="zoom-input-select" style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
+                </div>
 
-        function decodeJwtResponse(token) {
-            var base64Url = token.split('.')[1];
-            var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-            var jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
-            return JSON.parse(jsonPayload);
-        }
+                <div class="zoom-control-wrapper" id="show-date" style="margin-top: 10px;">
+                    <label for="show-datemod-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showDatemodLabel">
+                        Дата</label>
+                    <input type="checkbox" id="show-datemod-checkbox" class="settings-checkbox">
+                </div>
 
-        function gisLoaded() {
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: async (tokenResponse) => {
-                    if (tokenResponse && tokenResponse.access_token) {
-                        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                        const rememberMe = document.getElementById('rememberMe')?.checked;
-                        // Токенът се записва в localStorage или sessionStorage според избора
-                        const storage = rememberMe ? localStorage : sessionStorage;
-                        storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        try {
-                            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                                headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
-                            });
-                            if (userInfoResponse.ok) {
-                                const userInfo = await userInfoResponse.json();
-                                // Имейлът за текущата сесия се записва ВИНАГИ в sessionStorage
-                                sessionStorage.setItem('google_auth_email_hint', userInfo.email);
-                                // Запазваме имейла за следващо "тихо" влизане
-                                localStorage.setItem('google_login_hint', userInfo.email);
-                            }
-                        } catch (error) {
-                            console.error('Failed to fetch user info:', error);
-                        }
-                        sessionStorage.removeItem('logout_flag');
-                        window.location.href = main;
-                    } else {
-                        console.error('Failed to get access token');
-                        alert(_('authFailed'));
-                    }
-                },
-                error_callback: (error) => {
-                    console.error("GSI Error:", error);
-                    alert(_('authFailed') + `\n\nError: ${error.type}`);
-                }
-            });
+                <div class="zoom-control-wrapper" id="note-count" style="margin-top: 10px;">
+                    <label for="show-board-note-count-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardNoteCountLabel">
+                        Брой бележки в борда:</label>
+                    <input type="checkbox" id="show-board-note-count-checkbox" class="settings-checkbox">
+                </div>
 
-            const loginBox = document.querySelector('.login-box');
-            const loginHint = localStorage.getItem('google_login_hint'); // Взимаме запазения имейл
-            const rememberMe = document.getElementById('rememberMe');
+                <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
+                    <label for="all-board-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardAll">
+                        Покажи борд Всички:</label>
+                    <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
+                </div>
 
-            // --- КОРЕКЦИЯ: Проверяваме и дали "Запомни ме" е било избрано ---
-            if (loginHint && rememberMe.checked) {
-                // Опитваме "тихо" влизане със запазения имейл
-                // Успешният резултат ще се обработи от глобалния callback.
-                // Проваленият опит ще се обработи от error_callback, но за prompt: 'none' той не прави нищо,
-                // което ни позволява да покажем ръчно екрана за вход.
-                tokenClient.requestAccessToken({ prompt: 'none', login_hint: loginHint, error_callback: () => {
-                    // Ако "тихото" влизане се провали,
-                    // и показваме стандартния екран за вход.
-                    loginBox.style.visibility = 'visible';
-                    document.getElementById('authorize_button').disabled = false;
-                }});
-            } else {
-                // Ако няма запазен login_hint или потребителят е излязъл изрично,
-                // показваме екрана за вход веднага.
-                loginBox.style.visibility = 'visible';
-                document.getElementById('authorize_button').disabled = false;
-            }
-        }
+                <div class="zoom-control-wrapper" id="remind-board" style="margin-top: 10px;">
+                    <label for="remind-board-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showBoardRemind">
+                        Покажи борд Напомняния:</label>
+                    <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
+                </div>
 
-        // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const rememberMeCheckbox = document.getElementById('rememberMe');
-            rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
-        });
+                <div class="zoom-control-wrapper" id="weekly-calendar" style="margin-top: 10px;">
+                    <label for="weekly-calendar-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;" data-key="showWeeklyCalendar">
+                        Седмичен календар:</label>
+                    <input type="checkbox" id="weekly-calendar-checkbox" class="settings-checkbox">
+                </div>
 
-        function handleAuthClick() {
-            if (tokenClient) {
-                // --- Опростена логика ---
-                // След като disableAutoSelect() е извикана при изход, вече не е нужно
-                // да се борим с кеширания потребител тук. Просто искаме токен.
-                tokenClient.requestAccessToken({ prompt: 'select_account' });
-            } else {
-                console.error('Token client not initialized');
-                alert(_('gapiNotReady'));
-            }
-        }
+                <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
+                    <label for="order-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">
+                        Подреждане на бележките:</label>
+                    <input type="checkbox" id="order-checkbox" class="settings-checkbox">
+                    <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
+                </div>
+                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
+                <!-- Скрита секция за опции за сортиране -->
+                <div id="sorting-options-section" style="display: none;">
+                    <!-- Нов, опростен flex контейнер за опциите за сортиране -->
+                    <div class="sort-options-container">
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="numord" class="settings-checkbox" checked> <span data-key="sortByNumber">по номер</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="color" class="settings-checkbox"> <span data-key="sortByColor">по цвят</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="date" class="settings-checkbox"> <span data-key="sortByCreationDate">по дата на създаване</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="datemod" class="settings-checkbox"> <span data-key="sortByModificationDate">по дата на редактиране</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="calendarDate" class="settings-checkbox"> <span data-key="sortByCalendarDate">по дата в календара</span></label>
+                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="alpha" class="settings-checkbox"> <span data-key="sortByAlphabetical">по азбучен ред</span></label>
+                        <!-- Преместваме и чекбоксовете тук, за да имат същия стил -->
+                        <label class="sort-option-label sort-option-separator"><input type="checkbox" id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">в обратен ред</span></label>
+                        <label class="sort-option-label"><input type="checkbox" id="sort-reminders-top-checkbox" class="settings-checkbox"> <span data-key="sortRemindersTop">напомняния най-отгоре</span></label>
+                    </div>
+                </div>
 
-        // Initial language setup and event listeners
-        document.addEventListener('DOMContentLoaded', () => {
-            setLanguage(currentLang);
-            document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
-            document.getElementById('lang-bg').addEventListener('click', () => setLanguage('bg'));
-            document.getElementById('lang-en').addEventListener('click', () => setLanguage('en'));
+                    <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 10px;" data-key="dataManagementTitle">Четене на данни</label>
+                        <div class="zoom-control-wrapper" style="margin-top: 0px;" id="google-db-wrapper">
+                            <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
+                            <img src="GDrive.png" alt="Google Drive" style="width:24px; height:24px; margin-right: 10px;">
+                            <label for="use-google-db-checkbox" class="settings-icon-label" data-key="useGoogleDbLabel" id="use-google-db-label" style="flex-basis: 100px; flex-shrink: 0;">
+                                Google Drive:
+                            </label>
+                            <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
+                        </div>
 
-            // Запазваме състоянието на "Запомни ме" при промяна
-            const rememberMeCheckbox = document.getElementById('rememberMe');
-            rememberMeCheckbox.addEventListener('change', () => {
-                localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
-            });
-        });
-    </script>
+                        <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 10px;">
+                            <img src="Rabbit.png" alt="Rabbit" style="width:20px; height:20px; margin-right: 2px;">
+                            <img src="Database.png" alt="Database" style="width:24px; height:24px; margin-right: 10px;">
+
+                            <label for="use-indexeddb-checkbox" class="settings-icon-label" data-key="useIndexedDbLabel" style="flex-basis: 100px; flex-shrink: 0;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                                База данни:
+                            </label>
+                            <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
+                        </div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;" data-key="dbManagementTitle">
+                            Управление на базата данни</label>
+                        
+                        <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
+                            <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
+                            <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;" data-key="deleteDbButton">Изтрий</button>
+                        </div>
+                    </div>
+                <span id="advanced-settings-span" hidden>
+                    <!-- Accordion  -->
+                    <div class="accordion" style="margin-top: 15px;">
+                        <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
+                            <span data-key="advancedSettings">Разширени настройки</span>
+                            <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
+                            <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
+                        </div>
+                        <div class="accordion-content">
+                            <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
+                                <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
+                                <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel" id="use-local-db-label" style="flex-basis: 120px; flex-shrink: 0;">
+                                    Локална папка:
+                                </label>
+                                <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
+                                <span id="local-sync-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                            </div>
+
+                            <div class="zoom-control-wrapper" style="margin-top: 10px; padding-bottom: 10px;" id="arh-db-wrapper">
+                                <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
+                                <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel" id="use-arh-db-label" style="flex-basis: 120px; flex-shrink: 0;">
+                                    Архив:
+                                </label>
+                                <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox" style="flex-shrink: 0;" />
+                                <span id="arh-folder-name" style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                            </div>
+
+                            <div class="settings-section" style="margin-top: 0px; ">
+                                <div style="display: flex; justify-content: center; gap: 10px;">
+                                    <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
+                                        <button id="select-folder-btn" class="zoom-btn" data-key="localSyncFolderLabel">Избери локална папка</button>
+                                    </div>
+                                    <div class="zoom-control-wrapper" id="arh-wrapper" style="margin-top: 0; margin-bottom: 0;">
+                                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Избери архивна папка</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                </span>
+                    </div>
+            </div>
+        <div class="settings-close-btn-wrapper">
+            <button id="settings-close-btn" class="zoom-btn settings-close-btn" data-key="closeButton">Затвори</button>
+        </div>
+        </div>
+    </div>
+    <script src="i18n.js"></script>
+    <script src="calendar.js"></script>
+    <script src="db.js"></script>
+    <script src="main.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <!-- Вертикална реклама 120х728 -->
     <ins class="adsbygoogle"
         style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
@@ -388,9 +293,6 @@
     </ins>
     <script>
         (adsbygoogle = window.adsbygoogle || []).push({});
-    </script>
-    <footer style="text-align: center; padding: 20px 0; width: 100%;">
-        <a href="privacy.html" target="_blank" rel="noopener noreferrer" style="color: #373636; text-decoration: none;">Privacy Policy</a>
-    </footer>
+    </script>    
 </body>
 </html>
