@@ -3294,7 +3294,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         // --- Прозрачност при използване на плъзгача ---
         const settingsModal = document.getElementById('settings-modal');
         const startOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '0.5';
+            if (settingsModal) settingsModal.style.opacity = '0.7';
         };
         const endOpacityChange = () => {
             if (settingsModal) settingsModal.style.opacity = '1';

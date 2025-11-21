@@ -28,8 +28,7 @@ body {
 }
 
 header {
-    padding: 1em;
-    padding-bottom: 0.3em;
+    padding: 5px 1em 0.3em 5px;
     /*border-bottom: 1px solid #eee;*/
     /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
     /* margin-bottom: 1em; */
@@ -42,6 +41,11 @@ header {
     position: sticky;
     top: 0;
     z-index: 100;
+}
+
+.header-logo {
+    margin-right: 10px;
+    flex-shrink: 0;
 }
 
 header h1 {
@@ -796,7 +800,14 @@ code {
 #boards-table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 20px;
+    margin-top: 5px;
+}
+
+/* Hide logo on small screens */
+@media (max-width: 600px) {
+    .header-logo {
+        display: none;
+    }
 }
 
 #boards-table th,
@@ -936,7 +947,8 @@ code {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    margin: 0 5px;
+    margin-left: 20px;
+    margin-right: 10px;
     visibility: hidden;
     /* Hidden by default */
 }
