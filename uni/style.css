@@ -1136,7 +1136,7 @@ code {
     opacity: 1;
 }
 
-@media (max-width: 1030px) {
+@media (max-width: 1160px) {
     header {
         flex-direction: column;
         align-items: center;

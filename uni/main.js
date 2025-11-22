@@ -961,6 +961,77 @@ async function refreshAuthToken() {
     });
 }
 
+
+/*async function refreshAuthToken() {
+    const loginHint = localStorage.getItem('google_login_hint');
+    if (!loginHint) return null;
+
+    // Изчакваме Google библиотеката да се зареди, ако не е готова
+    if (typeof google === 'undefined') {
+        await new Promise(resolve => {
+            const interval = setInterval(() => {
+                if (typeof google !== 'undefined') {
+                    clearInterval(interval);
+                    resolve();
+                }
+            }, 100);
+        });
+    }
+
+    return new Promise((resolve, reject) => {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${SCOPES}&redirect_uri=${YOUR_REDIRECT_URI}&prompt=none&login_hint=${loginHint}`;
+
+        // Слушаме за съобщения от iframe
+        const messageListener = (event) => {
+            if (event.origin !== 'https://accounts.google.com') {
+                return; // Игнорираме съобщения от други източници
+            }
+
+            const hash = event.data;
+            if (hash && hash.includes('access_token')) {
+                const params = new URLSearchParams(hash);
+                const accessToken = params.get('access_token');
+                const expiresIn = params.get('expires_in');
+                const tokenWithTimestamp = {
+                    access_token: accessToken,
+                    expires_in: expiresIn,
+                    issued_at: Date.now()
+                };
+
+                // Обновяваме storage
+                if (localStorage.getItem('google_auth_token')) {
+                    localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                } else {
+                    sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                }
+
+                window.removeEventListener('message', messageListener);
+                document.body.removeChild(iframe);
+                resolve({ tokenData: tokenWithTimestamp, pass: true });
+            } else {
+                window.removeEventListener('message', messageListener);
+                document.body.removeChild(iframe);
+                resolve(null);
+            }
+        };
+
+        window.addEventListener('message', messageListener);
+        document.body.appendChild(iframe);
+
+        // Таймаут за безопасност
+        setTimeout(() => {
+            window.removeEventListener('message', messageListener);
+            if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+            }
+            reject(new Error('Silent token refresh timed out'));
+        }, 10000); // 10 секунди
+    });
+}
+*/
+
 async function checkAuth() {
     console.log("checkAuth");
     // --- Проверяваме и в двата storage-а за токен ---

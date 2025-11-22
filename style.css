@@ -28,8 +28,7 @@ body {
 }
 
 header {
-    padding: 1em;
-    padding-bottom: 0.3em;
+    padding: 5px 1em 0.3em 5px;
     /*border-bottom: 1px solid #eee;*/
     /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
     /* margin-bottom: 1em; */
@@ -42,6 +41,11 @@ header {
     position: sticky;
     top: 0;
     z-index: 100;
+}
+
+.header-logo {
+    margin-right: 10px;
+    flex-shrink: 0;
 }
 
 header h1 {
@@ -579,6 +583,7 @@ code {
 .datemod-header-date {
     /* Тук могат да се добавят специфични стилове за датата на модификация в хедъра */
     /* Например: font-style: italic; opacity: 0.8; */
+    font-style: italic;
 }
 
 /* Hide datemod in header when the body has this class */
@@ -796,7 +801,14 @@ code {
 #boards-table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 20px;
+    margin-top: 5px;
+}
+
+/* Hide logo on small screens */
+@media (max-width: 600px) {
+    .header-logo {
+        display: none;
+    }
 }
 
 #boards-table th,
@@ -925,7 +937,7 @@ code {
     border-radius: 4px;
 }
 
-.scroll-arrow {
+.board-menu-button {
     background-color: #d0e0ed;
     border: 1px solid #a9cce3;
     border-radius: 50%;
@@ -936,22 +948,23 @@ code {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    margin: 0 5px;
+    margin-left: 20px;
+    margin-right: 10px;
     visibility: hidden;
     /* Hidden by default */
 }
 
-.scroll-arrow svg {
+.board-menu-button svg {
     width: 24px;
     height: 24px;
     stroke-width: 2;
 }
 
-.scroll-arrow.visible {
+.board-menu-button.visible {
     visibility: visible;
 }
 
-.scroll-arrow:hover {
+.board-menu-button:hover {
     background-color: #bdd9ef;
 }
 
@@ -1123,7 +1136,7 @@ code {
     opacity: 1;
 }
 
-@media (max-width: 1030px) {
+@media (max-width: 1160px) {
     header {
         flex-direction: column;
         align-items: center;
@@ -1507,10 +1520,6 @@ code {
 #settings-modal-body {
     flex-grow: 1;
     overflow-y: auto;
-}
-
-.slider-container span {
-    /* Spacing is now handled by the input's margin */
 }
 
 .zoom-btn {
@@ -2143,4 +2152,55 @@ code {
     /* Добавя тънка линия */
     margin-left: 10px;
     /* Разстояние между стрелката и линията */
+}
+
+/* Style for the 'With Photos' board button */
+.photos-filter-btn {
+    background-color: #6f42c1;
+    /* Purple */
+    color: white;
+}
+
+.photos-filter-btn:hover {
+    background-color: #5a32a3;
+    color: white;
+}
+
+.photos-filter-btn.selected-board {
+    background-color: #4a2293;
+    color: white;
+}
+
+/* Style for the 'With Video' board button */
+.videos-filter-btn {
+    background-color: #e83e8c;
+    /* Pink */
+    color: white;
+}
+
+.videos-filter-btn:hover {
+    background-color: #d63384;
+    color: white;
+}
+
+.videos-filter-btn.selected-board {
+    background-color: #c2185b;
+    color: white;
+}
+
+/* Style for the 'Other Attachments' board button */
+.other-filter-btn {
+    background-color: #00796b;
+    /* Teal */
+    color: white;
+}
+
+.other-filter-btn:hover {
+    background-color: #00695c;
+    color: white;
+}
+
+.other-filter-btn.selected-board {
+    background-color: #004d40;
+    color: white;
 }
