@@ -5,7 +5,7 @@
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
 
-let debug = true; // Глобален флаг за дебъг режим
+let debug = false; // Глобален флаг за дебъг режим
 let pass = true;
 
 // --- Demo Mode ---
@@ -2393,6 +2393,27 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
             if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
             mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
         } else { // 'local' or 'archive'
+            // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" за локални източници ---
+            // Тази логика се изпълнява САМО ако sourceMode не е 'gdrive'.
+            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+            if (isDbOnlyMode && !dirHandle && (sourceMode === 'local' || sourceMode === 'archive')) {
+                const dbSource = await getConfig('dbSource');
+                let handleKey = null;
+                if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
+                else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
+
+                if (handleKey) {
+                    const handle = await getConfig(handleKey);
+                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                    if (verifiedHandle) {
+                        dirHandle = verifiedHandle; // Задаваме глобалния handle
+                    } else {
+                        showToast(_('noUpdateMode'), 10000);
+                        return;
+                    }
+                }
+            }
+
             // Тази част от кода вече ще се изпълнява правилно в офлайн режими,
             // защото проверката за gapi по-горе ще е неуспешна.
             let fileHandle;
@@ -2557,11 +2578,11 @@ function showModal(options, noteElement = null) {
                 attachmentWrapper.style.marginTop = '5px';
 
                 if (useArhDb) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
+                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
                 } else if (useLocalFolder) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
+                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
                 } else {
-                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
+                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
                 }
                 modalBody.appendChild(attachmentWrapper);
             });
@@ -4221,23 +4242,20 @@ function formatText(text, formatString) {
  * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
  * @param {object} iconData - SVG иконата за типа на файла.
  */
-async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local') {
+async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local', isForModal = false) {
     const iconDiv = document.createElement('div');
     iconDiv.innerHTML = iconData.svg;
 
     const filename = attachment.path ? attachment.path.split('/').pop() : '';
     const archiveFolderName = dirHandle.name;
-
     const createLink = async (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-        const isForModal = !!attachmentWrapper.closest('#modal-body');
-
-        if (!isForModal && !oneTapLinksEnabled) {
+ 
+        if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             const span = document.createElement('span');
             span.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
             return span;
         }
-
         const link = document.createElement('a');
         link.href = '#';
         link.onclick = async (e) => {
@@ -4371,7 +4389,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
  * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
  * @param {object} iconData - SVG иконата за типа на файла.
  */
-async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData) {
+async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, isForModal = false) {
     const iconDiv = document.createElement('div');
     iconDiv.innerHTML = iconData.svg;
 
@@ -4388,16 +4406,14 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
     // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
     const setupLink = (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-        const isForModal = !!attachmentWrapper.closest('#modal-body');
-
+ 
         let linkElement;
-
-        if (!isForModal && !oneTapLinksEnabled) {
+ 
+        if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             linkElement = document.createElement('span');
             linkElement.textContent = textPrefix + filename;
             return linkElement; // Връщаме span елемента
         }
-
         linkElement = document.createElement('a');
         linkElement.href = '#'; // href вече не сочи директно към файла.
         linkElement.textContent = textPrefix + filename;
