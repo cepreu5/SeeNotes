@@ -2385,9 +2385,15 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
     const folderName = isVideo ? 'Video' : 'Images';
 
     try {
-        // --- КОРЕКЦИЯ: Проверяваме за gapi ПРЕДИ да го използваме ---
-        // Изпълняваме логиката за Google Drive, само ако gapi е заредено И sourceMode е 'gdrive'.
-        if (typeof gapi !== 'undefined' && gapi.client && sourceMode === 'gdrive') {
+        if (sourceMode === 'gdrive') {
+            // --- КОРЕКЦИЯ: Гарантираме, че Google API е заредено преди употреба ---
+            // В режим "Само база данни", gapi не се зарежда по подразбиране.
+            if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
+                await loadGoogleApis();
+                if (!authToken) throw new Error(_('errorTokenMissing'));
+                gapi.client.setToken({ access_token: authToken.access_token });
+            }
+
             const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
             const thumbnailUrl = fileMetadata.result.thumbnailLink;
             if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
