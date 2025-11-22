@@ -4629,11 +4629,12 @@ async function createNoteElement(noteContent) {
     const isForModal = (note.closest('#modal-body') !== null);
     if (isHiddenNote) {
         const pipeIndex = fileContent.indexOf('|');
-        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
-        contentEl.innerHTML = processNoteContent(previewContent, isForModal);
+        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
+        contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
     } else {
         if (textSpan && textSpan.trim() !== '') {
-            contentEl.innerHTML = formatText(displayContent, textSpan);
+            // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
+            contentEl.innerHTML = processNoteContent(displayContent, isForModal); // isForModal е false за бележките на борда
         } else {
             contentEl.innerHTML = processNoteContent(displayContent, isForModal);
         }
