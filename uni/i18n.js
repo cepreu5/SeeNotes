@@ -175,6 +175,7 @@ const translations = {
         otherBoardTitle: 'Other Attachments',
         oneTapLinkLabel: 'One-click links:',
         feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com',
+        errorForbidden: 'Forbidden: Request had insufficient authentication scopes.',
         cancelButton: 'Cancel',
     },
     bg: {
@@ -353,6 +354,7 @@ const translations = {
         otherBoardTitle: 'Други приложения',
         oneTapLinkLabel: 'Линкове с един клик:',
         feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com',
+        errorForbidden: 'Заявката няма достатъчни права за изпълнение.',
         cancelButton: 'Отказ',
     }
 };

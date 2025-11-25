@@ -227,46 +227,55 @@
                         data-key="showBoardRemind">
                         Покажи борд Напомняния:</label>
                     <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
+                    <span id="boards-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
                 </div>
 
-                <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
-                    <label for="all-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showBoardAll">
-                        Покажи борд Всички:</label>
-                    <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
-                </div>
+                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
 
-                <div class="zoom-control-wrapper" id="show-photos-board" style="margin-top: 10px;">
-                    <label for="show-photos-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showPhotosBoardLabel">
-                        Борд съобщения със снимки:</label>
-                    <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
-                </div>
+                <!-- Скрита секция за опции за бордове -->
+                <div id="boards-options-section" style="display: none;">
+                    <!-- Нов, опростен flex контейнер за опциите за бордове -->
+                    <div class="boards-options-container">
+                        <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
+                            <label for="all-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showBoardAll">
+                                Покажи борд Всички:</label>
+                            <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
+                        </div>
 
-                <div class="zoom-control-wrapper" id="show-videos-board" style="margin-top: 10px;">
-                    <label for="show-videos-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showVideosBoardLabel">
-                        Борд С видео:</label>
-                    <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
-                </div>
+                        <div class="zoom-control-wrapper" id="show-photos-board" style="margin-top: 10px;">
+                            <label for="show-photos-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showPhotosBoardLabel">
+                                Борд съобщения със снимки:</label>
+                            <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
+                        </div>
 
-                <div class="zoom-control-wrapper" id="show-sounds-board" style="margin-top: 10px;">
-                    <label for="show-sounds-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showSoundsBoardLabel">
-                        Борд Със звук:</label>
-                    <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
-                </div>
+                        <div class="zoom-control-wrapper" id="show-videos-board" style="margin-top: 10px;">
+                            <label for="show-videos-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showVideosBoardLabel">
+                                Борд С видео:</label>
+                            <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
+                        </div>
 
-                <div class="zoom-control-wrapper" id="show-other-board" style="margin-top: 10px;">
-                    <label for="show-other-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showOtherBoardLabel">
-                        Борд Други приложения:</label>
-                    <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
+                        <div class="zoom-control-wrapper" id="show-sounds-board" style="margin-top: 10px;">
+                            <label for="show-sounds-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showSoundsBoardLabel">
+                                Борд Със звук:</label>
+                            <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
+                        </div>
+
+                        <div class="zoom-control-wrapper" id="show-other-board" style="margin-top: 10px;">
+                            <label for="show-other-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showOtherBoardLabel">
+                                Борд Други приложения:</label>
+                            <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
+                        </div>
+                    </div>
                 </div>
 
                 <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
@@ -359,10 +368,6 @@
                             <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
                             <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
                         </div>
-                        <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                            data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
-                            data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
-                            data-font-color="#000000" data-coffee-color="#ffffff"></script>
                         <div class="accordion-content">
                             <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
                                 <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
@@ -404,7 +409,7 @@
                                 </div>
                             </div>
 
-                            <!--<div class="zoom-control-wrapper" id="db-export-wrapper" style="margin-top: 15px;">
+                            <!--div class="zoom-control-wrapper" id="db-export-wrapper" style="margin-top: 15px;">
                                 <button id="db-export1-btn" class="zoom-btn"
                                     onclick="exportStore('NotesDB', 'config')">Config Export</button>
                                 <button id="db-export2-btn" class="zoom-btn settings-close-btn"
@@ -412,11 +417,14 @@
                                     Export</button>
                                 <button id="db-export3-btn" class="zoom-btn settings-close-btn"
                                     style="margin-left: 10px;" onclick="exportNotes()">Export All</button>
-                            </div>-->
-
+                            </div-->
                         </div>
                     </div>
                 </span>
+                <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+                    data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
+                    data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
+                    data-font-color="#000000" data-coffee-color="#ffffff"></script>
             </div>
             <div class="settings-close-btn-wrapper">
                 <button id="settings-close-btn" class="zoom-btn settings-close-btn"
@@ -428,8 +436,8 @@
     <script src="i18n.js"></script>
     <script src="calendar.js"></script>
     <script src="db.js"></script>
-    <!--script src="fs.js"></script-->
-    <script src="config.js"></script>
+    <!--script src="fs.js"></script>
+    <script src="config.js"></script-->
     <script src="main.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </body>

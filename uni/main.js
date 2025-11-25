@@ -990,11 +990,11 @@ function updateSignoutTooltip() {
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
-async function refreshAuthToken() {
+/*async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
     if (!loginHint) return null;
 
-    // Wait for Google library to load if not ready
+    // Изчакваме Google библиотеката да се зареди, ако не е готова
     if (typeof google === 'undefined') {
         await new Promise(resolve => {
             const interval = setInterval(() => {
@@ -1036,8 +1036,9 @@ async function refreshAuthToken() {
         tokenClient.requestAccessToken({ prompt: 'none', login_hint: loginHint });
     });
 }
+*/
 
-/*async function refreshAuthToken() {
+async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
     if (!loginHint) return null;
 
@@ -1105,7 +1106,6 @@ async function refreshAuthToken() {
         }, 10000); // 10 секунди
     });
 }
-*/
 
 async function checkAuth() {
     console.log("checkAuth");
@@ -3268,6 +3268,10 @@ async function getMultinotesDataFolderID() {
             showToast(_('errorSessionExpired'));
             handleSignoutClick();
         }
+        if (error.result && error.result.error && error.result.error.code === 403) {
+            showToast(_('errorForbidden'));
+            handleSignoutClick();
+        }
         return null;
     }
 }
@@ -3758,6 +3762,8 @@ async function createSettingsUI(boardsData, boardParseError) {
         orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
         const sortingOptionsSection = document.getElementById('sorting-options-section');
         const sortingArrow = document.getElementById('sorting-arrow');
+        const boardsOptionsSection = document.getElementById('boards-options-section');
+        const boardsArrow = document.getElementById('boards-arrow');
 
         // Event listener for the checkbox itself
         orderCheckbox.addEventListener('change', () => {
@@ -3770,10 +3776,18 @@ async function createSettingsUI(boardsData, boardParseError) {
         sortingArrow.addEventListener('click', () => {
             const isActive = sortingOptionsSection.style.display === 'block';
             sortingOptionsSection.style.display = isActive ? 'none' : 'block';
-
             // Animate arrow rotation
             sortingArrow.style.transition = 'transform 0.3s ease';
             sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+        });
+
+        // Event listener for the arrow ONLY
+        boardsArrow.addEventListener('click', () => {
+            const isActive = boardsOptionsSection.style.display === 'block';
+            boardsOptionsSection.style.display = isActive ? 'none' : 'block';
+            // Animate arrow rotation
+            boardsArrow.style.transition = 'transform 0.3s ease';
+            boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
         });
 
         // Sorting options

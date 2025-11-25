@@ -114,7 +114,7 @@ async function exportNotes() {
       note.boardid = String(board.id);
     }
 
-    board.gdid = "";
+    // board.gdid = "";
     delete board.noteCount;
   }
 

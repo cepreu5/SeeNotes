@@ -94,3 +94,82 @@ async function saveConfig() {
     dbRequest.onerror = (err) => reject(err);
   });
 }
+
+
+Ето един примерен вариант как можеш да организираш автоматично синхронизиране на config store от IndexedDB (NotesDB) към Cache API, като използваш взаимодействие между app.js и sw.js
+
+app.js
+// Регистрация на service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(reg => console.log('Service Worker registered'))
+    .catch(err => console.error('SW registration failed', err));
+}
+
+// Функция за запис в IndexedDB + известяване на SW
+async function saveConfigToDB(config) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("NotesDB", 1);
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      const tx = db.transaction("config", "readwrite");
+      const store = tx.objectStore("config");
+      store.put(config);
+
+      tx.oncomplete = () => {
+        // Изпращаме съобщение към SW за обновяване на кеша
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            action: 'updateConfig',
+            data: config
+          });
+        }
+        resolve();
+      };
+      tx.onerror = (err) => reject(err);
+    };
+    request.onerror = (err) => reject(err);
+  });
+}
+
+// Пример: извикване при промяна на настройките
+document.getElementById("saveBtn").addEventListener("click", async () => {
+  const config = { id: "appConfig", theme: "dark", lang: "bg" };
+  await saveConfigToDB(config);
+  console.log("Config записан и синхронизиран!");
+});
+
+
+sw.js
+
+self.addEventListener('install', (event) => {
+  console.log('SW installed');
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('SW activated');
+});
+
+// Приемане на съобщения от app.js
+self.addEventListener('message', async (event) => {
+  const { action, data } = event.data;
+  if (action === 'updateConfig') {
+    // Записваме конфигурацията в Cache API
+    const cache = await caches.open('config-cache');
+    const response = new Response(JSON.stringify(data), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    await cache.put('/config.json', response);
+    console.log('Config кеширан от SW');
+  }
+});
+
+// По желание: прихващане на fetch за /config.json
+self.addEventListener('fetch', (event) => {
+  if (event.request.url.endsWith('/config.json')) {
+    event.respondWith(
+      caches.open('config-cache').then(cache => cache.match('/config.json'))
+    );
+  }
+});
+
