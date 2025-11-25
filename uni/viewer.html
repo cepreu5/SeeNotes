@@ -8,13 +8,21 @@
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
     <meta http-equiv="Content-Security-Policy"
-        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com;">        
+        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com;">
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
         crossorigin="anonymous">
         </script>
 </head>
 
 <body>
+    <!-- Вертикална реклама 120х728 -->
+    <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
+        data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
+    </ins>
+    <script>
+        (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
+
     <header>
         <div style="display: flex; align-items: center;">
             <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
@@ -395,6 +403,17 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!--<div class="zoom-control-wrapper" id="db-export-wrapper" style="margin-top: 15px;">
+                                <button id="db-export1-btn" class="zoom-btn"
+                                    onclick="exportStore('NotesDB', 'config')">Config Export</button>
+                                <button id="db-export2-btn" class="zoom-btn settings-close-btn"
+                                    style="margin-left: 10px;" onclick="exportData('NotesDB', 'boards')">Boards
+                                    Export</button>
+                                <button id="db-export3-btn" class="zoom-btn settings-close-btn"
+                                    style="margin-left: 10px;" onclick="exportNotes()">Export All</button>
+                            </div>-->
+
                         </div>
                     </div>
                 </span>
@@ -409,15 +428,10 @@
     <script src="i18n.js"></script>
     <script src="calendar.js"></script>
     <script src="db.js"></script>
+    <!--script src="fs.js"></script-->
+    <script src="config.js"></script>
     <script src="main.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <!-- Вертикална реклама 120х728 -->
-    <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
-        data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
-    </ins>
-    <script>
-        (adsbygoogle = window.adsbygoogle || []).push({});
-    </script>
 </body>
 
 </html>

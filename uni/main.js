@@ -32,6 +32,7 @@ let currentCalendarDate = new Date();
 let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
 let authToken = null;
 let token;
+let ts; // Време на първо стартиране на приложението
 let tokenRemainingDays = null; // Остават дни валидност на токена
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
@@ -119,11 +120,54 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 // =================================================================================
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
-
 // --- Основна стартова функция ---
 async function startApp() {
     // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
     document.body.style.display = 'block';
+
+    /*if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('SW registered', reg))
+            .catch(err => console.error('SW registration failed', err));
+    }*/
+    console.log('First start:', Date.now());
+    ts = await getFirstStartEncoded();
+    console.log('First start in cache:', ts);
+
+    // --- Предварително изчисляване на оставащите дни за UI ---
+    try {
+        const url = new URL(window.location.href);
+        const urlTokenParam = url.searchParams.get("token");
+        if (urlTokenParam) localStorage.setItem('urlToken', urlTokenParam);
+
+        const urlToken = localStorage.getItem('urlToken');
+        if (urlToken) {
+            const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+            const iv = raw.slice(0, 12), data = raw.slice(12);
+
+            const key = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+                { name: 'AES-GCM' },
+                false,
+                ['decrypt']
+            );
+            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+            const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+
+            const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+            let validityInDays = 30;
+            if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+                validityInDays = parseInt(tokenValidity, 10);
+            }
+            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
+        }
+    } catch (e) {
+        console.error("Error pre-calculating token days:", e);
+    }
+
     initApp(); // Инициализира UI елементите и event listeners
 
     // --- Задаване на настройки по подразбиране при първо стартиране ---
@@ -157,6 +201,39 @@ async function startApp() {
     // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
     // само ако е необходимо.
     await mainLogic();
+}
+
+
+// Записва timestamp като кодиран низ (Base64), без да пази число в кеша
+async function getFirstStartEncoded() {
+    const cache = await caches.open('app-cache');
+    const cachedResponse = await cache.match('s'); // /firstStart.json
+    if (cachedResponse) {
+        // Четене от кеша → винаги е низ
+        /*const data = await cachedResponse.json();
+        const encoded = data.value;           // напр. "MTc2NDAyNTk4MTU2NA=="
+        const decodedTs = parseInt(atob(encoded), 10); // превръщаме обратно в число само в паметта
+        return decodedTs;*/
+        // Четене на текста от кеша
+        const encoded = await cachedResponse.text();
+        const decodedTs = parseInt(atob(encoded), 10);
+        return decodedTs;
+    } else {
+        // Първо стартиране → генерираме timestamp
+        const nowTs = Date.now();
+        const encoded = btoa(String(nowTs));  // кодиране в Base64 → низ
+        /*  const payload = JSON.stringify({ value: encoded });
+        const response = new Response(payload, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        await cache.put('/firstStart.json', response); */
+        // Записваме директно като текст, не JSON
+        const response = new Response(encoded, {
+            headers: { 'Content-Type': 'text/plain' }
+        });
+        await cache.put('s', response);
+        return nowTs;
+    }
 }
 
 function _(key) {
@@ -686,7 +763,6 @@ function initApp() {
 
 
     setLanguage(currentLang);
-    // updateSignoutTooltip();
     // Add app version to the settings modal title
     const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
     if (settingsTitle) {
@@ -905,7 +981,7 @@ function updateSignoutTooltip() {
             }
             signoutBtn.title = tooltipText;
         } else {
-            signoutBtn.title = baseTooltip;
+            signoutBtn.title = baseTooltip + ` [${tokenRemainingDays}]`;
         }
     }
 }
@@ -960,7 +1036,6 @@ async function refreshAuthToken() {
         tokenClient.requestAccessToken({ prompt: 'none', login_hint: loginHint });
     });
 }
-
 
 /*async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
@@ -1063,6 +1138,65 @@ async function checkAuth() {
         window.location.href = 'login.html?reauth=true';
         return null; // Stop execution
     }
+
+    // --- 🔐 Вградена декрипция ---
+    // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
+    const url = new URL(window.location.href);
+    const urlTokenParam = url.searchParams.get("token");
+
+    if (urlTokenParam) {
+        // Ако има токен в URL-а, той е с приоритет и презаписва стария
+        localStorage.setItem('urlToken', urlTokenParam);
+    }
+
+    let urlToken = localStorage.getItem('urlToken');
+
+    let isUrlTokenValidTime = false;
+    let decryptedEmailFromToken = null;
+
+    if (urlToken) {
+        // --- Извличаме валидността от самия токен ---
+        let validityInDays = 30; // 3. Стойност по подразбиране в дни
+        try {
+            const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+            const iv = raw.slice(0, 12), data = raw.slice(12);
+
+            const key = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+                { name: 'AES-GCM' },
+                false,
+                ['decrypt']
+            );
+            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+            // Декодираме токена, който вече съдържа и валидността
+            const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+
+            // 3. Изчисляваме възрастта в дни
+            const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+
+            if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+                validityInDays = parseInt(tokenValidity, 10);
+            }
+
+            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
+            console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
+            // let tooltipText = _('signoutButtonTooltip');
+            // tooltipText += ` [${tokenRemainingDays}]`;
+            console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
+
+            if (ageInDays < validityInDays) {
+                isUrlTokenValidTime = true;
+            } else {
+                console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
+            }
+        } catch (error) {
+            console.error("Грешка при декриптиране на токен:", error);
+        }
+    }
+
     /*/ --- 🔐 Вградена декрипция ---
     // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
     const url = new URL(window.location.href);
@@ -1123,18 +1257,6 @@ async function checkAuth() {
     }
     else DEMO_MODE = true;
     */
-    /*/ --- Demo Mode Check --- не се ползва, за изтриване
-    if (DEMO_MODE) {
-        if (isUrlTokenValidTime) {
-            console.log("Valid token detected. Disabling Demo Mode behavior.");
-            // Продължаваме към стандартната проверка
-        } else {
-            console.log("Demo mode active. Skipping auth check.");
-            pass = true;
-            const email = sessionStorage.getItem('google_auth_email_hint');
-            return { tokenData: { email_hint: email }, pass: true };
-        }
-    }*/
     /*/ --- Финална проверка на urlToken срещу логнатия потребител ---
     let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
 
@@ -3438,7 +3560,6 @@ async function createSettingsUI(boardsData, boardParseError) {
     const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
     const selectFolderBtn = document.getElementById('select-folder-btn');
     const folderNameDisplay = document.getElementById('local-sync-folder-name');
-    const settingsCloseBtn = document.getElementById('settings-close-btn');
     if (!settingsModalBody.dataset.initialized) {
 
         // Zooom
@@ -3988,8 +4109,11 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
 
         // Close
-        const settingsCloseBtn = document.getElementById('settings-close-btn');
-        settingsCloseBtn.addEventListener('click', () => {
+        /*const settingsCloseBtn = */
+        document.getElementById('settings-close-btn').addEventListener('click', async () => {
+            /* const configData = await exportConfig();
+            console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
+
             const currentState = {
                 useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
                 useLocalDb: document.getElementById('use-local-db-checkbox').checked,
@@ -4256,7 +4380,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
     const archiveFolderName = dirHandle.name;
     const createLink = async (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
- 
+
         if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             const span = document.createElement('span');
             span.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
@@ -4412,9 +4536,9 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
     // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
     const setupLink = (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
- 
+
         let linkElement;
- 
+
         if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             linkElement = document.createElement('span');
             linkElement.textContent = textPrefix + filename;
