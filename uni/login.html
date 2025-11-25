@@ -7,10 +7,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <style>
-        /* Скриваме кутията за вход по подразбиране, за да избегнем "премигване" 
-        .login-box {
-            visibility: hidden;
-        }*/
         body {
             max-width: 800px;
             font-family: sans-serif;
@@ -47,10 +43,6 @@
             text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
         }
 
-        .login-box {
-            margin-top: 10px;
-        }
-
         /* Place login box in the main content area */
 
         .login-box {
@@ -59,6 +51,7 @@
             padding: 40px;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
         }
 
         #authorize_button {
@@ -162,7 +155,7 @@
         }
 
         li {
-            margin-bottom: 10px;
+            margin-bottom: 5px;
         }
 
         strong {
@@ -200,7 +193,7 @@
         <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
     </header>
 
-    <div class="login-box">
+    <div class="login-box" style="display: none;">
         <div id="lang-switcher">
             <button id="lang-bg" class="lang-btn">BG</button>
             <button id="lang-en" class="lang-btn">EN</button>
@@ -213,86 +206,101 @@
             <input type="checkbox" id="rememberMe" class="settings-checkbox">
         </div>
     </div>
+    <script>
+        (async () => {
+            const cache = await caches.open('app-cache');
+            const cachedResponse = await cache.match('s');
+            if (cachedResponse) {
+                document.querySelector('.login-box').style.display = 'block';
+            }
+        })();
+    </script>
 
     <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може да
         имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за Андроид, от
-        всяко устройство.</p>
-    <section>
-        <p data-key="intro2"><strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без
-            необходимост от инсталация и дори дава възможност за работа без връзка с интернет. Основният режим на работа
-            използва локална база данни в браузъра, като осигурява оптимална производителност.</p>
-        <h3 data-key="modeDbTitle">Основен режим с локална база данни</h3>
-        <p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
-            ефективност и независимост от интернет връзка.</p>
+        вашия компютър, таблет, iPhone и др. независимо дали работите с Windows, Android, macOS, iOS или Linux.</p>
+    <p data-key="intro1a">Необходимо условие за работа на приложението е да сте включили синхронизация с
+        <strong>Google Drive</strong> в настройките на <strong>Multinotes</strong>.
+    </p>
+    <p data-key="intro2"><strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без
+        нужда от инсталация и дори при необходимост дава възможност за работа без връзка с интернет.
+        Основният режим на работа използва локална база данни в браузъра, която се обновява с новите и редактирани
+        бележки от приложението и по този начин осигурява оптимална производителност.</p>
+    <h3 data-key="modeDbTitle">Ето как работи:</h3>
+    <!--p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
+        ефективност и независимост от интернет връзка.</p-->
+    <ul>
+        <li data-key="modeDbPoint1">При първо стартиране приложението изтегля всички бележки от <strong>Google
+                Drive</strong> и ги записва в локалната база данни на браузъра.</li>
+        <li data-key="modeDbPoint2">Всяко следващо зареждане става директно от тази база, като се прави проверка и
+            се изтеглят само новите и променените бележки след последното стартиране, което съществено ускорява процеса.
+        </li>
+        <li data-key="modeDbPoint3">Ако, след първоначално зареждане, махнете отметката на <strong>Google
+                Drive</strong> в <strong>Настройки</strong>, бележките ще се зареждат само от базата данни, което
+            съществено
+            ще ускори процеса и дори ще може да работите без връзка с интернет. В този случай няма да се прави проверка
+            за нови и променени бележки, затова ще е полезно периодично да връщате отметката, за да актуализирате
+            данните си.</li>
+    </ul>
+    <h3 data-key="modeNoDbTitle">Режим без база данни</h3>
+    <ul>
+        <li data-key="modeNoDbPoint1">Ако, след първоначално зареждане, махнете отметката от <strong>База
+                данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google
+                Drive</strong> при всяко следващо стартиране.</li>
+        <li data-key="modeNoDbPoint2">Винаги се показват най-актуалните данни.</li>
+        <li data-key="modeNoDbPoint3">По-бавно зареждане, изисква интернет връзка.</li>
+    </ul>
+    <span hidden>
+        <h2 data-key="advancedModesTitle">Допълнителни режими (Разширени настройки)</h2>
+        <p data-key="advancedModesDesc">Чрез менюто <em><strong>Разширени настройки</strong></em> може да активирате
+            алтернативни режими на работа, подходящи за специфични случаи. Тези режими могат да работят с или без
+            изполване на локална база данни, в зависимост от вашите предпочитания.</p>
+        <h3 data-key="modeLocalTitle">Режим: Локална папка</h3>
         <ul>
-            <li data-key="modeDbPoint1">При първо стартиране приложението изтегля всички бележки от <strong>Google
-                    Drive</strong> и ги записва в локална база данни.</li>
-            <li data-key="modeDbPoint2">Всяко следващо зареждане става директно от тази база, като се прави проверка и
-                се изтеглят само променените файлове след последната проверка, което съществено ускорява процеса.</li>
-            <li data-key="modeDbPoint3">Ако, след първоначално зареждане, махнете отметката на <strong>Google
-                    Drive</strong> в <strong>Настройки</strong>, ще може да работите без връзка с интернет и бележките
-                ще се зареждат без забавяне, но няма да се прави проверка за нови и променени бележки. В този случай е
-                полезно периодично да връщате отметката, за да актуализирате данните си.</li>
+            <li data-key="modeLocalPoint1">Режим, подходящ за потребители, които предпочитат да имат локално копие
+                на бележките си и искат по-бърз достъп до тях.</li>
+            <li data-key="modeLocalPoint2">Данните се четат от папка на вашия компютър. Трябва да настроите
+                приложението <strong>Google Drive for Desktop</strong> да синхронизира
+                <strong>multinotes_data</strong> от <strong>Google Drive</strong> на компютъра ви (може да зададете
+                наличност на данните и в офлайн режим) и да посочите синхронизираната папка в
+                <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Локална
+                    папка</strong>.
+            </li>
+            <li data-key="modeLocalPoint3">Ако изберете този режим и поставите отметка в <strong>База
+                    данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
+            <li data-key="modeLocalPoint4">Когато се използва този режим заедно с <strong>База данни</strong>, при
+                всяко стартиране ще се прави проверка и новите и редактирани бележки ще допълват записаните в базата
+                данни.</li>
+            <li data-key="modeLocalPoint5">Ако, след първоначално зареждане, махнете отметката на <strong>Локална
+                    папка</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да
+                зареждате бележките си без забавяне, но няма да се прави проверка за нови и променени бележки. В
+                този случай е полезно периодично да връщате отметката, за да актуализирате данните си.</li>
         </ul>
-        <h3 data-key="modeNoDbTitle">Режим без база данни</h3>
+        <h3 data-key="modeArchiveTitle">Режим: Архив</h3>
         <ul>
-            <li data-key="modeNoDbPoint1">Ако, след първоначално зареждане, махнете отметката от <strong>База
-                    данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google
-                    Drive</strong> при всяко следващо стартиране.</li>
-            <li data-key="modeNoDbPoint2">Винаги се показват най-актуалните данни.</li>
-            <li data-key="modeNoDbPoint3">По-бавно зареждане, изисква интернет връзка.</li>
+            <li data-key="modeArchivePoint1">Подходящ за офлайн достъп до стари версии на бележките, показват се
+                само бележките от архива.</li>
+            <li data-key="modeArchivePoint2">Този режим се използва, когато прехвърлите zip-архив с бележки,
+                създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на данни</strong>
+                -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я
+                посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> ->
+                <strong>Архив</strong>.
+            </li>
+            <li data-key="modeArchivePoint3">Ако изберете този режим и поставите отметка в <strong>База
+                    данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
+            <li data-key="modeArchivePoint4">Ако, след първоначално зареждане, махнете отметката на
+                <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може
+                да зареждате бележките си без забавяне.
+            </li>
         </ul>
-        <span hidden>
-            <h2 data-key="advancedModesTitle">Допълнителни режими (Разширени настройки)</h2>
-            <p data-key="advancedModesDesc">Чрез менюто <em><strong>Разширени настройки</strong></em> може да активирате
-                алтернативни режими на работа, подходящи за специфични случаи. Тези режими могат да работят с или без
-                изполване на локална база данни, в зависимост от вашите предпочитания.</p>
-            <h3 data-key="modeLocalTitle">Режим: Локална папка</h3>
-            <ul>
-                <li data-key="modeLocalPoint1">Режим, подходящ за потребители, които предпочитат да имат локално копие
-                    на бележките си и искат по-бърз достъп до тях.</li>
-                <li data-key="modeLocalPoint2">Данните се четат от папка на вашия компютър. Трябва да настроите
-                    приложението <strong>Google Drive for Desktop</strong> да синхронизира
-                    <strong>multinotes_data</strong> от <strong>Google Drive</strong> на компютъра ви (може да зададете
-                    наличност на данните и в офлайн режим) и да посочите синхронизираната папка в
-                    <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Локална
-                        папка</strong>.
-                </li>
-                <li data-key="modeLocalPoint3">Ако изберете този режим и поставите отметка в <strong>База
-                        данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-                <li data-key="modeLocalPoint4">Когато се използва този режим заедно с <strong>База данни</strong>, при
-                    всяко стартиране ще се прави проверка и новите и редактирани бележки ще допълват записаните в базата
-                    данни.</li>
-                <li data-key="modeLocalPoint5">Ако, след първоначално зареждане, махнете отметката на <strong>Локална
-                        папка</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да
-                    зареждате бележките си без забавяне, но няма да се прави проверка за нови и променени бележки. В
-                    този случай е полезно периодично да връщате отметката, за да актуализирате данните си.</li>
-            </ul>
-            <h3 data-key="modeArchiveTitle">Режим: Архив</h3>
-            <ul>
-                <li data-key="modeArchivePoint1">Подходящ за офлайн достъп до стари версии на бележките, показват се
-                    само бележките от архива.</li>
-                <li data-key="modeArchivePoint2">Този режим се използва, когато прехвърлите zip-архив с бележки,
-                    създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на данни</strong>
-                    -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я
-                    посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> ->
-                    <strong>Архив</strong>.
-                </li>
-                <li data-key="modeArchivePoint3">Ако изберете този режим и поставите отметка в <strong>База
-                        данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-                <li data-key="modeArchivePoint4">Ако, след първоначално зареждане, махнете отметката на
-                    <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може
-                    да зареждате бележките си без забавяне.
-                </li>
-            </ul>
-        </span>
+    </span>
     </section>
 
     <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
     <script type="text/javascript">
 
         const main = 'viewer.html';
-        const version = '0.16';
+        const version = '0.17';
 
         // --- I18N ---
         const translations = {
@@ -306,7 +314,7 @@
                 intro1: '<strong>CX MultiNotes Viewer</strong> is a browser-based application that allows you to access the information in notes created with the <strong>Multinotes</strong> app for Android, from any device.',
                 intro2: '<strong>CX MultiNotes Viewer</strong> provides quick access to your notes, without the need for installation, and even allows for offline work. The main mode of operation uses a local database in the browser, ensuring optimal performance.',
                 modeDbTitle: 'Main Mode with Local Database',
-                modeDbDesc: 'This mode is active by default and offers the best combination of speed, efficiency, and independence from an internet connection.',
+                // modeDbDesc: 'This mode is active by default and offers the best combination of speed, efficiency, and independence from an internet connection.',
                 modeDbPoint1: 'On first launch, the application downloads all notes from <strong>Google Drive</strong> and saves them to a local database.',
                 modeDbPoint2: 'Each subsequent load is done directly from this database, with a check to download only the files that have changed since the last check, which significantly speeds up the process.',
                 modeDbPoint3: 'If, after the initial load, you uncheck <strong>Google Drive</strong> in <strong>Settings</strong>, you will be able to work without an internet connection and the notes will load without delay, but no check for new and changed notes will be performed. In this case, it is useful to periodically re-check the box to update your data.',
@@ -335,13 +343,14 @@
                 rememberMeLabel: 'Запомни ме',
                 authFailed: 'Удостоверяването не бе успешно. Моля, опитайте отново.',
                 gapiNotReady: 'Библиотеката за удостоверяване на Google не е готова. Моля, изчакайте малко и опитайте отново.',
-                intro1: '<strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може да имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за Андроид, от всяко устройство.',
-                intro2: '<strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без необходимост от инсталация и дори дава възможност за работа без връзка с интернет. Основният режим на работа използва локална база данни в браузъра, като осигурява оптимална производителност.',
-                modeDbTitle: 'Основен режим с локална база данни',
-                modeDbDesc: 'Този режим е активен по подразбиране и предлага най-добро съчетание между бързина, ефективност и независимост от интернет връзка.',
-                modeDbPoint1: 'При първо стартиране приложението изтегля всички бележки от <strong>Google Drive</strong> и ги записва в локална база данни.',
-                modeDbPoint2: 'Всяко следващо зареждане става директно от тази база, като се прави проверка и се изтеглят само променените файлове след последната проверка, което съществено ускорява процеса.',
-                modeDbPoint3: 'Ако, след първоначално зареждане, махнете отметката на <strong>Google Drive</strong> в <strong>Настройки</strong>, ще може да работите без връзка с интернет и бележките ще се зареждат без забавяне, но няма да се прави проверка за нови и променени бележки. В този случай е полезно периодично да връщате отметката, за да актуализирате данните си.',
+                intro1: '<strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може да имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за Андроид, от вашия компютър, таблет, iPhone и др., независимо дали работите с Windows, Android, macOS, iOS или Linux.',
+                intro1a: 'Необходимо условие за работа на приложението е да сте включили синхронизация с <strong>Google Drive</strong> в настройките на <strong>Multinotes</strong>.',
+                intro2: '<strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без нужда от инсталация и дори при необходимост дава възможност за работа без връзка с интернет. Основният режим на работа използва локална база данни в браузъра, която се обновява с новите и редактирани бележки от приложението и по този начин осигурява оптимална производителност.',
+                modeDbTitle: 'Ето как работи:',
+                // modeDbDesc: 'Този режим е активен по подразбиране и предлага най-добро съчетание между бързина, ефективност и независимост от интернет връзка.',
+                modeDbPoint1: 'При първо стартиране приложението изтегля всички бележки от <strong>Google Drive</strong> и ги записва в локалната база данни на браузъра.',
+                modeDbPoint2: 'Всяко следващо зареждане става директно от тази база, като се прави проверка и се изтеглят само новите и променените бележки след последното стартиране, което съществено ускорява процеса.',
+                modeDbPoint3: 'Ако, след първоначално зареждане, махнете отметката на <strong>Google Drive</strong> в <strong>Настройки</strong>, бележките ще се зареждат само от базата данни, което съществено ще ускори процеса и дори ще може да работите без връзка с интернет. В този случай няма да се прави проверка за нови и променени бележки, затова ще е полезно периодично да връщате отметката, за да актуализирате данните си.',
                 modeNoDbTitle: 'Режим без база данни',
                 modeNoDbPoint1: 'Ако, след първоначално зареждане, махнете отметката от <strong>База данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google Drive</strong> при всяко следващо стартиране.',
                 modeNoDbPoint2: 'Винаги се показват най-актуалните данни.',
@@ -395,14 +404,14 @@
         const SCOPES = 'https://www.googleapis.com/auth/drive.readonly email';
         let tokenClient;
 
-        function decodeJwtResponse(token) {
+        /*function decodeJwtResponse(token) {
             var base64Url = token.split('.')[1];
             var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
             var jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
                 return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
             }).join(''));
             return JSON.parse(jsonPayload);
-        }
+        }*/
 
         function gisLoaded() {
             tokenClient = google.accounts.oauth2.initTokenClient({

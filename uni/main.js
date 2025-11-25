@@ -19,7 +19,7 @@ const DEMO_NOTE_LIMIT = 5;
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.16'; // App version
+const version = '0.17'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -990,7 +990,7 @@ function updateSignoutTooltip() {
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
-/*async function refreshAuthToken() {
+async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
     if (!loginHint) return null;
 
@@ -1036,10 +1036,11 @@ function updateSignoutTooltip() {
         tokenClient.requestAccessToken({ prompt: 'none', login_hint: loginHint });
     });
 }
-*/
 
+/*
 async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
+    const YOUR_REDIRECT_URI = 'https://127.0.0.1:5500/login.html';
     if (!loginHint) return null;
 
     // Изчакваме Google библиотеката да се зареди, ако не е готова
@@ -1106,7 +1107,7 @@ async function refreshAuthToken() {
         }, 10000); // 10 секунди
     });
 }
-
+*/
 async function checkAuth() {
     console.log("checkAuth");
     // --- Проверяваме и в двата storage-а за токен ---
@@ -3520,11 +3521,33 @@ async function createBoardsUI(boardsData, boardParseError) {
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
     const allBoardsBtn = document.createElement('button');
-    allBoardsBtn.className = 'board-menu-button'; // Ново, по-семантично име на класовете
+    allBoardsBtn.className = 'board-menu-button popup-menu-btn'; // Ново, по-семантично име на класовете
     allBoardsBtn.innerHTML = boardIconSvg; // Use the board icon
     // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
     addAllBoardsModalEvents(allBoardsBtn, () => { showAllBoardsModal(); });
     scrollWrapper.appendChild(allBoardsBtn);
+
+    // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container ---
+    const boardsMenuContainer = document.getElementById('boards-menu-container');
+    if (boardsMenuContainer) {
+        // Клонираме бутона, за да го имаме и на двете места, или го местим.
+        // В случая, потребителят иска "да се добави също", което предполага копие или референция.
+        // Тъй като DOM елемент може да е само на едно място, ще го клонираме.
+        // Но трябва да закачим и event listener-ите наново.
+        // По-добрият вариант е да създадем нов бутон за контейнера.
+
+        const allBoardsBtnForContainer = document.createElement('button');
+        allBoardsBtnForContainer.className = 'header-btn popup-menu-btn'; // Използваме header-btn за да е като бутон Изход
+        allBoardsBtnForContainer.innerHTML = boardIconSvg;
+        // allBoardsBtnForContainer.style.marginRight = '5px'; // Премахваме ръчния марджин, header-btn има margin-left
+
+        addAllBoardsModalEvents(allBoardsBtnForContainer, () => { showAllBoardsModal(); });
+
+        // Изчистваме контейнера преди да добавим (ако се презарежда UI)
+        boardsMenuContainer.innerHTML = '';
+        boardsMenuContainer.appendChild(allBoardsBtnForContainer);
+    }
+
     scrollWrapper.appendChild(contentEl);
     contentWrapper.appendChild(scrollWrapper);
 

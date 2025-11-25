@@ -2209,3 +2209,40 @@ code {
     background-color: #004d40;
     color: white;
 }
+
+/* --- Responsive Header Logic --- */
+
+/* Default state: Hide the header button container, show the scrolling wrapper */
+#boards-menu-container {
+    display: none;
+}
+
+.scrolling-menu-wrapper {
+    display: flex;
+    /* Or whatever its default display is */
+}
+
+/* 
+   When screen is small (likely forcing header to 3 rows), 
+   swap visibility: show header button, hide scrolling wrapper 
+*/
+@media (max-width: 1160px) {
+    #boards-menu-container {
+        display: block;
+    }
+
+    /* Hide the specific button inside the scrolling wrapper that triggers the modal */
+    .scrolling-menu-wrapper .board-menu-button {
+        display: none !important;
+    }
+}
+
+.popup-menu-btn {
+    background-color: #FFFF00 !important;
+    /* Yellow background */
+}
+
+.popup-menu-btn:hover {
+    background-color: #E6E600 !important;
+    /* Darker yellow on hover */
+}
