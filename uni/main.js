@@ -1146,8 +1146,11 @@ async function checkAuth() {
     const urlTokenParam = url.searchParams.get("token");
 
     if (urlTokenParam) {
-        // Ако има токен в URL-а, той е с приоритет и презаписва стария
-        localStorage.setItem('urlToken', urlTokenParam);
+        // Ако има токен в URL-а, той е с приоритет и презаписва стария, само ако е различен
+        const currentStoredToken = localStorage.getItem('urlToken');
+        if (urlTokenParam !== currentStoredToken) {
+            localStorage.setItem('urlToken', urlTokenParam);
+        }
     }
 
     let urlToken = localStorage.getItem('urlToken');

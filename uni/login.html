@@ -70,7 +70,8 @@
         #lang-switcher {
             display: flex;
             justify-content: center;
-            margin-bottom: 20px;
+            margin-left: auto;
+            /* Push to the right */
         }
 
         .lang-btn {
@@ -214,14 +215,14 @@
 <body>
     <header>
         <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
-    </header>
-
-    <div class="login-box" style="margin-bottom: 10px; display: none;">
         <div id="lang-switcher">
             <button id="lang-bg" class="lang-btn">BG</button>
             <button id="lang-en" class="lang-btn">EN</button>
         </div>
-        <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p>
+    </header>
+
+    <div class="login-box" style="margin-bottom: 10px; display: none;">
+        <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p><br>
         <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
         <div style="margin-top: 15px;">
             <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">
