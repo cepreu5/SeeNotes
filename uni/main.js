@@ -6,7 +6,7 @@
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
 
 let debug = false; // Глобален флаг за дебъг режим
-let pass = true;
+let pass = false;
 
 // --- Demo Mode ---
 let DEMO_MODE = false;
@@ -1190,6 +1190,7 @@ async function checkAuth() {
 
             if (ageInDays < validityInDays) {
                 isUrlTokenValidTime = true;
+                pass = true;
             } else {
                 console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
             }

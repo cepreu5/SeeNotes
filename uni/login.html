@@ -10,7 +10,6 @@
         body {
             max-width: 800px;
             font-family: sans-serif;
-            margin: 0;
             background-image: url('Frame.png');
             height: 100vh;
             display: grid;
@@ -105,6 +104,20 @@
             vertical-align: middle;
         }
 
+        #trialBtn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #trialBtn:hover {
+            background-color: #45a049;
+        }
+
         /* Медийна заявка за тесни екрани (мобилни устройства) */
         @media (max-width: 768px) {
             header {
@@ -142,7 +155,7 @@
 
         h3 {
             border-bottom: 1px solid #ccc;
-            padding-bottom: 5px;
+            padding-bottom: 0px;
         }
 
         h4 {
@@ -154,8 +167,13 @@
             padding-left: 20px;
         }
 
+        ul {
+            margin-bottom: 0px;
+            margin-top: 0px;
+        }
+
         li {
-            margin-bottom: 5px;
+            margin-bottom: 0px;
         }
 
         strong {
@@ -185,6 +203,11 @@
         th {
             background-color: #f2f2f2;
         }
+
+        p {
+            margin-top: 5px;
+            margin-bottom: 0px;
+        }
     </style>
 </head>
 
@@ -193,7 +216,7 @@
         <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
     </header>
 
-    <div class="login-box" style="display: none;">
+    <div class="login-box" style="margin-bottom: 10px; display: none;">
         <div id="lang-switcher">
             <button id="lang-bg" class="lang-btn">BG</button>
             <button id="lang-en" class="lang-btn">EN</button>
@@ -212,10 +235,11 @@
             const cachedResponse = await cache.match('s');
             if (cachedResponse) {
                 document.querySelector('.login-box').style.display = 'block';
+                document.getElementById("trialBtn").style.display = 'none';
             }
         })();
     </script>
-
+    <button id="trialBtn">Започнете 30-дневен пробен период</button>
     <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може да
         имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за Андроид, от
         вашия компютър, таблет, iPhone и др. независимо дали работите с Windows, Android, macOS, iOS или Linux.</p>
@@ -302,6 +326,13 @@
         const main = 'viewer.html';
         const version = '0.17';
 
+        const TRIAL_URL = "http://127.0.0.1:5500/uni/viewer.html?token=ackWUeRd8dfIIESDa7loqjg0Bu1PQCgppu9UKXACIQFc155L3xo5BEHDc-yvPZKBi80ykaMsBCGBZnbHBaaUXXIOxs4";
+
+        // Добавяне на действие при натискане
+        document.getElementById("trialBtn").addEventListener("click", () => {
+            window.location.href = TRIAL_URL;
+        });
+
         // --- I18N ---
         const translations = {
             en: {
@@ -311,13 +342,14 @@
                 rememberMeLabel: 'Remember me',
                 authFailed: 'Authentication failed. Please try again.',
                 gapiNotReady: 'Google authentication library is not ready. Please wait a moment and try again.',
-                intro1: '<strong>CX MultiNotes Viewer</strong> is a browser-based application that allows you to access the information in notes created with the <strong>Multinotes</strong> app for Android, from any device.',
-                intro2: '<strong>CX MultiNotes Viewer</strong> provides quick access to your notes, without the need for installation, and even allows for offline work. The main mode of operation uses a local database in the browser, ensuring optimal performance.',
-                modeDbTitle: 'Main Mode with Local Database',
+                intro1: '<strong>CX MultiNotes Viewer</strong> is a browser-based application that allows you to access the information in notes created with the <strong>Multinotes</strong> app for Android, from your computer, tablet, iPhone, etc., regardless of whether you are working with Windows, Android, macOS, iOS, or Linux.',
+                intro1a: 'A necessary condition for the application to work is that you have enabled synchronization with <strong>Google Drive</strong> in the <strong>Multinotes</strong> settings.',
+                intro2: '<strong>CX MultiNotes Viewer</strong> provides quick access to your notes, without the need for installation, and even allows for offline work if necessary. The main mode of operation uses a local database in the browser, which is updated with new and edited notes from the application, thus ensuring optimal performance.',
+                modeDbTitle: 'Here is how it works:',
                 // modeDbDesc: 'This mode is active by default and offers the best combination of speed, efficiency, and independence from an internet connection.',
-                modeDbPoint1: 'On first launch, the application downloads all notes from <strong>Google Drive</strong> and saves them to a local database.',
-                modeDbPoint2: 'Each subsequent load is done directly from this database, with a check to download only the files that have changed since the last check, which significantly speeds up the process.',
-                modeDbPoint3: 'If, after the initial load, you uncheck <strong>Google Drive</strong> in <strong>Settings</strong>, you will be able to work without an internet connection and the notes will load without delay, but no check for new and changed notes will be performed. In this case, it is useful to periodically re-check the box to update your data.',
+                modeDbPoint1: 'On first launch, the application downloads all notes from <strong>Google Drive</strong> and saves them to the browser\'s local database.',
+                modeDbPoint2: 'Each subsequent load is done directly from this database, with a check to download only the new and changed notes since the last launch, which significantly speeds up the process.',
+                modeDbPoint3: 'If, after the initial load, you uncheck <strong>Google Drive</strong> in <strong>Settings</strong>, the notes will be loaded only from the database, which will significantly speed up the process and you will even be able to work without an internet connection. In this case, no check for new and changed notes will be performed, so it is useful to periodically re-check the box to update your data.',
                 modeNoDbTitle: 'Mode without Database',
                 modeNoDbPoint1: 'If, after the initial load, you uncheck <strong>Database</strong> in <strong>Settings</strong>, the notes are loaded directly from <strong>Google Drive</strong> on each subsequent launch.',
                 modeNoDbPoint2: 'The most up-to-date data is always displayed.',
