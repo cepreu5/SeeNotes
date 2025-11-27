@@ -5,7 +5,7 @@
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
 
-let debug = false; // Глобален флаг за дебъг режим
+let debug = true; // Глобален флаг за дебъг режим
 let pass = false;
 
 // --- Demo Mode ---
@@ -19,7 +19,7 @@ const DEMO_NOTE_LIMIT = 5;
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const TRIAL_URL = "http://viewer.html?token=0bi64PmSapE-xPdzhr5dtAXBb95QYofCL1K1gSL_HuFeth8vZDAQfRewADufxs-PlQBylELKi7CWUTI1DipJGmmma6E";
+const TRIAL_URL = "http://index.html?token=0bi64PmSapE-xPdzhr5dtAXBb95QYofCL1K1gSL_HuFeth8vZDAQfRewADufxs-PlQBylELKi7CWUTI1DipJGmmma6E";
 // const main = 'viewer.html';
 const version = '0.17'; // App version
 

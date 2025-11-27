@@ -6,7 +6,7 @@
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
 
 let debug = true; // Глобален флаг за дебъг режим
-let pass = true;
+let pass = false;
 
 // --- Demo Mode ---
 let DEMO_MODE = false;
@@ -19,7 +19,9 @@ const DEMO_NOTE_LIMIT = 5;
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const version = '0.16'; // App version
+const TRIAL_URL = "http://index.html?token=0bi64PmSapE-xPdzhr5dtAXBb95QYofCL1K1gSL_HuFeth8vZDAQfRewADufxs-PlQBylELKi7CWUTI1DipJGmmma6E";
+// const main = 'viewer.html';
+const version = '0.17'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -32,6 +34,7 @@ let currentCalendarDate = new Date();
 let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
 let authToken = null;
 let token;
+let ts; // Време на първо стартиране на приложението
 let tokenRemainingDays = null; // Остават дни валидност на токена
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
@@ -94,7 +97,7 @@ const attachmentIcons = [
     { type: 6, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="10" r="2"/><path d="M8 16c0-1.33 2.67-2 4-2s4 .67 4 2"/></svg>` }
 ];
 
-let currentLang = localStorage.getItem('language') || 'bg';
+let currentLang = localStorage.getItem('language') || 'en';
 const noteBackgrounds = [
     'wg1_1.png', // 0
     'wr1_1.png', // 1
@@ -119,11 +122,54 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 // =================================================================================
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
-
 // --- Основна стартова функция ---
 async function startApp() {
     // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
     document.body.style.display = 'block';
+
+    /*if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('SW registered', reg))
+            .catch(err => console.error('SW registration failed', err));
+    }*/
+    console.log('First start:', Date.now());
+    ts = await getFirstStartEncoded();
+    console.log('First start in cache:', ts);
+
+    // --- Предварително изчисляване на оставащите дни за UI ---
+    try {
+        const url = new URL(window.location.href);
+        const urlTokenParam = url.searchParams.get("token");
+        if (urlTokenParam) localStorage.setItem('urlToken', urlTokenParam);
+
+        const urlToken = localStorage.getItem('urlToken');
+        if (urlToken) {
+            const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+            const iv = raw.slice(0, 12), data = raw.slice(12);
+
+            const key = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+                { name: 'AES-GCM' },
+                false,
+                ['decrypt']
+            );
+            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+            const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+
+            const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+            let validityInDays = 30;
+            if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+                validityInDays = parseInt(tokenValidity, 10);
+            }
+            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
+        }
+    } catch (e) {
+        console.error("Error pre-calculating token days:", e);
+    }
+
     initApp(); // Инициализира UI елементите и event listeners
 
     // --- Задаване на настройки по подразбиране при първо стартиране ---
@@ -157,6 +203,39 @@ async function startApp() {
     // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
     // само ако е необходимо.
     await mainLogic();
+}
+
+
+// Записва timestamp като кодиран низ (Base64), без да пази число в кеша
+async function getFirstStartEncoded() {
+    const cache = await caches.open('app-cache');
+    const cachedResponse = await cache.match('s'); // /firstStart.json
+    if (cachedResponse) {
+        // Четене от кеша → винаги е низ
+        /*const data = await cachedResponse.json();
+        const encoded = data.value;           // напр. "MTc2NDAyNTk4MTU2NA=="
+        const decodedTs = parseInt(atob(encoded), 10); // превръщаме обратно в число само в паметта
+        return decodedTs;*/
+        // Четене на текста от кеша
+        const encoded = await cachedResponse.text();
+        const decodedTs = parseInt(atob(encoded), 10);
+        return decodedTs;
+    } else {
+        // Първо стартиране → генерираме timestamp
+        const nowTs = Date.now();
+        const encoded = btoa(String(nowTs));  // кодиране в Base64 → низ
+        /*  const payload = JSON.stringify({ value: encoded });
+        const response = new Response(payload, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        await cache.put('/firstStart.json', response); */
+        // Записваме директно като текст, не JSON
+        const response = new Response(encoded, {
+            headers: { 'Content-Type': 'text/plain' }
+        });
+        await cache.put('s', response);
+        return nowTs;
+    }
 }
 
 function _(key) {
@@ -428,25 +507,10 @@ function initApp() {
     const toast = document.getElementById('toastNotification');
     toast.addEventListener('click', hideToast);
 
-    function setLanguage(lang) {
-        if (!translations[lang]) return;
-        currentLang = lang;
-        localStorage.setItem('language', lang);
-        document.documentElement.lang = lang;
-        document.querySelectorAll('[data-key]').forEach(element => {
-            const key = element.getAttribute('data-key');
-            element.textContent = _(key);
-        });
-        document.querySelectorAll('[data-key-placeholder]').forEach(element => {
-            const key = element.getAttribute('data-key-placeholder');
-            element.placeholder = _(key);
-        });
-        document.querySelectorAll('[data-key-title]').forEach(element => {
-            const key = element.getAttribute('data-key-title');
-            element.title = _(key);
-        });
-        updateSignoutTooltip();
-    }
+
+
+
+
     scrollTopBtn.innerHTML = arrowSvg;
     signoutButton.addEventListener('click', handleSignoutClick);
     reloadButton.addEventListener('click', () => mainLogic());
@@ -686,7 +750,6 @@ function initApp() {
 
 
     setLanguage(currentLang);
-    // updateSignoutTooltip();
     // Add app version to the settings modal title
     const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
     if (settingsTitle) {
@@ -890,7 +953,85 @@ function renderSavedSearchesPopup() {
     });
 }
 
-startApp();
+// Проверяваме дали има токен преди да стартираме приложението
+// Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
+const sessionToken = sessionStorage.getItem('google_auth_token');
+const localToken = localStorage.getItem('google_auth_token');
+if (sessionToken || localToken) {
+    // Има токен, стартираме приложението
+    startApp();
+} else {
+    // Няма токен - показваме login страницата веднага и инициализираме event listeners
+    initLoginPage();
+    // gisLoaded() ще инициализира Google authentication когато се зареди
+}
+// След успешно удостоверяване gisLoaded() ще извика startApp()
+
+// Функция за инициализация на login страницата
+function initLoginPage() {
+    document.getElementById('login-page').hidden = false;
+    document.getElementById('loader-container').style.display = 'none';
+    // document.getElementById("mode_button").style.display = 'none';
+
+    // Language switcher event listeners - комбинирани за всички бутони
+    const langBgMain = document.getElementById('lang-bg-main');
+    const langEnMain = document.getElementById('lang-en-main');
+    const langBgBox = document.getElementById('lang-bg-box');
+    const langEnBox = document.getElementById('lang-en-box');
+
+    // Функция за смяна на език, която актуализира всички бутони
+    const switchLanguage = (lang) => {
+        setLanguage(lang);
+        // Актуализираме активното състояние на всички бутони
+        const isBg = lang === 'bg';
+        if (langBgMain) langBgMain.classList.toggle('active', isBg);
+        if (langEnMain) langEnMain.classList.toggle('active', !isBg);
+        if (langBgBox) langBgBox.classList.toggle('active', isBg);
+        if (langEnBox) langEnBox.classList.toggle('active', !isBg);
+    };
+
+    // Добавяме event listeners към всички бутони
+    if (langBgMain) langBgMain.onclick = () => switchLanguage('bg');
+    if (langEnMain) langEnMain.onclick = () => switchLanguage('en');
+    if (langBgBox) langBgBox.onclick = () => switchLanguage('bg');
+    if (langEnBox) langEnBox.onclick = () => switchLanguage('en');
+
+    // Set initial active state за всички бутони
+    const isBg = currentLang === 'bg';
+    if (langBgMain) langBgMain.classList.toggle('active', isBg);
+    if (langEnMain) langEnMain.classList.toggle('active', !isBg);
+    if (langBgBox) langBgBox.classList.toggle('active', isBg);
+    if (langEnBox) langEnBox.classList.toggle('active', !isBg);
+
+    // Добавяне на действие при натискане на trial бутона
+    const trialBtn = document.getElementById("trialBtn");
+    if (trialBtn) {
+        trialBtn.addEventListener("click", (e) => {
+            e.preventDefault(); // Предотвратяваме стандартното действие
+            // 1. Взимаме токена от TRIAL_URL
+            const url = new URL(TRIAL_URL);
+            const trialToken = url.searchParams.get("token");
+            // 2. Запазваме го в localStorage, за да е наличен след логване
+            if (trialToken) localStorage.setItem('urlToken', trialToken);
+            // 3. Симулираме клик върху бутона за вход с Google
+            document.getElementById('authorize_button').click();
+        });
+    }
+
+    // Запазваме състоянието на "Запомни ме" при промяна
+    const rememberMeCheckbox = document.getElementById('rememberMe');
+    if (rememberMeCheckbox) {
+        rememberMeCheckbox.addEventListener('change', () => {
+            localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
+        });
+    }
+
+    // Event listener за authorize бутона
+    const authorizeBtn = document.getElementById('authorize_button');
+    if (authorizeBtn) {
+        authorizeBtn.addEventListener('click', handleAuthClick);
+    }
+}
 
 function updateSignoutTooltip() {
     const email = sessionStorage.getItem('google_auth_email_hint');
@@ -905,7 +1046,7 @@ function updateSignoutTooltip() {
             }
             signoutBtn.title = tooltipText;
         } else {
-            signoutBtn.title = baseTooltip;
+            signoutBtn.title = baseTooltip + ` [${tokenRemainingDays}]`;
         }
     }
 }
@@ -918,7 +1059,7 @@ async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
     if (!loginHint) return null;
 
-    // Wait for Google library to load if not ready
+    // Изчакваме Google библиотеката да се зареди, ако не е готова
     if (typeof google === 'undefined') {
         await new Promise(resolve => {
             const interval = setInterval(() => {
@@ -961,11 +1102,12 @@ async function refreshAuthToken() {
     });
 }
 
-
-/*async function refreshAuthToken() {
+/*
+async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
+    const YOUR_REDIRECT_URI = 'https://127.0.0.1:5500/login.html';
     if (!loginHint) return null;
-
+ 
     // Изчакваме Google библиотеката да се зареди, ако не е готова
     if (typeof google === 'undefined') {
         await new Promise(resolve => {
@@ -977,18 +1119,18 @@ async function refreshAuthToken() {
             }, 100);
         });
     }
-
+ 
     return new Promise((resolve, reject) => {
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
         iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${SCOPES}&redirect_uri=${YOUR_REDIRECT_URI}&prompt=none&login_hint=${loginHint}`;
-
+ 
         // Слушаме за съобщения от iframe
         const messageListener = (event) => {
             if (event.origin !== 'https://accounts.google.com') {
                 return; // Игнорираме съобщения от други източници
             }
-
+ 
             const hash = event.data;
             if (hash && hash.includes('access_token')) {
                 const params = new URLSearchParams(hash);
@@ -999,14 +1141,14 @@ async function refreshAuthToken() {
                     expires_in: expiresIn,
                     issued_at: Date.now()
                 };
-
+ 
                 // Обновяваме storage
                 if (localStorage.getItem('google_auth_token')) {
                     localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                 } else {
                     sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                 }
-
+ 
                 window.removeEventListener('message', messageListener);
                 document.body.removeChild(iframe);
                 resolve({ tokenData: tokenWithTimestamp, pass: true });
@@ -1016,10 +1158,10 @@ async function refreshAuthToken() {
                 resolve(null);
             }
         };
-
+ 
         window.addEventListener('message', messageListener);
         document.body.appendChild(iframe);
-
+ 
         // Таймаут за безопасност
         setTimeout(() => {
             window.removeEventListener('message', messageListener);
@@ -1032,6 +1174,101 @@ async function refreshAuthToken() {
 }
 */
 
+function gisLoaded() {
+    // Задаваме езика преди да се покаже login box-а
+    setLanguage(currentLang);
+    // Ако вече има токен, не инициализираме login процеса
+    const sessionToken = sessionStorage.getItem('google_auth_token');
+    const localToken = localStorage.getItem('google_auth_token');
+    if (sessionToken || localToken) {
+        console.log('User already authenticated, skipping gisLoaded initialization');
+        return;
+    }
+
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: async (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+                const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+                const rememberMe = document.getElementById('rememberMe')?.checked;
+                // Токенът се записва в localStorage или sessionStorage според избора
+                const storage = rememberMe ? localStorage : sessionStorage;
+                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                try {
+                    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                        headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+                    });
+                    if (userInfoResponse.ok) {
+                        const userInfo = await userInfoResponse.json();
+                        // Имейлът за текущата сесия се записва ВИНАГИ в sessionStorage
+                        sessionStorage.setItem('google_auth_email_hint', userInfo.email);
+                        // Запазваме имейла за следващо "тихо" влизане
+                        localStorage.setItem('google_login_hint', userInfo.email);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch user info:', error);
+                }
+                sessionStorage.removeItem('logout_flag');
+                // Вместо redirect, скриваме login страницата и продължаваме
+                document.getElementById('login-page').hidden = true;
+                // Извикваме startApp за да заредим приложението
+                startApp();
+            } else {
+                console.error('Failed to get access token');
+                alert(_('authFailed'));
+            }
+        },
+        error_callback: (error) => {
+            console.error("GSI Error:", error);
+            alert(_('authFailed') + `\n\nError: ${error.type}`);
+        }
+    });
+
+    const loginBox = document.querySelector('.login-box');
+    const loginHint = localStorage.getItem('google_login_hint'); // Взимаме запазения имейл
+    const rememberMe = document.getElementById('rememberMe');
+
+    // --- КОРЕКЦИЯ: Проверяваме и дали "Запомни ме" е било избрано ---
+    if (loginHint && rememberMe.checked) {
+        // Опитваме "тихо" влизане със запазения имейл
+        // Успешният резултат ще се обработи от глобалния callback.
+        // Проваленият опит ще се обработи от error_callback, но за prompt: 'none' той не прави нищо,
+        // което ни позволява да покажем ръчно екрана за вход.
+        tokenClient.requestAccessToken({
+            prompt: 'none', login_hint: loginHint, error_callback: () => {
+                // Ако "тихото" влизане се провали,
+                // и показваме стандартния екран за вход.
+                loginBox.style.visibility = 'visible';
+                document.getElementById('authorize_button').disabled = false;
+            }
+        });
+    } else {
+        // Ако няма запазен login_hint или потребителят е излязъл изрично,
+        // показваме екрана за вход веднага.
+        loginBox.style.visibility = 'visible';
+        document.getElementById('authorize_button').disabled = false;
+    }
+}
+
+// --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
+document.addEventListener('DOMContentLoaded', () => {
+    const rememberMeCheckbox = document.getElementById('rememberMe');
+    rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
+});
+
+function handleAuthClick() {
+    if (tokenClient) {
+        // --- Опростена логика ---
+        // След като disableAutoSelect() е извикана при изход, вече не е нужно
+        // да се борим с кеширания потребител тук. Просто искаме токен.
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
+    } else {
+        console.error('Token client not initialized');
+        alert(_('gapiNotReady'));
+    }
+}
+
 async function checkAuth() {
     console.log("checkAuth");
     // --- Проверяваме и в двата storage-а за токен ---
@@ -1039,10 +1276,23 @@ async function checkAuth() {
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     const storedTokenString = sessionToken || localToken;
+
     if (!storedTokenString) {
-        window.location.href = 'login.html';
+        // Добавяне на действие при натискане
+        document.getElementById("trialBtn").addEventListener("click", () => {
+            window.location.href = TRIAL_URL;
+        });
+        // Запазваме състоянието на "Запомни ме" при промяна
+        const rememberMeCheckbox = document.getElementById('rememberMe');
+        rememberMeCheckbox.addEventListener('change', () => {
+            localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
+        });
+        document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
+        // Показваме login страницата
+        document.getElementById('login-page').hidden = false;
         return null; // Stop execution
     }
+
     const tokenData = JSON.parse(storedTokenString);
     // --- Винаги добавяме email_hint от sessionStorage ---
     // Това гарантира, че проверката на токена ще работи коректно,
@@ -1057,20 +1307,25 @@ async function checkAuth() {
             return refreshResult;
         }
 
-        console.log("Token expired. Redirecting to login for re-authentication.");
+        console.log("Token expired. Reloading for re-authentication.");
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token'); // Изчистваме и от localStorage
-        window.location.href = 'login.html?reauth=true';
+        sessionStorage.setItem('logout_flag', 'true');
+        window.location.reload();
         return null; // Stop execution
     }
-    /*/ --- 🔐 Вградена декрипция ---
+
+    // --- 🔐 Вградена декрипция ---
     // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
     const url = new URL(window.location.href);
     const urlTokenParam = url.searchParams.get("token");
 
     if (urlTokenParam) {
-        // Ако има токен в URL-а, той е с приоритет и презаписва стария
-        localStorage.setItem('urlToken', urlTokenParam);
+        // Ако има токен в URL-а, той е с приоритет и презаписва стария, само ако е различен
+        const currentStoredToken = localStorage.getItem('urlToken');
+        if (urlTokenParam !== currentStoredToken) {
+            localStorage.setItem('urlToken', urlTokenParam);
+        }
     }
 
     let urlToken = localStorage.getItem('urlToken');
@@ -1080,7 +1335,7 @@ async function checkAuth() {
 
     if (urlToken) {
         // --- Извличаме валидността от самия токен ---
-        let validityInDays = 365; // 3. Стойност по подразбиране в дни
+        let validityInDays = 30; // 3. Стойност по подразбиране в дни
         try {
             const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
             const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
@@ -1099,17 +1354,76 @@ async function checkAuth() {
             const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
 
             // 3. Изчисляваме възрастта в дни
-            const ageInDays = (Date.now() - parseInt(timestamp, 10)) / (1000 * 60 * 60 * 24);
+            const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
 
             if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
                 validityInDays = parseInt(tokenValidity, 10);
             }
 
             tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
+            console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
+            // let tooltipText = _('signoutButtonTooltip');
+            // tooltipText += ` [${tokenRemainingDays}]`;
+            console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
+
+            if (ageInDays < validityInDays) {
+                isUrlTokenValidTime = true;
+                pass = true;
+            } else {
+                console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
+            }
+        } catch (error) {
+            console.error("Грешка при декриптиране на токен:", error);
+        }
+    }
+
+    /*/ --- 🔐 Вградена декрипция ---
+    // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
+    const url = new URL(window.location.href);
+    const urlTokenParam = url.searchParams.get("token");
+ 
+    if (urlTokenParam) {
+        // Ако има токен в URL-а, той е с приоритет и презаписва стария
+        localStorage.setItem('urlToken', urlTokenParam);
+    }
+ 
+    let urlToken = localStorage.getItem('urlToken');
+ 
+    let isUrlTokenValidTime = false;
+    let decryptedEmailFromToken = null;
+ 
+    if (urlToken) {
+        // --- Извличаме валидността от самия токен ---
+        let validityInDays = 365; // 3. Стойност по подразбиране в дни
+        try {
+            const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+            const iv = raw.slice(0, 12), data = raw.slice(12);
+ 
+            const key = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+                { name: 'AES-GCM' },
+                false,
+                ['decrypt']
+            );
+            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+            // Декодираме токена, който вече съдържа и валидността
+            const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+ 
+            // 3. Изчисляваме възрастта в дни
+            const ageInDays = (Date.now() - parseInt(timestamp, 10)) / (1000 * 60 * 60 * 24);
+ 
+            if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+                validityInDays = parseInt(tokenValidity, 10);
+            }
+ 
+            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
             updateSignoutTooltip();
             console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}`);
             console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
-
+ 
             if (ageInDays < validityInDays) {
                 isUrlTokenValidTime = true;
                 decryptedEmailFromToken = decryptedEmail;
@@ -1123,32 +1437,20 @@ async function checkAuth() {
     }
     else DEMO_MODE = true;
     */
-    /*/ --- Demo Mode Check --- не се ползва, за изтриване
-    if (DEMO_MODE) {
-        if (isUrlTokenValidTime) {
-            console.log("Valid token detected. Disabling Demo Mode behavior.");
-            // Продължаваме към стандартната проверка
-        } else {
-            console.log("Demo mode active. Skipping auth check.");
-            pass = true;
-            const email = sessionStorage.getItem('google_auth_email_hint');
-            return { tokenData: { email_hint: email }, pass: true };
-        }
-    }*/
     /*/ --- Финална проверка на urlToken срещу логнатия потребител ---
     let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
-
+ 
     if (isUrlTokenValidTime) {
         // Проверяваме дали имейлът съвпада с логнатия потребител
         console.log(`Сравняване на имейли: Токен=${decryptedEmailFromToken}, Сесия=${tokenData.email_hint}`);
-
+ 
         if (decryptedEmailFromToken == tokenData.email_hint) {
             pass = true;
         } else {
             console.log('Резултат от проверката: НЕВАЛИДЕН (грешен имейл)');
         }
     }
-
+ 
     if (!pass) {
         document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
         const errorElement = document.createElement('h1');
@@ -1163,7 +1465,7 @@ async function checkAuth() {
     const url = new URL(window.location.href);
     const urlToken = url.searchParams.get("token");
     let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
-
+ 
     if (urlToken) {
         // --- КОРЕКЦИЯ: Извличаме валидността от самия токен ---
         let validityInMinutes = 5; // Стойност по подразбиране, ако не е намерена в токена
@@ -1184,11 +1486,11 @@ async function checkAuth() {
             // Декодираме токена, който вече съдържа и валидността
             const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
             const ageInMinutes = (Date.now() - parseInt(timestamp, 10)) / 60000;
-
+ 
             if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
                 validityInMinutes = parseInt(tokenValidity, 10);
             }
-
+ 
             // Проверяваме дали токенът е изтекъл, дали имейлът съвпада и дали съвпада с логнатия потребител
             console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}, Имейл от сесия: ${tokenData.email_hint}`);
             console.log(`Проверка на токен: Възраст: ${ageInMinutes.toFixed(2)} мин, Проверявана валидност: ${validityInMinutes} мин`);
@@ -1243,8 +1545,11 @@ function handleSignoutClick() {
     sessionStorage.removeItem('google_auth_email_hint');
     localStorage.removeItem('google_login_hint'); // Спираме автоматичния вход
 
-    // Пренасочваме към страницата за вход
-    window.location.href = 'login.html';
+    // Задаваме флаг за изход, за да се покаже login формата
+    sessionStorage.setItem('logout_flag', 'true');
+
+    // Презареждаме страницата - checkAuth ще покаже login формата
+    window.location.reload();
 }
 
 // =================================================================================
@@ -2385,14 +2690,41 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
     const folderName = isVideo ? 'Video' : 'Images';
 
     try {
-        // --- КОРЕКЦИЯ: Проверяваме за gapi ПРЕДИ да го използваме ---
-        // Изпълняваме логиката за Google Drive, само ако gapi е заредено И sourceMode е 'gdrive'.
-        if (typeof gapi !== 'undefined' && gapi.client && sourceMode === 'gdrive') {
+        if (sourceMode === 'gdrive') {
+            // --- КОРЕКЦИЯ: Гарантираме, че Google API е заредено преди употреба ---
+            // В режим "Само база данни", gapi не се зарежда по подразбиране.
+            if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
+                await loadGoogleApis();
+                if (!authToken) throw new Error(_('errorTokenMissing'));
+                gapi.client.setToken({ access_token: authToken.access_token });
+            }
+
             const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
             const thumbnailUrl = fileMetadata.result.thumbnailLink;
             if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
             mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
         } else { // 'local' or 'archive'
+            // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" за локални източници ---
+            // Тази логика се изпълнява САМО ако sourceMode не е 'gdrive'.
+            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+            if (isDbOnlyMode && !dirHandle && (sourceMode === 'local' || sourceMode === 'archive')) {
+                const dbSource = await getConfig('dbSource');
+                let handleKey = null;
+                if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
+                else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
+
+                if (handleKey) {
+                    const handle = await getConfig(handleKey);
+                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                    if (verifiedHandle) {
+                        dirHandle = verifiedHandle; // Задаваме глобалния handle
+                    } else {
+                        showToast(_('noUpdateMode'), 10000);
+                        return;
+                    }
+                }
+            }
+
             // Тази част от кода вече ще се изпълнява правилно в офлайн режими,
             // защото проверката за gapi по-горе ще е неуспешна.
             let fileHandle;
@@ -2557,11 +2889,11 @@ function showModal(options, noteElement = null) {
                 attachmentWrapper.style.marginTop = '5px';
 
                 if (useArhDb) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
+                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
                 } else if (useLocalFolder) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
+                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
                 } else {
-                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
+                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
                 }
                 modalBody.appendChild(attachmentWrapper);
             });
@@ -3119,6 +3451,10 @@ async function getMultinotesDataFolderID() {
             showToast(_('errorSessionExpired'));
             handleSignoutClick();
         }
+        if (error.result && error.result.error && error.result.error.code === 403) {
+            showToast(_('errorForbidden'));
+            handleSignoutClick();
+        }
         return null;
     }
 }
@@ -3367,11 +3703,33 @@ async function createBoardsUI(boardsData, boardParseError) {
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
     const allBoardsBtn = document.createElement('button');
-    allBoardsBtn.className = 'board-menu-button'; // Ново, по-семантично име на класовете
+    allBoardsBtn.className = 'board-menu-button popup-menu-btn'; // Ново, по-семантично име на класовете
     allBoardsBtn.innerHTML = boardIconSvg; // Use the board icon
     // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
     addAllBoardsModalEvents(allBoardsBtn, () => { showAllBoardsModal(); });
     scrollWrapper.appendChild(allBoardsBtn);
+
+    // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container ---
+    const boardsMenuContainer = document.getElementById('boards-menu-container');
+    if (boardsMenuContainer) {
+        // Клонираме бутона, за да го имаме и на двете места, или го местим.
+        // В случая, потребителят иска "да се добави също", което предполага копие или референция.
+        // Тъй като DOM елемент може да е само на едно място, ще го клонираме.
+        // Но трябва да закачим и event listener-ите наново.
+        // По-добрият вариант е да създадем нов бутон за контейнера.
+
+        const allBoardsBtnForContainer = document.createElement('button');
+        allBoardsBtnForContainer.className = 'header-btn popup-menu-btn'; // Използваме header-btn за да е като бутон Изход
+        allBoardsBtnForContainer.innerHTML = boardIconSvg;
+        // allBoardsBtnForContainer.style.marginRight = '5px'; // Премахваме ръчния марджин, header-btn има margin-left
+
+        addAllBoardsModalEvents(allBoardsBtnForContainer, () => { showAllBoardsModal(); });
+
+        // Изчистваме контейнера преди да добавим (ако се презарежда UI)
+        boardsMenuContainer.innerHTML = '';
+        boardsMenuContainer.appendChild(allBoardsBtnForContainer);
+    }
+
     scrollWrapper.appendChild(contentEl);
     contentWrapper.appendChild(scrollWrapper);
 
@@ -3411,7 +3769,6 @@ async function createSettingsUI(boardsData, boardParseError) {
     const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
     const selectFolderBtn = document.getElementById('select-folder-btn');
     const folderNameDisplay = document.getElementById('local-sync-folder-name');
-    const settingsCloseBtn = document.getElementById('settings-close-btn');
     if (!settingsModalBody.dataset.initialized) {
 
         // Zooom
@@ -3501,8 +3858,8 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         };
-        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
-        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`);
+        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
+        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
 
         // Date
         showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
@@ -3610,6 +3967,8 @@ async function createSettingsUI(boardsData, boardParseError) {
         orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
         const sortingOptionsSection = document.getElementById('sorting-options-section');
         const sortingArrow = document.getElementById('sorting-arrow');
+        const boardsOptionsSection = document.getElementById('boards-options-section');
+        const boardsArrow = document.getElementById('boards-arrow');
 
         // Event listener for the checkbox itself
         orderCheckbox.addEventListener('change', () => {
@@ -3622,10 +3981,18 @@ async function createSettingsUI(boardsData, boardParseError) {
         sortingArrow.addEventListener('click', () => {
             const isActive = sortingOptionsSection.style.display === 'block';
             sortingOptionsSection.style.display = isActive ? 'none' : 'block';
-
             // Animate arrow rotation
             sortingArrow.style.transition = 'transform 0.3s ease';
             sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+        });
+
+        // Event listener for the arrow ONLY
+        boardsArrow.addEventListener('click', () => {
+            const isActive = boardsOptionsSection.style.display === 'block';
+            boardsOptionsSection.style.display = isActive ? 'none' : 'block';
+            // Animate arrow rotation
+            boardsArrow.style.transition = 'transform 0.3s ease';
+            boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
         });
 
         // Sorting options
@@ -3961,8 +4328,11 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
 
         // Close
-        const settingsCloseBtn = document.getElementById('settings-close-btn');
-        settingsCloseBtn.addEventListener('click', () => {
+        /*const settingsCloseBtn = */
+        document.getElementById('settings-close-btn').addEventListener('click', async () => {
+            /* const configData = await exportConfig();
+            console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
+
             const currentState = {
                 useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
                 useLocalDb: document.getElementById('use-local-db-checkbox').checked,
@@ -4221,23 +4591,20 @@ function formatText(text, formatString) {
  * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
  * @param {object} iconData - SVG иконата за типа на файла.
  */
-async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local') {
+async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local', isForModal = false) {
     const iconDiv = document.createElement('div');
     iconDiv.innerHTML = iconData.svg;
 
     const filename = attachment.path ? attachment.path.split('/').pop() : '';
     const archiveFolderName = dirHandle.name;
-
     const createLink = async (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-        const isForModal = !!attachmentWrapper.closest('#modal-body');
 
-        if (!isForModal && !oneTapLinksEnabled) {
+        if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             const span = document.createElement('span');
             span.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
             return span;
         }
-
         const link = document.createElement('a');
         link.href = '#';
         link.onclick = async (e) => {
@@ -4371,7 +4738,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
  * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
  * @param {object} iconData - SVG иконата за типа на файла.
  */
-async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData) {
+async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, isForModal = false) {
     const iconDiv = document.createElement('div');
     iconDiv.innerHTML = iconData.svg;
 
@@ -4388,16 +4755,14 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
     // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
     const setupLink = (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-        const isForModal = !!attachmentWrapper.closest('#modal-body');
 
         let linkElement;
 
-        if (!isForModal && !oneTapLinksEnabled) {
+        if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             linkElement = document.createElement('span');
             linkElement.textContent = textPrefix + filename;
             return linkElement; // Връщаме span елемента
         }
-
         linkElement = document.createElement('a');
         linkElement.href = '#'; // href вече не сочи директно към файла.
         linkElement.textContent = textPrefix + filename;
@@ -5008,4 +5373,33 @@ async function readArh(dirHandle) {
     }
 
     return success;
+}
+
+function setLanguage(lang) {
+    if (!translations[lang]) return;
+    currentLang = lang;
+    localStorage.setItem('language', lang);
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-key]').forEach(element => {
+        const key = element.getAttribute('data-key');
+        element.innerHTML = _(key);
+    });
+    document.querySelectorAll('[data-key-placeholder]').forEach(element => {
+        const key = element.getAttribute('data-key-placeholder');
+        element.placeholder = _(key);
+    });
+    document.querySelectorAll('[data-key-title]').forEach(element => {
+        const key = element.getAttribute('data-key-title');
+        element.title = _(key);
+    });
+    // Update active button
+    const langBg = document.getElementById('lang-bg');
+    const langEn = document.getElementById('lang-en');
+    if (langBg) langBg.classList.toggle('active', lang === 'bg');
+    if (langEn) langEn.classList.toggle('active', lang === 'en');
+
+    // Check if updateSignoutTooltip exists before calling it
+    if (typeof updateSignoutTooltip === 'function') {
+        updateSignoutTooltip();
+    }
 }

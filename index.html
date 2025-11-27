@@ -8,13 +8,21 @@
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
     <meta http-equiv="Content-Security-Policy"
-        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com;">        
+        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com;">
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
         crossorigin="anonymous">
         </script>
 </head>
 
 <body>
+    <!-- Вертикална реклама 120х728 -->
+    <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
+        data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
+    </ins>
+    <script>
+        (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
+
     <header>
         <div style="display: flex; align-items: center;">
             <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
@@ -28,6 +36,12 @@
             <div id="note-counter" class="note-counter">0</div>
             <button id="mode_button" class="header-btn" title="Режим" data-key-title="modeButtonTooltip">
                 <!-- Иконата се вмъква от JS -->
+                <div class="mode-icon-wrapper">
+                    <img id="mode-main-icon" src="NoteFav.png" alt="" style="width:24px; height:24px;">
+                    <div class="mode-db-overlay" hidden>
+                        <img id="mode-overlay-icon" src="" alt="">
+                    </div>
+                </div>
             </button>
             <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Настройки">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
@@ -56,6 +70,140 @@
             <div id="boards-menu-container"></div>
         </div>
     </header>
+
+    <div id="login-page" class="login-div" hidden>
+        <!-- Language switcher извън login-box, винаги видим -->
+        <div id="lang-switcher-main" style="display: flex; justify-content: center;">
+            <button id="lang-bg-main" class="lang-btn">BG</button>
+            <button id="lang-en-main" class="lang-btn">EN</button>
+        </div>
+
+        <div class="login-box" style="margin-bottom: 10px; max-width: 350px; display: none;">
+            <!--div id="lang-switcher">
+                <button id="lang-bg-box" class="lang-btn">BG</button>
+                <button id="lang-en-box" class="lang-btn">EN</button>
+            </div-->
+            <p data-key="loginPrompt">Please sign in with Google to continue.</p><br>
+            <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
+            <div style="margin-top: 15px;">
+                <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">
+                    Remember me</label>
+                <input type="checkbox" id="rememberMe" class="settings-checkbox">
+            </div>
+        </div>
+        <script>
+            (async () => {
+                const cache = await caches.open('app-cache');
+                const cachedResponse = await cache.match('s');
+                if (cachedResponse) {
+                    document.querySelector('.login-box').style.display = 'block';
+                    document.getElementById("trialBtn").style.display = 'none';
+                }
+            })();
+        </script>
+        <button id="trialBtn" data-key="trialButton">Start 30-day trial period</button>
+        <section style="max-width: 800px; margin: 0 auto;">
+            <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което
+                може да
+                имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за
+                Андроид, от
+                вашия компютър, таблет, iPhone и др. независимо дали работите с Windows, Android, macOS, iOS или Linux.
+            </p>
+            <p data-key="intro1a">Необходимо условие за работа на приложението е да сте включили синхронизация с
+                <strong>Google Drive</strong> в настройките на <strong>Multinotes</strong>.
+            </p>
+            <p data-key="intro2"><strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без
+                нужда от инсталация и дори при необходимост дава възможност за работа без връзка с интернет.
+                Основният режим на работа използва локална база данни в браузъра, която се обновява с новите и
+                редактирани
+                бележки от приложението и по този начин осигурява оптимална производителност.</p>
+            <h3 data-key="modeDbTitle">Ето как работи:</h3>
+            <!--p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
+            ефективност и независимост от интернет връзка.</p-->
+            <ul>
+                <li data-key="modeDbPoint1">При първо стартиране приложението изтегля всички бележки от <strong>Google
+                        Drive</strong> и ги записва в локалната база данни на браузъра.</li>
+                <li data-key="modeDbPoint2">Всяко следващо зареждане става директно от тази база, като се прави проверка
+                    и
+                    се изтеглят само новите и променените бележки след последното стартиране, което съществено ускорява
+                    процеса.
+                </li>
+                <li data-key="modeDbPoint3">Ако, след първоначално зареждане, махнете отметката на <strong>Google
+                        Drive</strong> в <strong>Настройки</strong>, бележките ще се зареждат само от базата данни,
+                    което
+                    съществено
+                    ще ускори процеса и дори ще може да работите без връзка с интернет. В този случай няма да се прави
+                    проверка
+                    за нови и променени бележки, затова ще е полезно периодично да връщате отметката, за да
+                    актуализирате
+                    данните си.</li>
+            </ul>
+            <h3 data-key="modeNoDbTitle">Режим без база данни</h3>
+            <ul>
+                <li data-key="modeNoDbPoint1">Ако, след първоначално зареждане, махнете отметката от <strong>База
+                        данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google
+                        Drive</strong> при всяко следващо стартиране.</li>
+                <li data-key="modeNoDbPoint2">Винаги се показват най-актуалните данни.</li>
+                <li data-key="modeNoDbPoint3">По-бавно зареждане, изисква интернет връзка.</li>
+            </ul>
+            <span hidden>
+                <h2 data-key="advancedModesTitle">Допълнителни режими (Разширени настройки)</h2>
+                <p data-key="advancedModesDesc">Чрез менюто <em><strong>Разширени настройки</strong></em> може да
+                    активирате
+                    алтернативни режими на работа, подходящи за специфични случаи. Тези режими могат да работят с или
+                    без
+                    изполване на локална база данни, в зависимост от вашите предпочитания.</p>
+                <h3 data-key="modeLocalTitle">Режим: Локална папка</h3>
+                <ul>
+                    <li data-key="modeLocalPoint1">Режим, подходящ за потребители, които предпочитат да имат локално
+                        копие
+                        на бележките си и искат по-бърз достъп до тях.</li>
+                    <li data-key="modeLocalPoint2">Данните се четат от папка на вашия компютър. Трябва да настроите
+                        приложението <strong>Google Drive for Desktop</strong> да синхронизира
+                        <strong>multinotes_data</strong> от <strong>Google Drive</strong> на компютъра ви (може да
+                        зададете
+                        наличност на данните и в офлайн режим) и да посочите синхронизираната папка в
+                        <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Локална
+                            папка</strong>.
+                    </li>
+                    <li data-key="modeLocalPoint3">Ако изберете този режим и поставите отметка в <strong>База
+                            данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
+                    <li data-key="modeLocalPoint4">Когато се използва този режим заедно с <strong>База данни</strong>,
+                        при
+                        всяко стартиране ще се прави проверка и новите и редактирани бележки ще допълват записаните в
+                        базата
+                        данни.</li>
+                    <li data-key="modeLocalPoint5">Ако, след първоначално зареждане, махнете отметката на
+                        <strong>Локална
+                            папка</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може
+                        да
+                        зареждате бележките си без забавяне, но няма да се прави проверка за нови и променени бележки. В
+                        този случай е полезно периодично да връщате отметката, за да актуализирате данните си.
+                    </li>
+                </ul>
+                <h3 data-key="modeArchiveTitle">Режим: Архив</h3>
+                <ul>
+                    <li data-key="modeArchivePoint1">Подходящ за офлайн достъп до стари версии на бележките, показват се
+                        само бележките от архива.</li>
+                    <li data-key="modeArchivePoint2">Този режим се използва, когато прехвърлите zip-архив с бележки,
+                        създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на
+                            данни</strong>
+                        -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я
+                        посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> ->
+                        <strong>Архив</strong>.
+                    </li>
+                    <li data-key="modeArchivePoint3">Ако изберете този режим и поставите отметка в <strong>База
+                            данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
+                    <li data-key="modeArchivePoint4">Ако, след първоначално зареждане, махнете отметката на
+                        <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще
+                        може
+                        да зареждате бележките си без забавяне.
+                    </li>
+                </ul>
+            </span>
+        </section>
+    </div>
+
 
     <main>
         <div id="loader-container">
@@ -219,46 +367,55 @@
                         data-key="showBoardRemind">
                         Покажи борд Напомняния:</label>
                     <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
+                    <span id="boards-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
                 </div>
 
-                <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
-                    <label for="all-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showBoardAll">
-                        Покажи борд Всички:</label>
-                    <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
-                </div>
+                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
 
-                <div class="zoom-control-wrapper" id="show-photos-board" style="margin-top: 10px;">
-                    <label for="show-photos-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showPhotosBoardLabel">
-                        Борд съобщения със снимки:</label>
-                    <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
-                </div>
+                <!-- Скрита секция за опции за бордове -->
+                <div id="boards-options-section" style="display: none;">
+                    <!-- Нов, опростен flex контейнер за опциите за бордове -->
+                    <div class="boards-options-container">
+                        <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
+                            <label for="all-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showBoardAll">
+                                Покажи борд Всички:</label>
+                            <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
+                        </div>
 
-                <div class="zoom-control-wrapper" id="show-videos-board" style="margin-top: 10px;">
-                    <label for="show-videos-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showVideosBoardLabel">
-                        Борд С видео:</label>
-                    <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
-                </div>
+                        <div class="zoom-control-wrapper" id="show-photos-board" style="margin-top: 10px;">
+                            <label for="show-photos-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showPhotosBoardLabel">
+                                Борд съобщения със снимки:</label>
+                            <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
+                        </div>
 
-                <div class="zoom-control-wrapper" id="show-sounds-board" style="margin-top: 10px;">
-                    <label for="show-sounds-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showSoundsBoardLabel">
-                        Борд Със звук:</label>
-                    <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
-                </div>
+                        <div class="zoom-control-wrapper" id="show-videos-board" style="margin-top: 10px;">
+                            <label for="show-videos-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showVideosBoardLabel">
+                                Борд С видео:</label>
+                            <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
+                        </div>
 
-                <div class="zoom-control-wrapper" id="show-other-board" style="margin-top: 10px;">
-                    <label for="show-other-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showOtherBoardLabel">
-                        Борд Други приложения:</label>
-                    <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
+                        <div class="zoom-control-wrapper" id="show-sounds-board" style="margin-top: 10px;">
+                            <label for="show-sounds-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showSoundsBoardLabel">
+                                Борд Със звук:</label>
+                            <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
+                        </div>
+
+                        <div class="zoom-control-wrapper" id="show-other-board" style="margin-top: 10px;">
+                            <label for="show-other-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showOtherBoardLabel">
+                                Борд Други приложения:</label>
+                            <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
+                        </div>
+                    </div>
                 </div>
 
                 <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
@@ -351,10 +508,6 @@
                             <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
                             <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
                         </div>
-                        <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                            data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
-                            data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
-                            data-font-color="#000000" data-coffee-color="#ffffff"></script>
                         <div class="accordion-content">
                             <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
                                 <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
@@ -395,9 +548,26 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!--div class="zoom-control-wrapper" id="db-export-wrapper" style="margin-top: 15px;">
+                                <button id="db-export1-btn" class="zoom-btn"
+                                    onclick="exportStore('NotesDB', 'config')">Config Export</button>
+                                <button id="db-export2-btn" class="zoom-btn settings-close-btn"
+                                    style="margin-left: 10px;" onclick="exportData('NotesDB', 'boards')">Boards
+                                    Export</button>
+                                <button id="db-export3-btn" class="zoom-btn settings-close-btn"
+                                    style="margin-left: 10px;" onclick="exportNotes()">Export All</button>
+                            </div-->
                         </div>
                     </div>
                 </span>
+
+                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
+
+                <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+                    data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
+                    data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
+                    data-font-color="#000000" data-coffee-color="#ffffff"></script>
             </div>
             <div class="settings-close-btn-wrapper">
                 <button id="settings-close-btn" class="zoom-btn settings-close-btn"
@@ -409,15 +579,10 @@
     <script src="i18n.js"></script>
     <script src="calendar.js"></script>
     <script src="db.js"></script>
+    <!--script src="fs.js"></script>
+    <script src="config.js"></script-->
     <script src="main.js"></script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <!-- Вертикална реклама 120х728 -->
-    <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
-        data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
-    </ins>
-    <script>
-        (adsbygoogle = window.adsbygoogle || []).push({});
-    </script>
+    <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
 </body>
 
 </html>
