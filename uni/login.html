@@ -222,11 +222,11 @@
     </header>
 
     <div class="login-box" style="margin-bottom: 10px; display: none;">
-        <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p><br>
+        <p data-key="loginPrompt">Please sign in with Google to continue.</p><br>
         <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
         <div style="margin-top: 15px;">
             <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">
-                Запомни ме</label>
+                Remember me</label>
             <input type="checkbox" id="rememberMe" class="settings-checkbox">
         </div>
     </div>
@@ -240,7 +240,7 @@
             }
         })();
     </script>
-    <button id="trialBtn">Започнете 30-дневен пробен период</button>
+    <button id="trialBtn" data-key="trialButton">Start 30-day trial period</button>
     <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може да
         имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за Андроид, от
         вашия компютър, таблет, iPhone и др. независимо дали работите с Windows, Android, macOS, iOS или Linux.</p>
@@ -341,6 +341,7 @@
                 loginPrompt: 'Please sign in with Google to continue.',
                 authorizeButton: 'Authorize with Google',
                 rememberMeLabel: 'Remember me',
+                trialButton: 'Start 30-day trial period',
                 authFailed: 'Authentication failed. Please try again.',
                 gapiNotReady: 'Google authentication library is not ready. Please wait a moment and try again.',
                 intro1: '<strong>CX MultiNotes Viewer</strong> is a browser-based application that allows you to access the information in notes created with the <strong>Multinotes</strong> app for Android, from your computer, tablet, iPhone, etc., regardless of whether you are working with Windows, Android, macOS, iOS, or Linux.',
@@ -374,6 +375,7 @@
                 loginPrompt: 'Моля, влезте с Google, за да продължите.',
                 authorizeButton: 'Вход с Google',
                 rememberMeLabel: 'Запомни ме',
+                trialButton: 'Започнете 30-дневен пробен период',
                 authFailed: 'Удостоверяването не бе успешно. Моля, опитайте отново.',
                 gapiNotReady: 'Библиотеката за удостоверяване на Google не е готова. Моля, изчакайте малко и опитайте отново.',
                 intro1: '<strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може да имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за Андроид, от вашия компютър, таблет, iPhone и др., независимо дали работите с Windows, Android, macOS, iOS или Linux.',
@@ -447,6 +449,9 @@
         }*/
 
         function gisLoaded() {
+            // Задаваме езика преди да се покаже login box-а
+            setLanguage(currentLang);
+
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,

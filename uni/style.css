@@ -27,6 +27,13 @@ body {
     background-image: url('Board.png');
 }
 
+.login-div {
+    /*max-width: 800px;*/
+    padding: 1em;
+    font-family: sans-serif;
+    background-image: url('Frame.png');
+}
+
 header {
     padding: 5px 1em 0.3em 5px;
     /*border-bottom: 1px solid #eee;*/
@@ -2251,10 +2258,10 @@ code {
 .login-box {
     text-align: center;
     background: #FBCB39;
-    padding: 40px;
+    padding: 10px;
     border-radius: 8px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    margin-top: 10px;
+    /*margin-top: 10px;*/
     max-width: 800px;
     /* Limit width */
     margin-left: auto;
@@ -2279,6 +2286,30 @@ code {
     display: flex;
     justify-content: center;
     margin-left: auto;
+}
+
+.lang-btn {
+    background: none;
+    border: 1px solid #747474;
+    color: #333;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+/* Стилове за главния language switcher извън login-box */
+#lang-switcher-main {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+    margin-top: 0px;
+}
+
+/* Стилове за language switcher в login-box */
+#lang-switcher {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 15px;
 }
 
 .lang-btn {
@@ -2315,6 +2346,8 @@ code {
     border-radius: 6px;
     cursor: pointer;
     font-size: 16px;
+    display: block;
+    margin: 20px auto;
 }
 
 #trialBtn:hover {

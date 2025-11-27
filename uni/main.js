@@ -20,7 +20,7 @@ const DEMO_NOTE_LIMIT = 5;
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const TRIAL_URL = "http://viewer.html?token=0bi64PmSapE-xPdzhr5dtAXBb95QYofCL1K1gSL_HuFeth8vZDAQfRewADufxs-PlQBylELKi7CWUTI1DipJGmmma6E";
-const main = 'viewer.html';
+// const main = 'viewer.html';
 const version = '0.17'; // App version
 
 // --- Глобално състояние на приложението ---
@@ -97,7 +97,7 @@ const attachmentIcons = [
     { type: 6, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="10" r="2"/><path d="M8 16c0-1.33 2.67-2 4-2s4 .67 4 2"/></svg>` }
 ];
 
-let currentLang = localStorage.getItem('language') || 'bg';
+let currentLang = localStorage.getItem('language') || 'en';
 const noteBackgrounds = [
     'wg1_1.png', // 0
     'wr1_1.png', // 1
@@ -507,25 +507,9 @@ function initApp() {
     const toast = document.getElementById('toastNotification');
     toast.addEventListener('click', hideToast);
 
-    function setLanguage(lang) {
-        if (!translations[lang]) return;
-        currentLang = lang;
-        localStorage.setItem('language', lang);
-        document.documentElement.lang = lang;
-        document.querySelectorAll('[data-key]').forEach(element => {
-            const key = element.getAttribute('data-key');
-            element.innerHTML = _(key);
-        });
-        document.querySelectorAll('[data-key-placeholder]').forEach(element => {
-            const key = element.getAttribute('data-key-placeholder');
-            element.placeholder = _(key);
-        });
-        document.querySelectorAll('[data-key-title]').forEach(element => {
-            const key = element.getAttribute('data-key-title');
-            element.title = _(key);
-        });
-        updateSignoutTooltip();
-    }
+
+
+
 
     scrollTopBtn.innerHTML = arrowSvg;
     signoutButton.addEventListener('click', handleSignoutClick);
@@ -986,6 +970,38 @@ if (sessionToken || localToken) {
 // Функция за инициализация на login страницата
 function initLoginPage() {
     document.getElementById('login-page').hidden = false;
+    document.getElementById('loader-container').style.display = 'none';
+    // document.getElementById("mode_button").style.display = 'none';
+
+    // Language switcher event listeners - комбинирани за всички бутони
+    const langBgMain = document.getElementById('lang-bg-main');
+    const langEnMain = document.getElementById('lang-en-main');
+    const langBgBox = document.getElementById('lang-bg-box');
+    const langEnBox = document.getElementById('lang-en-box');
+
+    // Функция за смяна на език, която актуализира всички бутони
+    const switchLanguage = (lang) => {
+        setLanguage(lang);
+        // Актуализираме активното състояние на всички бутони
+        const isBg = lang === 'bg';
+        if (langBgMain) langBgMain.classList.toggle('active', isBg);
+        if (langEnMain) langEnMain.classList.toggle('active', !isBg);
+        if (langBgBox) langBgBox.classList.toggle('active', isBg);
+        if (langEnBox) langEnBox.classList.toggle('active', !isBg);
+    };
+
+    // Добавяме event listeners към всички бутони
+    if (langBgMain) langBgMain.onclick = () => switchLanguage('bg');
+    if (langEnMain) langEnMain.onclick = () => switchLanguage('en');
+    if (langBgBox) langBgBox.onclick = () => switchLanguage('bg');
+    if (langEnBox) langEnBox.onclick = () => switchLanguage('en');
+
+    // Set initial active state за всички бутони
+    const isBg = currentLang === 'bg';
+    if (langBgMain) langBgMain.classList.toggle('active', isBg);
+    if (langEnMain) langEnMain.classList.toggle('active', !isBg);
+    if (langBgBox) langBgBox.classList.toggle('active', isBg);
+    if (langEnBox) langEnBox.classList.toggle('active', !isBg);
 
     // Добавяне на действие при натискане на trial бутона
     const trialBtn = document.getElementById("trialBtn");
@@ -1159,6 +1175,8 @@ async function refreshAuthToken() {
 */
 
 function gisLoaded() {
+    // Задаваме езика преди да се покаже login box-а
+    setLanguage(currentLang);
     // Ако вече има токен, не инициализираме login процеса
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
@@ -1258,7 +1276,8 @@ async function checkAuth() {
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     const storedTokenString = sessionToken || localToken;
-    /*if (!storedTokenString) {
+
+    if (!storedTokenString) {
         // Добавяне на действие при натискане
         document.getElementById("trialBtn").addEventListener("click", () => {
             window.location.href = TRIAL_URL;
@@ -1269,10 +1288,11 @@ async function checkAuth() {
             localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
         });
         document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
-        // window.location.href = 'login.html';
+        // Показваме login страницата
         document.getElementById('login-page').hidden = false;
         return null; // Stop execution
-    }*/
+    }
+
     const tokenData = JSON.parse(storedTokenString);
     // --- Винаги добавяме email_hint от sessionStorage ---
     // Това гарантира, че проверката на токена ще работи коректно,
@@ -1287,10 +1307,11 @@ async function checkAuth() {
             return refreshResult;
         }
 
-        console.log("Token expired. Redirecting to login for re-authentication.");
+        console.log("Token expired. Reloading for re-authentication.");
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token'); // Изчистваме и от localStorage
-        window.location.href = 'viewer.html?reauth=true';
+        sessionStorage.setItem('logout_flag', 'true');
+        window.location.reload();
         return null; // Stop execution
     }
 
@@ -1524,8 +1545,11 @@ function handleSignoutClick() {
     sessionStorage.removeItem('google_auth_email_hint');
     localStorage.removeItem('google_login_hint'); // Спираме автоматичния вход
 
-    // Пренасочваме към страницата за вход
-    window.location.href = 'login.html';
+    // Задаваме флаг за изход, за да се покаже login формата
+    sessionStorage.setItem('logout_flag', 'true');
+
+    // Презареждаме страницата - checkAuth ще покаже login формата
+    window.location.reload();
 }
 
 // =================================================================================
@@ -3834,8 +3858,8 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         };
-        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 18, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
-        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 18, (val) => modalBody.style.fontSize = `${val}px`);
+        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
+        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
 
         // Date
         showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
@@ -5349,4 +5373,33 @@ async function readArh(dirHandle) {
     }
 
     return success;
+}
+
+function setLanguage(lang) {
+    if (!translations[lang]) return;
+    currentLang = lang;
+    localStorage.setItem('language', lang);
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-key]').forEach(element => {
+        const key = element.getAttribute('data-key');
+        element.innerHTML = _(key);
+    });
+    document.querySelectorAll('[data-key-placeholder]').forEach(element => {
+        const key = element.getAttribute('data-key-placeholder');
+        element.placeholder = _(key);
+    });
+    document.querySelectorAll('[data-key-title]').forEach(element => {
+        const key = element.getAttribute('data-key-title');
+        element.title = _(key);
+    });
+    // Update active button
+    const langBg = document.getElementById('lang-bg');
+    const langEn = document.getElementById('lang-en');
+    if (langBg) langBg.classList.toggle('active', lang === 'bg');
+    if (langEn) langEn.classList.toggle('active', lang === 'en');
+
+    // Check if updateSignoutTooltip exists before calling it
+    if (typeof updateSignoutTooltip === 'function') {
+        updateSignoutTooltip();
+    }
 }
