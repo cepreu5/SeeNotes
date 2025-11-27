@@ -5,7 +5,7 @@
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
 
-let debug = true; // Глобален флаг за дебъг режим
+let debug = false; // Глобален флаг за дебъг режим
 let pass = false;
 
 // --- Demo Mode ---
@@ -1371,9 +1371,11 @@ async function checkAuth() {
                 pass = true;
             } else {
                 console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
+                pass = false;
             }
         } catch (error) {
             console.error("Грешка при декриптиране на токен:", error);
+            pass = false;
         }
     }
 
