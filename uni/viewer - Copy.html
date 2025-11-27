@@ -28,6 +28,10 @@
             <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
             <h1 data-key="appTitle">CX MultiNotes Viewer</h1>
         </div>
+        <div id="lang-switcher">
+            <button id="lang-bg" class="lang-btn">BG</button>
+            <button id="lang-en" class="lang-btn">EN</button>
+        </div>
         <div id="search-wrapper">
             <input type="search" id="search-box" data-key-placeholder="searchPlaceholder"
                 placeholder="Търсене в заглавията...">
@@ -65,7 +69,7 @@
         </div>
     </header>
 
-    <div id="login-page" hidden>
+    <div id="login-container" style="display: none;">
         <div class="login-box" style="margin-bottom: 10px; display: none;">
             <p data-key="loginPrompt">Моля, влезте с Google, за да продължите.</p><br>
             <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
@@ -75,16 +79,7 @@
                 <input type="checkbox" id="rememberMe" class="settings-checkbox">
             </div>
         </div>
-        <script>
-            (async () => {
-                const cache = await caches.open('app-cache');
-                const cachedResponse = await cache.match('s');
-                if (cachedResponse) {
-                    document.querySelector('.login-box').style.display = 'block';
-                    document.getElementById("trialBtn").style.display = 'none';
-                }
-            })();
-        </script>
+
         <button id="trialBtn">Започнете 30-дневен пробен период</button>
         <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което може
             да
@@ -99,8 +94,6 @@
             Основният режим на работа използва локална база данни в браузъра, която се обновява с новите и редактирани
             бележки от приложението и по този начин осигурява оптимална производителност.</p>
         <h3 data-key="modeDbTitle">Ето как работи:</h3>
-        <!--p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
-            ефективност и независимост от интернет връзка.</p-->
         <ul>
             <li data-key="modeDbPoint1">При първо стартиране приложението изтегля всички бележки от <strong>Google
                     Drive</strong> и ги записва в локалната база данни на браузъра.</li>
@@ -168,9 +161,7 @@
                 </li>
             </ul>
         </span>
-        </section>
     </div>
-
 
     <main>
         <div id="loader-container">
@@ -548,6 +539,7 @@
     <script src="db.js"></script>
     <!--script src="fs.js"></script>
     <script src="config.js"></script-->
+    <script src="login.js"></script>
     <script src="main.js"></script>
     <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
 </body>
