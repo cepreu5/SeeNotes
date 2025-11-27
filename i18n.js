@@ -208,7 +208,13 @@ const translations = {
         modeArchivePoint1: 'Suitable for offline access to old versions of notes; only notes from the archive are displayed.',
         modeArchivePoint2: 'This mode is used when you transfer a zip archive of notes created by the <strong>Multinotes</strong> application with the <strong>Data Storage</strong> -> <strong>Backup Data</strong> option. Unzip it into a folder on your computer and specify it in <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Archive</strong>.',
         modeArchivePoint3: 'If you select this mode and check <strong>Database</strong>, all notes will be saved to a local database on the first launch.',
-        modeArchivePoint4: 'If, after the initial load, you uncheck <strong>Archive</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay.'
+        modeArchivePoint4: 'If, after the initial load, you uncheck <strong>Archive</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay.',
+        invalidCertificate: 'Invalid or expired certificate',
+        modeDbAndDrive: 'Mode: Database + Google Drive',
+        modeDbAndLocal: 'Mode: Database + Local Folder',
+        modeDbAndArchive: 'Mode: Database + Archive',
+        modeDrive: 'Mode: Google Drive',
+        modeDb: 'Mode: Database'
 
     },
     bg: {
@@ -420,7 +426,13 @@ const translations = {
         modeArchivePoint1: 'Подходящ за офлайн достъп до стари версии на бележките, показват се само бележките от архива.',
         modeArchivePoint2: 'Този режим се използва, когато прехвърлите zip-архив с бележки, създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на данни</strong> -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Архив</strong>.',
         modeArchivePoint3: 'Ако изберете този режим и поставите отметка в <strong>База данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.',
-        modeArchivePoint4: 'Ако, след първоначално зареждане, махнете отметката на <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да зареждате бележките си без забавяне.'
+        modeArchivePoint4: 'Ако, след първоначално зареждане, махнете отметката на <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да зареждате бележките си без забавяне.',
+        invalidCertificate: 'Невалиден или изтекъл сергификат',
+        modeDbAndDrive: 'Режим: База данни + Google Drive',
+        modeDbAndLocal: 'Режим: База данни + Локална папка',
+        modeDbAndArchive: 'Режим: База данни + Архив',
+        modeDrive: 'Режим: Google Drive',
+        modeDb: 'Режим: База данни'
 
     }
 };
