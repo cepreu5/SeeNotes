@@ -1511,6 +1511,72 @@ async function checkAuth() {
         errorElement.style.marginTop = '50px';
         document.body.appendChild(errorElement);
     }*/
+    if (!pass) {
+        document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
+        document.body.style.backgroundColor = '#1a1a1a';
+        document.body.style.display = 'flex';
+        document.body.style.flexDirection = 'column';
+        document.body.style.alignItems = 'center';
+        document.body.style.justifyContent = 'center';
+        document.body.style.minHeight = '100vh';
+        document.body.style.margin = '0';
+
+        // Създаваме лого
+        const logoImg = document.createElement('img');
+        logoImg.src = 'MNVLogo.png';
+        logoImg.alt = 'Logo';
+        logoImg.style.width = '150px';
+        logoImg.style.marginBottom = '30px';
+        // logoImg.style.cursor = 'pointer';
+        logoImg.style.userSelect = 'none';
+
+        // Добавяме функционалност за Ctrl+click и long-press
+        let longPressTimer;
+        let isLongPress = false;
+
+        const handleTokenRefresh = () => {
+            const url = new URL(TRIAL_URL);
+            const urlTokenParam = url.searchParams.get("token");
+            if (urlTokenParam) {
+                localStorage.setItem('urlToken', urlTokenParam);
+                window.location.reload();
+            }
+        };
+
+        const startPress = (e) => {
+            isLongPress = false;
+            longPressTimer = setTimeout(() => {
+                isLongPress = true;
+                handleTokenRefresh();
+            }, 500);
+            if (e.type === 'touchstart') {
+                e.preventDefault();
+            }
+        };
+
+        const endPress = () => {
+            clearTimeout(longPressTimer);
+        };
+
+        logoImg.addEventListener('mousedown', startPress);
+        logoImg.addEventListener('mouseup', endPress);
+        logoImg.addEventListener('mouseleave', endPress);
+        logoImg.addEventListener('touchstart', startPress);
+        logoImg.addEventListener('touchend', endPress);
+        logoImg.addEventListener('click', (e) => {
+            if (isLongPress) return;
+            if (e.ctrlKey) handleTokenRefresh();
+        });
+
+        document.body.appendChild(logoImg);
+
+        const errorElement = document.createElement('h1');
+        errorElement.textContent = _('invalidCertificate');
+        errorElement.style.color = 'yellow';
+        errorElement.style.textAlign = 'center';
+        errorElement.style.margin = '0';
+        document.body.appendChild(errorElement);
+    }
     return { tokenData, pass }; // Връщаме обект с данните и резултата от проверката
 }
 
@@ -1914,21 +1980,25 @@ function updateModeButton() {
     if (isCombinedWithDb) {
         // Когато имаме комбинация, базата е основна
         iconSrc = 'Database.png';
-        if (currentUseGoogleDb) title = 'Режим: База данни + Google Drive';
-        else if (currentUseLocalFolder) title = 'Режим: База данни + Локална папка';
-        else if (currentUseArhDb) title = 'Режим: База данни + Архив';
+        if (currentUseGoogleDb) title = _('modeDbAndDrive');
+        else if (currentUseLocalFolder) title = _('modeDbAndLocal');
+        else if (currentUseArhDb) title = _('modeDbAndArchive');
     } else if (currentUseArhDb) {
         iconSrc = 'Zip.png';
-        title = 'Режим: Архив';
+        title = _('modeArchiveTitle');
     } else if (currentUseLocalFolder) {
         iconSrc = 'Folder.png';
-        title = 'Режим: Локална папка';
+        title = _('modeLocalTitle');
     } else if (currentUseGoogleDb) {
         iconSrc = 'GDrive.png';
-        title = 'Режим: Google Drive';
+        title = _('modeDrive');
     } else if (currentUseIndexedDb) {
         iconSrc = 'Database.png';
-        title = 'Режим: База данни';
+        title = _('modeDb');
+    } else {
+        // Fallback: Ако няма избран източник
+        iconSrc = 'Database.png';
+        title = _('noData');
     }
 
     iconWrapper.innerHTML = '';
