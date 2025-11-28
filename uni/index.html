@@ -96,8 +96,13 @@
                 const cache = await caches.open('app-cache');
                 const cachedResponse = await cache.match('s');
                 if (cachedResponse) {
+                    // Има запис 's' - показваме login box и скриваме trial бутон
                     document.querySelector('.login-box').style.display = 'block';
                     document.getElementById("trialBtn").style.display = 'none';
+                } else {
+                    // Няма запис 's' - показваме trial бутон и скриваме login box
+                    document.querySelector('.login-box').style.display = 'none';
+                    document.getElementById("trialBtn").style.display = 'block';
                 }
             })();
         </script>
@@ -564,10 +569,15 @@
 
                 <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
 
-                <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                    data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
-                    data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
-                    data-font-color="#000000" data-coffee-color="#ffffff"></script>
+                <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
+                    <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+                        data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
+                        data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
+                        data-font-color="#000000" data-coffee-color="#ffffff"></script>
+                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
+                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
+                    </p>
+                </div>
             </div>
             <div class="settings-close-btn-wrapper">
                 <button id="settings-close-btn" class="zoom-btn settings-close-btn"

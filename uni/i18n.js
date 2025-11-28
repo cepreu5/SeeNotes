@@ -214,7 +214,8 @@ const translations = {
         modeDbAndLocal: 'Mode: Database + Local Folder',
         modeDbAndArchive: 'Mode: Database + Archive',
         modeDrive: 'Mode: Google Drive',
-        modeDb: 'Mode: Database'
+        modeDb: 'Mode: Database',
+        supportMessage: 'If you like this app and find it useful, support the developer with a small amount.'
 
     },
     bg: {
@@ -432,7 +433,8 @@ const translations = {
         modeDbAndLocal: 'Режим: База данни + Локална папка',
         modeDbAndArchive: 'Режим: База данни + Архив',
         modeDrive: 'Режим: Google Drive',
-        modeDb: 'Режим: База данни'
+        modeDb: 'Режим: База данни',
+        supportMessage: 'Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.'
 
     }
 };
