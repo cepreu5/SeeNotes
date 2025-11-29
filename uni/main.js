@@ -1444,7 +1444,7 @@ async function checkAuth() {
 
                 if (currentUserEmail) {
                     // Винаги правим заявка към сървъра - или за добавяне (trial), или за проверка (login)
-                    fetch('https://script.google.com/macros/s/AKfycbxGf3qLJJJnchSRUvn-PyLbFMM0E6ybKDlHpBRpgaWuag4A1Bqksfb3qiJhhjaAJVdpmQ/exec', {
+                    fetch('https://script.google.com/macros/s/AKfycbwDT37UO2ayL2FZf300X5zWXjA32g5geAN09H0iLGasMjON0kkOoYEkSMLMpG3wsrQPAA/exec', {
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain' },
                         body: JSON.stringify({
