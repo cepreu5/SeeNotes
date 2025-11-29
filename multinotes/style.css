@@ -27,9 +27,15 @@ body {
     background-image: url('Board.png');
 }
 
-header {
+.login-div {
+    /*max-width: 800px;*/
     padding: 1em;
-    padding-bottom: 0.3em;
+    font-family: sans-serif;
+    background-image: url('Frame.png');
+}
+
+header {
+    padding: 5px 1em 0.3em 5px;
     /*border-bottom: 1px solid #eee;*/
     /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
     /* margin-bottom: 1em; */
@@ -42,6 +48,11 @@ header {
     position: sticky;
     top: 0;
     z-index: 100;
+}
+
+.header-logo {
+    margin-right: 10px;
+    flex-shrink: 0;
 }
 
 header h1 {
@@ -579,6 +590,7 @@ code {
 .datemod-header-date {
     /* Тук могат да се добавят специфични стилове за датата на модификация в хедъра */
     /* Например: font-style: italic; opacity: 0.8; */
+    font-style: italic;
 }
 
 /* Hide datemod in header when the body has this class */
@@ -796,7 +808,14 @@ code {
 #boards-table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 20px;
+    margin-top: 5px;
+}
+
+/* Hide logo on small screens */
+@media (max-width: 600px) {
+    .header-logo {
+        display: none;
+    }
 }
 
 #boards-table th,
@@ -925,7 +944,7 @@ code {
     border-radius: 4px;
 }
 
-.scroll-arrow {
+.board-menu-button {
     background-color: #d0e0ed;
     border: 1px solid #a9cce3;
     border-radius: 50%;
@@ -936,22 +955,23 @@ code {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    margin: 0 5px;
+    margin-left: 20px;
+    margin-right: 10px;
     visibility: hidden;
     /* Hidden by default */
 }
 
-.scroll-arrow svg {
+.board-menu-button svg {
     width: 24px;
     height: 24px;
     stroke-width: 2;
 }
 
-.scroll-arrow.visible {
+.board-menu-button.visible {
     visibility: visible;
 }
 
-.scroll-arrow:hover {
+.board-menu-button:hover {
     background-color: #bdd9ef;
 }
 
@@ -1123,7 +1143,7 @@ code {
     opacity: 1;
 }
 
-@media (max-width: 1030px) {
+@media (max-width: 1160px) {
     header {
         flex-direction: column;
         align-items: center;
@@ -1181,7 +1201,7 @@ code {
 }
 
 /* Responsive layout for settings modal on small screens */
-@media (max-width: 500px) {
+@media (max-width: 370px) {
     .zoom-control-wrapper {
         flex-direction: column;
         align-items: flex-start;
@@ -1216,6 +1236,11 @@ code {
     #note-font-size,
     #max-searches,
     #note-count,
+    #one-tap-link,
+    #show-photos-board,
+    #show-videos-board,
+    #show-sounds-board,
+    #show-other-board,
     #all-board,
     #remind-board,
     #weekly-calendar,
@@ -1507,10 +1532,6 @@ code {
 #settings-modal-body {
     flex-grow: 1;
     overflow-y: auto;
-}
-
-.slider-container span {
-    /* Spacing is now handled by the input's margin */
 }
 
 .zoom-btn {
@@ -2143,4 +2164,208 @@ code {
     /* Добавя тънка линия */
     margin-left: 10px;
     /* Разстояние между стрелката и линията */
+}
+
+/* Style for the 'With Photos' board button */
+.photos-filter-btn {
+    background-color: #6f42c1;
+    /* Purple */
+    color: white;
+}
+
+.photos-filter-btn:hover {
+    background-color: #5a32a3;
+    color: white;
+}
+
+.photos-filter-btn.selected-board {
+    background-color: #4a2293;
+    color: white;
+}
+
+/* Style for the 'With Video' board button */
+.videos-filter-btn {
+    background-color: #e83e8c;
+    /* Pink */
+    color: white;
+}
+
+.videos-filter-btn:hover {
+    background-color: #d63384;
+    color: white;
+}
+
+.videos-filter-btn.selected-board {
+    background-color: #c2185b;
+    color: white;
+}
+
+/* Style for the 'Other Attachments' board button */
+.other-filter-btn {
+    background-color: #00796b;
+    /* Teal */
+    color: white;
+}
+
+.other-filter-btn:hover {
+    background-color: #00695c;
+    color: white;
+}
+
+.other-filter-btn.selected-board {
+    background-color: #004d40;
+    color: white;
+}
+
+/* --- Responsive Header Logic --- */
+
+/* Default state: Hide the header button container, show the scrolling wrapper */
+#boards-menu-container {
+    display: none;
+}
+
+.scrolling-menu-wrapper {
+    display: flex;
+    /* Or whatever its default display is */
+}
+
+/* 
+   When screen is small (likely forcing header to 3 rows), 
+   swap visibility: show header button, hide scrolling wrapper 
+*/
+@media (max-width: 1160px) {
+    #boards-menu-container {
+        display: block;
+    }
+
+    /* Hide the specific button inside the scrolling wrapper that triggers the modal */
+    .scrolling-menu-wrapper .board-menu-button {
+        display: none !important;
+    }
+}
+
+.popup-menu-btn {
+    background-color: #FFFF00 !important;
+    /* Yellow background */
+}
+
+.popup-menu-btn:hover {
+    background-color: #E6E600 !important;
+    /* Darker yellow on hover */
+}
+
+/* --- Login Page Styles --- */
+.login-box {
+    text-align: center;
+    background: #FBCB39;
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    /*margin-top: 10px;*/
+    max-width: 800px;
+    /* Limit width */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#authorize_button {
+    font-size: 1.2em;
+    padding: 10px 20px;
+    cursor: pointer;
+    background-color: #4285F4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+}
+
+#authorize_button:hover {
+    background-color: #357ae8;
+}
+
+#lang-switcher {
+    display: flex;
+    justify-content: center;
+    margin-left: auto;
+}
+
+.lang-btn {
+    background: none;
+    border: 1px solid #747474;
+    color: #333;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+/* Стилове за главния language switcher извън login-box */
+#lang-switcher-main {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+    margin-top: 0px;
+}
+
+/* Стилове за language switcher в login-box */
+#lang-switcher {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+.lang-btn {
+    background: none;
+    border: 1px solid #747474;
+    color: #333;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.lang-btn:first-child {
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+
+.lang-btn:last-child {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    border-left: none;
+}
+
+.lang-btn.active {
+    background-color: #4285F4;
+    color: white;
+    border-color: #4285F4;
+}
+
+#trialBtn {
+    background-color: #4CAF50;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    display: block;
+    margin: 20px auto;
+}
+
+#trialBtn:hover {
+    background-color: #45a049;
+}
+
+.version-text {
+    font-size: 0.6em;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+/* Login container to center content */
+#login-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    padding: 20px;
 }

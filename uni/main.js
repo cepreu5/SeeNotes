@@ -204,19 +204,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Добави този код в началото или края на main.js
-
 // Динамично зареждане на Google Identity Services скрипта
 function loadGoogleIdentityServices() {
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
-    script.onload = () => {
-        gisLoaded(); // Извикваме функцията след зареждане
-    };
-    script.onerror = () => {
-        console.error('Failed to load Google Identity Services');
-    };
+    script.onload = () => { gisLoaded(); }; // Извикваме функцията след зареждане
+    script.onerror = () => { console.error('Failed to load Google Identity Services'); };
     document.head.appendChild(script);
 }
 
