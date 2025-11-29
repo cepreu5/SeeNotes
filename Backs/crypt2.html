@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Криптиране на токен</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 1rem;
+        }
+
+        input,
+        button,
+        textarea {
+            display: block;
+            width: 100%;
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        label {
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>🔐 Криптиране на имейл с валидност</h2>
+
+    <label for="email">Имейл:</label>
+    <input type="email" id="email" placeholder="user@example.com">
+
+    <label for="validity">Период на валидност (в дни):</label>
+    <input type="number" id="validity" value="1" min="1" max="365">
+
+    <button onclick="handleEncrypt()">Криптирай</button>
+
+    <label for="token">Криптиран токен:</label>
+    <textarea id="token" rows="3"></textarea>
+
+    <button onclick="handleDecrypt()">Декриптирай</button>
+
+    <label for="decrypted">Декриптиран имейл:</label>
+    <input type="text" id="decrypted">
+
+    <label for="decrypted-validity">Валидност (от токена):</label>
+    <input type="text" id="decrypted-validity" readonly>
+
+    <label for="decrypted-timestamp">Дата на създаване:</label>
+    <input type="text" id="decrypted-timestamp" readonly>
+
+    <script>
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        const secretKey = encoder.encode('80074rvs8n45v787'); // AES-128 (16 байта)
+
+        function toBase64Url(bytes) {
+            return btoa(String.fromCharCode(...bytes))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function fromBase64Url(str) {
+            const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+            return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+        }
+
+        async function getKey() {
+            return await crypto.subtle.importKey(
+                'raw',
+                secretKey,
+                { name: 'AES-GCM' },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptEmail(email, validity) {
+            const key = await getKey();
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const timestamp = Date.now();
+            const payload = `${email}|${timestamp}|${validity}`;
+            const encoded = encoder.encode(payload);
+            const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+
+            const combined = new Uint8Array(iv.length + encrypted.byteLength);
+            combined.set(iv);
+            combined.set(new Uint8Array(encrypted), iv.length);
+
+            return toBase64Url(combined);
+        }
+
+        async function decryptEmail(token, maxAgeDays) {
+            try {
+                const key = await getKey();
+                const combined = fromBase64Url(token);
+                const iv = combined.slice(0, 12);
+                const data = combined.slice(12);
+
+                const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+                const payload = decoder.decode(decrypted);
+                const [email, timestampStr, validityStr] = payload.split('|');
+                const timestamp = parseInt(timestampStr, 10);
+
+                const now = Date.now();
+                const ageDays = (now - timestamp) / (1000 * 60 * 60 * 24);
+
+                if (ageDays > maxAgeDays) {
+                    return { error: 'Токенът е изтекъл' };
+                }
+
+                // Форматираме timestamp-а в човешки вид
+                const date = new Date(timestamp);
+                const formattedDate = date.toLocaleString('bg-BG', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                return { email, validity: validityStr, timestamp: formattedDate };
+            } catch (err) {
+                return { error: 'Невалиден токен' };
+            }
+        }
+
+        async function handleEncrypt() {
+            const email = document.getElementById('email').value.trim();
+            const validityInput = document.getElementById('validity').value.trim();
+            const validity = Number(validityInput);
+            if (!email) return alert('Моля, въведи имейл.');
+            if (!validityInput || isNaN(validity) || validity < 1 || validity > 365) return alert('Моля, въведи правилен период на валидност (1-365 дни).');
+            try {
+                const token = await encryptEmail(email, validity);
+                document.getElementById('token').value = token;
+            } catch (err) {
+                alert('Грешка при криптиране: ' + err.message);
+            }
+        }
+
+        async function handleDecrypt() {
+            const token = document.getElementById('token').value.trim();
+            const validityInput = document.getElementById('validity').value.trim();
+            const validity = Number(validityInput);
+
+            if (!token) return alert('Моля, въведи токен.');
+            if (!validityInput || isNaN(validity) || validity < 1 || validity > 365) {
+                return alert('Моля, въведи валиден период на валидност (1-365 дни).');
+            }
+
+            const result = await decryptEmail(token, validity);
+
+            if (result.error) {
+                document.getElementById('decrypted').value = result.error;
+                document.getElementById('decrypted-validity').value = '';
+                document.getElementById('decrypted-timestamp').value = '';
+            } else {
+                document.getElementById('decrypted').value = result.email;
+                document.getElementById('decrypted-validity').value = result.validity + ' дни';
+                document.getElementById('decrypted-timestamp').value = result.timestamp;
+            }
+        }
+    </script>
+</body>
+
+</html>
