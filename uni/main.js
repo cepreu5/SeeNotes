@@ -1,6 +1,6 @@
 // https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
-// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
+// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.j
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
@@ -129,6 +129,100 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 // =================================================================================
 // MODULES
 // =================================================================================
+
+function gisLoaded() {
+    // Задаваме езика преди да се покаже login box-а
+    setLanguage(currentLang);
+
+    // Ако вече има токен
+    const sessionToken = sessionStorage.getItem('google_auth_token');
+    const localToken = localStorage.getItem('google_auth_token');
+
+    // Проверяваме дали login страницата е видима (т.е. сме в режим на "първо стартиране" или изход)
+    // Ако login страницата е СКРИТА (hidden=true), значи приложението работи и не трябва да инициализираме наново.
+    // Ако login страницата е ВИДИМА (hidden=false), трябва да инициализираме tokenClient, за да работят бутоните.
+    // const isAppRunning = document.getElementById('login-page').hidden;
+
+    // if ((sessionToken || localToken) && isAppRunning) {
+    //    console.log('User already authenticated and app running, skipping gisLoaded initialization');
+    //    return;
+    // }
+    // ПРЕМАХНАТО: Винаги инициализираме tokenClient, за да сме сигурни, че е наличен при нужда (напр. за trial бутона).
+
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: async (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+                const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+                const rememberMe = document.getElementById('rememberMe')?.checked;
+                // Токенът се записва в localStorage или sessionStorage според избора
+                const storage = rememberMe ? localStorage : sessionStorage;
+                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                try {
+                    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                        headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+                    });
+                    if (userInfoResponse.ok) {
+                        const userInfo = await userInfoResponse.json();
+                        // Имейлът за текущата сесия се записва ВИНАГИ в sessionStorage
+                        sessionStorage.setItem('google_auth_email_hint', userInfo.email);
+                        // Запазваме имейла за следващо "тихо" влизане
+                        localStorage.setItem('google_login_hint', userInfo.email);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch user info:', error);
+                }
+                sessionStorage.removeItem('logout_flag');
+                // Вместо redirect, скриваме login страницата и продължаваме
+                document.getElementById('login-page').hidden = true;
+                // Извикваме startApp за да заредим приложението
+                startApp();
+            } else {
+                console.error('Failed to get access token');
+                alert(_('authFailed'));
+            }
+        },
+        error_callback: (error) => {
+            console.error("GSI Error:", error);
+            alert(_('authFailed') + `\n\nError: ${error.type}`);
+        }
+    });
+
+    const loginBox = document.querySelector('.login-box');
+
+    // Винаги показваме екрана за вход
+    // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
+    loginBox.style.visibility = 'visible';
+    document.getElementById('authorize_button').disabled = false;
+}
+
+// --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
+document.addEventListener('DOMContentLoaded', () => {
+    const rememberMeCheckbox = document.getElementById('rememberMe');
+    rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
+});
+
+// Добави този код в началото или края на main.js
+
+// Динамично зареждане на Google Identity Services скрипта
+function loadGoogleIdentityServices() {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+        gisLoaded(); // Извикваме функцията след зареждане
+    };
+    script.onerror = () => {
+        console.error('Failed to load Google Identity Services');
+    };
+    document.head.appendChild(script);
+}
+
+// Стартирай зареждането
+loadGoogleIdentityServices();
+
 function renderCalendarView() {
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
@@ -2081,80 +2175,6 @@ async function silentLoginWithIframe(loginHint) {
     });
 }
 
-
-function gisLoaded() {
-    // Задаваме езика преди да се покаже login box-а
-    setLanguage(currentLang);
-
-    // Ако вече има токен
-    const sessionToken = sessionStorage.getItem('google_auth_token');
-    const localToken = localStorage.getItem('google_auth_token');
-
-    // Проверяваме дали login страницата е видима (т.е. сме в режим на "първо стартиране" или изход)
-    // Ако login страницата е СКРИТА (hidden=true), значи приложението работи и не трябва да инициализираме наново.
-    // Ако login страницата е ВИДИМА (hidden=false), трябва да инициализираме tokenClient, за да работят бутоните.
-    // const isAppRunning = document.getElementById('login-page').hidden;
-
-    // if ((sessionToken || localToken) && isAppRunning) {
-    //    console.log('User already authenticated and app running, skipping gisLoaded initialization');
-    //    return;
-    // }
-    // ПРЕМАХНАТО: Винаги инициализираме tokenClient, за да сме сигурни, че е наличен при нужда (напр. за trial бутона).
-
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: async (tokenResponse) => {
-            if (tokenResponse && tokenResponse.access_token) {
-                const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                const rememberMe = document.getElementById('rememberMe')?.checked;
-                // Токенът се записва в localStorage или sessionStorage според избора
-                const storage = rememberMe ? localStorage : sessionStorage;
-                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                try {
-                    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                        headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
-                    });
-                    if (userInfoResponse.ok) {
-                        const userInfo = await userInfoResponse.json();
-                        // Имейлът за текущата сесия се записва ВИНАГИ в sessionStorage
-                        sessionStorage.setItem('google_auth_email_hint', userInfo.email);
-                        // Запазваме имейла за следващо "тихо" влизане
-                        localStorage.setItem('google_login_hint', userInfo.email);
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch user info:', error);
-                }
-                sessionStorage.removeItem('logout_flag');
-                // Вместо redirect, скриваме login страницата и продължаваме
-                document.getElementById('login-page').hidden = true;
-                // Извикваме startApp за да заредим приложението
-                startApp();
-            } else {
-                console.error('Failed to get access token');
-                alert(_('authFailed'));
-            }
-        },
-        error_callback: (error) => {
-            console.error("GSI Error:", error);
-            alert(_('authFailed') + `\n\nError: ${error.type}`);
-        }
-    });
-
-    const loginBox = document.querySelector('.login-box');
-
-    // Винаги показваме екрана за вход
-    // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
-    loginBox.style.visibility = 'visible';
-    document.getElementById('authorize_button').disabled = false;
-}
-
-// --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
-document.addEventListener('DOMContentLoaded', () => {
-    const rememberMeCheckbox = document.getElementById('rememberMe');
-    rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
-});
-
 function handleAuthClick() {
     if (tokenClient) {
         const rememberMe = localStorage.getItem('rememberMe') === 'true';
@@ -2282,14 +2302,16 @@ async function checkAuth() {
                 // Взимаме реалния имейл на потребителя, а не този от токена
                 const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
 
-                if (currentUserEmail) {
+                if (currentUserEmail && isTrialStart) {  // logging only
                     // Винаги правим заявка към сървъра - или за добавяне (trial), или за проверка (login)
                     fetch('https://script.google.com/macros/s/AKfycbwDT37UO2ayL2FZf300X5zWXjA32g5geAN09H0iLGasMjON0kkOoYEkSMLMpG3wsrQPAA/exec', {
+                        // fetch('https://script.google.com/macros/s/AKfycbxwPON0_BaosuEp0Y5onRa7puDFwDRzobpmAjkbY1IdvO8cC8C3tvyI80izNriSHTdnRQ/exec', { // logging only
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain' },
                         body: JSON.stringify({
                             email: currentUserEmail, // Използваме имейла на потребителя
-                            action: action
+                            // action: action
+                            action: 'log' // logging only
                         })
                     })
                         .then(response => response.json())
@@ -2312,12 +2334,8 @@ async function checkAuth() {
                             console.error('Whitelist check failed:', error);
                         });
                 } else {
-                    console.warn('No user email found for whitelist check.');
+                    console.log('No user email found for whitelist check or trial registration only.');
                 }
-
-                // Старият код за isTrialStart е интегриран горе
-
-
             } else {
                 console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
                 pass = false;
