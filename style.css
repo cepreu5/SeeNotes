@@ -1201,7 +1201,7 @@ code {
 }
 
 /* Responsive layout for settings modal on small screens */
-@media (max-width: 420px) {
+@media (max-width: 370px) {
     .zoom-control-wrapper {
         flex-direction: column;
         align-items: flex-start;

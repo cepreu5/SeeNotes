@@ -8,7 +8,7 @@
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
     <meta http-equiv="Content-Security-Policy"
-        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com;">
+        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
         crossorigin="anonymous">
         </script>
@@ -96,8 +96,13 @@
                 const cache = await caches.open('app-cache');
                 const cachedResponse = await cache.match('s');
                 if (cachedResponse) {
+                    // Има запис 's' - показваме login box и скриваме trial бутон
                     document.querySelector('.login-box').style.display = 'block';
                     document.getElementById("trialBtn").style.display = 'none';
+                } else {
+                    // Няма запис 's' - показваме trial бутон и скриваме login box
+                    document.querySelector('.login-box').style.display = 'none';
+                    document.getElementById("trialBtn").style.display = 'block';
                 }
             })();
         </script>
@@ -564,10 +569,15 @@
 
                 <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
 
-                <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                    data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
-                    data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
-                    data-font-color="#000000" data-coffee-color="#ffffff"></script>
+                <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
+                    <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+                        data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
+                        data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
+                        data-font-color="#000000" data-coffee-color="#ffffff"></script>
+                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
+                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
+                    </p>
+                </div>
             </div>
             <div class="settings-close-btn-wrapper">
                 <button id="settings-close-btn" class="zoom-btn settings-close-btn"
@@ -577,6 +587,10 @@
     </div>
 
     <script src="i18n.js"></script>
+    <!--script src="calendar.js"></script>
+    <script src="db.js"></script>
+    <script src="fs.js"></script>
+    <script src="config.js"></script-->
     <script src="mainn.js"></script>
     <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
 </body>
