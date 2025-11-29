@@ -1,0 +1,86 @@
+✅ Безопасни алтернативи:
+Препоръчан подход: Backend API
+[Client Browser] → [Your Backend Server] → [Google Sheets API]
+Как работи:
+
+Клиентът изпраща имейла към вашия backend сървър
+Backend-ът използва креденшълите (които са скрити)
+Backend-ът записва в Google Sheets
+Връща потвърждение на клиента
+Пример с Node.js/Express:
+
+javascript
+// Backend (server.js) - БЕЗОПАСНО
+const express = require('express');
+const { google } = require('googleapis');
+
+const app = express();
+
+// Креденшълите са САМО на сървъра
+const auth = new google.auth.GoogleAuth({
+  keyFile: 'credentials.json', // Този файл НЕ е достъпен за клиента
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+
+app.post('/api/log-user', async (req, res) => {
+  const { email } = req.body;
+  
+  const sheets = google.sheets({ version: 'v4', auth });
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: 'YOUR_SHEET_ID',
+    range: 'Sheet1!A:A',
+    valueInputOption: 'RAW',
+    resource: { values: [[email, new Date().toISOString()]] },
+  });
+  
+  res.json({ success: true });
+});
+Клиентски код:
+
+javascript
+// Client (main.js) - Само извикване на API
+async function logUserEmail(email) {
+  await fetch('https://your-backend.com/api/log-user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+}
+Алтернатива 2: Google Apps Script Web App
+Можете да създадете Google Apps Script, който действа като посредник:
+
+javascript
+// Google Apps Script (deployed as web app)
+function doPost(e) {
+  const email = JSON.parse(e.postData.contents).email;
+  const sheet = SpreadsheetApp.openById('YOUR_SHEET_ID').getActiveSheet();
+  sheet.appendRow([email, new Date()]);
+  return ContentService.createTextOutput(JSON.stringify({ success: true }));
+}
+Клиентски код:
+
+javascript
+// Client
+fetch('https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec', {
+  method: 'POST',
+  body: JSON.stringify({ email: userEmail })
+});
+Предимства:
+
+Безплатно
+Креденшълите са скрити в Google's инфраструктура
+Лесно за настройка
+Алтернатива 3: Firebase/Firestore
+Вместо Google Sheets, използвайте Firestore с правила за сигурност:
+
+javascript
+// Firestore Security Rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false; // Само админ
+    }
+  }
+}

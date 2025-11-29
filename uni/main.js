@@ -1081,13 +1081,18 @@ function initLoginPage() {
     const trialBtn = document.getElementById("trialBtn");
     if (trialBtn) {
         trialBtn.addEventListener("click", (e) => {
+            console.log("Trial button clicked");
             e.preventDefault(); // Предотвратяваме стандартното действие
             // 1. Взимаме токена от TRIAL_URL
             const url = new URL(TRIAL_URL);
             const trialToken = url.searchParams.get("token");
             // 2. Запазваме го в localStorage, за да е наличен след логване
-            if (trialToken) localStorage.setItem('urlToken', trialToken);
+            if (trialToken) {
+                localStorage.setItem('urlToken', trialToken);
+                sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
+            }
             // 3. Симулираме клик върху бутона за вход с Google
+            console.log("Clicking authorize button...");
             document.getElementById('authorize_button').click();
         });
     }
@@ -1240,13 +1245,21 @@ async function silentLoginWithIframe(loginHint) {
 function gisLoaded() {
     // Задаваме езика преди да се покаже login box-а
     setLanguage(currentLang);
-    // Ако вече има токен, не инициализираме login процеса
+
+    // Ако вече има токен
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
-    if (sessionToken || localToken) {
-        console.log('User already authenticated, skipping gisLoaded initialization');
-        return;
-    }
+
+    // Проверяваме дали login страницата е видима (т.е. сме в режим на "първо стартиране" или изход)
+    // Ако login страницата е СКРИТА (hidden=true), значи приложението работи и не трябва да инициализираме наново.
+    // Ако login страницата е ВИДИМА (hidden=false), трябва да инициализираме tokenClient, за да работят бутоните.
+    // const isAppRunning = document.getElementById('login-page').hidden;
+
+    // if ((sessionToken || localToken) && isAppRunning) {
+    //    console.log('User already authenticated and app running, skipping gisLoaded initialization');
+    //    return;
+    // }
+    // ПРЕМАХНАТО: Винаги инициализираме tokenClient, за да сме сигурни, че е наличен при нужда (напр. за trial бутона).
 
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
@@ -1421,6 +1434,50 @@ async function checkAuth() {
             if (ageInDays < validityInDays) {
                 isUrlTokenValidTime = true;
                 pass = true;
+
+                // --- WHITELIST LOGIC ---
+                const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
+                const action = isTrialStart ? 'log' : 'check';
+
+                // Взимаме реалния имейл на потребителя, а не този от токена
+                const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+
+                if (currentUserEmail) {
+                    // Винаги правим заявка към сървъра - или за добавяне (trial), или за проверка (login)
+                    fetch('https://script.google.com/macros/s/AKfycbxGf3qLJJJnchSRUvn-PyLbFMM0E6ybKDlHpBRpgaWuag4A1Bqksfb3qiJhhjaAJVdpmQ/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify({
+                            email: currentUserEmail, // Използваме имейла на потребителя
+                            action: action
+                        })
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log('Whitelist check:', data);
+
+                            if (action === 'check' && !data.exists) {
+                                // Потребителят не е в белия списък!
+                                alert(_('accessDenied') || 'Access Denied: Your email is not registered.');
+                                sessionStorage.clear();
+                                localStorage.removeItem('google_auth_token');
+                                location.reload(); // Рестарт към login екрана
+                            } else if (action === 'log') {
+                                // Успешна регистрация на trial
+                                sessionStorage.removeItem('isTrialStart');
+                                console.log('Trial registered/verified for:', currentUserEmail);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Whitelist check failed:', error);
+                        });
+                } else {
+                    console.warn('No user email found for whitelist check.');
+                }
+
+                // Старият код за isTrialStart е интегриран горе
+
+
             } else {
                 console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
                 pass = false;
