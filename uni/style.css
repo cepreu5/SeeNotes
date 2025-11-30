@@ -35,7 +35,7 @@ body {
 }
 
 header {
-    padding: 5px 1em 0.3em 5px;
+    padding: 5px 1em 3px 5px;
     /*border-bottom: 1px solid #eee;*/
     /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
     /* margin-bottom: 1em; */
@@ -58,7 +58,7 @@ header {
 header h1 {
     margin: 0;
     text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
-    color: #bdc913;
+    color: darkorange;
 }
 
 #search-container {
@@ -85,12 +85,12 @@ header h1 {
 #search-box {
     width: 100%;
     /* max-width and min-width are now on the wrapper */
-    padding: 8px 35px 8px 12px;
+    padding: 8px 35px 8px 35px;
     /* Increased right padding for icons */
     border-radius: 20px;
     border: 1px solid #aaa;
     font-size: 1em;
-    background-color: #d6d6d6;
+    background-color: #d6d4d5;
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
 }
 
@@ -246,9 +246,9 @@ header h1 {
 .header-btn {
     margin-left: 10px;
     padding: 0;
-    border: 1px solid #aaa;
+    border: 2px solid #dddddd;
     border-radius: 50%;
-    background-color: #d6d6d6;
+    background-color: #878fa3;
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
     cursor: pointer;
     color: #000;
@@ -279,7 +279,7 @@ header h1 {
     min-height: 46px;
     gap: 5px;
     /* Разстояние между елементите вътре в бутона (напр. icon-wrapper и loading icon) */
-    background-color: #9a9999;
+    background-color: #48b7a2;
     border-radius: 25px;
     /* Заоблени ъгли, вместо елипса */
 }
@@ -519,17 +519,17 @@ code {
     height: auto;
     /* Auto-adjust height based on content */
     margin: 0 0;
-    margin-left: -1em;
-    /* Negative margin to span full width, counteracting header padding */
-    width: calc(100% + 2em);
-    /* Adjust width to compensate for negative margins */
+    margin-left: -5px;
+    /* Negative margin to span full width, counteracting header padding (5px left) */
+    width: calc(100% + 1em + 5px);
+    /* Adjust width to compensate for negative margins (1em right + 5px left) */
     border-radius: 0;
     /* Remove rounded corners */
     box-shadow: 0 5px 8px rgba(0, 0, 0, 0.1);
     /* Add a subtle shadow */
     border: none;
-    border-bottom: 1px solid #ccc;
-    /*padding: 10px;*/
+    /*border-bottom: 1px solid #ccc;
+    padding: 10px;*/
     background: transparent;
     -webkit-user-select: none;
     /* Safari */
@@ -921,7 +921,7 @@ code {
     scroll-behavior: smooth;
     /* Smooth scrolling on button click */
     gap: 5px;
-    padding: 5px 0 0px;
+    padding: 5px 0 0 0px;
     /* Намалява разстоянието отдолу до 3px */
     /* Премахваме правилата, които скриват скролбара */
     scrollbar-color: #aaa #555;
@@ -2144,11 +2144,6 @@ code {
     width: 20px;
     height: 20px;
     stroke: #555;
-}
-
-#search-box {
-    padding-left: 35px !important;
-    /* Make space for the icon */
 }
 
 .settings-icon-label {
