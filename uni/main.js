@@ -1361,15 +1361,20 @@ async function handleCalculateClick() {
     if (expression === '') return;
 
     try {
+        // Премахваме всички интервали от израза
+        expression = expression.replace(/\s/g, '');
+
         // Основна проверка за сигурност - позволяваме само определени символи
-        const sanitizedExpression = expression.replace(/[^0-9+\-*/().\s]/g, '');
+        const sanitizedExpression = expression.replace(/[^0-9+\-*/().]/g, '');
         if (sanitizedExpression !== expression) {
             throw new Error("Invalid characters in expression.");
         }
 
         // Използваме Function конструктор, който е малко по-сигурен от директен eval()
         const result = new Function('return ' + sanitizedExpression)();
-        const resultText = ` = ${result}`;
+        // Форматираме резултата с 2 десетични знака
+        const formattedResult = Number(result.toFixed(2));
+        const resultText = ` = ${formattedResult}`;
 
         // Ако имаме селекция и не е от клипборда, вмъкваме резултата
         if (range && !isFromClipboard) {
@@ -1382,13 +1387,13 @@ async function handleCalculateClick() {
 
             // Създаваме нов обхват (range), който да обхване само числото
             const newRange = document.createRange();
-            newRange.setStart(resultNode, resultText.indexOf(result.toString())); // Начало на числото
+            newRange.setStart(resultNode, resultText.indexOf(formattedResult.toString())); // Начало на числото
             newRange.setEnd(resultNode, resultText.length); // Край на текста
             selection.removeAllRanges(); // Изчистваме старата селекция
             selection.addRange(newRange); // Добавяме новата селекция
         } else {
             // Ако е от клипборда, просто показваме резултата в toast
-            showToast(`${expression} = ${result}`, 5000);
+            showToast(`${expression} = ${formattedResult}`, 5000);
         }
     } catch (error) {
         showToast(_('invalidExpression'), 3000);
