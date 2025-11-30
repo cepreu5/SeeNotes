@@ -3882,18 +3882,24 @@ function showModal(options, noteElement = null) {
         modalContentBox.style.maxWidth = 'none';
         modalContentBox.style.maxHeight = 'none';
     } else {
-        // Връщаме към CSS стойностите по подразбиране, ако няма запазен размер
-        modalContentBox.style.width = '';
-        modalContentBox.style.height = '';
-        modalContentBox.style.maxWidth = '';
-        modalContentBox.style.maxHeight = '';
+        // Задаваме размер по подразбиране 250x150px, ако няма запазен размер
+        modalContentBox.style.width = '400px';
+        modalContentBox.style.height = '300px';
+        modalContentBox.style.maxWidth = 'none';
+        modalContentBox.style.maxHeight = 'none';
     }
     const modalBoardNameEl = document.getElementById('modal-board-name');
     if (options && options.boardId) {
-        const board = boardsData.find(b => b.gdid === options.boardId);
-        if (board) {
-            modalBoardNameEl.textContent = board.title;
-            modalBoardNameEl.style.display = 'block';
+        // Показваме името на борда само ако текущият филтър е различен от борда на бележката
+        // (напр. сме в "Всички", "Напомняния" и т.н.)
+        if (currentBoardFilter != options.boardId) {
+            const board = boardsData.find(b => b.gdid === options.boardId);
+            if (board) {
+                modalBoardNameEl.textContent = board.title;
+                modalBoardNameEl.style.display = 'block';
+            } else {
+                modalBoardNameEl.style.display = 'none';
+            }
         } else {
             modalBoardNameEl.style.display = 'none';
         }

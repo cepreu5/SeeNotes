@@ -58,6 +58,7 @@ header {
 header h1 {
     margin: 0;
     text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
+    color: #bdc913;
 }
 
 #search-container {
@@ -529,7 +530,7 @@ code {
     border: none;
     border-bottom: 1px solid #ccc;
     /*padding: 10px;*/
-    background-image: url('Frame.jpg');
+    background: transparent;
     -webkit-user-select: none;
     /* Safari */
     -moz-user-select: none;
@@ -663,6 +664,9 @@ code {
     display: flex;
     flex-direction: column;
     /* transition: background-color 0.3s ease; Smooth background color transition */
+    background-image: url('Note.jpg');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
 }
 
 /* "Дръжка" за преоразмеряване на модалния прозорец */
