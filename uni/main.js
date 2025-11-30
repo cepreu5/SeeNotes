@@ -446,7 +446,7 @@ function renderCalendarView() {
                 });
                 const activeButton = document.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
                 if (activeButton) {
-                    activeButton.classList.add('selected-board');
+                    activeButton.classList.add('selected-board'); //@@
                     activeButton.scrollIntoView({
                         behavior: 'smooth',
                         inline: 'center',
@@ -558,7 +558,7 @@ function renderWeeklyCalendarView(dateForWeek) {
                 });
                 const activeButton = document.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
                 if (activeButton) {
-                    activeButton.classList.add('selected-board');
+                    activeButton.classList.add('selected-board'); //@@
                     activeButton.scrollIntoView({
                         behavior: 'smooth',
                         inline: 'center',
@@ -1402,6 +1402,14 @@ async function handleCalculateClick() {
 }
 
 function initApp() {
+    // Inject custom styles dynamically to fix UI issues
+    const style = document.createElement('style');
+    style.textContent = `
+        .all-boards-filter-btn span { text-align: center; width: 100%; }
+        .sounds-filter-btn { color: #fcfcfc !important; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); }
+    `;
+    document.head.appendChild(style);
+
     // Set default showBoardAll to false if not set
     if (localStorage.getItem('showBoardAll') === null) {
         localStorage.setItem('showBoardAll', 'false');
@@ -4037,7 +4045,7 @@ function showAllBoardsModal() {
         const clone = button.cloneNode(true);
         // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
         clone.style.width = `${maxWidthForButtons}px`;
-        clone.addEventListener('click', async (e) => {
+        clone.addEventListener('click', async (e) => { //@@@ вместо да дефинираме слушатели за бутоните, да има слушател за модал и да кликва съответния бутон в хедър-менюто
             e.preventDefault();
             // Връщаме старата логика: затваряме менюто веднага
             boardsModal.classList.remove('visible');
@@ -4614,9 +4622,21 @@ async function createBoardsUI(boardsData, boardParseError) {
             if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(e);
         });
     };
-
+    let lastActive = null;
     const allButtonLinks = [];
-
+    const boardClick = (e, boardId) => {
+        const link = e.currentTarget;
+        if (lastActive) {
+            lastActive.classList.remove('active');
+            lastActive.style.height = '35px';
+        }
+        link.classList.add('active');
+        link.style.height = '39px';
+        lastActive = link;
+        e.preventDefault();
+        e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        filterNotesByBoard(boardId, false);
+    };
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ВСИЧКИ" ---
     if (localStorage.getItem('showBoardAll') !== 'false') {
         const allBoardsLink = document.createElement('span');
@@ -4635,11 +4655,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     calendarLink.textContent = showCount && calendarNoteCount > 0 ? `${_('calendar')} (${calendarNoteCount})` : _('calendar');
     calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
     calendarLink.dataset.boardid = 'calendar';
-    calendarLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-        filterNotesByBoard('calendar', false);
-    });
+    calendarLink.addEventListener('click', (e) => { boardClick(e, 'calendar') });
     allButtonLinks.push(calendarLink);
 
     // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
@@ -4648,11 +4664,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         newUpdatesLink.textContent = `${_('newUpdates')} (${updatedNoteGdims.length})`;
         newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
         newUpdatesLink.dataset.boardid = 'new-updates';
-        newUpdatesLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            filterNotesByBoard('new-updates', false);
-        });
+        newUpdatesLink.addEventListener('click', (e) => { boardClick(e, 'new-updates') });
         allButtonLinks.push(newUpdatesLink);
     }
 
@@ -4663,11 +4675,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
         reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
         reminderLink.dataset.boardid = 'reminder';
-        reminderLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            filterNotesByBoard('reminder', false);
-        });
+        reminderLink.addEventListener('click', (e) => { boardClick(e, 'reminder') });
         allButtonLinks.push(reminderLink);
     }
 
@@ -4677,11 +4685,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         photosLink.textContent = _('photosBoardTitle') || "With Photos";
         photosLink.classList.add('board-filter-link', 'photos-filter-btn');
         photosLink.dataset.boardid = 'with-photos';
-        photosLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            filterNotesByBoard('with-photos', false);
-        });
+        photosLink.addEventListener('click', (e) => { boardClick(e, 'with-photos') });
         allButtonLinks.push(photosLink);
     }
 
@@ -4691,11 +4695,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         videosLink.textContent = _('videosBoardTitle') || "With Video";
         videosLink.classList.add('board-filter-link', 'videos-filter-btn');
         videosLink.dataset.boardid = 'with-videos';
-        videosLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            filterNotesByBoard('with-videos', false);
-        });
+        videosLink.addEventListener('click', (e) => { boardClick(e, 'with-videos') });
         allButtonLinks.push(videosLink);
     }
 
@@ -4705,11 +4705,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         soundsLink.textContent = _('soundsBoardTitle') || "With Sounds";
         soundsLink.classList.add('board-filter-link', 'sounds-filter-btn');
         soundsLink.dataset.boardid = 'with-sounds';
-        soundsLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            filterNotesByBoard('with-sounds', false);
-        });
+        soundsLink.addEventListener('click', (e) => { boardClick(e, 'with-sounds') });
         allButtonLinks.push(soundsLink);
     }
 
@@ -4719,11 +4715,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         otherLink.textContent = _('otherBoardTitle') || "Other Attachments";
         otherLink.classList.add('board-filter-link', 'other-filter-btn');
         otherLink.dataset.boardid = 'with-other';
-        otherLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            filterNotesByBoard('with-other', false);
-        });
+        otherLink.addEventListener('click', (e) => { boardClick(e, 'with-other') });
         allButtonLinks.push(otherLink);
     }
     // Сортираме бордовете по полето numord, преди да създадем бутоните
@@ -4732,32 +4724,39 @@ async function createBoardsUI(boardsData, boardParseError) {
         const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
         return numordA - numordB;
     })
-        .forEach(board => {
-            if (!board.title || !board.gdid) return;
-            const noteCount = board.noteCount || 0;
-            const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+    boardsData.forEach(board => {
+        if (!board.title || !board.gdid) return;
+        const noteCount = board.noteCount || 0;
+        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
 
-            const link = document.createElement('span');
-            link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
-            link.classList.add('board-filter-link');
-            link.dataset.boardid = board.gdid;
-            if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) {
-                link.style.backgroundColor = `var(--board-bg-${board.color})`;
+        const link = document.createElement('span');
+        link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
+        link.classList.add('board-filter-link');
+        link.dataset.boardid = board.gdid;
+        if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) {
+            link.style.backgroundColor = `var(--board-bg-${board.color})`;
+        }
+        link.style.color = 'black';
+        if (board.status === 1) link.style.color = 'red';
+        link.addEventListener('click', (e) => {
+            if (lastActive) {
+                lastActive.classList.remove('active');
+                lastActive.style.height = '35px';
             }
-            link.style.color = 'black';
-            if (board.status === 1) link.style.color = 'red';
-            link.addEventListener('click', (e) => {
-                e.preventDefault(); // Винаги предотвратяваме действието по подразбиране
-                if (debug && e.ctrlKey) {
-                    showModal(JSON.stringify(board, null, 2));
-                } else {
-                    // Първо се уверяваме, че целият бутон е видим
-                    e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-                    filterNotesByBoard(board.gdid, false); // След това филтрираме без допълнително скролиране
-                }
-            });
-            allButtonLinks.push(link);
+            link.classList.add('active');
+            link.style.height = '41px';
+            lastActive = link;
+            e.preventDefault(); // Винаги предотвратяваме действието по подразбиране
+            if (debug && e.ctrlKey) {
+                showModal(JSON.stringify(board, null, 2));
+            } else {
+                // Първо се уверяваме, че целият бутон е видим
+                e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+                filterNotesByBoard(board.gdid, false); // След това филтрираме без допълнително скролиране
+            }
         });
+        allButtonLinks.push(link);
+    });
     maxWidthForButtons = 0;
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
