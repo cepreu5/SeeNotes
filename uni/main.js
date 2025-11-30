@@ -16,7 +16,7 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
     }
 }
 
-let debug = false; // Глобален флаг за дебъг режим
+let debug = true; // Глобален флаг за дебъг режим
 let pass = false;
 
 // --- Demo Mode ---
@@ -308,6 +308,14 @@ function renderCalendarView() {
         const dateNum = document.createElement('div');
         dateNum.className = 'calendar-date-number';
         dateNum.textContent = day;
+
+        // Проверяваме дали е уикенд (събота или неделя)
+        const currentDate = new Date(year, month, day);
+        const dayOfWeek = currentDate.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Неделя, 6 = Събота
+            dateNum.classList.add('weekend-date');
+        }
+
         // Check if the cell being rendered is today's date
         if (day === todayDate && month === todayMonth && year === todayYear) {
             dateNum.classList.add('today-date');
@@ -326,7 +334,8 @@ function renderCalendarView() {
         // Find and render notes for this day 
         const dayDate = new Date(year, month, day);
         allNotesData.forEach(noteData => {
-            if (noteData.calendarDate) {
+            // Прескачаме скрити бележки (status === 1)
+            if (noteData.calendarDate && noteData.status !== 1) {
                 const noteDate = new Date(noteData.calendarDate);
                 if (noteDate.getFullYear() === dayDate.getFullYear() &&
                     noteDate.getMonth() === dayDate.getMonth() &&
@@ -579,7 +588,8 @@ function renderWeeklyCalendarView(dateForWeek) {
     // Групираме бележките по дата
     const notesByDate = new Map();
     allNotesData.forEach(noteData => {
-        if (noteData.calendarDate) {
+        // Прескачаме скрити бележки (status === 1)
+        if (noteData.calendarDate && noteData.status !== 1) {
             // --- КОРЕКЦИЯ: Преобразуваме датата към UTC, за да избегнем проблеми с часовите зони ---
             const noteDate = new Date(noteData.calendarDate);
             // Създаваме нова дата, използвайки UTC компонентите на оригиналната дата.

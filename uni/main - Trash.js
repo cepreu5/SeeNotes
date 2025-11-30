@@ -1,11 +1,22 @@
 // https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
-// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log", "console.error"] --output mainn.js
-// terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainAll.js
-// terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output db.js
-// terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output calendar.js
+// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.j
+// terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
+// terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
+// terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
 
-let debug = false; // Глобален флаг за дебъг режим
+// node -e "const fs=require('fs'); const T=require('terser'); (async()=>{ const code=fs.readFileSync('main.js','utf8'); const result=await T.minify(code,{ compress:{ arrows:true, booleans:true, collapse_vars:true, comparisons:true, dead_code:true, drop_console:true, hoist_funs:true, if_return:true, passes:3, pure_funcs:['console.log'] }, mangle:{ reserved:['gisLoaded'], keep_fnames: /^gisLoaded$/ }, toplevel:true, ecma:2020, module:true, format:{ wrap_iife:true } }); fs.writeFileSync('mainn.js',result.code); })();"
+
+// --- OAuth Redirect Handler for iframe ---
+// Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
+if (window.location.hash && window.location.hash.includes('access_token')) {
+    if (window.parent !== window) {
+        // Изпращаме hash-а на parent window
+        window.parent.postMessage(window.location.hash, window.location.origin);
+    }
+}
+
+let debug = true; // Глобален флаг за дебъг режим
 let pass = false;
 
 // --- Demo Mode ---
@@ -20,7 +31,7 @@ const DEMO_NOTE_LIMIT = 5;
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const TRIAL_URL = "http://index.html?token=0bi64PmSapE-xPdzhr5dtAXBb95QYofCL1K1gSL_HuFeth8vZDAQfRewADufxs-PlQBylELKi7CWUTI1DipJGmmma6E";
-// const main = 'viewer.html';
+// 30 - PIFopa69pLotak82Tk7rqvBNekfordCqQmx6Kj0NgKNXE6h8zQAcvUYN-MBdCeSFANzfNautMiVY6CiRZBtwRHdefvpI
 const version = '0.17'; // App version
 
 // --- Глобално състояние на приложението ---
@@ -39,6 +50,7 @@ let tokenRemainingDays = null; // Остават дни валидност на 
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
+let isDbOwner = true; // Флаг, който показва дали потребителят е собственик на базата
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 let tokenClient = null; // Client for silent auth refresh
 
@@ -86,7 +98,6 @@ const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
 const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
-// const GDSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
 const saveSearchSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
 const attachmentIcons = [
     { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
@@ -118,6 +129,932 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 // =================================================================================
 // MODULES
 // =================================================================================
+
+function gisLoaded() {
+    // Задаваме езика преди да се покаже login box-а
+    setLanguage(currentLang);
+
+    // Ако вече има токен
+    const sessionToken = sessionStorage.getItem('google_auth_token');
+    const localToken = localStorage.getItem('google_auth_token');
+
+    // Проверяваме дали login страницата е видима (т.е. сме в режим на "първо стартиране" или изход)
+    // Ако login страницата е СКРИТА (hidden=true), значи приложението работи и не трябва да инициализираме наново.
+    // Ако login страницата е ВИДИМА (hidden=false), трябва да инициализираме tokenClient, за да работят бутоните.
+    // const isAppRunning = document.getElementById('login-page').hidden;
+
+    // if ((sessionToken || localToken) && isAppRunning) {
+    //    console.log('User already authenticated and app running, skipping gisLoaded initialization');
+    //    return;
+    // }
+    // ПРЕМАХНАТО: Винаги инициализираме tokenClient, за да сме сигурни, че е наличен при нужда (напр. за trial бутона).
+
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: async (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+                const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+                const rememberMe = document.getElementById('rememberMe')?.checked;
+                // Токенът се записва в localStorage или sessionStorage според избора
+                const storage = rememberMe ? localStorage : sessionStorage;
+                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                try {
+                    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                        headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+                    });
+                    if (userInfoResponse.ok) {
+                        const userInfo = await userInfoResponse.json();
+                        // Имейлът за текущата сесия се записва ВИНАГИ в sessionStorage
+                        sessionStorage.setItem('google_auth_email_hint', userInfo.email);
+                        // Запазваме имейла за следващо "тихо" влизане
+                        localStorage.setItem('google_login_hint', userInfo.email);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch user info:', error);
+                }
+                sessionStorage.removeItem('logout_flag');
+                // Вместо redirect, скриваме login страницата и продължаваме
+                document.getElementById('login-page').hidden = true;
+                // Извикваме startApp за да заредим приложението
+                startApp();
+            } else {
+                console.error('Failed to get access token');
+                alert(_('authFailed'));
+            }
+        },
+        error_callback: (error) => {
+            console.error("GSI Error:", error);
+            alert(_('authFailed') + `\n\nError: ${error.type}`);
+        }
+    });
+
+    const loginBox = document.querySelector('.login-box');
+
+    // Винаги показваме екрана за вход
+    // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
+    loginBox.style.visibility = 'visible';
+    document.getElementById('authorize_button').disabled = false;
+}
+
+// --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
+document.addEventListener('DOMContentLoaded', () => {
+    const rememberMeCheckbox = document.getElementById('rememberMe');
+    rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
+});
+
+// Добави този код в началото или края на main.js
+// Динамично зареждане на Google Identity Services скрипта
+function loadGoogleIdentityServices() {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => { gisLoaded(); }; // Извикваме функцията след зареждане
+    script.onerror = () => { console.error('Failed to load Google Identity Services'); };
+    document.head.appendChild(script);
+}
+
+// Стартирай зареждането
+loadGoogleIdentityServices();
+
+function renderCalendarView() {
+    document.querySelector('header').style.display = 'none';
+    notesContainer.style.display = 'none';
+    scrollTopBtn.style.display = 'none';
+    let calendarContainer = document.getElementById('calendar-container');
+    if (!calendarContainer) {
+        calendarContainer = document.createElement('div');
+        calendarContainer.id = 'calendar-container';
+        document.querySelector('main').appendChild(calendarContainer);
+    }
+    calendarContainer.style.display = 'block';
+    calendarContainer.innerHTML = ''; // Clear previous content
+    const year = currentCalendarDate.getFullYear();
+    const month = currentCalendarDate.getMonth();
+    const monthName = currentCalendarDate.toLocaleString(currentLang, { month: 'long' });
+    const titleText = `${monthName} ${year}`;
+
+    // Sticky Header Container
+    const stickyHeaderContainer = document.createElement('div');
+    stickyHeaderContainer.style.position = 'sticky';
+    stickyHeaderContainer.style.top = '0';
+    stickyHeaderContainer.style.zIndex = '100';
+    stickyHeaderContainer.style.backgroundColor = '#fdf6e3'; // Match calendar background
+
+    // Header
+    const calendarHeader = document.createElement('div');
+    calendarHeader.className = 'calendar-header';
+    calendarHeader.innerHTML = `
+            <div class="calendar-nav-controls">
+                <button id="close-month-calendar-btn" class="close-calendar-btn">
+                    <span class="close-symbol">&times;</span>
+                    <img src="Refresh.png" class="close-loading-icon" style="display: none;">
+                </button>
+                <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
+                <button id="today-month-btn">${calendarIconSvg}</button>
+                <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${weeklyViewIconSvg}</button>
+            </div>
+            <h2 style="cursor: default;">${titleText}</h2>
+        `;
+    stickyHeaderContainer.appendChild(calendarHeader);
+    // Day names header
+
+    const daysHeader = document.createElement('div');
+    daysHeader.className = 'calendar-days-header';
+    const days = currentLang === 'bg' ? ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    days.forEach((day, index) => {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'calendar-day-name';
+        const longName = document.createElement('span');
+        longName.className = 'day-name-long';
+        longName.textContent = day;
+        const shortName = document.createElement('span');
+        shortName.className = 'day-name-short';
+        shortName.textContent = day.substring(0, 3);
+
+        dayEl.appendChild(longName);
+        dayEl.appendChild(shortName);
+
+        if (index >= 5) {
+            dayEl.classList.add('weekend-day');
+        }
+        daysHeader.appendChild(dayEl);
+    });
+    stickyHeaderContainer.appendChild(daysHeader);
+    calendarContainer.appendChild(stickyHeaderContainer);
+    // Get today's date components for comparison
+    const today = new Date();
+    const todayDate = today.getDate();
+    const todayMonth = today.getMonth();
+    const todayYear = today.getFullYear();
+    const firstDayOfMonth = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let startingDay = firstDayOfMonth.getDay(); // 0=Sun, 1=Mon...
+    if (startingDay === 0) startingDay = 7; // Make Sunday 7
+    // Grid for the actual days
+    const calendarGrid = document.createElement('div');
+    calendarGrid.className = 'calendar-grid';
+    // Create blank cells for days before the 1st
+    for (let i = 1; i < startingDay; i++) {
+        const blankCell = document.createElement('div');
+        blankCell.className = 'calendar-cell-blank';
+        calendarGrid.appendChild(blankCell);
+    }
+    // Create cells for each day of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'calendar-cell';
+        const dateNum = document.createElement('div');
+        dateNum.className = 'calendar-date-number';
+        dateNum.textContent = day;
+        // Check if the cell being rendered is today's date
+        if (day === todayDate && month === todayMonth && year === todayYear) {
+            dateNum.classList.add('today-date');
+        }
+
+        // Клик на клетката отваря седмичния изглед за съответната дата
+        cell.style.cursor = 'pointer';
+        cell.addEventListener('click', () => {
+            calendarContainer.style.display = 'none';
+            renderWeeklyCalendarView(new Date(year, month, day));
+        });
+
+        cell.appendChild(dateNum);
+        const notesForDayContainer = document.createElement('div');
+        notesForDayContainer.className = 'calendar-notes-container';
+        // Find and render notes for this day 
+        const dayDate = new Date(year, month, day);
+        allNotesData.forEach(noteData => {
+            if (noteData.calendarDate) {
+                const noteDate = new Date(noteData.calendarDate);
+                if (noteDate.getFullYear() === dayDate.getFullYear() &&
+                    noteDate.getMonth() === dayDate.getMonth() &&
+                    noteDate.getDate() === dayDate.getDate()) {
+                    const miniNote = document.createElement('div');
+                    miniNote.className = 'calendar-mini-note';
+
+                    const noteContent = noteData.notetxt;
+                    const isHidden = noteData.pass === true;
+                    const isType1 = noteData.type === 1;
+
+                    if ((isHidden || isType1) && noteContent.includes('|')) {
+                        contentToShow = noteContent.split('|')[0].trim();
+                    } else {
+                        const lines = noteContent.split('\n');
+                        let firstNonEmptyLineIndex = -1;
+                        for (let i = 0; i < lines.length; i++) {
+                            if (lines[i].trim() !== '') {
+                                firstNonEmptyLineIndex = i;
+                                break;
+                            }
+                        }
+                        contentToShow = firstNonEmptyLineIndex !== -1 ? lines.slice(firstNonEmptyLineIndex).join('\n') : '...';
+                    }
+                    miniNote.textContent = contentToShow;
+                    if (noteData.color) {
+                        miniNote.style.backgroundColor = `var(--note-bg-${noteData.color})`;
+                    }
+                    miniNote.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        // Подаваме и ID-тата, за да работят прикачните файлове.
+                        // --- КОРЕКЦИЯ: Премахваме подаването на originalNote, за да уеднаквим поведението със седмичния календар ---
+                        showModal({ raw: noteData.notetxt, format: noteData.text_span, color: miniNote.style.backgroundColor, id: noteData.id, gdid: noteData.gdid }, null, true);
+                    });
+                    notesForDayContainer.appendChild(miniNote);
+                }
+            }
+        });
+        cell.appendChild(notesForDayContainer);
+        calendarGrid.appendChild(cell);
+    }
+    calendarContainer.appendChild(calendarGrid);
+    // Make mini-notes square by setting their height equal to their calculated width
+    // Use setTimeout to ensure the browser has rendered the elements before we measure them.
+    setTimeout(() => {
+        document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
+            const width = miniNote.getBoundingClientRect().width;
+            if (width > 0) miniNote.style.height = `${width}px`;
+        });
+
+        // Scroll to today's date if visible
+        const todayElement = document.querySelector('.today-date');
+        if (todayElement) {
+            todayElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, 0);
+    // Event Listeners
+    document.getElementById('prev-month-btn').addEventListener('click', () => {
+        currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+        renderCalendarView();
+    });
+
+    // Добавяме event listener за новия бутон за седмичен изглед
+    document.getElementById('weekly-view-btn').addEventListener('click', () => {
+        calendarContainer.style.display = 'none'; // Затваряме месечния изглед
+        renderWeeklyCalendarView(new Date()); // Отваряме седмичния изглед за текущата седмица
+    });
+
+    // Добавяме event listener за бутона "Днес" ---
+    document.getElementById('today-month-btn').addEventListener('click', () => {
+        currentCalendarDate = new Date(); // Връщаме се към днешна дата
+        renderCalendarView(); // Прерисуваме календара
+    });
+
+    document.getElementById('next-month-btn').addEventListener('click', () => {
+        currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+        renderCalendarView();
+    });
+    document.getElementById('close-month-calendar-btn').addEventListener('click', (e) => {
+        // --- Анимация в бутона за затваряне ---
+        const closeBtn = e.currentTarget;
+        const closeSymbol = closeBtn.querySelector('.close-symbol');
+        const loadingIcon = closeBtn.querySelector('.close-loading-icon');
+
+        if (closeSymbol && loadingIcon) {
+            closeSymbol.style.display = 'none';
+            loadingIcon.style.display = 'inline';
+            loadingIcon.classList.add('button-loading');
+        }
+
+        setTimeout(() => {
+            requestAnimationFrame(() => {
+                calendarContainer.style.display = 'none';
+                document.querySelector('header').style.display = 'flex';
+                notesContainer.style.display = 'flex';
+                window.dispatchEvent(new Event('scroll'));
+
+                // Спираме анимацията
+                if (closeSymbol && loadingIcon) {
+                    loadingIcon.classList.remove('button-loading');
+                    loadingIcon.style.display = 'none';
+                    closeSymbol.style.display = 'inline';
+                }
+
+                // Актуализираме визуалното състояние на бутоните
+                document.querySelectorAll('.board-filter-link').forEach(btn => {
+                    btn.classList.remove('selected-board');
+                });
+                const activeButton = document.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
+                if (activeButton) {
+                    activeButton.classList.add('selected-board');
+                    activeButton.scrollIntoView({
+                        behavior: 'smooth',
+                        inline: 'center',
+                        block: 'nearest'
+                    });
+                }
+            });
+        }, 20);
+    });
+}
+
+function renderWeeklyCalendarView(dateForWeek) {
+    document.querySelector('header').style.display = 'none';
+    notesContainer.style.display = 'none';
+    scrollTopBtn.style.display = 'none';
+
+    let startDate;
+    if (!dateForWeek) {
+        // Ако не е подадена дата, използваме днешната, за да намерим текущата седмица
+        dateForWeek = new Date();
+    } else {
+        currentWeeklyViewDate = dateForWeek; // Обновяваме глобалното състояние
+    }
+
+    const tempDate = new Date(dateForWeek);
+    const day = tempDate.getDay();
+    const diff = tempDate.getDate() - day + (day === 0 ? -6 : 1);
+    startDate = new Date(tempDate.setDate(diff));
+    startDate.setHours(0, 0, 0, 0);
+
+    let weeklyContainer = document.getElementById('weekly-calendar-container');
+    if (!weeklyContainer) {
+        weeklyContainer = document.createElement('div');
+        weeklyContainer.id = 'weekly-calendar-container';
+        document.querySelector('main').appendChild(weeklyContainer);
+    }
+    weeklyContainer.style.display = 'flex'; // Променяме на flex за по-добър контрол
+    weeklyContainer.style.flexDirection = 'column';
+    weeklyContainer.innerHTML = ''; // Изчистваме предишното съдържание
+
+    // Генериране на динамично заглавие с месеца(ите) ---
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 6); // Крайната дата на 7-дневния период
+
+    const startMonthName = startDate.toLocaleString(currentLang, { month: 'long' });
+    const endMonthName = endDate.toLocaleString(currentLang, { month: 'long' });
+    const startYear = startDate.getFullYear();
+    const endYear = endDate.getFullYear();
+
+    let titleText;
+    if (startMonthName === endMonthName) {
+        titleText = `${startMonthName} ${startYear}`;
+    } else if (startYear === endYear) {
+        titleText = `${startMonthName} - ${endMonthName} ${startYear}`;
+    } else {
+        titleText = `${startMonthName} ${startYear} - ${endMonthName} ${endYear}`;
+    }
+
+    // Създаваме хедър с бутон за затваряне
+    const header = document.createElement('div');
+    header.className = 'calendar-header'; // Използваме същия стил като другия календар
+    header.style.position = 'sticky';
+    header.style.top = '0';
+    header.style.zIndex = '100';
+    header.style.backgroundColor = '#fdf6e3'; // Match background
+    header.innerHTML = `<div class="calendar-nav-controls"><button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span><img src="Refresh.png" class="close-loading-icon" style="display: none;"></button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default;">${titleText}</h2>`;
+    weeklyContainer.appendChild(header);
+
+    // Добавяме клик събитие за преход към месечен изглед ---
+    const goToMonthView = () => {
+        weeklyContainer.style.display = 'none'; // Затваряме седмичния изглед
+        currentCalendarDate = new Date(startDate); // Задаваме месеца, който да се покаже
+        renderCalendarView(); // Отваряме месечния изглед
+    };
+
+    // Добавяме същото събитие и към новия бутон
+    const monthViewBtn = header.querySelector('#month-view-btn');
+    monthViewBtn.addEventListener('click', goToMonthView);
+
+    header.querySelector('.close-calendar-btn').addEventListener('click', (e) => {
+        // --- Анимация в бутона за затваряне ---
+        const closeBtn = e.currentTarget;
+        const closeSymbol = closeBtn.querySelector('.close-symbol');
+        const loadingIcon = closeBtn.querySelector('.close-loading-icon');
+
+        if (closeSymbol && loadingIcon) {
+            closeSymbol.style.display = 'none';
+            loadingIcon.style.display = 'inline';
+            loadingIcon.classList.add('button-loading');
+        }
+
+        setTimeout(() => {
+            requestAnimationFrame(() => {
+                weeklyContainer.style.display = 'none';
+                document.querySelector('header').style.display = 'flex';
+                notesContainer.style.display = 'flex';
+                window.dispatchEvent(new Event('scroll'));
+
+                // Спираме анимацията
+                if (closeSymbol && loadingIcon) {
+                    loadingIcon.classList.remove('button-loading');
+                    loadingIcon.style.display = 'none';
+                    closeSymbol.style.display = 'inline';
+                }
+
+                // Актуализираме визуалното състояние на бутоните
+                document.querySelectorAll('.board-filter-link').forEach(btn => {
+                    btn.classList.remove('selected-board');
+                });
+                const activeButton = document.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
+                if (activeButton) {
+                    activeButton.classList.add('selected-board');
+                    activeButton.scrollIntoView({
+                        behavior: 'smooth',
+                        inline: 'center',
+                        block: 'nearest'
+                    });
+                }
+            });
+        }, 20);
+    });
+
+    header.querySelector('#prev-week-btn').addEventListener('click', () => {
+        const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
+        newStartDate.setDate(newStartDate.getDate() - 7); // Връщаме 7 дни назад
+        renderWeeklyCalendarView(newStartDate);
+    });
+
+    header.querySelector('#next-week-btn').addEventListener('click', () => {
+        const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
+        newStartDate.setDate(newStartDate.getDate() + 7); // Отиваме 7 дни напред
+        renderWeeklyCalendarView(newStartDate);
+    });
+
+    header.querySelector('#today-week-btn').addEventListener('click', () => {
+        renderWeeklyCalendarView(); // Показваме текущата седмица от понеделник
+    });
+
+    // Групираме бележките по дата
+    const notesByDate = new Map();
+    allNotesData.forEach(noteData => {
+        if (noteData.calendarDate) {
+            // --- КОРЕКЦИЯ: Преобразуваме датата към UTC, за да избегнем проблеми с часовите зони ---
+            const noteDate = new Date(noteData.calendarDate);
+            // Създаваме нова дата, използвайки UTC компонентите на оригиналната дата.
+            // Това "премахва" часовата зона и третира датата като чиста календарна дата.
+            const utcDate = new Date(Date.UTC(noteDate.getFullYear(), noteDate.getMonth(), noteDate.getDate()));
+            const dateStr = utcDate.toISOString().split('T')[0];
+            if (!notesByDate.has(dateStr)) {
+                notesByDate.set(dateStr, []);
+            }
+            notesByDate.get(dateStr).push(noteData.gdid);
+        }
+    });
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'weekly-list-container';
+    weeklyContainer.appendChild(listContainer);
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const daysToRender = 7; // Показваме 7 дни наведнъж
+    let todayRowElement = null;
+    let weekHasNotes = false; // Флаг, който проверява дали в седмицата има бележки
+
+    // Първо обхождаме, за да проверим дали има поне един ден с бележки
+    for (let i = 0; i < daysToRender; i++) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + i);
+        const dateStr = date.toISOString().split('T')[0];
+        if (notesByDate.has(dateStr)) {
+            weekHasNotes = true;
+            break;
+        }
+    }
+
+    for (let i = 0; i < daysToRender; i++) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + i);
+
+        // --- КОРЕКЦИЯ: Прилагаме същата UTC логика и тук, за да има пълно съответствие ---
+        const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const dateStr = utcDate.toISOString().split('T')[0];
+
+        const noteGdimsForDay = notesByDate.get(dateStr);
+
+        const dayRow = document.createElement('div');
+        dayRow.className = 'weekly-day-row';
+        if (date.getTime() === today.getTime()) {
+            dayRow.classList.add('today-row');
+            todayRowElement = dayRow; // Запазваме елемента за днешния ден
+        }
+
+        const dateInfo = document.createElement('div');
+        dateInfo.className = 'weekly-date-info';
+
+        // Добавяме клас за почивните дни ---
+        const dayOfWeek = date.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Неделя, 6 = Събота
+            dateInfo.classList.add('weekend-day');
+        }
+
+        dateInfo.innerHTML = `
+                <div class="weekly-date-number">${date.getDate()}</div>
+                <div class="weekly-day-name">${date.toLocaleString(currentLang, { weekday: 'long' })}</div>
+            `;
+        dayRow.appendChild(dateInfo);
+
+        const notesContainerForRow = document.createElement('div');
+        notesContainerForRow.className = 'weekly-notes-container';
+
+        if (noteGdimsForDay) {
+            noteGdimsForDay.forEach(gdid => {
+                const originalNote = document.querySelector(`.note[data-extra-info*='"gdid":"${gdid}"']`);
+                if (originalNote) {
+                    const clone = originalNote.cloneNode(true);
+                    clone.classList.add('mini-note');
+                    // Копираме съдържанието на canvas-а ---
+                    const originalCanvas = originalNote.querySelector('.note-background-canvas');
+                    const clonedCanvas = clone.querySelector('.note-background-canvas');
+                    if (originalCanvas && clonedCanvas) {
+                        const clonedCtx = clonedCanvas.getContext('2d');
+                        clonedCtx.drawImage(originalCanvas, 0, 0);
+                    }
+
+                    // Опаковаме клонинга в div с фиксирани размери ---
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'mini-note-wrapper';
+                    wrapper.appendChild(clone);
+
+                    // --- КОРЕКЦИЯ: Променяме начина на отваряне на бележката ---
+                    // Вместо да симулираме клик върху оригиналния елемент,
+                    // директно извикваме showModal с данните на бележката,
+                    // точно както го прави месечният календар.
+                    clone.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const noteData = allNotesData.find(note => note.gdid === gdid);
+                        if (noteData) {
+                            showModal({ raw: noteData.notetxt, format: noteData.text_span, color: clone.style.backgroundColor, id: noteData.id, gdid: noteData.gdid });
+                        }
+                    });
+                    // Гарантираме, че клонираната бележка винаги е видима ---
+                    clone.style.display = 'flex';
+                    notesContainerForRow.appendChild(wrapper);
+                }
+            });
+        } else {
+            if (weekHasNotes) {
+                dateInfo.classList.add('no-notes-day');
+            } else {
+                dayRow.style.paddingBottom = '5px';
+            }
+        }
+        dayRow.appendChild(notesContainerForRow);
+        listContainer.appendChild(dayRow);
+    }
+
+    // Скролираме до днешния ден, ако е видим
+    if (todayRowElement) {
+        todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Добавяме брояч, ако има повече бележки ---
+    // Тази проверка се прави след като елементите са в DOM, за да има реални размери.
+    listContainer.querySelectorAll('.weekly-day-row').forEach(row => {
+        const notesContainer = row.querySelector('.weekly-notes-container');
+        if (notesContainer) {
+            // Проверяваме дали има хоризонтален скрол
+            const hasOverflow = notesContainer.scrollWidth > notesContainer.clientWidth;
+            if (hasOverflow) {
+                const totalNotes = notesContainer.children.length;
+                const dateInfo = row.querySelector('.weekly-date-info');
+                if (dateInfo && !dateInfo.querySelector('.weekly-note-counter')) {
+                    const counter = document.createElement('div');
+                    counter.className = 'weekly-note-counter';
+                    counter.textContent = `(${totalNotes})`;
+                    dateInfo.appendChild(counter);
+                }
+            }
+        }
+    });
+}
+/**
+ * Обработва изтриването на бележка.
+ * @param {HTMLElement} noteEl - DOM елементът на бележката.
+ * @param {Event} [e] - Обектът на събитието (опционален).
+ * @param {boolean} fromModal - Дали функцията се извиква от модалния прозорец.
+ */
+async function handleNoteDelete(noteEl, e = null, fromModal = false) {
+    if (e) e.stopPropagation();
+    if (e) e.preventDefault();
+
+    if (!useIndexedDb) return; // Изтриването работи само с база данни
+
+    const extraInfo = JSON.parse(noteEl.dataset.extraInfo || '{}');
+    const noteGdid = extraInfo.gdid;
+    if (!noteGdid) return;
+
+    // Ако е извикано от модала, първо го затваряме.
+    if (fromModal) {
+        document.getElementById('content-modal').classList.remove('visible');
+        // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
+        await new Promise(resolve => setTimeout(resolve, 150));
+    }
+
+    const confirmed = await showConfirmation(_('confirmNoteDelete'));
+    if (confirmed) {
+        try {
+            await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+            noteEl.remove();
+
+            // Актуализираме общия брояч
+            const noteCounter = document.getElementById('note-counter');
+            if (noteCounter) noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
+
+            // Актуализираме брояча на борда
+            const boardIdOfDeletedNote = extraInfo.boardid;
+            // В режим Архив, boardid е число. В другите режими е gdid.
+            // Бутоните в менюто винаги използват gdid като data-boardid.
+            // Затова, ако сме в Архив, намираме gdid-то на борда по неговото id.
+            const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
+            if (boardGdidToUpdate) {
+                const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardGdidToUpdate}"]`);
+                if (boardButton) {
+                    const match = boardButton.textContent.match(/(.*)\s\((\d+)\)/);
+                    if (match) {
+                        const boardName = match[1].trim();
+                        const currentCount = parseInt(match[2], 10);
+                        boardButton.textContent = (currentCount > 1) ? `${boardName} (${currentCount - 1})` : boardName;
+                    }
+                }
+            }
+
+            allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
+            showToast(_('noteDeletedSuccess'), 3000);
+        } catch (error) {
+            console.error("Failed to delete note:", error);
+            showToast(_('noteDeletedError') + " - " + error.message, 15000);
+        }
+    }
+}
+
+async function createColoredNoteBackground(color, src, width, height) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.src = (src >= 0 && src < noteBackgrounds.length)
+            ? noteBackgrounds[src]
+            : 'stl1_1.png';
+        image.onload = () => {
+            const canvas = document.createElement('canvas');
+            const w = canvas.width = width;
+            const h = canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, w, h);
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.drawImage(image, 0, 0, w, h);
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.drawImage(image, 0, 0, w, h);
+            resolve(canvas); // Return the canvas element directly
+        };
+        image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    });
+}
+
+/**
+ * Отваря IndexedDB базата данни.
+ * @returns {Promise<IDBDatabase>}
+ */
+function openNotesDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
+                db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
+            }
+            if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+                db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
+            }
+            if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
+                db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
+            }
+            if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
+                db.createObjectStore(CONFIG_STORE_NAME);
+            }
+            console.log("NotesDB structure is up to date.");
+        };
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+        request.onerror = (event) => reject("Error opening NotesDB: " + event.target.errorCode);
+    });
+}
+
+/**
+ * Записва (или обновява) масив от обекти в даден store.
+ * @param {string} storeName - Името на object store.
+ * @param {Array<Object>} data - Масив от данни за запис.
+ * @param {boolean} incremental - Ако е true, не изчиства store-a преди запис (put).
+ * @returns {Promise<void>}
+ */
+async function bulkPutDB(storeName, data, incremental = false) {
+    // Ако данните не са масив, ги превръщаме в такъв.
+    if (data && !Array.isArray(data)) {
+        data = [data];
+    }
+    if (!data || data.length === 0) return;
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        try {
+            const transaction = db.transaction([storeName], 'readwrite');
+            const store = transaction.objectStore(storeName);
+            const putData = () => {
+                data.forEach(item => store.put(item));
+            };
+            transaction.oncomplete = () => { db.close(); resolve(); };
+            transaction.onerror = (event) => { db.close(); reject("DB Transaction Error: " + event.target.error); };
+            transaction.onabort = () => db.close(); // Затваряме и при прекратяване
+
+            if (incremental) {
+                putData();
+            } else {
+                store.clear().onsuccess = putData;
+            }
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
+    });
+}
+
+/**
+ * Извлича всички записи от даден store.
+ * @param {string} storeName - Името на object store.
+ * @returns {Promise<Array<Object>>}
+ */
+async function getAllFromDB(storeName) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        try {
+            const transaction = db.transaction([storeName], 'readonly');
+            const store = transaction.objectStore(storeName);
+            const request = store.getAll();
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => reject(`Error in getAllFromDB (${storeName}): ` + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
+    });
+}
+
+/**
+ * Извлича единичен запис от даден store по ключ.
+ * @param {string} storeName - Името на object store.
+ * @param {any} key - Ключът на записа за извличане.
+ * @returns {Promise<Object|undefined>}
+ */
+async function getFromDB(storeName, key) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        try {
+            const transaction = db.transaction([storeName], 'readonly');
+            const store = transaction.objectStore(storeName);
+            const request = store.get(key);
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => reject(`Error in getFromDB (${storeName}): ` + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
+    });
+}
+
+/**
+ * Запазва стойност в config store-a.
+ * @param {string} key - Ключ (напр. 'directoryHandle', 'lastLocalTimestamp').
+ * @param {*} value - Стойността за запис.
+ */
+async function saveConfig(key, value) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        try {
+            const transaction = db.transaction(CONFIG_STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(CONFIG_STORE_NAME);
+            const request = store.put(value, key);
+            request.onsuccess = () => resolve();
+            request.onerror = (event) => reject('Error saving to config: ' + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
+    });
+}
+
+/**
+ * Извлича стойност от config store-a.
+ * @param {string} key - Ключът за извличане.
+ * @returns {Promise<*>} - Стойността или undefined, ако не съществува.
+ */
+async function getConfig(key) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        try {
+            const transaction = db.transaction(CONFIG_STORE_NAME, 'readonly');
+            const store = transaction.objectStore(CONFIG_STORE_NAME);
+            const request = store.get(key);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = (event) => reject('Error getting from config: ' + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
+    });
+}
+
+/**
+ * Checks if an IndexedDB database exists.
+ * @param {string} dbName The name of the database.
+ * @returns {Promise<boolean>}
+ */
+async function checkDbExists(dbName) {
+    // The modern `databases()` method is the most reliable.
+    if (window.indexedDB.databases) {
+        const dbs = await indexedDB.databases();
+        return dbs.some(db => db.name === dbName);
+    }
+    // Fallback for older browsers that don't support `databases()`.
+    console.warn("checkDbExists: indexedDB.databases() is not supported. Using a fallback check.");
+    return new Promise(resolve => {
+        const req = indexedDB.open(dbName);
+        let existed = true;
+        req.onupgradeneeded = () => {
+            existed = false; // This event is only triggered if the DB doesn't exist or needs upgrading.
+        };
+        req.onsuccess = () => {
+            req.result.close();
+            // If the DB was created just now, delete it to leave no trace.
+            if (!existed) {
+                indexedDB.deleteDatabase(dbName);
+            }
+            resolve(existed);
+        };
+        // If we can't even open it, assume it doesn't exist or is inaccessible.
+        req.onerror = () => resolve(false);
+    });
+}
+
+function deleteNotesDB() {
+    // --- ОКОНЧАТЕЛНА КОРЕКЦИЯ: Директно изтриване ---
+    // Тъй като вече не поддържаме постоянна отворена връзка,
+    // можем директно да извикаме изтриването.
+    const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+    deleteRequest.onsuccess = () => {
+        showToast(_('dbDeleted'), 3000);
+    };
+    deleteRequest.onerror = (event) => { showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000); };
+    deleteRequest.onblocked = (event) => { showToast(_('errorDbDeletionBlocked'), 10000); console.error('Database deletion is blocked unexpectedly:', event); };
+}
+
+/**
+ * Deletes the entire IndexedDB database.
+ * @returns {Promise<void>}
+ */
+async function clearDbStores() {
+    try {
+        const db = await openNotesDB();
+        const storesToClear = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME];
+        const transaction = db.transaction(storesToClear, 'readwrite');
+
+        const clearPromises = storesToClear.map(storeName => {
+            return new Promise((resolve, reject) => {
+                const request = transaction.objectStore(storeName).clear();
+                request.onsuccess = resolve;
+                request.onerror = reject;
+            });
+        });
+
+        await Promise.all(clearPromises);
+        console.log('Data stores cleared, config preserved.');
+    } catch (error) {
+        console.error('Failed to clear data stores:', error);
+        showToast(_('dbDeleteFailed'), 10000);
+    }
+}
+
+/**
+ * Deletes a single record from a specified store by its key.
+ * @param {string} storeName - The name of the object store.
+ * @param {any} key - The key of the record to delete.
+ * @returns {Promise<void>}
+ */
+async function deleteFromDB(storeName, key) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        try {
+            const transaction = db.transaction([storeName], 'readwrite');
+            const store = transaction.objectStore(storeName);
+            const request = store.delete(key);
+            request.onsuccess = () => resolve();
+            request.onerror = (event) => reject(`Error deleting from ${storeName}: ` + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
+    });
+}
 
 // =================================================================================
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
@@ -460,6 +1397,11 @@ function initApp() {
         localStorage.setItem('showWeeklyCalendar', 'true');
     }
 
+    // Set default showTrashBoard to false if not set
+    if (localStorage.getItem('showTrashBoard') === null) {
+        localStorage.setItem('showTrashBoard', 'false');
+    }
+
     // Инициализация на DOM елементи
     signoutButton = document.getElementById('signout_button');
     reloadButton = document.getElementById('reload_button');
@@ -521,12 +1463,14 @@ function initApp() {
         document.getElementById('use-local-db-checkbox').checked = localStorage.getItem('useLocalDb') === 'true';
         document.getElementById('use-arh-db-checkbox').checked = localStorage.getItem('useArhDb') === 'true';
         document.getElementById('use-indexeddb-checkbox').checked = localStorage.getItem('useIndexedDb') === 'true';
+        document.getElementById('show-trash-board-checkbox').checked = localStorage.getItem('showTrashBoard') === 'true';
 
         settingsInitialState = {
             useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
             useLocalDb: document.getElementById('use-local-db-checkbox').checked,
             useArhDb: document.getElementById('use-arh-db-checkbox').checked,
-            useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
+            useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked,
+            showTrashBoard: document.getElementById('show-trash-board-checkbox').checked
         };
         document.getElementById('settings-modal').classList.add('visible');
     });
@@ -654,6 +1598,34 @@ function initApp() {
             });
         }
     });
+
+    // Add listener for all settings close buttons to save Trash preference
+    document.querySelectorAll('.settings-close-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const showTrashBoard = document.getElementById('show-trash-board-checkbox').checked;
+            const oldShowTrashBoard = localStorage.getItem('showTrashBoard') === 'true';
+
+            if (showTrashBoard !== oldShowTrashBoard) {
+                localStorage.setItem('showTrashBoard', showTrashBoard);
+
+                // Reload boards UI
+                const newBoardsNote = await createBoardsUI(boardsData);
+                const oldBoardsNote = document.querySelector('.boards-note');
+                if (oldBoardsNote) oldBoardsNote.replaceWith(newBoardsNote);
+                else document.querySelector('header').appendChild(newBoardsNote);
+
+                // Restore selection or switch to All if Trash disabled
+                if (!showTrashBoard && currentBoardFilter === 'trash') {
+                    filterNotesByBoard('all');
+                } else {
+                    const selectedButton = newBoardsNote.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
+                    if (selectedButton) selectedButton.classList.add('selected-board');
+                }
+            }
+
+            document.getElementById('settings-modal').classList.remove('visible');
+        });
+    });
     // Event listener for submit button in folder ID popup
     document.getElementById('submitFolderIdBtn').addEventListener('click', handleSubmitFolderId);
     document.getElementById('folderIdInput').addEventListener('keydown', (event) => {
@@ -764,20 +1736,65 @@ function initApp() {
         }
     });
 
-    // --- Mode Button Logic (Ctrl-click for advanced) ---
+    // --- Mode Button Logic (Ctrl-click and long-press for advanced) ---
     const modeButton = document.getElementById('mode_button');
-    modeButton.addEventListener('click', (e) => { // Обединена логика
+
+    let longPressTimer;
+    let isLongPress = false;
+
+    const showAdvancedSettings = () => {
+        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+        if (advancedSettingsSpan) {
+            const isHidden = advancedSettingsSpan.hasAttribute('hidden');
+            if (isHidden) {
+                advancedSettingsSpan.removeAttribute('hidden');
+                localStorage.setItem('showAdvancedSettings', 'true');
+            }
+        }
+        // Отваряме настройките
+        document.getElementById('settings_button').click();
+
+        // Симулираме клик на accordion стрелката, за да разгърнем секцията
+        // Използваме setTimeout, за да сме сигурни, че модалът е отворен
+        setTimeout(() => {
+            const accordionHeader = document.querySelector('.accordion-header');
+            if (accordionHeader) {
+                accordionHeader.click();
+            }
+        }, 100); // Малко забавяне, за да се отвори модалът първо
+    };
+
+    const startPress = (e) => {
+        isLongPress = false;
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            showAdvancedSettings();
+        }, 500); // 500ms за long press
+    };
+
+    const endPress = () => {
+        clearTimeout(longPressTimer);
+    };
+
+    // Добавяме listeners за long-press
+    modeButton.addEventListener('mousedown', startPress);
+    modeButton.addEventListener('mouseup', endPress);
+    modeButton.addEventListener('mouseleave', endPress);
+    modeButton.addEventListener('touchstart', startPress, { passive: true });
+    modeButton.addEventListener('touchend', endPress);
+
+    // Click handler
+    modeButton.addEventListener('click', (e) => {
+        // Ако е long press, не правим нищо (вече е обработено)
+        if (isLongPress) {
+            isLongPress = false;
+            return;
+        }
+
         if (e.ctrlKey) {
             // Логика за Ctrl+клик: Показване на разширените настройки
             e.preventDefault();
-            const advancedSettingsSpan = document.getElementById('advanced-settings-span');
-            if (advancedSettingsSpan) {
-                const isHidden = advancedSettingsSpan.hasAttribute('hidden');
-                if (isHidden) {
-                    advancedSettingsSpan.removeAttribute('hidden');
-                    localStorage.setItem('showAdvancedSettings', 'true');
-                }
-            }
+            showAdvancedSettings();
         } else {
             // Логика за обикновен клик: "Умен" бутон
             updateGlobalStateFlags();
@@ -955,16 +1972,37 @@ function renderSavedSearchesPopup() {
 
 // Проверяваме дали има токен преди да стартираме приложението
 // Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
-const sessionToken = sessionStorage.getItem('google_auth_token');
-const localToken = localStorage.getItem('google_auth_token');
-if (sessionToken || localToken) {
-    // Има токен, стартираме приложението
-    startApp();
-} else {
-    // Няма токен - показваме login страницата веднага и инициализираме event listeners
-    initLoginPage();
-    // gisLoaded() ще инициализира Google authentication когато се зареди
-}
+(async () => {
+    // Проверяваме за записа 's' в кеша
+    const cache = await caches.open('app-cache');
+    const cachedResponse = await cache.match('s');
+
+    if (!cachedResponse) {
+        // Няма запис 's' - създаваме го и показваме login с trial бутон
+        const nowTs = Date.now();
+        const encoded = btoa(String(nowTs));
+        const response = new Response(encoded, {
+            headers: { 'Content-Type': 'text/plain' }
+        });
+        await cache.put('s', response);
+
+        // Показваме login страницата с trial бутон
+        initLoginPage();
+        return;
+    }
+
+    // Има запис 's', проверяваме за токен
+    const sessionToken = sessionStorage.getItem('google_auth_token');
+    const localToken = localStorage.getItem('google_auth_token');
+    if (sessionToken || localToken) {
+        // Има токен, стартираме приложението
+        startApp();
+    } else {
+        // Няма токен - показваме login страницата веднага и инициализираме event listeners
+        initLoginPage();
+        // gisLoaded() ще инициализира Google authentication когато се зареди
+    }
+})();
 // След успешно удостоверяване gisLoaded() ще извика startApp()
 
 // Функция за инициализация на login страницата
@@ -1007,13 +2045,18 @@ function initLoginPage() {
     const trialBtn = document.getElementById("trialBtn");
     if (trialBtn) {
         trialBtn.addEventListener("click", (e) => {
+            console.log("Trial button clicked");
             e.preventDefault(); // Предотвратяваме стандартното действие
             // 1. Взимаме токена от TRIAL_URL
             const url = new URL(TRIAL_URL);
             const trialToken = url.searchParams.get("token");
             // 2. Запазваме го в localStorage, за да е наличен след логване
-            if (trialToken) localStorage.setItem('urlToken', trialToken);
+            if (trialToken) {
+                localStorage.setItem('urlToken', trialToken);
+                sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
+            }
             // 3. Симулираме клик върху бутона за вход с Google
+            console.log("Clicking authorize button...");
             document.getElementById('authorize_button').click();
         });
     }
@@ -1102,38 +2145,25 @@ async function refreshAuthToken() {
     });
 }
 
-/*
-async function refreshAuthToken() {
-    const loginHint = localStorage.getItem('google_login_hint');
-    const YOUR_REDIRECT_URI = 'https://127.0.0.1:5500/login.html';
-    if (!loginHint) return null;
- 
-    // Изчакваме Google библиотеката да се зареди, ако не е готова
-    if (typeof google === 'undefined') {
-        await new Promise(resolve => {
-            const interval = setInterval(() => {
-                if (typeof google !== 'undefined') {
-                    clearInterval(interval);
-                    resolve();
-                }
-            }, 100);
-        });
-    }
- 
+
+async function silentLoginWithIframe(loginHint) {
+    const REDIRECT_URI = window.location.origin + window.location.pathname;
+
     return new Promise((resolve, reject) => {
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
-        iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${SCOPES}&redirect_uri=${YOUR_REDIRECT_URI}&prompt=none&login_hint=${loginHint}`;
- 
+        iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${SCOPES}&redirect_uri=${REDIRECT_URI}&prompt=none&login_hint=${loginHint}`;
+
         // Слушаме за съобщения от iframe
         const messageListener = (event) => {
-            if (event.origin !== 'https://accounts.google.com') {
-                return; // Игнорираме съобщения от други източници
+            // Приемаме съобщения от нашия собствен origin (след redirect)
+            if (event.origin !== window.location.origin) {
+                return;
             }
- 
+
             const hash = event.data;
             if (hash && hash.includes('access_token')) {
-                const params = new URLSearchParams(hash);
+                const params = new URLSearchParams(hash.substring(1)); // Премахваме #
                 const accessToken = params.get('access_token');
                 const expiresIn = params.get('expires_in');
                 const tokenWithTimestamp = {
@@ -1141,128 +2171,53 @@ async function refreshAuthToken() {
                     expires_in: expiresIn,
                     issued_at: Date.now()
                 };
- 
-                // Обновяваме storage
-                if (localStorage.getItem('google_auth_token')) {
-                    localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                } else {
-                    sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                }
- 
+
+                // Обновяваме storage според rememberMe
+                const rememberMe = localStorage.getItem('rememberMe') === 'true';
+                const storage = rememberMe ? localStorage : sessionStorage;
+                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+
                 window.removeEventListener('message', messageListener);
-                document.body.removeChild(iframe);
-                resolve({ tokenData: tokenWithTimestamp, pass: true });
+                if (document.body.contains(iframe)) {
+                    document.body.removeChild(iframe);
+                }
+                resolve(tokenWithTimestamp);
             } else {
                 window.removeEventListener('message', messageListener);
-                document.body.removeChild(iframe);
+                if (document.body.contains(iframe)) {
+                    document.body.removeChild(iframe);
+                }
                 resolve(null);
             }
         };
- 
+
         window.addEventListener('message', messageListener);
         document.body.appendChild(iframe);
- 
+
         // Таймаут за безопасност
         setTimeout(() => {
             window.removeEventListener('message', messageListener);
             if (document.body.contains(iframe)) {
                 document.body.removeChild(iframe);
             }
-            reject(new Error('Silent token refresh timed out'));
-        }, 10000); // 10 секунди
+            resolve(null); // Връщаме null вместо reject
+        }, 5000); // 5 секунди
     });
 }
-*/
-
-function gisLoaded() {
-    // Задаваме езика преди да се покаже login box-а
-    setLanguage(currentLang);
-    // Ако вече има токен, не инициализираме login процеса
-    const sessionToken = sessionStorage.getItem('google_auth_token');
-    const localToken = localStorage.getItem('google_auth_token');
-    if (sessionToken || localToken) {
-        console.log('User already authenticated, skipping gisLoaded initialization');
-        return;
-    }
-
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: async (tokenResponse) => {
-            if (tokenResponse && tokenResponse.access_token) {
-                const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                const rememberMe = document.getElementById('rememberMe')?.checked;
-                // Токенът се записва в localStorage или sessionStorage според избора
-                const storage = rememberMe ? localStorage : sessionStorage;
-                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                try {
-                    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                        headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
-                    });
-                    if (userInfoResponse.ok) {
-                        const userInfo = await userInfoResponse.json();
-                        // Имейлът за текущата сесия се записва ВИНАГИ в sessionStorage
-                        sessionStorage.setItem('google_auth_email_hint', userInfo.email);
-                        // Запазваме имейла за следващо "тихо" влизане
-                        localStorage.setItem('google_login_hint', userInfo.email);
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch user info:', error);
-                }
-                sessionStorage.removeItem('logout_flag');
-                // Вместо redirect, скриваме login страницата и продължаваме
-                document.getElementById('login-page').hidden = true;
-                // Извикваме startApp за да заредим приложението
-                startApp();
-            } else {
-                console.error('Failed to get access token');
-                alert(_('authFailed'));
-            }
-        },
-        error_callback: (error) => {
-            console.error("GSI Error:", error);
-            alert(_('authFailed') + `\n\nError: ${error.type}`);
-        }
-    });
-
-    const loginBox = document.querySelector('.login-box');
-    const loginHint = localStorage.getItem('google_login_hint'); // Взимаме запазения имейл
-    const rememberMe = document.getElementById('rememberMe');
-
-    // --- КОРЕКЦИЯ: Проверяваме и дали "Запомни ме" е било избрано ---
-    if (loginHint && rememberMe.checked) {
-        // Опитваме "тихо" влизане със запазения имейл
-        // Успешният резултат ще се обработи от глобалния callback.
-        // Проваленият опит ще се обработи от error_callback, но за prompt: 'none' той не прави нищо,
-        // което ни позволява да покажем ръчно екрана за вход.
-        tokenClient.requestAccessToken({
-            prompt: 'none', login_hint: loginHint, error_callback: () => {
-                // Ако "тихото" влизане се провали,
-                // и показваме стандартния екран за вход.
-                loginBox.style.visibility = 'visible';
-                document.getElementById('authorize_button').disabled = false;
-            }
-        });
-    } else {
-        // Ако няма запазен login_hint или потребителят е излязъл изрично,
-        // показваме екрана за вход веднага.
-        loginBox.style.visibility = 'visible';
-        document.getElementById('authorize_button').disabled = false;
-    }
-}
-
-// --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
-document.addEventListener('DOMContentLoaded', () => {
-    const rememberMeCheckbox = document.getElementById('rememberMe');
-    rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
-});
 
 function handleAuthClick() {
     if (tokenClient) {
-        // --- Опростена логика ---
-        // След като disableAutoSelect() е извикана при изход, вече не е нужно
-        // да се борим с кеширания потребител тук. Просто искаме токен.
-        tokenClient.requestAccessToken({ prompt: 'select_account' });
+        const rememberMe = localStorage.getItem('rememberMe') === 'true';
+        const loginHint = localStorage.getItem('google_login_hint');
+
+        if (rememberMe && loginHint) {
+            // Ако "Запомни ме" е активно и има запазен имейл, влизаме с hint
+            // Popup-ът ще покаже само запазения акаунт
+            tokenClient.requestAccessToken({ hint: loginHint });
+        } else {
+            // В противен случай показваме екрана за избор на акаунт
+            tokenClient.requestAccessToken({ prompt: 'select_account' });
+        }
     } else {
         console.error('Token client not initialized');
         alert(_('gapiNotReady'));
@@ -1276,6 +2231,7 @@ async function checkAuth() {
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     const storedTokenString = sessionToken || localToken;
+
     if (!storedTokenString) {
         // Добавяне на действие при натискане
         document.getElementById("trialBtn").addEventListener("click", () => {
@@ -1291,6 +2247,7 @@ async function checkAuth() {
         document.getElementById('login-page').hidden = false;
         return null; // Stop execution
     }
+
     const tokenData = JSON.parse(storedTokenString);
     // --- Винаги добавяме email_hint от sessionStorage ---
     // Това гарантира, че проверката на токена ще работи коректно,
@@ -1304,6 +2261,7 @@ async function checkAuth() {
             console.log("Silent refresh successful.");
             return refreshResult;
         }
+
         console.log("Token expired. Reloading for re-authentication.");
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token'); // Изчистваме и от localStorage
@@ -1324,9 +2282,12 @@ async function checkAuth() {
             localStorage.setItem('urlToken', urlTokenParam);
         }
     }
+
     let urlToken = localStorage.getItem('urlToken');
+
     let isUrlTokenValidTime = false;
     let decryptedEmailFromToken = null;
+
     if (urlToken) {
         // --- Извличаме валидността от самия токен ---
         let validityInDays = 30; // 3. Стойност по подразбиране в дни
@@ -1335,6 +2296,7 @@ async function checkAuth() {
             const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
             const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
             const iv = raw.slice(0, 12), data = raw.slice(12);
+
             const key = await crypto.subtle.importKey(
                 'raw',
                 new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
@@ -1345,19 +2307,65 @@ async function checkAuth() {
             const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
             // Декодираме токена, който вече съдържа и валидността
             const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+
             // 3. Изчисляваме възрастта в дни
             const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+
             if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
                 validityInDays = parseInt(tokenValidity, 10);
             }
+
             tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
             console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
             // let tooltipText = _('signoutButtonTooltip');
             // tooltipText += ` [${tokenRemainingDays}]`;
             console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
+
             if (ageInDays < validityInDays) {
                 isUrlTokenValidTime = true;
                 pass = true;
+
+                // --- WHITELIST LOGIC ---
+                const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
+                const action = isTrialStart ? 'log' : 'check';
+
+                // Взимаме реалния имейл на потребителя, а не този от токена
+                const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+
+                if (currentUserEmail && isTrialStart) {  // logging only
+                    // Винаги правим заявка към сървъра - или за добавяне (trial), или за проверка (login)
+                    fetch('https://script.google.com/macros/s/AKfycbwDT37UO2ayL2FZf300X5zWXjA32g5geAN09H0iLGasMjON0kkOoYEkSMLMpG3wsrQPAA/exec', {
+                        // fetch('https://script.google.com/macros/s/AKfycbxwPON0_BaosuEp0Y5onRa7puDFwDRzobpmAjkbY1IdvO8cC8C3tvyI80izNriSHTdnRQ/exec', { // logging only
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify({
+                            email: currentUserEmail, // Използваме имейла на потребителя
+                            // action: action
+                            action: 'log' // logging only
+                        })
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log('Whitelist check:', data);
+
+                            if (action === 'check' && !data.exists) {
+                                // Потребителят не е в белия списък!
+                                alert(_('accessDenied') || 'Access Denied: Your email is not registered.');
+                                sessionStorage.clear();
+                                localStorage.removeItem('google_auth_token');
+                                location.reload(); // Рестарт към login екрана
+                            } else if (action === 'log') {
+                                // Успешна регистрация на trial
+                                sessionStorage.removeItem('isTrialStart');
+                                console.log('Trial registered/verified for:', currentUserEmail);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Whitelist check failed:', error);
+                        });
+                } else {
+                    console.log('No user email found for whitelist check or trial registration only.');
+                }
             } else {
                 console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
                 pass = false;
@@ -1383,16 +2391,20 @@ async function checkAuth() {
         document.body.style.justifyContent = 'center';
         document.body.style.minHeight = '100vh';
         document.body.style.margin = '0';
+
         // Създаваме лого
         const logoImg = document.createElement('img');
         logoImg.src = 'MNVLogo.png';
         logoImg.alt = 'Logo';
         logoImg.style.width = '150px';
         logoImg.style.marginBottom = '30px';
+        // logoImg.style.cursor = 'pointer';
         logoImg.style.userSelect = 'none';
+
         // Добавяме функционалност за Ctrl+click и long-press
         let longPressTimer;
         let isLongPress = false;
+
         const handleTokenRefresh = () => {
             const url = new URL(TRIAL_URL);
             const urlTokenParam = url.searchParams.get("token");
@@ -1401,6 +2413,7 @@ async function checkAuth() {
                 window.location.reload();
             }
         };
+
         const startPress = (e) => {
             isLongPress = false;
             longPressTimer = setTimeout(() => {
@@ -1411,9 +2424,11 @@ async function checkAuth() {
                 e.preventDefault();
             }
         };
+
         const endPress = () => {
             clearTimeout(longPressTimer);
         };
+
         logoImg.addEventListener('mousedown', startPress);
         logoImg.addEventListener('mouseup', endPress);
         logoImg.addEventListener('mouseleave', endPress);
@@ -1423,16 +2438,155 @@ async function checkAuth() {
             if (isLongPress) return;
             if (e.ctrlKey) handleTokenRefresh();
         });
+
         document.body.appendChild(logoImg);
+
         const errorElement = document.createElement('h1');
         errorElement.textContent = _('invalidCertificate');
         errorElement.style.color = 'yellow';
         errorElement.style.textAlign = 'center';
         errorElement.style.margin = '0';
         document.body.appendChild(errorElement);
+        pass = false;
+        sessionStorage.clear();
     }
     return { tokenData, pass }; // Връщаме обект с данните и резултата от проверката
 }
+
+/*/ --- 🔐 Вградена декрипция ---
+// Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
+const url = new URL(window.location.href);
+const urlTokenParam = url.searchParams.get("token");
+ 
+if (urlTokenParam) {
+    // Ако има токен в URL-а, той е с приоритет и презаписва стария
+    localStorage.setItem('urlToken', urlTokenParam);
+}
+ 
+let urlToken = localStorage.getItem('urlToken');
+ 
+let isUrlTokenValidTime = false;
+let decryptedEmailFromToken = null;
+ 
+if (urlToken) {
+    // --- Извличаме валидността от самия токен ---
+    let validityInDays = 365; // 3. Стойност по подразбиране в дни
+    try {
+        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+        const iv = raw.slice(0, 12), data = raw.slice(12);
+ 
+        const key = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+            { name: 'AES-GCM' },
+            false,
+            ['decrypt']
+        );
+        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+        // Декодираме токена, който вече съдържа и валидността
+        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+ 
+        // 3. Изчисляваме възрастта в дни
+        const ageInDays = (Date.now() - parseInt(timestamp, 10)) / (1000 * 60 * 60 * 24);
+ 
+        if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+            validityInDays = parseInt(tokenValidity, 10);
+        }
+ 
+        tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
+        updateSignoutTooltip();
+        console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}`);
+        console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
+ 
+        if (ageInDays < validityInDays) {
+            isUrlTokenValidTime = true;
+            decryptedEmailFromToken = decryptedEmail;
+            DEMO_MODE = false;
+        } else {
+            console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
+        }
+    } catch (error) {
+        console.error("Грешка при декриптиране на токен:", error);
+    }
+}
+else DEMO_MODE = true;
+*/
+/*/ --- Финална проверка на urlToken срещу логнатия потребител ---
+let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
+ 
+if (isUrlTokenValidTime) {
+    // Проверяваме дали имейлът съвпада с логнатия потребител
+    console.log(`Сравняване на имейли: Токен=${decryptedEmailFromToken}, Сесия=${tokenData.email_hint}`);
+ 
+    if (decryptedEmailFromToken == tokenData.email_hint) {
+        pass = true;
+    } else {
+        console.log('Резултат от проверката: НЕВАЛИДЕН (грешен имейл)');
+    }
+}
+ 
+if (!pass) {
+    document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
+    const errorElement = document.createElement('h1');
+    errorElement.textContent = 'Невалиден token или токенът е изтекъл.';
+    errorElement.style.color = 'yellow';
+    errorElement.style.textAlign = 'center';
+    errorElement.style.marginTop = '50px';
+    document.body.appendChild(errorElement);
+}
+*/
+/*/ --- 🔐 Вградена декрипция (скрита логика) стара ---
+const url = new URL(window.location.href);
+const urlToken = url.searchParams.get("token");
+let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
+ 
+if (urlToken) {
+    // --- КОРЕКЦИЯ: Извличаме валидността от самия токен ---
+    let validityInMinutes = 5; // Стойност по подразбиране, ако не е намерена в токена
+    try {
+        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+        const iv = raw.slice(0, 12), data = raw.slice(12);
+        
+        const key = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+            { name: 'AES-GCM' },
+            false,
+            ['decrypt']
+        );
+        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+        // Декодираме токена, който вече съдържа и валидността
+        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+        const ageInMinutes = (Date.now() - parseInt(timestamp, 10)) / 60000;
+ 
+        if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+            validityInMinutes = parseInt(tokenValidity, 10);
+        }
+ 
+        // Проверяваме дали токенът е изтекъл, дали имейлът съвпада и дали съвпада с логнатия потребител
+        console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}, Имейл от сесия: ${tokenData.email_hint}`);
+        console.log(`Проверка на токен: Възраст: ${ageInMinutes.toFixed(2)} мин, Проверявана валидност: ${validityInMinutes} мин`);
+        if (ageInMinutes < validityInMinutes && decryptedEmail == tokenData.email_hint) pass = true;
+        if (ageInMinutes > validityInMinutes || decryptedEmail !== tokenData.email_hint) {
+            console.log('Резултат от проверката: НЕВАЛИДЕН');
+        }
+    } catch (error) {
+        console.error("Грешка при декриптиране на токен:", error);
+    }
+}
+if (!pass) {
+    document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
+    const errorElement = document.createElement('h1');
+    errorElement.textContent = 'Невалиден token или токенът е изтекъл.';
+    errorElement.style.color = 'yellow';
+    errorElement.style.textAlign = 'center';
+    errorElement.style.marginTop = '50px';
+    document.body.appendChild(errorElement);
+}*/
 
 function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -1463,7 +2617,12 @@ function handleSignoutClick() {
     localStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_email_hint');
-    localStorage.removeItem('google_login_hint'); // Спираме автоматичния вход
+
+    // Премахваме google_login_hint САМО ако "Запомни ме" НЕ е активно
+    const rememberMe = localStorage.getItem('rememberMe') === 'true';
+    if (!rememberMe) {
+        localStorage.removeItem('google_login_hint'); // Спираме автоматичния вход
+    }
 
     // Задаваме флаг за изход, за да се покаже login формата
     sessionStorage.setItem('logout_flag', 'true');
@@ -1641,6 +2800,7 @@ async function userCheck() {
     if (!dbExists) {
         // Базата не съществува, не правим нищо.
         // Потребителят ще бъде записан при първоначалното създаване на базата.
+        isDbOwner = true;
         return;
     }
 
@@ -1649,7 +2809,10 @@ async function userCheck() {
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
     // Проверяваме за несъответствие само ако има записан потребител в базата
     if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
+        isDbOwner = false;
         await handleUserMismatch(storedUserEmail);
+    } else {
+        isDbOwner = true;
     }
 }
 
@@ -3191,7 +4354,18 @@ function applyFilters() {
             }
         })();
 
-        if (isVisibleByBoard && isVisibleBySearch) {
+        const isTrash = data.status === -1;
+        let shouldShow = isVisibleByBoard && isVisibleBySearch;
+
+        if (currentBoardFilter === 'trash') {
+            // В Trash борда показваме само изтритите бележки, които отговарят на търсенето
+            shouldShow = isTrash && isVisibleBySearch;
+        } else {
+            // Всички други бордове крият изтритите бележки
+            if (isTrash) shouldShow = false;
+        }
+
+        if (shouldShow) {
             visibleCount++;
             note.style.display = 'flex';
         } else {
@@ -3576,6 +4750,19 @@ async function createBoardsUI(boardsData, boardParseError) {
             filterNotesByBoard('with-other', false);
         });
         allButtonLinks.push(otherLink);
+    }
+    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "КОШЧЕ" ---
+    if (localStorage.getItem('showTrashBoard') === 'true') {
+        const trashLink = document.createElement('span');
+        trashLink.textContent = _('trashBoardTitle') || "Trash";
+        trashLink.classList.add('board-filter-link', 'trash-filter-btn');
+        trashLink.dataset.boardid = 'trash';
+        trashLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            filterNotesByBoard('trash', false);
+        });
+        allButtonLinks.push(trashLink);
     }
     // Сортираме бордовете по полето numord, преди да създадем бутоните
     boardsData.sort((a, b) => {
@@ -5026,12 +6213,23 @@ async function createNoteElement(noteContent) {
         const confirmed = await showConfirmation(_('confirmNoteDelete'));
         if (confirmed) {
             try {
-                let totalNotes;
-                await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+                const noteData = allNotesData.find(n => n.gdid === noteGdid);
+                if (!noteData) throw new Error("Note data not found");
 
-                // Стъпка 1: Премахване от DOM и allNotesData
+                const wasTrash = noteData.status === -1;
+
+                if (wasTrash) {
+                    // Permanently delete
+                    await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+                    allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
+                } else {
+                    // Soft delete (Move to Trash)
+                    noteData.status = -1;
+                    await bulkPutDB(NOTE_STORE_NAME, [noteData], true);
+                }
+
+                // Стъпка 1: Премахване от DOM
                 noteEl.remove();
-                allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
 
                 // Стъпка 2: Намиране на борда
                 const deletedNoteBoardId = extraData.boardid;
@@ -5042,18 +6240,17 @@ async function createNoteElement(noteContent) {
                 const noteCounter = document.getElementById('note-counter');
                 if (noteCounter) {
                     noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
-                    totalNotes = parseInt(noteCounter.textContent, 10);
                 }
 
-                if (boardToUpdate) {
+                if (boardToUpdate && !wasTrash) {
                     // Стъпка 4: Актуализация на boardsData
-                    boardToUpdate.noteCount = totalNotes;
+                    if (boardToUpdate.noteCount > 0) boardToUpdate.noteCount--;
 
-                    // Стъпка 5: Актуализация на UI (винаги използваме новата стойност от noteCounter)
+                    // Стъпка 5: Актуализация на UI
                     const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardToUpdate.gdid}"]`);
                     if (boardButton) {
                         const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-                        const newText = (showCount && boardToUpdate.noteCount > 0) ? `${boardToUpdate.title} (${totalNotes})` : boardToUpdate.title;
+                        const newText = (showCount && boardToUpdate.noteCount > 0) ? `${boardToUpdate.title} (${boardToUpdate.noteCount})` : boardToUpdate.title;
                         boardButton.textContent = newText;
                     }
                 }
@@ -5153,12 +6350,12 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
                 const boardIdToMatch = isArh ? board.id : board.gdid;
                 // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
-                board.noteCount = allNotesData.filter(note => note.boardid == boardIdToMatch && note.status !== 1).length;
+                board.noteCount = allNotesData.filter(note => note.boardid == boardIdToMatch && note.status !== 1 && note.status !== -1).length;
             });
 
             // ВИНАГИ изчисляваме броячите за напомняния и календар.
-            boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1).length;
-            boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate && note.status !== 1).length;
+            boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1 && note.status !== -1).length;
+            boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate && note.status !== 1 && note.status !== -1).length;
         }
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
@@ -5208,6 +6405,12 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
 
     if (boardsNoteElement) {
         document.querySelector('header').appendChild(boardsNoteElement);
+    }
+
+    // --- OWNER CHECK ---
+    // If the user is not the owner, force 'all' boards view instead of saved startup board.
+    if (!isDbOwner) {
+        currentBoardFilter = 'all';
     }
 
     // Обработка на стартов борд 'Main'

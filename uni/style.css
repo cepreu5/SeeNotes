@@ -2369,3 +2369,15 @@ code {
     min-height: 80vh;
     padding: 20px;
 }
+
+/* Weekend dates in monthly calendar (Saturday and Sunday) */
+.weekend-date {
+    color: red !important;
+    /* Red color for weekend dates */
+    background-color: #c8c8c8 !important;
+    /* Light pink/red background */
+    /* border-radius: 4px;
+    Slight rounding for better appearance */
+    /* padding: 0px 4px;
+    Small padding to make the background visible */
+}
