@@ -8,7 +8,7 @@
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
     <meta http-equiv="Content-Security-Policy"
-        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
+        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
         crossorigin="anonymous">
         </script>
@@ -570,14 +570,14 @@
                 <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
 
                 <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
-                    <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+                    <!--script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
                         data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
                         data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
                         data-font-color="#000000" data-coffee-color="#ffffff"></script>
                     <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
                         Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
                     </p>
-                    <!--iframe id='kofiframe'
+                    <iframe id='kofiframe'
                         src='https://ko-fi.com/multinotes/?hidefeed=true&widget=true&embed=true&preview=true'
                         style='border:none;width:100%;padding:4px;background:#f9f9f9;' height='52'
                         title='multinotes'></iframe-->
@@ -585,11 +585,21 @@
                     <script>
                         kofiWidgetOverlay.draw('multinotes', {
                             'type': 'floating-chat',
-                            'floating-chat.donateButton.text': 'Support me',
+                            'floating-chat.donateButton.text': '',
                             'floating-chat.donateButton.background-color': '#fcbf47',
                             'floating-chat.donateButton.text-color': '#323842'
                         });
                     </script-->
+                </div>
+                <div>
+                    <script async src="https://js.stripe.com/v3/buy-button.js">
+                    </script>
+                    <stripe-buy-button buy-button-id="buy_btn_1SZVZdEgnSjbu4vOL2kPcVPj"
+                        publishable-key="pk_live_51SZTDwEgnSjbu4vO1sy0OJLDXVZBd5u1pq5YkvIVfJ7a8cFuhcZGVSKtKnW7sJnBu7olTphWoho3WtVZmMC7v1wz00ukkbubUH">
+                    </stripe-buy-button>
+                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
+                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
+                    </p>
                 </div>
             </div>
             <div class="settings-close-btn-wrapper">
@@ -600,7 +610,12 @@
     </div>
 
     <script src="i18n.js"></script>
-    <script src="main.js"></script>
+    <!--script src="calendar.js"></script>
+    <script src="db.js"></script>
+    <script src="fs.js"></script>
+    <script src="config.js"></script-->
+    <script src="mainn.js"></script>
+    <!--script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script-->
 </body>
 
 </html>

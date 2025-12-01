@@ -1,11 +1,13 @@
 // https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
-// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.j
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
-
 // node -e "const fs=require('fs'); const T=require('terser'); (async()=>{ const code=fs.readFileSync('main.js','utf8'); const result=await T.minify(code,{ compress:{ arrows:true, booleans:true, collapse_vars:true, comparisons:true, dead_code:true, drop_console:true, hoist_funs:true, if_return:true, passes:3, pure_funcs:['console.log'] }, mangle:{ reserved:['gisLoaded'], keep_fnames: /^gisLoaded$/ }, toplevel:true, ecma:2020, module:true, format:{ wrap_iife:true } }); fs.writeFileSync('mainn.js',result.code); })();"
+
+// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
+
+const version = '0.18'; // App version
 
 // --- OAuth Redirect Handler for iframe ---
 // Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
@@ -32,7 +34,6 @@ const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleuse
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const TRIAL_URL = "http://index.html?token=0bi64PmSapE-xPdzhr5dtAXBb95QYofCL1K1gSL_HuFeth8vZDAQfRewADufxs-PlQBylELKi7CWUTI1DipJGmmma6E";
 // 30 - PIFopa69pLotak82Tk7rqvBNekfordCqQmx6Kj0NgKNXE6h8zQAcvUYN-MBdCeSFANzfNautMiVY6CiRZBtwRHdefvpI
-const version = '0.17'; // App version
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -2320,10 +2321,11 @@ async function checkAuth() {
                 // Взимаме реалния имейл на потребителя, а не този от токена
                 const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
 
-                if (currentUserEmail && isTrialStart) {  // logging only
+                if (currentUserEmail) {  //  && isTrialStart - logging only
                     // Винаги правим заявка към сървъра - или за добавяне (trial), или за проверка (login)
-                    fetch('https://script.google.com/macros/s/AKfycbwDT37UO2ayL2FZf300X5zWXjA32g5geAN09H0iLGasMjON0kkOoYEkSMLMpG3wsrQPAA/exec', {
-                        // fetch('https://script.google.com/macros/s/AKfycbxwPON0_BaosuEp0Y5onRa7puDFwDRzobpmAjkbY1IdvO8cC8C3tvyI80izNriSHTdnRQ/exec', { // logging only
+                    // white list - fetch('https://script.google.com/macros/s/AKfycbwDT37UO2ayL2FZf300X5zWXjA32g5geAN09H0iLGasMjON0kkOoYEkSMLMpG3wsrQPAA/exec', {
+                    // fetch('https://script.google.com/macros/s/AKfycbxwPON0_BaosuEp0Y5onRa7puDFwDRzobpmAjkbY1IdvO8cC8C3tvyI80izNriSHTdnRQ/exec', { // logging only
+                    fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain' },
                         body: JSON.stringify({
@@ -2336,13 +2338,13 @@ async function checkAuth() {
                         .then(data => {
                             console.log('Whitelist check:', data);
 
-                            if (action === 'check' && !data.exists) {
+                            /*if (action === 'check' && !data.exists) {
                                 // Потребителят не е в белия списък!
                                 alert(_('accessDenied') || 'Access Denied: Your email is not registered.');
                                 sessionStorage.clear();
                                 localStorage.removeItem('google_auth_token');
                                 location.reload(); // Рестарт към login екрана
-                            } else if (action === 'log') {
+                            } else */ if (action === 'log') {
                                 // Успешна регистрация на trial
                                 sessionStorage.removeItem('isTrialStart');
                                 console.log('Trial registered/verified for:', currentUserEmail);

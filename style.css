@@ -35,7 +35,7 @@ body {
 }
 
 header {
-    padding: 5px 1em 0.3em 5px;
+    padding: 5px 1em 0px 5px;
     /*border-bottom: 1px solid #eee;*/
     /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
     /* margin-bottom: 1em; */
@@ -58,6 +58,7 @@ header {
 header h1 {
     margin: 0;
     text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
+    color: darkorange;
 }
 
 #search-container {
@@ -84,12 +85,12 @@ header h1 {
 #search-box {
     width: 100%;
     /* max-width and min-width are now on the wrapper */
-    padding: 8px 35px 8px 12px;
+    padding: 8px 35px 8px 35px;
     /* Increased right padding for icons */
     border-radius: 20px;
     border: 1px solid #aaa;
     font-size: 1em;
-    background-color: #d6d6d6;
+    background-color: #d6d4d5;
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
 }
 
@@ -245,9 +246,9 @@ header h1 {
 .header-btn {
     margin-left: 10px;
     padding: 0;
-    border: 1px solid #aaa;
+    border: 2px solid #dddddd;
     border-radius: 50%;
-    background-color: #d6d6d6;
+    background-color: #878fa3;
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
     cursor: pointer;
     color: #000;
@@ -278,7 +279,7 @@ header h1 {
     min-height: 46px;
     gap: 5px;
     /* Разстояние между елементите вътре в бутона (напр. icon-wrapper и loading icon) */
-    background-color: #9a9999;
+    background-color: #48b7a2;
     border-radius: 25px;
     /* Заоблени ъгли, вместо елипса */
 }
@@ -518,18 +519,18 @@ code {
     height: auto;
     /* Auto-adjust height based on content */
     margin: 0 0;
-    margin-left: -1em;
-    /* Negative margin to span full width, counteracting header padding */
-    width: calc(100% + 2em);
-    /* Adjust width to compensate for negative margins */
+    margin-left: -5px;
+    /* Negative margin to span full width, counteracting header padding (5px left) */
+    width: calc(100% + 1em + 5px);
+    /* Adjust width to compensate for negative margins (1em right + 5px left) */
     border-radius: 0;
     /* Remove rounded corners */
     box-shadow: 0 5px 8px rgba(0, 0, 0, 0.1);
     /* Add a subtle shadow */
     border: none;
-    border-bottom: 1px solid #ccc;
-    /*padding: 10px;*/
-    background-image: url('Frame.jpg');
+    /*border-bottom: 1px solid #ccc;
+    padding: 10px;*/
+    background: transparent;
     -webkit-user-select: none;
     /* Safari */
     -moz-user-select: none;
@@ -663,6 +664,9 @@ code {
     display: flex;
     flex-direction: column;
     /* transition: background-color 0.3s ease; Smooth background color transition */
+    background-image: url('Note.jpg');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
 }
 
 /* "Дръжка" за преоразмеряване на модалния прозорец */
@@ -917,7 +921,7 @@ code {
     scroll-behavior: smooth;
     /* Smooth scrolling on button click */
     gap: 5px;
-    padding: 5px 0 0px;
+    padding: 5px 0 0 0px;
     /* Намалява разстоянието отдолу до 3px */
     /* Премахваме правилата, които скриват скролбара */
     scrollbar-color: #aaa #555;
@@ -976,21 +980,71 @@ code {
 }
 
 .board-filter-link {
-    display: block;
-    padding: 8px 12px;
-    color: #000;
-    text-decoration: none;
-    border-radius: 4px;
-    text-align: left;
-    background-color: #bdd9ef;
-    font-size: 16px;
-    /* Width will be set by JS */
-    flex-shrink: 0;
-    /* Prevent buttons from shrinking */
+    position: relative;
+    padding: 1px 2px;
+    /* Вътрешен отстъп за текста */
+    border-top-left-radius: 8px;
+    /* Заоблен горен ляв ъгъл */
+    border-top-right-radius: 8px;
+    /* Заоблен горен десен ъгъл */
+    margin-right: 0px;
+    /* Разстояние между табовете */
     cursor: pointer;
-    /* Add pointer cursor to indicate clickability */
-    box-sizing: border-box;
-    /* Ensure padding is included in the width set by JS */
+    font-family: Arial, sans-serif;
+    /* Може да промените шрифта */
+    font-size: 14px;
+    color: #090909;
+    /* Цвят на текста */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+    /* Лека сянка за текста */
+    box-shadow: inset 0 2px 5px rgba(255, 255, 255, 0.3),
+        /* Вътрешен блясък отгоре */
+        inset 0 -1px 2px rgba(0, 0, 0, 0.2),
+        /* Вътрешна сянка отдолу */
+        0 3px 6px rgba(0, 0, 0, 0.3);
+    /* Външна сянка за дълбочина */
+    transition: all 0.2s ease-in-out;
+    /* Плавен преход при hover/active */
+    transform: translateY(0);
+    /* За да може active да се повдига */
+    display: flex;
+    /* За центриране на текста */
+    align-items: center;
+    /* Центриране по вертикала */
+    justify-content: center;
+    /* Центриране по хоризонтала */
+    min-width: 90px;
+    /* Минимална ширина на таба */
+    height: 35px;
+    /* Височина на таба */
+}
+
+/* Общи стилове за пластмасов ефект */
+.board-filter-link::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 100%);
+    /* Лек блясък отгоре */
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    pointer-events: none;
+    /* За да не блокира кликовете */
+}
+
+/* Стил за активен таб */
+.board-filter-link.active {
+    transform: translateY(-5px);
+    /* Активният таб излиза малко по-нагоре */
+    box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
+        inset 0 -1px 3px rgba(0, 0, 0, 0.3),
+        0 6px 12px rgba(0, 0, 0, 0.4);
+    /* По-изразена сянка */
+    z-index: 11;
+    /* Да е над другите табове */
 }
 
 .modal-body .board-filter-link {
@@ -1035,6 +1089,10 @@ code {
     /* Same color as header buttons */
     right: 10px;
     /* Fine-tuned position closer to the edge */
+}
+
+#boards-menu-modal .modal-close {
+    color: #d6d6d6 !important;
 }
 
 .board-filter-link:hover {
@@ -1733,13 +1791,15 @@ code {
     text-align: center;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
     cursor: pointer;
+    color: darkorange;
     /* Подсказва, че може да се кликне */
 }
 
 .calendar-header button {
-    background: #d6d6d6;
-    border: 1px solid #aaa;
+    border: 2px solid #dddddd;
     border-radius: 50%;
+    background-color: #878fa3;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
     width: 40px;
     height: 40px;
     font-size: 1.5em;
@@ -2142,11 +2202,6 @@ code {
     stroke: #555;
 }
 
-#search-box {
-    padding-left: 35px !important;
-    /* Make space for the icon */
-}
-
 .settings-icon-label {
     display: flex;
     align-items: center;
@@ -2368,4 +2423,16 @@ code {
     justify-content: center;
     min-height: 80vh;
     padding: 20px;
+}
+
+/* Weekend dates in monthly calendar (Saturday and Sunday) */
+.weekend-date {
+    color: red !important;
+    /* Red color for weekend dates */
+    background-color: #c8c8c8 !important;
+    /* Light pink/red background */
+    /* border-radius: 4px;
+    Slight rounding for better appearance */
+    /* padding: 0px 4px;
+    Small padding to make the background visible */
 }
