@@ -416,8 +416,8 @@ function renderCalendarView() {
         renderCalendarView();
     });
     document.getElementById('close-month-calendar-btn').addEventListener('click', (e) => {
-        // --- Анимация в бутона за затваряне ---
         const closeBtn = e.currentTarget;
+        // --- Анимация в бутона за затваряне ---
         const closeSymbol = closeBtn.querySelector('.close-symbol');
         const loadingIcon = closeBtn.querySelector('.close-loading-icon');
 
@@ -429,33 +429,34 @@ function renderCalendarView() {
 
         setTimeout(() => {
             requestAnimationFrame(() => {
-                calendarContainer.style.display = 'none';
-                document.querySelector('header').style.display = 'flex';
-                notesContainer.style.display = 'flex';
-                window.dispatchEvent(new Event('scroll'));
+                // --- Програмен клик на активния борд ---
+                let boardToClick = currentBoardFilter;
+                if (boardToClick === 'calendar') {
+                    boardToClick = localStorage.getItem('startBoard') || 'all';
+                }
 
-                // Спираме анимацията
+                // Търсим бутона в хедъра
+                const activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
+
+                if (activeBoardBtn) {
+                    activeBoardBtn.click();
+                } else {
+                    // Fallback
+                    calendarContainer.style.display = 'none';
+                    document.querySelector('header').style.display = 'flex';
+                    notesContainer.style.display = 'flex';
+                    scrollTopBtn.style.display = 'block';
+                    window.dispatchEvent(new Event('scroll'));
+                }
+
+                // Спираме анимацията (ако все още е видима)
                 if (closeSymbol && loadingIcon) {
                     loadingIcon.classList.remove('button-loading');
                     loadingIcon.style.display = 'none';
                     closeSymbol.style.display = 'inline';
                 }
-
-                // Актуализираме визуалното състояние на бутоните
-                document.querySelectorAll('.board-filter-link').forEach(btn => {
-                    btn.classList.remove('selected-board');
-                });
-                const activeButton = document.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
-                if (activeButton) {
-                    activeButton.classList.add('selected-board'); //@@
-                    activeButton.scrollIntoView({
-                        behavior: 'smooth',
-                        inline: 'center',
-                        block: 'nearest'
-                    });
-                }
             });
-        }, 20);
+        }, 10);
     });
 }
 
@@ -541,30 +542,29 @@ function renderWeeklyCalendarView(dateForWeek) {
 
         setTimeout(() => {
             requestAnimationFrame(() => {
-                weeklyContainer.style.display = 'none';
-                document.querySelector('header').style.display = 'flex';
-                notesContainer.style.display = 'flex';
-                window.dispatchEvent(new Event('scroll'));
+                // --- КОРЕКЦИЯ: Програмен клик на активния борд ---
+                let boardToClick = currentBoardFilter;
+                if (boardToClick === 'calendar') {
+                    boardToClick = localStorage.getItem('startBoard') || 'all';
+                }
 
-                // Спираме анимацията
+                const activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
+
+                if (activeBoardBtn) {
+                    activeBoardBtn.click();
+                } else {
+                    // Fallback
+                    weeklyContainer.style.display = 'none';
+                    document.querySelector('header').style.display = 'flex';
+                    notesContainer.style.display = 'flex';
+                    window.dispatchEvent(new Event('scroll'));
+                }
+
+                // Спираме анимацията (ако все още е видима, въпреки че click() ще преначертае UI)
                 if (closeSymbol && loadingIcon) {
                     loadingIcon.classList.remove('button-loading');
                     loadingIcon.style.display = 'none';
                     closeSymbol.style.display = 'inline';
-                }
-
-                // Актуализираме визуалното състояние на бутоните
-                document.querySelectorAll('.board-filter-link').forEach(btn => {
-                    btn.classList.remove('selected-board');
-                });
-                const activeButton = document.querySelector(`.board-filter-link[data-boardid="${currentBoardFilter}"]`);
-                if (activeButton) {
-                    activeButton.classList.add('selected-board'); //@@
-                    activeButton.scrollIntoView({
-                        behavior: 'smooth',
-                        inline: 'center',
-                        block: 'nearest'
-                    });
                 }
             });
         }, 20);
@@ -4047,13 +4047,26 @@ function showAllBoardsModal() {
         const clone = button.cloneNode(true);
         // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
         clone.style.width = `${maxWidthForButtons}px`;
-        clone.addEventListener('click', async (e) => { //@@@ вместо да дефинираме слушатели за бутоните, да има слушател за модал и да кликва съответния бутон в хедър-менюто
-            e.preventDefault();
-            // Връщаме старата логика: затваряме менюто веднага
-            boardsModal.classList.remove('visible');
-            filterNotesByBoard(clone.dataset.boardid, true, e.currentTarget);
-        });
         modalContent.appendChild(clone);
+    });
+
+    // Делегиран слушател за събития върху контейнера на модала
+    modalContent.addEventListener('click', (e) => {
+        const targetButton = e.target.closest('.board-filter-link');
+        if (targetButton) {
+            e.preventDefault();
+            const boardId = targetButton.dataset.boardid;
+
+            // Намираме съответния бутон в хедъра
+            const headerButton = headerMenuContainer.querySelector(`.board-filter-link[data-boardid="${boardId}"]`);
+
+            if (headerButton) {
+                // Затваряме модала
+                boardsModal.classList.remove('visible');
+                // Симулираме клик върху бутона в хедъра
+                headerButton.click();
+            }
+        }
     });
 
     const boardsModalBody = document.getElementById('boards-menu-modal-body');
@@ -4294,6 +4307,20 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         }
     }
     window.dispatchEvent(new Event('scroll'));
+
+    // --- КОРЕКЦИЯ: Възстановяване на UI след затваряне на календара ---
+    // Тъй като renderCalendarView скрива хедъра и контейнера с бележки,
+    // тук трябва изрично да ги покажем отново, ако не сме в режим календар.
+    if (boardId !== 'calendar') {
+        const calendarContainer = document.getElementById('calendar-container');
+        if (calendarContainer) calendarContainer.style.display = 'none';
+
+        // Възстановяваме видимостта на основните елементи
+        document.querySelector('header').style.display = 'flex';
+        notesContainer.style.display = 'flex';
+        scrollTopBtn.style.display = 'block';
+    }
+
     // Add or remove a class from the container to control child visibility
     // This part is no longer needed as calendar has its own view
     notesContainer.classList.remove('calendar-view');
@@ -4648,7 +4675,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         const allBoardsText = document.createElement('span');
         allBoardsText.textContent = _('allBoards');
         allBoardsLink.appendChild(allBoardsText);
-        addAllBoardsModalEvents(allBoardsLink, (e) => filterNotesByBoard('all', true, e.currentTarget));
+        addAllBoardsModalEvents(allBoardsLink, (e) => boardClick(e, 'all'));
         allButtonLinks.push(allBoardsLink);
     }
     const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
@@ -6373,7 +6400,25 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
 
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
-    filterNotesByBoard(currentBoardFilter, isInitialLoad);
+    if (isInitialLoad) {
+        // --- КОРЕКЦИЯ: Програмен клик на стартовия борд ---
+        // Вместо директно филтриране, намираме бутона и го кликваме.
+        // Това гарантира, че всички визуални ефекти (активен клас, скролиране) се прилагат.
+
+        // Изчакваме малко, за да сме сигурни, че DOM е обновен
+        setTimeout(() => {
+            const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
+            if (startBoardBtn) {
+                startBoardBtn.click();
+            } else {
+                // Fallback, ако бутонът не е намерен
+                filterNotesByBoard(currentBoardFilter, true);
+            }
+        }, 100);
+    } else {
+        filterNotesByBoard(currentBoardFilter, false);
+    }
+
     // След първото зареждане, флагът става false.
     isInitialLoad = false;
 
