@@ -95,11 +95,21 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   debugOverlay.innerText = 'Debug info: Drag elements to see coords';
 
   // --- BUBBLE DRAG LOGIC ---
+  let bubbleWasDragged = false;
+
+  bubble.onclick = (e) => {
+    // Ако балонът не е бил влачен, предаваме клика на героя
+    if (!bubbleWasDragged) {
+      img.click();
+    }
+    bubbleWasDragged = false;
+  };
+
   bubble.onmousedown = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     if (stepTimer) clearTimeout(stepTimer);
 
+    bubbleWasDragged = false;
     const startX = e.clientX;
     const startY = e.clientY;
     const initialBx = step.bx || 0;
@@ -110,19 +120,76 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
     document.onmousemove = (moveEvent) => {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
-      finalBx = Math.round(initialBx + dx);
-      finalBy = Math.round(initialBy + dy);
 
-      bubble.style.transform = `translate(${finalBx}px, ${finalBy}px)`;
-      debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy}`;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        bubbleWasDragged = true;
+      }
+
+      if (bubbleWasDragged) {
+        finalBx = Math.round(initialBx + dx);
+        finalBy = Math.round(initialBy + dy);
+
+        bubble.style.transform = `translate(${finalBx}px, ${finalBy}px)`;
+        debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy}`;
+      }
     };
 
     document.onmouseup = () => {
       document.onmousemove = null;
       document.onmouseup = null;
-      // Copy to clipboard
-      navigator.clipboard.writeText(`bx: ${finalBx}, by: ${finalBy}`);
-      debugOverlay.innerText = `Copied: bx: ${finalBx}, by: ${finalBy}`;
+
+      if (bubbleWasDragged) {
+        // Copy to clipboard
+        navigator.clipboard.writeText(`bx: ${finalBx}, by: ${finalBy}`);
+        debugOverlay.innerText = `Copied: bx: ${finalBx}, by: ${finalBy}`;
+      }
+    };
+  };
+
+  // Touch support for bubble drag
+  bubble.ontouchstart = (e) => {
+    e.preventDefault();
+    if (stepTimer) clearTimeout(stepTimer);
+
+    bubbleWasDragged = false;
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    const initialBx = step.bx || 0;
+    const initialBy = step.by || 0;
+    let finalBx = initialBx;
+    let finalBy = initialBy;
+
+    document.ontouchmove = (moveEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const dx = moveTouch.clientX - startX;
+      const dy = moveTouch.clientY - startY;
+
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        bubbleWasDragged = true;
+      }
+
+      if (bubbleWasDragged) {
+        finalBx = Math.round(initialBx + dx);
+        finalBy = Math.round(initialBy + dy);
+
+        bubble.style.transform = `translate(${finalBx}px, ${finalBy}px)`;
+        debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy}`;
+      }
+    };
+
+    document.ontouchend = () => {
+      document.ontouchmove = null;
+      document.ontouchend = null;
+
+      if (bubbleWasDragged) {
+        // Copy to clipboard
+        navigator.clipboard.writeText(`bx: ${finalBx}, by: ${finalBy}`);
+        debugOverlay.innerText = `Copied: bx: ${finalBx}, by: ${finalBy}`;
+      } else {
+        // Ако не е имало влачене, симулираме клик на героя
+        img.click();
+      }
     };
   };
 
@@ -299,6 +366,75 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
         // Ако НЕ е имало влачене, оставяме onclick да се изпълни (nextStep)
       };
     };
+
+    // Touch support for image drag
+    img.ontouchstart = (e) => {
+      e.preventDefault();
+      if (stepTimer) clearTimeout(stepTimer);
+
+      isDragging = true;
+      wasDragged = false;
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+
+      if (!container) return;
+
+      initialLeft = parseInt(container.style.left || 0);
+      initialTop = parseInt(container.style.top || 0);
+
+      document.ontouchmove = (moveEvent) => {
+        if (!container) return;
+
+        const moveTouch = moveEvent.touches[0];
+        const dx = moveTouch.clientX - startX;
+        const dy = moveTouch.clientY - startY;
+
+        // Отчитаме влачене само ако има движение над 3 пиксела
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          wasDragged = true;
+        }
+
+        if (wasDragged) {
+          container.style.left = initialLeft + dx + "px";
+          container.style.top = initialTop + dy + "px";
+
+          // Изчисляване на новите относителни координати спрямо КАРТИНКАТА
+          const currentImgRect = img.getBoundingClientRect();
+          const currentTargetRect = targetEl.getBoundingClientRect();
+
+          finalRelX = Math.round(currentImgRect.left - currentTargetRect.left);
+          finalRelY = Math.round(currentImgRect.top - currentTargetRect.top);
+
+          debugOverlay.innerText = `Image: x: ${finalRelX}, y: ${finalRelY}`;
+        }
+      };
+
+      document.ontouchend = () => {
+        document.ontouchmove = null;
+        document.ontouchend = null;
+        isDragging = false;
+
+        if (wasDragged) {
+          // Запазваме новите координати в обекта step, за да не се връща назад
+          step.x = finalRelX;
+          step.y = finalRelY;
+
+          const currentBx = step.bx || 0;
+          const currentBy = step.by || 0;
+
+          // Ако е имало влачене, спираме клика
+          img.onclick = null;
+          setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
+
+          // Copy to clipboard - включваме и координатите на балона
+          const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}`;
+          navigator.clipboard.writeText(clipboardText);
+          debugOverlay.innerText = `Copied: ${clipboardText}`;
+        }
+        // Ако НЕ е имало влачене, оставяме onclick да се изпълни (nextStep)
+      };
+    };
   }
 }
 
@@ -307,8 +443,85 @@ document.addEventListener('DOMContentLoaded', () => {
   const appTitle = document.querySelector('h1[data-key="appTitle"]');
   if (appTitle) {
     appTitle.style.cursor = 'pointer';
+    appTitle.style.userSelect = 'none'; // Предотвратява избор на текст
+    appTitle.style.webkitUserSelect = 'none'; // За Safari
+
+    // Single click - start guide
     appTitle.addEventListener('click', () => {
       showStep(3, 3, true);
+    });
+
+    // Double click - center guide on screen
+    // Double click - center guide on screen
+    appTitle.addEventListener('dblclick', (e) => {
+      e.preventDefault(); // Предотвратява избор на текст
+      if (container && document.body.contains(container)) {
+        // Центрираме контейнера на екрана
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const containerRect = container.getBoundingClientRect();
+
+        const centerX = (viewportWidth - containerRect.width) / 2;
+        const centerY = (viewportHeight - containerRect.height) / 2;
+
+        container.style.left = centerX + window.scrollX + 'px';
+        container.style.top = centerY + window.scrollY + 'px';
+
+        // Обновяваме step координатите, за да запазим центрираната позиция
+        // Намираме текущата стъпка чрез проверка на всички стъпки
+        for (let i = 0; i < steps.length; i++) {
+          const img = container.querySelector('.guide-img');
+          const targetEl = document.querySelector(steps[i].target);
+          if (img && targetEl) {
+            const imgRect = img.getBoundingClientRect();
+            const targetRect = targetEl.getBoundingClientRect();
+
+            steps[i].x = Math.round(imgRect.left - targetRect.left);
+            steps[i].y = Math.round(imgRect.top - targetRect.top);
+            break; // Обновяваме само първата намерена
+          }
+        }
+      }
+    });
+
+    // Double tap detection for mobile
+    let lastTapTime = 0;
+    appTitle.addEventListener('touchend', (e) => {
+      const currentTime = new Date().getTime();
+      const tapInterval = currentTime - lastTapTime;
+
+      if (tapInterval < 300 && tapInterval > 0) {
+        // Double tap detected
+        e.preventDefault(); // Предотвратява избор на текст и zoom
+        if (container && document.body.contains(container)) {
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          const containerRect = container.getBoundingClientRect();
+
+          const centerX = (viewportWidth - containerRect.width) / 2;
+          const centerY = (viewportHeight - containerRect.height) / 2;
+
+          container.style.left = centerX + window.scrollX + 'px';
+          container.style.top = centerY + window.scrollY + 'px';
+
+          // Обновяваме step координатите
+          for (let i = 0; i < steps.length; i++) {
+            const img = container.querySelector('.guide-img');
+            const targetEl = document.querySelector(steps[i].target);
+            if (img && targetEl) {
+              const imgRect = img.getBoundingClientRect();
+              const targetRect = targetEl.getBoundingClientRect();
+
+              steps[i].x = Math.round(imgRect.left - targetRect.left);
+              steps[i].y = Math.round(imgRect.top - targetRect.top);
+              break;
+            }
+          }
+        }
+        lastTapTime = 0; // Reset
+      } else {
+        lastTapTime = currentTime;
+      }
     });
   }
 });
