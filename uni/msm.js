@@ -1,48 +1,3 @@
-// Преводи за текстовете в ръководството
-const guideTexts = {
-  en: [
-    "<h2>Welcome!</h2><h3>I'm <b>Mr. StickyMan</b> - your guide to the world of sticky notes.</h3>",
-    "Here you can add new notes.",
-    "And here you will see the statistics.",
-    "<h3>This icon shows that the note has an attachment. If you click it, you will see a preview in the note.</h3>",
-    "<h3>I like this kind of Shoping list.</h3>",
-
-  ],
-  bg: [
-    "<h2>Добре дошли!</h2><h3>Аз съм <b>Лепчо</b> - вашият екскурзовод в света на лепящите бележки.</h3>",
-    "Тук можеш да добавиш нови записи.",
-    "А тук ще видиш статистиката.",
-    "<h3>Тази иконка показва, че към бележката има приложение. Ако я кликнеш, ще видиш преглед в бележката.</h3>",
-    "<h3>Аз харесвам такива списъци.</h3>"
-  ]
-};
-
-// Получаваме текущия език от localStorage (по подразбиране 'en')
-const getCurrentLanguage = () => localStorage.getItem('language') || 'en';
-
-const steps = [
-  {
-    image: "msm/1.png", height: 200, target: "#lang-bg-main", textKey: 0,
-    x: -242, y: 24, bx: 173, by: 47, bWidth: 305, bHeight: 78
-  },
-  {
-    image: "msm/1.png", height: 150, target: "#lang-bg-main", textKey: 1,
-    x: -269, y: 341, bx: 149, by: 50, bWidth: 300, bHeight: 150
-  },
-  {
-    image: "msm/1.png", height: 150, target: "#lang-bg-main", textKey: 2,
-    x: -198, y: 27, bx: 173, by: 47, bWidth: 300, bHeight: 150
-  },
-  {
-    image: "msm/right-up.png", height: 150, target: "#search-box", textKey: 3,
-    x: -201, y: 292, bx: 80, by: -14, bWidth: 300, bHeight: 150
-  },
-  {
-    image: "msm/right-up.png", height: 150, target: "#search-box", textKey: 4,
-    x: 367, y: 233, bx: 80, by: -14, bWidth: 300, bHeight: 150
-  },
-];
-
 let container;
 let stepTimer;
 let stepTime = 50000;
@@ -574,8 +529,10 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
           const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
           navigator.clipboard.writeText(clipboardText);
           debugOverlay.innerText = `Copied: ${clipboardText}`;
+        } else {
+          // Ако НЕ е имало влачене, ръчно извикваме nextStep, защото preventDefault в touchstart спира click събитието
+          wrappedNextStep();
         }
-        // Ако НЕ е имало влачене, оставяме onclick да се изпълни (nextStep)
       };
     };
   }
@@ -589,13 +546,23 @@ document.addEventListener('DOMContentLoaded', () => {
     appTitle.style.userSelect = 'none'; // Предотвратява избор на текст
     appTitle.style.webkitUserSelect = 'none'; // За Safari
 
+    let clickTimer = null;
+
     // Single click - start guide
     appTitle.addEventListener('click', () => {
-      showStep(0, 4, true);
+      if (clickTimer) clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => {
+        showStep(0);
+        clickTimer = null;
+      }, 300);
     });
 
     // Double click - center guide on screen
-    appTitle.addEventListener('dblclick', (e) => {
+    const handleDoubleClick = (e) => {
+      if (clickTimer) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+      }
       e.preventDefault(); // Предотвратява избор на текст
       if (container && document.body.contains(container)) {
         // Спираме автоматичното позициониране
@@ -633,63 +600,79 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
 
-        // Показваме контейнера на новата позиция
+        // Показваме контейнера отново
         container.style.visibility = 'visible';
       }
-    });
+    };
+
+    appTitle.addEventListener('dblclick', handleDoubleClick);
 
     // Double tap detection for mobile
-    let lastTapTime = 0;
+    let lastTap = 0;
     appTitle.addEventListener('touchend', (e) => {
       const currentTime = new Date().getTime();
-      const tapInterval = currentTime - lastTapTime;
-
-      if (tapInterval < 300 && tapInterval > 0) {
-        // Double tap detected
-        e.preventDefault(); // Предотвратява избор на текст и zoom
-        if (container && document.body.contains(container)) {
-          // Спираме автоматичното позициониране
-          if (animationFrameId) {
-            cancelAnimationFrame(animationFrameId);
-            animationFrameId = null;
-          }
-
-          // Скриваме контейнера временно
-          container.style.visibility = 'hidden';
-
-          // Изчисляваме центъра на екрана
-          const viewportWidth = window.innerWidth;
-          const viewportHeight = window.innerHeight;
-          const containerRect = container.getBoundingClientRect();
-
-          const centerX = (viewportWidth - containerRect.width) / 2;
-          const centerY = (viewportHeight - containerRect.height) / 2;
-
-          // Позиционираме контейнера в центъра
-          container.style.left = centerX + window.scrollX + 'px';
-          container.style.top = centerY + window.scrollY + 'px';
-
-          // Обновяваме step координатите
-          const img = container.querySelector('.guide-img');
-          for (let i = 0; i < steps.length; i++) {
-            const targetEl = document.querySelector(steps[i].target);
-            if (img && targetEl) {
-              const imgRect = img.getBoundingClientRect();
-              const targetRect = targetEl.getBoundingClientRect();
-
-              steps[i].x = Math.round(imgRect.left - targetRect.left);
-              steps[i].y = Math.round(imgRect.top - targetRect.top);
-              break;
-            }
-          }
-
-          // Показваме контейнера на новата позиция
-          container.style.visibility = 'visible';
-        }
-        lastTapTime = 0; // Reset
-      } else {
-        lastTapTime = currentTime;
+      const tapLength = currentTime - lastTap;
+      if (tapLength < 500 && tapLength > 0) {
+        handleDoubleClick(e);
       }
+      lastTap = currentTime;
     });
+
+    // Показваме контейнера на новата позиция
+    container.style.visibility = 'visible';
+  }
+});
+
+// Double tap detection for mobile
+let lastTapTime = 0;
+appTitle.addEventListener('touchend', (e) => {
+  const currentTime = new Date().getTime();
+  const tapInterval = currentTime - lastTapTime;
+
+  if (tapInterval < 300 && tapInterval > 0) {
+    // Double tap detected
+    e.preventDefault(); // Предотвратява избор на текст и zoom
+    if (container && document.body.contains(container)) {
+      // Спираме автоматичното позициониране
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+
+      // Скриваме контейнера временно
+      container.style.visibility = 'hidden';
+
+      // Изчисляваме центъра на екрана
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const containerRect = container.getBoundingClientRect();
+
+      const centerX = (viewportWidth - containerRect.width) / 2;
+      const centerY = (viewportHeight - containerRect.height) / 2;
+
+      // Позиционираме контейнера в центъра
+      container.style.left = centerX + window.scrollX + 'px';
+      container.style.top = centerY + window.scrollY + 'px';
+
+      // Обновяваме step координатите
+      const img = container.querySelector('.guide-img');
+      for (let i = 0; i < steps.length; i++) {
+        const targetEl = document.querySelector(steps[i].target);
+        if (img && targetEl) {
+          const imgRect = img.getBoundingClientRect();
+          const targetRect = targetEl.getBoundingClientRect();
+
+          steps[i].x = Math.round(imgRect.left - targetRect.left);
+          steps[i].y = Math.round(imgRect.top - targetRect.top);
+          break;
+        }
+      }
+
+      // Показваме контейнера на новата позиция
+      container.style.visibility = 'visible';
+    }
+    lastTapTime = 0; // Reset
+  } else {
+    lastTapTime = currentTime;
   }
 });

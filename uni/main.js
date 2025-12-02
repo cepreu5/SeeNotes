@@ -4744,7 +4744,11 @@ async function createBoardsUI(boardsData, boardParseError) {
         otherLink.textContent = _('otherBoardTitle') || "Other Attachments";
         otherLink.classList.add('board-filter-link', 'other-filter-btn');
         otherLink.dataset.boardid = 'with-other';
-        otherLink.addEventListener('click', (e) => { boardClick(e, 'with-other') });
+        otherLink.style.backgroundColor = '#a6a6a6';
+        // otherLink.style.boxSizing = 'border-box';
+        // Използваме box-shadow за симулиране на рамка, за да избегнем проблеми с box-sizing и layout
+        // otherLink.style.boxShadow = 'inset 0 -5px 0 0 black, inset 0 2px 5px rgba(255, 255, 255, 0.3), inset 0 -1px 2px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.3)';
+        otherLink.addEventListener('click', (e) => { boardClick(e, 'with-other') }); // @@
         allButtonLinks.push(otherLink);
     }
     // Сортираме бордовете по полето numord, преди да създадем бутоните
