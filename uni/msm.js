@@ -4,14 +4,16 @@ const guideTexts = {
     "<h2>Welcome!</h2><h3>I'm <b>Mr. StickyMan</b> - your guide to the world of sticky notes.</h3>",
     "Here you can add new notes.",
     "And here you will see the statistics.",
-    "<h3>This icon shows that the note has an attachment. If you click it, you will see a preview in the note.</h3>"
+    "<h3>This icon shows that the note has an attachment. If you click it, you will see a preview in the note.</h3>",
+    "<h3>I like this kind of Shoping list.</h3>",
+
   ],
   bg: [
     "Добре дошъли!<br>Аз съм <b>Lepcho</b> - вашият екскурзовод в света на лепящите бележки.",
     "Тук можеш да добавиш нови записи.",
     "А тук ще видиш статистиката.",
     "<h3>Тази иконка показва, че към бележката има приложение. Ако я кликнеш, ще видиш умален вариант в бележката.</h3>",
-    ""
+    "<h3>I like this kind of Shoping list."
   ]
 };
 
@@ -34,6 +36,10 @@ const steps = [
   {
     image: "msm/right-up.png", height: 150, target: "#search-box", x: -201, y: 292, bx: 80, by: -14,
     textKey: 3
+  },
+  {
+    image: "msm/right-up.png", height: 150, target: "#search-box", x: 367, y: 233, bx: 80, by: -14,
+    textKey: 4
   },
 ];
 
@@ -92,7 +98,7 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
     debugOverlay.style.fontFamily = 'monospace';
     document.body.appendChild(debugOverlay);
   }
-  debugOverlay.innerText = 'Debug info: Drag elements to see coords';
+  debugOverlay.innerText = 'Debug info';
 
   // --- BUBBLE DRAG LOGIC ---
   let bubbleWasDragged = false;
@@ -448,15 +454,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Single click - start guide
     appTitle.addEventListener('click', () => {
-      showStep(3, 3, true);
+      showStep(4, 4, true);
     });
 
-    // Double click - center guide on screen
     // Double click - center guide on screen
     appTitle.addEventListener('dblclick', (e) => {
       e.preventDefault(); // Предотвратява избор на текст
       if (container && document.body.contains(container)) {
-        // Центрираме контейнера на екрана
+        // Спираме автоматичното позициониране
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = null;
+        }
+
+        // Скриваме контейнера временно
+        container.style.visibility = 'hidden';
+
+        // Изчисляваме центъра на екрана
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         const containerRect = container.getBoundingClientRect();
@@ -464,13 +478,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const centerX = (viewportWidth - containerRect.width) / 2;
         const centerY = (viewportHeight - containerRect.height) / 2;
 
+        // Позиционираме контейнера в центъра
         container.style.left = centerX + window.scrollX + 'px';
         container.style.top = centerY + window.scrollY + 'px';
 
-        // Обновяваме step координатите, за да запазим центрираната позиция
-        // Намираме текущата стъпка чрез проверка на всички стъпки
+        // Обновяваме step координатите
+        const img = container.querySelector('.guide-img');
         for (let i = 0; i < steps.length; i++) {
-          const img = container.querySelector('.guide-img');
           const targetEl = document.querySelector(steps[i].target);
           if (img && targetEl) {
             const imgRect = img.getBoundingClientRect();
@@ -478,9 +492,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             steps[i].x = Math.round(imgRect.left - targetRect.left);
             steps[i].y = Math.round(imgRect.top - targetRect.top);
-            break; // Обновяваме само първата намерена
+            break;
           }
         }
+
+        // Показваме контейнера на новата позиция
+        container.style.visibility = 'visible';
       }
     });
 
@@ -494,6 +511,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Double tap detected
         e.preventDefault(); // Предотвратява избор на текст и zoom
         if (container && document.body.contains(container)) {
+          // Спираме автоматичното позициониране
+          if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+          }
+
+          // Скриваме контейнера временно
+          container.style.visibility = 'hidden';
+
+          // Изчисляваме центъра на екрана
           const viewportWidth = window.innerWidth;
           const viewportHeight = window.innerHeight;
           const containerRect = container.getBoundingClientRect();
@@ -501,12 +528,13 @@ document.addEventListener('DOMContentLoaded', () => {
           const centerX = (viewportWidth - containerRect.width) / 2;
           const centerY = (viewportHeight - containerRect.height) / 2;
 
+          // Позиционираме контейнера в центъра
           container.style.left = centerX + window.scrollX + 'px';
           container.style.top = centerY + window.scrollY + 'px';
 
           // Обновяваме step координатите
+          const img = container.querySelector('.guide-img');
           for (let i = 0; i < steps.length; i++) {
-            const img = container.querySelector('.guide-img');
             const targetEl = document.querySelector(steps[i].target);
             if (img && targetEl) {
               const imgRect = img.getBoundingClientRect();
@@ -517,6 +545,9 @@ document.addEventListener('DOMContentLoaded', () => {
               break;
             }
           }
+
+          // Показваме контейнера на новата позиция
+          container.style.visibility = 'visible';
         }
         lastTapTime = 0; // Reset
       } else {
