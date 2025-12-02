@@ -2455,13 +2455,27 @@ code {
     position: relative;
     background: #0078d7;
     color: white;
-    border-radius: .4em;
-    padding: 10px 14px;
-    margin-bottom: 10px;
-    max-width: 220px;
+    border-radius: .8em;
+    padding: 10px 10px;
+    max-width: 300px;
     text-align: center;
     font-size: 14px;
     box-shadow: 0 0 2px black, 2px 4px 6px rgba(0, 0, 0, 0.5);
+}
+
+.speech-bubble h2,
+.speech-bubble h3 {
+    margin: 5px 0;
+}
+
+.speech-bubble h2:first-child,
+.speech-bubble h3:first-child {
+    margin-top: 0;
+}
+
+.speech-bubble h2:last-child,
+.speech-bubble h3:last-child {
+    margin-bottom: 0;
 }
 
 .guide-next {

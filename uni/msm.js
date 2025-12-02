@@ -9,7 +9,7 @@ const guideTexts = {
 
   ],
   bg: [
-    "Добре дошъли!<br>Аз съм <b>Lepcho</b> - вашият екскурзовод в света на лепящите бележки.",
+    "<h2>Добре дошли!</h2><h3>Аз съм <b>Лепчо</b> - вашият екскурзовод в света на лепящите бележки.</h3>",
     "Тук можеш да добавиш нови записи.",
     "А тук ще видиш статистиката.",
     "<h3>Тази иконка показва, че към бележката има приложение. Ако я кликнеш, ще видиш преглед в бележката.</h3>",
@@ -22,24 +22,24 @@ const getCurrentLanguage = () => localStorage.getItem('language') || 'en';
 
 const steps = [
   {
-    image: "msm/1.png", height: 200, target: "#lang-bg-main", x: -198, y: 27, bx: 173, by: 47,
-    textKey: 0
+    image: "msm/1.png", height: 200, target: "#lang-bg-main", textKey: 0,
+    x: -242, y: 24, bx: 173, by: 47, bWidth: 305, bHeight: 78
   },
   {
-    image: "msm/1.png", height: 150, target: "#lang-bg-main", x: -269, y: 341, bx: 149, by: 50,
-    textKey: 1
+    image: "msm/1.png", height: 150, target: "#lang-bg-main", textKey: 1,
+    x: -269, y: 341, bx: 149, by: 50, bWidth: 300, bHeight: 150
   },
   {
-    image: "msm/1.png", height: 150, target: "#lang-bg-main", x: -198, y: 27, bx: 173, by: 47,
-    textKey: 2
+    image: "msm/1.png", height: 150, target: "#lang-bg-main", textKey: 2,
+    x: -198, y: 27, bx: 173, by: 47, bWidth: 300, bHeight: 150
   },
   {
-    image: "msm/right-up.png", height: 150, target: "#search-box", x: -201, y: 292, bx: 80, by: -14,
-    textKey: 3
+    image: "msm/right-up.png", height: 150, target: "#search-box", textKey: 3,
+    x: -201, y: 292, bx: 80, by: -14, bWidth: 300, bHeight: 150
   },
   {
-    image: "msm/right-up.png", height: 150, target: "#search-box", x: 367, y: 233, bx: 80, by: -14,
-    textKey: 4
+    image: "msm/right-up.png", height: 150, target: "#search-box", textKey: 4,
+    x: 367, y: 233, bx: 80, by: -14, bWidth: 300, bHeight: 150
   },
 ];
 
@@ -79,6 +79,22 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   bubble.style.transform = `translate(${bx}px, ${by}px)`;
   bubble.style.cursor = "grab";
 
+  // Прилагаме размери, ако са зададени
+  if (step.bWidth) bubble.style.width = step.bWidth + 'px';
+  if (step.bHeight) bubble.style.height = step.bHeight + 'px';
+
+  // --- RESIZE HANDLE ---
+  const resizeHandle = document.createElement('div');
+  resizeHandle.style.position = 'absolute';
+  resizeHandle.style.bottom = '0';
+  resizeHandle.style.right = '0';
+  resizeHandle.style.width = '20px';
+  resizeHandle.style.height = '20px';
+  resizeHandle.style.cursor = 'se-resize';
+  resizeHandle.style.zIndex = '10';
+  // resizeHandle.style.background = 'rgba(255, 0, 0, 0.3)'; // For debugging
+  bubble.appendChild(resizeHandle);
+
   container.appendChild(bubble);
 
   // --- DEBUG OVERLAY ---
@@ -100,12 +116,101 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   }
   debugOverlay.innerText = 'Debug info';
 
+  // --- BUBBLE RESIZE LOGIC ---
+  let isResizing = false;
+
+  resizeHandle.onmousedown = (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // Спираме влаченето на балона
+    if (stepTimer) clearTimeout(stepTimer);
+
+    isResizing = true;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = parseInt(getComputedStyle(bubble).width, 10);
+    const startHeight = parseInt(getComputedStyle(bubble).height, 10);
+    let newWidth = startWidth;
+    let newHeight = startHeight;
+
+    document.onmousemove = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+
+      newWidth = Math.max(50, startWidth + dx); // Min width 50
+      newHeight = Math.max(50, startHeight + dy); // Min height 50
+
+      bubble.style.width = newWidth + 'px';
+      bubble.style.height = newHeight + 'px';
+      debugOverlay.innerText = `Size: w: ${newWidth}, h: ${newHeight}`;
+    };
+
+    document.onmouseup = () => {
+      document.onmousemove = null;
+      document.onmouseup = null;
+      isResizing = false;
+
+      // Copy to clipboard
+      const currentBx = step.bx || 0;
+      const currentBy = step.by || 0;
+      const clipboardText = `bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}`;
+      navigator.clipboard.writeText(clipboardText);
+      debugOverlay.innerText = `Copied: ${clipboardText}`;
+
+      // Update step object (optional, for current session)
+      step.bWidth = newWidth;
+      step.bHeight = newHeight;
+    };
+  };
+
+  resizeHandle.ontouchstart = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (stepTimer) clearTimeout(stepTimer);
+
+    isResizing = true;
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    const startWidth = parseInt(getComputedStyle(bubble).width, 10);
+    const startHeight = parseInt(getComputedStyle(bubble).height, 10);
+    let newWidth = startWidth;
+    let newHeight = startHeight;
+
+    document.ontouchmove = (moveEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const dx = moveTouch.clientX - startX;
+      const dy = moveTouch.clientY - startY;
+
+      newWidth = Math.max(50, startWidth + dx);
+      newHeight = Math.max(50, startHeight + dy);
+
+      bubble.style.width = newWidth + 'px';
+      bubble.style.height = newHeight + 'px';
+      debugOverlay.innerText = `Size: w: ${newWidth}, h: ${newHeight}`;
+    };
+
+    document.ontouchend = () => {
+      document.ontouchmove = null;
+      document.ontouchend = null;
+      isResizing = false;
+
+      const currentBx = step.bx || 0;
+      const currentBy = step.by || 0;
+      const clipboardText = `bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}`;
+      navigator.clipboard.writeText(clipboardText);
+      debugOverlay.innerText = `Copied: ${clipboardText}`;
+
+      step.bWidth = newWidth;
+      step.bHeight = newHeight;
+    };
+  };
+
   // --- BUBBLE DRAG LOGIC ---
   let bubbleWasDragged = false;
 
   bubble.onclick = (e) => {
-    // Ако балонът не е бил влачен, превключваме езика
-    if (!bubbleWasDragged) {
+    // Ако балонът не е бил влачен и не се преоразмерява, превключваме езика
+    if (!bubbleWasDragged && !isResizing) {
       e.preventDefault();
       e.stopPropagation();
 
@@ -114,11 +219,14 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
       // Обновяваме текста на балона
       const newText = guideTexts[currentBubbleLang][step.textKey];
       bubble.innerHTML = newText;
+      // Re-append resize handle as innerHTML wipes it out
+      bubble.appendChild(resizeHandle);
     }
     bubbleWasDragged = false;
   };
 
   bubble.onmousedown = (e) => {
+    if (e.target === resizeHandle) return; // Ignore if clicking resize handle
     e.preventDefault();
     if (stepTimer) clearTimeout(stepTimer);
 
@@ -153,14 +261,21 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
 
       if (bubbleWasDragged) {
         // Copy to clipboard
-        navigator.clipboard.writeText(`bx: ${finalBx}, by: ${finalBy}`);
-        debugOverlay.innerText = `Copied: bx: ${finalBx}, by: ${finalBy}`;
+        const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
+        const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
+        const clipboardText = `bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
+        navigator.clipboard.writeText(clipboardText);
+        debugOverlay.innerText = `Copied: ${clipboardText}`;
+
+        step.bx = finalBx;
+        step.by = finalBy;
       }
     };
   };
 
   // Touch support for bubble drag
   bubble.ontouchstart = (e) => {
+    if (e.target === resizeHandle) return;
     e.preventDefault();
     if (stepTimer) clearTimeout(stepTimer);
 
@@ -197,8 +312,14 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
 
       if (bubbleWasDragged) {
         // Copy to clipboard
-        navigator.clipboard.writeText(`bx: ${finalBx}, by: ${finalBy}`);
-        debugOverlay.innerText = `Copied: bx: ${finalBx}, by: ${finalBy}`;
+        const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
+        const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
+        const clipboardText = `bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
+        navigator.clipboard.writeText(clipboardText);
+        debugOverlay.innerText = `Copied: ${clipboardText}`;
+
+        step.bx = finalBx;
+        step.by = finalBy;
       } else {
         // Ако не е имало влачене, превключваме езика
         currentBubbleLang = currentBubbleLang === 'en' ? 'bg' : 'en';
@@ -206,6 +327,7 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
         // Обновяваме текста на балона
         const newText = guideTexts[currentBubbleLang][step.textKey];
         bubble.innerHTML = newText;
+        bubble.appendChild(resizeHandle);
       }
     };
   };
@@ -376,7 +498,9 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
           setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
 
           // Copy to clipboard - включваме и координатите на балона
-          const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}`;
+          const currentBWidth = step.bWidth || 0;
+          const currentBHeight = step.bHeight || 0;
+          const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
           navigator.clipboard.writeText(clipboardText);
           debugOverlay.innerText = `Copied: ${clipboardText}`;
         }
@@ -445,7 +569,9 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
           setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
 
           // Copy to clipboard - включваме и координатите на балона
-          const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}`;
+          const currentBWidth = step.bWidth || 0;
+          const currentBHeight = step.bHeight || 0;
+          const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
           navigator.clipboard.writeText(clipboardText);
           debugOverlay.innerText = `Copied: ${clipboardText}`;
         }
@@ -465,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Single click - start guide
     appTitle.addEventListener('click', () => {
-      showStep(4, 4, true);
+      showStep(0, 4, true);
     });
 
     // Double click - center guide on screen
