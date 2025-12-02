@@ -12,8 +12,8 @@ const guideTexts = {
     "Добре дошъли!<br>Аз съм <b>Lepcho</b> - вашият екскурзовод в света на лепящите бележки.",
     "Тук можеш да добавиш нови записи.",
     "А тук ще видиш статистиката.",
-    "<h3>Тази иконка показва, че към бележката има приложение. Ако я кликнеш, ще видиш умален вариант в бележката.</h3>",
-    "<h3>I like this kind of Shoping list."
+    "<h3>Тази иконка показва, че към бележката има приложение. Ако я кликнеш, ще видиш преглед в бележката.</h3>",
+    "<h3>Аз харесвам такива списъци.</h3>"
   ]
 };
 
@@ -69,8 +69,8 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   bubble.className = "speech-bubble";
 
   // Получаваме текста на текущия език
-  const currentLang = getCurrentLanguage();
-  const stepText = guideTexts[currentLang][step.textKey];
+  let currentBubbleLang = getCurrentLanguage();
+  const stepText = guideTexts[currentBubbleLang][step.textKey];
   bubble.innerHTML = stepText;
 
   // Прилагаме относителни координати за балона
@@ -104,9 +104,16 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   let bubbleWasDragged = false;
 
   bubble.onclick = (e) => {
-    // Ако балонът не е бил влачен, предаваме клика на героя
+    // Ако балонът не е бил влачен, превключваме езика
     if (!bubbleWasDragged) {
-      img.click();
+      e.preventDefault();
+      e.stopPropagation();
+
+      currentBubbleLang = currentBubbleLang === 'en' ? 'bg' : 'en';
+
+      // Обновяваме текста на балона
+      const newText = guideTexts[currentBubbleLang][step.textKey];
+      bubble.innerHTML = newText;
     }
     bubbleWasDragged = false;
   };
@@ -193,8 +200,12 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
         navigator.clipboard.writeText(`bx: ${finalBx}, by: ${finalBy}`);
         debugOverlay.innerText = `Copied: bx: ${finalBx}, by: ${finalBy}`;
       } else {
-        // Ако не е имало влачене, симулираме клик на героя
-        img.click();
+        // Ако не е имало влачене, превключваме езика
+        currentBubbleLang = currentBubbleLang === 'en' ? 'bg' : 'en';
+
+        // Обновяваме текста на балона
+        const newText = guideTexts[currentBubbleLang][step.textKey];
+        bubble.innerHTML = newText;
       }
     };
   };
