@@ -24,7 +24,11 @@ let pass = false;
 // --- Demo Mode ---
 let DEMO_MODE = false;
 const DEMO_NOTE_LIMIT = 5;
+
 let guide = false;
+function showStep(stepIndex, nextStepIndex = null, single = false) {
+    return false;
+}
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ

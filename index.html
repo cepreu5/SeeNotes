@@ -9,19 +9,19 @@
     <link rel="stylesheet" href="style.css">
     <meta http-equiv="Content-Security-Policy"
         content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
+    <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
         crossorigin="anonymous">
-        </script>
+    </script-->
 </head>
 
 <body>
-    <!-- Вертикална реклама 120х728 -->
+    <!-- Вертикална реклама 120х728>
     <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
         data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
     </ins>
     <script>
         (adsbygoogle = window.adsbygoogle || []).push({});
-    </script>
+    </script -->
 
     <header>
         <div style="display: flex; align-items: center;">
@@ -380,7 +380,7 @@
                 <!-- Скрита секция за опции за бордове -->
                 <div id="boards-options-section" style="display: none;">
                     <!-- Нов, опростен flex контейнер за опциите за бордове -->
-                    <div class="boards-options-container">
+                    <div class="boards-options-container" style="background-color: #909090;">
                         <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
                             <label for="all-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
@@ -608,13 +608,19 @@
             </div>
         </div>
     </div>
+    <div id="guide-root"></div>
 
-    <script src="i18n.js"></script>
     <!--script src="calendar.js"></script>
     <script src="db.js"></script>
     <script src="fs.js"></script>
     <script src="config.js"></script-->
-    <script src="main.js"></script>
+
+    <!--link rel="stylesheet" href="msmstyle.css">
+    <script src="msmguide.js"></script>
+    <script src="msm.js"></script-->
+
+    <script src="i18n.js"></script>
+    <script src="mainn.js"></script>
     <!--script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script-->
 </body>
 

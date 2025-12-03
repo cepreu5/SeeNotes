@@ -858,6 +858,51 @@ code {
     opacity: 1;
 }
 
+/* Floating button for popup menu in boards-menu-container */
+.popup-menu-btn-floating {
+    display: none;
+    position: fixed;
+    top: 20px;
+    right: 10px;
+    z-index: 99;
+    border: 2px solid #dddddd;
+    outline: none;
+    background-color: yellow;
+    color: black;
+    cursor: grab;
+    padding: 11px;
+    border-radius: 50%;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    opacity: 1;
+    width: 46px;
+    height: 46px;
+    align-items: center;
+    justify-content: center;
+}
+
+.popup-menu-btn-floating:hover {
+    background-color: #c0c0c0;
+    opacity: 1;
+}
+
+.popup-menu-btn-floating svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
+}
+
+.popup-menu-btn-floating.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+/* Show floating button on narrow screens */
+@media (max-width: 1160px) {
+    .popup-menu-btn-floating {
+        display: flex;
+    }
+}
+
 #loader-container {
     text-align: center;
     margin: 50px auto;
@@ -1007,16 +1052,21 @@ code {
     /* Плавен преход при hover/active */
     transform: translateY(0);
     /* За да може active да се повдига */
-    display: flex;
-    /* За центриране на текста */
-    align-items: center;
-    /* Центриране по вертикала */
-    justify-content: center;
     /* Центриране по хоризонтала */
     min-width: 90px;
     /* Минимална ширина на таба */
     height: 35px;
     /* Височина на таба */
+
+    /* Добавено за съкращаване на текста */
+    display: inline-block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    line-height: 33px;
+    /* Центриране по вертикала (35px височина - 2px padding) */
+    vertical-align: middle;
 }
 
 /* Общи стилове за пластмасов ефект */
