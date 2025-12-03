@@ -10,6 +10,13 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   const step = steps[stepIndex];
   if (!step) return;
 
+  let imagePath = step.image;
+  let stopAfter = false;
+  if (imagePath && imagePath.endsWith('!')) {
+    stopAfter = true;
+    imagePath = imagePath.slice(0, -1);
+  }
+
   if (!container || !document.body.contains(container)) {
     container = document.createElement("div");
     container.className = "guide-container";
@@ -288,7 +295,7 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   };
 
   const img = document.createElement("img");
-  img.src = step.image;
+  img.src = imagePath;
   img.className = "guide-img";
   img.style.cursor = "pointer";
 
@@ -304,8 +311,8 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
     if (stepTimer) clearTimeout(stepTimer);
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
 
-    // Ако е single режим, просто затваряме
-    if (single) {
+    // Ако е single режим или stopAfter, просто затваряме
+    if (single || stopAfter) {
       container.remove();
       container = null;
       if (debugOverlay) debugOverlay.remove();

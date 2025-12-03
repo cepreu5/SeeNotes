@@ -196,6 +196,7 @@ function gisLoaded() {
     // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
     loginBox.style.visibility = 'visible';
     document.getElementById('authorize_button').disabled = false;
+    showStep(0, 0, true); // Интро
 }
 
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
@@ -1468,16 +1469,13 @@ function initApp() {
     const toast = document.getElementById('toastNotification');
     toast.addEventListener('click', hideToast);
 
-
-
-
-
     scrollTopBtn.innerHTML = arrowSvg;
     signoutButton.addEventListener('click', handleSignoutClick);
     reloadButton.addEventListener('click', () => mainLogic());
+
     settingsButton.addEventListener('click', () => {
         // Запомняме началното състояние на чекбоксовете при отваряне на настройките
-        // --- КОРЕКЦИЯ: Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
+        // Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
         document.getElementById('use-google-db-checkbox').checked = localStorage.getItem('useGoogleDb') !== 'false';
         document.getElementById('use-local-db-checkbox').checked = localStorage.getItem('useLocalDb') === 'true';
         document.getElementById('use-arh-db-checkbox').checked = localStorage.getItem('useArhDb') === 'true';
@@ -1490,7 +1488,9 @@ function initApp() {
             useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
         };
         document.getElementById('settings-modal').classList.add('visible');
+        showStep(4); // Настройки
     });
+
     window.onscroll = () => {
         const weeklyCalendar = document.getElementById('weekly-calendar-container');
         // Скриваме бутона, ако седмичният календар е видим
@@ -3409,6 +3409,7 @@ async function mainLogic() {
         document.querySelector('#search-wrapper').style.display = 'flex';
         notesContainer.style.visibility = 'visible';
     }
+    showStep(1); // Първи стъпки
 }
 
 /**
