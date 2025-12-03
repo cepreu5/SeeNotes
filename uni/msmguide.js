@@ -4,7 +4,7 @@ const guideTexts = {
         "<h2>Welcome!</h2><h3>I'm <b>Mr. StickyMan</b> - your guide to the world of sticky notes.</h3>",
         "<h3>✨ I’m easy to handle! Click me (or the text) to move forward — and with Ctrl+Click you can make me disappear instantly!</h3>",
         "<h3>This is a super handy button — the little window it pops up lets you tweak all sorts of useful settings!</h3>",
-        "<h3>Press it and I’ll reveal secrets no one else knows!</h3>",
+        "<h3>Press it and I’ll unveil secrets no one else knows — but first, let’s look 👀 around!</h3>",
         "<h3>With this slider you can resize your notes just the way you like. The window turns transparent so you can still see what’s happening underneath! Try it!</h3>",
         "<h3>Ctrl‑click on the slider snaps it to round positions — 90, 130, and so on. For fine‑tuning with pixel‑perfect precision, use this field!</h3>",
         "<h3>This icon shows that the note has an attachment. If you click it, you will see a preview in the note.</h3>",
@@ -14,7 +14,7 @@ const guideTexts = {
         "<h2>Добре дошли!</h2><h3>Аз съм <b>Лепчо</b> - вашият екскурзовод в света на лепящите бележки.</h3>",
         "<h3>✨ С мен се общува лесно. Ако искаш да мина на следващата стъпка, кликни на текста или върху мен. А с Ctrl+Click можеш да ме скриеш веднага.</h3>",
         "<h3>Това е един много полезен бутон - от прозорчето, което отваря може да направиш полезни настройки.</h3>",
-        "<h3>Натисни го и ще ти разкрия тайни, които никой не знае!</h3>",
+        "<h3>Когато го натиснеш ще ти разкрия тайни, които никой не знае, но нека сега да се огледаме 👀 наоколо!</h3>",
         "<h3>С този слайдер можеш да промениш размера на бележките. Прозорецът с настройките ще стане прозрачен, така че да виждаш какво се случва под него. Пробвай го!</h3>",
         "<h3>Ctrl-click върху слайдера ще го позиционира на кръгли позиции - 90, 130, .... За фина настройка с точност един пиксел използвай това поле.</h3>",
         "<h3>Тази иконка показва, че към бележката има приложение. Ако я кликнеш, ще видиш преглед на приложението в бележката.</h3>",
@@ -39,7 +39,7 @@ const steps = [
     },
     {
         image: "msm/expl2.png!", height: 150, target: "#settings_button", textKey: 3,
-        x: -160, y: 56, bx: -157, by: 15, bWidth: 223, bHeight: 53
+        x: -154, y: 56, bx: -178, by: 41, bWidth: 230, bHeight: 75
     },
     {
         image: "msm/right-up.png", height: 150, target: "#scaleSlider", textKey: 4,

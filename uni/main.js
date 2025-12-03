@@ -24,6 +24,7 @@ let pass = false;
 // --- Demo Mode ---
 let DEMO_MODE = false;
 const DEMO_NOTE_LIMIT = 5;
+let guide = false;
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
@@ -196,7 +197,7 @@ function gisLoaded() {
     // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
     loginBox.style.visibility = 'visible';
     document.getElementById('authorize_button').disabled = false;
-    showStep(0, 0, true); // Интро
+    if (guide) showStep(0, 0, true); // Интро
 }
 
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
@@ -207,13 +208,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Добави този код в началото или края на main.js
 // Динамично зареждане на Google Identity Services скрипта
-function loadGoogleIdentityServices() {
+// Динамично зареждане на Google Identity Services скрипта с retry логика
+function loadGoogleIdentityServices(retries = 3) {
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
     script.onload = () => { gisLoaded(); }; // Извикваме функцията след зареждане
-    script.onerror = () => { console.error('Failed to load Google Identity Services'); };
+    script.onerror = () => {
+        console.error('Failed to load Google Identity Services');
+        if (retries > 0) {
+            console.log(`Retrying to load GIS... (${retries} attempts left)`);
+            setTimeout(() => loadGoogleIdentityServices(retries - 1), 2000);
+        } else {
+            console.error('Giving up on loading Google Identity Services. Please check your internet connection or ad blockers.');
+            if (typeof showToast === 'function') {
+                showToast('Failed to load Google Login. Check internet/adblock.', 5000);
+            }
+        }
+    };
     document.head.appendChild(script);
 }
 
@@ -1488,7 +1501,7 @@ function initApp() {
             useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
         };
         document.getElementById('settings-modal').classList.add('visible');
-        showStep(4); // Настройки
+        if (guide) showStep(4); // Настройки
     });
 
     window.onscroll = () => {
@@ -3409,7 +3422,7 @@ async function mainLogic() {
         document.querySelector('#search-wrapper').style.display = 'flex';
         notesContainer.style.visibility = 'visible';
     }
-    showStep(1); // Първи стъпки
+    if (guide) showStep(1); // Първи стъпки
 }
 
 /**
@@ -4815,7 +4828,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     addAllBoardsModalEvents(allBoardsBtn, () => { showAllBoardsModal(); });
     scrollWrapper.appendChild(allBoardsBtn);
 
-    // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container ---
+    // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container --- @@
     const boardsMenuContainer = document.getElementById('boards-menu-container');
     if (boardsMenuContainer) {
         // Клонираме бутона, за да го имаме и на двете места, или го местим.
@@ -4823,13 +4836,132 @@ async function createBoardsUI(boardsData, boardParseError) {
         // Тъй като DOM елемент може да е само на едно място, ще го клонираме.
         // Но трябва да закачим и event listener-ите наново.
         // По-добрият вариант е да създадем нов бутон за контейнера.
-
         const allBoardsBtnForContainer = document.createElement('button');
-        allBoardsBtnForContainer.className = 'header-btn popup-menu-btn'; // Използваме header-btn за да е като бутон Изход
+        allBoardsBtnForContainer.className = 'popup-menu-btn-floating'; // Използваме floating стил, за да стои над страницата
         allBoardsBtnForContainer.innerHTML = boardIconSvg;
-        // allBoardsBtnForContainer.style.marginRight = '5px'; // Премахваме ръчния марджин, header-btn има margin-left
 
-        addAllBoardsModalEvents(allBoardsBtnForContainer, () => { showAllBoardsModal(); });
+        // --- DRAGGABLE FUNCTIONALITY ---
+        // Зареждаме запазената позиция от localStorage
+        const savedPos = localStorage.getItem('popupMenuBtnPosition');
+        if (savedPos) {
+            const pos = JSON.parse(savedPos);
+            allBoardsBtnForContainer.style.top = pos.top;
+            allBoardsBtnForContainer.style.right = pos.right;
+        }
+
+        let isDragging = false;
+        let hasMoved = false;
+        let startX, startY, startTop, startRight;
+        let longPressTimer;
+        let isLongPress = false;
+
+        const onDragStart = (e) => {
+            const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+            const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+
+            isDragging = true;
+            hasMoved = false;
+            isLongPress = false;
+            startX = clientX;
+            startY = clientY;
+
+            // Вземаме текущата позиция
+            const rect = allBoardsBtnForContainer.getBoundingClientRect();
+            startTop = rect.top;
+            startRight = window.innerWidth - rect.right;
+
+            // Long press за показване на менюто
+            longPressTimer = setTimeout(() => {
+                if (!hasMoved) {
+                    isLongPress = true;
+                    showAllBoardsModal();
+                    isDragging = false;
+                }
+            }, 500);
+        };
+
+        const onDragMove = (e) => {
+            if (!isDragging) return;
+
+            const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+            const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+
+            const deltaX = clientX - startX;
+            const deltaY = clientY - startY;
+
+            // Проверяваме дали има движение (повече от 5px)
+            if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+                hasMoved = true;
+                clearTimeout(longPressTimer);
+                allBoardsBtnForContainer.classList.add('dragging');
+            }
+
+            if (!hasMoved) return;
+
+            const newTop = startTop + deltaY;
+            const newRight = startRight - deltaX;
+
+            // Ограничаваме позицията в рамките на екрана
+            const maxTop = window.innerHeight - allBoardsBtnForContainer.offsetHeight;
+            const maxRight = window.innerWidth - allBoardsBtnForContainer.offsetWidth;
+
+            const constrainedTop = Math.max(0, Math.min(newTop, maxTop));
+            const constrainedRight = Math.max(0, Math.min(newRight, maxRight));
+
+            allBoardsBtnForContainer.style.top = `${constrainedTop}px`;
+            allBoardsBtnForContainer.style.right = `${constrainedRight}px`;
+
+            e.preventDefault();
+        };
+
+        const onDragEnd = (e) => {
+            if (!isDragging) return;
+
+            clearTimeout(longPressTimer);
+            isDragging = false;
+            allBoardsBtnForContainer.classList.remove('dragging');
+
+            if (hasMoved) {
+                // Запазваме позицията в localStorage
+                const position = {
+                    top: allBoardsBtnForContainer.style.top,
+                    right: allBoardsBtnForContainer.style.right
+                };
+                localStorage.setItem('popupMenuBtnPosition', JSON.stringify(position));
+            }
+        };
+
+        // Mouse events
+        allBoardsBtnForContainer.addEventListener('mousedown', onDragStart);
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+
+        // Touch events
+        allBoardsBtnForContainer.addEventListener('touchstart', onDragStart, { passive: false });
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('touchend', onDragEnd, { passive: false });
+
+        // Click event - отваря менюто с малко забавяне, за да има време за drag
+        let clickTimer;
+        allBoardsBtnForContainer.addEventListener('click', (e) => {
+            if (hasMoved || isLongPress) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Малко забавяне преди отваряне на менюто, за да има време потребителят да започне drag
+            e.preventDefault();
+            e.stopPropagation();
+
+            clearTimeout(clickTimer);
+            clickTimer = setTimeout(() => {
+                // Проверяваме отново дали не е започнало влачене междувременно
+                if (!hasMoved && !isDragging) {
+                    showAllBoardsModal();
+                }
+            }, 200); // 200ms забавяне
+        });
 
         // Изчистваме контейнера преди да добавим (ако се презарежда UI)
         boardsMenuContainer.innerHTML = '';
@@ -6419,7 +6551,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 // Fallback, ако бутонът не е намерен
                 filterNotesByBoard(currentBoardFilter, true);
             }
-        }, 100);
+        }, 300);
     } else {
         filterNotesByBoard(currentBoardFilter, false);
     }
