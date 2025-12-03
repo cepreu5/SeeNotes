@@ -1328,7 +1328,7 @@ function addLongPressOrCtrlClick(element, callback) {
         // Започваме таймер за продължително натискане
         longPressTimer = setTimeout(() => {
             isLongPress = true;
-            callback(e); // Извикваме callback-а при long press
+            // callback(e); // ВРЕМЕННО: Изключено изтриване при long press
         }, 500); // 500ms за long press
     };
 
@@ -4784,11 +4784,31 @@ async function createBoardsUI(boardsData, boardParseError) {
         link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
         link.classList.add('board-filter-link');
         link.dataset.boardid = board.gdid;
-        if (board.color !== undefined && !isNaN(board.color) && board.color >= 0 && board.color <= 6) {
-            link.style.backgroundColor = `var(--board-bg-${board.color})`;
+
+        // Обработка на цвят на фона
+        if (board.color !== undefined && !isNaN(board.color)) {
+            if (board.color >= 0 && board.color <= 6) {
+                // Стандартни цветове (0-6)
+                link.style.backgroundColor = `var(--board-bg-${board.color})`;
+            } else if (board.color < 0) {
+                // Custom цвят (отрицателно число)
+                // Преобразуваме signed int в hex color string (RRGGBB)
+                // Използваме >>> 0 за да го третираме като unsigned 32-bit int,
+                // след това toString(16) и взимаме последните 6 символа.
+                const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
+                link.style.backgroundColor = hexColor;
+            }
         }
-        link.style.color = 'black';
-        if (board.status === 1) link.style.color = 'red';
+
+        // Обработка на цвят на шрифта
+        link.style.color = 'black'; // Default
+        if (board.status === 1) {
+            link.style.color = 'red';
+        } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
+            // Custom цвят на шрифта (отрицателно число)
+            const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+            link.style.color = hexFontColor;
+        }
         link.addEventListener('click', (e) => {
             if (lastActive) {
                 lastActive.classList.remove('active');

@@ -428,7 +428,7 @@ const translations = {
         modeArchivePoint2: 'Този режим се използва, когато прехвърлите zip-архив с бележки, създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на данни</strong> -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Архив</strong>.',
         modeArchivePoint3: 'Ако изберете този режим и поставите отметка в <strong>База данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.',
         modeArchivePoint4: 'Ако, след първоначално зареждане, махнете отметката на <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да зареждате бележките си без забавяне.',
-        invalidCertificate: 'Невалиден или изтекъл сергификат',
+        invalidCertificate: 'Невалиден или изтекъл сертификат',
         modeDbAndDrive: 'Режим: База данни + Google Drive',
         modeDbAndLocal: 'Режим: База данни + Локална папка',
         modeDbAndArchive: 'Режим: База данни + Архив',
