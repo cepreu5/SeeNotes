@@ -1818,7 +1818,7 @@ code {
 
 .calendar-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     gap: 10px;
     /* Добавяме разстояние между заглавието и бутоните */
@@ -1826,6 +1826,7 @@ code {
     background-image: url('Frame.jpg');
     border-bottom: 2px solid #d4c8a8;
     margin-bottom: 0px;
+    position: relative;
 }
 
 .calendar-nav-controls {
@@ -1837,12 +1838,15 @@ code {
 
 .calendar-header h2 {
     margin: 0;
-    flex-grow: 1;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
     text-align: center;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
     cursor: pointer;
     color: darkorange;
     /* Подсказва, че може да се кликне */
+    pointer-events: none;
 }
 
 .calendar-header button {

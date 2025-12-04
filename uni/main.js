@@ -274,7 +274,7 @@ function renderCalendarView() {
                 <button id="today-month-btn">${calendarIconSvg}</button>
                 <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${weeklyViewIconSvg}</button>
             </div>
-            <h2 style="cursor: default;">${titleText}</h2>
+            <h2 style="cursor: default; text-align: center;">${titleText}</h2>
         `;
     stickyHeaderContainer.appendChild(calendarHeader);
     // Day names header
@@ -629,7 +629,7 @@ function renderWeeklyCalendarView(dateForWeek) {
     header.style.top = '0';
     header.style.zIndex = '100';
     header.style.backgroundColor = '#fdf6e3'; // Match background
-    header.innerHTML = `<div class="calendar-nav-controls"><button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span><img src="Refresh.png" class="close-loading-icon" style="display: none;"></button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default;">${titleText}</h2>`;
+    header.innerHTML = `<div class="calendar-nav-controls"><button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span><img src="Refresh.png" class="close-loading-icon" style="display: none;"></button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default; text-align: center;">${titleText}</h2>`;
     weeklyContainer.appendChild(header);
 
     // Добавяме клик събитие за преход към месечен изглед ---
