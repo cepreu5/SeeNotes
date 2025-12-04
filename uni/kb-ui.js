@@ -31,8 +31,8 @@ class KBUI {
         this.fabButton = document.createElement('button');
         this.fabButton.id = 'kb-fab';
         this.fabButton.className = 'kb-fab';
-        this.fabButton.innerHTML = '💬';
-        this.fabButton.title = 'Assistant';
+        this.fabButton.innerHTML = '<img src="msm-assist.png" alt="Mr. StickyMan" style="width: 40px; height: 40px; object-fit: contain;">';
+        this.fabButton.title = 'Mr. StickyMan Assistant';
 
         document.body.appendChild(this.fabButton);
     }
@@ -48,8 +48,8 @@ class KBUI {
         this.container.innerHTML = `
             <div class="kb-header">
                 <div class="kb-header-title">
-                    <span class="kb-icon">🤖</span>
-                    <span class="kb-title">Assistant</span>
+                    <span class="kb-icon"><img src="msm-assist.png" alt="Mr. StickyMan" style="width: 24px; height: 24px; object-fit: contain;"></span>
+                    <span class="kb-title">Mr. StickyMan</span>
                 </div>
                 <button class="kb-close-btn" id="kb-close-btn">×</button>
             </div>
@@ -274,16 +274,22 @@ class KBUI {
      * Добавя съобщение в чата
      * @param {string} type - 'user' или 'assistant'
      * @param {string} content - Съдържание (text или HTML)
+     * @param {string} customClass - Опционален допълнителен клас
      */
-    addMessage(type, content) {
+    addMessage(type, content, customClass = '') {
         const messageDiv = document.createElement('div');
         messageDiv.className = `kb-message kb-message-${type}`;
 
-        const icon = type === 'user' ? '👤' : '🤖';
+        // Използваме изображения вместо emoji
+        const icon = type === 'user'
+            ? '<img src="user-icon.png" alt="User" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'
+            : '<img src="msm-assist.png" alt="Mr. StickyMan" style="width: 100%; height: 100%; object-fit: cover;">';
+
+        const contentClass = customClass ? `kb-message-content ${customClass}` : 'kb-message-content';
 
         messageDiv.innerHTML = `
             <div class="kb-message-icon">${icon}</div>
-            <div class="kb-message-content">${content}</div>
+            <div class="${contentClass}">${content}</div>
         `;
 
         this.chatBox.appendChild(messageDiv);
@@ -321,7 +327,7 @@ class KBUI {
 
         html += '</div>';
 
-        this.addMessage('assistant', html);
+        this.addMessage('assistant', html, 'kb-compact-padding');
     }
 
     /**
