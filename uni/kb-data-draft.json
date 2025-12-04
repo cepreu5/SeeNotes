@@ -1,0 +1,1353 @@
+{
+    "metadata": {
+        "generated": "2025-12-04T15:21:00.000Z",
+        "version": "1.0.0",
+        "description": "Knowledge Base for CX MultiNotes Viewer Assistant - Draft with sample data"
+    },
+    "settings": [
+        {
+            "id": "show-datemod-checkbox",
+            "type": "checkbox",
+            "category": "display",
+            "label": {
+                "bg": "Покажи дата на промяна/календар:",
+                "en": "Show modification/calendar date:"
+            },
+            "i18nKey": "showDatemodLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "дата",
+                    "време",
+                    "час",
+                    "модификация",
+                    "промяна",
+                    "редактиране",
+                    "създаване",
+                    "календар",
+                    "показване",
+                    "покажи",
+                    "виждам",
+                    "под бележката"
+                ],
+                "en": [
+                    "date",
+                    "time",
+                    "modification",
+                    "change",
+                    "edit",
+                    "creation",
+                    "calendar",
+                    "show",
+                    "display",
+                    "see",
+                    "below note"
+                ]
+            },
+            "question": {
+                "bg": "Как да покажа датата на промяна на бележките?",
+                "en": "How to show the modification date of notes?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings и маркирай 'Покажи дата на промяна/календар'. Това ще покаже датата на последна промяна или календарната дата под всяка бележка.",
+                "en": "Go to Settings and check 'Show modification/calendar date'. This will display the last modification date or calendar date below each note."
+            },
+            "defaultValue": false,
+            "relatedSettings": []
+        },
+        {
+            "id": "one-tap-link-checkbox",
+            "type": "checkbox",
+            "category": "behavior",
+            "label": {
+                "bg": "Линкове с един клик:",
+                "en": "One-click links:"
+            },
+            "i18nKey": "oneTapLinkLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "линк",
+                    "линкове",
+                    "url",
+                    "връзка",
+                    "едно кликване",
+                    "един клик",
+                    "отваряне",
+                    "ctrl",
+                    "ctrl+click",
+                    "подчертан"
+                ],
+                "en": [
+                    "link",
+                    "links",
+                    "url",
+                    "hyperlink",
+                    "one click",
+                    "single click",
+                    "open",
+                    "ctrl",
+                    "ctrl+click",
+                    "underlined"
+                ]
+            },
+            "question": {
+                "bg": "Как работи настройката 'Линкове с един клик'?",
+                "en": "How does the 'One-click links' setting work?"
+            },
+            "answer": {
+                "bg": "Когато е активирана, линковете в бележките се отварят директно при кликване. Когато е изключена, линковете са подчертани и се отварят с Ctrl+Click. Намери настройката в Settings.",
+                "en": "When enabled, links in notes open directly on click. When disabled, links are underlined and open with Ctrl+Click. Find this setting in Settings."
+            },
+            "defaultValue": false,
+            "relatedSettings": []
+        },
+        {
+            "id": "img-bgrd-checkbox",
+            "type": "checkbox",
+            "category": "display",
+            "label": {
+                "bg": "Графичен фон:",
+                "en": "Graphical background:"
+            },
+            "i18nKey": "imgBgrdLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "фон",
+                    "графика",
+                    "изображение",
+                    "background",
+                    "картинка",
+                    "визуален",
+                    "бележки"
+                ],
+                "en": [
+                    "background",
+                    "graphical",
+                    "image",
+                    "picture",
+                    "visual",
+                    "notes"
+                ]
+            },
+            "question": {
+                "bg": "Какво прави настройката 'Графичен фон'?",
+                "en": "What does the 'Graphical background' setting do?"
+            },
+            "answer": {
+                "bg": "Когато е активирана, бележките показват графичен фон вместо обикновен цветен. Това прави бележките по-визуално привлекателни, но може да забави зареждането при много бележки.",
+                "en": "When enabled, notes display a graphical background instead of a plain color. This makes notes more visually appealing but may slow down loading with many notes."
+            },
+            "defaultValue": true,
+            "relatedSettings": []
+        },
+        {
+            "id": "show-board-note-count-checkbox",
+            "type": "checkbox",
+            "category": "display",
+            "label": {
+                "bg": "Брой бележки в борда:",
+                "en": "Notes count in board:"
+            },
+            "i18nKey": "showBoardNoteCountLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "брой",
+                    "бележки",
+                    "борд",
+                    "count",
+                    "показване",
+                    "номер"
+                ],
+                "en": [
+                    "count",
+                    "number",
+                    "notes",
+                    "board",
+                    "show",
+                    "display"
+                ]
+            },
+            "question": {
+                "bg": "Как да видя колко бележки има във всеки борд?",
+                "en": "How to see how many notes are in each board?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings и маркирай 'Брой бележки в борда'. Това ще покаже броя на бележките в скоби до името на всеки борд.",
+                "en": "Go to Settings and check 'Notes count in board'. This will show the number of notes in parentheses next to each board name."
+            },
+            "defaultValue": false,
+            "relatedSettings": []
+        },
+        {
+            "id": "weekly-calendar-checkbox",
+            "type": "checkbox",
+            "category": "calendar",
+            "label": {
+                "bg": "Седмичен календар:",
+                "en": "Weekly calendar view:"
+            },
+            "i18nKey": "showWeeklyCalendar",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "седмица",
+                    "календар",
+                    "седмичен",
+                    "изглед",
+                    "weekly"
+                ],
+                "en": [
+                    "weekly",
+                    "week",
+                    "calendar",
+                    "view"
+                ]
+            },
+            "question": {
+                "bg": "Как да използвам седмичния календар?",
+                "en": "How to use the weekly calendar?"
+            },
+            "answer": {
+                "bg": "Маркирай 'Седмичен календар' в Settings. След това в календара ще можеш да превключваш между месечен и седмичен изглед за по-детайлен преглед на бележките.",
+                "en": "Check 'Weekly calendar view' in Settings. Then in the calendar you can switch between monthly and weekly views for a more detailed view of notes."
+            },
+            "defaultValue": false,
+            "relatedSettings": []
+        },
+        {
+            "id": "remind-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "label": {
+                "bg": "Борд Напомняния:",
+                "en": "Show board Reminders:"
+            },
+            "i18nKey": "showBoardRemind",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "напомняния",
+                    "борд",
+                    "reminders",
+                    "показване"
+                ],
+                "en": [
+                    "reminders",
+                    "board",
+                    "show",
+                    "display"
+                ]
+            },
+            "question": {
+                "bg": "Какво е борда 'Напомняния'?",
+                "en": "What is the 'Reminders' board?"
+            },
+            "answer": {
+                "bg": "Бордът 'Напомняния' показва всички бележки с напомняния. Можеш да го покажеш или скриеш от Settings.",
+                "en": "The 'Reminders' board shows all notes with reminders. You can show or hide it from Settings."
+            },
+            "defaultValue": true,
+            "relatedSettings": [
+                "all-board-checkbox"
+            ]
+        },
+        {
+            "id": "all-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "label": {
+                "bg": "Борд Всички:",
+                "en": "Show board All:"
+            },
+            "i18nKey": "showBoardAll",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "всички",
+                    "борд",
+                    "all",
+                    "показване"
+                ],
+                "en": [
+                    "all",
+                    "board",
+                    "show",
+                    "display"
+                ]
+            },
+            "question": {
+                "bg": "Какво е борда 'Всички'?",
+                "en": "What is the 'All' board?"
+            },
+            "answer": {
+                "bg": "Бордът 'Всички' показва всички бележки от всички бордове на едно място. Полезен е за бърз преглед на всичко. Можеш да го покажеш или скриеш от Settings.",
+                "en": "The 'All' board shows all notes from all boards in one place. Useful for a quick overview of everything. You can show or hide it from Settings."
+            },
+            "defaultValue": true,
+            "relatedSettings": [
+                "remind-board-checkbox"
+            ]
+        },
+        {
+            "id": "show-photos-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "label": {
+                "bg": "Борд Със снимки:",
+                "en": "Board With Photos:"
+            },
+            "i18nKey": "showPhotosBoardLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "снимки",
+                    "фотографии",
+                    "борд",
+                    "изображения",
+                    "photos"
+                ],
+                "en": [
+                    "photos",
+                    "pictures",
+                    "images",
+                    "board"
+                ]
+            },
+            "question": {
+                "bg": "Какво е борда 'Със снимки'?",
+                "en": "What is the 'With Photos' board?"
+            },
+            "answer": {
+                "bg": "Бордът 'Със снимки' показва само бележки които съдържат прикачени снимки. Полезен е за бърз достъп до бележки с изображения.",
+                "en": "The 'With Photos' board shows only notes that contain attached photos. Useful for quick access to notes with images."
+            },
+            "defaultValue": false,
+            "relatedSettings": [
+                "show-videos-board-checkbox",
+                "show-sounds-board-checkbox"
+            ]
+        },
+        {
+            "id": "show-videos-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "label": {
+                "bg": "Борд С видео:",
+                "en": "Board With Video:"
+            },
+            "i18nKey": "showVideosBoardLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "видео",
+                    "борд",
+                    "клипове",
+                    "video"
+                ],
+                "en": [
+                    "video",
+                    "videos",
+                    "board",
+                    "clips"
+                ]
+            },
+            "question": {
+                "bg": "Какво е борда 'С видео'?",
+                "en": "What is the 'With Video' board?"
+            },
+            "answer": {
+                "bg": "Бордът 'С видео' показва само бележки които съдържат прикачени видео файлове. Полезен е за бърз достъп до бележки с видео.",
+                "en": "The 'With Video' board shows only notes that contain attached video files. Useful for quick access to notes with videos."
+            },
+            "defaultValue": false,
+            "relatedSettings": [
+                "show-photos-board-checkbox",
+                "show-sounds-board-checkbox"
+            ]
+        },
+        {
+            "id": "show-sounds-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "label": {
+                "bg": "Борд Със звук:",
+                "en": "Board With Sounds:"
+            },
+            "i18nKey": "showSoundsBoardLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "звук",
+                    "аудио",
+                    "борд",
+                    "sounds",
+                    "audio"
+                ],
+                "en": [
+                    "sounds",
+                    "audio",
+                    "board",
+                    "recordings"
+                ]
+            },
+            "question": {
+                "bg": "Какво е борда 'Със звук'?",
+                "en": "What is the 'With Sounds' board?"
+            },
+            "answer": {
+                "bg": "Бордът 'Със звук' показва само бележки които съдържат прикачени аудио файлове. Полезен е за бърз достъп до бележки със звукови записи.",
+                "en": "The 'With Sounds' board shows only notes that contain attached audio files. Useful for quick access to notes with audio recordings."
+            },
+            "defaultValue": false,
+            "relatedSettings": [
+                "show-photos-board-checkbox",
+                "show-videos-board-checkbox"
+            ]
+        },
+        {
+            "id": "show-other-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "label": {
+                "bg": "Борд Други приложения:",
+                "en": "Board Other Attachments:"
+            },
+            "i18nKey": "showOtherBoardLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "други",
+                    "приложения",
+                    "файлове",
+                    "борд",
+                    "attachments"
+                ],
+                "en": [
+                    "other",
+                    "attachments",
+                    "files",
+                    "board"
+                ]
+            },
+            "question": {
+                "bg": "Какво е борда 'Други приложения'?",
+                "en": "What is the 'Other Attachments' board?"
+            },
+            "answer": {
+                "bg": "Бордът 'Други приложения' показва бележки с прикачени файлове които не са снимки, видео или звук (напр. документи, PDF и др.).",
+                "en": "The 'Other Attachments' board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.)."
+            },
+            "defaultValue": false,
+            "relatedSettings": [
+                "show-photos-board-checkbox"
+            ]
+        },
+        {
+            "id": "order-checkbox",
+            "type": "checkbox",
+            "category": "sorting",
+            "label": {
+                "bg": "Подреждане на бележките:",
+                "en": "Order notes:"
+            },
+            "i18nKey": "orderLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "подреждане",
+                    "сортиране",
+                    "ред",
+                    "order",
+                    "sort"
+                ],
+                "en": [
+                    "order",
+                    "sort",
+                    "arrange",
+                    "sorting"
+                ]
+            },
+            "question": {
+                "bg": "Как да подредя бележките?",
+                "en": "How to order notes?"
+            },
+            "answer": {
+                "bg": "Маркирай 'Подреждане на бележките' в Settings и избери критерий - по номер, цвят, дата на създаване/промяна, календарна дата или азбучен ред. Можеш и да обърнеш реда.",
+                "en": "Check 'Order notes' in Settings and choose criteria - by number, color, creation/modification date, calendar date, or alphabetically. You can also reverse the order."
+            },
+            "defaultValue": false,
+            "relatedSettings": []
+        },
+        {
+            "id": "use-google-db-checkbox",
+            "type": "checkbox",
+            "category": "data",
+            "label": {
+                "bg": "Google Drive:",
+                "en": "Google Drive:"
+            },
+            "i18nKey": "useGoogleDbLabel",
+            "location": "Settings > Data Loading",
+            "keywords": {
+                "bg": [
+                    "google drive",
+                    "облак",
+                    "синхронизация",
+                    "данни",
+                    "зареждане"
+                ],
+                "en": [
+                    "google drive",
+                    "cloud",
+                    "sync",
+                    "synchronization",
+                    "data",
+                    "loading"
+                ]
+            },
+            "question": {
+                "bg": "Какво прави настройката 'Google Drive'?",
+                "en": "What does the 'Google Drive' setting do?"
+            },
+            "answer": {
+                "bg": "Когато е активирана, приложението зарежда бележки от Google Drive и проверява за нови промени. Ако я изключиш след първоначално зареждане, бележките ще се зареждат само от локалната база данни (по-бързо, но без обновления).",
+                "en": "When enabled, the application loads notes from Google Drive and checks for new changes. If you disable it after initial loading, notes will load only from the local database (faster, but without updates)."
+            },
+            "defaultValue": true,
+            "relatedSettings": [
+                "use-indexeddb-checkbox"
+            ]
+        },
+        {
+            "id": "use-indexeddb-checkbox",
+            "type": "checkbox",
+            "category": "data",
+            "label": {
+                "bg": "База данни:",
+                "en": "Database:"
+            },
+            "i18nKey": "useIndexedDbLabel",
+            "location": "Settings > Data Loading",
+            "keywords": {
+                "bg": [
+                    "база данни",
+                    "database",
+                    "локално",
+                    "съхранение",
+                    "бързо",
+                    "офлайн"
+                ],
+                "en": [
+                    "database",
+                    "local",
+                    "storage",
+                    "fast",
+                    "cache",
+                    "offline"
+                ]
+            },
+            "question": {
+                "bg": "Какво прави настройката 'База данни'?",
+                "en": "What does the 'Database' setting do?"
+            },
+            "answer": {
+                "bg": "Когато е активирана, бележките се съхраняват в локална база данни в браузъра за бърз достъп. Това позволява работа без интернет и много по-бързо зареждане. Първото зареждане изтегля всички бележки, а следващите обновяват само променените.",
+                "en": "When enabled, notes are stored in a local browser database for fast access. This allows offline work and much faster loading. The first load downloads all notes, while subsequent loads only update changed ones."
+            },
+            "defaultValue": true,
+            "relatedSettings": [
+                "use-google-db-checkbox",
+                "use-local-db-checkbox"
+            ]
+        },
+        {
+            "id": "use-local-db-checkbox",
+            "type": "checkbox",
+            "category": "data",
+            "label": {
+                "bg": "Локална папка:",
+                "en": "Local folder:"
+            },
+            "i18nKey": "useLocalDbLabel",
+            "location": "Settings > Advanced Settings",
+            "keywords": {
+                "bg": [
+                    "локална папка",
+                    "папка",
+                    "компютър",
+                    "local",
+                    "folder"
+                ],
+                "en": [
+                    "local folder",
+                    "folder",
+                    "computer",
+                    "local"
+                ]
+            },
+            "question": {
+                "bg": "Какво прави настройката 'Локална папка'?",
+                "en": "What does the 'Local folder' setting do?"
+            },
+            "answer": {
+                "bg": "Позволява зареждане на бележки от папка на компютъра ти (синхронизирана с Google Drive for Desktop). Полезно за по-бърз достъп и офлайн работа.",
+                "en": "Allows loading notes from a folder on your computer (synced with Google Drive for Desktop). Useful for faster access and offline work."
+            },
+            "defaultValue": false,
+            "relatedSettings": [
+                "use-google-db-checkbox",
+                "use-indexeddb-checkbox"
+            ]
+        },
+        {
+            "id": "use-arh-db-checkbox",
+            "type": "checkbox",
+            "category": "data",
+            "label": {
+                "bg": "Архив:",
+                "en": "Archive:"
+            },
+            "i18nKey": "useArhDbLabel",
+            "location": "Settings > Advanced Settings",
+            "keywords": {
+                "bg": [
+                    "архив",
+                    "backup",
+                    "резервно копие",
+                    "стари бележки"
+                ],
+                "en": [
+                    "archive",
+                    "backup",
+                    "old notes"
+                ]
+            },
+            "question": {
+                "bg": "Какво прави настройката 'Архив'?",
+                "en": "What does the 'Archive' setting do?"
+            },
+            "answer": {
+                "bg": "Позволява зареждане на бележки от архивна папка (създадена от Multinotes приложението). Полезно за достъп до стари версии на бележките.",
+                "en": "Allows loading notes from an archive folder (created by the Multinotes app). Useful for accessing old versions of notes."
+            },
+            "defaultValue": false,
+            "relatedSettings": [
+                "use-local-db-checkbox"
+            ]
+        },
+        {
+            "id": "start-board-select",
+            "type": "select",
+            "category": "startup",
+            "label": {
+                "bg": "Стартов борд:",
+                "en": "Start Board:"
+            },
+            "i18nKey": "startBoardLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "стартов",
+                    "борд",
+                    "начален",
+                    "първи",
+                    "startup"
+                ],
+                "en": [
+                    "start",
+                    "startup",
+                    "initial",
+                    "first",
+                    "board"
+                ]
+            },
+            "question": {
+                "bg": "Как да избера кой борд да се показва при стартиране?",
+                "en": "How to choose which board to show on startup?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings и избери борд от 'Стартов борд'. Този борд ще се показва автоматично всеки път когато отвориш приложението.",
+                "en": "Go to Settings and select a board from 'Start Board'. This board will be shown automatically every time you open the application."
+            },
+            "defaultValue": "",
+            "relatedSettings": []
+        },
+        {
+            "id": "note-font-size-input",
+            "type": "select",
+            "category": "display",
+            "label": {
+                "bg": "Размер шрифт (бележка):",
+                "en": "Note Font Size:"
+            },
+            "i18nKey": "noteFontSizeLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "шрифт",
+                    "размер",
+                    "бележка",
+                    "font",
+                    "size",
+                    "текст"
+                ],
+                "en": [
+                    "font",
+                    "size",
+                    "note",
+                    "text"
+                ]
+            },
+            "question": {
+                "bg": "Как да променя размера на шрифта в бележките?",
+                "en": "How to change the font size in notes?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings и избери размер от 'Размер шрифт (бележка)'. Това променя размера на текста в самите бележки.",
+                "en": "Go to Settings and select a size from 'Note Font Size'. This changes the text size in the notes themselves."
+            },
+            "defaultValue": "",
+            "relatedSettings": [
+                "modal-font-size-input",
+                "scaleSlider"
+            ]
+        },
+        {
+            "id": "modal-font-size-input",
+            "type": "select",
+            "category": "display",
+            "label": {
+                "bg": "Размер шрифт (преглед):",
+                "en": "Modal Font Size:"
+            },
+            "i18nKey": "modalFontSizeLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "шрифт",
+                    "размер",
+                    "преглед",
+                    "модал",
+                    "font",
+                    "size"
+                ],
+                "en": [
+                    "font",
+                    "size",
+                    "modal",
+                    "preview",
+                    "view"
+                ]
+            },
+            "question": {
+                "bg": "Как да променя размера на шрифта при преглед на бележка?",
+                "en": "How to change the font size when viewing a note?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings и избери размер от 'Размер шрифт (преглед)'. Това променя размера на текста когато отвориш бележка за пълен преглед.",
+                "en": "Go to Settings and select a size from 'Modal Font Size'. This changes the text size when you open a note for full view."
+            },
+            "defaultValue": "",
+            "relatedSettings": [
+                "note-font-size-input",
+                "scaleSlider"
+            ]
+        },
+        {
+            "id": "scaleSlider",
+            "type": "range",
+            "category": "display",
+            "label": {
+                "bg": "Мащаб:",
+                "en": "Zoom:"
+            },
+            "i18nKey": "zoomLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "мащаб",
+                    "zoom",
+                    "размер",
+                    "увеличение",
+                    "намаляване",
+                    "scale"
+                ],
+                "en": [
+                    "zoom",
+                    "scale",
+                    "size",
+                    "magnify",
+                    "enlarge",
+                    "reduce"
+                ]
+            },
+            "question": {
+                "bg": "Как да променя мащаба на приложението?",
+                "en": "How to change the zoom level of the application?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings и използвай плъзгача 'Мащаб' (25%-175%). Можеш да въведеш и точна стойност. След това натисни 'Потвърди' за да приложиш промяната.",
+                "en": "Go to Settings and use the 'Zoom' slider (25%-175%). You can also enter an exact value. Then click 'Confirm' to apply the change."
+            },
+            "defaultValue": "100",
+            "relatedSettings": [
+                "note-font-size-input",
+                "modal-font-size-input"
+            ]
+        },
+        {
+            "id": "max-searches-input",
+            "type": "number",
+            "category": "search",
+            "label": {
+                "bg": "Запазени търсения:",
+                "en": "Saved Searches:"
+            },
+            "i18nKey": "maxSearchesLabel",
+            "location": "Settings",
+            "keywords": {
+                "bg": [
+                    "търсене",
+                    "запазени",
+                    "история",
+                    "search",
+                    "saved"
+                ],
+                "en": [
+                    "search",
+                    "saved",
+                    "history",
+                    "searches"
+                ]
+            },
+            "question": {
+                "bg": "Как работят запазените търсения?",
+                "en": "How do saved searches work?"
+            },
+            "answer": {
+                "bg": "Можеш да запазиш често използвани търсения за бърз достъп. В Settings избери колко търсения да се запазват (0-20). Запазените търсения се показват под полето за търсене.",
+                "en": "You can save frequently used searches for quick access. In Settings choose how many searches to save (0-20). Saved searches appear below the search field."
+            },
+            "defaultValue": "5",
+            "relatedSettings": []
+        },
+        {
+            "id": "sort-criteria-numord",
+            "type": "radio",
+            "category": "sorting",
+            "label": {
+                "bg": "по номер",
+                "en": "by number"
+            },
+            "i18nKey": "sortByNumber",
+            "location": "Settings > Order notes",
+            "keywords": {
+                "bg": [
+                    "номер",
+                    "подреждане",
+                    "сортиране",
+                    "number"
+                ],
+                "en": [
+                    "number",
+                    "sort",
+                    "order"
+                ]
+            },
+            "question": {
+                "bg": "Как да подредя бележките по номер?",
+                "en": "How to sort notes by number?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings, маркирай 'Подреждане на бележките' и избери 'по номер'. Бележките ще се подредят по техния номер.",
+                "en": "Go to Settings, check 'Order notes' and select 'by number'. Notes will be sorted by their number."
+            },
+            "defaultValue": "",
+            "relatedSettings": [
+                "order-checkbox"
+            ]
+        },
+        {
+            "id": "sort-criteria-color",
+            "type": "radio",
+            "category": "sorting",
+            "label": {
+                "bg": "по цвят",
+                "en": "by color"
+            },
+            "i18nKey": "sortByColor",
+            "location": "Settings > Order notes",
+            "keywords": {
+                "bg": [
+                    "цвят",
+                    "подреждане",
+                    "сортиране",
+                    "color"
+                ],
+                "en": [
+                    "color",
+                    "sort",
+                    "order"
+                ]
+            },
+            "question": {
+                "bg": "Как да подредя бележките по цвят?",
+                "en": "How to sort notes by color?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings, маркирай 'Подреждане на бележките' и избери 'по цвят'. Бележките ще се групират по цвят.",
+                "en": "Go to Settings, check 'Order notes' and select 'by color'. Notes will be grouped by color."
+            },
+            "defaultValue": "",
+            "relatedSettings": [
+                "order-checkbox"
+            ]
+        },
+        {
+            "id": "sort-criteria-date",
+            "type": "radio",
+            "category": "sorting",
+            "label": {
+                "bg": "по дата на създаване",
+                "en": "by creation date"
+            },
+            "i18nKey": "sortByCreationDate",
+            "location": "Settings > Order notes",
+            "keywords": {
+                "bg": [
+                    "дата",
+                    "създаване",
+                    "подреждане",
+                    "creation"
+                ],
+                "en": [
+                    "date",
+                    "creation",
+                    "sort",
+                    "order"
+                ]
+            },
+            "question": {
+                "bg": "Как да подредя бележките по дата на създаване?",
+                "en": "How to sort notes by creation date?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings, маркирай 'Подреждане на бележките' и избери 'по дата на създаване'. Бележките ще се подредят от най-стари към най-нови.",
+                "en": "Go to Settings, check 'Order notes' and select 'by creation date'. Notes will be sorted from oldest to newest."
+            },
+            "defaultValue": "",
+            "relatedSettings": [
+                "order-checkbox"
+            ]
+        },
+        {
+            "id": "sort-criteria-datemod",
+            "type": "radio",
+            "category": "sorting",
+            "label": {
+                "bg": "по дата на редактиране",
+                "en": "by modification date"
+            },
+            "i18nKey": "sortByModificationDate",
+            "location": "Settings > Order notes",
+            "keywords": {
+                "bg": [
+                    "дата",
+                    "редактиране",
+                    "промяна",
+                    "modification"
+                ],
+                "en": [
+                    "date",
+                    "modification",
+                    "edit",
+                    "sort"
+                ]
+            },
+            "question": {
+                "bg": "Как да подредя бележките по дата на промяна?",
+                "en": "How to sort notes by modification date?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings, маркирай 'Подреждане на бележките' и избери 'по дата на редактиране'. Бележките ще се подредят по кога са били променени.",
+                "en": "Go to Settings, check 'Order notes' and select 'by modification date'. Notes will be sorted by when they were last modified."
+            },
+            "defaultValue": "",
+            "relatedSettings": [
+                "order-checkbox"
+            ]
+        },
+        {
+            "id": "sort-criteria-calendarDate",
+            "type": "radio",
+            "category": "sorting",
+            "label": {
+                "bg": "по дата в календара",
+                "en": "by calendar date"
+            },
+            "i18nKey": "sortByCalendarDate",
+            "location": "Settings > Order notes",
+            "keywords": {
+                "bg": [
+                    "календар",
+                    "дата",
+                    "подреждане",
+                    "calendar"
+                ],
+                "en": [
+                    "calendar",
+                    "date",
+                    "sort",
+                    "order"
+                ]
+            },
+            "question": {
+                "bg": "Как да подредя бележките по календарна дата?",
+                "en": "How to sort notes by calendar date?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings, маркирай 'Подреждане на бележките' и избери 'по дата в календара'. Бележките ще се подредят по датата зададена в календара.",
+                "en": "Go to Settings, check 'Order notes' and select 'by calendar date'. Notes will be sorted by the date set in the calendar."
+            },
+            "defaultValue": "",
+            "relatedSettings": [
+                "order-checkbox"
+            ]
+        },
+        {
+            "id": "sort-criteria-alpha",
+            "type": "radio",
+            "category": "sorting",
+            "label": {
+                "bg": "по азбучен ред",
+                "en": "alphabetically"
+            },
+            "i18nKey": "sortByAlphabetical",
+            "location": "Settings > Order notes",
+            "keywords": {
+                "bg": [
+                    "азбучен",
+                    "алфабетен",
+                    "подреждане",
+                    "alphabetical"
+                ],
+                "en": [
+                    "alphabetical",
+                    "alphabetically",
+                    "sort",
+                    "order"
+                ]
+            },
+            "question": {
+                "bg": "Как да подредя бележките по азбучен ред?",
+                "en": "How to sort notes alphabetically?"
+            },
+            "answer": {
+                "bg": "Отиди в Settings, маркирай 'Подреждане на бележките' и избери 'по азбучен ред'. Бележките ще се подредят по заглавие от А до Я.",
+                "en": "Go to Settings, check 'Order notes' and select 'alphabetically'. Notes will be sorted by title from A to Z."
+            },
+            "defaultValue": "",
+            "relatedSettings": [
+                "order-checkbox"
+            ]
+        }
+    ],
+    "ui": [
+        {
+            "id": "search-box",
+            "type": "input",
+            "i18nKey": "searchPlaceholder",
+            "label": {
+                "bg": "Търсене",
+                "en": "Search"
+            },
+            "keywords": {
+                "bg": [
+                    "търсене",
+                    "намиране",
+                    "search",
+                    "find",
+                    "търси"
+                ],
+                "en": [
+                    "search",
+                    "find",
+                    "lookup",
+                    "locate"
+                ]
+            },
+            "description": {
+                "bg": "Полето за търсене позволява бързо намиране на бележки по заглавие или съдържание. Натисни иконата до полето за да превключиш между търсене в заглавия и съдържание.",
+                "en": "The search field allows quick finding of notes by title or content. Click the icon next to the field to switch between searching in titles and content."
+            }
+        },
+        {
+            "id": "reload_button",
+            "type": "button",
+            "i18nKey": "reloadButtonTooltip",
+            "label": {
+                "bg": "Презареди",
+                "en": "Reload"
+            },
+            "keywords": {
+                "bg": [
+                    "презареждане",
+                    "reload",
+                    "refresh",
+                    "обновяване"
+                ],
+                "en": [
+                    "reload",
+                    "refresh",
+                    "update",
+                    "sync"
+                ]
+            },
+            "description": {
+                "bg": "Бутонът 'Презареди' презарежда страницата и проверява за нови бележки от Google Drive (ако е активирано). Използвай го когато искаш да обновиш данните.",
+                "en": "The 'Reload' button reloads the page and checks for new notes from Google Drive (if enabled). Use it when you want to update your data."
+            }
+        },
+        {
+            "id": "settings_button",
+            "type": "button",
+            "i18nKey": "settingsTitle",
+            "label": {
+                "bg": "Настройки",
+                "en": "Settings"
+            },
+            "keywords": {
+                "bg": [
+                    "настройки",
+                    "settings",
+                    "конфигурация",
+                    "опции"
+                ],
+                "en": [
+                    "settings",
+                    "configuration",
+                    "options",
+                    "preferences"
+                ]
+            },
+            "description": {
+                "bg": "Отваря панела с настройки където можеш да персонализираш приложението - мащаб, шрифт, подреждане, източници на данни и др.",
+                "en": "Opens the settings panel where you can customize the application - zoom, font, sorting, data sources, and more."
+            }
+        },
+        {
+            "id": "signout_button",
+            "type": "button",
+            "i18nKey": "signoutButtonTooltip",
+            "label": {
+                "bg": "Изход",
+                "en": "Sign Out"
+            },
+            "keywords": {
+                "bg": [
+                    "изход",
+                    "излизане",
+                    "logout",
+                    "signout"
+                ],
+                "en": [
+                    "signout",
+                    "logout",
+                    "exit",
+                    "sign out"
+                ]
+            },
+            "description": {
+                "bg": "Излиза от приложението и изтрива локалната сесия. Ще трябва да влезеш отново с Google акаунта си.",
+                "en": "Signs out of the application and clears the local session. You will need to sign in again with your Google account."
+            }
+        },
+        {
+            "id": "scrollTopBtn",
+            "type": "button",
+            "i18nKey": "topTooltip",
+            "label": {
+                "bg": "Към началото",
+                "en": "Go to top"
+            },
+            "keywords": {
+                "bg": [
+                    "начало",
+                    "top",
+                    "нагоре",
+                    "scroll"
+                ],
+                "en": [
+                    "top",
+                    "beginning",
+                    "scroll up",
+                    "go up"
+                ]
+            },
+            "description": {
+                "bg": "Бутонът се появява когато скролираш надолу и позволява бързо връщане в началото на страницата.",
+                "en": "The button appears when you scroll down and allows quick return to the top of the page."
+            }
+        }
+    ],
+    "general": [
+        {
+            "id": "how-to-start",
+            "category": "getting-started",
+            "keywords": {
+                "bg": [
+                    "начало",
+                    "старт",
+                    "как да започна",
+                    "първи стъпки"
+                ],
+                "en": [
+                    "start",
+                    "begin",
+                    "getting started",
+                    "first steps"
+                ]
+            },
+            "question": {
+                "bg": "Как да започна работа с приложението?",
+                "en": "How do I get started with the application?"
+            },
+            "answer": {
+                "bg": "Първо влез с Google акаунта си (същия, който използваш в Multinotes приложението). Приложението автоматично ще изтегли бележките от Google Drive и ще създаде локална база данни за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
+                "en": "First, sign in with your Google account (the same one you use in the Multinotes app). The application will automatically download notes from Google Drive and create a local database for fast access. Then you can view, search, and organize your notes."
+            }
+        },
+        {
+            "id": "organize-notes",
+            "category": "workflow",
+            "keywords": {
+                "bg": [
+                    "организация",
+                    "подреждане",
+                    "бележки",
+                    "boards",
+                    "дъски"
+                ],
+                "en": [
+                    "organize",
+                    "arrangement",
+                    "notes",
+                    "boards"
+                ]
+            },
+            "question": {
+                "bg": "Как да организирам бележките си?",
+                "en": "How to organize my notes?"
+            },
+            "answer": {
+                "bg": "Използвай Boards (дъски) за групиране на бележки по теми. Също така можеш да използваш сортиране (Settings > Подреждане) за да подредиш бележките по дата, цвят, азбучен ред и др.",
+                "en": "Use Boards to group notes by topics. You can also use sorting (Settings > Order notes) to arrange notes by date, color, alphabetically, etc."
+            }
+        },
+        {
+            "id": "search-notes",
+            "category": "workflow",
+            "keywords": {
+                "bg": [
+                    "търсене",
+                    "намиране",
+                    "search",
+                    "find"
+                ],
+                "en": [
+                    "search",
+                    "find",
+                    "lookup"
+                ]
+            },
+            "question": {
+                "bg": "Как да търся в бележките?",
+                "en": "How to search in notes?"
+            },
+            "answer": {
+                "bg": "Използвай полето за търсене в горната част на страницата. Можеш да търсиш в заглавия или съдържание - кликни иконата до полето за да превключиш. Търсенията могат да се запазват за бърз достъп.",
+                "en": "Use the search field at the top of the page. You can search in titles or content - click the icon next to the field to switch. Searches can be saved for quick access."
+            }
+        },
+        {
+            "id": "offline-mode",
+            "category": "data-management",
+            "keywords": {
+                "bg": [
+                    "офлайн",
+                    "без интернет",
+                    "локално",
+                    "offline"
+                ],
+                "en": [
+                    "offline",
+                    "no internet",
+                    "local",
+                    "without connection"
+                ]
+            },
+            "question": {
+                "bg": "Мога ли да работя без интернет?",
+                "en": "Can I work offline?"
+            },
+            "answer": {
+                "bg": "Да! След първоначално зареждане можеш да изключиш 'Google Drive' в Settings и да работиш само с локалната база данни. Това позволява пълен офлайн достъп до бележките. За да обновиш данните, включи отново 'Google Drive' и презареди.",
+                "en": "Yes! After initial loading, you can disable 'Google Drive' in Settings and work only with the local database. This allows full offline access to your notes. To update data, re-enable 'Google Drive' and reload."
+            }
+        },
+        {
+            "id": "sync-google-drive",
+            "category": "data-management",
+            "keywords": {
+                "bg": [
+                    "синхронизация",
+                    "google drive",
+                    "обновяване",
+                    "sync"
+                ],
+                "en": [
+                    "sync",
+                    "synchronization",
+                    "google drive",
+                    "update"
+                ]
+            },
+            "question": {
+                "bg": "Как работи синхронизацията с Google Drive?",
+                "en": "How does Google Drive synchronization work?"
+            },
+            "answer": {
+                "bg": "При първо стартиране приложението изтегля всички бележки от Google Drive. При следващи стартирания проверява само за нови и променени бележки (много по-бързо). Можеш да контролираш синхронизацията от Settings > Четене на данни.",
+                "en": "On first startup, the application downloads all notes from Google Drive. On subsequent startups, it checks only for new and changed notes (much faster). You can control synchronization from Settings > Data Loading."
+            }
+        },
+        {
+            "id": "calendar-view",
+            "category": "features",
+            "keywords": {
+                "bg": [
+                    "календар",
+                    "дати",
+                    "calendar",
+                    "dates"
+                ],
+                "en": [
+                    "calendar",
+                    "dates",
+                    "schedule"
+                ]
+            },
+            "question": {
+                "bg": "Как да използвам календара?",
+                "en": "How to use the calendar?"
+            },
+            "answer": {
+                "bg": "Кликни на бутона 'Календар' в горната част. Календарът показва бележки с календарни дати. Можеш да превключваш между месечен и седмичен изглед. Кликни на дата за да видиш бележките за този ден.",
+                "en": "Click the 'Calendar' button at the top. The calendar shows notes with calendar dates. You can switch between monthly and weekly views. Click on a date to see notes for that day."
+            }
+        }
+    ]
+}
