@@ -655,9 +655,9 @@ code {
     padding-bottom: 10px;
     padding-left: 10px;
     border-radius: 8px;
-    width: 90%;
-    /* Задаваме ширината да е 90% от екрана */
-    max-width: 90%;
+    width: 70%;
+    /* Задаваме ширината да е 70% от екрана */
+    max-width: 70%;
     min-height: 10%;
     max-height: 80vh;
     position: relative;
@@ -1617,8 +1617,8 @@ code {
 /* Renamed from #zoom-modal to #settings-modal */
 #settings-modal .modal-content-box {
     background-color: #cfe6f8;
-    width: 90%;
-    max-width: 600px;
+    width: 70%;
+    max-width: 480px;
     padding: 20px;
     height: auto;
     max-height: 90vh;
@@ -1657,7 +1657,7 @@ code {
 }
 
 .zoom-input-number {
-    width: 60px;
+    width: 40px;
     margin: 0 2px 0 10px;
     /* top, right, bottom, left */
     text-align: center;

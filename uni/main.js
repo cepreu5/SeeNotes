@@ -2217,33 +2217,58 @@ async function refreshAuthToken() {
     }
 
     return new Promise((resolve) => {
-        if (!tokenClient) {
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: (tokenResponse) => {
-                    if (tokenResponse && tokenResponse.access_token) {
-                        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                        // Update storage - prefer localStorage if it was there
-                        if (localStorage.getItem('google_auth_token')) {
-                            localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        } else {
-                            sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        }
-                        // Return success format matching checkAuth expectations
-                        resolve({ tokenData: tokenWithTimestamp, pass: true });
+        // Създаваме скрит iframe за OAuth redirect
+        let hiddenIframe = document.getElementById('google-auth-iframe');
+        if (!hiddenIframe) {
+            hiddenIframe = document.createElement('iframe');
+            hiddenIframe.id = 'google-auth-iframe';
+            hiddenIframe.style.position = 'fixed';
+            hiddenIframe.style.top = '-10000px';
+            hiddenIframe.style.left = '-10000px';
+            hiddenIframe.style.width = '1px';
+            hiddenIframe.style.height = '1px';
+            hiddenIframe.style.opacity = '0';
+            hiddenIframe.style.visibility = 'hidden';
+            hiddenIframe.style.pointerEvents = 'none';
+            document.body.appendChild(hiddenIframe);
+        }
+
+        // Създаваме token client с redirect режим в iframe
+        const iframeTokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: (tokenResponse) => {
+                if (tokenResponse && tokenResponse.access_token) {
+                    const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+                    // Update storage - prefer localStorage if it was there
+                    if (localStorage.getItem('google_auth_token')) {
+                        localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                     } else {
-                        resolve(null);
+                        sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                     }
-                },
-                error_callback: (error) => {
-                    console.error("Silent refresh failed:", error);
+                    // Return success format matching checkAuth expectations
+                    resolve({ tokenData: tokenWithTimestamp, pass: true });
+                } else {
                     resolve(null);
                 }
+            },
+            error_callback: (error) => {
+                console.error("Silent refresh failed:", error);
+                resolve(null);
+            }
+        });
+
+        // Request token silently - използваме iframe вместо popup
+        try {
+            iframeTokenClient.requestAccessToken({
+                prompt: 'none',
+                login_hint: loginHint,
+                state: 'silent_refresh'
             });
+        } catch (error) {
+            console.error("Error requesting token:", error);
+            resolve(null);
         }
-        // Request token silently
-        tokenClient.requestAccessToken({ prompt: 'none', login_hint: loginHint });
     });
 }
 
