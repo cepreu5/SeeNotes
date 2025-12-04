@@ -283,7 +283,7 @@ class KBUI {
         // Използваме изображения вместо emoji
         const icon = type === 'user'
             ? '<img src="user-icon.png" alt="User" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'
-            : '<img src="msm-assist.png" alt="Mr. StickyMan" style="width: 100%; height: 100%; object-fit: cover;">';
+            : '<img src="msm-assist.png" alt="Mr. StickyMan" style="width: 100%; height: 100%; object-fit: contain;">';
 
         const contentClass = customClass ? `kb-message-content ${customClass}` : 'kb-message-content';
 
