@@ -1230,7 +1230,7 @@ async function startApp() {
             if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
                 validityInDays = parseInt(tokenValidity, 10);
             }
-            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
+            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
         }
     } catch (e) {
         console.error("Error pre-calculating token days:", e);
@@ -2421,7 +2421,7 @@ async function checkAuth() {
                 validityInDays = parseInt(tokenValidity, 10);
             }
 
-            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
+            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
             console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
             // let tooltipText = _('signoutButtonTooltip');
             // tooltipText += ` [${tokenRemainingDays}]`;
@@ -2549,7 +2549,7 @@ async function checkAuth() {
         document.body.appendChild(logoImg);
 
         const errorElement = document.createElement('h1');
-        errorElement.textContent = _('invalidCertificate');
+        errorElement.innerHTML = _('invalidCertificate');
         errorElement.style.color = 'yellow';
         errorElement.style.textAlign = 'center';
         errorElement.style.margin = '0';

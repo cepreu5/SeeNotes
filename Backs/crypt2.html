@@ -37,7 +37,7 @@
     <input type="email" id="email" placeholder="user@example.com">
 
     <label for="validity">Период на валидност (в дни):</label>
-    <input type="number" id="validity" value="1" min="1" max="365">
+    <input type="number" id="validity" value="1" min="0" max="365">
 
     <button onclick="handleEncrypt()">Криптирай</button>
 
@@ -137,23 +137,43 @@
             const validityInput = document.getElementById('validity').value.trim();
             const validity = Number(validityInput);
             if (!email) return alert('Моля, въведи имейл.');
-            if (!validityInput || isNaN(validity) || validity < 1 || validity > 365) return alert('Моля, въведи правилен период на валидност (1-365 дни).');
+            if (!validityInput || isNaN(validity) || validity < 0 || validity > 365) return alert('Моля, въведи правилен период на валидност (0-365 дни).');
             try {
                 const token = await encryptEmail(email, validity);
-                document.getElementById('token').value = token;
+                const tokenWithPrefix = '?token=' + token;
+                const tokenField = document.getElementById('token');
+                tokenField.value = tokenWithPrefix;
+
+                // Копираме токена с префикс в клипборда с fallback
+                try {
+                    await navigator.clipboard.writeText(tokenWithPrefix);
+                    alert('Токенът е криптиран и копиран в клипборда!');
+                } catch (clipboardErr) {
+                    // Fallback метод за копиране
+                    tokenField.select();
+                    tokenField.setSelectionRange(0, 99999); // За мобилни устройства
+                    document.execCommand('copy');
+                    alert('Токенът е криптиран и копиран в клипборда!');
+                }
             } catch (err) {
                 alert('Грешка при криптиране: ' + err.message);
             }
         }
 
         async function handleDecrypt() {
-            const token = document.getElementById('token').value.trim();
+            let token = document.getElementById('token').value.trim();
             const validityInput = document.getElementById('validity').value.trim();
             const validity = Number(validityInput);
 
             if (!token) return alert('Моля, въведи токен.');
-            if (!validityInput || isNaN(validity) || validity < 1 || validity > 365) {
-                return alert('Моля, въведи валиден период на валидност (1-365 дни).');
+
+            // Премахваме префикса ?token= ако съществува
+            if (token.startsWith('?token=')) {
+                token = token.substring(7);
+            }
+
+            if (!validityInput || isNaN(validity) || validity < 0 || validity > 365) {
+                return alert('Моля, въведи валиден период на валидност (0-365 дни).');
             }
 
             const result = await decryptEmail(token, validity);
