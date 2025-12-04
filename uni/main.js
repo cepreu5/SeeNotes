@@ -405,10 +405,96 @@ function renderCalendarView() {
             if (width > 0) miniNote.style.height = `${width}px`;
         });
 
-        // Scroll to today's date if visible
-        const todayElement = document.querySelector('.today-date');
-        if (todayElement) {
-            todayElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // --- AUTO ZOOM LOGIC ---
+        // Нулираме zoom-а преди измерване
+        calendarContainer.style.transform = 'none';
+        calendarContainer.style.transformOrigin = 'top center';
+        calendarContainer.style.width = ''; // Премахваме изрично зададената ширина
+        calendarContainer.style.height = ''; // Премахваме изрично зададената височина
+        calendarContainer.style.marginBottom = ''; // Нулираме марджина
+
+        const windowHeight = window.innerHeight;
+        // Използваме getBoundingClientRect за по-точни размери, включително padding/margin ако има
+        const rect = calendarContainer.getBoundingClientRect();
+        const contentHeight = rect.height;
+        const contentWidth = rect.width;
+
+        // Оставяме малък буфер (напр. 20px)
+        const availableHeight = windowHeight - 20;
+        const availableWidth = window.innerWidth;
+
+        // Изчисляваме мащаба
+        let scaleH = availableHeight / contentHeight;
+        let scaleW = availableWidth / contentWidth;
+
+        // Избираме по-малкия мащаб, за да се побере всичко
+        let scale = Math.min(scaleH, scaleW, 1);
+
+        // Прилагаме мащаба само ако е нужно намаляване
+        if (scale < 0.99) {
+            calendarContainer.style.transform = `scale(${scale})`;
+
+            // КОРЕКЦИЯ 2: Задаваме изрично височината на контейнера да е равна на новия визуален размер.
+            // Тъй като съдържанието е по-голямо, то ще прелее, но transform ще го свие обратно в тези граници.
+            calendarContainer.style.height = `${contentHeight * scale}px`;
+
+            // Уверяваме се, че няма да се отреже нищо важно
+            calendarContainer.style.overflow = 'visible';
+
+            // ОБРАТНО МАЩАБИРАНЕ: Увеличаваме font-size вместо transform, за да не се нарушава layout-а
+            const counterScale = 1 / scale;
+
+            // Увеличаваме font-size на бутоните в хедъра
+            const calendarHeader = calendarContainer.querySelector('.calendar-header');
+            if (calendarHeader) {
+                const headerButtons = calendarHeader.querySelectorAll('button');
+                headerButtons.forEach(btn => {
+                    const currentFontSize = parseFloat(window.getComputedStyle(btn).fontSize);
+                    btn.style.fontSize = `${currentFontSize * counterScale}px`;
+
+                    // Увеличаваме и размерите на бутона, за да се побират символите
+                    const currentWidth = parseFloat(window.getComputedStyle(btn).width);
+                    const currentHeight = parseFloat(window.getComputedStyle(btn).height);
+                    btn.style.width = `${currentWidth * counterScale}px`;
+                    btn.style.height = `${currentHeight * counterScale}px`;
+
+                    // Специално мащабиране за бутона за седмичен изглед
+                    if (btn.id === 'weekly-view-btn') {
+                        const svgIcon = btn.querySelector('svg');
+                        if (svgIcon) {
+                            svgIcon.style.transform = `scale(${counterScale})`;
+                            svgIcon.style.transformOrigin = 'center';
+                        }
+                    }
+                });
+                const headerTitle = calendarHeader.querySelector('h2');
+                if (headerTitle) {
+                    const currentFontSize = parseFloat(window.getComputedStyle(headerTitle).fontSize);
+                    headerTitle.style.fontSize = `${currentFontSize * counterScale}px`;
+                }
+            }
+
+            // Увеличаваме font-size на имената на дните
+            const dayNames = calendarContainer.querySelectorAll('.calendar-day-name');
+            dayNames.forEach(dayName => {
+                const currentFontSize = parseFloat(window.getComputedStyle(dayName).fontSize);
+                dayName.style.fontSize = `${currentFontSize * counterScale}px`;
+            });
+
+            // Увеличаваме font-size на номерата на датите
+            const dateNumbers = calendarContainer.querySelectorAll('.calendar-date-number');
+            dateNumbers.forEach(dateNum => {
+                const currentFontSize = parseFloat(window.getComputedStyle(dateNum).fontSize);
+                dateNum.style.fontSize = `${currentFontSize * counterScale}px`;
+            });
+        }
+
+        // Ако не сме мащабирали (или малко), скролираме до днес
+        if (scale >= 0.99) {
+            const todayElement = document.querySelector('.today-date');
+            if (todayElement) {
+                todayElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }
     }, 0);
     // Event Listeners
@@ -569,12 +655,15 @@ function renderWeeklyCalendarView(dateForWeek) {
                 const activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
 
                 if (activeBoardBtn) {
+                    // ВАЖНО: Скриваме седмичния календар ПРЕДИ програмния клик
+                    weeklyContainer.style.display = 'none';
                     activeBoardBtn.click();
                 } else {
                     // Fallback
                     weeklyContainer.style.display = 'none';
                     document.querySelector('header').style.display = 'flex';
                     notesContainer.style.display = 'flex';
+                    scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
                 }
 

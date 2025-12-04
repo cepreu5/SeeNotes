@@ -1806,7 +1806,7 @@ code {
 /* --- Calendar View Styles --- */
 #calendar-container {
     padding: 5px;
-    background-color: #fdf6e3;
+    /* background-color: #fdf6e3; - Премахнато по желание на потребителя */
     box-sizing: border-box;
     /* Crucial for correct scaling with padding */
 }
