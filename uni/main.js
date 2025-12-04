@@ -458,6 +458,17 @@ function renderCalendarView() {
                     btn.style.width = `${currentWidth * counterScale}px`;
                     btn.style.height = `${currentHeight * counterScale}px`;
 
+                    // Гарантираме центриране на съдържанието
+                    btn.style.display = 'flex';
+                    btn.style.alignItems = 'center';
+                    btn.style.justifyContent = 'center';
+
+                    // Корекция за символите « и » - леко ги вдигаме нагоре
+                    if (btn.id === 'prev-month-btn' || btn.id === 'next-month-btn') {
+                        btn.style.paddingTop = '0';
+                        btn.style.paddingBottom = `${4 * counterScale}px`;
+                    }
+
                     // Специално мащабиране за бутона за седмичен изглед
                     if (btn.id === 'weekly-view-btn') {
                         const svgIcon = btn.querySelector('svg');
