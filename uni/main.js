@@ -2016,16 +2016,12 @@ function updateSearchPlaceholder() {
     const searchInput = document.getElementById('search-box');
     if (!searchInput) return;
 
-    let prefix = '';
-    if (currentBoardFilter !== 'all' && currentBoardFilter !== 'calendar') {
-        const board = boardsData.find(b => b.gdid === currentBoardFilter);
-        if (board) prefix = `[${board.title}]: `;
-    }
+    // Префиксът с името на борда е премахнат, тъй като търсенето е във всички бележки
 
     if (searchMode === 'title') {
-        searchInput.placeholder = `${prefix}${_('searchPlaceholder')} ${_('searchInTitles')}...`;
+        searchInput.placeholder = `${_('searchPlaceholder')} ${_('searchInTitles')}...`;
     } else {
-        searchInput.placeholder = `${prefix}${_('searchPlaceholder')} ${_('searchInContent')}...`;
+        searchInput.placeholder = `${_('searchPlaceholder')} ${_('searchInContent')}...`;
     }
 }
 
@@ -4372,26 +4368,9 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     });
 
 
-    // Update search box placeholder based on the selected board
-    if (boardId === 'reminder') {
-        searchInput.placeholder = `[${_('reminder')}]: ${_('searchPlaceholder')}`;
-    } else if (boardId === 'new-updates') {
-        searchInput.placeholder = `[${_('newUpdates')}]: ${_('searchPlaceholder')}`;
-    } else if (boardId === 'with-photos') {
-        searchInput.placeholder = `[${_('photosBoardTitle') || "With Photos"}]: ${_('searchPlaceholder')}`;
-    } else if (boardId === 'with-videos') {
-        searchInput.placeholder = `[${_('videosBoardTitle') || "With Video"}]: ${_('searchPlaceholder')}`;
-    } else if (boardId === 'with-sounds') {
-        searchInput.placeholder = `[${_('soundsBoardTitle') || "With Sounds"}]: ${_('searchPlaceholder')}`;
-    } else if (boardId === 'with-other') {
-        searchInput.placeholder = `[${_('otherBoardTitle') || "Other Attachments"}]: ${_('searchPlaceholder')}`;
-    } else if (boardId !== 'all' && boardId !== 'calendar') {
-        // Търсим по gdid, за да вземем заглавието
-        const board = boardsData.find(b => b.gdid === boardId);
-        if (board) {
-            searchInput.placeholder = `[${board.title}]: ${_('searchPlaceholder')}`;
-        }
-    }
+    // Placeholder-ът вече не включва името на борда, тъй като търсенето е във всички бележки
+    // updateSearchPlaceholder() ще зададе общ placeholder
+
     if (boardId === 'all') {
         // For the 'all' view, clear the inline style to let the default CSS background apply.
         // This prevents flickering on initial load.
@@ -4509,7 +4488,10 @@ function applyFilters() {
             }
         })();
 
-        if (isVisibleByBoard && isVisibleBySearch) {
+        // Когато има търсене, игнорираме филтъра по борд и търсим във всички бележки
+        const shouldShow = searchTerm ? isVisibleBySearch : (isVisibleByBoard && isVisibleBySearch);
+
+        if (shouldShow) {
             visibleCount++;
             note.style.display = 'flex';
         } else {
