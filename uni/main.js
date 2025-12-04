@@ -4048,10 +4048,24 @@ function showModal(options, noteElement = null) {
     }
     modalBody.innerHTML = displayContent;
     // Set modal background color
+    const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+
     if (noteColor) {
         modalContentBox.style.backgroundColor = noteColor;
+        // Ако графичният фон е изключен, премахваме background-image
+        if (!imgBgrdEnabled) {
+            modalContentBox.style.backgroundImage = 'none';
+        } else {
+            // Ако е включен, възстановяваме фона (ако има зададен в CSS)
+            modalContentBox.style.backgroundImage = '';
+        }
     } else {
         modalContentBox.style.backgroundColor = '#eef603'; // Reset to default color
+        if (!imgBgrdEnabled) {
+            modalContentBox.style.backgroundImage = 'none';
+        } else {
+            modalContentBox.style.backgroundImage = '';
+        }
     }
     contentModal.classList.add('visible');
 
@@ -5244,6 +5258,15 @@ async function createSettingsUI(boardsData, boardParseError) {
             mainLogic();
         });
 
+        // Graphical background
+        const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
+        imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+        imgBgrdCheckbox.addEventListener('change', () => {
+            const isChecked = imgBgrdCheckbox.checked;
+            localStorage.setItem('imgBgrd', isChecked);
+            showToast(_('settingSaved'), 2000);
+        });
+
         // Board Note Count
         if (showBoardNoteCountCheckbox) {
             showBoardNoteCountCheckbox.checked = localStorage.getItem('showBoardNoteCount') === 'true';
@@ -5823,11 +5846,16 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
 
     // 3. Decide whether to create links based on the setting and context (modal/card)
     const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false'; // true by default
-    let html = escapedText;
+    let html;
+
     if (isForModal || oneTapLinksEnabled) {
-        // Use the same regex as renderNoteContent to find URLs in the *escaped* text
+        // В модала или ако е включено - показваме линковете
         const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
         html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    } else {
+        // В затворената бележка и е изключено - НЕ показваме текста на линковете
+        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+        html = escapedText.replace(urlRegex, ''); // Премахваме линковете изцяло
     }
 
     // 4. Re-insert code blocks
@@ -6402,44 +6430,51 @@ async function createNoteElement(noteContent) {
         if (attachments.some(att => att.type !== 1 && att.type !== 4 && att.type !== 2)) {
             note.dataset.hasOtherAttachments = 'true';
         }
-        const separator = document.createElement('hr');
-        separator.style.marginTop = '10px';
-        separator.style.marginBottom = '10px';
-        contentEl.appendChild(separator);
-        await Promise.all(attachments.map(async attachment => {
-            const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-            if (!iconData) return;
-            const attachmentWrapper = document.createElement('div');
-            attachmentWrapper.style.display = 'flex';
-            attachmentWrapper.style.alignItems = 'center';
-            attachmentWrapper.style.gap = '5px';
 
-            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+        // Проверка дали да показваме иконите за прикачени файлове в затворената бележка
+        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+        const shouldShowAttachments = isForModal || oneTapLinksEnabled;
 
-            if (isDbOnlyMode) {
-                // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
-                // Използваме глобалните променливи, зададени в mainLogic.
-                if (dbNoteIdTypeGlobal === 'id' && dbSourceGlobal === 3) { // Валидна комбинация за Архив
+        if (shouldShowAttachments) {
+            const separator = document.createElement('hr');
+            separator.style.marginTop = '10px';
+            separator.style.marginBottom = '10px';
+            contentEl.appendChild(separator);
+            await Promise.all(attachments.map(async attachment => {
+                const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
+                if (!iconData) return;
+                const attachmentWrapper = document.createElement('div');
+                attachmentWrapper.style.display = 'flex';
+                attachmentWrapper.style.alignItems = 'center';
+                attachmentWrapper.style.gap = '5px';
+
+                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+
+                if (isDbOnlyMode) {
+                    // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
+                    // Използваме глобалните променливи, зададени в mainLogic.
+                    if (dbNoteIdTypeGlobal === 'id' && dbSourceGlobal === 3) { // Валидна комбинация за Архив
+                        await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
+                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 2) { // Валидна комбинация за Локална папка
+                        await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
+                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 1) { // Валидна комбинация за Google Drive
+                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
+                    }
+                    // При невалидна комбинация, не правим нищо и линкове не се създават.
+                    // Съобщението за грешка вече се показва от mainLogic.
+                } else if (useArhDb) {
+                    // --- ЛОГИКА ЗА АРХИВ ---
                     await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 2) { // Валидна комбинация за Локална папка
+                } else if (useLocalFolder) {
+                    // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
                     await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 1) { // Валидна комбинация за Google Drive
+                } else { // По подразбиране, ако не е нито един от горните, е Google Drive
+                    // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
                     await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
                 }
-                // При невалидна комбинация, не правим нищо и линкове не се създават.
-                // Съобщението за грешка вече се показва от mainLogic.
-            } else if (useArhDb) {
-                // --- ЛОГИКА ЗА АРХИВ ---
-                await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-            } else if (useLocalFolder) {
-                // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
-                await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-            } else { // По подразбиране, ако не е нито един от горните, е Google Drive
-                // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
-                await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-            }
-            contentEl.appendChild(attachmentWrapper);
-        }));
+                contentEl.appendChild(attachmentWrapper);
+            }));
+        }
     }
 
     // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
