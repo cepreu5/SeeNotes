@@ -131,40 +131,51 @@ class KBAssistant {
             return;
         }
 
+        // Контексти, които се намират в Settings
+        const settingsContexts = ['display', 'sorting', 'boards', 'data', 'behavior', 'startup', 'settings'];
+        const isSettingsContext = settingsContexts.includes(guideData.context);
+
         // Проверяваме дали има target елемент
-        const targetElement = document.querySelector(guideData.target);
+        let targetElement = document.querySelector(guideData.target);
 
-        if (!targetElement) {
-            console.warn(`Target element not found: ${guideData.target}`);
-
-            // Ако елементът не е намерен, отваряме Settings modal
+        // Ако елементът не е намерен, но е в Settings контекст, опитваме да отворим Settings
+        if (!targetElement && isSettingsContext) {
             this.openSettings();
 
-            // Показваме съобщение
+            // Даваме малко време на DOM-а да се обнови
             setTimeout(() => {
-                const settingsModal = document.getElementById('settings-modal');
-                if (settingsModal && settingsModal.style.display !== 'none') {
-                    // Highlight-ваме целия Settings modal
-                    this.highlightElement(settingsModal);
-
-                    // Показваме съобщение в конзолата
-                    const msg = this.currentLang === 'bg'
-                        ? `Настройката се намира в Settings. Моля, потърсете я ръчно.`
-                        : `The setting is in Settings. Please search for it manually.`;
-                    console.info(msg);
+                targetElement = document.querySelector(guideData.target);
+                if (targetElement) {
+                    this.highlightElement(targetElement);
+                } else {
+                    // Fallback: ако все още не го намираме, highlight-ваме целия модал
+                    const settingsModal = document.getElementById('settings-modal');
+                    if (settingsModal) {
+                        this.highlightElement(settingsModal);
+                        const msg = this.currentLang === 'bg'
+                            ? `Настройката се намира в Settings. Моля, потърсете я ръчно.`
+                            : `The setting is in Settings. Please search for it manually.`;
+                        console.info(msg);
+                    }
                 }
-            }, 500);
-
+            }, 300);
             return;
         }
 
-        // Ако елементът е намерен, отваряме Settings (ако е настройка)
-        if (guideData.context === 'settings') {
+        if (!targetElement) {
+            console.warn(`Target element not found: ${guideData.target}`);
+            return;
+        }
+
+        // Ако елементът е намерен и е в Settings контекст
+        if (isSettingsContext) {
             this.openSettings();
 
             // Изчакваме Settings да се отвори
             setTimeout(() => {
-                this.highlightElement(targetElement);
+                // Намираме елемента отново, за всеки случай (ако референцията е стара)
+                const el = document.querySelector(guideData.target) || targetElement;
+                this.highlightElement(el);
             }, 300);
         } else {
             // За UI елементи директно highlight-ваме
@@ -209,30 +220,97 @@ class KBAssistant {
      * @param {HTMLElement} element
      */
     highlightElement(element) {
-        // Премахваме предишни highlights
-        document.querySelectorAll('.kb-highlight').forEach(el => {
-            el.classList.remove('kb-highlight');
-        });
-
-        // Добавяме highlight
-        element.classList.add('kb-highlight');
-
         // Scroll до елемента
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-        // Премахваме highlight след 3 секунди
-        setTimeout(() => {
-            element.classList.remove('kb-highlight');
-        }, 3000);
+        // Премахваме предишни pointers
+        const existingPointer = document.getElementById('kb-pointer-img');
+        if (existingPointer) existingPointer.remove();
+
+        // Създаваме нов pointer
+        const pointer = document.createElement('img');
+        pointer.id = 'kb-pointer-img';
+        pointer.src = 'msm-show.png';
+        pointer.className = 'kb-pointer-image';
+
+        // Изчисляваме позиция
+        const rect = element.getBoundingClientRect();
+        const centerX = rect.left + (rect.width / 2);
+        const centerY = rect.top + (rect.height / 2);
+
+        // Позиционираме горния десен ъгъл на картинката в центъра на елемента
+        pointer.style.top = `${centerY}px`;
+        pointer.style.left = `${centerX}px`;
+
+        // Скриване при клик
+        const hidePointer = () => {
+            pointer.style.opacity = '0';
+            setTimeout(() => pointer.remove(), 300);
+        };
+
+        pointer.addEventListener('click', hidePointer);
+        pointer.addEventListener('touchstart', hidePointer);
+
+        document.body.appendChild(pointer);
+
+        // Премахваме pointer след 10 секунди
+        const timeoutId = setTimeout(() => {
+            if (pointer.parentNode) {
+                hidePointer();
+            }
+        }, 10000);
+
+        // Наблюдаваме дали елементът става невидим
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) {
+                    hidePointer();
+                    observer.disconnect();
+                    clearTimeout(timeoutId);
+                }
+            });
+        }, { threshold: 0 });
+
+        observer.observe(element);
+
+        // Допълнителна проверка за премахване от DOM (MutationObserver)
+        const mutationObserver = new MutationObserver(() => {
+            if (!document.body.contains(element)) {
+                hidePointer();
+                observer.disconnect();
+                mutationObserver.disconnect();
+                clearTimeout(timeoutId);
+            }
+        });
+
+        mutationObserver.observe(document.body, { childList: true, subtree: true });
+
+        // Почистване при ръчно скриване
+        pointer.addEventListener('remove', () => {
+            observer.disconnect();
+            mutationObserver.disconnect();
+            clearTimeout(timeoutId);
+        });
     }
 
     /**
      * Отваря Settings modal (ако е затворен)
      */
     openSettings() {
-        const settingsButton = document.getElementById('settings_button');
-        if (settingsButton) {
-            settingsButton.click();
+        const settingsModal = document.getElementById('settings-modal');
+        // Проверяваме дали модалът вече е отворен
+        // Той е отворен, ако има клас 'visible' (според style.css) или ако style.display е изрично зададен
+        const isVisible = settingsModal && (
+            settingsModal.classList.contains('visible') ||
+            settingsModal.style.display === 'block' ||
+            settingsModal.style.display === 'flex'
+        );
+
+        if (!isVisible) {
+            const settingsButton = document.getElementById('settings_button');
+            if (settingsButton) {
+                settingsButton.click();
+            }
         }
     }
 

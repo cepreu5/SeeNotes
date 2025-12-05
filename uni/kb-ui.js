@@ -148,6 +148,41 @@ class KBUI {
                 this.sendMessage();
             }
         });
+
+        // Предотвратяване на скролването на страницата
+        this.preventScrollPropagation(this.chatBox);
+        this.preventScrollPropagation(this.suggestionsBox);
+        this.preventScrollPropagation(this.container);
+    }
+
+    /**
+     * Предотвратява скролирането на страницата, когато се достигне края на елемента
+     * @param {HTMLElement} element 
+     */
+    preventScrollPropagation(element) {
+        if (!element) return;
+
+        element.addEventListener('wheel', (e) => {
+            const delta = e.deltaY;
+            const contentHeight = element.scrollHeight;
+            const visibleHeight = element.offsetHeight;
+            const scrollTop = element.scrollTop;
+
+            // Винаги спираме пропагацията към родителските елементи
+            e.stopPropagation();
+
+            // Ако няма скролбар, спираме стандартното поведение (скролиране)
+            if (visibleHeight >= contentHeight) {
+                e.preventDefault();
+                return;
+            }
+
+            // Ако сме в краищата и се опитваме да скролираме извън тях
+            if ((delta < 0 && scrollTop <= 0) ||
+                (delta > 0 && scrollTop + visibleHeight >= contentHeight - 1)) {
+                e.preventDefault();
+            }
+        }, { passive: false });
     }
 
     /**
