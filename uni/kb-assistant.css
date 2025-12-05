@@ -96,6 +96,7 @@
     max-height: calc(100vh - 100px);
     background: var(--kb-bg-white);
     border-radius: 16px;
+    border: 5px solid var(--kb-primary-color);
     box-shadow: var(--kb-shadow-lg);
     z-index: 9999;
     display: flex;
@@ -349,8 +350,9 @@
 }
 
 .kb-additional-item:hover {
-    background: var(--kb-border-light);
-    border-left-color: var(--kb-accent-color);
+    background: var(--kb-primary-color) !important;
+    border-left-color: var(--kb-primary-dark) !important;
+    color: white !important;
 }
 
 /* ========================================
@@ -403,7 +405,7 @@
     background: var(--kb-bg-white);
     border-top: 1px solid var(--kb-border-color);
     flex-shrink: 0;
-    max-height: 150px;
+    max-height: 250px;
     overflow-y: auto;
 }
 
