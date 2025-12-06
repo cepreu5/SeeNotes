@@ -789,21 +789,12 @@
         }
     ],
     "general": [
-        {
+{
             "id": "calendar-view",
             "category": "features",
             "keywords": {
-                "bg": [
-                    "календар",
-                    "дати",
-                    "calendar",
-                    "dates"
-                ],
-                "en": [
-                    "calendar",
-                    "dates",
-                    "schedule"
-                ]
+                "bg": ["календар", "дати", "calendar", "dates"],
+                "en": ["calendar", "dates", "schedule"]
             },
             "question": {
                 "bg": "Как да използвам календара?",
@@ -814,16 +805,12 @@
                 "en": "Click the <b><i>Calendar</i></b> button at the top. The calendar shows notes with calendar dates. You can switch between monthly and weekly views. Click on a date to see notes for that day."
             }
         },
-        {
+{
             "id": "calendar-view",
             "category": "features",
             "keywords": {
-                "bg": [
-                    "цвят"
-                ],
-                "en": [
-                    "color"
-                ]
+                "bg": ["цвят"],
+                "en": ["color"]
             },
             "question": {
                 "bg": "Как да подредя бележките по цвят?",
@@ -834,38 +821,17 @@
                 "en": "Click the <b><i>Sort notes by color</i></b> button at the top."
             },
             "guide": {
-                "image": "msm/left-up.png",
-                "height": 150,
-                "x": 200,
-                "y": 460,
-                "bx": -200,
-                "by": 80,
-                "bWidth": 250,
-                "bHeight": 100,
-                "stopAfter": true,
-                "action": "#sorting-arrow",
-                "target": "#sort-criteria-color",
-                "context": "sorting"
+                "image": "msm/left-up.png", "height": 150,
+                "x": 200, "y": 460, "bx": -200, "by": 80, "bWidth": 250, "bHeight": 100,
+                "stopAfter": true, "action": "#sorting-arrow", "target": "#sort-criteria-color", "context": "sorting"
             }
         },
-        {
+{
             "id": "how-to-start",
             "category": "getting-started",
             "keywords": {
-                "bg": [
-                    "начало",
-                    "старт",
-                    "започна",
-                    "работи",
-                    "първи стъпки"
-                ],
-                "en": [
-                    "start",
-                    "begin",
-                    "work",
-                    "getting started",
-                    "first steps"
-                ]
+                "bg": ["начало", "старт", "започна", "работи", "първи стъпки"],
+                "en": ["start", "begin", "work", "getting started", "first steps"]
             },
             "question": {
                 "bg": "Как да започна работа с приложението?",
@@ -876,22 +842,12 @@
                 "en": "First, sign in with your Google account (the same one you use in the Multinotes app). The application will automatically download notes from <b><i>Google Drive</i></b> and create a local database for fast access. Then you can view, search, and organize your notes."
             }
         },
-        {
+{
             "id": "organize-notes",
             "category": "workflow",
             "keywords": {
-                "bg": [
-                    "организирам",
-                    "подреждане",
-                    "бележки",
-                    "борд"
-                ],
-                "en": [
-                    "organize",
-                    "arrangement",
-                    "notes",
-                    "boards"
-                ]
+                "bg": ["организирам", "подреждане", "бележки", "борд"],
+                "en": ["organize", "arrangement", "notes", "boards"]
             },
             "question": {
                 "bg": "Как да организирам бележките си?",
@@ -902,35 +858,17 @@
                 "en": "Use Boards to group notes by topics. You can also use sorting (<b><i>Settings</i></b> > Order notes) to arrange notes by date, color, alphabetically, etc."
             },
             "guide": {
-                "image": "msm/left-up.png",
-                "height": 100,
-                "x": 1,
-                "y": 2,
-                "bx": -200,
-                "by": 80,
-                "bWidth": 250,
-                "bHeight": 100,
-                "stopAfter": true,
-                "action": "highlight",
-                "target": "#sort-criteria-color",
-                "context": "sorting"
+                "image": "msm/left-up.png", "height": 100,
+                "x": 1, "y": 2, "bx": -200, "by": 80, "bWidth": 250, "bHeight": 100,
+                "stopAfter": true, "action": "highlight", "target": "#sort-criteria-color", "context": "sorting"
             }
         },
-        {
+{
             "id": "search-notes",
             "category": "workflow",
             "keywords": {
-                "bg": [
-                    "търсене",
-                    "намиране",
-                    "търся",
-                    "намеря"
-                ],
-                "en": [
-                    "search",
-                    "find",
-                    "lookup"
-                ]
+                "bg": ["търсене", "намиране", "търся", "намеря"],
+                "en": ["search", "find", "lookup"]
             },
             "question": {
                 "bg": "Как да търся в бележките?",
@@ -941,33 +879,17 @@
                 "en": "Use the search field at the top of the page. You can search in titles or content - click the icon next to the field to switch. Searches can be saved for quick access."
             },
             "guide": {
-                "image": "msm/right-up.png",
-                "height": 100,
-                "target": "#mode_button",
-                "x": -694,
-                "y": 26,
-                "bx": -148,
-                "by": 45,
-                "bWidth": 171,
-                "bHeight": 118
+                "image": "msm/right-up.png", "height": 100,
+                "x": -694, "y": 26, "bx": -148, "by": 45, "bWidth": 171, "bHeight": 118,
+                "target": "#mode_button"
             }
         },
-        {
+{
             "id": "offline-mode",
-            "category": "data-management",
+                "category": "data-management",
             "keywords": {
-                "bg": [
-                    "офлайн",
-                    "без интернет",
-                    "локално",
-                    "offline"
-                ],
-                "en": [
-                    "offline",
-                    "no internet",
-                    "local",
-                    "without connection"
-                ]
+                "bg": ["офлайн", "без интернет", "локално", "offline"],
+                "en": ["offline", "no internet", "local", "without connection"]
             },
             "question": {
                 "bg": "Мога ли да работя без интернет?",
@@ -978,22 +900,12 @@
                 "en": "Yes! After initial loading, you can disable <b><i>Google Drive</i></b> in <b><i>Settings</i></b> and work only with the local database. This allows full offline access to your notes. To update data, re-enable <b><i>Google Drive</i></b>."
             }
         },
-        {
+{
             "id": "sync-google-drive",
             "category": "data-management",
             "keywords": {
-                "bg": [
-                    "синхронизация",
-                    "google drive",
-                    "обновяване",
-                    "sync"
-                ],
-                "en": [
-                    "sync",
-                    "synchronization",
-                    "google drive",
-                    "update"
-                ]
+                "bg": ["синхронизация", "google drive", "обновяване", "sync"],
+                "en": ["sync", "synchronization", "google drive", "update"]
             },
             "question": {
                 "bg": "Как работи синхронизацията с <b><i>Google Drive</i></b>?",
