@@ -33,13 +33,17 @@ class KBMatcher {
         // Търсене в settings
         if (this.kbData.settings) {
             this.kbData.settings.forEach(item => {
-                const score = this.calculateScore(queryWords, item, 'settings');
-                if (score > 0) {
-                    allResults.push({
-                        type: 'setting',
-                        item: item,
-                        score: score
-                    });
+                try {
+                    const score = this.calculateScore(queryWords, item, 'settings');
+                    if (score > 0) {
+                        allResults.push({
+                            type: 'setting',
+                            item: item,
+                            score: score
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Skipping invalid KB setting item:', item, e);
                 }
             });
         }
@@ -47,13 +51,17 @@ class KBMatcher {
         // Търсене в UI елементи
         if (this.kbData.ui) {
             this.kbData.ui.forEach(item => {
-                const score = this.calculateScore(queryWords, item, 'ui');
-                if (score > 0) {
-                    allResults.push({
-                        type: 'ui',
-                        item: item,
-                        score: score
-                    });
+                try {
+                    const score = this.calculateScore(queryWords, item, 'ui');
+                    if (score > 0) {
+                        allResults.push({
+                            type: 'ui',
+                            item: item,
+                            score: score
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Skipping invalid KB UI item:', item, e);
                 }
             });
         }
@@ -61,13 +69,17 @@ class KBMatcher {
         // Търсене в general въпроси
         if (this.kbData.general) {
             this.kbData.general.forEach(item => {
-                const score = this.calculateScore(queryWords, item, 'general');
-                if (score > 0) {
-                    allResults.push({
-                        type: 'general',
-                        item: item,
-                        score: score
-                    });
+                try {
+                    const score = this.calculateScore(queryWords, item, 'general');
+                    if (score > 0) {
+                        allResults.push({
+                            type: 'general',
+                            item: item,
+                            score: score
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Skipping invalid KB general item:', item, e);
                 }
             });
         }
@@ -260,6 +272,7 @@ class KBMatcher {
             formattedResult.question = item.question[lang];
             formattedResult.answer = item.answer[lang];
             formattedResult.category = item.category;
+            formattedResult.guide = item.guide;
         }
 
         return formattedResult;

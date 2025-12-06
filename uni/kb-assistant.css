@@ -26,7 +26,7 @@
 
     /* Текстови цветове */
     --kb-text-primary: #2d3748;
-    --kb-text-secondary: #718096;
+    --kb-text-secondary: #d8dee6;
     --kb-text-light: #a0aec0;
 
     /* Граници */
@@ -49,7 +49,7 @@
 
 .kb-fab {
     position: fixed;
-    bottom: 24px;
+    bottom: 80px;
     right: 24px;
     width: 60px;
     height: 60px;
@@ -124,6 +124,7 @@
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
+    border-bottom: 1px solid black;
 }
 
 .kb-header-title {
@@ -156,6 +157,40 @@
 
 .kb-close-btn:hover {
     background: rgba(255, 255, 255, 0.3);
+}
+
+.kb-reload-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    line-height: 1;
+}
+
+.kb-reload-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.kb-spin {
+    animation: kbSpin 1s linear infinite;
+}
+
+@keyframes kbSpin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* ========================================
@@ -333,7 +368,7 @@
 
 .kb-additional-title {
     font-size: 11px;
-    color: var(--kb-text-secondary);
+    color: var(--kb-primary-color);
     margin-bottom: 3px;
     font-weight: 500;
 }
@@ -559,6 +594,32 @@
     display: flex;
     gap: 4px;
     align-items: center;
+}
+
+/* History Items Styling */
+/* History Items Styling */
+.kb-history-item {
+    font-size: 12px;
+    padding: 2px 4px !important;
+    background: var(--kb-bg-gray) !important;
+    border-radius: 6px;
+    margin-bottom: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 2px solid transparent;
+    line-height: 1.2;
+    color: var(--kb-text-primary) !important;
+    border: none;
+    width: 100%;
+    text-align: left;
+    display: block;
+    font-family: inherit;
+}
+
+.kb-history-item:hover {
+    background: var(--kb-primary-color) !important;
+    border-left-color: var(--kb-primary-dark) !important;
+    color: white !important;
 }
 
 .kb-loading-dots span {
@@ -822,7 +883,7 @@
     pointer-events: auto;
     cursor: pointer;
     transition: opacity 0.3s ease;
-    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+    filter: drop-shadow(0 0 2px black) drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.5));
     animation: kbPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
@@ -836,4 +897,31 @@
         opacity: 1;
         transform: translateX(-100%) scale(1) translateX(0);
     }
+}
+
+/* Clear Button */
+.kb-clear-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--kb-primary-dark);
+    color: var(--kb-border-color);
+    border: 2px solid var(--kb-border-color);
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.kb-clear-btn:hover {
+    background: var(--kb-bg-gray);
+    color: var(--kb-primary-color);
+    transform: scale(1.05);
+}
+
+.kb-clear-btn:active {
+    transform: scale(0.95);
 }

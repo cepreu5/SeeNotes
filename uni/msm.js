@@ -1,5 +1,6 @@
 let container;
 let stepTimer;
+let currentActiveStep = null;
 let stepTime = 50000;
 let animationFrameId;
 
@@ -9,6 +10,7 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
 
   const step = steps[stepIndex];
   if (!step) return;
+  currentActiveStep = step;
 
   let imagePath = step.image;
   let stopAfter = false;
@@ -77,6 +79,8 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
     document.body.appendChild(debugOverlay);
   }
   debugOverlay.innerText = 'Debug info';
+
+
 
   // --- BUBBLE RESIZE LOGIC ---
   let isResizing = false;
@@ -359,7 +363,9 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   }
 
   // Позициониране спрямо елемент
-  const targetEl = document.querySelector(step.target);
+  // Позициониране спрямо елемент
+  // Fallback to body to ensure hero appears and is draggable even if target is invalid
+  let targetEl = document.querySelector(step.target) || document.body;
   if (targetEl) {
     let isDragging = false;
 
@@ -431,40 +437,98 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
           container.style.left = initialLeft + dx + "px";
           container.style.top = initialTop + dy + "px";
 
-          // Изчисляване на новите относителни координати спрямо КАРТИНКАТА
+          // Identify element at top-right of image
           const currentImgRect = img.getBoundingClientRect();
-          const currentTargetRect = targetEl.getBoundingClientRect();
+          const pointerX = currentImgRect.right - 10;
+          const pointerY = currentImgRect.top + 10;
 
-          finalRelX = Math.round(currentImgRect.left - currentTargetRect.left);
-          finalRelY = Math.round(currentImgRect.top - currentTargetRect.top);
+          container.style.visibility = 'hidden';
+          const el = document.elementFromPoint(pointerX, pointerY);
+          container.style.visibility = 'visible';
 
-          debugOverlay.innerText = `Image: x: ${finalRelX}, y: ${finalRelY}`;
+          let elId = '';
+          const currentImgRectForCalc = img.getBoundingClientRect();
+          let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default to original target
+
+          if (el) {
+            elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
+            if (el.className && typeof el.className === 'string') {
+              const classes = el.className.split(' ').filter(c => c !== 'kb-highlight'); // Filter out highlight class
+              if (classes.length > 0 && !el.id) elId += '.' + classes[0];
+            }
+            // Use the new element's rect for calculation
+            currentTargetRectForCalc = el.getBoundingClientRect();
+          }
+
+          finalRelX = Math.round(currentImgRectForCalc.left - currentTargetRectForCalc.left);
+          finalRelY = Math.round(currentImgRectForCalc.top - currentTargetRectForCalc.top);
+
+          debugOverlay.innerText = `Target: ${elId || 'None'} | x: ${finalRelX}, y: ${finalRelY}`;
         }
       };
 
       document.onmouseup = () => {
+        // Ensure visibility is restored
+        container.style.visibility = 'visible';
+
         document.onmousemove = null;
         document.onmouseup = null;
         isDragging = false; // Разрешаваме отново автоматичното позициониране
 
         if (wasDragged) {
-          // Запазваме новите координати в обекта step, за да не се връща назад
-          step.x = finalRelX;
-          step.y = finalRelY;
+          // Identify element at top-right of image
+          const currentImgRect = img.getBoundingClientRect();
+          const pX = currentImgRect.right - 10;
+          const pY = currentImgRect.top + 10;
 
-          const currentBx = step.bx || 0;
-          const currentBy = step.by || 0;
+          container.style.visibility = 'hidden';
+          const el = document.elementFromPoint(pX, pY);
+          container.style.visibility = 'visible';
+
+          let elId = '';
+          let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
+
+          if (el) {
+            elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
+            if (el.className && typeof el.className === 'string') {
+              const classes = el.className.split(' ').filter(c => c !== 'kb-highlight');
+              if (classes.length > 0 && !el.id) elId += '.' + classes[0];
+            }
+            // Use the new element's rect for calculation
+            currentTargetRectForCalc = el.getBoundingClientRect();
+          }
+
+          const isGeneric = !el || el.tagName === 'BODY' || el.tagName === 'HTML';
+
+          if (!isGeneric) {
+            // Re-calculate final relative coordinates based on the NEW target (if found)
+            finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
+            finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
+
+            // Запазваме новите координати в обекта step, за да не се връща назад
+            step.x = finalRelX;
+            step.y = finalRelY;
+
+            if (elId && elId !== step.target) {
+              step.target = elId;
+              const newTarget = document.querySelector(elId);
+              if (newTarget) targetEl = newTarget;
+            }
+
+            const currentBx = step.bx || 0;
+            const currentBy = step.by || 0;
+            const currentBWidth = step.bWidth || 0;
+            const currentBHeight = step.bHeight || 0;
+            const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${elId}"`;
+            navigator.clipboard.writeText(clipboardText);
+            debugOverlay.innerText = `Copied: ${clipboardText}`;
+          } else {
+            debugOverlay.innerText = `Reverted (Target: ${elId || 'None'})`;
+          }
 
           // Ако е имало влачене, спираме клика
           img.onclick = null;
           setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
-
-          // Copy to clipboard - включваме и координатите на балона
-          const currentBWidth = step.bWidth || 0;
-          const currentBHeight = step.bHeight || 0;
-          const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
-          navigator.clipboard.writeText(clipboardText);
-          debugOverlay.innerText = `Copied: ${clipboardText}`;
         }
         // Ако НЕ е имало влачене, оставяме onclick да се изпълни (nextStep)
       };
@@ -502,40 +566,95 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
           container.style.left = initialLeft + dx + "px";
           container.style.top = initialTop + dy + "px";
 
-          // Изчисляване на новите относителни координати спрямо КАРТИНКАТА
+          // Identify element at top-right of image
           const currentImgRect = img.getBoundingClientRect();
-          const currentTargetRect = targetEl.getBoundingClientRect();
+          const pointerX = currentImgRect.right - 10;
+          const pointerY = currentImgRect.top + 10;
 
-          finalRelX = Math.round(currentImgRect.left - currentTargetRect.left);
-          finalRelY = Math.round(currentImgRect.top - currentTargetRect.top);
+          container.style.visibility = 'hidden';
+          const el = document.elementFromPoint(pointerX, pointerY);
+          container.style.visibility = 'visible';
 
-          debugOverlay.innerText = `Image: x: ${finalRelX}, y: ${finalRelY}`;
+          let elId = '';
+          let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
+
+          if (el) {
+            elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
+            if (el.className && typeof el.className === 'string') {
+              const classes = el.className.split(' ').filter(c => c !== 'kb-highlight');
+              if (classes.length > 0 && !el.id) elId += '.' + classes[0];
+            }
+            currentTargetRectForCalc = el.getBoundingClientRect();
+          }
+
+          finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
+          finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
+
+          debugOverlay.innerText = `Target: ${elId || 'None'} | x: ${finalRelX}, y: ${finalRelY}`;
         }
       };
 
       document.ontouchend = () => {
+        // Ensure visibility is restored
+        container.style.visibility = 'visible';
+
         document.ontouchmove = null;
         document.ontouchend = null;
         isDragging = false;
 
         if (wasDragged) {
-          // Запазваме новите координати в обекта step, за да не се връща назад
-          step.x = finalRelX;
-          step.y = finalRelY;
+          // Identify element at top-right of image
+          const currentImgRect = img.getBoundingClientRect();
+          const pX = currentImgRect.right - 10;
+          const pY = currentImgRect.top + 10;
 
-          const currentBx = step.bx || 0;
-          const currentBy = step.by || 0;
+          container.style.visibility = 'hidden';
+          const el = document.elementFromPoint(pX, pY);
+          container.style.visibility = 'visible';
+
+          let elId = '';
+          let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
+
+          if (el) {
+            elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
+            if (el.className && typeof el.className === 'string') {
+              const classes = el.className.split(' ').filter(c => c !== 'kb-highlight');
+              if (classes.length > 0 && !el.id) elId += '.' + classes[0];
+            }
+            // Use the new element's rect for calculation
+            currentTargetRectForCalc = el.getBoundingClientRect();
+          }
+
+          const isGeneric = !el || el.tagName === 'BODY' || el.tagName === 'HTML';
+
+          if (!isGeneric) {
+            finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
+            finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
+
+            // Запазваме новите координати в обекта step, за да не се връща назад
+            step.x = finalRelX;
+            step.y = finalRelY;
+
+            if (elId && elId !== step.target) {
+              step.target = elId;
+              const newTarget = document.querySelector(elId);
+              if (newTarget) targetEl = newTarget;
+            }
+
+            const currentBx = step.bx || 0;
+            const currentBy = step.by || 0;
+            const currentBWidth = step.bWidth || 0;
+            const currentBHeight = step.bHeight || 0;
+            const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${elId}"`;
+            navigator.clipboard.writeText(clipboardText);
+            debugOverlay.innerText = `Copied: ${clipboardText}`;
+          } else {
+            debugOverlay.innerText = `Reverted (Target: ${elId || 'None'})`;
+          }
 
           // Ако е имало влачене, спираме клика
           img.onclick = null;
           setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
-
-          // Copy to clipboard - включваме и координатите на балона
-          const currentBWidth = step.bWidth || 0;
-          const currentBHeight = step.bHeight || 0;
-          const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
-          navigator.clipboard.writeText(clipboardText);
-          debugOverlay.innerText = `Copied: ${clipboardText}`;
         } else {
           // Ако НЕ е имало влачене, ръчно извикваме nextStep, защото preventDefault в touchstart спира click събитието
           wrappedNextStep();
@@ -545,7 +664,7 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
   }
 }
 
-// Стартиране при клик върху заглавието
+// Стартиране при клик върху заглавието или ако променливата msm е true
 document.addEventListener('DOMContentLoaded', () => {
   const appTitle = document.querySelector('h1[data-key="appTitle"]');
   if (appTitle) {
@@ -595,16 +714,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Обновяваме step координатите
         const img = container.querySelector('.guide-img');
-        for (let i = 0; i < steps.length; i++) {
-          const targetEl = document.querySelector(steps[i].target);
-          if (img && targetEl) {
-            const imgRect = img.getBoundingClientRect();
-            const targetRect = targetEl.getBoundingClientRect();
-
-            steps[i].x = Math.round(imgRect.left - targetRect.left);
-            steps[i].y = Math.round(imgRect.top - targetRect.top);
-            break;
-          }
+        if (img) {
+          // Намираме текущата активна стъпка (която се показва)
+          // В момента не пазим текущия индекс на стъпката в глобална променлива лесно достъпна тук,
+          // но можем да обходим всички и да видим коя съвпада.
+          // За по-просто тук само позиционираме визуално.
         }
 
         // Показваме контейнера отново
@@ -625,61 +739,70 @@ document.addEventListener('DOMContentLoaded', () => {
       lastTap = currentTime;
     });
 
-    // Показваме контейнера на новата позиция
-    container.style.visibility = 'visible';
-  }
-});
-
-// Double tap detection for mobile
-let lastTapTime = 0;
-appTitle.addEventListener('touchend', (e) => {
-  const currentTime = new Date().getTime();
-  const tapInterval = currentTime - lastTapTime;
-
-  if (tapInterval < 300 && tapInterval > 0) {
-    // Double tap detected
-    e.preventDefault(); // Предотвратява избор на текст и zoom
-    if (container && document.body.contains(container)) {
-      // Спираме автоматичното позициониране
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-      }
-
-      // Скриваме контейнера временно
-      container.style.visibility = 'hidden';
-
-      // Изчисляваме центъра на екрана
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const containerRect = container.getBoundingClientRect();
-
-      const centerX = (viewportWidth - containerRect.width) / 2;
-      const centerY = (viewportHeight - containerRect.height) / 2;
-
-      // Позиционираме контейнера в центъра
-      container.style.left = centerX + window.scrollX + 'px';
-      container.style.top = centerY + window.scrollY + 'px';
-
-      // Обновяваме step координатите
-      const img = container.querySelector('.guide-img');
-      for (let i = 0; i < steps.length; i++) {
-        const targetEl = document.querySelector(steps[i].target);
-        if (img && targetEl) {
-          const imgRect = img.getBoundingClientRect();
-          const targetRect = targetEl.getBoundingClientRect();
-
-          steps[i].x = Math.round(imgRect.left - targetRect.left);
-          steps[i].y = Math.round(imgRect.top - targetRect.top);
-          break;
-        }
-      }
-
-      // Показваме контейнера на новата позиция
-      container.style.visibility = 'visible';
+    // Auto-start if configured
+    if (typeof msm !== 'undefined' && msm) {
+      // Изчакваме малко, за да се заредят шрифтове и стилове
+      setTimeout(() => {
+        showStep(0);
+      }, 1000);
     }
-    lastTapTime = 0; // Reset
-  } else {
-    lastTapTime = currentTime;
   }
 });
+
+// Global function to flip image
+window.msmFlipImage = function () {
+  if (!currentActiveStep || !container) {
+    console.warn('No active step to flip image for');
+    return;
+  }
+
+  const imgEl = container.querySelector('.guide-img');
+  const oldWidth = imgEl ? imgEl.getBoundingClientRect().width : (currentActiveStep.height || 100);
+
+  let src = currentActiveStep.image;
+  let newSrc = src;
+
+  let isLeftToRight = false;
+  if (src.includes('left-up')) {
+    newSrc = src.replace('left-up', 'right-up');
+    isLeftToRight = true;
+  } else if (src.includes('right-up')) {
+    newSrc = src.replace('right-up', 'left-up');
+    isLeftToRight = false;
+  }
+
+  if (newSrc !== src) {
+    currentActiveStep.image = newSrc;
+
+    // Initial estimation
+    let deltaX = isLeftToRight ? -oldWidth : oldWidth;
+    let initialX = currentActiveStep.x || 0;
+    currentActiveStep.x = initialX + deltaX;
+
+    if (imgEl) {
+      const cleanSrc = newSrc.endsWith('!') ? newSrc.slice(0, -1) : newSrc;
+
+      imgEl.onload = () => {
+        const newWidth = imgEl.getBoundingClientRect().width;
+
+        // Correction if L->R and widths differ
+        if (isLeftToRight && Math.abs(newWidth - oldWidth) > 0.5) {
+          const correction = oldWidth - newWidth;
+          currentActiveStep.x += correction;
+        }
+
+        const debugOverlay = document.getElementById('msm-debug-overlay');
+        if (debugOverlay) {
+          debugOverlay.innerText = `Flipped: ${newSrc}\nNew x: ${Math.round(currentActiveStep.x)}`;
+        }
+        imgEl.onload = null;
+      };
+      imgEl.src = cleanSrc;
+    }
+
+    const debugOverlay = document.getElementById('msm-debug-overlay');
+    if (debugOverlay) {
+      debugOverlay.innerText = `Flipped: ${newSrc}\nNew x: ${Math.round(currentActiveStep.x)}`;
+    }
+  }
+};

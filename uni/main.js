@@ -18,7 +18,9 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
     }
 }
 
-let debug = true; // Глобален флаг за дебъг режим
+const debug = true; // Глобален флаг за дебъг режим
+const msm = true;
+
 let pass = false;
 
 // --- Demo Mode ---
@@ -26,9 +28,9 @@ let DEMO_MODE = false;
 const DEMO_NOTE_LIMIT = 5;
 
 let guide = false;
-function showStep(stepIndex, nextStepIndex = null, single = false) {
-    return false;
-}
+//function showStep(stepIndex, nextStepIndex = null, single = false) {
+//    return false;
+//}
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ

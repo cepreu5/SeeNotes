@@ -10,27 +10,19 @@ class KBAssistant {
         this.currentLang = this.getCurrentLanguage();
         this.isInitialized = false;
 
-        // Текстове на асистента
+        // Текстове на асистента (ще се заредят от JSON)
         this.texts = {
-            bg: {
-                greeting: "Здравей! 👋 Аз съм вашият асистент. Как мога да помогна?",
-                noResults: "Съжалявам, не намерих отговор на този въпрос. 😔",
-                suggestions: "Може да попитате:",
-                showMe: "Покажи ми къде",
-                relatedTopics: "Свързани теми:",
-                loading: "Зареждам...",
-                error: "Възникна грешка при зареждане на базата от знания."
-            },
-            en: {
-                greeting: "Hello! 👋 I'm your assistant. How can I help?",
-                noResults: "Sorry, I couldn't find an answer to that question. 😔",
-                suggestions: "You might ask:",
-                showMe: "Show me where",
-                relatedTopics: "Related topics:",
-                loading: "Loading...",
-                error: "An error occurred while loading the knowledge base."
-            }
+            bg: {},
+            en: {}
         };
+
+        // Конфигурация
+        this.showRelatedSettings = false;
+        this.showLocation = false;
+
+        // Query history
+        this.queryHistory = [];
+        this.MAX_HISTORY = 10;
     }
 
     getCurrentLanguage() {
@@ -38,7 +30,12 @@ class KBAssistant {
     }
 
     getText(key) {
-        return this.texts[this.currentLang][key] || this.texts.en[key];
+        // Fallback ако текстовете още не са заредени
+        if (!this.texts[this.currentLang] || !this.texts[this.currentLang][key]) {
+            if (this.texts.en && this.texts.en[key]) return this.texts.en[key];
+            return key; // Връщаме ключа ако няма превод
+        }
+        return this.texts[this.currentLang][key];
     }
 
     /**
@@ -47,12 +44,37 @@ class KBAssistant {
     async init() {
         try {
             // Зареждаме KB данните от JSON файла
-            const response = await fetch('kb-template.json');
+            const response = await fetch('kb-template.txt');
             if (!response.ok) {
                 throw new Error('Failed to load KB data');
             }
 
-            this.kbData = await response.json();
+            const text = await response.text();
+            try {
+                this.kbData = JSON.parse(text);
+            } catch (e) {
+                // Try relaxed parsing (allows unquoted keys like x: 1)
+                try {
+                    this.kbData = new Function('return ' + text)();
+                } catch (relaxedError) {
+                    console.warn('KB Data has syntax errors, attempting auto-repair...', e);
+                    // This regex finds alphanumeric keys preceded by { or , and wraps them in quotes
+                    const fixedText = text.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
+                    try {
+                        this.kbData = JSON.parse(fixedText);
+                        console.log('✅ KB Data auto-repaired successfully');
+                    } catch (repairError) {
+                        console.error('❌ KB Data repair failed:', repairError);
+                        throw e; // Throw original error
+                    }
+                }
+            }
+
+            // Зареждаме UI текстовете от JSON-а
+            if (this.kbData.ui_texts) {
+                this.texts = this.kbData.ui_texts;
+            }
+
             this.matcher = new KBMatcher(this.kbData);
             this.isInitialized = true;
 
@@ -90,10 +112,26 @@ class KBAssistant {
             };
         }
 
+        // Handle history request
+        if (query.trim() === '?') {
+            return {
+                success: true,
+                isHistory: true, // Marker for UI handling
+                history: this.queryHistory.slice().reverse(), // Show newest first
+                message: this.queryHistory.length > 0
+                    ? this.getText('recentQuestions')
+                    : this.getText('noRecentQuestions')
+            };
+        }
+
         // Търсим в KB
         const results = this.matcher.search(query, 3);
+        const hasResults = results.length > 0;
 
-        if (results.length === 0) {
+        // NOTE: History saving logic moved after results processing to save the matched question instead of user input
+        // See below code block
+
+        if (!hasResults) {
             return {
                 success: false,
                 message: this.getText('noResults'),
@@ -103,11 +141,27 @@ class KBAssistant {
 
         // Форматираме резултатите
         const formattedResults = results.map(r => this.matcher.formatResult(r));
+        const topResult = formattedResults[0];
+
+        // Save to history the actual matched question/label
+        if (query.trim() !== '?' && topResult) {
+            const questionText = topResult.question || topResult.label || topResult.term || query;
+            // Remove if exists to move to top
+            const existingIndex = this.queryHistory.indexOf(questionText);
+            if (existingIndex !== -1) {
+                this.queryHistory.splice(existingIndex, 1);
+            }
+
+            this.queryHistory.push(questionText);
+            if (this.queryHistory.length > this.MAX_HISTORY) {
+                this.queryHistory.shift();
+            }
+        }
 
         return {
             success: true,
             results: formattedResults,
-            topResult: formattedResults[0]
+            topResult: topResult
         };
     }
 
@@ -126,32 +180,39 @@ class KBAssistant {
      * @param {Object} guideData - Guide данни от KB
      */
     showGuide(guideData) {
+        console.log('showGuide called with:', guideData);
         if (!guideData) {
             console.warn('No guide data provided');
             return;
         }
 
         // Контексти, които се намират в Settings
-        const settingsContexts = ['display', 'sorting', 'boards', 'data', 'behavior', 'startup', 'settings'];
+        const settingsContexts = ['display', 'sorting', 'boards', 'data', 'behavior', 'startup', 'settings', 'calendar'];
         const isSettingsContext = settingsContexts.includes(guideData.context);
 
         // Проверяваме дали има target елемент
         let targetElement = document.querySelector(guideData.target);
+        console.log('Initial targetElement search:', guideData.target, targetElement);
 
         // Ако елементът не е намерен, но е в Settings контекст, опитваме да отворим Settings
         if (!targetElement && isSettingsContext) {
+            console.log('Target not found, opening settings...');
             this.openSettings();
 
             // Даваме малко време на DOM-а да се обнови
             setTimeout(() => {
                 targetElement = document.querySelector(guideData.target);
+                console.log('Retry targetElement search:', guideData.target, targetElement);
+
                 if (targetElement) {
-                    this.highlightElement(targetElement);
+                    this.ensureElementVisible(targetElement, guideData).then(() => {
+                        this.highlightElement(targetElement, guideData);
+                    });
                 } else {
                     // Fallback: ако все още не го намираме, highlight-ваме целия модал
                     const settingsModal = document.getElementById('settings-modal');
                     if (settingsModal) {
-                        this.highlightElement(settingsModal);
+                        this.highlightElement(settingsModal, guideData); // Pass guideData here too
                         const msg = this.currentLang === 'bg'
                             ? `Настройката се намира в Settings. Моля, потърсете я ръчно.`
                             : `The setting is in Settings. Please search for it manually.`;
@@ -173,13 +234,17 @@ class KBAssistant {
 
             // Изчакваме Settings да се отвори
             setTimeout(() => {
-                // Намираме елемента отново, за всеки случай (ако референцията е стара)
+                // Намираме елемента отново
                 const el = document.querySelector(guideData.target) || targetElement;
-                this.highlightElement(el);
+
+                // Проверяваме дали елементът е видим и ако не е - опитваме да го покажем (акордеони)
+                this.ensureElementVisible(el, guideData).then(() => {
+                    this.highlightElement(el, guideData);
+                });
             }, 300);
         } else {
             // За UI елементи директно highlight-ваме
-            this.highlightElement(targetElement);
+            this.highlightElement(targetElement, guideData);
         }
 
         // Ако има глобална guide система (от msmguide.js), използваме я
@@ -219,9 +284,29 @@ class KBAssistant {
      * Highlight на UI елемент
      * @param {HTMLElement} element
      */
-    highlightElement(element) {
+    /**
+     * Highlight на UI елемент
+     * @param {HTMLElement} element
+     * @param {Object} options - Опции за визуализация (image, height)
+     */
+    highlightElement(element, options = {}) {
         // Scroll до елемента
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Проверка за скролируеми контейнери (специфично за Settings modal)
+        const scrollableParent = element.closest('.modal-content-box, .settings-modal-body, .scrollable-content');
+        if (scrollableParent) {
+            const parentRect = scrollableParent.getBoundingClientRect();
+            const elementRect = element.getBoundingClientRect();
+
+            // Ако елементът е извън видимата област на контейнера
+            if (elementRect.top < parentRect.top || elementRect.bottom > parentRect.bottom) {
+                scrollableParent.scrollTo({
+                    top: element.offsetTop - (parentRect.height / 2) + (elementRect.height / 2),
+                    behavior: 'smooth'
+                });
+            }
+        }
 
         // Премахваме предишни pointers
         const existingPointer = document.getElementById('kb-pointer-img');
@@ -230,33 +315,90 @@ class KBAssistant {
         // Създаваме нов pointer
         const pointer = document.createElement('img');
         pointer.id = 'kb-pointer-img';
-        pointer.src = 'msm-show.png';
+
+        // Използваме зададеното изображение или default
+        pointer.src = options.image || 'msm-show.png';
+
+        // Задаваме височина ако е подадена
+        if (options.height) {
+            pointer.style.height = `${options.height}px`;
+            pointer.style.width = 'auto'; // Запазваме пропорциите
+        }
+
         pointer.className = 'kb-pointer-image';
 
-        // Изчисляваме позиция
-        const rect = element.getBoundingClientRect();
-        const centerX = rect.left + (rect.width / 2);
-        const centerY = rect.top + (rect.height / 2);
+        // Функция за обновяване на позицията
+        const updatePosition = () => {
+            if (!pointer.parentNode || !document.body.contains(element)) return;
 
-        // Позиционираме горния десен ъгъл на картинката в центъра на елемента
-        pointer.style.top = `${centerY}px`;
-        pointer.style.left = `${centerX}px`;
+            const rect = element.getBoundingClientRect();
+            // msm.js използва top-left координатна система
+            const targetLeft = rect.left;
+            const targetTop = rect.top;
 
-        // Скриване при клик
-        const hidePointer = () => {
-            pointer.style.opacity = '0';
-            setTimeout(() => pointer.remove(), 300);
+            // Добавяме offset-ите от guideData (ако има такива)
+            const offsetX = options.x || 0;
+            const offsetY = options.y || 0;
+
+            pointer.style.top = `${targetTop + offsetY}px`;
+            pointer.style.left = `${targetLeft + offsetX}px`;
+
+            // Премахваме CSS трансформациите, които пречат на точното позициониране (като translateX(-100%))
+            pointer.style.transform = 'none';
+            pointer.style.animation = 'none';
         };
 
-        pointer.addEventListener('click', hidePointer);
-        pointer.addEventListener('touchstart', hidePointer);
+        // Първоначално позициониране
+        updatePosition();
+
+        // Обновяваме позицията непрекъснато за известно време (докато трае скролирането)
+        let frames = 0;
+        const animate = () => {
+            if (frames < 100) { // ~1.6 секунди при 60fps
+                updatePosition();
+                frames++;
+                requestAnimationFrame(animate);
+            }
+        };
+        requestAnimationFrame(animate);
+
+        // Слушаме за scroll и resize
+        window.addEventListener('scroll', updatePosition, { passive: true });
+        window.addEventListener('resize', updatePosition, { passive: true });
+        if (scrollableParent) {
+            scrollableParent.addEventListener('scroll', updatePosition, { passive: true });
+        }
+
+        // Скриване при клик
+        const hidePointer = (immediate = false) => {
+            // Почистване на event listeners
+            window.removeEventListener('scroll', updatePosition);
+            window.removeEventListener('resize', updatePosition);
+            if (scrollableParent) {
+                scrollableParent.removeEventListener('scroll', updatePosition);
+            }
+
+            if (immediate) {
+                pointer.remove();
+            } else {
+                pointer.style.opacity = '0';
+                setTimeout(() => {
+                    if (pointer.parentNode) pointer.remove();
+                }, 300);
+            }
+        };
+
+
+
+        pointer.addEventListener('click', () => hidePointer(false));
+        pointer.addEventListener('touchstart', () => hidePointer(false));
 
         document.body.appendChild(pointer);
 
         // Премахваме pointer след 10 секунди
         const timeoutId = setTimeout(() => {
             if (pointer.parentNode) {
-                hidePointer();
+                hidePointer(false);
             }
         }, 10000);
 
@@ -264,7 +406,8 @@ class KBAssistant {
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (!entry.isIntersecting) {
-                    hidePointer();
+                    // Ако елементът вече не е видим, скриваме веднага
+                    hidePointer(true);
                     observer.disconnect();
                     clearTimeout(timeoutId);
                 }
@@ -276,7 +419,7 @@ class KBAssistant {
         // Допълнителна проверка за премахване от DOM (MutationObserver)
         const mutationObserver = new MutationObserver(() => {
             if (!document.body.contains(element)) {
-                hidePointer();
+                hidePointer(true);
                 observer.disconnect();
                 mutationObserver.disconnect();
                 clearTimeout(timeoutId);
@@ -291,6 +434,136 @@ class KBAssistant {
             mutationObserver.disconnect();
             clearTimeout(timeoutId);
         });
+    }
+
+    /**
+     * Уверява се, че елементът е видим (отваря акордеони ако е нужно)
+     * @param {HTMLElement} element 
+     * @param {Object} guideData - Данни за стъпката, може да съдържа 'action' (селектор за кликване)
+     */
+    async ensureElementVisible(element, guideData = null) {
+        if (!element) return;
+
+        // 1. Проверка за специфично действие (action) от JSON-а
+        // Това позволява ръчно да укажем кой елемент трябва да се кликне, за да се покаже target-а
+        // Игнорираме 'highlight', тъй като това е стара стойност, която не е селектор
+        if (guideData && guideData.action && guideData.action !== 'highlight') {
+            console.log('Custom action found:', guideData.action);
+            const actionTrigger = document.querySelector(guideData.action);
+            if (actionTrigger) {
+                console.log(`Executing custom action: clicking ${guideData.action}`);
+                actionTrigger.click();
+
+                // Dispatch event just in case
+                const clickEvent = new MouseEvent('click', {
+                    view: window,
+                    bubbles: true,
+                    cancelable: true
+                });
+                actionTrigger.dispatchEvent(clickEvent);
+
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                // Ако елементът вече е видим след акцията, може да приключим
+                if (element.offsetParent !== null) return;
+            } else {
+                console.warn('Action trigger not found:', guideData.action);
+            }
+        }
+
+        // Проверяваме дали елементът е видим (offsetParent !== null означава, че е видим)
+        // Забележка: в някои случаи (fixed position) offsetParent може да е null, но тук ни интересува display: none
+        if (element.offsetParent !== null) return;
+
+        // Дефинираме познатите акордеони и техните тригери
+        const accordions = [
+            {
+                contentId: 'boards-options-section',
+                triggerSelector: '#remind-board', // Wrapper-ът, който съдържа стрелката
+                arrowSelector: '#boards-arrow'
+            },
+            {
+                contentId: 'sorting-options-section',
+                triggerSelector: '#order-notes',
+                arrowSelector: '#sorting-arrow'
+            },
+            {
+                contentClass: 'accordion-content', // За Advanced Settings
+                triggerSelector: '.accordion-header',
+                arrowSelector: '.accordion-arrow'
+            }
+        ];
+
+        for (const acc of accordions) {
+            let contentEl = null;
+            if (acc.contentId) {
+                contentEl = document.getElementById(acc.contentId);
+            } else if (acc.contentClass) {
+                // Търсим най-близкия родител с този клас
+                contentEl = element.closest(`.${acc.contentClass}`);
+            }
+
+            // Ако елементът е вътре в този акордеон
+            if (contentEl && contentEl.contains(element)) {
+                // Проверяваме дали е скрит
+                const style = window.getComputedStyle(contentEl);
+                if (style.display === 'none') {
+                    // Намираме тригера
+                    let trigger = null;
+                    if (acc.contentId) {
+                        // Първо опитваме да намерим стрелката, защото тя е най-сигурният тригер
+                        if (acc.arrowSelector) {
+                            trigger = document.querySelector(acc.arrowSelector);
+                        }
+                        // Ако няма стрелка или не я намираме, пробваме wrapper-а
+                        if (!trigger && acc.triggerSelector) {
+                            trigger = document.querySelector(acc.triggerSelector);
+                        }
+                    } else {
+                        // За класовете (Advanced Settings), тригерът е sibling на content-а
+                        // Структурата е: header -> content
+                        trigger = contentEl.previousElementSibling;
+                    }
+
+                    if (trigger) {
+                        console.log(`Expanding accordion for ${element.id || element.tagName}...`);
+                        console.log('Trigger element:', trigger);
+                        console.log('Content display before:', contentEl.style.display);
+
+                        // Ако тригерът е стрелката, трябва да сме сигурни, че event listener-ът в main.js ще се задейства
+                        // Той очаква 'click' събитие точно върху стрелката
+                        trigger.click();
+                        console.log('trigger.click() executed');
+
+                        // За всеки случай, ако click() не сработи (някои браузъри/контексти), dispatch-ваме и MouseEvent
+                        const clickEvent = new MouseEvent('click', {
+                            view: window,
+                            bubbles: true,
+                            cancelable: true
+                        });
+                        trigger.dispatchEvent(clickEvent);
+                        console.log('MouseEvent dispatched');
+                    }
+
+                    // Изчакваме малко за анимацията/обновяването
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    console.log('Content display after:', contentEl.style.display);
+
+                    // Fallback: Ако кликът не е променил display (все още е none), го променяме ръчно
+                    if (contentEl.style.display === 'none') {
+                        console.warn('Click failed to open accordion. Forcing display: block.');
+                        contentEl.style.display = 'block';
+
+                        // Завъртаме и стрелката ръчно, ако тригерът е стрелка
+                        if (trigger.id === 'sorting-arrow' || trigger.id === 'boards-arrow' || trigger.classList.contains('accordion-arrow')) {
+                            trigger.style.transition = 'transform 0.3s ease';
+                            trigger.style.transform = 'rotate(180deg)';
+                        }
+                    }
+                }
+                break; // Намерили сме контейнера
+            }
+        }
     }
 
     /**
@@ -324,9 +597,12 @@ class KBAssistant {
 
         if (result.type === 'setting') {
             html += `<div class="kb-answer">`;
+            if (result.question) {
+                html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.question}</div>`;
+            }
             html += `<div class="kb-answer-text">${result.answer}</div>`;
 
-            if (result.location) {
+            if (this.showLocation && result.location) {
                 html += `<div class="kb-answer-location">📍 ${result.location}</div>`;
             }
 
@@ -335,7 +611,7 @@ class KBAssistant {
                 html += `${this.getText('showMe')} →</button>`;
             }
 
-            if (result.relatedSettings && result.relatedSettings.length > 0) {
+            if (this.showRelatedSettings && result.relatedSettings && result.relatedSettings.length > 0) {
                 html += `<div class="kb-related">`;
                 html += `<div class="kb-related-title">${this.getText('relatedTopics')}</div>`;
                 html += `<div class="kb-related-items">`;
@@ -348,6 +624,9 @@ class KBAssistant {
             html += `</div>`;
         } else if (result.type === 'ui') {
             html += `<div class="kb-answer">`;
+            if (result.label) {
+                html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.label}</div>`;
+            }
             html += `<div class="kb-answer-text">${result.description}</div>`;
 
             if (result.guide) {
@@ -357,7 +636,16 @@ class KBAssistant {
             html += `</div>`;
         } else if (result.type === 'general') {
             html += `<div class="kb-answer">`;
+            if (result.question) {
+                html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.question}</div>`;
+            }
             html += `<div class="kb-answer-text">${result.answer}</div>`;
+
+            if (result.guide) {
+                html += `<button class="kb-show-me-btn" data-guide='${JSON.stringify(result.guide)}'>`;
+                html += `${this.getText('showMe')} →</button>`;
+            }
+
             html += `</div>`;
         }
 

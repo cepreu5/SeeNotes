@@ -1,6 +1,7 @@
 // Преводи за текстовете в ръководството
 const guideTexts = {
     en: [
+        "Mr. StickyMan", // debug text
         "<h2>Welcome!</h2><h3>I'm <b>Mr. StickyMan</b> - your guide to the world of sticky notes.</h3>",
         "<h3>✨ I’m easy to handle! Click me (or the text) to move forward — and with Ctrl+Click you can make me disappear instantly!</h3>",
         "<h3>This is a super handy button — the little window it pops up lets you tweak all sorts of useful settings!</h3>",
@@ -11,7 +12,8 @@ const guideTexts = {
 
     ],
     bg: [
-        "<h2>Добре дошли!</h2><h3>Аз съм <b>Лепчо</b> - вашият екскурзовод в света на лепящите бележки.</h3>",
+        "Лепчо", // debug text
+        "<h2>Добре дошли!</h2><h3>Аз съм <b>Лепчо</b> - твоят екскурзовод и помощник в света на лепящите бележки.</h3>",
         "<h3>✨ С мен се общува лесно. Ако искаш да мина на следващата стъпка, кликни на текста или върху мен. А с Ctrl+Click можеш да ме скриеш веднага.</h3>",
         "<h3>Това е един много полезен бутон - от прозорчето, което отваря може да направиш полезни настройки.</h3>",
         "<h3>Когато го натиснеш ще ти разкрия тайни, които никой не знае, но нека сега да се огледаме 👀 наоколо!</h3>",
@@ -25,6 +27,10 @@ const guideTexts = {
 const getCurrentLanguage = () => localStorage.getItem('language') || 'en';
 
 const steps = [
+    { // debug image 
+        image: "msm/right-up.png!", height: 100, target: "#search-box", textKey: 0,
+        x: -70, y: 20, bx: -19, by: 175, bWidth: 93, bHeight: 50
+    },
     {
         image: "msm/1.png", height: 200, target: "#lang-bg-main", textKey: 0,
         x: -360, y: 25, bx: 120, by: 46, bWidth: 171, bHeight: 118
@@ -41,9 +47,13 @@ const steps = [
         image: "msm/expl2.png!", height: 150, target: "#settings_button", textKey: 3,
         x: -154, y: 56, bx: -178, by: 41, bWidth: 230, bHeight: 75
     },
+    //{
+    //    image: "msm/right-up.png", height: 150, target: "#scaleSlider", textKey: 4,
+    //    x: -88, y: 1, bx: 199, by: 166, bWidth: 275, bHeight: 118
+    //},
     {
-        image: "msm/right-up.png", height: 150, target: "#scaleSlider", textKey: 4,
-        x: -88, y: 1, bx: 199, by: 166, bWidth: 275, bHeight: 118
+        image: "msm/left-up.png!", height: 100, target: "#show-datemod-checkbox", textKey: 5,
+        x: 1, y: 4, bx: -260, by: 116, bWidth: 275, bHeight: 118
     },
     {
         image: "msm/left-up.png", height: 150, target: "#scaleInput", textKey: 5,
