@@ -44,7 +44,7 @@ class KBAssistant {
     async init() {
         try {
             // Зареждаме KB данните от JSON файла
-            const response = await fetch('kb-template.txt');
+            const response = await fetch('kb-data.txt');
             if (!response.ok) {
                 throw new Error('Failed to load KB data');
             }

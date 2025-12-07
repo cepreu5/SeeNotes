@@ -7,10 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = '0.19'; // App version
-const debug = true; // Глобален флаг за дебъг режим
-const msm = true;
-let guide = false;
+const version = '0.18'; // App version
 
 // --- OAuth Redirect Handler for iframe ---
 // Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
@@ -21,15 +18,19 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
     }
 }
 
+const debug = true; // Глобален флаг за дебъг режим
+const msm = true;
+let guide = false;
+
 let pass = false;
 
 // --- Demo Mode ---
 let DEMO_MODE = false;
 const DEMO_NOTE_LIMIT = 5;
 
-// function showStep(stepIndex, nextStepIndex = null, single = false) {
-//     return false;
-// }
+//function showStep(stepIndex, nextStepIndex = null, single = false) {
+//    return false;
+//}
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ

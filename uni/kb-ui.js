@@ -31,7 +31,7 @@ class KBUI {
         this.fabButton = document.createElement('button');
         this.fabButton.id = 'kb-fab';
         this.fabButton.className = 'kb-fab';
-        this.fabButton.innerHTML = '<img src="msm-assist.png" alt="Mr. StickyMan" style="width: 40px; height: 40px; object-fit: contain;">';
+        this.fabButton.innerHTML = '<img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 40px; height: 40px; object-fit: contain;">';
         this.fabButton.title = 'Mr. StickyMan Assistant';
 
         document.body.appendChild(this.fabButton);
@@ -62,7 +62,7 @@ class KBUI {
         this.container.innerHTML = `
             <div class="kb-header">
                 <div class="kb-header-title">
-                    <span class="kb-icon"><img src="msm-assist.png" alt="Mr. StickyMan" style="width: 24px; height: 24px; object-fit: contain;"></span>
+                    <span class="kb-icon"><img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 24px; height: 24px; object-fit: contain;"></span>
                     <span class="kb-title">Mr. StickyMan</span>
                 </div>
                 <div class="kb-header-controls" style="display: flex; gap: 8px; align-items: center;">
@@ -501,7 +501,7 @@ class KBUI {
             // Използваме изображения вместо emoji
             const icon = type === 'user'
                 ? '<img src="user-icon.png" alt="User" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'
-                : '<img src="msm-assist.png" alt="Mr. StickyMan" style="width: 100%; height: 100%; object-fit: contain;">';
+                : '<img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 100%; height: 100%; object-fit: contain;">';
             iconHtml = `<div class="kb-message-icon">${icon}</div>`;
         }
 
