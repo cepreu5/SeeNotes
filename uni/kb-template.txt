@@ -801,17 +801,46 @@
                 "en": "What is good to know about using the chat window?"
             },
             "answer": {
-                "bg": "Чат прозорецът е функция в приложението, която позволява на потребителите да взаимодействат с AI асистента. Той може да отговаря на въпросите им, да помага със задачи и да обяснява елементите на интерфейса.",
-                "en": "The chat window is a feature in the app that allows users to interact with the AI assistant. It can answer questions, help with tasks, and explain interface elements."
+                "bg": "Чат прозорецът ти позволява да търсиш информация с AI асистента. Той може да отговаря на въпросите ти, да помага със задачи и да обяснява елементите на интерфейса. Важно е да знаеш, че асистентът работи само на компютъра ти и не праща данни в интернет.",
+                "en": "The chat window allows you to search for information with the AI assistant. It can answer questions, help with tasks, and explain interface elements. It works entirely on your computer and does not send data to the internet."
             },
             "guide": {
-                "image": "msm/left-up.png", "height": 100,
-                x: -33, y: 130, bx: 154, by: 26, bWidth: 249, bHeight: 57,
-                "target": "div.kb-message-content", 
-                "stopAfter": true, "action": "explain!", "context": "",
-                "text": {
-                    "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
-                    "en": "If you click on the text of the last question you asked, it will be filled in the edit field."
+                "stopAfter": false, "action": "explain!", "context": "",
+                1: {
+                    "image": "msm/l-up-w.png", "height": 100,
+                    x: -33, y: 130, bx: 154, by: 26, bWidth: 265, bHeight: 50,
+                    "target": "div.kb-message-content", 
+                    "text": {
+                        "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
+                        "en": "If you click on the text of the last question you asked, it will be filled in the edit field."
+                    }
+                },
+                2: {
+                    "image": "msm/l-down-l.png", "height": 100,
+                    x: 44, y: 8, bx: 42, by: 12, bWidth: 281, bHeight: 65,
+                    "target": "div.kb-additional-item", 
+                    "text": {
+                        "bg": "Не е необходимо да пишеш подробни въпроси, разбирам и от една дума, може да напишеш само <i>календар</i> или <i>дата</i>.",
+                        "en": "It is not necessary to write detailed questions, I understand and you can write only <i>calendar</i> or <i>date</i>."
+                    }
+                },
+                3: {
+                    "image": "msm/r-down-l.png", "height": 100,
+                    x: 72, y: 8, bx: 65, by: 13, bWidth: 281, bHeight: 65,
+                    "target": "div.kb-additional-item", 
+                    "text": {
+                        "bg": "Историята - последните въпроси, които си задавал, може да извикаш и като изпратиш интнервал, вместо ?.",
+                        "en": "History - the last questions you asked can be called by sending an interval instead of ?."
+                    }
+                },
+                4: {
+                    "image": "msm/r-down-w.png", "height": 100,
+                    x: 230, y: 15, bx: -83, by: 39, bWidth: 230, bHeight: 66,
+                    "target": "div.kb-additional-item", 
+                    "text": {
+                        "bg": "Ако натиснеш този бутон без да си написал нищо, чат прозорецът ще се затвори.",
+                        "en": "When you click this button without writing anything, the chat window will close."
+                    }
                 }
             }
         },

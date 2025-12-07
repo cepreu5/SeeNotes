@@ -2,7 +2,23 @@ let container;
 let stepTimer;
 let currentActiveStep = null;
 let stepTime = 50000;
-let animationFrameId;
+let animationFrameId; // defined in msmguide.js but let's be safe
+let activeSteps = typeof steps !== 'undefined' ? steps : [];
+
+window.setGuideSteps = function (newSteps) {
+  activeSteps = newSteps;
+};
+
+window.showGuideStep = function (step) {
+  if (container) {
+    container.remove();
+    container = null;
+  }
+  showStep(step, null, true);
+}
+
+// Make showStep globally available for internal use (if needed) but showGuideStep is preferred for single steps
+window.showStep = showStep;
 
 function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   if (stepTimer) clearTimeout(stepTimer);
@@ -14,7 +30,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     step = stepOrIndex;
   } else {
     stepIndex = stepOrIndex;
-    step = steps[stepIndex];
+    step = activeSteps[stepIndex];
   }
   if (!step) return;
   currentActiveStep = step;
@@ -43,11 +59,15 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   let currentBubbleLang = getCurrentLanguage();
   let stepText;
   if (step.text) {
-    stepText = step.text;
+    if (typeof step.text === 'object') {
+      stepText = step.text[currentBubbleLang] || step.text['en'] || '';
+    } else {
+      stepText = step.text;
+    }
   } else {
     stepText = guideTexts[currentBubbleLang][step.textKey];
   }
-  bubble.innerHTML = stepText;
+  bubble.innerHTML = `<span>${stepText}</span>`;
 
   // Прилагаме относителни координати за балона
   const bx = step.bx || 0;
@@ -195,10 +215,26 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       currentBubbleLang = currentBubbleLang === 'en' ? 'bg' : 'en';
 
       // Обновяваме текста на балона
-      const newText = guideTexts[currentBubbleLang][step.textKey];
-      bubble.innerHTML = newText;
-      // Re-append resize handle as innerHTML wipes it out
-      bubble.appendChild(resizeHandle);
+      let newText;
+      if (step.text) {
+        if (typeof step.text === 'object') {
+          newText = step.text[currentBubbleLang] || step.text['en'] || '';
+        } else {
+          newText = step.text;
+        }
+      } else {
+        newText = guideTexts[currentBubbleLang][step.textKey];
+      }
+
+      // Запазваме resize handle ако съществува, но обновяваме текста в span-а
+      const span = bubble.querySelector('span');
+      if (span) {
+        span.innerHTML = newText;
+      } else {
+        // Fallback ако случайно span липсва
+        bubble.innerHTML = `<span>${newText}</span>`;
+        if (resizeHandle) bubble.appendChild(resizeHandle);
+      }
     }
     bubbleWasDragged = false;
   };
@@ -300,12 +336,31 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         step.by = finalBy;
       } else {
         // Ако не е имало влачене, превключваме езика
+        // Note: onclick handles this for mouse, but for touch we might want to ensure it works too.
+        // However, onclick usually fires after touchend if not prevented.
+        // But we preventedDefault in touchstart? Yes. So click won't fire.
+        // We must manually trigger language switch or simulate click behavior here.
+
         currentBubbleLang = currentBubbleLang === 'en' ? 'bg' : 'en';
 
-        // Обновяваме текста на балона
-        const newText = guideTexts[currentBubbleLang][step.textKey];
-        bubble.innerHTML = newText;
-        bubble.appendChild(resizeHandle);
+        let newText;
+        if (step.text) {
+          if (typeof step.text === 'object') {
+            newText = step.text[currentBubbleLang] || step.text['en'] || '';
+          } else {
+            newText = step.text;
+          }
+        } else {
+          newText = guideTexts[currentBubbleLang][step.textKey];
+        }
+
+        const span = bubble.querySelector('span');
+        if (span) {
+          span.innerHTML = newText;
+        } else {
+          bubble.innerHTML = `<span>${newText}</span>`;
+          if (resizeHandle) bubble.appendChild(resizeHandle);
+        }
       }
     };
   };
@@ -338,7 +393,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     // Определяме следващата стъпка
     const nextIndex = nextStepIndex !== null ? nextStepIndex : (stepIndex !== -1 ? stepIndex + 1 : -1);
 
-    if (nextIndex !== -1 && nextIndex < steps.length) {
+    if (nextIndex !== -1 && nextIndex < activeSteps.length) {
       showStep(nextIndex);
     } else {
       container.remove();
@@ -562,119 +617,100 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       initialLeft = parseInt(container.style.left || 0);
       initialTop = parseInt(container.style.top || 0);
 
-      document.ontouchmove = (moveEvent) => {
-        if (!container) return;
 
-        const moveTouch = moveEvent.touches[0];
-        const dx = moveTouch.clientX - startX;
-        const dy = moveTouch.clientY - startY;
 
-        // Отчитаме влачене само ако има движение над 3 пиксела
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-          wasDragged = true;
+      container.style.visibility = 'hidden';
+      const el = document.elementFromPoint(pointerX, pointerY);
+      container.style.visibility = 'visible';
+
+      let elId = '';
+      let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
+
+      if (el) {
+        elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
+        if (el.className && typeof el.className === 'string') {
+          const classes = el.className.split(' ').filter(c => c !== 'kb-highlight');
+          if (classes.length > 0 && !el.id) elId += '.' + classes[0];
+        }
+        currentTargetRectForCalc = el.getBoundingClientRect();
+      }
+
+      finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
+      finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
+
+      debugOverlay.innerText = `Target: ${elId || 'None'} | x: ${finalRelX}, y: ${finalRelY}`;
+    }
+  };
+
+  document.ontouchend = () => {
+    // Ensure visibility is restored
+    container.style.visibility = 'visible';
+
+    document.ontouchmove = null;
+    document.ontouchend = null;
+    isDragging = false;
+
+    if (wasDragged) {
+      // Identify element at top-right of image
+      const currentImgRect = img.getBoundingClientRect();
+      const pX = currentImgRect.right - 10;
+      const pY = currentImgRect.top + 10;
+
+      container.style.visibility = 'hidden';
+      const el = document.elementFromPoint(pX, pY);
+      container.style.visibility = 'visible';
+
+      let elId = '';
+      let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
+
+      if (el) {
+        elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
+        if (el.className && typeof el.className === 'string') {
+          const classes = el.className.split(' ').filter(c => c !== 'kb-highlight');
+          if (classes.length > 0 && !el.id) elId += '.' + classes[0];
+        }
+        // Use the new element's rect for calculation
+        currentTargetRectForCalc = el.getBoundingClientRect();
+      }
+
+      const isGeneric = !el || el.tagName === 'BODY' || el.tagName === 'HTML';
+
+      if (!isGeneric) {
+        finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
+        finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
+
+        // Запазваме новите координати в обекта step, за да не се връща назад
+        step.x = finalRelX;
+        step.y = finalRelY;
+
+        if (elId && elId !== step.target) {
+          step.target = elId;
+          const newTarget = document.querySelector(elId);
+          if (newTarget) targetEl = newTarget;
         }
 
-        if (wasDragged) {
-          container.style.left = initialLeft + dx + "px";
-          container.style.top = initialTop + dy + "px";
+        const currentBx = step.bx || 0;
+        const currentBy = step.by || 0;
+        const currentBWidth = step.bWidth || 0;
+        const currentBHeight = step.bHeight || 0;
+        const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${elId}"`;
+        navigator.clipboard.writeText(clipboardText);
+        debugOverlay.innerText = `Copied: ${clipboardText}`;
+      } else {
+        debugOverlay.innerText = `Reverted (Target: ${elId || 'None'})`;
+      }
 
-          // Identify element at top-right of image
-          const currentImgRect = img.getBoundingClientRect();
-          const pointerX = currentImgRect.right - 10;
-          const pointerY = currentImgRect.top + 10;
+      // Ако е имало влачене, спираме клика
+      img.onclick = null;
+      setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
+    } else {
+      // Ако НЕ е имало влачене, ръчно извикваме nextStep, защото preventDefault в touchstart спира click събитието
+      wrappedNextStep();
+    }
+  };
+};
 
-          container.style.visibility = 'hidden';
-          const el = document.elementFromPoint(pointerX, pointerY);
-          container.style.visibility = 'visible';
 
-          let elId = '';
-          let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
-
-          if (el) {
-            elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
-            if (el.className && typeof el.className === 'string') {
-              const classes = el.className.split(' ').filter(c => c !== 'kb-highlight');
-              if (classes.length > 0 && !el.id) elId += '.' + classes[0];
-            }
-            currentTargetRectForCalc = el.getBoundingClientRect();
-          }
-
-          finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
-          finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
-
-          debugOverlay.innerText = `Target: ${elId || 'None'} | x: ${finalRelX}, y: ${finalRelY}`;
-        }
-      };
-
-      document.ontouchend = () => {
-        // Ensure visibility is restored
-        container.style.visibility = 'visible';
-
-        document.ontouchmove = null;
-        document.ontouchend = null;
-        isDragging = false;
-
-        if (wasDragged) {
-          // Identify element at top-right of image
-          const currentImgRect = img.getBoundingClientRect();
-          const pX = currentImgRect.right - 10;
-          const pY = currentImgRect.top + 10;
-
-          container.style.visibility = 'hidden';
-          const el = document.elementFromPoint(pX, pY);
-          container.style.visibility = 'visible';
-
-          let elId = '';
-          let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
-
-          if (el) {
-            elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
-            if (el.className && typeof el.className === 'string') {
-              const classes = el.className.split(' ').filter(c => c !== 'kb-highlight');
-              if (classes.length > 0 && !el.id) elId += '.' + classes[0];
-            }
-            // Use the new element's rect for calculation
-            currentTargetRectForCalc = el.getBoundingClientRect();
-          }
-
-          const isGeneric = !el || el.tagName === 'BODY' || el.tagName === 'HTML';
-
-          if (!isGeneric) {
-            finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
-            finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
-
-            // Запазваме новите координати в обекта step, за да не се връща назад
-            step.x = finalRelX;
-            step.y = finalRelY;
-
-            if (elId && elId !== step.target) {
-              step.target = elId;
-              const newTarget = document.querySelector(elId);
-              if (newTarget) targetEl = newTarget;
-            }
-
-            const currentBx = step.bx || 0;
-            const currentBy = step.by || 0;
-            const currentBWidth = step.bWidth || 0;
-            const currentBHeight = step.bHeight || 0;
-            const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${elId}"`;
-            navigator.clipboard.writeText(clipboardText);
-            debugOverlay.innerText = `Copied: ${clipboardText}`;
-          } else {
-            debugOverlay.innerText = `Reverted (Target: ${elId || 'None'})`;
-          }
-
-          // Ако е имало влачене, спираме клика
-          img.onclick = null;
-          setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
-        } else {
-          // Ако НЕ е имало влачене, ръчно извикваме nextStep, защото preventDefault в touchstart спира click събитието
-          wrappedNextStep();
-        }
-      };
-    };
-  }
-}
 
 // Стартиране при клик върху заглавието или ако променливата msm е true
 document.addEventListener('DOMContentLoaded', () => {
@@ -775,11 +811,11 @@ window.msmFlipImage = function () {
   let newSrc = src;
 
   let isLeftToRight = false;
-  if (src.includes('left-up')) {
-    newSrc = src.replace('left-up', 'right-up');
+  if (src.includes('l-up')) {
+    newSrc = src.replace('l-up', 'r-up');
     isLeftToRight = true;
-  } else if (src.includes('right-up')) {
-    newSrc = src.replace('right-up', 'left-up');
+  } else if (src.includes('r-up')) {
+    newSrc = src.replace('r-up', 'l-up');
     isLeftToRight = false;
   }
 
@@ -819,4 +855,4 @@ window.msmFlipImage = function () {
   }
 };
 
-window.showGuideStep = function(step) { showStep(step, null, true); };
+

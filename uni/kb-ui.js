@@ -67,7 +67,8 @@ class KBUI {
                 </div>
                 <div class="kb-header-controls" style="display: flex; gap: 8px; align-items: center;">
                     ${debugControlsHtml}
-                    <button class="kb-close-btn" id="kb-close-btn" title="Minimize" style="font-size: 20px; line-height: 20px; padding-bottom: 5px;">−</button>
+                    <button class="kb-close-btn" id="kb-close-btn" title="Minimize" 
+                        style="padding-top: 10px; font-size: 20px; line-height: 20px;">−</button>
                 </div>
             </div>
             
@@ -341,11 +342,21 @@ class KBUI {
         if (this.chatHistory.length === 0) {
             // Обновяваме езика преди greeting
             if (window.kbAssistant) {
+                // Ensure initialized if necessary (though it should be auto-inited)
+                if (!window.kbAssistant.texts || Object.keys(window.kbAssistant.texts.en || {}).length === 0) {
+                    // Wait slightly or trigger init? 
+                    // Since showGreeting is async, we can await init if not ready?
+                    // But open() is synchronous.
+                    // Better: showGreeting handles the check.
+                }
+
                 window.kbAssistant.updateLanguage();
                 // Обновяваме текстовете отново след updateLanguage, за да сме сигурни
                 this.updateTexts();
+                this.showGreeting();
+            } else {
+                console.warn("kbAssistant not ready when opening UI");
             }
-            this.showGreeting();
         }
     }
 
@@ -373,6 +384,13 @@ class KBUI {
      * Показва greeting съобщение
      */
     async showGreeting() {
+        if (!window.kbAssistant) return;
+
+        // Ensure initialized
+        if (!window.kbAssistant.isInitialized) {
+            await window.kbAssistant.init();
+        }
+
         const greeting = window.kbAssistant.getText('greeting');
         this.addMessage('assistant', greeting);
 
@@ -438,7 +456,7 @@ class KBUI {
 
         // Показваме отговора
         if (response.success && !response.isHistory) {
-            this.showAnswer(response.topResult);
+            this.showAnswer(response.topResult, query);
 
             // Показваме допълнителни резултати ако има
             if (response.results.length > 1) {
@@ -506,9 +524,10 @@ class KBUI {
     /**
      * Показва отговор
      * @param {Object} result - Форматиран резултат
+     * @param {string} query - Въпросът на потребителя
      */
-    showAnswer(result) {
-        const answerHTML = window.kbAssistant.formatAnswerHTML(result);
+    showAnswer(result, query = '') {
+        const answerHTML = window.kbAssistant.formatAnswerHTML(result, query);
         this.addMessage('assistant', answerHTML);
     }
 

@@ -28,7 +28,7 @@ const getCurrentLanguage = () => localStorage.getItem('language') || 'en';
 
 const steps = [
     { // debug image 
-        image: "msm/right-up.png!", height: 100, target: "#search-box", textKey: 0,
+        image: "msm/r-up.png!", height: 100, target: "#search-box", textKey: 0,
         x: -70, y: 20, bx: -19, by: 175, bWidth: 93, bHeight: 50
     },
     {

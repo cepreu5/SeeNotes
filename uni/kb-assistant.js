@@ -186,6 +186,39 @@ class KBAssistant {
             return;
         }
 
+        // Check for multi-step sequence (keys "1", "2", etc.)
+        const multiSteps = [];
+        let i = 1;
+        while (guideData[i]) {
+            const stepConfig = guideData[i];
+
+            // Merge defaults from parent guideData
+            const defaults = { ...guideData };
+            // Remove numeric keys from defaults
+            Object.keys(defaults).forEach(key => {
+                if (/^\d+$/.test(key)) delete defaults[key];
+            });
+
+            const mergedStep = { ...defaults, ...stepConfig };
+            // Note: we pass the whole object including 'text' object, so msm.js handles lang switch.
+
+            multiSteps.push(mergedStep);
+            i++;
+        }
+
+        if (multiSteps.length > 0) {
+            // It is a multi-step tour
+            if (typeof window.setGuideSteps === 'function' && typeof showStep === 'function') {
+                console.log('Starting multi-step guide:', multiSteps);
+                window.setGuideSteps(multiSteps);
+                showStep(0);
+                return;
+            } else {
+                console.warn('msm.js functions not found for multi-step guide');
+                return; // Cannot proceed without msm.js
+            }
+        }
+
         // Контексти, които се намират в Settings
         const settingsContexts = ['display', 'sorting', 'boards', 'data', 'behavior', 'startup', 'settings', 'calendar'];
         const isSettingsContext = settingsContexts.includes(guideData.context);
@@ -253,7 +286,7 @@ class KBAssistant {
                 image: guideData.image,
                 height: guideData.height,
                 target: guideData.target,
-                text: this.getGuideText(guideData),
+                text: guideData.text, // Pass object directly
                 x: guideData.x,
                 y: guideData.y,
                 bx: guideData.bx,
@@ -590,14 +623,23 @@ class KBAssistant {
     /**
      * Форматира отговор за показване в чата
      * @param {Object} result - Форматиран резултат
+     * @param {string} userQuery - Въпросът на потребителя (по избор)
      * @returns {string} - HTML за показване
      */
-    formatAnswerHTML(result) {
+    formatAnswerHTML(result, userQuery = '') {
+        const normalize = (text) => {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.innerHTML = text;
+            return div.textContent.trim().toLowerCase();
+        };
+
+        const normalizedQuery = normalize(userQuery);
         let html = '';
 
         if (result.type === 'setting') {
             html += `<div class="kb-answer">`;
-            if (result.question) {
+            if (result.question && normalize(result.question) !== normalizedQuery) {
                 html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.question}</div>`;
             }
             html += `<div class="kb-answer-text">${result.answer}</div>`;
@@ -624,7 +666,7 @@ class KBAssistant {
             html += `</div>`;
         } else if (result.type === 'ui') {
             html += `<div class="kb-answer">`;
-            if (result.label) {
+            if (result.label && normalize(result.label) !== normalizedQuery) {
                 html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.label}</div>`;
             }
             html += `<div class="kb-answer-text">${result.description}</div>`;
@@ -636,7 +678,7 @@ class KBAssistant {
             html += `</div>`;
         } else if (result.type === 'general') {
             html += `<div class="kb-answer">`;
-            if (result.question) {
+            if (result.question && normalize(result.question) !== normalizedQuery) {
                 html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.question}</div>`;
             }
             html += `<div class="kb-answer-text">${result.answer}</div>`;
