@@ -447,7 +447,7 @@ class KBAssistant {
         // 1. Проверка за специфично действие (action) от JSON-а
         // Това позволява ръчно да укажем кой елемент трябва да се кликне, за да се покаже target-а
         // Игнорираме 'highlight', тъй като това е стара стойност, която не е селектор
-        if (guideData && guideData.action && guideData.action !== 'highlight') {
+        if (guideData && guideData.action && guideData.action !== 'highlight' && guideData.action !== 'explain' && guideData.action !== 'explain!') {
             console.log('Custom action found:', guideData.action);
             const actionTrigger = document.querySelector(guideData.action);
             if (actionTrigger) {

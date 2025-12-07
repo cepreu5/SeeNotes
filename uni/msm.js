@@ -4,11 +4,18 @@ let currentActiveStep = null;
 let stepTime = 50000;
 let animationFrameId;
 
-function showStep(stepIndex, nextStepIndex = null, single = false) {
+function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   if (stepTimer) clearTimeout(stepTimer);
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
 
-  const step = steps[stepIndex];
+  let step;
+  let stepIndex = -1;
+  if (typeof stepOrIndex === 'object') {
+    step = stepOrIndex;
+  } else {
+    stepIndex = stepOrIndex;
+    step = steps[stepIndex];
+  }
   if (!step) return;
   currentActiveStep = step;
 
@@ -34,7 +41,12 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
 
   // Получаваме текста на текущия език
   let currentBubbleLang = getCurrentLanguage();
-  const stepText = guideTexts[currentBubbleLang][step.textKey];
+  let stepText;
+  if (step.text) {
+    stepText = step.text;
+  } else {
+    stepText = guideTexts[currentBubbleLang][step.textKey];
+  }
   bubble.innerHTML = stepText;
 
   // Прилагаме относителни координати за балона
@@ -324,9 +336,9 @@ function showStep(stepIndex, nextStepIndex = null, single = false) {
     }
 
     // Определяме следващата стъпка
-    const nextIndex = nextStepIndex !== null ? nextStepIndex : stepIndex + 1;
+    const nextIndex = nextStepIndex !== null ? nextStepIndex : (stepIndex !== -1 ? stepIndex + 1 : -1);
 
-    if (nextIndex < steps.length) {
+    if (nextIndex !== -1 && nextIndex < steps.length) {
       showStep(nextIndex);
     } else {
       container.remove();
@@ -806,3 +818,5 @@ window.msmFlipImage = function () {
     }
   }
 };
+
+window.showGuideStep = function(step) { showStep(step, null, true); };

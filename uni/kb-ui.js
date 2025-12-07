@@ -577,8 +577,13 @@ class KBUI {
      * @param {Object} guideData
      */
     showGuide(guideData) {
-        // Затваряме чата
-        this.close();
+        // Ако action завършва с '!', не затваряме чата
+        const shouldClose = !(guideData && guideData.action && typeof guideData.action === 'string' && guideData.action.endsWith('!'));
+
+        if (shouldClose) {
+            // Затваряме чата
+            this.close();
+        }
 
         // Показваме guide
         window.kbAssistant.showGuide(guideData);

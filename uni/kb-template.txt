@@ -531,7 +531,7 @@
             "relatedSettings": ["order-checkbox"],
             "guide": {
                 "image": "msm/left-up.png", "height": 100,
-                x: 1, y: 2, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                x: 6, y: 6, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-color", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
         },
@@ -647,7 +647,7 @@
                 "target": "#sort-criteria-alpha", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
         },
-{
+{       
             "id": "start-board-select",
             "type": "select",
             "category": "startup",
@@ -789,6 +789,32 @@
         }
     ],
     "general": [
+{
+            "id": "assistant",
+            "category": "features",
+            "keywords": {
+                "bg": ["асистент", "assistant", "AI", "AI-асистент", "Лепчо", "Mr. StickyMan"],
+                "en": ["assistant", "AI", "AI assistant", "Mr. StickyMan"]
+            },
+            "question": {
+                "bg": "Какво е хубаво да знам за използване на чат прозореца?",
+                "en": "What is good to know about using the chat window?"
+            },
+            "answer": {
+                "bg": "Чат прозорецът е функция в приложението, която позволява на потребителите да взаимодействат с AI асистента. Той може да отговаря на въпросите им, да помага със задачи и да обяснява елементите на интерфейса.",
+                "en": "The chat window is a feature in the app that allows users to interact with the AI assistant. It can answer questions, help with tasks, and explain interface elements."
+            },
+            "guide": {
+                "image": "msm/left-up.png", "height": 100,
+                x: -33, y: 130, bx: 154, by: 26, bWidth: 249, bHeight: 57,
+                "target": "div.kb-message-content", 
+                "stopAfter": true, "action": "explain!", "context": "",
+                "text": {
+                    "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
+                    "en": "If you click on the text of the last question you asked, it will be filled in the edit field."
+                }
+            }
+        },
 {
             "id": "calendar-view",
             "category": "features",
