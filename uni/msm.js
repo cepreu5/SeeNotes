@@ -432,7 +432,28 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   // Позициониране спрямо елемент
   // Позициониране спрямо елемент
   // Fallback to body to ensure hero appears and is draggable even if target is invalid
-  let targetEl = document.querySelector(step.target) || document.body;
+  let targetEl = document.querySelector(step.target);
+  let scrollDelay = 0;
+  if (targetEl) {
+    // Scroll element into view if needed
+    if (targetEl !== document.body && targetEl !== document.documentElement) {
+      const rect = targetEl.getBoundingClientRect();
+      const isVisible = (
+        rect.top >= 0 &&
+        rect.left >= 0 &&
+        rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+        rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+      );
+
+      if (!isVisible) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        scrollDelay = 600;
+      }
+    }
+  } else {
+    targetEl = document.body;
+  }
+
   if (targetEl) {
     let isDragging = false;
 
@@ -460,7 +481,11 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
     // Изчакваме картинката да се зареди, за да имаме коректни размери (offsetLeft/Top)
     const startPositioning = () => {
-      updatePosition();
+      if (scrollDelay > 0) {
+        setTimeout(updatePosition, scrollDelay);
+      } else {
+        updatePosition();
+      }
     };
 
     if (img.complete) {

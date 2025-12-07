@@ -793,7 +793,7 @@
             "id": "assistant",
             "category": "features",
             "keywords": {
-                "bg": ["асистент", "assistant", "AI", "AI-асистент", "Лепчо", "Mr. StickyMan"],
+                "bg": ["асистент", "AI", "AI-асистент", "Лепчо", "Mr. StickyMan"],
                 "en": ["assistant", "AI", "AI assistant", "Mr. StickyMan"]
             },
             "question": {
@@ -801,47 +801,47 @@
                 "en": "What is good to know about using the chat window?"
             },
             "answer": {
-                "bg": "Чат прозорецът ти позволява да търсиш информация с AI асистента. Той може да отговаря на въпросите ти, да помага със задачи и да обяснява елементите на интерфейса. Важно е да знаеш, че асистентът работи само на компютъра ти и не праща данни в интернет.",
-                "en": "The chat window allows you to search for information with the AI assistant. It can answer questions, help with tasks, and explain interface elements. It works entirely on your computer and does not send data to the internet."
+                "bg": "Чат прозорецът ти позволява да търсиш информация с помощта на асистента. Той може да отговаря на въпросите ти, да помага със задачи и да обяснява елементите на интерфейса. Освен стандартните функции, има и някои допълнителни, затови натисни бутона:",
+                "en": "The chat window allows you to search for information with the AI assistant. It can answer questions, help with tasks, and explain interface elements. In addition to the standard functions, there are also some additional ones, click the button:"
             },
             "guide": {
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
+                    "image": "msm/l-down-l.png", "height": 100,
+                    x: 46, y: -97, bx: 97, by: 9, bWidth: 281, bHeight: 65,
+                    "target": "#kb-input", 
+                    "text": {
+                        "bg": "Не е необходимо да пишеш подробни въпроси, разбирам и от една дума, може да напишеш само <i>календар</i> или <i>дата</i>.",
+                        "en": "It is not necessary to write detailed questions, I understand and you can write only <i>calendar</i> or <i>date</i>."
+                    }
+                },
+                2: {
+                    "image": "msm/r-down-l.png", "height": 100,
+                    x: 46, y: -97, bx: 97, by: 9, bWidth: 281, bHeight: 65,
+                    "target": "#kb-input", 
+                    "text": {
+                        "bg": "Историята - последните въпроси, на които съм отговарял, може да извикаш и като изпратиш интнервал, вместо ?.",
+                        "en": "History - the last questions I answered can be called by sending an interval instead of ?."
+                    }
+                },
+                3: {
+                    "image": "msm/r-down-w.png", "height": 100,
+                    x: -63, y: -90, bx: -86, by: -2, bWidth: 281, bHeight: 65,
+                    "target": "#kb-send-btn", 
+                    "text": {
+                        "bg": "Ако натиснеш този бутон без да си написал нищо, чат прозорецът ще се затвори.",
+                        "en": "When you click this button without writing anything, the chat window will close."
+                    }
+                },
+                4: {
                     "image": "msm/l-up-w.png", "height": 100,
-                    x: -33, y: 130, bx: 154, by: 26, bWidth: 265, bHeight: 50,
+                    x: -33, y: 100, bx: 154, by: 26, bWidth: 265, bHeight: 50,
                     "target": "div.kb-message-content", 
                     "text": {
                         "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
                         "en": "If you click on the text of the last question you asked, it will be filled in the edit field."
                     }
                 },
-                2: {
-                    "image": "msm/l-down-l.png", "height": 100,
-                    x: 44, y: 8, bx: 42, by: 12, bWidth: 281, bHeight: 65,
-                    "target": "div.kb-additional-item", 
-                    "text": {
-                        "bg": "Не е необходимо да пишеш подробни въпроси, разбирам и от една дума, може да напишеш само <i>календар</i> или <i>дата</i>.",
-                        "en": "It is not necessary to write detailed questions, I understand and you can write only <i>calendar</i> or <i>date</i>."
-                    }
-                },
-                3: {
-                    "image": "msm/r-down-l.png", "height": 100,
-                    x: 72, y: 8, bx: 65, by: 13, bWidth: 281, bHeight: 65,
-                    "target": "div.kb-additional-item", 
-                    "text": {
-                        "bg": "Историята - последните въпроси, които си задавал, може да извикаш и като изпратиш интнервал, вместо ?.",
-                        "en": "History - the last questions you asked can be called by sending an interval instead of ?."
-                    }
-                },
-                4: {
-                    "image": "msm/r-down-w.png", "height": 100,
-                    x: 230, y: 15, bx: -83, by: 39, bWidth: 230, bHeight: 66,
-                    "target": "div.kb-additional-item", 
-                    "text": {
-                        "bg": "Ако натиснеш този бутон без да си написал нищо, чат прозорецът ще се затвори.",
-                        "en": "When you click this button without writing anything, the chat window will close."
-                    }
-                }
             }
         },
 {

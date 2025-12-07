@@ -20,17 +20,17 @@
     --kb-accent-hover: #3a9688;
 
     /* Фонови цветове */
-    --kb-bg-light: #f8f9fa;
-    --kb-bg-white: #ffffff;
-    --kb-bg-gray: #f7fafc;
+    --kb-bg-light: #2d3748;
+    --kb-bg-white: #1a202c;
+    --kb-bg-gray: #2d3748;
 
     /* Текстови цветове */
     --kb-text-primary: #2d3748;
-    --kb-text-secondary: #d8dee6;
+    --kb-text-secondary: #cbd5e0;
     --kb-text-light: #a0aec0;
 
     /* Граници */
-    --kb-border-color: #e2e8f0;
+    --kb-border-color: #4a5568;
     --kb-border-light: #edf2f7;
 
     /* Сенки */
@@ -85,11 +85,10 @@
 /* ========================================
    Chat Container
    ======================================== */
-
 .kb-assistant-container {
     position: fixed;
-    bottom: 24px;
-    right: 24px;
+    bottom: 15px;
+    right: 15px;
     width: 380px;
     max-width: calc(100vw - 48px);
     height: 600px;
@@ -251,7 +250,7 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: var(--kb-bg-white);
+    background: var(--kb-bg-light);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -262,17 +261,18 @@
 
 .kb-message-content {
     flex: 1;
-    background: var(--kb-bg-white);
+    background: var(--kb-border-color);
     padding: 12px 16px;
     border-radius: 12px;
     box-shadow: var(--kb-shadow-sm);
     line-height: 1.5;
     font-size: 14px;
+    color: #e2e8f0;
 }
 
 .kb-message-user .kb-message-content {
     background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
-    color: white;
+    color: #e2e8f0;
 }
 
 .kb-message-user {
@@ -346,9 +346,9 @@
 .kb-related-item {
     font-size: 11px;
     padding: 4px 10px;
-    background: var(--kb-border-light);
+    background: var(--kb-bg-light);
     border-radius: 12px;
-    color: #4a5568;
+    color: var(--kb-text-secondary);
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -383,10 +383,11 @@
     transition: all 0.2s;
     border-left: 2px solid transparent;
     line-height: 1.2;
+    color: #e2e8f0;
 }
 
 .kb-additional-item:hover {
-    background: var(--kb-primary-color) !important;
+    background: var(--kb-border-color) !important;
     border-left-color: var(--kb-primary-dark) !important;
     color: white !important;
 }
@@ -438,7 +439,7 @@
 
 .kb-suggestions {
     padding: 6px 12px 8px 12px;
-    background: var(--kb-bg-white);
+    background: #1a202c;
     border-top: 1px solid var(--kb-border-color);
     flex-shrink: 0;
     max-height: 250px;
@@ -448,7 +449,7 @@
 
 .kb-suggestions-title {
     font-size: 11px;
-    color: var(--kb-text-secondary);
+    color: var(--kb-primary-color);
     margin-bottom: 4px;
     font-weight: 500;
 }
@@ -468,10 +469,11 @@
     transition: all 0.2s;
     border-left: 2px solid transparent;
     line-height: 1.3;
+    color: #e2e8f0;
 }
 
 .kb-suggestion-item:hover {
-    background: var(--kb-border-light);
+    background: var(--kb-border-color);
     border-left-color: var(--kb-accent-color);
     transform: translateX(3px);
 }
@@ -484,13 +486,15 @@
     display: flex;
     gap: 8px;
     padding: 16px;
-    background: var(--kb-bg-white);
+    background: #1a202c;
     border-top: 1px solid var(--kb-border-color);
     flex-shrink: 0;
 }
 
 .kb-input {
     flex: 1;
+    background: var(--kb-bg-light);
+    color: #e2e8f0;
     padding: 10px 14px;
     border: 2px solid var(--kb-border-color);
     border-radius: 10px;
@@ -498,6 +502,11 @@
     outline: none;
     transition: all 0.2s;
 }
+
+.kb-input::placeholder {
+    color: #718096;
+}
+
 
 .kb-input:focus {
     border-color: var(--kb-accent-color);
@@ -578,295 +587,12 @@
         height: 56px;
         font-size: 24px;
     }
-}
-
-.kb-additional-item:hover {
-    background: var(--kb-primary-color) !important;
-    border-left-color: var(--kb-primary-dark) !important;
-    color: white !important;
-}
-
-/* ========================================
-   Loading Animation
-   ======================================== */
-
-.kb-loading-dots {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-}
-
-/* History Items Styling */
-/* History Items Styling */
-.kb-history-item {
-    font-size: 12px;
-    padding: 2px 4px !important;
-    background: var(--kb-bg-gray) !important;
-    border-radius: 6px;
-    margin-bottom: 2px;
-    cursor: pointer;
-    transition: all 0.2s;
-    border-left: 2px solid transparent;
-    line-height: 1.2;
-    color: var(--kb-text-primary) !important;
-    border: none;
-    width: 100%;
-    text-align: left;
-    display: block;
-    font-family: inherit;
 }
 
 .kb-history-item:hover {
     background: var(--kb-primary-color) !important;
     border-left-color: var(--kb-primary-dark) !important;
     color: white !important;
-}
-
-.kb-loading-dots span {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--kb-scrollbar-thumb);
-    animation: loadingBounce 1.4s infinite ease-in-out both;
-}
-
-.kb-loading-dots span:nth-child(1) {
-    animation-delay: -0.32s;
-}
-
-.kb-loading-dots span:nth-child(2) {
-    animation-delay: -0.16s;
-}
-
-@keyframes loadingBounce {
-
-    0%,
-    80%,
-    100% {
-        transform: scale(0);
-        opacity: 0.5;
-    }
-
-    40% {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-/* ========================================
-   Suggestions
-   ======================================== */
-
-.kb-suggestions {
-    padding: 6px 12px 8px 12px;
-    background: var(--kb-bg-white);
-    border-top: 1px solid var(--kb-border-color);
-    flex-shrink: 0;
-    max-height: 250px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-}
-
-.kb-suggestions-title {
-    font-size: 11px;
-    color: var(--kb-text-secondary);
-    margin-bottom: 4px;
-    font-weight: 500;
-}
-
-.kb-suggestions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.kb-suggestion-item {
-    font-size: 12px;
-    padding: 6px 10px;
-    background: var(--kb-bg-gray);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
-    border-left: 2px solid transparent;
-    line-height: 1.3;
-}
-
-.kb-suggestion-item:hover {
-    background: var(--kb-border-light);
-    border-left-color: var(--kb-accent-color);
-    transform: translateX(3px);
-}
-
-/* ========================================
-   Input Container
-   ======================================== */
-
-.kb-input-container {
-    display: flex;
-    gap: 8px;
-    padding: 16px;
-    background: var(--kb-bg-white);
-    border-top: 1px solid var(--kb-border-color);
-    flex-shrink: 0;
-}
-
-.kb-input {
-    flex: 1;
-    padding: 10px 14px;
-    border: 2px solid var(--kb-border-color);
-    border-radius: 10px;
-    font-size: 14px;
-    outline: none;
-    transition: all 0.2s;
-}
-
-.kb-input:focus {
-    border-color: var(--kb-accent-color);
-    box-shadow: 0 0 0 3px rgba(72, 183, 162, 0.1);
-}
-
-.kb-send-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
-    color: white;
-    border: none;
-    font-size: 20px;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.kb-send-btn:hover {
-    transform: scale(1.05);
-    box-shadow: var(--kb-shadow-md);
-}
-
-.kb-send-btn:active {
-    transform: scale(0.95);
-}
-
-/* ========================================
-   Highlight Effect
-   ======================================== */
-
-.kb-highlight {
-    animation: kbPulse 1s ease-in-out 3;
-    outline: 3px solid var(--kb-accent-color) !important;
-    outline-offset: 4px;
-    border-radius: 4px;
-}
-
-@keyframes kbPulse {
-
-    0%,
-    100% {
-        outline-color: var(--kb-accent-color);
-        outline-width: 3px;
-    }
-
-    50% {
-        outline-color: var(--kb-accent-hover);
-        outline-width: 5px;
-    }
-}
-
-/* Компактен padding за допълнителни резултати */
-.kb-compact-padding {
-    padding: 6px 10px !important;
-}
-
-/* ========================================
-   Responsive Design
-   ======================================== */
-
-@media (max-width: 480px) {
-    .kb-assistant-container {
-        width: calc(100vw - 32px);
-        height: calc(100vh - 80px);
-        bottom: 16px;
-        right: 16px;
-    }
-
-    .kb-fab {
-        bottom: 16px;
-        right: 16px;
-        width: 56px;
-        height: 56px;
-        font-size: 24px;
-    }
-}
-
-/* ========================================
-   Dark Mode Support (Optional)
-   ======================================== */
-
-@media (prefers-color-scheme: dark) {
-    .kb-assistant-container {
-        background: #1a202c;
-    }
-
-    .kb-chat-messages {
-        background: #2d3748;
-    }
-
-    .kb-message-content {
-        background: #4a5568;
-        color: #e2e8f0;
-    }
-
-    .kb-message-icon {
-        background: #2d3748;
-    }
-
-    .kb-input-container {
-        background: #1a202c;
-        border-top-color: #4a5568;
-    }
-
-    .kb-input {
-        background: #2d3748;
-        border-color: #4a5568;
-        color: #e2e8f0;
-    }
-
-    .kb-input::placeholder {
-        color: #718096;
-    }
-
-    .kb-suggestions {
-        background: #1a202c;
-        border-top-color: #4a5568;
-    }
-
-    .kb-suggestion-item,
-    .kb-additional-item {
-        background: #2d3748;
-        color: #e2e8f0;
-    }
-
-    .kb-suggestion-item:hover,
-    .kb-additional-item:hover {
-        background: #4a5568;
-    }
-
-    .kb-answer-location {
-        background: #2d3748;
-        color: #cbd5e0;
-    }
-
-    .kb-related-item {
-        background: #2d3748;
-        color: #cbd5e0;
-    }
-
-    .kb-related-item:hover {
-        background: #4a5568;
-    }
 }
 
 /* ========================================
@@ -904,8 +630,8 @@
     width: 40px;
     height: 40px;
     border-radius: 10px;
-    background: var(--kb-primary-dark);
-    color: var(--kb-border-color);
+    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
+    color: white;
     border: 2px solid var(--kb-border-color);
     font-size: 20px;
     cursor: pointer;
@@ -924,4 +650,23 @@
 
 .kb-clear-btn:active {
     transform: scale(0.95);
+}
+
+/* History Items Styling */
+.kb-history-item {
+    font-size: 12px;
+    padding: 2px 4px !important;
+    background: var(--kb-bg-gray) !important;
+    border-radius: 6px;
+    margin-bottom: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 2px solid transparent;
+    line-height: 1.2;
+    color: var(--kb-text-primary) !important;
+    border: none;
+    width: 100%;
+    text-align: left;
+    display: block;
+    font-family: inherit;
 }

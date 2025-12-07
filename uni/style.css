@@ -655,9 +655,9 @@ code {
     padding-bottom: 10px;
     padding-left: 10px;
     border-radius: 8px;
-    width: 70%;
-    /* Задаваме ширината да е 70% от екрана */
-    max-width: 70%;
+    width: 95%;
+    /* Задаваме ширината да е 90% от екрана */
+    max-width: 90%;
     min-height: 10%;
     max-height: 80vh;
     position: relative;
