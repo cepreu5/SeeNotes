@@ -17,6 +17,21 @@ window.showGuideStep = function (step) {
   showStep(step, null, true);
 }
 
+window.toggleHero = function () {
+  if (container && document.body.contains(container)) {
+    container.remove();
+    container = null;
+    let dbg = document.getElementById('msm-debug-overlay');
+    if (dbg) dbg.remove();
+    if (stepTimer) clearTimeout(stepTimer);
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    return false;
+  } else {
+    showStep(0);
+    return true;
+  }
+};
+
 // Make showStep globally available for internal use (if needed) but showGuideStep is preferred for single steps
 window.showStep = showStep;
 
@@ -106,8 +121,20 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     debugOverlay.style.padding = '5px 10px';
     debugOverlay.style.borderRadius = '5px';
     debugOverlay.style.zIndex = '10001';
-    debugOverlay.style.pointerEvents = 'none';
+    debugOverlay.style.pointerEvents = 'auto';
+    debugOverlay.style.cursor = 'pointer';
     debugOverlay.style.fontFamily = 'monospace';
+    debugOverlay.onclick = () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      if (stepTimer) clearTimeout(stepTimer);
+      if (container) {
+        container.style.left = '50%';
+        container.style.top = '50%';
+        container.style.transform = 'translate(-50%, -50%)';
+        container.style.position = 'fixed';
+        debugOverlay.innerText = "Centered (Auto-update stopped)";
+      }
+    };
     document.body.appendChild(debugOverlay);
   }
   debugOverlay.innerText = 'Debug info';

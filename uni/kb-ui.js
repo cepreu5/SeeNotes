@@ -141,11 +141,14 @@ class KBUI {
         const heroBtn = document.getElementById('kb-hero-btn');
         if (heroBtn) {
             heroBtn.addEventListener('click', () => {
-                if (typeof showStep === 'function') {
+                if (typeof window.toggleHero === 'function') {
+                    window.toggleHero();
+                } else if (typeof showStep === 'function') {
+                    // Fallback
                     showStep(0);
                 } else {
-                    console.error('showStep function not found');
-                    this.addMessage('assistant', 'Error: showStep function not found (msm.js not loaded?)', '', false);
+                    console.error('Guide functions not found');
+                    this.addMessage('assistant', 'Error: msm.js functions not found', '', false);
                 }
             });
         }

@@ -790,6 +790,22 @@
     ],
     "general": [
 {
+            "id": "how-to-start",
+            "category": "getting-started",
+            "keywords": {
+                "bg": ["начало", "старт", "започна", "работи", "първи стъпки"],
+                "en": ["start", "begin", "work", "getting started", "first steps"]
+            },
+            "question": {
+                "bg": "Как да започна работа с приложението?",
+                "en": "How do I get started with the application?"
+            },
+            "answer": {
+                "bg": "Първо влез в <b><i>CX MultiNotes Viewer</i></b> с Google акаунта си (същият, който използваш в <b><i>MultiNotes</i></b> на телефона си). Приложението автоматично ще изтегли бележките от <b><i>Google Drive</i></b> и ще създаде локална база данни за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
+                "en": "First, sign in with your Google account (the same one you use in the Multinotes app). The application will automatically download notes from <b><i>Google Drive</i></b> and create a local database for fast access. Then you can view, search, and organize your notes."
+            }
+        },
+{
             "id": "assistant",
             "category": "features",
             "keywords": {
@@ -879,22 +895,6 @@
                 "image": "msm/left-up.png", "height": 150,
                 "x": 200, "y": 460, "bx": -200, "by": 80, "bWidth": 250, "bHeight": 100,
                 "stopAfter": true, "action": "#sorting-arrow", "target": "#sort-criteria-color", "context": "sorting"
-            }
-        },
-{
-            "id": "how-to-start",
-            "category": "getting-started",
-            "keywords": {
-                "bg": ["начало", "старт", "започна", "работи", "първи стъпки"],
-                "en": ["start", "begin", "work", "getting started", "first steps"]
-            },
-            "question": {
-                "bg": "Как да започна работа с приложението?",
-                "en": "How do I get started with the application?"
-            },
-            "answer": {
-                "bg": "Първо влез в <b><i>CX MultiNotes Viewer</i></b> с Google акаунта си (същият, който използваш в <b><i>MultiNotes</i></b> на телефона си). Приложението автоматично ще изтегли бележките от <b><i>Google Drive</i></b> и ще създаде локална база данни за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
-                "en": "First, sign in with your Google account (the same one you use in the Multinotes app). The application will automatically download notes from <b><i>Google Drive</i></b> and create a local database for fast access. Then you can view, search, and organize your notes."
             }
         },
 {
