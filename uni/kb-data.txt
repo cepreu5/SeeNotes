@@ -7,7 +7,8 @@
     },
     "ui_texts": {
         "bg": {
-            "greeting": "Здравей! 👋 Аз съм твоят асистент. С какво да ти помогна?",
+            // "greeting": "Здравей! 👋 Аз съм твоят асистент. С какво да ти помогна?",
+            "greeting": "Влез в <b><i>CX MultiNotes Viewer</i></b> със същия Google акаунт, който използваш в <b><i>MultiNotes</i></b> на телефона си. Приложението автоматично ще изтегли бележките от <b><i>Google Drive</i></b> и ще създаде локална <b><i>база данни</i></b> за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
             "noResults": "Съжалявам, не намерих отговор на този въпрос. 😔",
             "suggestions": "Може да попитате:",
             "showMe": "Покажи ми",
@@ -21,7 +22,8 @@
             "assistantName": "Лепчо"
         },
         "en": {
-            "greeting": "Hello! 👋 I'm your assistant. How can I help?",
+            // "greeting": "Hello! 👋 I'm your assistant. How can I help?",
+            "greeting": "First, sign in to <b><i>CX MultiNotes Viewer</i></b> with the same Google account you use in the <b><i>MultiNotes</i></b> app. The application will automatically download notes from <b><i>Google Drive</i></b> and create a local <b><i>database</i></b> for fast access. Then you can view, search, and organize your notes.",
             "noResults": "Sorry, I couldn't find an answer to that question. 😔",
             "suggestions": "You might ask:",
             "showMe": "Show me",
@@ -789,7 +791,7 @@
         }
     ],
     "general": [
-{
+/*{
             "id": "how-to-start",
             "category": "getting-started",
             "keywords": {
@@ -797,14 +799,14 @@
                 "en": ["start", "begin", "work", "getting started", "first steps"]
             },
             "question": {
-                "bg": "Как да започна работа с приложението?",
+                "bg": "Как да започна работа с <b><i>CX MultiNotes Viewer</i></b>?",
                 "en": "How do I get started with the application?"
             },
             "answer": {
-                "bg": "Първо влез в <b><i>CX MultiNotes Viewer</i></b> с Google акаунта си (същият, който използваш в <b><i>MultiNotes</i></b> на телефона си). Приложението автоматично ще изтегли бележките от <b><i>Google Drive</i></b> и ще създаде локална база данни за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
-                "en": "First, sign in with your Google account (the same one you use in the Multinotes app). The application will automatically download notes from <b><i>Google Drive</i></b> and create a local database for fast access. Then you can view, search, and organize your notes."
+                "bg": "Първо влез в <b><i>CX MultiNotes Viewer</i></b> със същия Google акаунт, който използваш в <b><i>MultiNotes</i></b> на телефона си. Приложението автоматично ще изтегли бележките от <b><i>Google Drive</i></b> и ще създаде локална <b><i>база данни</i></b> за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
+                "en": "First, sign in with the same Google account you use in the <b><i>MultiNotes</i></b> app. The application will automatically download notes from <b><i>Google Drive</i></b> and create a local <b><i>database</i></b> for fast access. Then you can view, search, and organize your notes."
             }
-        },
+        },*/
 {
             "id": "assistant",
             "category": "features",
@@ -824,8 +826,8 @@
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
                     "image": "msm/l-down-l.png", "height": 100,
-                    x: 46, y: -97, bx: 97, by: 9, bWidth: 281, bHeight: 65,
-                    "target": "#kb-input", 
+                    x: 54, y: -79, bx: 61, by: -85, bWidth: 281, bHeight: 65,
+                    "target": "div.kb-input-container", 
                     "text": {
                         "bg": "Не е необходимо да пишеш подробни въпроси, разбирам и от една дума, може да напишеш само <i>календар</i> или <i>дата</i>.",
                         "en": "It is not necessary to write detailed questions, I understand and you can write only <i>calendar</i> or <i>date</i>."
@@ -833,7 +835,7 @@
                 },
                 2: {
                     "image": "msm/r-down-l.png", "height": 100,
-                    x: 46, y: -97, bx: 97, by: 9, bWidth: 281, bHeight: 65,
+                    x: 74, y: -89, bx: 90, by: -94, bWidth: 281, bHeight: 65,
                     "target": "#kb-input", 
                     "text": {
                         "bg": "Историята - последните въпроси, на които съм отговарял, може да извикаш и като изпратиш интнервал, вместо ?.",
@@ -842,7 +844,7 @@
                 },
                 3: {
                     "image": "msm/r-down-w.png", "height": 100,
-                    x: -63, y: -90, bx: -86, by: -2, bWidth: 281, bHeight: 65,
+                    x: -55, y: -88, bx: -101, by: -88, bWidth: 281, bHeight: 65,
                     "target": "#kb-send-btn", 
                     "text": {
                         "bg": "Ако натиснеш този бутон без да си написал нищо, чат прозорецът ще се затвори.",
@@ -851,13 +853,89 @@
                 },
                 4: {
                     "image": "msm/l-up-w.png", "height": 100,
-                    x: -33, y: 100, bx: 154, by: 26, bWidth: 265, bHeight: 50,
-                    "target": "div.kb-message-content", 
+                    x: 23, y: 142, bx: 134, by: -100, bWidth: 265, bHeight: 50, 
+                    "target": "div.kb-header", 
                     "text": {
                         "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
                         "en": "If you click on the text of the last question you asked, it will be filled in the edit field."
                     }
                 },
+            }
+        },
+{
+            "id": "search-notes",
+            "category": "workflow",
+            "keywords": {
+                "bg": ["търсене", "намиране", "търся", "намеря"],
+                "en": ["search", "find", "lookup"]
+            },
+            "question": {
+                "bg": "Как да търся в бележките?",
+                "en": "How to search in notes?"
+            },
+            "answer": {
+                "bg": "Използвай полето за търсене в горната част на страницата:<br><img src='msm/search.png' ID='sbox' alt='Search box'>",
+                "en": "Use the search field at the top of the page:<br><img src='msm/search.png' ID='sbox' alt='Search box'>"
+            },
+            "guide": {
+                "stopAfter": false, "action": "explain!", "context": "",
+                1: {
+                    "image": "msm/l-up.png", "height": 100,
+                    x: 14, y: 16, bx: 121, by: -59, bWidth: 185, bHeight: 50,
+                    "target": "#sbox",
+                    "text": {
+                        "bg": "Търсене само в заглавията или в цялото съдържание - натисни, за да превключиш.",
+                        "en": "Search only in titles or content - click to switch."
+                    }
+                },
+                2: {
+                    "image": "msm/r-up.png", "height": 100,
+                    x: 177, y: 15, bx: -170, by: 10, bWidth: 229, bHeight: 70,
+                    "target": "#sbox",
+                    "text": {
+                        "bg": "Търсенията могат да се запазват за бърз достъп (броят на запомнените търсения 1-20 се задава в настройките).",
+                        "en": "Saved searches can be quickly accessed (the number of saved searches 1-20 is set in the settings)."
+                    }
+                },
+                3: {
+                    "image": "msm/l-down-w.png", "height": 100,
+                    x: 35, y: -55, bx: 77, by: 121, bWidth: 220, bHeight: 50,
+                    "target": "#sbox",
+                    "text": {
+                        "bg": "На първия ред е текстът на последното търсене, той се променя при всяко ново търсене.",
+                        "en": "The first row shows the text of the last search, which changes with every new search."
+                    }
+                },
+                4: {
+                    "image": "msm/l-down-w.png", "height": 100,
+                    x: 52, y: -26, bx: 73, by: -63, bWidth: 185, bHeight: 50,
+                    "target": "#sbox",
+                    "text": {
+                        "bg": "На следващите редове са запазените търсенения, те не се променят.",
+                        "en": "The next rows show saved searches, which do not change."
+                        }
+                }
+            }
+        },
+{
+            "id": "organize-notes",
+            "category": "workflow",
+            "keywords": {
+                "bg": ["организирам", "подреждане", "бележки", "борд"],
+                "en": ["organize", "arrangement", "notes", "boards"]
+            },
+            "question": {
+                "bg": "Как да организирам бележките си?",
+                "en": "How to organize my notes?"
+            },
+            "answer": {
+                "bg": "Можеш да използваш  <b><i>Настройки</i></b> > <b><i>Подреждане на бележките</i></b>, за да ги подредиш по дата, цвят, азбучен ред и др.",
+                "en": "You can use sorting <b><i>Settings</i></b> > <b><i>Order notes</i></b> to arrange notes by date, color, alphabetically, etc."
+            },
+            "guide": {
+                "image": "msm/l-up.png", "height": 100,
+                x: 73, y: 92, bx: 143, by: -91, bWidth: 250, bHeight: 100, "target": "label.sort-option-label",
+                "stopAfter": true, "action": "highlight", "context": "sorting"
             }
         },
 {
@@ -895,48 +973,6 @@
                 "image": "msm/left-up.png", "height": 150,
                 "x": 200, "y": 460, "bx": -200, "by": 80, "bWidth": 250, "bHeight": 100,
                 "stopAfter": true, "action": "#sorting-arrow", "target": "#sort-criteria-color", "context": "sorting"
-            }
-        },
-{
-            "id": "organize-notes",
-            "category": "workflow",
-            "keywords": {
-                "bg": ["организирам", "подреждане", "бележки", "борд"],
-                "en": ["organize", "arrangement", "notes", "boards"]
-            },
-            "question": {
-                "bg": "Как да организирам бележките си?",
-                "en": "How to organize my notes?"
-            },
-            "answer": {
-                "bg": "Използвай бордове за групиране на бележките по теми. Също така можеш да използваш  <b><i>Настройки</i></b> > <b><i>Подреждане на бележките</i></b>, за да ги подредиш по дата, цвят, азбучен ред и др.",
-                "en": "Use Boards to group notes by topics. You can also use sorting (<b><i>Settings</i></b> > Order notes) to arrange notes by date, color, alphabetically, etc."
-            },
-            "guide": {
-                "image": "msm/left-up.png", "height": 100,
-                "x": 1, "y": 2, "bx": -200, "by": 80, "bWidth": 250, "bHeight": 100,
-                "stopAfter": true, "action": "highlight", "target": "#sort-criteria-color", "context": "sorting"
-            }
-        },
-{
-            "id": "search-notes",
-            "category": "workflow",
-            "keywords": {
-                "bg": ["търсене", "намиране", "търся", "намеря"],
-                "en": ["search", "find", "lookup"]
-            },
-            "question": {
-                "bg": "Как да търся в бележките?",
-                "en": "How to search in notes?"
-            },
-            "answer": {
-                "bg": "Използвай полето за търсене в горната част на страницата. Можеш да търсиш само в заглавията или в цялото съдържание - кликни иконата в началото на полето, за да превключиш. Търсенията могат да се запазват за бърз достъп, като броят на запомнените търсения (1-20) се задава в настройките.",
-                "en": "Use the search field at the top of the page. You can search in titles or content - click the icon next to the field to switch. Searches can be saved for quick access."
-            },
-            "guide": {
-                "image": "msm/right-up.png", "height": 100,
-                "x": -694, "y": 26, "bx": -148, "by": 45, "bWidth": 171, "bHeight": 118,
-                "target": "#mode_button"
             }
         },
 {

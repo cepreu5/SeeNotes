@@ -53,7 +53,7 @@ class KBUI {
         const debugControlsHtml = isDebug
             ? `
             <button class="kb-reload-btn" id="kb-lang-btn" title="Toggle Language" style="font-size: 16px; font-weight: bold;">🌐</button>
-            <button class="kb-reload-btn" id="kb-hero-btn" title="Show Hero" style="font-size: 20px;">☺</button>
+            <button class="kb-reload-btn" id="kb-hero-btn" title="Show Hero" style="font-size: 20px;"><img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 24px; height: 24px; object-fit: contain;"></button>
             <button class="kb-reload-btn" id="kb-flip-btn" title="Flip Image" style="font-size: 20px;">↔</button>
             <button class="kb-reload-btn" id="kb-reload-btn" title="Reload Knowledge Base">↻</button>
             `

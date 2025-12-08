@@ -118,7 +118,7 @@
 .kb-header {
     background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
     color: white;
-    padding: 16px 20px;
+    padding: 10px 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
