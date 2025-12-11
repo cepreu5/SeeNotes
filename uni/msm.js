@@ -1,7 +1,7 @@
 let container;
 let stepTimer;
 let currentActiveStep = null;
-let stepTime = 50000;
+let stepTime = 10000;
 let animationFrameId; // defined in msmguide.js but let's be safe
 let activeSteps = typeof steps !== 'undefined' ? steps : [];
 
@@ -98,6 +98,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
   // --- BUBBLE RESIZE LOGIC ---
   let isResizing = false;
+  let isBubbleInteracting = false;
 
   container.innerHTML = ''; // Start clean for each step to re-attach events
 
@@ -159,6 +160,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     e.stopPropagation(); // Спираме влаченето на балона
     if (stepTimer) clearTimeout(stepTimer);
 
+    isBubbleInteracting = true;
     isResizing = true;
     const startX = e.clientX;
     const startY = e.clientY;
@@ -183,6 +185,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       document.onmousemove = null;
       document.onmouseup = null;
       isResizing = false;
+      isBubbleInteracting = false;
 
       // Copy to clipboard
       const currentBx = step.bx || 0;
@@ -203,6 +206,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     if (stepTimer) clearTimeout(stepTimer);
 
     isResizing = true;
+    isBubbleInteracting = true;
     const touch = e.touches[0];
     const startX = touch.clientX;
     const startY = touch.clientY;
@@ -228,6 +232,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       document.ontouchmove = null;
       document.ontouchend = null;
       isResizing = false;
+      isBubbleInteracting = false;
 
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
@@ -249,6 +254,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     e.preventDefault();
     if (stepTimer) clearTimeout(stepTimer);
 
+    isBubbleInteracting = true;
+
     bubbleWasDragged = false;
     const startX = e.clientX;
     const startY = e.clientY;
@@ -261,7 +268,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
 
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
         bubbleWasDragged = true;
       }
 
@@ -277,6 +284,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     document.onmouseup = () => {
       document.onmousemove = null;
       document.onmouseup = null;
+      isBubbleInteracting = false;
 
       if (bubbleWasDragged) {
         // Copy to clipboard
@@ -313,6 +321,65 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
           bubble.innerHTML = `<span>${newText}</span>`;
           if (resizeHandle) bubble.appendChild(resizeHandle);
         }
+      }
+    };
+  };
+
+  // --- BUBBLE TOUCH LOGIC (Added for "Tap -> Next Step") ---
+  bubble.ontouchstart = (e) => {
+    // Ignore if touching resize handle (it stops propagation anyway, but good to be safe)
+    if (e.target === resizeHandle) return;
+
+    e.preventDefault();
+    if (stepTimer) clearTimeout(stepTimer);
+
+    isBubbleInteracting = true; // Use same flag as mouse interaction
+    bubbleWasDragged = false;
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    const initialBx = step.bx || 0;
+    const initialBy = step.by || 0;
+    let finalBx = initialBx;
+    let finalBy = initialBy;
+
+    document.ontouchmove = (moveEvent) => {
+      const moveTouch = moveEvent.touches[0];
+      const dx = moveTouch.clientX - startX;
+      const dy = moveTouch.clientY - startY;
+
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        bubbleWasDragged = true;
+      }
+
+      if (bubbleWasDragged) {
+        finalBx = Math.round(initialBx + dx);
+        finalBy = Math.round(initialBy + dy);
+
+        bubble.style.transform = `translate(${finalBx}px, ${finalBy}px)`;
+        debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy}`;
+      }
+    };
+
+    document.ontouchend = () => {
+      document.ontouchmove = null;
+      document.ontouchend = null;
+      isBubbleInteracting = false;
+
+      if (bubbleWasDragged) {
+        // Copy to clipboard
+        const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
+        const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
+        const clipboardText = `bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
+        navigator.clipboard.writeText(clipboardText);
+        debugOverlay.innerText = `Copied: ${clipboardText}`;
+
+        step.bx = finalBx;
+        step.by = finalBy;
+      } else {
+        // Tap on Bubble -> Next Step (Requested Feature)
+        wrappedNextStep();
       }
     };
   };
@@ -417,7 +484,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       if (!container || !document.body.contains(container)) return;
 
       // Ако влачим, не обновяваме автоматично, за да не пречим на потребителя
-      if (!isDragging) {
+      if (!isDragging && !isBubbleInteracting && !isResizing) {
         const imgOffsetLeft = img.offsetLeft;
         const imgOffsetTop = img.offsetTop;
         const rect = targetEl.getBoundingClientRect();
@@ -428,6 +495,48 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         // Показваме контейнера едва след като сме го позиционирали
         if (container.style.visibility === 'hidden') {
           container.style.visibility = 'visible';
+        }
+
+        // Boundary Check for Bubble
+        const vpW = window.innerWidth || document.documentElement.clientWidth;
+        const vpH = window.innerHeight || document.documentElement.clientHeight;
+
+        let curBx = step.bx || 0;
+        let curBy = step.by || 0;
+
+        const cRect = container.getBoundingClientRect();
+        // Calculate the theoretical absolute position of the bubble based on step params
+        const baseLeft = cRect.left + curBx;
+        const baseTop = cRect.top + curBy;
+        const bW = bubble.offsetWidth;
+        const bH = bubble.offsetHeight;
+        const baseRight = baseLeft + bW;
+        const baseBottom = baseTop + bH;
+
+        let corrX = 0;
+        let corrY = 0;
+        const padding = 3;
+
+        // Check horizontal
+        if (baseLeft < padding) {
+          corrX = -baseLeft + padding;
+        } else if (baseRight > vpW - padding) {
+          corrX = (vpW - padding) - baseRight;
+        }
+
+        // Check vertical
+        if (baseTop < padding) {
+          corrY = -baseTop + padding;
+        } else if (baseBottom > vpH - padding) {
+          corrY = (vpH - padding) - baseBottom;
+        }
+
+        // Apply transform
+        if (corrX !== 0 || corrY !== 0) {
+          bubble.style.transform = `translate(${curBx + corrX}px, ${curBy + corrY}px)`;
+        } else {
+          // Reset to original if no correction needed
+          bubble.style.transform = `translate(${curBx}px, ${curBy}px)`;
         }
       }
 
@@ -484,8 +593,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const dx = moveEvent.clientX - startX;
         const dy = moveEvent.clientY - startY;
 
-        // Отчитаме влачене само ако има движение над 3 пиксела
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        // Отчитаме влачене само ако има движение над 10 пиксела
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
           wasDragged = true;
         }
 
@@ -619,7 +728,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const dx = moveTouch.clientX - startX;
         const dy = moveTouch.clientY - startY;
 
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
           wasDragged = true;
         }
 

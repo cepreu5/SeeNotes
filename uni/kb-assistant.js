@@ -350,7 +350,7 @@ class KBAssistant {
         pointer.id = 'kb-pointer-img';
 
         // Използваме зададеното изображение или default
-        pointer.src = options.image || 'msm-show.png';
+        pointer.src = options.image || 'msm/msm-show.png';
 
         // Задаваме височина ако е подадена
         if (options.height) {

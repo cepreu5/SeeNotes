@@ -507,7 +507,7 @@ class KBUI {
 
         let iconHtml = '';
         if (showIcon) {
-            // Използваме изображения вместо emoji
+            // Използваме изображения вместо emoji - Fix case sensitivity for user-icon.png
             const icon = type === 'user'
                 ? '<img src="user-icon.png" alt="User" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'
                 : '<img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 100%; height: 100%; object-fit: contain;">';
