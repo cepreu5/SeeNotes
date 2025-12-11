@@ -226,30 +226,35 @@ class KBUI {
             }
         });
 
-        // Event delegation за "Show me" бутоните
+        // Event delegation за "Show me" бутоните и други елементи в чата
         this.chatBox.addEventListener('click', (e) => {
-            if (e.target.classList.contains('kb-show-me-btn')) {
-                const guideData = JSON.parse(e.target.dataset.guide);
+            // Event delegation за "Show me" бутоните
+            const showMeBtn = e.target.closest('.kb-show-me-btn');
+            if (showMeBtn) {
+                const guideData = JSON.parse(showMeBtn.dataset.guide);
                 this.showGuide(guideData);
             }
 
             // Event delegation за history items
-            if (e.target.classList.contains('kb-history-item')) {
-                const question = e.target.textContent;
+            const historyItem = e.target.closest('.kb-history-item');
+            if (historyItem) {
+                const question = historyItem.textContent;
                 this.inputField.value = question;
                 this.sendMessage();
             }
 
             // Event delegation за допълнителни резултати
-            if (e.target.classList.contains('kb-additional-item')) {
-                const question = e.target.textContent.trim();
+            const additionalItem = e.target.closest('.kb-additional-item');
+            if (additionalItem) {
+                const question = additionalItem.textContent.trim();
                 this.inputField.value = question;
                 this.sendMessage();
             }
 
             // Event delegation за свързани теми
-            if (e.target.classList.contains('kb-related-item')) {
-                const settingId = e.target.dataset.id;
+            const relatedItem = e.target.closest('.kb-related-item');
+            if (relatedItem) {
+                const settingId = relatedItem.dataset.id;
                 // Търсим настройката по ID
                 this.inputField.value = settingId.replace(/-/g, ' ');
                 this.sendMessage();
@@ -265,8 +270,9 @@ class KBUI {
 
         // Event delegation за suggestions
         this.suggestionsBox.addEventListener('click', (e) => {
-            if (e.target.classList.contains('kb-suggestion-item')) {
-                const question = e.target.textContent;
+            const suggestionItem = e.target.closest('.kb-suggestion-item');
+            if (suggestionItem) {
+                const question = suggestionItem.textContent;
                 this.inputField.value = question;
                 this.sendMessage();
             }

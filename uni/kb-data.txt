@@ -61,7 +61,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#one-tap-link-checkbox", "stopAfter": true, "action": "highlight", "context": "behavior"
             }
@@ -89,7 +89,7 @@
             },
             "relatedSettings": ["all-board-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#remind-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -117,7 +117,7 @@
             },
             "relatedSettings": ["remind-board-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#all-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -145,7 +145,7 @@
             },
             "relatedSettings": ["show-videos-board-checkbox","show-sounds-board-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-photos-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -173,7 +173,7 @@
             },
             "relatedSettings": ["show-photos-board-checkbox","show-sounds-board-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-videos-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -201,7 +201,7 @@
             },
             "relatedSettings": ["show-photos-board-checkbox","show-videos-board-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-sounds-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -229,7 +229,7 @@
             },
             "relatedSettings": ["show-photos-board-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-other-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -257,10 +257,26 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: 1, y: 4, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#weekly-calendar-checkbox", "stopAfter": true, "action": "highlight", "context": "calendar"
             }
+        },
+{
+            "id": "calendar-view",
+            "category": "features",
+            "keywords": {
+                "bg": ["цвят"],
+                "en": ["color"]
+            },
+            "question": {
+                "bg": "Как да подредя бележките по цвят?",
+                "en": "How to sort notes by color?"
+            },
+            "answer": {
+                "bg": "Сложи отметка в <b><i>Подреди бележките</i></b>, натисни стрелката надолу, за да отвориш допълнителните опции и избери <b><i>по цвят</i></b>.",
+                "en": "Mark the check box <b><i>Order notes</i></b> and choose <b><i>by color</i></b> in the drop-down menu."
+            },
         },
 {
             "id": "show-datemod-checkbox",
@@ -285,7 +301,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-datemod-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -336,7 +352,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-board-note-count-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -364,7 +380,7 @@
             },
             "relatedSettings": ["modal-font-size-input","scaleSlider"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#note-font-size-input", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -392,7 +408,7 @@
             },
             "relatedSettings": ["note-font-size-input","scaleSlider"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#modal-font-size-input", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -420,7 +436,7 @@
             },
             "relatedSettings": ["note-font-size-input","modal-font-size-input"],
             "guide": {
-                "image": "msm/right-up.png", "height": 100,
+                "image": "msm/r-up.png", "height": 100,
                 x: -88, y: 1, bx: 199, by: 166, bWidth: 275, bHeight: 118,
                 "target": "#scaleSlider", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -448,7 +464,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#max-searches-input", "stopAfter": true, "action": "highlight", "context": "search"
             }
@@ -476,7 +492,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#order-checkbox", "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
             }
@@ -504,37 +520,9 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-numord", "stopAfter": true, "action": "highlight", "context": "sorting"
-            }
-        },
-{
-            "id": "sort-criteria-color",
-            "type": "radio",
-            "category": "sorting",
-            "label": {
-                "bg": "по цвят",
-                "en": "by color"
-            },
-            "location": "Settings > Order notes",
-            "keywords": {
-                "bg": ["цвят","подреждане","сортиране","color"],
-                "en": ["color","sort","order"]
-            },
-            "question": {
-                "bg": "Как да подредя бележките по цвят?",
-                "en": "How to sort notes by color?"
-            },
-            "answer": {
-                "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по цвят</i></b>. Бележките ще се групират по цвят.",
-                "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by color</i></b>. Notes will be grouped by color."
-            },
-            "relatedSettings": ["order-checkbox"],
-            "guide": {
-                "image": "msm/left-up.png", "height": 100,
-                x: 6, y: 6, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#sort-criteria-color", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
         },
 {
@@ -560,7 +548,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-date", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
@@ -588,7 +576,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 100,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 9, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#order-checkbox", "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
             }
@@ -616,7 +604,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 100,
+                "image": "msm/l-up.png", "height": 100,
                 x: 0, y: 87, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-color", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
@@ -644,7 +632,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-alpha", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
@@ -672,7 +660,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#start-board-select", "stopAfter": true, "action": "highlight", "context": "startup"
             }
@@ -700,7 +688,7 @@
             },
             "relatedSettings": ["use-indexeddb-checkbox"],
             "guide": {
-                "image": "msm/right-up.png", "height": 150,
+                "image": "msm/r-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#use-google-db-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
             }
@@ -728,7 +716,7 @@
             },
             "relatedSettings": ["use-google-db-checkbox","use-local-db-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#use-indexeddb-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
             }
@@ -756,7 +744,7 @@
             },
             "relatedSettings": ["use-google-db-checkbox","use-indexeddb-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#use-local-db-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
             }
@@ -784,7 +772,7 @@
             },
             "relatedSettings": ["use-local-db-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 150,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#use-arh-db-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
             }
@@ -825,7 +813,7 @@
             "guide": {
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
-                    "image": "msm/l-down-l.png", "height": 100,
+                    "image": "msm/l-down.png", "height": 100,
                     x: 54, y: -79, bx: 61, by: -85, bWidth: 281, bHeight: 65,
                     "target": "div.kb-input-container", 
                     "text": {
@@ -834,7 +822,7 @@
                     }
                 },
                 2: {
-                    "image": "msm/r-down-l.png", "height": 100,
+                    "image": "msm/r-down.png", "height": 100,
                     x: 74, y: -89, bx: 90, by: -94, bWidth: 281, bHeight: 65,
                     "target": "#kb-input", 
                     "text": {
@@ -955,27 +943,6 @@
             }
         },
 {
-            "id": "calendar-view",
-            "category": "features",
-            "keywords": {
-                "bg": ["цвят"],
-                "en": ["color"]
-            },
-            "question": {
-                "bg": "Как да подредя бележките по цвят?",
-                "en": "How to sort notes by color?"
-            },
-            "answer": {
-                "bg": "Кликни на бутона <b><i>Подреди бележките по цвят</i></b> в горната част.",
-                "en": "Click the <b><i>Sort notes by color</i></b> button at the top."
-            },
-            "guide": {
-                "image": "msm/left-up.png", "height": 150,
-                "x": 200, "y": 460, "bx": -200, "by": 80, "bWidth": 250, "bHeight": 100,
-                "stopAfter": true, "action": "#sorting-arrow", "target": "#sort-criteria-color", "context": "sorting"
-            }
-        },
-{
             "id": "offline-mode",
                 "category": "data-management",
             "keywords": {
@@ -987,8 +954,8 @@
                 "en": "Can I work offline?"
             },
             "answer": {
-                "bg": "Да! След първоначално зареждане можеш да изключиш <b><i>Google Drive</i></b> в <b><i>Настройки</i></b> и да работиш само с локалната база данни. Това позволява пълен офлайн достъп до бележките. За да обновиш данните, включи отново <b><i>Google Drive</i></b>.",
-                "en": "Yes! After initial loading, you can disable <b><i>Google Drive</i></b> in <b><i>Settings</i></b> and work only with the local database. This allows full offline access to your notes. To update data, re-enable <b><i>Google Drive</i></b>."
+                "bg": "Да! След първоначално зареждане можеш да изключиш <b><i>Google Drive</i></b> в <b><i>Настройки</i></b> и да работиш само с локалната база данни. Това позволява пълен офлайн достъп до бележките. Когато искаш да обновиш данните и да заредиш новите и променени бележки, натисни бутона <b><i>Режим</i></b> (убеди се, че имаш достъп до интернет).",
+                "en": "Yes! After initial loading, you can disable <b><i>Google Drive</i></b> in <b><i>Settings</i></b> and work only with the local database. This allows full offline access to your notes. To update data, click <b><i>Mode</i></b> button (make sure you have internet connection)."
             }
         },
 {
