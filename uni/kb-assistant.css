@@ -493,6 +493,8 @@
 
 .kb-input {
     flex: 1;
+    min-width: 0;
+    /* Allows flex item to shrink below content size */
     background: var(--kb-bg-light);
     color: #e2e8f0;
     padding: 10px 14px;
@@ -581,7 +583,7 @@
     }
 
     .kb-fab {
-        bottom: 16px;
+        bottom: 80px;
         right: 16px;
         width: 56px;
         height: 56px;

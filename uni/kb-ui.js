@@ -661,19 +661,9 @@ window.kbUI = null;
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         window.kbUI = new KBUI();
-        // Auto-open if configured
-        if (typeof msm !== 'undefined' && msm) {
-            setTimeout(() => {
-                window.kbUI.open();
-            }, 1000); // Slight delay to ensure everything is ready
-        }
+        // Auto-open removed as per user request
     });
 } else {
     window.kbUI = new KBUI();
-    // Auto-open if configured
-    if (typeof msm !== 'undefined' && msm) {
-        setTimeout(() => {
-            window.kbUI.open();
-        }, 1000); // Slight delay to ensure everything is ready
-    }
+    // Auto-open removed as per user request
 }

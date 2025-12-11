@@ -816,7 +816,7 @@ code {
 }
 
 /* Hide logo on small screens */
-@media (max-width: 600px) {
+@media (max-width: 480px) {
     .header-logo {
         display: none;
     }
@@ -1167,10 +1167,13 @@ code {
 .all-boards-filter-btn.selected-board {
     background-color: #ffc107;
     /* Keep it orange even when selected */
+    /* Keep it orange even when selected */
     color: #000;
-    /* Default non-selected text color */
-    font-weight: bold;
-    /* Keep it bold to indicate selection */
+}
+
+/* Ensure new updates button is white like others when inactive */
+.new-updates-filter-btn {
+    color: #fff;
 }
 
 /* Style for the 'All' button to accommodate the icon */
@@ -1309,7 +1312,7 @@ code {
 }
 
 /* Responsive layout for settings modal on small screens */
-@media (max-width: 370px) {
+@media (max-width: 480px) {
     .zoom-control-wrapper {
         flex-direction: column;
         align-items: flex-start;
@@ -1322,22 +1325,25 @@ code {
     }
 
     .zoom-control-wrapper label {
-        flex-basis: auto !important;
-        /* Reset basis to prevent extra height */
+        /* flex-basis removed to allow inline styles to persist */
         text-align: left !important;
         /* Ensure labels are left-aligned */
     }
 
     #settings-modal .modal-content-box {
-        height: auto;
-        /* Let content define height */
-        max-height: 90vh;
-        /* Still prevent it from being too tall */
+        height: 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        border-radius: 0 !important;
+        margin: 0 !important;
     }
 
     /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
     #google-db-wrapper,
     #max-searches,
+    #notes-bgrd,
+    #img-bgrd,
     #order-notes,
     #show-date,
     #modal-font-size,

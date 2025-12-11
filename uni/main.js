@@ -60,6 +60,7 @@ let isLoadCancelled = false; // Флаг за прекратяване на за
 let isDbOwner = true; // Флаг, който показва дали потребителят е собственик на базата
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 let tokenClient = null; // Client for silent auth refresh
+let notesBgrdChanged = false; // Flag to track if notes background setting changed
 
 // --- Състояние на търсенето ---
 let searchMode = 'title';
@@ -928,7 +929,16 @@ async function createColoredNoteBackground(color, src, width, height) {
             ctx.drawImage(image, 0, 0, w, h);
             resolve(canvas); // Return the canvas element directly
         };
-        image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+        image.onerror = () => {
+            console.warn(`Failed to load background image: ${image.src}. Using solid color fallback.`);
+            const canvas = document.createElement('canvas');
+            const w = canvas.width = width;
+            const h = canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, w, h);
+            resolve(canvas);
+        };
     });
 }
 
@@ -1741,10 +1751,34 @@ function initApp() {
         }
     });
     document.querySelectorAll('.modal-close').forEach(btn => {
-        btn.addEventListener('click', (e) => e.currentTarget.closest('.modal-overlay').classList.remove('visible'));
+        btn.addEventListener('click', (e) => {
+            const modal = e.currentTarget.closest('.modal-overlay');
+            modal.classList.remove('visible');
+            if (modal.id === 'settings-modal' && notesBgrdChanged) {
+                mainLogic();
+                notesBgrdChanged = false;
+            }
+        });
+    });
+
+    // Specific listener for the settings close button (not class 'modal-close')
+    document.getElementById('settings-close-btn').addEventListener('click', () => {
+        document.getElementById('settings-modal').classList.remove('visible');
+        if (notesBgrdChanged) {
+            mainLogic();
+            notesBgrdChanged = false;
+        }
     });
     document.querySelectorAll('.modal-overlay').forEach(modal => {
-        modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('visible'); });
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('visible');
+                if (modal.id === 'settings-modal' && notesBgrdChanged) {
+                    mainLogic();
+                    notesBgrdChanged = false;
+                }
+            }
+        });
     });
     // Prevent clicks inside the content modal from propagating to the underlying notes
     contentModal.addEventListener('click', (e) => {
@@ -2902,6 +2936,22 @@ async function runGoogleDriveSync() {
             if (data.length > 0) {
                 loaderText.textContent = _('savingChangesFromFile').replace('{filename}', filename);
                 await bulkPutDB(storeName, data, true);
+
+                // --- КОРЕКЦИЯ: Обновяваме глобалните променливи в паметта ---
+                if (filename === 'media.txt') {
+                    data.forEach(newMedia => {
+                        const idx = mediaData.findIndex(m => m.gdid === newMedia.gdid);
+                        if (idx !== -1) mediaData[idx] = newMedia;
+                        else mediaData.push(newMedia);
+                    });
+                } else if (filename === 'board.txt') {
+                    data.forEach(newBoard => {
+                        const idx = boardsData.findIndex(b => b.gdid === newBoard.gdid);
+                        if (idx !== -1) boardsData[idx] = newBoard;
+                        else boardsData.push(newBoard);
+                    });
+                }
+
                 if (isNote) {
                     data.forEach(note => updatedNoteGdims.push(note.gdid));
                 }
@@ -4830,7 +4880,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
     if (updatedNoteGdims.length > 0) {
         const newUpdatesLink = document.createElement('span');
-        newUpdatesLink.textContent = `${_('newUpdates')} (${updatedNoteGdims.length})`;
+        newUpdatesLink.textContent = _('newUpdates');
         newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
         newUpdatesLink.dataset.boardid = 'new-updates';
         newUpdatesLink.addEventListener('click', (e) => { boardClick(e, 'new-updates') });
@@ -5274,6 +5324,18 @@ async function createSettingsUI(boardsData, boardParseError) {
             localStorage.setItem('imgBgrd', isChecked);
             showToast(_('settingSaved'), 2000);
         });
+
+        // Graphical background (notes list)
+        const notesBgrdCheckbox = document.getElementById('notes-bgrd-checkbox');
+        notesBgrdCheckbox.checked = localStorage.getItem('notesBgrd') !== 'false'; // Default to true
+        notesBgrdCheckbox.addEventListener('change', () => {
+            const isChecked = notesBgrdCheckbox.checked;
+            localStorage.setItem('notesBgrd', isChecked);
+            showToast(_('settingSaved'), 2000);
+            notesBgrdChanged = true;
+        });
+
+
 
         // Board Note Count
         if (showBoardNoteCountCheckbox) {
@@ -6367,15 +6429,22 @@ async function createNoteElement(noteContent) {
     titleWrapper.appendChild(titleEl);
     // Asynchronously create and apply the colored background
     const noteBgColor = noteColor !== null ? getComputedStyle(document.documentElement).getPropertyValue(`--note-bg-${noteColor}`).trim() : '#FBFF86';
-    try {
-        // Pass the note's dimensions (from CSS) to the canvas function
-        const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
-        const backgroundCanvas = await createColoredNoteBackground(noteBgColor, imageName, 250, 250);
-        backgroundCanvas.className = 'note-background-canvas';
-        // Prepend the canvas so it's the first child and sits behind the content wrapper
-        note.prepend(backgroundCanvas);
-    } catch (error) {
-        console.error("Failed to create colored note background:", error);
+    const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
+
+    if (notesBgrdEnabled) {
+        try {
+            // Pass the note's dimensions (from CSS) to the canvas function
+            const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
+            const backgroundCanvas = await createColoredNoteBackground(noteBgColor, imageName, 250, 250);
+            backgroundCanvas.className = 'note-background-canvas';
+            // Prepend the canvas so it's the first child and sits behind the content wrapper
+            note.prepend(backgroundCanvas);
+        } catch (error) {
+            console.error("Failed to create colored note background:", error);
+        }
+    } else {
+        note.style.backgroundColor = noteBgColor;
+        note.style.margin = '5px';
     }
     const contentWrapper = document.createElement('div');
     contentWrapper.className = 'note-content-wrapper';
@@ -6831,4 +6900,16 @@ function setLanguage(lang) {
     if (typeof updateSignoutTooltip === 'function') {
         updateSignoutTooltip();
     }
+}
+
+// --- Service Worker Registration ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+            .then(registration => {
+                console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            }, err => {
+                console.log('ServiceWorker registration failed: ', err);
+            });
+    });
 }
