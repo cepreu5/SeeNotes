@@ -40,7 +40,7 @@ const steps = [
         x: 25, y: 321, bx: 80, by: -14, bWidth: 241, bHeight: 124
     },
     {
-        image: "msm/left-up.png", height: 250, target: "#settings_button", textKey: 2,
+        image: "msm/l-up.png", height: 250, target: "#settings_button", textKey: 2,
         x: 3, y: 16, bx: -250, by: 96, bWidth: 215, bHeight: 91
     },
     {
@@ -52,11 +52,11 @@ const steps = [
     //    x: -88, y: 1, bx: 199, by: 166, bWidth: 275, bHeight: 118
     //},
     {
-        image: "msm/left-up.png!", height: 100, target: "#show-datemod-checkbox", textKey: 5,
+        image: "msm/l-up.png!", height: 100, target: "#show-datemod-checkbox", textKey: 5,
         x: 1, y: 4, bx: -260, by: 116, bWidth: 275, bHeight: 118
     },
     {
-        image: "msm/left-up.png", height: 150, target: "#scaleInput", textKey: 5,
+        image: "msm/l-up.png", height: 150, target: "#scaleInput", textKey: 5,
         x: 34, y: -1, bx: -260, by: 116, bWidth: 275, bHeight: 118
     },
 ];

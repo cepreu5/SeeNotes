@@ -302,7 +302,7 @@
 
                 <div class="zoom-control-wrapper" style="margin-top: 0px;">
                     <label for="start-board-select" style="margin-right: 10px;" data-key="startBoardLabel">
-                        Стартовборд:</label>
+                        Стартов борд:</label>
                     <select id="start-board-select" class="start-board-select">
                         <!-- Options will be populated by JS -->
                     </select>
@@ -332,6 +332,14 @@
                         Размер шрифт (преглед):</label>
                     <select id="modal-font-size-input" class="zoom-input-select"
                         style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
+                </div>
+
+                <div class="zoom-control-wrapper" id="hide-assistant" style="margin-top: 10px;">
+                    <label for="hide-assistant-checkbox"
+                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                        data-key="hideAssistantLabel">
+                        Скриване на асистента</label>
+                    <input type="checkbox" id="hide-assistant-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="show-date" style="margin-top: 10px;">
@@ -635,12 +643,12 @@
     <!--script src="calendar.js"></script>
     <script src="db.js"></script>
     <script src="fs.js"></script>
+    <script src="msmguide.js"></script>
     <script src="config.js"></script-->
     <!--script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script-->
 
     <link rel="stylesheet" href="msmstyle.css">
-    <script src="msmguide.js"></script>
-    <script src="msm.js"></script>
+    <script src="msmrt.js"></script>
 
     <!-- KB Assistant -->
     <link rel="stylesheet" href="kb-assistant.css">

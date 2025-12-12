@@ -8,7 +8,7 @@
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 const version = '0.19'; // App version
-const debug = true; // Глобален флаг за дебъг режим
+const debug = false; // Глобален флаг за дебъг режим
 const msm = true;
 let guide = false;
 
@@ -209,7 +209,17 @@ function gisLoaded() {
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
 document.addEventListener('DOMContentLoaded', () => {
     const rememberMeCheckbox = document.getElementById('rememberMe');
-    rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
+    if (rememberMeCheckbox) {
+        rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
+    }
+
+    // Apply Hide Assistant setting on load
+    if (localStorage.getItem('hideAssistant') === 'true') {
+        const fabButton = document.getElementById('kb-fab');
+        if (fabButton) {
+            fabButton.style.display = 'none';
+        }
+    }
 });
 
 // Добави този код в началото или края на main.js
@@ -276,7 +286,7 @@ function renderCalendarView() {
                 <button id="today-month-btn">${calendarIconSvg}</button>
                 <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${weeklyViewIconSvg}</button>
             </div>
-            <h2 style="cursor: default; text-align: center;">${titleText}</h2>
+            <h2 style="cursor: default;">${titleText}</h2>
         `;
     stickyHeaderContainer.appendChild(calendarHeader);
     // Day names header
@@ -631,7 +641,7 @@ function renderWeeklyCalendarView(dateForWeek) {
     header.style.top = '0';
     header.style.zIndex = '100';
     header.style.backgroundColor = '#fdf6e3'; // Match background
-    header.innerHTML = `<div class="calendar-nav-controls"><button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span><img src="Refresh.png" class="close-loading-icon" style="display: none;"></button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default; text-align: center;">${titleText}</h2>`;
+    header.innerHTML = `<div class="calendar-nav-controls"><button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span><img src="Refresh.png" class="close-loading-icon" style="display: none;"></button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default;">${titleText}</h2>`;
     weeklyContainer.appendChild(header);
 
     // Добавяме клик събитие за преход към месечен изглед ---
@@ -1592,6 +1602,11 @@ function initApp() {
         loaderContainer.style.display = 'none';
         document.getElementById('settings-modal').classList.add('visible');
     });
+
+    // Инициализираме KB Assistant
+    if (window.kbAssistant && !window.kbAssistant.isInitialized) {
+        window.kbAssistant.init();
+    }
 
     // Настройване на UI и езикови настройки
     const toast = document.getElementById('toastNotification');
@@ -5203,7 +5218,23 @@ async function createSettingsUI(boardsData, boardParseError) {
     const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
     const selectFolderBtn = document.getElementById('select-folder-btn');
     const folderNameDisplay = document.getElementById('local-sync-folder-name');
+    const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
+
     if (!settingsModalBody.dataset.initialized) {
+
+        // Hide Assistant Logic
+        if (hideAssistantCheckbox) {
+            hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
+            hideAssistantCheckbox.addEventListener('change', () => {
+                const isChecked = hideAssistantCheckbox.checked;
+                localStorage.setItem('hideAssistant', isChecked);
+                const fabButton = document.getElementById('kb-fab');
+                if (fabButton) {
+                    fabButton.style.display = isChecked ? 'none' : 'block';
+                }
+                showToast(_('settingSaved'), 2000);
+            });
+        }
 
         // Zooom
         const updateZoom = (value) => {

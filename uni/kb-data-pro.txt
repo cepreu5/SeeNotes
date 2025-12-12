@@ -1,0 +1,56 @@
+{
+            "id": "use-local-db-checkbox",
+            "type": "checkbox",
+            "category": "data-management",
+            "label": {
+                "bg": "Локална папка:",
+                "en": "Local folder:"
+            },
+            "location": "Settings > Advanced Settings",
+            "keywords": {
+                "bg": ["локална папка","папка","компютър","local","folder"],
+                "en": ["local folder","folder","computer","local"]
+            },
+            "question": {
+                "bg": "Какво прави настройката <b><i>Локална папка</i></b>?",
+                "en": "What does the <b><i>Local folder</i></b> setting do?"
+            },
+            "answer": {
+                "bg": "Позволява зареждане на бележки от папка на компютъра ти (синхронизирана с <b><i><b><i>Google Drive</i></b> for Desktop</i></b>). Полезно за по-бърз достъп и офлайн работа.",
+                "en": "Allows loading notes from a folder on your computer (synced with <b><i><b><i>Google Drive</i></b> for Desktop</i></b>). Useful for faster access and offline work."
+            },
+            "relatedSettings": ["use-google-db-checkbox","use-indexeddb-checkbox"],
+            "guide": {
+                "image": "msm/left-up.png", "height": 150,
+                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                "target": "#use-local-db-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
+            }
+        },
+{
+            "id": "use-arh-db-checkbox",
+            "type": "checkbox",
+            "category": "data-management",
+            "label": {
+                "bg": "Архив:",
+                "en": "Archive:"
+            },
+            "location": "Settings > Advanced Settings",
+            "keywords": {
+                "bg": ["архив","backup","резервно копие","стари бележки"],
+                "en": ["archive","backup","old notes"]
+            },
+            "question": {
+                "bg": "Какво прави настройката <b><i>Архив</i></b>?",
+                "en": "What does the <b><i>Archive</i></b> setting do?"
+            },
+            "answer": {
+                "bg": "Позволява зареждане на бележки от архивна папка (създадена от Multinotes приложението). Полезно за достъп до стари версии на бележките.",
+                "en": "Allows loading notes from an archive folder (created by the Multinotes app). Useful for accessing old versions of notes."
+            },
+            "relatedSettings": ["use-local-db-checkbox"],
+            "guide": {
+                "image": "msm/left-up.png", "height": 150,
+                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                "target": "#use-arh-db-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
+            }
+        }

@@ -376,6 +376,11 @@ class KBUI {
         this.isOpen = false;
         this.container.classList.add('kb-hidden');
         this.fabButton.classList.remove('kb-fab-hidden');
+
+        // Stop guide execution if running
+        if (typeof window.removeGuide === 'function') {
+            window.removeGuide();
+        }
     }
 
     /**

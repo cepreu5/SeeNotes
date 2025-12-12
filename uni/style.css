@@ -1124,6 +1124,18 @@ code {
 #boards-menu-modal .modal-content-box {
     background-image: url('Frame.jpg');
     max-width: 95%;
+    max-height: 80vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+
+#boards-menu-modal-body {
+    overflow-y: auto !important;
+    flex-grow: 1;
+    min-height: 0;
+    padding-bottom: 20px;
+    width: 100%;
 }
 
 /* Apply background to the parent modal box when it contains the board list */
@@ -1131,6 +1143,10 @@ code {
     background-image: url('Frame.jpg');
     max-width: 95%;
     margin-left: 5px;
+    max-height: 80vh;
+    /* Limit height on small screens */
+    overflow-y: auto;
+    /* Enable vertical scrolling */
 }
 
 /* Make the close button visible on the textured background */
@@ -1853,6 +1869,7 @@ code {
     color: darkorange;
     /* Подсказва, че може да се кликне */
     pointer-events: none;
+    flex-grow: 0;
 }
 
 .calendar-header button {
@@ -2039,9 +2056,17 @@ code {
     }
 
     /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
+    /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
     .calendar-header {
         flex-direction: row-reverse;
         /* Обръщаме реда на елементите */
+    }
+
+    .calendar-header h2 {
+        position: static;
+        transform: none;
+        text-align: left;
+        flex-grow: 1;
     }
 
 }
