@@ -106,8 +106,17 @@ class KBUI {
      */
     attachEventListeners() {
         // FAB бутон - отваря/затваря чата
-        this.fabButton.addEventListener('click', () => {
-            this.toggle();
+        this.fabButton.addEventListener('click', (e) => {
+            if (e.ctrlKey) {
+                // Превключване на прозрачността при Ctrl + Click
+                if (this.fabButton.style.opacity === '0.5') {
+                    this.fabButton.style.opacity = '1';
+                } else {
+                    this.fabButton.style.opacity = '0.5';
+                }
+            } else {
+                this.toggle();
+            }
         });
 
         // Close бутон

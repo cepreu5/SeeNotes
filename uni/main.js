@@ -8,7 +8,7 @@
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 const version = '0.19'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const debug = true; // Глобален флаг за дебъг режим
 const msm = true;
 let guide = false;
 
@@ -4025,7 +4025,7 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
 
         const overlay = document.createElement('div');
         overlay.className = 'image-preview-overlay'; // Този клас вече съществува
-        Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px' });
+        Object.assign(overlay.style, { position: 'absolute', top: '5px', left: '5px', width: 'calc(100% - 10px)', height: 'calc(100% - 10px)', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px', boxSizing: 'border-box' });
 
         const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
         mediaElement.src = mediaUrl;
@@ -4036,7 +4036,7 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
         const closeButton = document.createElement('button');
         closeButton.className = 'view-button';
         closeButton.innerHTML = eyeOffIconSvg;
-        Object.assign(closeButton.style, { position: 'absolute', top: '10px', right: '10px' });
+        Object.assign(closeButton.style, { position: 'absolute', top: '5px', right: '5px' });
         closeButton.querySelector('svg').style.stroke = 'white';
         closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
         overlay.appendChild(closeButton);
@@ -4868,8 +4868,15 @@ async function createBoardsUI(boardsData, boardParseError) {
         link.style.height = '39px';
         lastActive = link;
         e.preventDefault();
-        e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-        filterNotesByBoard(boardId, false);
+
+        if (e.ctrlKey && !debug) {
+            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            filterNotesByBoard(boardId, false);
+            setTimeout(() => showBoardPreviews(), 100);
+        } else {
+            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            filterNotesByBoard(boardId, false);
+        }
     };
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ВСИЧКИ" ---
     if (localStorage.getItem('showBoardAll') !== 'false') {
@@ -5005,8 +5012,15 @@ async function createBoardsUI(boardsData, boardParseError) {
             link.style.height = '41px';
             lastActive = link;
             e.preventDefault(); // Винаги предотвратяваме действието по подразбиране
-            if (debug && e.ctrlKey) {
-                showModal(JSON.stringify(board, null, 2));
+            if (e.ctrlKey) {
+                if (debug) {
+                    showModal(JSON.stringify(board, null, 2));
+                } else {
+                    // Trigger preview for all notes in the board
+                    e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+                    filterNotesByBoard(board.gdid, false);
+                    setTimeout(() => showBoardPreviews(), 100); // Wait for filter to apply
+                }
             } else {
                 // Първо се уверяваме, че целият бутон е видим
                 e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
@@ -6555,6 +6569,7 @@ async function createNoteElement(noteContent) {
                 attachmentWrapper.style.display = 'flex';
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
+                attachmentWrapper.dataset.type = attachment.type; // Add type for easy selection
 
                 const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
 
@@ -6943,4 +6958,38 @@ if ('serviceWorker' in navigator) {
                 console.log('ServiceWorker registration failed: ', err);
             });
     });
+}
+
+/**
+ * Iterates through all visible notes and opens the preview for the first image attachment.
+ */
+async function showBoardPreviews() {
+    console.log("Toggling board previews...");
+    const visibleNotes = Array.from(notesContainer.querySelectorAll('.note[style*="display: flex"]'));
+
+    // Check if there are any open previews
+    const openPreviews = visibleNotes.filter(n => n.querySelector('.image-preview-overlay'));
+
+    if (openPreviews.length > 0) {
+        // Close all open previews
+        console.log("Closing open previews...");
+        openPreviews.forEach(note => {
+            const overlay = note.querySelector('.image-preview-overlay');
+            if (overlay) overlay.remove();
+        });
+    } else {
+        // Open previews
+        console.log("Opening previews...");
+        for (const note of visibleNotes) {
+            // Find the first attachment wrapper of type 1 (Image)
+            const imageWrapper = note.querySelector('div[data-type="1"]');
+            if (imageWrapper) {
+                // The icon is the first child of the wrapper
+                const iconDiv = imageWrapper.firstElementChild;
+                if (iconDiv) {
+                    iconDiv.click();
+                }
+            }
+        }
+    }
 }

@@ -439,8 +439,10 @@ code {
     border-radius: 4px;
 }
 
-.note-content::-webkit-scrollbar-thumb:hover {
-    background: #555;
+@media (hover: hover) {
+    .note-content::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
 }
 
 .note-content a,
@@ -786,6 +788,14 @@ code {
 
 #next-note-btn {
     right: 193px;
+}
+
+@media (hover: hover) {
+
+    .modal-nav-btn:hover,
+    .modal-header-btn:hover {
+        background-color: rgba(0, 0, 0, 0.1);
+    }
 }
 
 #delete-modal-btn {
@@ -1367,6 +1377,7 @@ code {
     #max-searches,
     #note-count,
     #one-tap-link,
+    #hide-assistant,
     #show-photos-board,
     #show-videos-board,
     #show-sounds-board,
@@ -2010,8 +2021,10 @@ code {
     border-radius: 3px;
 }
 
-.calendar-notes-container::-webkit-scrollbar-thumb:hover {
-    background: #888;
+@media (hover: hover) {
+    .calendar-notes-container::-webkit-scrollbar-thumb:hover {
+        background: #888;
+    }
 }
 
 .calendar-mini-note {
@@ -2039,9 +2052,11 @@ code {
     word-break: break-word;
 }
 
-.calendar-mini-note:hover {
-    filter: brightness(95%);
-    border-color: rgba(0, 0, 0, 0.3);
+@media (hover: hover) {
+    .calendar-mini-note:hover {
+        filter: brightness(95%);
+        border-color: rgba(0, 0, 0, 0.3);
+    }
 }
 
 @media (max-width: 768px) {
@@ -2389,9 +2404,11 @@ code {
     /* Yellow background */
 }
 
-.popup-menu-btn:hover {
-    background-color: #E6E600 !important;
-    /* Darker yellow on hover */
+@media (hover: hover) {
+    .popup-menu-btn:hover {
+        background-color: #E6E600 !important;
+        /* Darker yellow on hover */
+    }
 }
 
 /* --- Login Page Styles --- */

@@ -224,8 +224,8 @@
                 "en": "What is the <b><i>Other Attachments</i></b> board?"
             },
             "answer": {
-                "bg": "Бордът <b><i>Други приложения</i></b> показва бележки с приложени файлове, които не са снимки, видео или звук (напр. документи, PDF и др.). Трябва да имаш предвид, че изображения, които не са направени от бележка на Multinotes се третират като документ и ще се показват в този борд.",
-                "en": "The <b><i>Other Attachments</i></b> board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.). You should keep in mind that images not taken from a Note in Multinotes are treated as documents and will appear in this board."
+                "bg": "Бордът <b><i>Други приложения</i></b> показва бележки с приложени файлове, които не са снимки, видео или звук (напр. документи, PDF и др.). Трябва да имаш предвид, че тук се показват и изображения, които не са направени в бележка на <b><i>Multinotes</i></b>, а са приложени като документ ще се показват в борд <b><i>Със снимки</i></b>.",
+                "en": "The <b><i>Other Attachments</i></b> board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.). You should keep in mind that images not taken from a Note in <b><i>Multinotes</i></b> but are attached as documents will appear in <b><i>With photos</i></b> board."
             },
             "relatedSettings": ["show-photos-board-checkbox"],
             "guide": {
