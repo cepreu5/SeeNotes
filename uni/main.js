@@ -8,7 +8,7 @@
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 const version = '0.19'; // App version
-const debug = true; // Глобален флаг за дебъг режим
+const debug = false; // Глобален флаг за дебъг режим
 const msm = true;
 let guide = false;
 
@@ -4858,8 +4858,8 @@ async function createBoardsUI(boardsData, boardParseError) {
     };
     let lastActive = null;
     const allButtonLinks = [];
-    const boardClick = (e, boardId) => {
-        const link = e.currentTarget;
+    const boardClick = (e, boardId, forcePreview = false) => {
+        const link = e.currentTarget || e.target;
         if (lastActive) {
             lastActive.classList.remove('active');
             lastActive.style.height = '35px';
@@ -4867,16 +4867,90 @@ async function createBoardsUI(boardsData, boardParseError) {
         link.classList.add('active');
         link.style.height = '39px';
         lastActive = link;
-        e.preventDefault();
+        if (e.preventDefault) e.preventDefault();
 
-        if (e.ctrlKey && !debug) {
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        // 1. Logic for Debug JSON (Ctrl+Click in Debug Mode) - unless forced preview (Long Press) overrides it
+        if (debug && e.ctrlKey && !forcePreview) {
+            const board = boardsData.find(b => b.gdid == boardId) || { id: boardId, warning: 'Special Board or Data Not Found' };
+            showModal(JSON.stringify(board, null, 2));
+            return;
+        }
+
+        // 2. Logic for Preview Toggle (Ctrl+Click in !Debug Mode OR Long Press)
+        if ((e.ctrlKey && !debug) || forcePreview) {
+            if (link.scrollIntoView) link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
             filterNotesByBoard(boardId, false);
             setTimeout(() => showBoardPreviews(), 100);
         } else {
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            // 3. Standard Navigation
+            if (link.scrollIntoView) link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
             filterNotesByBoard(boardId, false);
         }
+    };
+
+    /**
+     * Adds standard click and long-press events to a board button.
+     * Handles Context Menu prevention on mobile.
+     */
+    const addBoardButtonEvents = (element, boardId) => {
+        let longPressTimer;
+        let isLongPress = false;
+        let isTouchMove = false;
+
+        const startPress = (e) => {
+            isTouchMove = false;
+            isLongPress = false;
+            longPressTimer = setTimeout(() => {
+                isLongPress = true;
+                if (!isTouchMove) {
+                    console.log('Long press for preview:', boardId);
+                    // Simulate Ctrl+Click behavior
+                    // This creates consistency: If Debug is ON -> JSON; If Debug is OFF -> Preview
+                    boardClick({ currentTarget: element, ctrlKey: true, preventDefault: () => { } }, boardId);
+
+                    // Optional: Vibrate to indicate success
+                    if (navigator.vibrate) navigator.vibrate(50);
+                }
+            }, 600);
+        };
+
+        const cancelPress = () => clearTimeout(longPressTimer);
+
+        const endPress = (e) => {
+            clearTimeout(longPressTimer);
+            if (isLongPress) {
+                if (e.cancelable) e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+
+        const onMove = () => {
+            isTouchMove = true;
+            clearTimeout(longPressTimer);
+        };
+
+        element.addEventListener('touchstart', startPress, { passive: true });
+        element.addEventListener('touchend', endPress);
+        element.addEventListener('touchmove', onMove, { passive: true });
+        element.addEventListener('touchcancel', cancelPress);
+
+        // Prevent context menu on long press
+        element.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        });
+
+        // Standard Click
+        element.addEventListener('click', (e) => {
+            if (isLongPress) {
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                isLongPress = false;
+                return;
+            }
+            boardClick(e, boardId);
+        });
     };
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ВСИЧКИ" ---
     if (localStorage.getItem('showBoardAll') !== 'false') {
@@ -4896,7 +4970,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     calendarLink.textContent = showCount && calendarNoteCount > 0 ? `${_('calendar')} (${calendarNoteCount})` : _('calendar');
     calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
     calendarLink.dataset.boardid = 'calendar';
-    calendarLink.addEventListener('click', (e) => { boardClick(e, 'calendar') });
+    addBoardButtonEvents(calendarLink, 'calendar');
     allButtonLinks.push(calendarLink);
 
     // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
@@ -4905,7 +4979,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         newUpdatesLink.textContent = _('newUpdates');
         newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
         newUpdatesLink.dataset.boardid = 'new-updates';
-        newUpdatesLink.addEventListener('click', (e) => { boardClick(e, 'new-updates') });
+        addBoardButtonEvents(newUpdatesLink, 'new-updates');
         allButtonLinks.push(newUpdatesLink);
     }
 
@@ -4916,7 +4990,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
         reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
         reminderLink.dataset.boardid = 'reminder';
-        reminderLink.addEventListener('click', (e) => { boardClick(e, 'reminder') });
+        addBoardButtonEvents(reminderLink, 'reminder');
         allButtonLinks.push(reminderLink);
     }
 
@@ -4926,7 +5000,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         photosLink.textContent = _('photosBoardTitle') || "With Photos";
         photosLink.classList.add('board-filter-link', 'photos-filter-btn');
         photosLink.dataset.boardid = 'with-photos';
-        photosLink.addEventListener('click', (e) => { boardClick(e, 'with-photos') });
+        addBoardButtonEvents(photosLink, 'with-photos');
         allButtonLinks.push(photosLink);
     }
 
@@ -4936,7 +5010,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         videosLink.textContent = _('videosBoardTitle') || "With Video";
         videosLink.classList.add('board-filter-link', 'videos-filter-btn');
         videosLink.dataset.boardid = 'with-videos';
-        videosLink.addEventListener('click', (e) => { boardClick(e, 'with-videos') });
+        addBoardButtonEvents(videosLink, 'with-videos');
         allButtonLinks.push(videosLink);
     }
 
@@ -4946,7 +5020,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         soundsLink.textContent = _('soundsBoardTitle') || "With Sounds";
         soundsLink.classList.add('board-filter-link', 'sounds-filter-btn');
         soundsLink.dataset.boardid = 'with-sounds';
-        soundsLink.addEventListener('click', (e) => { boardClick(e, 'with-sounds') });
+        addBoardButtonEvents(soundsLink, 'with-sounds');
         allButtonLinks.push(soundsLink);
     }
 
@@ -4957,10 +5031,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         otherLink.classList.add('board-filter-link', 'other-filter-btn');
         otherLink.dataset.boardid = 'with-other';
         otherLink.style.backgroundColor = '#a6a6a6';
-        // otherLink.style.boxSizing = 'border-box';
-        // Използваме box-shadow за симулиране на рамка, за да избегнем проблеми с box-sizing и layout
-        // otherLink.style.boxShadow = 'inset 0 -5px 0 0 black, inset 0 2px 5px rgba(255, 255, 255, 0.3), inset 0 -1px 2px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.3)';
-        otherLink.addEventListener('click', (e) => { boardClick(e, 'with-other') }); // @@
+        addBoardButtonEvents(otherLink, 'with-other');
         allButtonLinks.push(otherLink);
     }
     // Сортираме бордовете по полето numord, преди да създадем бутоните
@@ -5003,30 +5074,11 @@ async function createBoardsUI(boardsData, boardParseError) {
             const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
             link.style.color = hexFontColor;
         }
-        link.addEventListener('click', (e) => {
-            if (lastActive) {
-                lastActive.classList.remove('active');
-                lastActive.style.height = '35px';
-            }
-            link.classList.add('active');
-            link.style.height = '41px';
-            lastActive = link;
-            e.preventDefault(); // Винаги предотвратяваме действието по подразбиране
-            if (e.ctrlKey) {
-                if (debug) {
-                    showModal(JSON.stringify(board, null, 2));
-                } else {
-                    // Trigger preview for all notes in the board
-                    e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-                    filterNotesByBoard(board.gdid, false);
-                    setTimeout(() => showBoardPreviews(), 100); // Wait for filter to apply
-                }
-            } else {
-                // Първо се уверяваме, че целият бутон е видим
-                e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-                filterNotesByBoard(board.gdid, false); // След това филтрираме без допълнително скролиране
-            }
-        });
+        // Custom цвят на шрифта (отрицателно число)
+        const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+        link.style.color = hexFontColor;
+
+        addBoardButtonEvents(link, board.gdid);
         allButtonLinks.push(link);
     });
     maxWidthForButtons = 0;
@@ -6953,7 +7005,7 @@ if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
             .then(registration => {
-                console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                if (debug) console.log('ServiceWorker registration successful with scope: ', registration.scope);
             }, err => {
                 console.log('ServiceWorker registration failed: ', err);
             });
