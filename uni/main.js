@@ -2180,6 +2180,39 @@ function renderSavedSearchesPopup() {
         initLoginPage();
         // gisLoaded() ще инициализира Google authentication когато се зареди
     }
+
+    // --- Selection Locking Logic ---
+    // Persistent lock strategy: Lock strictly enforces selection on the active note. 
+    // It remains active until the user clicks somewhere else.
+    document.addEventListener('mousedown', (e) => {
+        // 1. Identify target
+        const note = e.target.closest('.note');
+        const isNoteContent = note && e.target.closest('.note-content');
+
+        // 2. Clean up previous active state
+        document.querySelectorAll('.active-selection-note').forEach(n => {
+            if (n !== note) n.classList.remove('active-selection-note');
+        });
+
+        // 3. Apply logic
+        if (isNoteContent) {
+            // User clicked in a note content -> Lock everything else, activate this one
+            document.body.classList.add('selection-locked');
+            note.classList.add('active-selection-note');
+        } else {
+            // User clicked outside note content (e.g. background, header, footer) -> Unlock everything
+            // This restores default behavior when not interacting with text.
+            document.body.classList.remove('selection-locked');
+            document.querySelectorAll('.active-selection-note').forEach(n => n.classList.remove('active-selection-note'));
+
+            // If the user clicked on the note container (but not content), allow selection to clear?
+            // Default browser behavior handles focus handling.
+        }
+    });
+
+    // We no longer remove the lock on mouseup, because doing so allows the browser to 
+    // "expand" the selection to the mouse up position if it was outside the note.
+    // By keeping the lock, we force the selection to stay contained.
 })();
 // След успешно удостоверяване gisLoaded() ще извика startApp()
 
@@ -3995,22 +4028,30 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
     if (!noteElement || noteElement.querySelector('.image-preview-overlay')) return;
 
     let mediaUrl;
+    // Flag to determine if we should use an iframe (for GDrive video)
+    let isIframe = false;
     const folderName = isVideo ? 'Video' : 'Images';
 
     try {
         if (sourceMode === 'gdrive') {
-            // --- КОРЕКЦИЯ: Гарантираме, че Google API е заредено преди употреба ---
-            // В режим "Само база данни", gapi не се зарежда по подразбиране.
-            if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
-                await loadGoogleApis();
-                if (!authToken) throw new Error(_('errorTokenMissing'));
-                gapi.client.setToken({ access_token: authToken.access_token });
-            }
+            if (isVideo) {
+                // For GDrive videos, we use the preview URL in an iframe
+                mediaUrl = `https://drive.google.com/file/d/${fileIdOrPath}/preview`;
+                isIframe = true;
+            } else {
+                // --- КОРЕКЦИЯ: Гарантираме, че Google API е заредено преди употреба ---
+                // В режим "Само база данни", gapi не се зарежда по подразбиране.
+                if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
+                    await loadGoogleApis();
+                    if (!authToken) throw new Error(_('errorTokenMissing'));
+                    gapi.client.setToken({ access_token: authToken.access_token });
+                }
 
-            const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
-            const thumbnailUrl = fileMetadata.result.thumbnailLink;
-            if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
-            mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
+                const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+                mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
+            }
         } else { // 'local' or 'archive'
             // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" за локални източници ---
             // Тази логика се изпълнява САМО ако sourceMode не е 'gdrive'.
@@ -4051,12 +4092,24 @@ async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo)
 
         const overlay = document.createElement('div');
         overlay.className = 'image-preview-overlay'; // Този клас вече съществува
-        Object.assign(overlay.style, { position: 'absolute', top: '5px', left: '5px', width: 'calc(100% - 10px)', height: 'calc(100% - 10px)', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px', boxSizing: 'border-box' });
+        Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px', padding: '5px', boxSizing: 'border-box' });
 
-        const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
-        mediaElement.src = mediaUrl;
-        if (isVideo) mediaElement.controls = true;
-        Object.assign(mediaElement.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
+        // Prevent clicks on the overlay (e.g. video controls) from bubbling up to the note
+        overlay.addEventListener('click', (e) => e.stopPropagation());
+
+        let mediaElement;
+        if (isIframe) {
+            mediaElement = document.createElement('iframe');
+            mediaElement.src = mediaUrl;
+            mediaElement.allow = "autoplay";
+            // Make iframe fill the available space but respect aspect ratio/centering via flex container
+            Object.assign(mediaElement.style, { width: '100%', height: '100%', border: 'none', borderRadius: '8px' });
+        } else {
+            mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
+            mediaElement.src = mediaUrl;
+            if (isVideo) mediaElement.controls = true;
+            Object.assign(mediaElement.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
+        }
         overlay.appendChild(mediaElement);
 
         const closeButton = document.createElement('button');
@@ -4121,6 +4174,9 @@ function makeElementDraggable(element, storageKey) {
 
     const onDragStart = (e) => {
         if (e.type === 'mousedown' && e.button !== 0) return;
+        // Prevent native drag behavior (e.g. ghost image) for mouse events
+        if (e.type === 'mousedown') e.preventDefault();
+
         const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
         const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
         isDragging = true;
@@ -6725,6 +6781,12 @@ async function createNoteElement(noteContent) {
 
     // Обработва клик върху цялата бележка (с изключение на хедъра)
     const handleNoteClick = (e) => {
+        // Check if text is selected. If so, prevent opening the modal.
+        const selection = window.getSelection();
+        if (selection.toString().length > 0) {
+            return;
+        }
+
         // Отваряме модала, само ако не е long press и кликът не е върху футъра
         if (!isLongPress && !e.target.closest('.note-footer')) {
             const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';

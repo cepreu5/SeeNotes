@@ -370,6 +370,9 @@ main {
     /* Добавяме padding отдолу, за да направим място за футъра */
     box-sizing: border-box;
     /* Гарантираме, че padding-ът е включен в общата височина */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
 }
 
 .note-item {
@@ -418,12 +421,18 @@ main {
     word-wrap: break-word;
     /* Font size is now inherited from .note */
     white-space: pre-wrap;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+    cursor: text;
 }
 
 pre,
 code {
     font-size: 100%;
     /* Match the surrounding text size */
+    -webkit-user-select: text;
+    user-select: contain;
 }
 
 .note-content::-webkit-scrollbar {
@@ -1659,6 +1668,12 @@ code {
     max-height: 90vh;
     display: flex;
     flex-direction: column;
+    -webkit-user-select: none;
+    /* Safari */
+    -moz-user-select: none;
+    /* Firefox */
+    user-select: none;
+    /* Prevent text selection */
 }
 
 #settings-modal .modal-content-box h2 {
@@ -2539,4 +2554,17 @@ code {
     Slight rounding for better appearance */
     /* padding: 0px 4px;
     Small padding to make the background visible */
+}
+
+/* --- Selection Locking Logic --- */
+body.selection-locked .note .note-content {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+}
+
+body.selection-locked .note.active-selection-note .note-content {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
 }
