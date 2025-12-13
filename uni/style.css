@@ -859,7 +859,7 @@ code {
     font-size: 16px;
     justify-content: center;
     align-items: center;
-    opacity: 0.7;
+    opacity: 0.2;
     white-space: nowrap;
 }
 
@@ -890,9 +890,11 @@ code {
     justify-content: center;
 }
 
-.popup-menu-btn-floating:hover {
-    background-color: #c0c0c0;
-    opacity: 1;
+@media (hover: hover) {
+    .popup-menu-btn-floating:hover {
+        background-color: #c0c0c0;
+        opacity: 1;
+    }
 }
 
 .popup-menu-btn-floating svg {

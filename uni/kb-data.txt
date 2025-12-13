@@ -61,7 +61,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#one-tap-link-checkbox", "stopAfter": true, "action": "highlight", "context": "behavior"
             }
@@ -117,7 +117,7 @@
             },
             "relatedSettings": ["remind-board-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-other-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -145,8 +145,8 @@
             },
             "relatedSettings": ["show-videos-board-checkbox","show-sounds-board-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                "image": "msm/l-up.png", "height": 100,
+                x: -150, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-photos-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
         },
@@ -173,7 +173,7 @@
             },
             "relatedSettings": ["show-photos-board-checkbox","show-sounds-board-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-videos-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -201,7 +201,7 @@
             },
             "relatedSettings": ["show-photos-board-checkbox","show-videos-board-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-sounds-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -229,7 +229,7 @@
             },
             "relatedSettings": ["show-photos-board-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-other-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
             }
@@ -257,7 +257,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 150,
+                "image": "msm/left-up.png", "height": 100,
                 x: 1, y: 4, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#weekly-calendar-checkbox", "stopAfter": true, "action": "highlight", "context": "calendar"
             }
@@ -285,7 +285,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-datemod-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -313,7 +313,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-datemod-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -364,7 +364,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-board-note-count-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -392,7 +392,7 @@
             },
             "relatedSettings": ["modal-font-size-input","scaleSlider"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#note-font-size-input", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -420,7 +420,7 @@
             },
             "relatedSettings": ["note-font-size-input","scaleSlider"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#modal-font-size-input", "stopAfter": true, "action": "highlight", "context": "display"
             }
@@ -476,7 +476,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#max-searches-input", "stopAfter": true, "action": "highlight", "context": "search"
             }
@@ -504,7 +504,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#order-checkbox", "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
             }
@@ -532,7 +532,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-numord", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
@@ -588,7 +588,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-date", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
@@ -672,7 +672,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-alpha", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
@@ -700,7 +700,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#start-board-select", "stopAfter": true, "action": "highlight", "context": "startup"
             }
@@ -728,7 +728,7 @@
             },
             "relatedSettings": ["use-indexeddb-checkbox"],
             "guide": {
-                "image": "msm/r-up.png", "height": 150,
+                "image": "msm/r-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#use-google-db-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
             }
@@ -756,7 +756,7 @@
             },
             "relatedSettings": ["use-google-db-checkbox","use-local-db-checkbox"],
             "guide": {
-                "image": "msm/l-up.png", "height": 150,
+                "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#use-indexeddb-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
             }

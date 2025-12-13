@@ -70,6 +70,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     } else {
         // Reuse container but hide it until ready
         container.style.visibility = 'hidden';
+        container.style.left = '0px';
+        container.style.top = '0px';
     }
 
     container.innerHTML = '';
@@ -197,6 +199,14 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         }
 
         const rect = targetEl.getBoundingClientRect();
+
+        // Check if target is actually visible (has dimensions)
+        if (rect.width === 0 && rect.height === 0) {
+            container.style.visibility = 'hidden';
+            animationFrameId = requestAnimationFrame(updatePosition);
+            return;
+        }
+
         const imgOffsetLeft = img.offsetLeft;
         const imgOffsetTop = img.offsetTop;
 
