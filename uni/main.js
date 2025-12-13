@@ -2187,6 +2187,9 @@ function renderSavedSearchesPopup() {
     document.addEventListener('mousedown', (e) => {
         // 1. Identify target
         const note = e.target.closest('.note');
+        // Exclude the boards menu (header note) from selection locking
+        if (note && note.classList.contains('boards-note')) return;
+
         const isNoteContent = note && e.target.closest('.note-content');
 
         // 2. Clean up previous active state
@@ -5034,15 +5037,15 @@ async function createBoardsUI(boardsData, boardParseError) {
         lastActive = link;
         if (e.preventDefault) e.preventDefault();
 
-        // 1. Logic for Debug JSON (Ctrl+Click in Debug Mode) - unless forced preview (Long Press) overrides it
-        if (debug && e.ctrlKey && !forcePreview) {
+        // 1. Logic for Debug JSON (Ctrl+Shift+Click in Debug Mode)
+        if (debug && e.ctrlKey && e.shiftKey && !forcePreview) {
             const board = boardsData.find(b => b.gdid == boardId) || { id: boardId, warning: 'Special Board or Data Not Found' };
             showModal(JSON.stringify(board, null, 2));
             return;
         }
 
-        // 2. Logic for Preview Toggle (Ctrl+Click in !Debug Mode OR Long Press)
-        if ((e.ctrlKey && !debug) || forcePreview) {
+        // 2. Logic for Preview Toggle (Ctrl+Click or Long Press)
+        if (e.ctrlKey || forcePreview) {
             if (link.scrollIntoView) link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
             filterNotesByBoard(boardId, false);
             setTimeout(() => showBoardPreviews(), 100);
@@ -6596,6 +6599,9 @@ async function createNoteElement(noteContent) {
 
     if (notesBgrdEnabled) {
         try {
+            // Apply margin to prevent notes from sticking together (same as in else block)
+            note.style.margin = '5px';
+
             // Pass the note's dimensions (from CSS) to the canvas function
             const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
             const backgroundCanvas = await createColoredNoteBackground(noteBgColor, imageName, 250, 250);
@@ -6656,6 +6662,29 @@ async function createNoteElement(noteContent) {
         // --- КОРЕКЦИЯ: Добавяме специфична проверка за снимки (тип 1) ---
         if (attachments.some(att => att.type === 1)) {
             note.dataset.hasPhoto = 'true';
+
+            // --- Store preview data for programmatic access (e.g. Board Previews) ---
+            const firstPhoto = attachments.find(att => att.type === 1);
+            let mode = 'gdrive';
+            // Determine mode based on global state, mirroring the attachment rendering logic
+            // Note: DB logic relies on globals set in mainLogic
+            if (useIndexedDb) {
+                if (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id' && typeof dbSourceGlobal !== 'undefined' && dbSourceGlobal === 3) mode = 'archive';
+                else if (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'gdid' && typeof dbSourceGlobal !== 'undefined' && dbSourceGlobal === 2) mode = 'local';
+            } else if (useArhDb) {
+                mode = 'archive';
+            } else if (useLocalFolder) {
+                mode = 'local';
+            }
+
+            const fileId = (mode === 'gdrive') ? (firstPhoto.pathGD || firstPhoto.path) : firstPhoto.path;
+
+            const previewData = {
+                fileId: fileId,
+                mode: mode,
+                isVideo: false
+            };
+            note.dataset.previewAttachment = JSON.stringify(previewData);
         }
         // --- Край на корекцията ---
         // Check for video attachments (type 4)
@@ -6825,6 +6854,7 @@ async function createNoteElement(noteContent) {
                     iconDiv.innerHTML = iconData.svg;
                     iconDiv.style.borderRadius = '5px'; // Добавяме заобляне на ъглите
                     iconDiv.style.backgroundColor = noteBgColor;
+                    iconDiv.dataset.type = type; // Add type for easier selection
 
                     // Добавяме preview само за снимки (type 1) и видео (type 4),
                     // и само ако текущият режим на работа е Google Drive.
@@ -6900,6 +6930,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             const selectedButton = boardsNoteElement.querySelector(`.board-filter-link[data-boardid="${buttonBoardId}"]`);
             if (selectedButton) {
                 selectedButton.classList.add('selected-board');
+                // Restore visual active state ("lifted" effect)
+                selectedButton.classList.add('active');
+                selectedButton.style.height = '39px';
             }
             // --- КОРЕКЦИЯ: Добавяме скролиране до активния бутон ---
             const selectedButtonInMenu = boardsNoteElement.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
@@ -7089,7 +7122,9 @@ if ('serviceWorker' in navigator) {
  */
 async function showBoardPreviews() {
     console.log("Toggling board previews...");
-    const visibleNotes = Array.from(notesContainer.querySelectorAll('.note[style*="display: flex"]'));
+    // Robustly find visible notes (not 'none'). The previous selector [style*="display: flex"] might fail if style is empty.
+    const allNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note)'));
+    const visibleNotes = allNotes.filter(n => n.style.display !== 'none');
 
     // Check if there are any open previews
     const openPreviews = visibleNotes.filter(n => n.querySelector('.image-preview-overlay'));
@@ -7105,13 +7140,23 @@ async function showBoardPreviews() {
         // Open previews
         console.log("Opening previews...");
         for (const note of visibleNotes) {
-            // Find the first attachment wrapper of type 1 (Image)
-            const imageWrapper = note.querySelector('div[data-type="1"]');
-            if (imageWrapper) {
-                // The icon is the first child of the wrapper
-                const iconDiv = imageWrapper.firstElementChild;
-                if (iconDiv) {
-                    iconDiv.click();
+            // 1. Primary Method: Click the Footer Icon (Standard UI behavior)
+            // This ensures consistency with manual user interaction.
+            const footerIcon = note.querySelector('.footer-icon[data-type="1"]');
+            if (footerIcon) {
+                footerIcon.click();
+                continue; // Success, move to next note
+            }
+
+            // 2. Fallback Method: Check dataset.previewAttachment (Invisible Metadata)
+            // Useful if for some reason the footer icon is not rendered or found.
+            if (note.dataset.previewAttachment) {
+                try {
+                    const data = JSON.parse(note.dataset.previewAttachment);
+                    showInNotePreview(note, data.fileId, data.mode, data.isVideo);
+                    continue;
+                } catch (e) {
+                    console.error("Error parsing preview attachment data:", e);
                 }
             }
         }

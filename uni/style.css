@@ -765,9 +765,7 @@ code {
     text-overflow: ellipsis;
 }
 
-.modal-header-btn:hover {
-    background-color: #ddd;
-}
+/* .modal-header-btn:hover { background-color: #ddd; } -- Removed to fix mobile sticky hover */
 
 .modal-close {
     right: 15px;
@@ -888,7 +886,7 @@ code {
     outline: none;
     background-color: yellow;
     color: black;
-    cursor: grab;
+    cursor: pointer;
     padding: 11px;
     border-radius: 50%;
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
@@ -987,7 +985,14 @@ code {
     scroll-behavior: smooth;
     /* Smooth scrolling on button click */
     gap: 5px;
-    padding: 5px 0 0 0px;
+    padding: 10px 0 0 0px;
+    align-items: flex-end;
+    /* Align items to bottom to allow growth upwards */
+    /* Remove padding-bottom to keep height consistent? */
+    height: 45px;
+    /* Ensure sufficient total height for the container */
+    overflow-y: hidden;
+    /* Prevent vertical scroll bar if height slightly exceeds */
     /* Намалява разстоянието отдолу до 3px */
     /* Премахваме правилата, които скриват скролбара */
     scrollbar-color: #aaa #555;
@@ -1047,7 +1052,7 @@ code {
 
 .board-filter-link {
     position: relative;
-    padding: 1px 2px;
+    padding: 1px 8px;
     /* Вътрешен отстъп за текста */
     border-top-left-radius: 8px;
     /* Заоблен горен ляв ъгъл */
@@ -1078,12 +1083,13 @@ code {
     /* Минимална ширина на таба */
     height: 35px;
     /* Височина на таба */
-
     /* Добавено за съкращаване на текста */
     display: inline-block;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* overflow: hidden; -- Removed */
+    /* text-overflow: ellipsis; -- Removed */
+    /* Prevent shrinking in flex container */
+    flex-shrink: 0;
     text-align: center;
     line-height: 33px;
     /* Центриране по вертикала (35px височина - 2px padding) */
@@ -1107,15 +1113,48 @@ code {
 }
 
 /* Стил за активен таб */
+/* Стил за активен таб */
 .board-filter-link.active {
-    transform: translateY(-5px);
-    /* Активният таб излиза малко по-нагоре */
+    /* transform: translateY(-5px); -- Removed to prevent gap below */
+    z-index: 10;
+    /* Ensure it's above others */
+    box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
+        inset 0 -1px 3px rgba(0, 0, 0, 0.3),
+        0 -2px 5px rgba(0, 0, 0, 0.2);
+    /* Remove bottom shadow to blend with container, show top shadow for lift */
+
+    /* Using box-shadow from previous state + adjustment */
+    /* Original orphaned styles:
     box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
         inset 0 -1px 3px rgba(0, 0, 0, 0.3),
         0 6px 12px rgba(0, 0, 0, 0.4);
-    /* По-изразена сянка */
     z-index: 11;
-    /* Да е над другите табове */
+    */
+
+    /* Let's combine nicely */
+    z-index: 11;
+    box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
+        inset 0 -1px 3px rgba(0, 0, 0, 0.3),
+        0 6px 12px rgba(0, 0, 0, 0.4);
+    /* Keep original shadow strength if preferred */
+}
+
+/* Prevent text selection in board menu items */
+.board-filter-link,
+.popup-menu {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* Restore lift effect for active items in dropdown menu */
+.popup-menu .board-filter-link.active {
+    transform: translateY(-5px);
+    /* Re-apply strong bottom shadow to create "floating" look, otherwise it looks sunken/pressed */
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4),
+        inset 0 2px 5px rgba(255, 255, 255, 0.3);
+    z-index: 20;
 }
 
 .modal-body .board-filter-link {
@@ -1134,6 +1173,8 @@ code {
     /* Allow wrapping to the next column */
     gap: 10px;
     /* Space between buttons */
+    align-items: flex-end;
+    /* Lift active buttons up by aligning to bottom */
 }
 
 /* Remove the large top padding from the modal body when showing the board list */
@@ -1149,6 +1190,7 @@ code {
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
+    padding-top: 150px;
 }
 
 #boards-menu-modal-body {
