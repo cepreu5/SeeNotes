@@ -181,7 +181,7 @@ const translations = {
         errorForbidden: 'Forbidden: Request had insufficient authentication scopes.',
         cancelButton: 'Cancel',
 
-        loginPrompt: 'Please sign in with Google to continue.',
+        loginPrompt: 'Please sign in with the Google account you used to sync <i>MultiNotes</i>.',
         authorizeButton: 'Authorize with Google',
         rememberMeLabel: 'Remember me',
         trialButton: 'Start 30-day trial period',
@@ -402,7 +402,7 @@ const translations = {
         feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com',
         errorForbidden: 'Заявката няма достатъчни права за изпълнение.',
         cancelButton: 'Отказ',
-        loginPrompt: 'Моля, влезте с Google, за да продължите.',
+        loginPrompt: 'Моля, влезте с Google акаунта, с който сте синхронизирали бележките си в <i>MultiNotes</i>.',
         authorizeButton: 'Вход с Google',
         rememberMeLabel: 'Запомни ме',
         trialButton: 'Започнете 30-дневен пробен период',

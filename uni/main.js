@@ -10,7 +10,7 @@
 const version = '0.19'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 const msm = true;
-let guide = false;
+let guide = true;
 
 // --- OAuth Redirect Handler for iframe ---
 // Ако сме в iframe и има access_token в URL hash, изпращаме го на parent

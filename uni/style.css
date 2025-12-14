@@ -1190,7 +1190,7 @@ code {
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
-    padding-top: 150px;
+    padding-top: 60px;
 }
 
 #boards-menu-modal-body {
@@ -2208,7 +2208,7 @@ code {
 
 .weekly-date-info {
     flex-shrink: 0;
-    width: 120px;
+    width: 160px;
     /* Увеличаваме ширината, за да се побере пълното име на деня */
     text-align: center;
     margin-right: 20px;
@@ -2289,8 +2289,8 @@ code {
     gap: 10px;
     /* Добавяме разстояние между бележките */
     /* --- КОРЕКЦИЯ: Намаляваме разстоянията около скролбара --- */
-    max-height: 165px;
-    /* КОРЕКЦИЯ: 150px за бележката + 8px за скролбара */
+    max-height: 280px;
+    /* КОРЕКЦИЯ: 260px за бележката + разстояние за скролбара */
     /* --- СТИЛОВЕ ЗА СКРОЛБАР (копирани от .board-menu-container) --- */
     scrollbar-color: #aaa #555;
     /* thumb track - за Firefox */
@@ -2313,19 +2313,19 @@ code {
 }
 
 .mini-note {
-    transform: scale(0.6);
+    transform: scale(0.85);
     transform-origin: top left;
-    /* Премахваме отрицателните маржони */
+    /* Предотвратява преминаването на нов ред */
     position: relative;
     z-index: 1;
 }
 
 /* --- КОРЕКЦИЯ: Опаковката, която решава проблема с презастъпването --- */
 .mini-note-wrapper {
-    width: 150px;
-    /* 250px * 0.6 */
-    height: 150px;
-    /* 250px * 0.6 */
+    width: 220px;
+    /* 250px * 0.85 approx 212.5px */
+    height: 220px;
+    /* 250px * 0.85 approx 212.5px */
     flex-shrink: 0;
     /* Предотвратява свиването на опаковката */
 }
