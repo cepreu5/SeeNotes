@@ -27,7 +27,19 @@ window.toggleHero = function () {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     return false;
   } else {
-    showStep(0);
+    if (activeSteps.length === 0) {
+      // Default debug step
+      const debugStep = {
+        image: 'msm/msm-show.png',
+        text: { bg: 'Здравей! Аз съм твоят асистент в Debug режим. 🐛', en: 'Hello! I am your assistant in Debug mode. 🐛' },
+        x: 50, y: 50,
+        bx: 0, by: 120,
+        bWidth: 220, bHeight: 100
+      };
+      showStep(debugStep);
+    } else {
+      showStep(0);
+    }
     return true;
   }
 };
@@ -48,6 +60,16 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     step = activeSteps[stepIndex];
   }
   if (!step) return;
+
+  // Execute onStart hook
+  if (step.onStart && typeof step.onStart === 'function') {
+    try {
+      step.onStart();
+    } catch (e) {
+      console.error('Error in step.onStart:', e);
+    }
+  }
+
   currentActiveStep = step;
 
   let imagePath = step.image;
@@ -123,15 +145,15 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   let currentBubbleLang = 'bg';
 
   // Текстът
-  let initialText;
+  let initialText = '';
   if (step.text) {
     if (typeof step.text === 'object') {
       initialText = step.text[currentBubbleLang] || step.text['en'] || '';
     } else {
       initialText = step.text;
     }
-  } else {
-    initialText = guideTexts[currentBubbleLang][step.textKey];
+  } else if (typeof guideTexts !== 'undefined' && step.textKey) {
+    initialText = guideTexts[currentBubbleLang] ? guideTexts[currentBubbleLang][step.textKey] : '';
   }
 
   // Append innerHTML for bubble
@@ -301,15 +323,15 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         currentBubbleLang = currentBubbleLang === 'en' ? 'bg' : 'en';
 
         // Обновяваме текста на балона
-        let newText;
+        let newText = '';
         if (step.text) {
           if (typeof step.text === 'object') {
             newText = step.text[currentBubbleLang] || step.text['en'] || '';
           } else {
             newText = step.text;
           }
-        } else {
-          newText = guideTexts[currentBubbleLang][step.textKey];
+        } else if (typeof guideTexts !== 'undefined' && step.textKey) {
+          newText = guideTexts[currentBubbleLang] ? guideTexts[currentBubbleLang][step.textKey] : '';
         }
 
         // Запазваме resize handle ако съществува, но обновяваме текста в span-а
@@ -566,7 +588,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
     img.onmousedown = (e) => {
       e.preventDefault();
-      if (stepTimer) clearTimeout(stepTimer); // Спираме таймера при взаимодействие
+      if (stepTimer) {
+        clearTimeout(stepTimer);
+        stepTimer = null;
+      }
 
       isDragging = true; // Спираме автоматичното позициониране
       wasDragged = false;
@@ -702,7 +727,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     // Touch support for image drag
     img.ontouchstart = (e) => {
       e.preventDefault();
-      if (stepTimer) clearTimeout(stepTimer);
+      if (stepTimer) {
+        clearTimeout(stepTimer);
+        stepTimer = null;
+      }
 
       isDragging = true;
       wasDragged = false;

@@ -359,14 +359,21 @@
                 "en": "How to see how many notes are in each board?"
             },
             "answer": {
-                "bg": "Отиди в <b><i>Настройки</i></b> и маркирай <b><i>Брой бележки в борда</i></b>. Това ще покаже броя на бележките в скоби до името на всеки борд. Изключение правят сборни бордове като <b><i>Всички</i></b>, <b><i>Със снимки</i></b> и др. По подразбиране тази настройка е изключена и броят на бележките в активния борд може да се види в заглавната част на приложението.",
-                "en": "Go to <b><i>Settings</i></b> and check <b><i>Notes count in board</i></b>. This will show the number of notes in brackets next to the name of each board. Exceptions are aggregate boards like <b><i>All</i></b>, <b><i>With Photos</i></b> etc. By default this setting is disabled and the number of notes in the active board can be seen in the header of the application."
+                "bg": "Отиди в <b><i>Настройки</i></b> и маркирай <b><i>Брой бележки в борда</i></b>. Това ще покаже броя на бележките в скоби до името на всеки борд. Изключение правят сборни бордове като <b><i>Всички</i></b>, <b><i>Със снимки</i></b> и др. По подразбиране тази настройка е изключена, тогава броят на бележките в активния борд може да се види от брояча в заглавната част.",
+                "en": "Go to <b><i>Settings</i></b> and check <b><i>Notes count in board</i></b>. This will show the number of notes in brackets next to the name of each board. Exceptions are aggregate boards like <b><i>All</i></b>, <b><i>With Photos</i></b> etc. By default this setting is disabled then the number of notes in the active board can be seen in the counter in the header."
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#show-board-note-count-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
+                1:{
+                    "image": "msm/l-up.png", "height": 100,
+                    x: 13, y: 7, bx: -19, by: 175, bWidth: 93, bHeight: 50,
+                    "target": "#show-board-note-count-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
+                },
+                2:{
+                    "image": "msm/r-up-w.png", "height": 100,
+                    x: -76, y: 31, bx: -19, by: 175, bWidth: 93, bHeight: 50, "target": "#header-buttons",
+                    "stopAfter": true, "action": "highlight", "context": "header"
+                }
             }
         },
 {
@@ -700,8 +707,8 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                "image": "msm/l-down.png", "height": 100,
+                x: 33, y: -81, bx: -19, by: 175, bWidth: 93, bHeight: 50,
                 "target": "#start-board-select", "stopAfter": true, "action": "highlight", "context": "startup"
             }
         },

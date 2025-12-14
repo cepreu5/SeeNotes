@@ -27,14 +27,14 @@ const guideTexts = {
 const getCurrentLanguage = () => localStorage.getItem('language') || 'en';
 
 const steps = [
-    //{ // debug image  
-    //    image: "msm/r-up.png!", height: 100, target: "#search-box", textKey: 0,
-    //    x: -70, y: 20, bx: -19, by: 175, bWidth: 93, bHeight: 50
-    //},
-    {
-        image: "msm/1.png", height: 200, target: "#lang-bg-main", textKey: 0,
-        x: -360, y: 25, bx: 120, by: 46, bWidth: 197, bHeight: 118
+    { // debug image  
+        image: "msm/r-up.png!", height: 100, target: "#search-box", textKey: 0,
+        x: -70, y: 20, bx: -19, by: 175, bWidth: 93, bHeight: 50
     },
+    //{
+    //    image: "msm/1.png", height: 200, target: "#lang-bg-main", textKey: 0,
+    //    x: -360, y: 25, bx: 120, by: 46, bWidth: 197, bHeight: 118
+    //},
     {
         image: "msm/expl.png", height: 150, target: "#search-box", textKey: 1,
         x: 25, y: 321, bx: 80, by: -14, bWidth: 241, bHeight: 124

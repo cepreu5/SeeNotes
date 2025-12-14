@@ -1079,7 +1079,7 @@ code {
     transform: translateY(0);
     /* За да може active да се повдига */
     /* Центриране по хоризонтала */
-    min-width: 90px;
+    min-width: 80px;
     /* Минимална ширина на таба */
     height: 35px;
     /* Височина на таба */
@@ -1094,6 +1094,7 @@ code {
     line-height: 33px;
     /* Центриране по вертикала (35px височина - 2px padding) */
     vertical-align: middle;
+    opacity: 0.3;
 }
 
 /* Общи стилове за пластмасов ефект */
@@ -1227,6 +1228,7 @@ code {
 .board-filter-link:hover {
     background-color: #e9ecef;
     text-decoration: none;
+    opacity: 1.0;
 }
 
 .selected-board {
@@ -1235,6 +1237,7 @@ code {
     text-decoration: underline;
     /* border: 3px solid #f70202 !important; Add a thick border to the selected board */
     color: #fff;
+    opacity: 1.0;
 }
 
 .selected-board:hover {
@@ -2050,8 +2053,23 @@ code {
     background-color: rgb(194, 194, 194);
 }
 
+.today-cell {
+    border: 2px solid gold;
+    background-color: rgba(255, 255, 0, 0.2);
+    /* Make sure it sits on top of the texture if needed, though the texture is on ::before */
+}
+
+.today-cell .calendar-date-number {
+    background-color: yellow !important;
+    color: black !important;
+    font-weight: 900;
+    border: 1px solid goldenrod;
+}
+
+/* Fallback/Legacy styling */
 .today-date {
-    background-color: yellow;
+    background-color: yellow !important;
+    color: black !important;
 }
 
 .calendar-notes-container {
@@ -2129,7 +2147,6 @@ code {
         /* Show short names on small screens */
     }
 
-    /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
     /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
     .calendar-header {
         flex-direction: row-reverse;

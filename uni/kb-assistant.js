@@ -211,7 +211,36 @@ class KBAssistant {
             if (typeof window.setGuideSteps === 'function' && typeof showStep === 'function') {
                 console.log('Starting multi-step guide:', multiSteps);
                 window.setGuideSteps(multiSteps);
-                showStep(0);
+
+                // Context management for multi-step guides
+                const settingsContexts = ['display', 'sorting', 'boards', 'data', 'behavior', 'startup', 'settings', 'calendar', 'search'];
+
+                let prevCtx = null;
+                multiSteps.forEach(step => {
+                    const currentCtx = step.context || guideData.context;
+                    const isPrevSettings = prevCtx && settingsContexts.includes(prevCtx);
+                    const isCurrSettings = settingsContexts.includes(currentCtx);
+
+                    if (isPrevSettings && !isCurrSettings) {
+                        step.onStart = () => { this.closeSettings(); };
+                    } else if (!isPrevSettings && isCurrSettings) {
+                        step.onStart = () => { this.openSettings(); };
+                    }
+                    prevCtx = currentCtx;
+                });
+
+                const firstStep = multiSteps[0];
+                const isFirstSettings = settingsContexts.includes(firstStep.context || guideData.context);
+
+                if (isFirstSettings) {
+                    this.openSettings();
+                    setTimeout(() => {
+                        showStep(0);
+                    }, 300);
+                } else {
+                    this.closeSettings();
+                    showStep(0);
+                }
                 return;
             } else {
                 console.warn('msm.js functions not found for multi-step guide');
@@ -617,6 +646,24 @@ class KBAssistant {
             if (settingsButton) {
                 settingsButton.click();
             }
+        }
+    }
+
+    /**
+     * Затваря Settings modal (ако е отворен)
+     */
+    closeSettings() {
+        const settingsModal = document.getElementById('settings-modal');
+        const isVisible = settingsModal && (
+            settingsModal.classList.contains('visible') ||
+            settingsModal.style.display === 'block' ||
+            settingsModal.style.display === 'flex' ||
+            (!settingsModal.hasAttribute('hidden') && window.getComputedStyle(settingsModal).display !== 'none')
+        );
+
+        if (isVisible) {
+            const closeBtn = document.getElementById('settings-close-btn');
+            if (closeBtn) closeBtn.click();
         }
     }
 

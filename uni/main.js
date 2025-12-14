@@ -8,9 +8,9 @@
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 const version = '0.19'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const debug = true; // Глобален флаг за дебъг режим
 const msm = true;
-let guide = true;
+let guide = false;
 
 // --- OAuth Redirect Handler for iframe ---
 // Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
@@ -278,13 +278,13 @@ function renderCalendarView() {
     calendarHeader.className = 'calendar-header';
     calendarHeader.innerHTML = `
             <div class="calendar-nav-controls">
+                <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
+                <button id="today-month-btn">${calendarIconSvg}</button>
+                <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${weeklyViewIconSvg}</button>
                 <button id="close-month-calendar-btn" class="close-calendar-btn">
                     <span class="close-symbol">&times;</span>
                     <img src="Refresh.png" class="close-loading-icon" style="display: none;">
                 </button>
-                <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
-                <button id="today-month-btn">${calendarIconSvg}</button>
-                <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${weeklyViewIconSvg}</button>
             </div>
             <h2 style="cursor: default;">${titleText}</h2>
         `;
@@ -350,6 +350,7 @@ function renderCalendarView() {
         // Check if the cell being rendered is today's date
         if (day === todayDate && month === todayMonth && year === todayYear) {
             dateNum.classList.add('today-date');
+            cell.classList.add('today-cell');
         }
 
         // Клик на клетката отваря седмичния изглед за съответната дата
@@ -399,7 +400,8 @@ function renderCalendarView() {
                         e.stopPropagation();
                         // Подаваме и ID-тата, за да работят прикачните файлове.
                         // --- КОРЕКЦИЯ: Премахваме подаването на originalNote, за да уеднаквим поведението със седмичния календар ---
-                        showModal({ raw: noteData.notetxt, format: noteData.text_span, color: miniNote.style.backgroundColor, id: noteData.id, gdid: noteData.gdid }, null, true);
+                        // Added forceShowBoardName: true to ensure board name is visible
+                        showModal({ raw: noteData.notetxt, format: noteData.text_span, color: miniNote.style.backgroundColor, id: noteData.id, gdid: noteData.gdid, boardId: noteData.boardid, forceShowBoardName: true });
                     });
                     notesForDayContainer.appendChild(miniNote);
                 }
@@ -641,7 +643,15 @@ function renderWeeklyCalendarView(dateForWeek) {
     header.style.top = '0';
     header.style.zIndex = '100';
     header.style.backgroundColor = '#fdf6e3'; // Match background
-    header.innerHTML = `<div class="calendar-nav-controls"><button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span><img src="Refresh.png" class="close-loading-icon" style="display: none;"></button><button id="prev-week-btn">&laquo;</button><button id="next-week-btn">&raquo;</button><button id="today-week-btn">${calendarIconSvg}</button><button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button></div><h2 style="cursor: default;">${titleText}</h2>`;
+    header.innerHTML = `
+        <div class="calendar-nav-controls">
+        <button id="prev-week-btn">&laquo;</button>
+        <button id="next-week-btn">&raquo;</button>
+        <button id="today-week-btn">${calendarIconSvg}</button>
+        <button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button>
+        <button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span>
+        <img src="Refresh.png" class="close-loading-icon" style="display: none;"></button>
+        </div><h2 style="cursor: default;">${titleText}</h2>`;
     weeklyContainer.appendChild(header);
 
     // Добавяме клик събитие за преход към месечен изглед ---
@@ -816,7 +826,8 @@ function renderWeeklyCalendarView(dateForWeek) {
                         e.stopPropagation();
                         const noteData = allNotesData.find(note => note.gdid === gdid);
                         if (noteData) {
-                            showModal({ raw: noteData.notetxt, format: noteData.text_span, color: clone.style.backgroundColor, id: noteData.id, gdid: noteData.gdid });
+                            // Added forceShowBoardName: true to ensure board name is visible
+                            showModal({ raw: noteData.notetxt, format: noteData.text_span, color: clone.style.backgroundColor, id: noteData.id, gdid: noteData.gdid, boardId: noteData.boardid, forceShowBoardName: true });
                         }
                     });
                     // Гарантираме, че клонираната бележка винаги е видима ---
@@ -1920,6 +1931,17 @@ function initApp() {
 
     // --- Mode Button Logic (Ctrl-click and long-press for advanced) ---
     const modeButton = document.getElementById('mode_button');
+
+    const calendarButton = document.getElementById('calendar_button');
+    // Ако потребителят е запазил 'calendar' като стартов борд, го променяме на 'all'
+    if (localStorage.getItem('startBoard') === 'calendar') {
+        localStorage.setItem('startBoard', 'all');
+    }
+    if (calendarButton) {
+        calendarButton.addEventListener('click', () => {
+            renderCalendarView();
+        });
+    }
 
     let longPressTimer;
     let isLongPress = false;
@@ -4227,6 +4249,12 @@ function makeElementDraggable(element, storageKey) {
     window.addEventListener('mouseup', onDragEnd);
     window.addEventListener('touchend', onDragEnd);
 
+    // Block context menu on mobile/touch
+    element.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
     // Block click if moved
     element.addEventListener('click', (e) => {
         if (hasMoved) {
@@ -4274,9 +4302,10 @@ function showModal(options, noteElement = null) {
     const modalBoardNameEl = document.getElementById('modal-board-name');
     if (options && options.boardId) {
         // Показваме името на борда само ако текущият филтър е различен от борда на бележката
-        // (напр. сме в "Всички", "Напомняния" и т.н.)
-        if (currentBoardFilter != options.boardId) {
-            const board = boardsData.find(b => b.gdid === options.boardId);
+        // или ако изрично е поискано (напр. от календара)
+        if (options.forceShowBoardName || currentBoardFilter != options.boardId) {
+            // Use loose equality (==) to handle potential string/number mismatches
+            const board = boardsData.find(b => b.gdid == options.boardId);
             if (board) {
                 modalBoardNameEl.textContent = board.title;
                 modalBoardNameEl.style.display = 'block';
@@ -5037,8 +5066,8 @@ async function createBoardsUI(boardsData, boardParseError) {
         lastActive = link;
         if (e.preventDefault) e.preventDefault();
 
-        // 1. Logic for Debug JSON (Ctrl+Shift+Click in Debug Mode)
-        if (debug && e.ctrlKey && e.shiftKey && !forcePreview) {
+        // 1. Logic for Debug JSON (Ctrl+Click in Debug Mode)
+        if (debug && e.ctrlKey && !e.shiftKey && !forcePreview) {
             const board = boardsData.find(b => b.gdid == boardId) || { id: boardId, warning: 'Special Board or Data Not Found' };
             showModal(JSON.stringify(board, null, 2));
             return;
@@ -5133,13 +5162,7 @@ async function createBoardsUI(boardsData, boardParseError) {
         allButtonLinks.push(allBoardsLink);
     }
     const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-    const calendarNoteCount = boardsData.calendarNoteCount || 0;
-    const calendarLink = document.createElement('span');
-    calendarLink.textContent = showCount && calendarNoteCount > 0 ? `${_('calendar')} (${calendarNoteCount})` : _('calendar');
-    calendarLink.classList.add('board-filter-link', 'calendar-filter-btn');
-    calendarLink.dataset.boardid = 'calendar';
-    addBoardButtonEvents(calendarLink, 'calendar');
-    allButtonLinks.push(calendarLink);
+
 
     // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
     if (updatedNoteGdims.length > 0) {
@@ -6040,7 +6063,7 @@ function populateStartBoardSelect() {
     // Изчистваме напълно списъка, преди да го попълним наново
     startBoardSelect.innerHTML = `
             <option value="all">${_('allBoards')}</option>
-            <option value="calendar">${_('calendar')}</option>
+
             <option value="reminder">${_('reminder')}</option>
         `;
     boardsData.forEach(board => {

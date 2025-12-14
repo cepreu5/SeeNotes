@@ -672,3 +672,15 @@
     display: block;
     font-family: inherit;
 }
+
+/* Full screen suggestions mode */
+.kb-assistant-container.kb-full-mode .kb-chat-messages {
+    display: none;
+}
+
+.kb-assistant-container.kb-full-mode .kb-suggestions {
+    flex: 1;
+    max-height: none;
+    overflow-y: auto;
+    border-top: none;
+}

@@ -67,6 +67,7 @@ class KBUI {
                 </div>
                 <div class="kb-header-controls" style="display: flex; gap: 8px; align-items: center;">
                     ${debugControlsHtml}
+                    <button class="kb-reload-btn" id="kb-all-questions-btn" title="All Questions" style="font-size: 18px; padding-top: 4px;">📑</button>
                     <button class="kb-close-btn" id="kb-close-btn" title="Minimize" 
                         style="padding-top: 10px; font-size: 20px; line-height: 20px;">−</button>
                 </div>
@@ -123,6 +124,14 @@ class KBUI {
         document.getElementById('kb-close-btn').addEventListener('click', () => {
             this.close();
         });
+
+        // All Questions бутон
+        const allQuestionsBtn = document.getElementById('kb-all-questions-btn');
+        if (allQuestionsBtn) {
+            allQuestionsBtn.addEventListener('click', () => {
+                this.showAllQuestions();
+            });
+        }
 
         // Reload бутон (only if it exists)
         const reloadBtn = document.getElementById('kb-reload-btn');
@@ -184,7 +193,7 @@ class KBUI {
 
                 if (window.kbAssistant) {
                     window.kbAssistant.updateLanguage();
-                    this.updateTexts();
+                    this.updateLanguage();
                     this.clear();
                     this.showGreeting();
                 }
@@ -207,6 +216,7 @@ class KBUI {
             clearBtn.addEventListener('click', () => {
                 this.inputField.value = '';
                 this.inputField.focus();
+                this.inputField.dispatchEvent(new Event('input'));
             });
         }
 
@@ -223,6 +233,23 @@ class KBUI {
                 } else {
                     this.sendMessage();
                 }
+            }
+        });
+
+        // Filter suggestions while typing in full mode
+        this.inputField.addEventListener('input', () => {
+            const query = this.inputField.value.trim().toLowerCase();
+
+            if (this.container.classList.contains('kb-full-mode')) {
+                const items = this.suggestionsBox.querySelectorAll('.kb-suggestion-item');
+                items.forEach(item => {
+                    const text = item.textContent.toLowerCase();
+                    if (text.includes(query)) {
+                        item.style.display = '';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
             }
         });
 
@@ -346,10 +373,11 @@ class KBUI {
     open() {
         this.isOpen = true;
         this.container.classList.remove('kb-hidden');
+        this.container.classList.remove('kb-full-mode'); // Reset full mode
         this.fabButton.classList.add('kb-fab-hidden');
 
         // Обновяваме текстовете
-        this.updateTexts();
+        this.updateLanguage();
 
         // Фокус на input полето
         setTimeout(() => {
@@ -370,7 +398,7 @@ class KBUI {
 
                 window.kbAssistant.updateLanguage();
                 // Обновяваме текстовете отново след updateLanguage, за да сме сигурни
-                this.updateTexts();
+                this.updateLanguage();
                 this.showGreeting();
             } else {
                 console.warn("kbAssistant not ready when opening UI");
@@ -447,6 +475,8 @@ class KBUI {
      * Изпраща съобщение
      */
     async sendMessage() {
+        this.container.classList.remove('kb-full-mode'); // Exit full mode
+
         let queryRaw = this.inputField.value;
         let query = queryRaw.trim();
 
@@ -641,6 +671,90 @@ class KBUI {
     }
 
     /**
+     * Показва всички въпроси от базата данни
+     */
+    showAllQuestions() {
+        if (!window.kbAssistant || !window.kbAssistant.kbData) return;
+
+        // Изчистваме чата и текущите предложения
+        this.clear();
+        this.container.classList.add('kb-full-mode'); // Enter full mode
+
+        let questions = [];
+
+        const extractQuestions = (items) => {
+            if (!Array.isArray(items)) return;
+            items.forEach(item => {
+                // Пропускаме записи без въпроси
+                if (!item.q && !item.question) return;
+
+                let qVal = item.question || item.q;
+                const lang = window.kbAssistant.getCurrentLanguage();
+
+                if (typeof qVal === 'object' && qVal !== null) {
+                    if (qVal[lang]) {
+                        questions.push(qVal[lang]);
+                    } else if (qVal['en']) {
+                        questions.push(qVal['en']);
+                    }
+                } else if (typeof qVal === 'string') {
+                    questions.push(qVal);
+                } else if (Array.isArray(qVal)) {
+                    questions.push(...qVal);
+                }
+            });
+        };
+
+        // Extract from known arrays
+        if (window.kbAssistant.kbData.settings) {
+            extractQuestions(window.kbAssistant.kbData.settings);
+        }
+        if (window.kbAssistant.kbData.general) {
+            extractQuestions(window.kbAssistant.kbData.general);
+        }
+
+        // Fallback for array structure
+        if (Array.isArray(window.kbAssistant.kbData)) {
+            extractQuestions(window.kbAssistant.kbData);
+        }
+
+        // Prepare objects for sorting/deduping
+        let questionObjs = questions.map(q => {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = q;
+            const clean = tmp.textContent || tmp.innerText || "";
+            return { raw: q, clean: clean.trim() };
+        });
+
+        // Unique by clean text (keep first occurrence)
+        const uniqueMap = new Map();
+        questionObjs.forEach(item => {
+            if (!uniqueMap.has(item.clean) && item.clean.length > 0) {
+                uniqueMap.set(item.clean, item);
+            }
+        });
+
+        questionObjs = Array.from(uniqueMap.values());
+
+        // Sort by clean text
+        questionObjs.sort((a, b) => a.clean.localeCompare(b.clean));
+
+        const lang = window.kbAssistant.getCurrentLanguage();
+        const titleText = lang === 'bg' ? 'Всички въпроси:' : 'All Questions:';
+
+        let html = `<div class="kb-suggestions-title">${titleText}</div>`;
+        html += `<div class="kb-suggestions-list">`;
+
+        questionObjs.forEach(item => {
+            html += `<div class="kb-suggestion-item">${item.raw}</div>`;
+        });
+
+        html += `</div>`;
+
+        this.suggestionsBox.innerHTML = html;
+    }
+
+    /**
      * Обновява placeholder текста според езика
      */
     updateLanguage() {
@@ -664,6 +778,12 @@ class KBUI {
         const headerTitle = this.container.querySelector('.kb-title');
         if (headerTitle) {
             headerTitle.textContent = titles[lang] || titles.en;
+        }
+
+        // Обновяваме All Questions Button tooltip
+        const allQuestionsBtn = document.getElementById('kb-all-questions-btn');
+        if (allQuestionsBtn) {
+            allQuestionsBtn.title = lang === 'bg' ? 'Всички въпроси' : 'All Questions';
         }
     }
 }
