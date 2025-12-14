@@ -646,8 +646,8 @@ function renderWeeklyCalendarView(dateForWeek) {
     header.innerHTML = `
         <div class="calendar-nav-controls">
         <button id="prev-week-btn">&laquo;</button>
-        <button id="next-week-btn">&raquo;</button>
         <button id="today-week-btn">${calendarIconSvg}</button>
+        <button id="next-week-btn">&raquo;</button>
         <button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button>
         <button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span>
         <img src="Refresh.png" class="close-loading-icon" style="display: none;"></button>

@@ -1917,6 +1917,7 @@ code {
     align-items: center;
     gap: 10px;
     /* Добавяме разстояние между заглавието и бутоните */
+    flex-direction: row-reverse;
     padding: 10px;
     background-image: url('Frame.jpg');
     border-bottom: 2px solid #d4c8a8;
@@ -1933,16 +1934,15 @@ code {
 
 .calendar-header h2 {
     margin: 0;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    text-align: center;
+    position: static;
+    transform: none;
+    text-align: left;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
     cursor: pointer;
     color: darkorange;
     /* Подсказва, че може да се кликне */
     pointer-events: none;
-    flex-grow: 0;
+    flex-grow: 1;
 }
 
 .calendar-header button {
@@ -2147,18 +2147,7 @@ code {
         /* Show short names on small screens */
     }
 
-    /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
-    .calendar-header {
-        flex-direction: row-reverse;
-        /* Обръщаме реда на елементите */
-    }
 
-    .calendar-header h2 {
-        position: static;
-        transform: none;
-        text-align: left;
-        flex-grow: 1;
-    }
 
 }
 
