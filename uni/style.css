@@ -416,7 +416,7 @@ main {
 
 .note-content {
     flex-grow: 1;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-x: hidden;
     word-wrap: break-word;
     /* Font size is now inherited from .note */
@@ -424,7 +424,7 @@ main {
     -webkit-user-select: text;
     -moz-user-select: text;
     user-select: text;
-    cursor: text;
+    cursor: pointer;
 }
 
 pre,
@@ -2146,9 +2146,6 @@ code {
         display: inline;
         /* Show short names on small screens */
     }
-
-
-
 }
 
 /* Accordion Styles */

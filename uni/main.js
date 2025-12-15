@@ -900,29 +900,44 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
             await deleteFromDB(NOTE_STORE_NAME, noteGdid);
             noteEl.remove();
 
+            allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
+
             // Актуализираме общия брояч
             const noteCounter = document.getElementById('note-counter');
-            if (noteCounter) noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
+            let newTotalCount = 0;
+            if (noteCounter) {
+                newTotalCount = parseInt(noteCounter.textContent, 10) - 1;
+                noteCounter.textContent = Math.max(0, newTotalCount);
+            }
 
             // Актуализираме брояча на борда
             const boardIdOfDeletedNote = extraInfo.boardid;
             // В режим Архив, boardid е число. В другите режими е gdid.
-            // Бутоните в менюто винаги използват gdid като data-boardid.
-            // Затова, ако сме в Архив, намираме gdid-то на борда по неговото id.
             const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
+
             if (boardGdidToUpdate) {
+                // Както е поискано: използваме стойността от note-counter
+                const newBoardCount = newTotalCount;
+
+                // Обновяваме данните за борда
+                const boardData = boardsData.find(b => b.gdid == boardGdidToUpdate);
+                if (boardData) {
+                    boardData.noteCount = newBoardCount;
+                }
+
                 const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardGdidToUpdate}"]`);
                 if (boardButton) {
-                    const match = boardButton.textContent.match(/(.*)\s\((\d+)\)/);
-                    if (match) {
-                        const boardName = match[1].trim();
-                        const currentCount = parseInt(match[2], 10);
-                        boardButton.textContent = (currentCount > 1) ? `${boardName} (${currentCount - 1})` : boardName;
+                    // Взимаме само името на борда (ако вече има скоби, ги махаме) или използваме title от boardData
+                    let boardName = boardData ? boardData.title : boardButton.textContent.replace(/\s\(\d+\)$/, '');
+
+                    // Ако потребителят иска да използва стойността от брояча (ако е в същия борд) - това е newBoardCount
+                    if (newBoardCount > 0) {
+                        boardButton.textContent = `${boardName} (${newBoardCount})`;
+                    } else {
+                        boardButton.textContent = boardName;
                     }
                 }
             }
-
-            allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
             showToast(_('noteDeletedSuccess'), 3000);
         } catch (error) {
             console.error("Failed to delete note:", error);
