@@ -33,7 +33,7 @@
             "noRecentQuestions": "No recent questions.",
             "loading": "Loading...",
             "error": "An error occurred while loading the knowledge base.",
-            "inputPlaceholder": "Ask a question...",
+            "inputPlaceholder": "Ask a question, ? for history...",
             "assistantName": "Mr. StickyMan"
         }
     },
@@ -56,13 +56,13 @@
                 "en": "How does the <b><i>One-click links</i></b> setting work?"
             },
             "answer": {
-                "bg": "Когато е активирана, линковете се показват в общия преглед на бележките в борда. Когато е изключена, линковете са достъпни само при отваряне на бележката. Намери настройката в <b><i>Настройки</i></b>.",
+                "bg": "Когато е активирана, линковете се показват в общия преглед на бележките в борда. Когато е изключена, линковете са достъпни само при отваряне на бележката.",
                 "en": "When enabled, links are shown in the board view of notes. When disabled, links are available only when opening the note. Find this setting in <b><i>Settings</i></b>."
             },
             "relatedSettings": [],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                x: 8, y: 9, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#one-tap-link-checkbox", "stopAfter": true, "action": "highlight", "context": "behavior"
             }
         },
@@ -118,8 +118,8 @@
             "relatedSettings": ["remind-board-checkbox"],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#show-other-board-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
+                x: 10, y: 8, bx: -200, by: 80, bWidth: 250, bHeight: 100, "target": "#all-board-checkbox",
+                "stopAfter": true, "action": "highlight", "context": "boards"
             }
         },
 {
@@ -224,8 +224,8 @@
                 "en": "What is the <b><i>Other Attachments</i></b> board?"
             },
             "answer": {
-                "bg": "Бордът <b><i>Други приложения</i></b> показва бележки с приложени файлове, които не са снимки, видео или звук (напр. документи, PDF и др.). Трябва да имаш предвид, че тук се показват и изображения, които не са направени в бележка на <b><i>Multinotes</i></b>, а са приложени като документ ще се показват в борд <b><i>Със снимки</i></b>.",
-                "en": "The <b><i>Other Attachments</i></b> board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.). You should keep in mind that images not taken from a Note in <b><i>Multinotes</i></b> but are attached as documents will appear in <b><i>With photos</i></b> board."
+                "bg": "Бордът <b><i>Други приложения</i></b> показва бележки с приложени файлове, които не са снимки, видео или звук (напр. документи, PDF и др.). Трябва да имаш предвид, че тук се показват и снимки, които не са направени от бележка в <b><i>Multinotes</i></b>, а са приложени като документ.",
+                "en": "The <b><i>Other Attachments</i></b> board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.). You should keep in mind that photos not taken from a note in <b><i>Multinotes</i></b> but are attached as documents will appear in <b><i>With photos</i></b> board."
             },
             "relatedSettings": ["show-photos-board-checkbox"],
             "guide": {
@@ -257,7 +257,7 @@
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/left-up.png", "height": 100,
+                "image": "msm/l-up.png", "height": 100,
                 x: 1, y: 4, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#weekly-calendar-checkbox", "stopAfter": true, "action": "highlight", "context": "calendar"
             }
@@ -286,7 +286,7 @@
             "relatedSettings": [],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                x: 8, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-datemod-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
         },
@@ -314,7 +314,7 @@
             "relatedSettings": [],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                x: 8, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-datemod-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
         },
@@ -442,7 +442,7 @@
             },
             "location": "Settings",
             "keywords": {
-                "bg": ["мащаб","zoom","размер","увеличение","намаляване"],
+                "bg": ["мащаб","zoom","размер","увеличение","намаляване","увелича","намаля","увеличаване","намаляване"],
                 "en": ["zoom","scale","size","magnify","enlarge","reduce"]
             },
             "question": {
@@ -450,7 +450,7 @@
                 "en": "How to change the zoom level of the application?"
             },
             "answer": {
-                "bg": "Отиди в <b><i>Настройки</i></b> и използвай плъзгача <b><i>Мащаб</i></b> (25%-175%). Прозорецът Настройки става полупрозрачен, така че да може да следиш резултата. Ако борда, който е активен в момента има много бележки, това може да предизвика забавяне на процеса, затова за предпочитане е да избираш борд с по-малко бележки, когато правиш настройката. Можеш да въведеш и точна стойност за фина настройка, след което натисни <b><i>Потвърди</i></b> за да приложиш промяната.",
+                "bg": "Отиди в <b><i>Настройки</i></b> и използвай плъзгача <b><i>Мащаб</i></b> (25%-175%). Прозорецът <b><i>Настройки</i></b> става полупрозрачен, така че да може да следиш резултата. Ако борда, който е активен в момента има много бележки, това може да предизвика забавяне на процеса, затова за предпочитане е да избираш борд с по-малко бележки, когато правиш настройката. Можеш да въведеш и точна стойност за фина настройка, след което натисни <b><i>Потвърди</i></b> за да приложиш промяната.",
                 "en": "Go to <b><i>Settings</i></b> and use the <b><i>Zoom</i></b> slider (25%-175%). The Settings window becomes semi-transparent so you can monitor the result. If the currently active board has many notes, this may cause a delay in the process, so it is preferable to choose a board with fewer notes when making the setting. You can also enter an exact value for fine tuning, then press <b><i>Confirm</i></b> to apply the change."
             },
             "relatedSettings": ["note-font-size-input","modal-font-size-input"],
@@ -468,7 +468,6 @@
                 "bg": "Запазени търсения:",
                 "en": "Saved Searches:"
             },
-            "location": "Settings",
             "keywords": {
                 "bg": ["търсене","запазени","история"],
                 "en": ["search","saved","history","searches"]
@@ -478,14 +477,14 @@
                 "en": "How do saved searches work?"
             },
             "answer": {
-                "bg": "Можеш да запазиш често използвани търсения за бърз достъп. В <b><i>Настройки</i></b> избери колко търсения да се запазват (0-20). Запазените търсения се показват под полето за търсене.",
-                "en": "You can save frequently used searches for quick access. In <b><i>Settings</i></b> choose how many searches to save (0-20). Saved searches appear below the search field."
+                "bg": "Можеш да запазиш често използвани търсения за бърз достъп.<br><img src='msm/search.png' ID='sbox' alt='Search box'><br>В <b><i>Настройки</i></b> избери колко търсения да се запазват (0-20). Възможно е запазените търсения да се показват под стандартния списък от последни търсения на браузъра - затвори го с х",
+                "en": "You can save frequently used searches for quick access.<br><img src='msm/search.png' ID='sbox' alt='Search box'><br> In <b><i>Settings</i></b> choose how many searches to save (0-20). it is possible to show saved searches below the browser's search field - close it with x."
             },
             "relatedSettings": [],
             "guide": {
-                "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#max-searches-input", "stopAfter": true, "action": "highlight", "context": "search"
+                "image": "msm/l-down-w.png", "height": 100,
+                x: 52, y: -26, bx: 73, by: -63, bWidth: 185, bHeight: 50,
+                "target": "#sbox","stopAfter": false, "action": "explain!", "context": "",
             }
         },
 {
@@ -512,8 +511,8 @@
             "relatedSettings": [],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#order-checkbox", "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
+                x: 77, y: 13, bx: -200, by: 80, bWidth: 250, bHeight: 100, "target": "#order-notes",
+                "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
             }
         },
 {
@@ -534,13 +533,13 @@
                 "en": "How to sort notes by number?"
             },
             "answer": {
-                "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по номер</i></b>. Бележките ще се подредят в реда, в който са създадени.",
+                "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по пореден номер</i></b>. Бележките ще се подредят в реда, в който са създадени.",
                 "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by number</i></b>. Notes will be sorted in the order they were created."
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                x: 16, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-numord", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
         },
@@ -567,7 +566,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 100,
+                "image": "msm/l-up.png", "height": 100,
                 x: 6, y: 6, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-color", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
@@ -596,8 +595,8 @@
             "relatedSettings": ["order-checkbox"],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#sort-criteria-date", "stopAfter": true, "action": "highlight", "context": "sorting"
+                x: 8, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                "target": "#sort-criteria-date", "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
             }
         },
 {
@@ -618,14 +617,14 @@
                 "en": "How to sort notes by modification date?"
             },
             "answer": {
-                "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по дата на редактиране</i></b>. Бележките ще се подредят в зависимост от последната дата на тяхната промяна. Ако предпочиташ последно променените в началото, маркирай и <b><i>в обратен ред</i></b>.",
+                "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по дата на промяна</i></b>. Бележките ще се подредят в зависимост от последната дата на тяхната промяна. Ако предпочиташ последно променените в началото, маркирай и <b><i>в обратен ред</i></b>.",
                 "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by modification date</i></b>. Notes will be sorted depending on the last date of their modification. If you prefer the last changed at the beginning, check <b><i>reverse order</i></b> as well."
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 100,
-                x: -50, y: 9, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#order-checkbox", "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
+                "image": "msm/l-up.png", "height": 100,
+                x: 10, y: 8, bx: -200, by: 80, bWidth: 250, bHeight: 100, "target": "#sort-criteria-datemod",
+                "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
             }
         },
 {
@@ -651,7 +650,7 @@
             },
             "relatedSettings": ["order-checkbox"],
             "guide": {
-                "image": "msm/left-up.png", "height": 100,
+                "image": "msm/l-up.png", "height": 100,
                 x: 0, y: 87, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#sort-criteria-color", "stopAfter": true, "action": "highlight", "context": "sorting"
             }
@@ -680,8 +679,8 @@
             "relatedSettings": ["order-checkbox"],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#sort-criteria-alpha", "stopAfter": true, "action": "highlight", "context": "sorting"
+                x: 6, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                "target": "#sort-criteria-alpha", "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
             }
         },
 {       
@@ -798,7 +797,7 @@
                 "en": "What is good to know about using the chat window?"
             },
             "answer": {
-                "bg": "Чат прозорецът ти позволява да търсиш информация с помощта на асистента. Той може да отговаря на въпросите ти, да помага със задачи и да обяснява елементите на интерфейса. Винаги поглеждай точния въпрос, на който отговаря асистентът (той се намира в началото на отговора му), защото въпросът се формира на базата на написаното от теб, но не е задължително и много често не съвпада точно с твоята формулировка. Ако отговорът не съдържа търсената от теб информаця, опитай да перефразираш въпроса си.<br>Освен стандартните функции, чат прозорецът има и някои полезни допълния, за удобство на потребителя. За да се запознаеш с тях натисни бутона:",
+                "bg": "Чат прозорецът ти позволява да търсиш информация с помощта на асистента. Той може да отговаря на въпросите ти, да помага със задачи и да обяснява елементите на интерфейса. Винаги поглеждай точния въпрос, на който отговаря асистентът (намира се в началото на отговора му), защото въпросът се формира на базата на написаното от теб, но не е задължително и много често не съвпада точно с твоята формулировка. Ако отговорът не съдържа търсената от теб информаця, опитай да перефразираш въпроса си.<br>Освен стандартните функции, чат прозорецът има и някои полезни допълния, за удобство на потребителя. За да се запознаеш с тях натисни бутона:",
                 "en": "The chat window allows you to search for information with the help of the assistant. It can answer your questions, help with tasks, and explain interface elements. Always look at the exact question the assistant is answering (it is located at the beginning of its answer), because the question is formed based on what you wrote, but it is not necessarily and very often does not match exactly your wording. If the answer does not contain the information you are looking for, try to rephrase your question.<br>Besides standard functions, the chat window also has some useful additions for user convenience. To get acquainted with them, press the button:"
             },
             "guide": {
@@ -831,9 +830,9 @@
                     }
                 },
                 4: {
+                    "stopAfter": false, "action": "explain!", "context": "",
                     "image": "msm/l-up-w.png", "height": 100,
-                    x: 23, y: 142, bx: 134, by: -100, bWidth: 265, bHeight: 50, 
-                    "target": "div.kb-header", 
+                    x: 2, y: -50, bx: 59, by: 97, bWidth: 281, bHeight: 65, "target": "div.kb-answer-text",
                     "text": {
                         "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
                         "en": "If you click on the text of your last question, it will be filled in the editing field."
@@ -860,7 +859,7 @@
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
                     "image": "msm/l-up.png", "height": 100,
-                    x: 14, y: 16, bx: 121, by: -59, bWidth: 185, bHeight: 50,
+                    x: 14, y: 16, bx: 123, by: -93, bWidth: 190, bHeight: 78,
                     "target": "#sbox",
                     "text": {
                         "bg": "Може да търсиш само в заглавията или в цялото съдържание - натисни, за да превключиш.",
@@ -869,7 +868,7 @@
                 },
                 2: {
                     "image": "msm/r-up.png", "height": 100,
-                    x: 177, y: 15, bx: -170, by: 10, bWidth: 229, bHeight: 70,
+                    x: 111, y: 14, bx: -83, by: -102, bWidth: 229, bHeight: 70,
                     "target": "#sbox",
                     "text": {
                         "bg": "Търсенията могат да се запазват за бърз достъп (броят на запомнените търсения 1-20 се задава в настройките).",
@@ -914,7 +913,7 @@
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 73, y: 92, bx: 143, by: -91, bWidth: 250, bHeight: 100, "target": "label.sort-option-label",
-                "stopAfter": true, "action": "highlight", "context": "sorting"
+                "stopAfter": true, "action": "#sorting-arrow", "context": "sorting"
             }
         },
 {

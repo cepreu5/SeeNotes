@@ -1523,12 +1523,13 @@ function addLongPressOrCtrlClick(element, callback) {
  */
 async function handleCalculateClick() {
     const selection = window.getSelection();
+
     const modalBody = document.getElementById('modal-body');
     let expression = '';
     let isFromClipboard = false;
     let range = null;
 
-    // Проверяваме дали има маркиран текст в модалния прозорец
+    // Проверяваме дали има маркиран текст в модалния прозорез
     if (selection.rangeCount > 0 && selection.toString().trim() !== '') {
         const tempRange = selection.getRangeAt(0);
         if (modalBody.contains(tempRange.commonAncestorContainer)) {
@@ -1617,6 +1618,27 @@ function initApp() {
     reloadButton = document.getElementById('reload_button');
     settingsButton = document.getElementById('settings_button');
     notesContainer = document.getElementById('notes-container');
+
+    // --- Global Event Delegation for Note Tooltips ---
+    let titleTimeout;
+    notesContainer.addEventListener('mouseover', (e) => {
+        if (e.target.classList.contains('note-title-truncated')) {
+            const titleEl = e.target;
+            if (!titleEl.title) { // Only set timeout if title isn't already set
+                titleTimeout = setTimeout(() => {
+                    if (document.body.contains(titleEl) && !titleEl.title) {
+                        titleEl.title = titleEl.textContent;
+                    }
+                }, 500);
+            }
+        }
+    });
+
+    notesContainer.addEventListener('mouseout', (e) => {
+        if (e.target.classList.contains('note-title-truncated')) {
+            clearTimeout(titleTimeout);
+        }
+    });
     contentModal = document.getElementById('content-modal');
     modalBody = document.getElementById('modal-body');
     copyBtn = document.getElementById('copy-modal-btn');
@@ -2070,11 +2092,33 @@ function initApp() {
             const newNotesContent = await Promise.all(
                 updatedNoteGdims.map(gdid => getFromDB(NOTE_STORE_NAME, gdid))
             );
-            // 2. Добавяме ги към съществуващите данни в паметта
-            allNotesData.push(...newNotesContent.filter(Boolean));
-            // 3. Създаваме HTML елементи само за новите бележки
-            const newNoteElements = await Promise.all(newNotesContent.map(note => createNoteElement(note)));
-            newNoteElements.forEach(el => el && notesContainer.prepend(el)); // Добавяме ги в началото
+
+            const validNewNotes = newNotesContent.filter(Boolean);
+
+            // 2. Обновяваме данните в паметта и DOM-а
+            for (const newNote of validNewNotes) {
+                // A. Обновяване на данните
+                const existingIndex = allNotesData.findIndex(n => n.gdid === newNote.gdid);
+                if (existingIndex !== -1) {
+                    allNotesData[existingIndex] = newNote; // Заместваме старата версия
+                } else {
+                    allNotesData.push(newNote); // Добавяме, ако е нова
+                }
+
+                // B. Обновяване на DOM-а
+                // Първо премахваме съществуващия елемент, ако има такъв
+                const existingEl = document.querySelector(`.note[data-extra-info*='"gdid":"${newNote.gdid}"']`);
+                if (existingEl) {
+                    existingEl.remove();
+                }
+
+                // Създаваме и добавяме новия елемент
+                const newEl = await createNoteElement(newNote);
+                if (newEl) {
+                    notesContainer.prepend(newEl);
+                }
+            }
+
             // 4. Обновяваме броячите и менюто с бордове
             await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             applyFilters(); // Прилагаме филтрите отново
@@ -4060,127 +4104,232 @@ async function showLocalPreview(folderName, fileName, mode) {
 /**
  * Показва преглед на изображение/видео в рамките на самата бележка.
  * @param {HTMLElement} noteElement - DOM елементът на бележката.
- * @param {string} fileIdOrPath - ID на файла (Google Drive) или път до файла (локален/архив).
+ * @param {Array} attachments - Масив с прикачени файлове.
+ * @param {number} startIndex - Начален индекс.
  * @param {string} sourceMode - 'gdrive', 'local' или 'archive'.
  * @param {boolean} isVideo - Дали файлът е видео.
  */
-async function showInNotePreview(noteElement, fileIdOrPath, sourceMode, isVideo) {
+async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
     if (!noteElement || noteElement.querySelector('.image-preview-overlay')) return;
 
-    let mediaUrl;
-    // Flag to determine if we should use an iframe (for GDrive video)
-    let isIframe = false;
-    const folderName = isVideo ? 'Video' : 'Images';
+    let currentIndex = startIndex;
 
-    try {
-        if (sourceMode === 'gdrive') {
-            if (isVideo) {
-                // For GDrive videos, we use the preview URL in an iframe
-                mediaUrl = `https://drive.google.com/file/d/${fileIdOrPath}/preview`;
-                isIframe = true;
-            } else {
-                // --- КОРЕКЦИЯ: Гарантираме, че Google API е заредено преди употреба ---
-                // В режим "Само база данни", gapi не се зарежда по подразбиране.
+    // 1. Create overlay immediately
+    const overlay = document.createElement('div');
+    overlay.className = 'image-preview-overlay';
+    Object.assign(overlay.style, {
+        position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
+        backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: '10', borderRadius: '8px', padding: '5px', boxSizing: 'border-box',
+        flexDirection: 'column' // Changed to column to accommodate arrows easily or keeping centered
+    });
+
+    // Prevent bubbling
+    overlay.addEventListener('click', (e) => e.stopPropagation());
+
+    // Create container for media to easily clear/replace it
+    const mediaContainer = document.createElement('div');
+    Object.assign(mediaContainer.style, {
+        width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
+    });
+    overlay.appendChild(mediaContainer);
+
+    // --- Navigation Arrows ---
+    if (attachments.length > 1) {
+        const createArrow = (direction) => {
+            const btn = document.createElement('button');
+            btn.innerHTML = direction === 'prev' ? '&lt;' : '&gt;';
+            Object.assign(btn.style, {
+                position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                [direction === 'prev' ? 'left' : 'right']: '5px',
+                background: 'rgba(255,255,255,0.3)', color: 'white', border: 'none',
+                borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '20px', fontWeight: 'bold', zIndex: '20'
+            });
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (direction === 'prev') {
+                    currentIndex = (currentIndex - 1 + attachments.length) % attachments.length;
+                } else {
+                    currentIndex = (currentIndex + 1) % attachments.length;
+                }
+                loadMedia(currentIndex);
+            });
+            return btn;
+        };
+        overlay.appendChild(createArrow('prev'));
+        overlay.appendChild(createArrow('next'));
+    }
+
+    // Close button
+    const closeButton = document.createElement('button');
+    closeButton.className = 'view-button';
+    closeButton.innerHTML = eyeOffIconSvg;
+    Object.assign(closeButton.style, { position: 'absolute', top: '5px', right: '5px', zIndex: '21' });
+    if (closeButton.querySelector('svg')) closeButton.querySelector('svg').style.stroke = 'white';
+
+    // Cleanup function
+    const cleanup = () => {
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        if (overlay.mediaUrlToRevoke) {
+            URL.revokeObjectURL(overlay.mediaUrlToRevoke);
+        }
+    };
+
+    closeButton.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        cleanup();
+    });
+    overlay.appendChild(closeButton);
+    noteElement.appendChild(overlay);
+
+    // --- Load Media Function ---
+    async function loadMedia(index) {
+        // Clear container
+        mediaContainer.innerHTML = '';
+
+        // Revoke previous URL if any (local scope reuse)
+        if (overlay.mediaUrlToRevoke) {
+            URL.revokeObjectURL(overlay.mediaUrlToRevoke);
+            overlay.mediaUrlToRevoke = null;
+        }
+
+        // Add spinner
+        const spinner = document.createElement('div');
+        spinner.className = 'loader';
+        Object.assign(spinner.style, { width: '40px', height: '40px', border: '4px solid #f3f3f3', borderTop: '4px solid #3498db', borderRadius: '50%', animation: 'spin 1s linear infinite' });
+        mediaContainer.appendChild(spinner);
+
+        const folderName = isVideo ? 'Video' : 'Images';
+        const attachment = attachments[index];
+        const fileIdOrPath = sourceMode === 'gdrive' ? attachment.pathGD : attachment.path;
+
+        let mediaUrl;
+        let isIframe = false;
+
+        try {
+            if (sourceMode === 'gdrive') {
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
                     await loadGoogleApis();
                     if (!authToken) throw new Error(_('errorTokenMissing'));
                     gapi.client.setToken({ access_token: authToken.access_token });
                 }
 
-                const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
-                const thumbnailUrl = fileMetadata.result.thumbnailLink;
-                if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
-                mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
-            }
-        } else { // 'local' or 'archive'
-            // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" за локални източници ---
-            // Тази логика се изпълнява САМО ако sourceMode не е 'gdrive'.
-            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-            if (isDbOnlyMode && !dirHandle && (sourceMode === 'local' || sourceMode === 'archive')) {
-                const dbSource = await getConfig('dbSource');
-                let handleKey = null;
-                if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
-                else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
+                if (isVideo) {
+                    try {
+                        const videoResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
+                            headers: {
+                                'Authorization': `Bearer ${authToken.access_token}`,
+                                'Range': 'bytes=0-10000000'
+                            }
+                        });
+                        if (!videoResponse.ok) throw new Error(`Video fetch failed: ${videoResponse.status}`);
+                        const videoBlob = await videoResponse.blob();
+                        mediaUrl = URL.createObjectURL(videoBlob);
+                        overlay.mediaUrlToRevoke = mediaUrl;
+                    } catch (err) {
+                        console.error("Failed to load GDrive video blob:", err);
+                        throw new Error(_('noVideoPreview'));
+                    }
+                    isIframe = false;
+                } else {
+                    const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
+                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                    if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+                    mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                }
+            } else { // 'local' or 'archive'
+                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+                if (isDbOnlyMode && !dirHandle && (sourceMode === 'local' || sourceMode === 'archive')) {
+                    const dbSource = await getConfig('dbSource');
+                    let handleKey = null;
+                    if (dbSource === 2) handleKey = 'directoryHandle';
+                    else if (dbSource === 3) handleKey = 'arhHandle';
 
-                if (handleKey) {
-                    const handle = await getConfig(handleKey);
-                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                    if (verifiedHandle) {
-                        dirHandle = verifiedHandle; // Задаваме глобалния handle
-                    } else {
-                        showToast(_('noUpdateMode'), 10000);
-                        return;
+                    if (handleKey) {
+                        const handle = await getConfig(handleKey);
+                        const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                        if (verifiedHandle) {
+                            dirHandle = verifiedHandle;
+                        } else {
+                            showToast(_('noUpdateMode'), 10000);
+                            cleanup();
+                            return;
+                        }
                     }
                 }
+
+                let fileHandle;
+                const fileName = fileIdOrPath.split('/').pop();
+                if (sourceMode === 'local') {
+                    const folderHandle = await dirHandle.getDirectoryHandle(folderName, { create: false });
+                    fileHandle = await folderHandle.getFileHandle(fileName);
+                } else { // 'archive'
+                    fileHandle = await dirHandle.getFileHandle(fileName);
+                }
+                const file = await fileHandle.getFile();
+                mediaUrl = URL.createObjectURL(file);
+                overlay.mediaUrlToRevoke = mediaUrl;
             }
 
-            // Тази част от кода вече ще се изпълнява правилно в офлайн режими,
-            // защото проверката за gapi по-горе ще е неуспешна.
-            let fileHandle;
-            const fileName = fileIdOrPath.split('/').pop();
-            if (sourceMode === 'local') {
-                // В локален режим файловете са в подпапки
-                const folderHandle = await dirHandle.getDirectoryHandle(folderName, { create: false });
-                fileHandle = await folderHandle.getFileHandle(fileName);
-            } else { // 'archive'
-                // В архивен режим файловете са директно в основната папка
-                fileHandle = await dirHandle.getFileHandle(fileName);
+            // Remove spinner
+            if (spinner.parentNode) spinner.remove();
+
+            let mediaElement;
+            if (isIframe) {
+                mediaElement = document.createElement('iframe');
+                mediaElement.src = mediaUrl;
+                mediaElement.allow = "autoplay";
+                Object.assign(mediaElement.style, { width: '100%', height: '100%', border: 'none', borderRadius: '8px' });
+            } else {
+                mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
+                mediaElement.src = mediaUrl;
+                if (isVideo) {
+                    mediaElement.controls = true;
+                    // Limit preview to 5 seconds
+                    mediaElement.addEventListener('timeupdate', () => {
+                        if (mediaElement.currentTime > 5) {
+                            mediaElement.pause();
+                            mediaElement.currentTime = 5;
+                        }
+                    });
+                }
+                Object.assign(mediaElement.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
             }
-            const file = await fileHandle.getFile(); // Взимаме файла от правилния handle
-            mediaUrl = URL.createObjectURL(file);
+            mediaContainer.appendChild(mediaElement);
+
+        } catch (e) {
+            console.error("Preview failed:", e);
+            if (spinner.parentNode) spinner.remove();
+
+            const errorMsg = document.createElement('div');
+            errorMsg.style.color = 'white';
+            errorMsg.style.textAlign = 'center';
+            errorMsg.textContent = e.message || 'Error loading preview';
+            mediaContainer.appendChild(errorMsg);
         }
-
-        const overlay = document.createElement('div');
-        overlay.className = 'image-preview-overlay'; // Този клас вече съществува
-        Object.assign(overlay.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '10', borderRadius: '8px', padding: '5px', boxSizing: 'border-box' });
-
-        // Prevent clicks on the overlay (e.g. video controls) from bubbling up to the note
-        overlay.addEventListener('click', (e) => e.stopPropagation());
-
-        let mediaElement;
-        if (isIframe) {
-            mediaElement = document.createElement('iframe');
-            mediaElement.src = mediaUrl;
-            mediaElement.allow = "autoplay";
-            // Make iframe fill the available space but respect aspect ratio/centering via flex container
-            Object.assign(mediaElement.style, { width: '100%', height: '100%', border: 'none', borderRadius: '8px' });
-        } else {
-            mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
-            mediaElement.src = mediaUrl;
-            if (isVideo) mediaElement.controls = true;
-            Object.assign(mediaElement.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
-        }
-        overlay.appendChild(mediaElement);
-
-        const closeButton = document.createElement('button');
-        closeButton.className = 'view-button';
-        closeButton.innerHTML = eyeOffIconSvg;
-        Object.assign(closeButton.style, { position: 'absolute', top: '5px', right: '5px' });
-        closeButton.querySelector('svg').style.stroke = 'white';
-        closeButton.addEventListener('click', (ev) => { ev.stopPropagation(); overlay.remove(); });
-        overlay.appendChild(closeButton);
-
-        noteElement.appendChild(overlay);
-    } catch (err) {
-        console.error(`Error showing in-note preview:`, err);
-        showToast(_(isVideo ? 'errorVideoPreview' : 'errorImgPreview').replace('{error}', (err.message || err)));
     }
+
+    // Initial load
+    loadMedia(currentIndex);
 }
 
 /**
  * Добавя event listener към елемент за показване на преглед в бележката.
  * @param {HTMLElement} element - DOM елементът, към който да се добави listener (напр. икона).
- * @param {string} fileIdentifier - ID на файла (Google Drive) или път до файла (локален/архив).
+ * @param {Array} attachments - Масив с всички прикачени файлове от този тип.
+ * @param {number} currentIndex - Индексът на текущия файл в масива.
  * @param {string} sourceMode - 'gdrive', 'local' или 'archive'.
  * @param {boolean} isVideo - Дали файлът е видео.
  */
-function addInNotePreviewListener(element, fileIdentifier, sourceMode, isVideo) {
+function addInNotePreviewListener(element, attachments, currentIndex, sourceMode, isVideo) {
     element.style.cursor = 'pointer';
     element.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
         const noteElement = e.currentTarget.closest('.note');
-        showInNotePreview(noteElement, fileIdentifier, sourceMode, isVideo);
+        showInNotePreview(noteElement, attachments, currentIndex, sourceMode, isVideo);
     });
 }
 
@@ -4324,6 +4473,27 @@ function showModal(options, noteElement = null) {
             if (board) {
                 modalBoardNameEl.textContent = board.title;
                 modalBoardNameEl.style.display = 'block';
+
+                // --- Make Board Name Clickable ---
+                modalBoardNameEl.style.cursor = 'pointer';
+                modalBoardNameEl.style.textDecoration = 'underline';
+                modalBoardNameEl.style.fontWeight = 'bold';
+                modalBoardNameEl.title = _('goToBoard');
+
+                // Clean old event listeners
+                const newEl = modalBoardNameEl.cloneNode(true);
+                modalBoardNameEl.parentNode.replaceChild(newEl, modalBoardNameEl);
+
+                newEl.addEventListener('click', () => {
+                    document.getElementById('content-modal').classList.remove('visible');
+                    const boardBtn = document.querySelector(`.board-filter-link[data-boardid="${board.gdid}"]`);
+                    if (boardBtn) {
+                        boardBtn.click();
+                    } else {
+                        filterNotesByBoard(board.gdid);
+                    }
+                });
+                // --------------------------------
             } else {
                 modalBoardNameEl.style.display = 'none';
             }
@@ -6534,7 +6704,12 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
 
 async function createNoteElement(noteContent) {
     const note = document.createElement('div');
-    note.className = 'note note-item';
+    const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
+
+    note.className = 'note';
+    if (notesBgrdEnabled) {
+        note.classList.add('note-item');
+    }
     let fileContent = '';
     let noteGdid = null;
     let noteID = null;
@@ -6593,11 +6768,11 @@ async function createNoteElement(noteContent) {
     const titleWrapper = document.createElement('div');
     const titleEl = document.createElement('h3');
     titleEl.textContent = noteTitle;
-    titleEl.title = noteTitle; // Keep the tooltip with the full title
     titleEl.className = 'note-title-truncated';
     // Create header info container for date and time
     const headerInfoContainer = document.createElement('div');
     headerInfoContainer.className = 'note-header-info';
+
     const headerDate = document.createElement('span');
     headerDate.className = 'note-header-date';
     const headerTime = document.createElement('span');
@@ -6633,8 +6808,6 @@ async function createNoteElement(noteContent) {
     titleWrapper.appendChild(titleEl);
     // Asynchronously create and apply the colored background
     const noteBgColor = noteColor !== null ? getComputedStyle(document.documentElement).getPropertyValue(`--note-bg-${noteColor}`).trim() : '#FBFF86';
-    const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
-
     if (notesBgrdEnabled) {
         try {
             // Apply margin to prevent notes from sticking together (same as in else block)
@@ -6894,6 +7067,25 @@ async function createNoteElement(noteContent) {
                     iconDiv.style.backgroundColor = noteBgColor;
                     iconDiv.dataset.type = type; // Add type for easier selection
 
+                    // Calculate count of attachments of this type
+                    const typeCount = attachments.filter(att => att.type === type).length;
+                    if (typeCount > 1) {
+                        const plusSpan = document.createElement('span');
+                        plusSpan.textContent = '+';
+                        plusSpan.style.marginLeft = '2px';
+                        plusSpan.style.fontWeight = 'bold';
+                        plusSpan.style.fontSize = '14px'; // Adjust size as needed
+                        plusSpan.style.color = '#333'; // Make sure it's visible
+
+                        // Use inline-flex to align SVG and text
+                        iconDiv.style.display = 'inline-flex';
+                        iconDiv.style.alignItems = 'center';
+                        iconDiv.style.justifyContent = 'center';
+                        iconDiv.style.paddingRight = '4px'; // Add some padding
+
+                        iconDiv.appendChild(plusSpan);
+                    }
+
                     // Добавяме preview само за снимки (type 1) и видео (type 4),
                     // и само ако текущият режим на работа е Google Drive.
                     if (type === 1 || type === 4) {
@@ -6909,10 +7101,12 @@ async function createNoteElement(noteContent) {
                             }
 
                             // Активираме превюто, ако източникът е Google Drive, Локална папка или Архив
+                            // Only add preview listener if we actually found the attachment
                             if (sourceMode === 'gdrive' || sourceMode === 'local' || sourceMode === 'archive') {
-                                const fileIdentifier = sourceMode === 'gdrive' ? firstAttachmentOfType.pathGD : firstAttachmentOfType.path;
+                                // Filter attachments of this type (already filtered above for counting, but let's be explicit or reuse)
+                                const attachmentsOfType = attachments.filter(att => att.type === type);
                                 const isVideo = type === 4;
-                                addInNotePreviewListener(iconDiv, fileIdentifier, sourceMode, isVideo);
+                                addInNotePreviewListener(iconDiv, attachmentsOfType, 0, sourceMode, isVideo);
                             }
                         }
                     }

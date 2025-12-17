@@ -50,6 +50,7 @@ window.showStep = showStep;
 function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   if (stepTimer) clearTimeout(stepTimer);
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
   let step;
   let stepIndex = -1;
   if (typeof stepOrIndex === 'object') {
@@ -59,6 +60,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     step = activeSteps[stepIndex];
   }
   if (!step) return;
+
   // Execute onStart hook
   if (step.onStart && typeof step.onStart === 'function') {
     try {
@@ -67,18 +69,22 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       console.error('Error in step.onStart:', e);
     }
   }
+
   currentActiveStep = step;
+
   let imagePath = step.image;
   let stopAfter = false;
   if (imagePath && imagePath.endsWith('!')) {
     stopAfter = true;
     imagePath = imagePath.slice(0, -1);
   }
+
   if (!container || !document.body.contains(container)) {
     container = document.createElement('div');
     container.className = 'guide-container';
     document.body.appendChild(container);
   }
+
   // --- DEBUG OVERLAY ---
   let debugOverlay = document.getElementById('msm-debug-overlay');
   if (!debugOverlay) {
@@ -109,25 +115,35 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     document.body.appendChild(debugOverlay);
   }
   debugOverlay.innerText = 'Debug info';
+
+
+
   // --- BUBBLE RESIZE LOGIC ---
   let isResizing = false;
   let isBubbleInteracting = false;
+
   container.innerHTML = ''; // Start clean for each step to re-attach events
+
   const img = document.createElement('img');
   img.src = imagePath;
   img.className = 'guide-img';
   img.style.cursor = "pointer";
+
   // Задаване на височина, ако е дефинирана в стъпката
   if (step.height) {
     img.style.height = step.height + 'px';
     img.style.width = 'auto'; // Запазване на пропорциите
   }
+
   container.appendChild(img);
+
   // Create Bubble Text elements
   const bubble = document.createElement('div');
   bubble.className = 'speech-bubble';
+
   // Език на балона (по подразбиране 'bg')
   let currentBubbleLang = 'bg';
+
   // Текстът
   let initialText = '';
   if (step.text) {
@@ -139,12 +155,16 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   } else if (typeof guideTexts !== 'undefined' && step.textKey) {
     initialText = guideTexts[currentBubbleLang] ? guideTexts[currentBubbleLang][step.textKey] : '';
   }
+
   // Append innerHTML for bubble
   bubble.innerHTML = `<span>${initialText}</span>`;
+
   if (!initialText) {
     bubble.style.display = 'none';
   }
+
   container.appendChild(bubble);
+
   // Resize handle
   const resizeHandle = document.createElement('div');
   resizeHandle.style.width = '15px';
@@ -155,10 +175,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   resizeHandle.style.right = '0';
   resizeHandle.style.cursor = 'se-resize';
   bubble.appendChild(resizeHandle);
+
+
   resizeHandle.onmousedown = (e) => {
     e.preventDefault();
     e.stopPropagation(); // Спираме влаченето на балона
     if (stepTimer) clearTimeout(stepTimer);
+
     isBubbleInteracting = true;
     isResizing = true;
     const startX = e.clientX;
@@ -167,35 +190,43 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     const startHeight = parseInt(getComputedStyle(bubble).height, 10);
     let newWidth = startWidth;
     let newHeight = startHeight;
+
     document.onmousemove = (moveEvent) => {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
+
       newWidth = Math.max(50, startWidth + dx); // Min width 50
       newHeight = Math.max(50, startHeight + dy); // Min height 50
+
       bubble.style.width = newWidth + 'px';
       bubble.style.height = newHeight + 'px';
       debugOverlay.innerText = `Size: w: ${newWidth}, h: ${newHeight}`;
     };
+
     document.onmouseup = () => {
       document.onmousemove = null;
       document.onmouseup = null;
       isResizing = false;
       isBubbleInteracting = false;
+
       // Copy to clipboard
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
       const clipboardText = `bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}`;
       navigator.clipboard.writeText(clipboardText);
       debugOverlay.innerText = `Copied: ${clipboardText}`;
+
       // Update step object (optional, for current session)
       step.bWidth = newWidth;
       step.bHeight = newHeight;
     };
   };
+
   resizeHandle.ontouchstart = (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (stepTimer) clearTimeout(stepTimer);
+
     isResizing = true;
     isBubbleInteracting = true;
     const touch = e.touches[0];
@@ -205,37 +236,48 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     const startHeight = parseInt(getComputedStyle(bubble).height, 10);
     let newWidth = startWidth;
     let newHeight = startHeight;
+
     document.ontouchmove = (moveEvent) => {
       const moveTouch = moveEvent.touches[0];
       const dx = moveTouch.clientX - startX;
       const dy = moveTouch.clientY - startY;
+
       newWidth = Math.max(50, startWidth + dx);
       newHeight = Math.max(50, startHeight + dy);
+
       bubble.style.width = newWidth + 'px';
       bubble.style.height = newHeight + 'px';
       debugOverlay.innerText = `Size: w: ${newWidth}, h: ${newHeight}`;
     };
+
     document.ontouchend = () => {
       document.ontouchmove = null;
       document.ontouchend = null;
       isResizing = false;
       isBubbleInteracting = false;
+
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
       const clipboardText = `bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}`;
       navigator.clipboard.writeText(clipboardText);
       debugOverlay.innerText = `Copied: ${clipboardText}`;
+
       step.bWidth = newWidth;
       step.bHeight = newHeight;
     };
   };
+
   // --- BUBBLE DRAG LOGIC ---
   let bubbleWasDragged = false;
+
+
   bubble.onmousedown = (e) => {
     if (e.target === resizeHandle) return; // Ignore if clicking resize handle
     e.preventDefault();
     if (stepTimer) clearTimeout(stepTimer);
+
     isBubbleInteracting = true;
+
     bubbleWasDragged = false;
     const startX = e.clientX;
     const startY = e.clientY;
@@ -243,23 +285,29 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     const initialBy = step.by || 0;
     let finalBx = initialBx;
     let finalBy = initialBy;
+
     document.onmousemove = (moveEvent) => {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
+
       if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
         bubbleWasDragged = true;
       }
+
       if (bubbleWasDragged) {
         finalBx = Math.round(initialBx + dx);
         finalBy = Math.round(initialBy + dy);
+
         bubble.style.transform = `translate(${finalBx}px, ${finalBy}px)`;
         debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy}`;
       }
     };
+
     document.onmouseup = () => {
       document.onmousemove = null;
       document.onmouseup = null;
       isBubbleInteracting = false;
+
       if (bubbleWasDragged) {
         // Copy to clipboard
         const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
@@ -267,11 +315,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const clipboardText = `bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
         navigator.clipboard.writeText(clipboardText);
         debugOverlay.innerText = `Copied: ${clipboardText}`;
+
         step.bx = finalBx;
         step.by = finalBy;
       } else if (!isResizing) {
         // Handle Click (Language Switch)
         currentBubbleLang = currentBubbleLang === 'en' ? 'bg' : 'en';
+
         // Обновяваме текста на балона
         let newText = '';
         if (step.text) {
@@ -283,6 +333,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         } else if (typeof guideTexts !== 'undefined' && step.textKey) {
           newText = guideTexts[currentBubbleLang] ? guideTexts[currentBubbleLang][step.textKey] : '';
         }
+
         // Запазваме resize handle ако съществува, но обновяваме текста в span-а
         const span = bubble.querySelector('span');
         if (span) {
@@ -295,14 +346,18 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       }
     };
   };
+
   // --- BUBBLE TOUCH LOGIC (Added for "Tap -> Next Step") ---
   bubble.ontouchstart = (e) => {
     // Ignore if touching resize handle (it stops propagation anyway, but good to be safe)
     if (e.target === resizeHandle) return;
+
     e.preventDefault();
     if (stepTimer) clearTimeout(stepTimer);
+
     isBubbleInteracting = true; // Use same flag as mouse interaction
     bubbleWasDragged = false;
+
     const touch = e.touches[0];
     const startX = touch.clientX;
     const startY = touch.clientY;
@@ -310,24 +365,30 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     const initialBy = step.by || 0;
     let finalBx = initialBx;
     let finalBy = initialBy;
+
     document.ontouchmove = (moveEvent) => {
       const moveTouch = moveEvent.touches[0];
       const dx = moveTouch.clientX - startX;
       const dy = moveTouch.clientY - startY;
+
       if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
         bubbleWasDragged = true;
       }
+
       if (bubbleWasDragged) {
         finalBx = Math.round(initialBx + dx);
         finalBy = Math.round(initialBy + dy);
+
         bubble.style.transform = `translate(${finalBx}px, ${finalBy}px)`;
         debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy}`;
       }
     };
+
     document.ontouchend = () => {
       document.ontouchmove = null;
       document.ontouchend = null;
       isBubbleInteracting = false;
+
       if (bubbleWasDragged) {
         // Copy to clipboard
         const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
@@ -335,6 +396,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const clipboardText = `bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
         navigator.clipboard.writeText(clipboardText);
         debugOverlay.innerText = `Copied: ${clipboardText}`;
+
         step.bx = finalBx;
         step.by = finalBy;
       } else {
@@ -343,17 +405,23 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       }
     };
   };
+
   // Bubble styling and initial positioning
   bubble.style.position = 'absolute';
+
   // Apply initial dimensions if present
   if (step.bWidth) bubble.style.width = step.bWidth + 'px';
   if (step.bHeight) bubble.style.height = step.bHeight + 'px';
+
   const bx = step.bx || 0;
   const by = step.by || 0;
   bubble.style.transform = `translate(${bx}px, ${by}px)`;
+
+
   const nextStep = () => {
     if (stepTimer) clearTimeout(stepTimer);
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
     // Ако е single режим или stopAfter, просто затваряме
     if (single || stopAfter) {
       if (container) container.remove();
@@ -361,8 +429,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       if (debugOverlay) debugOverlay.remove();
       return;
     }
+
     // Определяме следващата стъпка
     const nextIndex = nextStepIndex !== null ? nextStepIndex : (stepIndex !== -1 ? stepIndex + 1 : -1);
+
     if (nextIndex !== -1 && nextIndex < activeSteps.length) {
       showStep(nextIndex);
     } else {
@@ -371,32 +441,40 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       if (debugOverlay) debugOverlay.remove(); // Remove debug overlay when guide ends
     }
   };
+
   img.onclick = nextStep;
+
   // Добавяме поддръжка за клавиатура (Enter и Space)
   const handleKeyPress = (e) => {
     // Не реагираме, ако потребителят пише в поле за въвеждане
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
       return;
     }
+
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       document.removeEventListener('keydown', handleKeyPress);
       nextStep();
     }
   };
+
   document.addEventListener('keydown', handleKeyPress);
+
   // Премахваме слушателя при преминаване към следваща стъпка
   const originalNextStep = nextStep;
   const wrappedNextStep = () => {
     document.removeEventListener('keydown', handleKeyPress);
     originalNextStep();
   };
+
   // Заменяме nextStep с обвитата версия
   img.onclick = wrappedNextStep;
+
   // Автоматично преминаване след 10 секунди (само ако не е single режим)
   if (!single) {
     stepTimer = setTimeout(wrappedNextStep, stepTime);
   }
+
   // Позициониране спрямо елемент
   let targetEl = document.querySelector(step.target);
   let scrollDelay = 0;
@@ -410,6 +488,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
         rect.right <= (window.innerWidth || document.documentElement.clientWidth)
       );
+
       if (!isVisible) {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
         scrollDelay = 600;
@@ -418,27 +497,35 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   } else {
     targetEl = document.body;
   }
+
   if (targetEl) {
     let isDragging = false;
+
     // Функция за непрекъснато обновяване на позицията
     const updatePosition = () => {
       if (!container || !document.body.contains(container)) return;
+
       // Ако влачим, не обновяваме автоматично, за да не пречим на потребителя
       if (!isDragging && !isBubbleInteracting && !isResizing) {
         const imgOffsetLeft = img.offsetLeft;
         const imgOffsetTop = img.offsetTop;
         const rect = targetEl.getBoundingClientRect();
+
         container.style.left = (rect.left + window.scrollX + step.x - imgOffsetLeft) + "px";
         container.style.top = (rect.top + window.scrollY + step.y - imgOffsetTop) + "px";
+
         // Показваме контейнера едва след като сме го позиционирали
         if (container.style.visibility === 'hidden') {
           container.style.visibility = 'visible';
         }
+
         // Boundary Check for Bubble
         const vpW = window.innerWidth || document.documentElement.clientWidth;
         const vpH = window.innerHeight || document.documentElement.clientHeight;
+
         let curBx = step.bx || 0;
         let curBy = step.by || 0;
+
         const cRect = container.getBoundingClientRect();
         // Calculate the theoretical absolute position of the bubble based on step params
         const baseLeft = cRect.left + curBx;
@@ -447,21 +534,25 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const bH = bubble.offsetHeight;
         const baseRight = baseLeft + bW;
         const baseBottom = baseTop + bH;
+
         let corrX = 0;
         let corrY = 0;
         const padding = 3;
+
         // Check horizontal
         if (baseLeft < padding) {
           corrX = -baseLeft + padding;
         } else if (baseRight > vpW - padding) {
           corrX = (vpW - padding) - baseRight;
         }
+
         // Check vertical
         if (baseTop < padding) {
           corrY = -baseTop + padding;
         } else if (baseBottom > vpH - padding) {
           corrY = (vpH - padding) - baseBottom;
         }
+
         // Apply transform
         if (corrX !== 0 || corrY !== 0) {
           bubble.style.transform = `translate(${curBx + corrX}px, ${curBy + corrY}px)`;
@@ -470,8 +561,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
           bubble.style.transform = `translate(${curBx}px, ${curBy}px)`;
         }
       }
+
       animationFrameId = requestAnimationFrame(updatePosition);
     };
+
     // Изчакваме картинката да се зареди, за да имаме коректни размери (offsetLeft/Top)
     const startPositioning = () => {
       if (scrollDelay > 0) {
@@ -480,63 +573,81 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         updatePosition();
       }
     };
+
     if (img.complete) {
       startPositioning();
     } else {
       img.onload = startPositioning;
     }
+
     // --- DRAG LOGIC FOR DEBUGGING (IMAGE/CONTAINER) ---
     let startX, startY, initialLeft, initialTop;
     let finalRelX = 0;
     let finalRelY = 0;
     let wasDragged = false;
+
     img.onmousedown = (e) => {
       e.preventDefault();
       if (stepTimer) {
         clearTimeout(stepTimer);
         stepTimer = null;
       }
+
       isDragging = true; // Спираме автоматичното позициониране
       wasDragged = false;
       startX = e.clientX;
       startY = e.clientY;
+
       if (!container) return;
+
       // Fix for drag after centering (remove transform and set absolute px)
       const rect = container.getBoundingClientRect();
       container.style.transform = 'none';
       container.style.left = rect.left + 'px';
       container.style.top = rect.top + 'px';
       container.style.position = 'fixed'; // Ensure fixed if it was centered
+
       initialLeft = rect.left;
       initialTop = rect.top;
+
       let lastIdentifiedEl = null;
+
       document.onmousemove = (moveEvent) => {
         if (!container) return;
+
         const dx = moveEvent.clientX - startX;
         const dy = moveEvent.clientY - startY;
+
         // Отчитаме влачене само ако има движение над 10 пиксела
         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
           wasDragged = true;
         }
+
         if (wasDragged) {
           container.style.left = initialLeft + dx + "px";
           container.style.top = initialTop + dy + "px";
+
           // Identify element based on image direction
           const currentImgRect = img.getBoundingClientRect();
           let pX = currentImgRect.right - 10; // Default (r-up/down)
+
           if (img.src && (img.src.includes('l-up') || img.src.includes('l-down'))) {
             pX = currentImgRect.left;
           }
+
           let pY = currentImgRect.top + 10; // Default (up)
           if (img.src && (img.src.includes('l-down') || img.src.includes('r-down'))) {
             pY = currentImgRect.bottom - 10;
           }
+
           container.style.visibility = 'hidden';
           lastIdentifiedEl = document.elementFromPoint(pX, pY);
           container.style.visibility = 'visible';
+
           let elId = '';
           const currentImgRectForCalc = img.getBoundingClientRect();
           let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
+
           if (lastIdentifiedEl) {
             elId = lastIdentifiedEl.id ? '#' + lastIdentifiedEl.id : lastIdentifiedEl.tagName.toLowerCase();
             if (lastIdentifiedEl.className && typeof lastIdentifiedEl.className === 'string') {
@@ -546,23 +657,30 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             // Use the new element's rect for calculation
             currentTargetRectForCalc = lastIdentifiedEl.getBoundingClientRect();
           }
+
           finalRelX = Math.round(currentImgRectForCalc.left - currentTargetRectForCalc.left);
           finalRelY = Math.round(currentImgRectForCalc.top - currentTargetRectForCalc.top);
+
           debugOverlay.innerText = `Target: ${elId || 'None'} | x: ${finalRelX}, y: ${finalRelY}`;
         }
       };
+
       document.onmouseup = () => {
         // Ensure visibility is restored
         container.style.visibility = 'visible';
+
         document.onmousemove = null;
         document.onmouseup = null;
         isDragging = false; // Разрешаваме отново автоматичното позициониране
+
         if (wasDragged) {
           // Use lastIdentifiedEl found during drag instead of recalculating
           const currentImgRect = img.getBoundingClientRect();
           const el = lastIdentifiedEl;
+
           let elId = '';
           let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
+
           if (el) {
             elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
             if (el.className && typeof el.className === 'string') {
@@ -572,17 +690,22 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             // Use the new element's rect for calculation
             currentTargetRectForCalc = el.getBoundingClientRect();
           }
+
           const isGeneric = !el || el.tagName === 'BODY' || el.tagName === 'HTML';
+
           if (!isGeneric) {
             finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
             finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
+
             step.x = finalRelX;
             step.y = finalRelY;
+
             if (elId && elId !== step.target) {
               step.target = elId;
               const newTarget = document.querySelector(elId);
               if (newTarget) targetEl = newTarget;
             }
+
             const currentBx = step.bx || 0;
             const currentBy = step.by || 0;
             const currentBWidth = step.bWidth || 0;
@@ -593,12 +716,14 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
           } else {
             debugOverlay.innerText = `Reverted (Target: ${elId || 'None'})`;
           }
+
           // Reset click handler
           img.onclick = null;
           setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
         }
       };
     };
+
     // Touch support for image drag
     img.ontouchstart = (e) => {
       e.preventDefault();
@@ -606,43 +731,56 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         clearTimeout(stepTimer);
         stepTimer = null;
       }
+
       isDragging = true;
       wasDragged = false;
       const touch = e.touches[0];
       startX = touch.clientX;
       startY = touch.clientY;
+
       if (!container) return;
+
       const rect = container.getBoundingClientRect();
       container.style.transform = 'none';
       container.style.left = rect.left + 'px';
       container.style.top = rect.top + 'px';
       container.style.position = 'fixed'; // Ensure fixed if it was centered
+
       initialLeft = rect.left;
       initialTop = rect.top;
+
       let lastIdentifiedEl = null;
+
       document.ontouchmove = (moveEvent) => {
         const moveTouch = moveEvent.touches[0];
         const dx = moveTouch.clientX - startX;
         const dy = moveTouch.clientY - startY;
+
         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
           wasDragged = true;
         }
+
         if (wasDragged) {
           container.style.left = initialLeft + dx + "px";
           container.style.top = initialTop + dy + "px";
+
           // Identify element (update lastIdentifiedEl)
           const currentImgRect = img.getBoundingClientRect();
           let pX = currentImgRect.right - 10; // Default (r-up)
+
           if (img.src && (img.src.includes('l-up') || img.src.includes('l-down'))) {
             pX = currentImgRect.left;
           }
+
           let pY = currentImgRect.top + 10; // Default (up)
           if (img.src && (img.src.includes('l-down') || img.src.includes('r-down'))) {
             pY = currentImgRect.bottom - 10;
           }
+
           container.style.visibility = 'hidden';
           lastIdentifiedEl = document.elementFromPoint(pX, pY);
           container.style.visibility = 'visible';
+
           if (lastIdentifiedEl) {
             const el = lastIdentifiedEl;
             let elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
@@ -654,23 +792,29 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             const currentTargetRectForCalc = el.getBoundingClientRect();
             const finalRelX = Math.round(currentImgRectForCalc.left - currentTargetRectForCalc.left);
             const finalRelY = Math.round(currentImgRectForCalc.top - currentTargetRectForCalc.top);
+
             const debugOverlay = document.getElementById('msm-debug-overlay');
             if (debugOverlay) debugOverlay.innerText = `Target: ${elId || 'None'} | x: ${finalRelX}, y: ${finalRelY}`;
           }
         }
       };
+
       document.ontouchend = () => {
         // Ensure visibility is restored
         container.style.visibility = 'visible';
+
         document.ontouchmove = null;
         document.ontouchend = null;
         isDragging = false;
+
         if (wasDragged) {
           // Use lastIdentifiedEl instead of recalculating
           const currentImgRect = img.getBoundingClientRect();
           const el = lastIdentifiedEl;
+
           let elId = '';
           let currentTargetRectForCalc = targetEl.getBoundingClientRect(); // Default
+
           if (el) {
             elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
             if (el.className && typeof el.className === 'string') {
@@ -680,17 +824,22 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             // Use the new element's rect for calculation
             currentTargetRectForCalc = el.getBoundingClientRect();
           }
+
           const isGeneric = !el || el.tagName === 'BODY' || el.tagName === 'HTML';
+
           if (!isGeneric) {
             finalRelX = Math.round(currentImgRect.left - currentTargetRectForCalc.left);
             finalRelY = Math.round(currentImgRect.top - currentTargetRectForCalc.top);
+
             step.x = finalRelX;
             step.y = finalRelY;
+
             if (elId && elId !== step.target) {
               step.target = elId;
               const newTarget = document.querySelector(elId);
               if (newTarget) targetEl = newTarget;
             }
+
             const currentBx = step.bx || 0;
             const currentBy = step.by || 0;
             const currentBWidth = step.bWidth || 0;
@@ -701,6 +850,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
           } else {
             debugOverlay.innerText = `Reverted (Target: ${elId || 'None'})`;
           }
+
           // Reset click handler
           img.onclick = null;
           setTimeout(() => { img.onclick = wrappedNextStep; }, 100);
@@ -718,7 +868,9 @@ document.addEventListener('DOMContentLoaded', () => {
     appTitle.style.cursor = 'pointer';
     appTitle.style.userSelect = 'none'; // Предотвратява избор на текст
     appTitle.style.webkitUserSelect = 'none'; // За Safari
+
     let clickTimer = null;
+
     // Single click - start guide
     appTitle.addEventListener('click', () => {
       if (clickTimer) clearTimeout(clickTimer);
@@ -727,6 +879,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clickTimer = null;
       }, 300);
     });
+
     // Double click - center guide on screen
     const handleDoubleClick = (e) => {
       if (clickTimer) {
@@ -740,22 +893,29 @@ document.addEventListener('DOMContentLoaded', () => {
           cancelAnimationFrame(animationFrameId);
           animationFrameId = null;
         }
+
         // Скриваме контейнера временно
         container.style.visibility = 'hidden';
+
         // Изчисляваме центъра на екрана
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         const containerRect = container.getBoundingClientRect();
+
         const centerX = (viewportWidth - containerRect.width) / 2;
         const centerY = (viewportHeight - containerRect.height) / 2;
+
         // Позиционираме контейнера в центъра
         container.style.left = centerX + window.scrollX + 'px';
         container.style.top = centerY + window.scrollY + 'px';
+
         // Показваме контейнера отново
         container.style.visibility = 'visible';
       }
     };
+
     appTitle.addEventListener('dblclick', handleDoubleClick);
+
     // Double tap detection for mobile
     let lastTap = 0;
     appTitle.addEventListener('touchend', (e) => {
@@ -766,6 +926,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       lastTap = currentTime;
     });
+
     // Auto-start if configured
     if (typeof msm !== 'undefined' && msm) {
       // Изчакваме малко, за да се заредят шрифтове и стилове
@@ -782,14 +943,18 @@ window.msmFlipImage = function () {
     console.warn('No active step to flip image for');
     return;
   }
+
   const imgEl = container.querySelector('.guide-img');
   const imgRect = imgEl ? imgEl.getBoundingClientRect() : { width: currentActiveStep.height || 100, height: currentActiveStep.height || 100 };
   const oldWidth = imgRect.width;
   const oldHeight = imgRect.height;
+
   let src = currentActiveStep.image;
   let newSrc = src;
+
   // Cycle: r-up -> l-up -> l-down -> r-down -> r-up
   let transition = ''; // 'rl' (Right to Left), 'lr', 'tb' (Top to Bottom), 'bt'
+
   if (src.includes('r-up')) {
     newSrc = src.replace('r-up', 'l-up');
     transition = 'rl';
@@ -803,26 +968,34 @@ window.msmFlipImage = function () {
     newSrc = src.replace('r-down', 'r-up');
     transition = 'bt'; // Bottom to Top (Right stays Right)
   }
+
   if (newSrc !== src) {
     currentActiveStep.image = newSrc;
+
     if (imgEl) {
       const cleanSrc = newSrc.endsWith('!') ? newSrc.slice(0, -1) : newSrc;
+
       // Load new image
       imgEl.src = cleanSrc;
+
       // Handle the coordinate shift AFTER the new image dimensions are known
       imgEl.onload = () => {
         const newRect = imgEl.getBoundingClientRect();
         const newWidth = newRect.width;
         const newHeight = newRect.height;
+
         let xChange = 0;
         let yChange = 0;
+
         // Logic: Keep the pointer tip at the same screen location.
         // We adjust the Top-Left (x, y) of the image to make this happen.
+
         // Pointers:
         // l-up: (0, 10)
         // r-up: (W, 10)
         // l-down: (0, H-10)
         // r-down: (W, H-10)
+
         if (transition === 'rl') {
           // r-up (W, 10) -> l-up (0, 10)
           // Old Pointer X = OldX + OldW
@@ -855,8 +1028,10 @@ window.msmFlipImage = function () {
           // X: W -> W. NewX = OldX + OldW - NewW
           xChange = oldWidth - newWidth;
         }
+
         currentActiveStep.x = (currentActiveStep.x || 0) + xChange;
         currentActiveStep.y = (currentActiveStep.y || 0) + yChange;
+
         const debugOverlay = document.getElementById('msm-debug-overlay');
         if (debugOverlay) {
           debugOverlay.innerText = `Flipped: ${transition}\nNew x: ${Math.round(currentActiveStep.x)}\nNew y: ${Math.round(currentActiveStep.y)}`;

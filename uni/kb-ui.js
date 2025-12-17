@@ -86,7 +86,7 @@ class KBUI {
                     type="text" 
                     id="kb-input" 
                     class="kb-input" 
-                    placeholder="Задайте въпрос..."
+                    placeholder="${(window.kbAssistant && typeof window.kbAssistant.getText === 'function') ? window.kbAssistant.getText('inputPlaceholder') : '...'}"
                     autocomplete="off"
                 />
                 <button class="kb-clear-btn" id="kb-clear-btn" title="Clear">×</button>
@@ -545,7 +545,7 @@ class KBUI {
      * @param {string} customClass - Опционален допълнителен клас
      * @param {boolean} showIcon - Дали да се показва икона
      */
-    addMessage(type, content, customClass = '', showIcon = true) {
+    addMessage(type, content, customClass = '', showIcon = true, scrollMode = 'auto') {
         const messageDiv = document.createElement('div');
         messageDiv.className = `kb-message kb-message-${type}`;
 
@@ -567,8 +567,25 @@ class KBUI {
 
         this.chatBox.appendChild(messageDiv);
 
-        // Scroll до дъното
-        this.scrollToBottom();
+        // Scroll logic
+        if (scrollMode === 'none') {
+            // No scroll
+        } else if (scrollMode === 'bottom') {
+            this.scrollToBottom();
+        } else if (scrollMode === 'start') {
+            setTimeout(() => {
+                messageDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        } else {
+            // auto
+            if (type === 'assistant') {
+                setTimeout(() => {
+                    messageDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+            } else {
+                this.scrollToBottom();
+            }
+        }
 
         // Запазваме в историята
         this.chatHistory.push({ type, content });
@@ -601,7 +618,7 @@ class KBUI {
 
         html += '</div>';
 
-        this.addMessage('assistant', html, 'kb-compact-padding', false);
+        this.addMessage('assistant', html, 'kb-compact-padding', false, 'none');
     }
 
     /**
@@ -759,12 +776,11 @@ class KBUI {
      */
     updateLanguage() {
         const lang = window.kbAssistant.getCurrentLanguage();
-        const placeholders = {
-            bg: 'Задайте въпрос...',
-            en: 'Ask a question...'
-        };
-
-        this.inputField.placeholder = placeholders[lang] || placeholders.en;
+        if (window.kbAssistant && typeof window.kbAssistant.getText === 'function') {
+            this.inputField.placeholder = window.kbAssistant.getText('inputPlaceholder');
+        } else {
+            this.inputField.placeholder = placeholders[lang] || placeholders.en;
+        }
 
         // Обновяваме title на FAB
         const titles = {

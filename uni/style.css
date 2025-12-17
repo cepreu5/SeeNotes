@@ -414,6 +414,10 @@ main {
     margin: 0 10% 10% 8%;
 }
 
+.note:not(.note-item) .note-content-wrapper>.note-content {
+    margin: 0;
+}
+
 .note-content {
     flex-grow: 1;
     overflow-y: hidden;
@@ -561,6 +565,11 @@ code {
     text-overflow: ellipsis;
     margin-bottom: 0;
     /* Премахва стандартния долен марджин на h3 */
+}
+
+.note:not(.note-item) .note-title-truncated {
+    margin-left: 0;
+    margin-right: 0;
 }
 
 .note-header-info {
@@ -2612,4 +2621,33 @@ body.selection-locked .note.active-selection-note .note-content {
     -webkit-user-select: text;
     -moz-user-select: text;
     user-select: text;
+}
+
+/* Note Header Info & Board Links */
+/* Note Header Info & Board Links */
+.note-header-info {
+    display: flex;
+    align-items: center;
+    font-size: 0.8em;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+.note-header-board-link {
+    display: none;
+    /* Hidden by default */
+    margin-right: 8px;
+    font-weight: bold;
+    text-decoration: underline;
+    cursor: pointer;
+    color: #333;
+}
+
+/* Show only when in global view mode */
+.global-view-mode .note-header-board-link {
+    display: block;
+}
+
+.note-header-board-link:hover {
+    color: #000;
 }
