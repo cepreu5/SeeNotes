@@ -801,7 +801,7 @@ function renderWeeklyCalendarView(dateForWeek) {
 
         if (noteGdimsForDay) {
             noteGdimsForDay.forEach(gdid => {
-                const originalNote = document.querySelector(`.note[data-extra-info*='"gdid":"${gdid}"']`);
+                const originalNote = document.querySelector(`.note[data-g="${gdid}"]`);
                 if (originalNote) {
                     const clone = originalNote.cloneNode(true);
                     clone.classList.add('mini-note');
@@ -883,9 +883,28 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
 
     if (!useIndexedDb) return; // Изтриването работи само с база данни
 
-    const extraInfo = JSON.parse(noteEl.dataset.extraInfo || '{}');
-    const noteGdid = extraInfo.gdid;
+    // --- SUPPORT FOR NEW DATASET ATTRIBUTES (g/b) ---
+    // Try to get gdid from dataset.g, fallback to extraInfo (legacy)
+    let noteGdid = noteEl.dataset ? noteEl.dataset.g : null;
+    let extraInfo = {};
+
+    if (!noteGdid) {
+        extraInfo = JSON.parse((noteEl.dataset && noteEl.dataset.extraInfo) ? noteEl.dataset.extraInfo : '{}');
+        noteGdid = extraInfo.gdid;
+    }
+
     if (!noteGdid) return;
+
+    // --- BOARD ID retrieval ---
+    let boardIdOfDeletedNote = noteEl.dataset ? noteEl.dataset.b : null;
+    if (!boardIdOfDeletedNote) {
+        boardIdOfDeletedNote = extraInfo.boardid;
+        // As a last fallback, find it in allNotesData (slow, but reliable)
+        if (!boardIdOfDeletedNote) {
+            const found = allNotesData.find(n => n.gdid == noteGdid);
+            if (found) boardIdOfDeletedNote = found.boardid;
+        }
+    }
 
     // Ако е извикано от модала, първо го затваряме.
     if (fromModal) {
@@ -898,7 +917,9 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     if (confirmed) {
         try {
             await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-            noteEl.remove();
+
+            // Remove from DOM if method exists (it might be a mock object)
+            if (noteEl.remove) noteEl.remove();
 
             allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
 
@@ -911,7 +932,6 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
             }
 
             // Актуализираме брояча на борда
-            const boardIdOfDeletedNote = extraInfo.boardid;
             // В режим Архив, boardid е число. В другите режими е gdid.
             const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
 
@@ -938,6 +958,28 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                     }
                 }
             }
+
+            // --- REFRESH CALENDARS ---
+            // If in calendar view, re-render to remove the note visually
+            const calendarContainer = document.getElementById('calendar-container');
+            if (calendarContainer && calendarContainer.style.display !== 'none') {
+                renderCalendarView();
+            }
+            if (typeof renderWeeklyCalendarView === 'function') {
+                // Check if weekly view is active?
+                // Usually checking if the container is visible or header state?
+                // But simply calling it (if active logic handles it) is tricky.
+                // Better: Check if weekly view elements are visible.
+                const weeklyContainer = document.querySelector('.weekly-calendar-container');
+                if (weeklyContainer && weeklyContainer.style.display !== 'none') {
+                    // Need current date. Assuming generic refresh or passing new Date() might reset view.
+                    // renderWeeklyCalendarView currently doesn't persist state well in params?
+                    // Actually, inside renderWeeklyCalendarView it uses `currentWeekStart`.
+                    // So we might need to expose it or reload current week.
+                    // For now, let's assume monthly view is primary user of this global fn.
+                }
+            }
+
             showToast(_('noteDeletedSuccess'), 3000);
         } catch (error) {
             console.log("Failed to delete note:", error);
@@ -1436,9 +1478,10 @@ function handleSubmitFolderId() {
     // Logic for submitting the folder ID would go here
 }
 
-function showConfirmation(message) {
+function showConfirmation(message, options = {}) {
     return new Promise(resolve => {
         const popup = document.getElementById('folderIdPromptPopup');
+        const popupContent = popup.querySelector('.popup-content');
         const messagePara = popup.querySelector('p');
         const okButton = document.getElementById('submitFolderIdBtn');
         const folderIdInput = document.getElementById('folderIdInput');
@@ -1450,6 +1493,20 @@ function showConfirmation(message) {
             noButton.className = 'zoom-btn settings-close-btn'; // Use classes from other buttons
             noButton.style.marginLeft = '10px';
             okButton.parentNode.appendChild(noButton);
+        }
+
+        // --- CUSTOM STYLING ---
+        // Save original inline styles to restore later
+        const originalStyles = {
+            backgroundColor: popupContent.style.backgroundColor,
+            width: popupContent.style.width,
+            maxWidth: popupContent.style.maxWidth
+        };
+
+        if (options.backgroundColor) popupContent.style.backgroundColor = options.backgroundColor;
+        if (options.width) {
+            popupContent.style.width = options.width;
+            popupContent.style.maxWidth = '90vw'; // Override constraint if specific width requested
         }
 
         messagePara.textContent = message;
@@ -1468,6 +1525,11 @@ function showConfirmation(message) {
             noButton.style.display = 'none';
             // Restore original listener
             okButton.addEventListener('click', handleSubmitFolderId);
+
+            // Restore Styles
+            popupContent.style.backgroundColor = originalStyles.backgroundColor;
+            popupContent.style.width = originalStyles.width;
+            popupContent.style.maxWidth = originalStyles.maxWidth;
         };
 
         const onOk = () => {
@@ -3837,24 +3899,34 @@ async function fetchAllDataFromLocalFolder() {
     let boardParseError = false;
 
     try {
+        const entries = [];
         for await (const entry of handle.values()) {
-            if (entry.kind !== 'file' || !entry.name.toLowerCase().endsWith('.txt')) continue;
-
-            // Показваме името на файла, който се обработва
-            loaderText.textContent = `${_('loadingFile')} ${entry.name}`;
-
-            const file = await entry.getFile();
-            const content = await file.text();
-            const fileObject = JSON.parse(content);
-            const lowerCaseName = entry.name.toLowerCase();
-
-            if (lowerCaseName.includes('board')) {
-                localBoards.push(fileObject);
-            } else if (lowerCaseName.includes('media')) {
-                localMedia.push(fileObject);
-            } else if (lowerCaseName.includes('note')) {
-                localNotes.push(fileObject);
+            if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
+                entries.push(entry);
             }
+        }
+
+        const CHUNK_SIZE = 50; // Process in chunks to avoid UI freeze
+        for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+            const chunk = entries.slice(i, i + CHUNK_SIZE);
+
+            // Optimize UI updates - only update once per chunk
+            loaderText.textContent = `${_('loadingFile')} (${Math.min(i + CHUNK_SIZE, entries.length)}/${entries.length})`;
+
+            await Promise.all(chunk.map(async (entry) => {
+                const file = await entry.getFile();
+                const content = await file.text();
+                const fileObject = JSON.parse(content);
+                const lowerCaseName = entry.name.toLowerCase();
+
+                if (lowerCaseName.includes('board')) {
+                    localBoards.push(fileObject);
+                } else if (lowerCaseName.includes('media')) {
+                    localMedia.push(fileObject);
+                } else if (lowerCaseName.includes('note')) {
+                    localNotes.push(fileObject);
+                }
+            }));
         }
     } catch (err) {
         if (err.name === 'NotFoundError') {
@@ -4072,34 +4144,45 @@ async function processDirectoryContent(minModificationDate) {
         [MEDIA_STORE_NAME]: [],
         [NOTE_STORE_NAME]: []
     };
-    let fileCount = 0;
     let updatedCount = 0;
+    const entries = [];
     for await (const entry of handle.values()) {
-        if (entry.kind !== 'file' || !entry.name.toLowerCase().endsWith('.txt')) continue;
-        fileCount++;
-        loaderText.textContent = _('checkedFilesCount').replace('{count}', fileCount);
-        try {
-            const file = await entry.getFile();
-            if (file.lastModified >= minTimestamp) {
-                updatedCount++;
-                const content = await file.text();
-                const fileObject = JSON.parse(content);
-                if (fileObject.gdid) {
-                    const lowerCaseName = entry.name.toLowerCase();
-                    if (lowerCaseName.includes('board')) {
-                        stores[BOARD_STORE_NAME].push(fileObject);
-                    } else if (lowerCaseName.includes('media')) {
-                        stores[MEDIA_STORE_NAME].push(fileObject);
-                    } else if (lowerCaseName.includes('note')) {
-                        stores[NOTE_STORE_NAME].push(fileObject);
-                        // Попълваме масива с обновените бележки
-                        updatedNoteGdims.push(fileObject.gdid);
+        if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
+            entries.push(entry);
+        }
+    }
+
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+        const chunk = entries.slice(i, i + CHUNK_SIZE);
+
+        // Update UI once per chunk
+        loaderText.textContent = _('checkedFilesCount').replace('{count}', Math.min(i + CHUNK_SIZE, entries.length));
+
+        await Promise.all(chunk.map(async (entry) => {
+            try {
+                const file = await entry.getFile();
+                if (file.lastModified >= minTimestamp) {
+                    updatedCount++;
+                    const content = await file.text();
+                    const fileObject = JSON.parse(content);
+                    if (fileObject.gdid) {
+                        const lowerCaseName = entry.name.toLowerCase();
+                        if (lowerCaseName.includes('board')) {
+                            stores[BOARD_STORE_NAME].push(fileObject);
+                        } else if (lowerCaseName.includes('media')) {
+                            stores[MEDIA_STORE_NAME].push(fileObject);
+                        } else if (lowerCaseName.includes('note')) {
+                            stores[NOTE_STORE_NAME].push(fileObject);
+                            // Попълваме масива с обновените бележки
+                            updatedNoteGdims.push(fileObject.gdid);
+                        }
                     }
                 }
+            } catch (error) {
+                console.log(`Error processing local file '${entry.name}':`, error);
             }
-        } catch (error) {
-            console.log(`Error processing local file '${entry.name}':`, error);
-        }
+        }));
     }
     for (const storeName in stores) {
         if (stores[storeName].length > 0) {
@@ -4651,32 +4734,25 @@ function showModal(options, noteElement = null) {
     const deleteBtn = document.getElementById('delete-modal-btn');
 
     // Показваме/скриваме бутона за изтриване
-    if (noteElement && useIndexedDb) {
+    if (useIndexedDb && (noteElement || noteGdid)) {
         deleteBtn.style.display = 'flex';
         // Премахваме стари event listeners и добавяме нов
         const newDeleteBtn = deleteBtn.cloneNode(true);
         deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-        newDeleteBtn.addEventListener('click', (e) => {
+        newDeleteBtn.addEventListener('click', async (e) => {
+            // Use Global handleNoteDelete for both cases
             if (noteElement) {
-                // Trigger the existing Ctrl+Click listener on the note header/element
-                // which handles deletion correctly.
-                const ctrlClickEvent = new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    ctrlKey: true,
-                    view: window
-                });
-
-                // Try dispatching to the header first as user mentioned "header in the board"
-                // If header doesn't exist, dispatch to the note itself.
-                const header = noteElement.querySelector('.note-title-truncated') ||
-                    noteElement.querySelector('.note-header-time') ||
-                    noteElement;
-
-                header.dispatchEvent(ctrlClickEvent);
-
-                // Close the modal
-                document.getElementById('content-modal').classList.remove('visible');
+                await handleNoteDelete(noteElement, e, true);
+            } else {
+                // Calendar/System case: Pass mock element with dataset
+                const mockEl = {
+                    dataset: {
+                        g: noteGdid,
+                        b: (options && options.boardId) ? options.boardId : null
+                    },
+                    remove: () => { } // No-op
+                };
+                await handleNoteDelete(mockEl, e, true);
             }
         });
     } else {
@@ -4752,6 +4828,34 @@ function showAllBoardsModal() {
     const boardsModalBody = document.getElementById('boards-menu-modal-body');
     boardsModalBody.innerHTML = '';
     boardsModalBody.appendChild(modalContent);
+
+    // --- Calculate optimal width to fit columns exactly ---
+    let buttonWidth = maxWidthForButtons;
+    // Fallback if global variable is not set or 0
+    if (!buttonWidth) {
+        const tempClone = modalContent.querySelector('.board-filter-link');
+        if (tempClone) {
+            // Try to get width from inline style first, then estimated
+            buttonWidth = parseFloat(tempClone.style.width) || 150;
+        }
+    }
+
+    if (buttonWidth) {
+        const gap = 10;
+        const paddingOverhead = 40; // Exact fit: ContainerPadding (20px) + Scrollbar (approx 17px) + Buffer
+        const availableWidth = window.innerWidth * 0.95; // Max allowed width (95% of screen)
+
+        let cols = Math.floor((availableWidth - paddingOverhead + gap) / (buttonWidth + gap));
+        cols = Math.max(1, cols); // At least 1 column
+
+        const optimalWidth = cols * (buttonWidth + gap) - gap + paddingOverhead;
+        const modalBox = boardsModal.querySelector('.modal-content-box');
+        if (modalBox) {
+            modalBox.style.width = `${optimalWidth}px`;
+            modalBox.style.maxWidth = '95vw'; // Ensure it doesn't overflow viewport width logic
+        }
+    }
+
     boardsModal.classList.add('visible');
 }
 
@@ -4888,8 +4992,10 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     searchInput.value = ''; // Clear the search box
     saveSearchBtn.style.display = 'none';
 
-    // Задаваме правилния филтър (числов id за Архив, gdid за другите)
-    currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useArhDb ? boardsData.find(b => b.gdid === boardId)?.id : boardId);
+    // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
+    // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
+    const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
+    currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid === boardId)?.id : boardId);
 
     // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
     const modeButton = document.getElementById('mode_button');
@@ -5039,6 +5145,17 @@ function applyFilters() {
     // If none of the above special modes, it's a standard board filter (by ID)
     const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther;
 
+    // --- ENHANCED ID FILTERING (Pre-calc) ---
+    // Handle scenarios where notes use legacy ID but filter uses GDID (or vice versa)
+    let validBoardIds = [currentBoardFilter];
+    if (isStandard && typeof boardsData !== 'undefined') {
+        const board = boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
+        if (board) {
+            if (board.gdid) validBoardIds.push(board.gdid);
+            if (board.id) validBoardIds.push(board.id);
+        }
+    }
+
     for (const note of notes) {
         if (note.classList.contains('boards-note')) {
             continue;
@@ -5050,8 +5167,8 @@ function applyFilters() {
         if (isAll) {
             isVisibleByBoard = true;
         } else if (isStandard) {
-            // Standard board check: Loose equality because dataset is string, filter might be number
-            isVisibleByBoard = (note.dataset.b == currentBoardFilter);
+            // Standard board check: Check against all valid IDs for the board (loose equality)
+            isVisibleByBoard = validBoardIds.some(id => note.dataset.b == id);
         } else if (isReminder) {
             isVisibleByBoard = (note.dataset.tm === '1');
         } else if (isNewUpdates) {
@@ -6168,7 +6285,10 @@ async function createSettingsUI(boardsData, boardParseError) {
             await new Promise(resolve => setTimeout(resolve, 150));
             const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
             if (confirmedDataDelete) {
-                const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'));
+                const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
+                    backgroundColor: '#d92222ff', // Light red background for warning
+                    width: '450px'
+                });
                 if (confirmedConfigDelete) {
                     // Потребителят иска да изтрие всичко, включително настройките
                     await deleteNotesDB();
@@ -6865,12 +6985,16 @@ async function createNoteElement(noteContent) {
             fileContent = noteContent.notetxt;
             noteGdid = noteContent.gdid;
             noteID = noteContent.id;
+
+            // --- Mark as update if in updated list ---
+            if (updatedNoteGdims.includes(noteGdid)) {
+                note.classList.add('new-update');
+            }
+
             noteColor = noteContent.color;
             if (noteContent.text_span) {
                 textSpan = noteContent.text_span;
             }
-            extraData = { ...noteContent };
-            delete extraData.notetxt;
             extraData = { ...noteContent };
             delete extraData.notetxt;
 

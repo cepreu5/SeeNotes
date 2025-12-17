@@ -2702,3 +2702,36 @@ body.selection-locked .note.active-selection-note .note-content {
 .note-header-board-link:hover {
     color: #000;
 }
+
+/* Boards Menu Modal Container - Center Align Container, Right Align Items */
+.all-boards-modal-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    /* Items align right relative to container set by fit-content */
+    gap: 10px;
+    width: fit-content;
+    /* Container shrinks to fit columns exactly */
+    margin: 0 auto;
+    /* Center the container horizontally */
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+/* Remove potential margins from clones to let gap handle spacing */
+/* Remove potential margins from clones to let gap handle spacing */
+.all-boards-modal-container .board-filter-link {
+    margin: 0 !important;
+    box-sizing: border-box;
+    /* Ensure width calculation matches reality */
+}
+
+/* Override default fixed width for boards modal to allow dynamic calculation */
+#boards-menu-modal .modal-content-box {
+    width: auto;
+    max-width: 95vw;
+    display: block;
+    /* Override flex display if needed to allow fit-content behavior on children properly? No, flex column is fine */
+}
+
+}
