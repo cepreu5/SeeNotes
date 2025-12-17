@@ -2107,7 +2107,7 @@ function initApp() {
 
                 // B. Обновяване на DOM-а
                 // Първо премахваме съществуващия елемент, ако има такъв
-                const existingEl = document.querySelector(`.note[data-extra-info*='"gdid":"${newNote.gdid}"']`);
+                const existingEl = document.querySelector(`.note[data-g="${newNote.gdid}"]`);
                 if (existingEl) {
                     existingEl.remove();
                 }
@@ -4511,9 +4511,9 @@ function showModal(options, noteElement = null) {
         rawContent = rawContent.replace('|', '\n');
     }
     if (formatString && formatString.trim() !== '') {
-        displayContent = formatText(rawContent, formatString);
+        displayContent = formatText(rawContent, formatString, true); // isForModal = true
     } else {
-        displayContent = renderNoteContent(rawContent);
+        displayContent = processNoteContent(rawContent, true); // isForModal = true
     }
     modalBody.innerHTML = displayContent;
     // Set modal background color
@@ -4598,7 +4598,27 @@ function showModal(options, noteElement = null) {
         const newDeleteBtn = deleteBtn.cloneNode(true);
         deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
         newDeleteBtn.addEventListener('click', (e) => {
-            handleNoteDelete(noteElement, e, true); // true, за да затвори модала
+            if (noteElement) {
+                // Trigger the existing Ctrl+Click listener on the note header/element
+                // which handles deletion correctly.
+                const ctrlClickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    ctrlKey: true,
+                    view: window
+                });
+
+                // Try dispatching to the header first as user mentioned "header in the board"
+                // If header doesn't exist, dispatch to the note itself.
+                const header = noteElement.querySelector('.note-title-truncated') ||
+                    noteElement.querySelector('.note-header-time') ||
+                    noteElement;
+
+                header.dispatchEvent(ctrlClickEvent);
+
+                // Close the modal
+                document.getElementById('content-modal').classList.remove('visible');
+            }
         });
     } else {
         deleteBtn.style.display = 'none';
@@ -4933,96 +4953,113 @@ function applyFilters() {
             continue;
         }
 
-        const extraInfo = note.dataset.extraInfo;
-        let data = {};
-        try {
-            if (extraInfo) data = JSON.parse(extraInfo);
-        } catch (e) { console.error('Error parsing extraInfo for note:', e); }
+        // --- OPTIMIZATION: Read directly from SHORT dataset attributes ---
+        const noteBoardId = note.dataset.b; // data-b = boardid
+        const noteStatus = parseInt(note.dataset.s || '0', 10); // data-s = status
 
+        // --- Фиктриране по Борд ---
         const isVisibleByBoard = (currentBoardFilter === 'all') ||
-            (currentBoardFilter === 'reminder' && data.timer && data.timer !== 0) ||
-            (currentBoardFilter === 'new-updates' && updatedNoteGdims.includes(data.gdid)) ||
-            // --- КОРЕКЦИЯ: Проверяваме за новия, специфичен атрибут за снимки ---
-            (currentBoardFilter === 'with-photos' && note.dataset.hasPhoto === 'true') ||
-            // --- Край на корекцията ---
-            (currentBoardFilter === 'with-videos' && note.dataset.hasVideo === 'true') ||
-            (currentBoardFilter === 'with-sounds' && note.dataset.hasSound === 'true') ||
-            (currentBoardFilter === 'with-other' && note.dataset.hasOtherAttachments === 'true') ||
-            (data.boardid == currentBoardFilter); // Използваме '==' за да сравняваме число и стринг, ако се наложи
+            (currentBoardFilter === 'reminder' && note.dataset.tm === '1') ||  // data-tm = timer
+            (currentBoardFilter === 'new-updates' && (noteStatus === 2 || note.classList.contains('new-update'))) ||
+            (currentBoardFilter === 'with-photos' && note.dataset.hp === '1') || // data-hp = hasPhoto
+            (currentBoardFilter === 'with-videos' && note.dataset.hv === '1') || // data-hv = hasVideo
+            (currentBoardFilter === 'with-sounds' && note.dataset.hs === '1') || // data-hs = hasSound
+            (currentBoardFilter === 'with-other' && note.dataset.ho === '1') || // data-ho = hasOther
+            // Standard board check:
+            (noteBoardId == currentBoardFilter); // Loose equality for string/number match
 
-        const isVisibleBySearch = (() => {
-            if (!searchTerm) return true;
-            if (searchMode === 'title') {
-                const titleEl = note.querySelector('h3');
-                return titleEl ? titleEl.textContent.toLowerCase().includes(searchTerm) : false;
-            } else { // searchMode === 'content'
-                const contentEl = note.querySelector('.note-content');
-                return contentEl ? contentEl.textContent.toLowerCase().includes(searchTerm) : false;
-            }
-        })();
+        // Note: The original logic for 'reminder' and 'new-updates' was likely checking specific fields.
+        // If 'status' in dataset isn't enough, we might need to look up the full object from allNotesData
+        // BUT for standard filtering, dataset is faster.
 
-        // Когато има търсене, игнорираме филтъра по борд и търсим във всички бележки
-        const shouldShow = searchTerm ? isVisibleBySearch : (isVisibleByBoard && isVisibleBySearch);
+        // Let's stick to the original logic structure but using dataset where possible.
+        // Original: extraData (parsed) used for: boardid, datemod, numord.
 
-        if (shouldShow) {
-            visibleCount++;
+        // Re-implementing specific special board logic if it depended on complex extraData:
+        // 'reminder', 'new-updates', 'with-photos' etc. rely on class checks or other global data usually.
+        // Assuming currentBoardFilter matches boardid for standard boards.
+
+        // Filter by Search Term
+        const titleEl = note.querySelector('.note-title-truncated');
+        const contentEl = note.querySelector('.note-content');
+        // ... (search logic uses DOM text content, so it's fine)
+        const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
+        const matchesSearch = searchTerm === '' || noteText.toLowerCase().includes(searchTerm);
+
+        if ((searchTerm !== '' ? matchesSearch : isVisibleByBoard)) {
             note.style.display = 'flex';
+            visibleCount++;
         } else {
             note.style.display = 'none';
         }
     }
 
-    // --- НОВА ЛОГИКА ЗА СОРТИРАНЕ ---
+    // --- Sorting Logic ---
     if (localStorage.getItem('enableNoteSorting') === 'true') {
-        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note)[style*="display: flex"]'));
         const sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
-        const sortInReverse = localStorage.getItem('sortInReverse') === 'true';
+        const sortReverse = localStorage.getItem('sortInReverse') === 'true';
         const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
+        const sortOrder = sortReverse ? -1 : 1;
 
-        const sortOrder = sortInReverse ? -1 : 1;
+        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not([style*="display: none"])'));
 
-        visibleNotes.sort((noteA, noteB) => {
-            const dataA = JSON.parse(noteA.dataset.extraInfo || '{}');
-            const dataB = JSON.parse(noteB.dataset.extraInfo || '{}');
+        visibleNotes.sort((a, b) => {
+            if (a.classList.contains('boards-note')) return -1;
+            if (b.classList.contains('boards-note')) return 1;
 
-            // 1. Приоритет за напомнянията
+            // 1. Reminder Priority
             if (sortRemindersTop) {
-                const isReminderA = dataA.timer && dataA.timer !== 0;
-                const isReminderB = dataB.timer && dataB.timer !== 0;
+                const isReminderA = a.dataset.tm === '1';
+                const isReminderB = b.dataset.tm === '1';
                 if (isReminderA && !isReminderB) return -1;
                 if (!isReminderA && isReminderB) return 1;
             }
 
-            // 2. Основно сортиране
             let valA, valB;
-            if (sortCriteria === 'alpha') {
-                valA = noteA.querySelector('h3')?.textContent.trim().toLowerCase() || '';
-                valB = noteB.querySelector('h3')?.textContent.trim().toLowerCase() || '';
-            } else if (['date', 'datemod', 'calendarDate'].includes(sortCriteria)) {
-                valA = dataA[sortCriteria] ? new Date(dataA[sortCriteria]) : null;
-                valB = dataB[sortCriteria] ? new Date(dataB[sortCriteria]) : null;
+
+            // 2. Main Sorting Criteria (Read from SHORT CODES in dataset)
+            if (sortCriteria === 'numord') {
+                valA = parseFloat(a.dataset.no || 0);
+                valB = parseFloat(b.dataset.no || 0);
+            } else if (sortCriteria === 'datemod') { // Last Modified
+                valA = new Date(a.dataset.dm || 0).getTime();
+                valB = new Date(b.dataset.dm || 0).getTime();
+            } else if (sortCriteria === 'date') { // Creation Date
+                valA = new Date(a.dataset.cd || 0).getTime();
+                valB = new Date(b.dataset.cd || 0).getTime();
+            } else if (sortCriteria === 'calendarDate') { // Calendar Date
+                valA = a.dataset.cda ? new Date(a.dataset.cda).getTime() : null;
+                valB = b.dataset.cda ? new Date(b.dataset.cda).getTime() : null;
+            } else if (sortCriteria === 'alpha') { // Alphabetical
+                valA = a.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
+                valB = b.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
+            } else if (sortCriteria === 'color') { // Color
+                valA = parseInt(a.dataset.c || -1); // data-c
+                valB = parseInt(b.dataset.c || -1);
             } else {
-                valA = dataA[sortCriteria];
-                valB = dataB[sortCriteria];
+                valA = 0; valB = 0; // Fallback
             }
 
-            // Обработка на null/undefined стойности, за да са винаги накрая
-            const aExists = valA !== null && valA !== undefined && valA !== '';
-            const bExists = valB !== null && valB !== undefined && valB !== '';
+            // Handle Null/Undefined values (always push to bottom)
+            const aExists = valA !== null && valA !== undefined && !Number.isNaN(valA) && valA !== '';
+            const bExists = valB !== null && valB !== undefined && !Number.isNaN(valB) && valB !== '';
 
             if (!aExists && bExists) return 1;
             if (aExists && !bExists) return -1;
             if (!aExists && !bExists) return 0;
 
-            // Сравнение с отчитане на посоката
             if (valA < valB) return -1 * sortOrder;
             if (valA > valB) return 1 * sortOrder;
-            return 0; // Елементите са равни
+            return 0;
         });
 
-        // Пренареждане в DOM
         visibleNotes.forEach(note => notesContainer.appendChild(note));
     }
+
+
+
+
+
 
     const noteCounter = document.getElementById('note-counter');
     if (noteCounter) {
@@ -6337,7 +6374,16 @@ function renderNoteContent(text) {
  * @param {string} formatString - Форматиращият низ, разделен с '\n'.
  * @returns {string} Форматираният HTML низ.
  */
-function formatText(text, formatString) {
+/**
+ * Форматира текстов низ възоснова на JSON параметри.
+ * @param {string} text - Текстовият низ за форматиране.
+ * @param {string} formatString - Форматиращият низ, разделен с '\n'.
+ * @param {boolean} isForModal - Дали е за модал (за линковете).
+ * @returns {string} Форматираният HTML низ.
+ */
+function formatText(text, formatString, isForModal = false) {
+    if (!formatString) return processNoteContent(text, isForModal);
+
     if (formatString.endsWith('|')) {
         formatString = formatString.slice(0, -1);
     }
@@ -6349,9 +6395,11 @@ function formatText(text, formatString) {
             return null;
         }
     }).filter(f => f !== null);
+
     if (formats.length === 0) {
-        return renderNoteContent(text);
+        return processNoteContent(text, isForModal);
     }
+
     const points = new Set([0, text.length]);
     formats.forEach(f => {
         points.add(f.start);
@@ -6365,7 +6413,10 @@ function formatText(text, formatString) {
         const segmentText = text.substring(start, end);
         if (segmentText.length === 0) continue;
         const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
-        let formattedSegment = renderNoteContent(segmentText);
+
+        // Use processNoteContent instead of renderNoteContent
+        let formattedSegment = processNoteContent(segmentText, isForModal);
+
         activeFormats.sort((a, b) => b.type - a.type);
         activeFormats.forEach(format => {
             const {
@@ -6728,7 +6779,35 @@ async function createNoteElement(noteContent) {
             }
             extraData = { ...noteContent };
             delete extraData.notetxt;
-            if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
+            extraData = { ...noteContent };
+            delete extraData.notetxt;
+
+            // --- OPTIMIZATION: Use individual SHORT dataset attributes ---
+            // data-g -> gdid, data-i -> id
+            if (noteGdid) note.dataset.g = noteGdid;
+            if (noteID) note.dataset.i = noteID;
+
+            // data-b -> boardid
+            if (extraData.boardid !== undefined) note.dataset.b = extraData.boardid;
+            // data-dm -> datemod
+            if (extraData.datemod) note.dataset.dm = extraData.datemod;
+            // data-no -> numord
+            if (extraData.numord !== undefined) note.dataset.no = extraData.numord;
+            // data-s -> status
+            if (extraData.status !== undefined) note.dataset.s = extraData.status;
+            // data-cd -> date (creation date)
+            if (extraData.date) note.dataset.cd = extraData.date;
+            // data-cda -> calendarDate
+            if (extraData.calendarDate) note.dataset.cda = extraData.calendarDate;
+            // data-c -> color
+            if (noteColor !== null && noteColor !== undefined) note.dataset.c = noteColor;
+
+            // --- Set attributes for special filters (SHORT CODES, "1" for true) ---
+            if (extraData.timer && extraData.timer !== 0) {
+                note.dataset.tm = '1'; // data-tm
+            }
+
+            // if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
             if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
                 // Color will be handled by canvas background
             }
@@ -6844,9 +6923,19 @@ async function createNoteElement(noteContent) {
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
         contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
     } else {
-        if (textSpan && textSpan.trim() !== '') {
-            // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
-            contentEl.innerHTML = processNoteContent(displayContent, isForModal); // isForModal е false за бележките на борда
+        const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
+
+        if (formatSource) {
+            // Use the exact same logic as in showModal to ensure indices match
+            let contentToFormat = fileContent;
+            if (contentToFormat.includes('|')) {
+                contentToFormat = contentToFormat.replace('|', '\n');
+            }
+
+            // Format the full content
+            let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
+
+            contentEl.innerHTML = formattedHtml;
         } else {
             contentEl.innerHTML = processNoteContent(displayContent, isForModal);
         }
@@ -6872,7 +6961,7 @@ async function createNoteElement(noteContent) {
         note.dataset.hasAttachments = 'true';
         // --- КОРЕКЦИЯ: Добавяме специфична проверка за снимки (тип 1) ---
         if (attachments.some(att => att.type === 1)) {
-            note.dataset.hasPhoto = 'true';
+            note.dataset.hp = '1';
 
             // --- Store preview data for programmatic access (e.g. Board Previews) ---
             const firstPhoto = attachments.find(att => att.type === 1);
@@ -6900,15 +6989,15 @@ async function createNoteElement(noteContent) {
         // --- Край на корекцията ---
         // Check for video attachments (type 4)
         if (attachments.some(att => att.type === 4)) {
-            note.dataset.hasVideo = 'true';
+            note.dataset.hv = '1';
         }
         // Check for sound attachments (type 2)
         if (attachments.some(att => att.type === 2)) {
-            note.dataset.hasSound = 'true';
+            note.dataset.hs = '1';
         }
         // Check for other attachments (not type 1 or 4)
         if (attachments.some(att => att.type !== 1 && att.type !== 4 && att.type !== 2)) {
-            note.dataset.hasOtherAttachments = 'true';
+            note.dataset.ho = '1';
         }
 
         // Проверка дали да показваме иконите за прикачени файлове в затворената бележка
@@ -7052,6 +7141,12 @@ async function createNoteElement(noteContent) {
     // и дали бележката има идентификатор.
     if (!isHiddenNote && (noteGdid || noteID) && attachments.length > 0) {
         const uniqueTypes = [...new Set(attachments.map(att => att.type))];
+
+        // --- Set explicit SHORT dataset attributes for attachment types ---
+        if (uniqueTypes.includes(1)) note.dataset.hp = '1'; // data-hp = hasPhoto
+        if (uniqueTypes.includes(4)) note.dataset.hv = '1'; // data-hv = hasVideo
+        if (uniqueTypes.includes(2)) note.dataset.hs = '1'; // data-hs = hasSound
+        if (uniqueTypes.includes(3)) note.dataset.ho = '1'; // data-ho = hasOther
 
         if (uniqueTypes.length > 0) {
             const footerEl = document.createElement('div');

@@ -1,0 +1,17 @@
+режими на търсене - при всяка въведена буква, при въведен текст
+
+В HTML (DOM):
+
+data-gdid -> data-id (или data-g?) -> Нека оставим data-g (gdid)
+data-boardid -> 			data-b (board)
+data-datemod -> 			data-dm (date mod)
+data-numord -> 				data-no (num order)
+data-status -> 				data-s (status)
+data-hasTimer -> 			data-tm (timer)
+data-hasPhoto -> 			data-hp (has photo)
+data-hasVideo -> 			data-hv (has video)
+data-hasSound -> 			data-hs (has sound)
+data-hasOtherAttachments -> data-ho (has other)
+							data-cd (created date)
+							data-cda (calendar date)
+							data-c (color)
