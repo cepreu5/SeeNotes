@@ -2,7 +2,7 @@
 const translations = {
     en: {
         appTitle: 'CX MultiNotes Viewer',
-        searchPlaceholder: 'Search',
+        searchPlaceholder: 'Type text',
         reloadButtonTooltip: 'Reload',
         signoutButtonTooltip: 'Sign Out',
         copyTooltip: 'Copy content',
@@ -224,7 +224,7 @@ const translations = {
     },
     bg: {
         appTitle: 'CX MultiNotes Viewer',
-        searchPlaceholder: 'Търсене',
+        searchPlaceholder: 'Въведете текст',
         reloadButtonTooltip: 'Презареди',
         signoutButtonTooltip: 'Изход',
         copyTooltip: 'Копирай съдържанието',

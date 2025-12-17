@@ -63,7 +63,7 @@ let tokenClient = null; // Client for silent auth refresh
 let notesBgrdChanged = false; // Flag to track if notes background setting changed
 
 // --- Състояние на търсенето ---
-let searchMode = 'title';
+let searchMode = 'content'; // Default to content search (includes title)
 let lastSearchTerm = "";
 let savedSearches = [];
 let maxSavedSearches = 20;
@@ -179,7 +179,7 @@ function gisLoaded() {
                         localStorage.setItem('google_login_hint', userInfo.email);
                     }
                 } catch (error) {
-                    console.error('Failed to fetch user info:', error);
+                    console.log('Failed to fetch user info:', error);
                 }
                 sessionStorage.removeItem('logout_flag');
                 // Вместо redirect, скриваме login страницата и продължаваме
@@ -187,12 +187,12 @@ function gisLoaded() {
                 // Извикваме startApp за да заредим приложението
                 startApp();
             } else {
-                console.error('Failed to get access token');
+                console.log('Failed to get access token');
                 alert(_('authFailed'));
             }
         },
         error_callback: (error) => {
-            console.error("GSI Error:", error);
+            console.log("GSI Error:", error);
             alert(_('authFailed') + `\n\nError: ${error.type}`);
         }
     });
@@ -232,12 +232,12 @@ function loadGoogleIdentityServices(retries = 3) {
     script.defer = true;
     script.onload = () => { gisLoaded(); }; // Извикваме функцията след зареждане
     script.onerror = () => {
-        console.error('Failed to load Google Identity Services');
+        console.log('Failed to load Google Identity Services');
         if (retries > 0) {
             console.log(`Retrying to load GIS... (${retries} attempts left)`);
             setTimeout(() => loadGoogleIdentityServices(retries - 1), 2000);
         } else {
-            console.error('Giving up on loading Google Identity Services. Please check your internet connection or ad blockers.');
+            console.log('Giving up on loading Google Identity Services. Please check your internet connection or ad blockers.');
             if (typeof showToast === 'function') {
                 showToast('Failed to load Google Login. Check internet/adblock.', 5000);
             }
@@ -940,7 +940,7 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
             }
             showToast(_('noteDeletedSuccess'), 3000);
         } catch (error) {
-            console.error("Failed to delete note:", error);
+            console.log("Failed to delete note:", error);
             showToast(_('noteDeletedError') + " - " + error.message, 15000);
         }
     }
@@ -1179,7 +1179,7 @@ function deleteNotesDB() {
         showToast(_('dbDeleted'), 3000);
     };
     deleteRequest.onerror = (event) => { showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000); };
-    deleteRequest.onblocked = (event) => { showToast(_('errorDbDeletionBlocked'), 10000); console.error('Database deletion is blocked unexpectedly:', event); };
+    deleteRequest.onblocked = (event) => { showToast(_('errorDbDeletionBlocked'), 10000); console.log('Database deletion is blocked unexpectedly:', event); };
 }
 
 /**
@@ -1203,7 +1203,7 @@ async function clearDbStores() {
         await Promise.all(clearPromises);
         console.log('Data stores cleared, config preserved.');
     } catch (error) {
-        console.error('Failed to clear data stores:', error);
+        console.log('Failed to clear data stores:', error);
         showToast(_('dbDeleteFailed'), 10000);
     }
 }
@@ -1243,7 +1243,7 @@ async function startApp() {
     /*if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
             .then(reg => console.log('SW registered', reg))
-            .catch(err => console.error('SW registration failed', err));
+            .catch(err => console.log('SW registration failed', err));
     }*/
     console.log('First start:', Date.now());
     ts = await getFirstStartEncoded();
@@ -1280,7 +1280,7 @@ async function startApp() {
             tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
         }
     } catch (e) {
-        console.error("Error pre-calculating token days:", e);
+        console.log("Error pre-calculating token days:", e);
     }
 
     initApp(); // Инициализира UI елементите и event listeners
@@ -1545,7 +1545,7 @@ async function handleCalculateClick() {
             expression = expression.trim();
             isFromClipboard = true;
         } catch (err) {
-            console.error('Failed to read clipboard contents: ', err);
+            console.log('Failed to read clipboard contents: ', err);
             showToast(_('errorClipboardRead'));
             return;
         }
@@ -1590,7 +1590,7 @@ async function handleCalculateClick() {
         }
     } catch (error) {
         showToast(_('invalidExpression'), 3000);
-        console.error("Calculation error:", error);
+        console.log("Calculation error:", error);
     }
 }
 
@@ -1728,38 +1728,39 @@ function initApp() {
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     // --- Search Box Enhancements ---
     const searchWrapper = document.getElementById('search-wrapper');
-    searchModeToggle = document.createElement('button');
-    searchModeToggle.innerHTML = boardIconSvg; // Icon for Title Search
-    searchModeToggle.id = 'search-mode-toggle';
-    searchModeToggle.className = 'search-mode-btn';
-    searchModeToggle.title = _('searchByTitleTooltip');
 
-    searchModeToggle.addEventListener('click', () => {
-        if (searchMode === 'title') {
-            searchMode = 'content';
-            searchModeToggle.innerHTML = noteIconSvg; // Icon for Content Search
-            searchModeToggle.title = _('searchByContentTooltip');
-        } else {
-            searchMode = 'title';
-            searchModeToggle.innerHTML = boardIconSvg; // Icon for Title Search
-            searchModeToggle.title = _('searchByTitleTooltip');
-        }
-        updateSearchPlaceholder(); // Актуализираме placeholder-а
-        applyFilters();
-    });
+    // 1. Static Search Icon (Left)
+    const staticSearchIcon = document.createElement('span');
+    staticSearchIcon.className = 'search-icon-static';
+    staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
+
+    // 2. Clear Button (Right, next to Save)
+    const clearSearchBtn = document.createElement('span');
+    clearSearchBtn.className = 'search-action-btn search-btn-clear';
+    clearSearchBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+    clearSearchBtn.style.display = 'none'; // Hidden initially
+    clearSearchBtn.title = _('closeButton'); // "Close" or "Clear"
+
+    // REMOVED: searchModeToggle logic. We now always search in content (which includes title).
+
+    // Ensure placeholder is correct for content search
+    updateSearchPlaceholder();
     saveSearchBtn = document.createElement('span');
     saveSearchBtn.id = 'save-search-btn';
-    saveSearchBtn.className = 'search-icon';
+    saveSearchBtn.className = 'search-action-btn search-btn-save'; // Updated class
     saveSearchBtn.innerHTML = saveSearchSvg;
     saveSearchBtn.style.display = 'none';
-    saveSearchBtn.style.marginTop = '2px';
+    // saveSearchBtn.style.marginTop = '2px'; // Removed as we use flex centering
     saveSearchBtn.title = _('searchSavedTip');
     const savedSearchesPopup = document.createElement('div');
     savedSearchesPopup.id = 'saved-searches-popup';
+
     // Add all icons and popups to the wrapper
-    searchWrapper.prepend(searchModeToggle);
+    searchWrapper.prepend(staticSearchIcon); // Add Magnifier
+    searchWrapper.appendChild(clearSearchBtn); // Add Clear Button
     searchWrapper.appendChild(saveSearchBtn);
     searchWrapper.appendChild(savedSearchesPopup);
+
     // This function will be the single point for applying search and UI updates
     const triggerSearch = (isUserTyping = false) => {
         if (isUserTyping) {
@@ -1770,11 +1771,46 @@ function initApp() {
             }
         }
         applyFilters(); // This just filters the notes
-        saveSearchBtn.style.display = searchBox.value.trim() ? 'block' : 'none';
+
+        // Show/Hide buttons
+        const hasText = searchBox.value.length > 0;
+        const hasTextTrimmed = searchBox.value.trim().length > 0;
+
+        clearSearchBtn.style.display = hasText ? 'flex' : 'none';
+        saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
     };
-    // Listen for user typing
+    // Listen for user typing with Debounce
+    let searchDebounceTimeout;
     searchBox.addEventListener('input', (event) => {
-        if (event.isTrusted) triggerSearch(true);
+        // Immediate UI update for buttons (no debounce needed for visibility)
+        const hasText = searchBox.value.length > 0;
+        clearSearchBtn.style.display = hasText ? 'flex' : 'none';
+        // Save button might wait for debounce, but usually safer to show immediately too
+        saveSearchBtn.style.display = searchBox.value.trim().length > 0 ? 'flex' : 'none';
+
+        if (!event.isTrusted) return;
+
+        clearTimeout(searchDebounceTimeout);
+        searchDebounceTimeout = setTimeout(() => {
+            triggerSearch(true);
+        }, 300); // Wait 300ms after last keystroke
+    });
+
+    // Handle Enter key
+    searchBox.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent form submission if any
+            searchBox.blur(); // Hide keyboard on mobile
+            triggerSearch(true); // Ensure search is applied
+            document.getElementById('saved-searches-popup').style.display = 'none'; // Close popup
+        }
+    });
+
+    // Clear Button Logic
+    clearSearchBtn.addEventListener('click', () => {
+        searchBox.value = '';
+        triggerSearch(true); // Clear results
+        searchBox.focus();
     });
     searchBox.addEventListener('focus', () => {
         renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
@@ -2160,7 +2196,7 @@ function initApp() {
             ].join('\n');
             showModal({ raw: content, color: '#f0f0f0' });
         } catch (error) {
-            console.error("Error fetching system info:", error);
+            console.log("Error fetching system info:", error);
             showToast(_('errorSysInfo'));
         }
     });
@@ -2175,11 +2211,28 @@ function updateSearchPlaceholder() {
 
     // Префиксът с името на борда е премахнат, тъй като търсенето е във всички бележки
 
-    if (searchMode === 'title') {
-        searchInput.placeholder = `${_('searchPlaceholder')} ${_('searchInTitles')}...`;
-    } else {
-        searchInput.placeholder = `${_('searchPlaceholder')} ${_('searchInContent')}...`;
-    }
+    // Simplified placeholder: always "Въведете текст..." (Type text...)
+    // Assuming 'searchPlaceholder' might be "Search" or "Type text" depending on translation
+    // But user explicitly asked for "Въведете текст".
+    // Let's use the translation key but ensure it matches the request or hardcode if needed.
+    // If _('searchPlaceholder') is generic, we might need a specific key or string.
+
+    // User request: "Въведете текст"
+    // I will set it to use a translation key if available, otherwise fallback.
+    // Given the context, I'll modify the logic to be simpler.
+
+    searchInput.placeholder = `${_('searchPlaceholder')}...`;
+    // If 'searchPlaceholder' is "Search", this becomes "Search...".
+    // If user specifically wants "Type text", I should check if there is a 'typeText' key or similar.
+    // Since I don't see the translation file, I will assume the previous 'searchPlaceholder' was "Търсене".
+    // The user wants "Въведете текст".
+
+    // Let's just hardcode the behavior to match the translation function structure:
+    // Ideally we update the dictionary, but here we can just set the placeholder.
+    // Wait, the user speaks Bulgarian ("Въведете текст"). 
+    // I should probably check if I can just change the string here.
+
+    searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
 }
 
 function saveSearchTerm(term) {
@@ -2220,9 +2273,15 @@ function renderSavedSearchesPopup() {
         item.addEventListener('click', () => {
             searchBox.value = term;
             // Directly call applyFilters to ensure the search runs.
-            // This bypasses the 'input' event listener, so lastSearchTerm is not updated.
             applyFilters();
-            saveSearchBtn.style.display = 'block'; // Also ensure the save icon is visible
+
+            // Find buttons dynamically as they might be local in other scopes
+            const clearBtn = document.querySelector('.search-btn-clear');
+            const saveBtn = document.getElementById('save-search-btn'); // ID logic used before
+
+            if (clearBtn) clearBtn.style.display = 'flex';
+            if (saveBtn) saveBtn.style.display = 'flex';
+
             popup.style.display = 'none';
         });
         contentContainer.appendChild(item); // Add items to the new container
@@ -2446,7 +2505,7 @@ async function refreshAuthToken() {
                 }
             },
             error_callback: (error) => {
-                console.error("Silent refresh failed:", error);
+                console.log("Silent refresh failed:", error);
                 resolve(null);
             }
         });
@@ -2459,7 +2518,7 @@ async function refreshAuthToken() {
                 state: 'silent_refresh'
             });
         } catch (error) {
-            console.error("Error requesting token:", error);
+            console.log("Error requesting token:", error);
             resolve(null);
         }
     });
@@ -2539,7 +2598,7 @@ function handleAuthClick() {
             tokenClient.requestAccessToken({ prompt: 'select_account' });
         }
     } else {
-        console.error('Token client not initialized');
+        console.log('Token client not initialized');
         alert(_('gapiNotReady'));
     }
 }
@@ -2682,7 +2741,7 @@ async function checkAuth() {
                             }
                         })
                         .catch(error => {
-                            console.error('Whitelist check failed:', error);
+                            console.log('Whitelist check failed:', error);
                         });
                 } else {
                     console.log('No user email found for whitelist check or trial registration only.');
@@ -2693,13 +2752,13 @@ async function checkAuth() {
                 sessionStorage.clear();
             }
         } catch (error) {
-            console.error("Грешка при декриптиране на токен:", error);
+            console.log("Грешка при декриптиране на токен:", error);
             pass = false;
             sessionStorage.clear();
         }
     }
     else {
-        console.error("Липсващ токен!");
+        console.log("Липсващ токен!");
         pass = false;
         sessionStorage.clear();
     }
@@ -2829,7 +2888,7 @@ if (urlToken) {
             console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
         }
     } catch (error) {
-        console.error("Грешка при декриптиране на токен:", error);
+        console.log("Грешка при декриптиране на токен:", error);
     }
 }
 else DEMO_MODE = true;
@@ -2896,7 +2955,7 @@ if (urlToken) {
             console.log('Резултат от проверката: НЕВАЛИДЕН');
         }
     } catch (error) {
-        console.error("Грешка при декриптиране на токен:", error);
+        console.log("Грешка при декриптиране на токен:", error);
     }
 }
 if (!pass) {
@@ -2979,7 +3038,7 @@ async function parseFileResults(results, filenameForError) {
             }
         } catch (e) {
             parseError = true;
-            console.error(`Error parsing content from a '${filenameForError}' file:`, e, "Content was:", res.body);
+            console.log(`Error parsing content from a '${filenameForError}' file:`, e, "Content was:", res.body);
         }
     });
     return { data, parseError };
@@ -3005,7 +3064,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
                     return { boardParseError: false }; // Assuming no parse error from local
                 }
             } catch (localDbError) {
-                console.error("Failed to load from local DB as well:", localDbError);
+                console.log("Failed to load from local DB as well:", localDbError);
             }
         }
         // If local loading also fails or is empty, show the original error.
@@ -3278,7 +3337,7 @@ async function createDatabaseFromMemory() {
         dbExists = true; // Маркираме, че базата вече съществува
         return true;
     } catch (error) {
-        console.error("Failed to create/recreate DB from memory:", error);
+        console.log("Failed to create/recreate DB from memory:", error);
         return false;
     }
 }
@@ -3735,7 +3794,7 @@ async function mainLogic() {
             }
         }
     } catch (err) {
-        console.error("Error in mainLogic:", err);
+        console.log("Error in mainLogic:", err);
         showToast(_('errorProcessingFiles'));
         loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
     } finally {
@@ -3799,7 +3858,7 @@ async function fetchAllDataFromLocalFolder() {
         }
     } catch (err) {
         if (err.name === 'NotFoundError') {
-            console.error("Local folder not found:", err);
+            console.log("Local folder not found:", err);
             showToast(_('errorLocalFolderNotFound'), 15000);
             // Изчистваме невалидния handle от базата данни
             await saveConfig('directoryHandle', null);
@@ -3809,7 +3868,7 @@ async function fetchAllDataFromLocalFolder() {
             const folderNameDisplay = document.getElementById('local-sync-folder-name');
             if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
         } else {
-            console.error("Error parsing local files:", err);
+            console.log("Error parsing local files:", err);
             showToast(_('errorNoteParse'));
         }
         boardParseError = true; // Вдигаме флага за грешка и в двата случая
@@ -3908,7 +3967,7 @@ async function validateFolderContent(directoryHandle) {
             }
         }
     } catch (error) {
-        console.error("Error during folder validation:", error);
+        console.log("Error during folder validation:", error);
         return { isValid: false, reason: 'error' };
     }
     // Ако цикълът приключи без да са изпълнени условията
@@ -3937,7 +3996,7 @@ async function validateArhFolderContent(directoryHandle) {
             }
         }
     } catch (error) {
-        console.error("Error during arh folder validation:", error);
+        console.log("Error during arh folder validation:", error);
         return { isValid: false, reason: 'error' };
     }
     // Ако цикълът приключи без да са изпълнени условията
@@ -3976,7 +4035,7 @@ async function getDirectoryHandle(promptUser = false) {
         if (localStorage.getItem('useLocalDb') === 'true') showToast(_('errorLocalFolderNotSelected'), 10000);
         return null;
     } catch (error) {
-        if (error.name !== 'AbortError') console.error("Error getting directory handle:", error);
+        if (error.name !== 'AbortError') console.log("Error getting directory handle:", error);
         return null;
     }
 }
@@ -4039,7 +4098,7 @@ async function processDirectoryContent(minModificationDate) {
                 }
             }
         } catch (error) {
-            console.error(`Error processing local file '${entry.name}':`, error);
+            console.log(`Error processing local file '${entry.name}':`, error);
         }
     }
     for (const storeName in stores) {
@@ -4229,7 +4288,7 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                         mediaUrl = URL.createObjectURL(videoBlob);
                         overlay.mediaUrlToRevoke = mediaUrl;
                     } catch (err) {
-                        console.error("Failed to load GDrive video blob:", err);
+                        console.log("Failed to load GDrive video blob:", err);
                         throw new Error(_('noVideoPreview'));
                     }
                     isIframe = false;
@@ -4300,7 +4359,7 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
             mediaContainer.appendChild(mediaElement);
 
         } catch (e) {
-            console.error("Preview failed:", e);
+            console.log("Preview failed:", e);
             if (spinner.parentNode) spinner.remove();
 
             const errorMsg = document.createElement('div');
@@ -4354,7 +4413,7 @@ function makeElementDraggable(element, storageKey) {
             if (pos.right) element.style.right = pos.right;
             element.style.bottom = 'auto';
             element.style.left = 'auto';
-        } catch (e) { console.error(e); }
+        } catch (e) { console.log(e); }
     }
 
     let isDragging = false;
@@ -4835,17 +4894,38 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
     const modeButton = document.getElementById('mode_button');
     const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
+    let animationStartTime = 0;
 
     const runFilter = () => {
         applyFilters();
-        // Спираме анимацията СЛЕД като филтрирането е приключило
+        // Спираме анимацията СЛЕД като браузърът е прерисувал екрана
         if (modeButton && loadingIcon) {
+            // Update UI immediately (Stop spinner, show image)
             modeButton.classList.remove('mode-button-loading');
             loadingIcon.classList.remove('button-loading');
+
+            if (typeof debug !== 'undefined' && debug) {
+                setTimeout(() => {
+                    const duration = performance.now() - animationStartTime;
+
+                    let logName = boardId;
+                    if (boardId !== 'all' && typeof boardsData !== 'undefined') {
+                        const b = boardsData.find(b => b.gdid === boardId || b.id === boardId);
+                        if (b) logName = b.title;
+                    }
+
+                    // Get note count from the UI counter which is updated in applyFilters
+                    const noteCounter = document.getElementById('note-counter');
+                    const count = noteCounter ? noteCounter.textContent : '0';
+
+                    console.log(`Board "${logName}" (${count} notes) render duration: ${duration.toFixed(0)}ms`);
+                }, 0);
+            }
         }
     };
 
     if (modeButton && loadingIcon) {
+        animationStartTime = performance.now();
         modeButton.classList.add('mode-button-loading');
         loadingIcon.classList.add('button-loading');
         // Използваме setTimeout, за да позволим на браузъра да рендира анимацията
@@ -4948,43 +5028,55 @@ function applyFilters() {
 
     let visibleCount = 0;
 
+    // --- PRE-CALCULATE FILTER MODES ---
+    const isAll = currentBoardFilter === 'all';
+    const isReminder = currentBoardFilter === 'reminder';
+    const isNewUpdates = currentBoardFilter === 'new-updates';
+    const isWithPhotos = currentBoardFilter === 'with-photos';
+    const isWithVideos = currentBoardFilter === 'with-videos';
+    const isWithSounds = currentBoardFilter === 'with-sounds';
+    const isWithOther = currentBoardFilter === 'with-other';
+    // If none of the above special modes, it's a standard board filter (by ID)
+    const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther;
+
     for (const note of notes) {
         if (note.classList.contains('boards-note')) {
             continue;
         }
 
-        // --- OPTIMIZATION: Read directly from SHORT dataset attributes ---
-        const noteBoardId = note.dataset.b; // data-b = boardid
-        const noteStatus = parseInt(note.dataset.s || '0', 10); // data-s = status
+        let isVisibleByBoard = false;
 
-        // --- Фиктриране по Борд ---
-        const isVisibleByBoard = (currentBoardFilter === 'all') ||
-            (currentBoardFilter === 'reminder' && note.dataset.tm === '1') ||  // data-tm = timer
-            (currentBoardFilter === 'new-updates' && (noteStatus === 2 || note.classList.contains('new-update'))) ||
-            (currentBoardFilter === 'with-photos' && note.dataset.hp === '1') || // data-hp = hasPhoto
-            (currentBoardFilter === 'with-videos' && note.dataset.hv === '1') || // data-hv = hasVideo
-            (currentBoardFilter === 'with-sounds' && note.dataset.hs === '1') || // data-hs = hasSound
-            (currentBoardFilter === 'with-other' && note.dataset.ho === '1') || // data-ho = hasOther
-            // Standard board check:
-            (noteBoardId == currentBoardFilter); // Loose equality for string/number match
-
-        // Note: The original logic for 'reminder' and 'new-updates' was likely checking specific fields.
-        // If 'status' in dataset isn't enough, we might need to look up the full object from allNotesData
-        // BUT for standard filtering, dataset is faster.
-
-        // Let's stick to the original logic structure but using dataset where possible.
-        // Original: extraData (parsed) used for: boardid, datemod, numord.
-
-        // Re-implementing specific special board logic if it depended on complex extraData:
-        // 'reminder', 'new-updates', 'with-photos' etc. rely on class checks or other global data usually.
-        // Assuming currentBoardFilter matches boardid for standard boards.
+        // Optimized Branching
+        if (isAll) {
+            isVisibleByBoard = true;
+        } else if (isStandard) {
+            // Standard board check: Loose equality because dataset is string, filter might be number
+            isVisibleByBoard = (note.dataset.b == currentBoardFilter);
+        } else if (isReminder) {
+            isVisibleByBoard = (note.dataset.tm === '1');
+        } else if (isNewUpdates) {
+            const noteStatus = parseInt(note.dataset.s || '0', 10);
+            isVisibleByBoard = (noteStatus === 2 || note.classList.contains('new-update'));
+        } else if (isWithPhotos) {
+            isVisibleByBoard = (note.dataset.hp === '1');
+        } else if (isWithVideos) {
+            isVisibleByBoard = (note.dataset.hv === '1');
+        } else if (isWithSounds) {
+            isVisibleByBoard = (note.dataset.hs === '1');
+        } else if (isWithOther) {
+            isVisibleByBoard = (note.dataset.ho === '1');
+        }
 
         // Filter by Search Term
-        const titleEl = note.querySelector('.note-title-truncated');
-        const contentEl = note.querySelector('.note-content');
-        // ... (search logic uses DOM text content, so it's fine)
-        const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
-        const matchesSearch = searchTerm === '' || noteText.toLowerCase().includes(searchTerm);
+        let matchesSearch = true;
+
+        // OPTIMIZATION: Only access DOM textContent if there is a search term!
+        if (searchTerm !== '') {
+            const titleEl = note.querySelector('.note-title-truncated');
+            const contentEl = note.querySelector('.note-content');
+            const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
+            matchesSearch = noteText.toLowerCase().includes(searchTerm);
+        }
 
         if ((searchTerm !== '' ? matchesSearch : isVisibleByBoard)) {
             note.style.display = 'flex';
@@ -5129,7 +5221,7 @@ async function getFileID(folderId, fileName) {
             return null;
         }
     } catch (error) {
-        console.error(`Error fetching file ID for '${fileName}' in folder '${folderId}':`, error);
+        console.log(`Error fetching file ID for '${fileName}' in folder '${folderId}':`, error);
         showToast(_('errorFetchingFileId').replace('{fileName}', fileName));
         return null;
     }
@@ -5158,7 +5250,7 @@ async function getFolderID() {
         }
         return multinotesDataId;
     } catch (error) {
-        console.error("Error in getFolderID:", error);
+        console.log("Error in getFolderID:", error);
         showToast(_('errorFetchingFolderIds'));
         return null;
     }
@@ -5179,7 +5271,7 @@ async function getMultinotesDataFolderID() {
             return null;
         }
     } catch (error) {
-        console.error("Error fetching multinotes_data folder ID:", error);
+        console.log("Error fetching multinotes_data folder ID:", error);
         // If it's an auth error, redirect to login
         if (error.result && error.result.error && error.result.error.code === 401) {
             showToast(_('errorSessionExpired'));
@@ -6153,7 +6245,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             } catch (error) {
                 if (error.name !== 'AbortError') {
-                    console.error("Error selecting directory:", error);
+                    console.log("Error selecting directory:", error);
                 }
             }
         });
@@ -6188,7 +6280,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             } catch (error) {
                 if (error.name !== 'AbortError') {
-                    console.error("Error selecting directory:", error);
+                    console.log("Error selecting directory:", error);
                 }
             }
         });
@@ -6391,7 +6483,7 @@ function formatText(text, formatString, isForModal = false) {
         try {
             return JSON.parse(f);
         } catch (e) {
-            console.error('Invalid JSON in format string:', f);
+            console.log('Invalid JSON in format string:', f);
             return null;
         }
     }).filter(f => f !== null);
@@ -6526,7 +6618,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 const file = await fileHandle.getFile();
                 window.open(URL.createObjectURL(file), '_blank');
             } catch (err) {
-                console.error(`Could not open local file ${folderName}/${filename}`, err);
+                console.log(`Could not open local file ${folderName}/${filename}`, err);
                 showToast(_('errorOpenFile').replace('{filename}', filename));
             }
         };
@@ -6844,6 +6936,7 @@ async function createNoteElement(noteContent) {
         }
     }
     if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
+
     const titleWrapper = document.createElement('div');
     const titleEl = document.createElement('h3');
     titleEl.textContent = noteTitle;
@@ -6899,7 +6992,7 @@ async function createNoteElement(noteContent) {
             // Prepend the canvas so it's the first child and sits behind the content wrapper
             note.prepend(backgroundCanvas);
         } catch (error) {
-            console.error("Failed to create colored note background:", error);
+            console.log("Failed to create colored note background:", error);
         }
     } else {
         note.style.backgroundColor = noteBgColor;
@@ -7102,7 +7195,7 @@ async function createNoteElement(noteContent) {
                 }
                 showToast(_('noteDeletedSuccess'), 3000);
             } catch (error) {
-                console.error("Failed to delete note:", error);
+                console.log("Failed to delete note:", error);
                 showToast(_('noteDeletedError') + " - " + error.message, 15000);
             }
         }
@@ -7341,7 +7434,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
  */
 async function readArh(dirHandle) {
     if (!dirHandle) {
-        console.error("readArh: Не е подаден валиден handle на директория.");
+        console.log("readArh: Не е подаден валиден handle на директория.");
         showToast(_('errorNoArchiveFolderSelected'), 10000);
         return false;
     }
@@ -7385,13 +7478,13 @@ async function readArh(dirHandle) {
     } catch (error) {
         success = false;
         if (error.name === 'NotFoundError') {
-            console.error(`Грешка: Файл 'boards.bcp' или 'notes.bcp' не е намерен в папката '${dirHandle.name}'.`);
+            console.log(`Грешка: Файл 'boards.bcp' или 'notes.bcp' не е намерен в папката '${dirHandle.name}'.`);
             showToast(_('errorRequiredArchiveFileMissing'), 10000);
         } else if (error instanceof SyntaxError) {
-            console.error("Грешка при парсване на JSON съдържание от архивен файл:", error);
+            console.log("Грешка при парсване на JSON съдържание от архивен файл:", error);
             showToast(_('errorInvalidArchiveData'), 10000);
         } else {
-            console.error("Възникна неочаквана грешка при четене на архива:", error);
+            console.log("Възникна неочаквана грешка при четене на архива:", error);
             showToast(_('errorReadingArchive'), 10000);
         }
     }
@@ -7483,7 +7576,7 @@ async function showBoardPreviews() {
                     showInNotePreview(note, data.fileId, data.mode, data.isVideo);
                     continue;
                 } catch (e) {
-                    console.error("Error parsing preview attachment data:", e);
+                    console.log("Error parsing preview attachment data:", e);
                 }
             }
         }

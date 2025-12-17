@@ -59,6 +59,7 @@ header h1 {
     margin: 0;
     text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
     color: darkorange;
+    font-size: 2.2rem;
 }
 
 #search-container {
@@ -84,48 +85,96 @@ header h1 {
 
 #search-box {
     width: 100%;
-    /* max-width and min-width are now on the wrapper */
-    padding: 8px 35px 8px 35px;
-    /* Increased right padding for icons */
+    /* increased height for buttons */
+    height: 40px;
+    /* padding: left for icon, right for 2 large buttons */
+    padding: 4px 90px 4px 45px;
     border-radius: 20px;
     border: 1px solid #aaa;
     font-size: 1em;
     background-color: #d6d4d5;
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    transition: box-shadow 0.2s;
 }
 
-/* Change cursor to pointer on the search input's clear button (X) */
+#search-box:focus {
+    outline: none;
+    box-shadow: 3px 6px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* Hide native clear button */
 #search-box::-webkit-search-cancel-button {
-    position: relative;
-    right: 0px;
-    /* Position it right next to the save icon */
-    cursor: pointer !important;
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
 }
 
-/* Icon for saving the search term */
-.search-icon {
+/* Static Search Icon (Left) */
+.search-icon-static {
     position: absolute;
+    left: 12px;
     top: 50%;
-    right: 15px;
-    /* Position from the right edge of the wrapper */
     transform: translateY(-50%);
-    /* Center it vertically */
-    cursor: pointer;
-    /* Ensure cursor changes on hover */
-    color: #555;
-    display: none;
-    /* Hidden by default */
-    /* We need to give it a higher z-index to be clickable over the input's padding */
+    color: #666;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     z-index: 2;
 }
 
-.search-icon svg {
-    width: 18px;
-    height: 18px;
+.search-icon-static svg {
+    width: 24px;
+    height: 24px;
+    opacity: 0.6;
 }
 
-.search-icon:hover {
-    color: #000;
+/* Base style for Action Buttons (Clear & Save) */
+/* Base style for Action Buttons (Clear & Save) */
+.search-action-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    /* Flex is set via JS display property, but good to have base */
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background-color: rgba(87, 84, 84, 0.259);
+    transition: background-color 0.2s, transform 0.1s;
+    z-index: 5;
+    color: #444;
+    /*box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);*/
+}
+
+.search-action-btn:hover {
+    background-color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.search-action-btn:active {
+    background-color: rgba(255, 255, 255, 0.8);
+    transform: translateY(-50%) scale(0.95);
+}
+
+.search-action-btn svg {
+    width: 20px;
+    /* Slightly smaller icon too? 20px is fine for 32px btn */
+    height: 20px;
+}
+
+/* Specific Positions */
+.search-btn-save {
+    right: 45px;
+    /* Inner position: 6px + 33px + 6px */
+}
+
+.search-btn-clear {
+    right: 6px;
+    /* Outer edge position */
 }
 
 /* Animation for the save icon */
@@ -373,6 +422,8 @@ main {
     -webkit-user-select: none;
     -moz-user-select: none;
     user-select: none;
+    content-visibility: auto;
+    contain-intrinsic-size: 250px 250px;
 }
 
 .note-item {
@@ -1088,7 +1139,7 @@ code {
     transform: translateY(0);
     /* За да може active да се повдига */
     /* Центриране по хоризонтала */
-    min-width: 80px;
+    min-width: 70px;
     /* Минимална ширина на таба */
     height: 35px;
     /* Височина на таба */
@@ -1103,7 +1154,7 @@ code {
     line-height: 33px;
     /* Центриране по вертикала (35px височина - 2px padding) */
     vertical-align: middle;
-    opacity: 0.3;
+    opacity: 0.5;
 }
 
 /* Общи стилове за пластмасов ефект */
