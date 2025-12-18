@@ -2703,6 +2703,30 @@ body.selection-locked .note.active-selection-note .note-content {
     color: #000;
 }
 
+/* Modal Note Footer */
+.modal-note-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    margin-top: 10px;
+    padding-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #555;
+    font-size: 0.9em;
+}
+
+#modal-body {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.modal-note-footer .header-icon svg {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+    vertical-align: text-bottom;
+}
+
 /* Boards Menu Modal Container - Center Align Container, Right Align Items */
 .all-boards-modal-container {
     display: flex;

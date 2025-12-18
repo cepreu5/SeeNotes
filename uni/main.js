@@ -141,22 +141,18 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 function gisLoaded() {
     // Задаваме езика преди да се покаже login box-а
     setLanguage(currentLang);
-
     // Ако вече има токен
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
-
     // Проверяваме дали login страницата е видима (т.е. сме в режим на "първо стартиране" или изход)
     // Ако login страницата е СКРИТА (hidden=true), значи приложението работи и не трябва да инициализираме наново.
     // Ако login страницата е ВИДИМА (hidden=false), трябва да инициализираме tokenClient, за да работят бутоните.
     // const isAppRunning = document.getElementById('login-page').hidden;
-
     // if ((sessionToken || localToken) && isAppRunning) {
     //    console.log('User already authenticated and app running, skipping gisLoaded initialization');
     //    return;
     // }
     // ПРЕМАХНАТО: Винаги инициализираме tokenClient, за да сме сигурни, че е наличен при нужда (напр. за trial бутона).
-
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
@@ -196,9 +192,7 @@ function gisLoaded() {
             alert(_('authFailed') + `\n\nError: ${error.type}`);
         }
     });
-
     const loginBox = document.querySelector('.login-box');
-
     // Винаги показваме екрана за вход
     // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
     loginBox.style.visibility = 'visible';
@@ -212,7 +206,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (rememberMeCheckbox) {
         rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
     }
-
     // Apply Hide Assistant setting on load
     if (localStorage.getItem('hideAssistant') === 'true') {
         const fabButton = document.getElementById('kb-fab');
@@ -265,14 +258,12 @@ function renderCalendarView() {
     const month = currentCalendarDate.getMonth();
     const monthName = currentCalendarDate.toLocaleString(currentLang, { month: 'long' });
     const titleText = `${monthName} ${year}`;
-
     // Sticky Header Container
     const stickyHeaderContainer = document.createElement('div');
     stickyHeaderContainer.style.position = 'sticky';
     stickyHeaderContainer.style.top = '0';
     stickyHeaderContainer.style.zIndex = '100';
     stickyHeaderContainer.style.backgroundColor = '#fdf6e3'; // Match calendar background
-
     // Header
     const calendarHeader = document.createElement('div');
     calendarHeader.className = 'calendar-header';
@@ -290,7 +281,6 @@ function renderCalendarView() {
         `;
     stickyHeaderContainer.appendChild(calendarHeader);
     // Day names header
-
     const daysHeader = document.createElement('div');
     daysHeader.className = 'calendar-days-header';
     const days = currentLang === 'bg' ? ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -303,10 +293,8 @@ function renderCalendarView() {
         const shortName = document.createElement('span');
         shortName.className = 'day-name-short';
         shortName.textContent = day.substring(0, 3);
-
         dayEl.appendChild(longName);
         dayEl.appendChild(shortName);
-
         if (index >= 5) {
             dayEl.classList.add('weekend-day');
         }
@@ -339,27 +327,23 @@ function renderCalendarView() {
         const dateNum = document.createElement('div');
         dateNum.className = 'calendar-date-number';
         dateNum.textContent = day;
-
         // Проверяваме дали е уикенд (събота или неделя)
         const currentDate = new Date(year, month, day);
         const dayOfWeek = currentDate.getDay();
         if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Неделя, 6 = Събота
             dateNum.classList.add('weekend-date');
         }
-
         // Check if the cell being rendered is today's date
         if (day === todayDate && month === todayMonth && year === todayYear) {
             dateNum.classList.add('today-date');
             cell.classList.add('today-cell');
         }
-
         // Клик на клетката отваря седмичния изглед за съответната дата
         cell.style.cursor = 'pointer';
         cell.addEventListener('click', () => {
             calendarContainer.style.display = 'none';
             renderWeeklyCalendarView(new Date(year, month, day));
         });
-
         cell.appendChild(dateNum);
         const notesForDayContainer = document.createElement('div');
         notesForDayContainer.className = 'calendar-notes-container';
@@ -374,11 +358,9 @@ function renderCalendarView() {
                     noteDate.getDate() === dayDate.getDate()) {
                     const miniNote = document.createElement('div');
                     miniNote.className = 'calendar-mini-note';
-
                     const noteContent = noteData.notetxt;
                     const isHidden = noteData.pass === true;
                     const isType1 = noteData.type === 1;
-
                     if ((isHidden || isType1) && noteContent.includes('|')) {
                         contentToShow = noteContent.split('|')[0].trim();
                     } else {
@@ -418,7 +400,6 @@ function renderCalendarView() {
             const width = miniNote.getBoundingClientRect().width;
             if (width > 0) miniNote.style.height = `${width}px`;
         });
-
         // --- AUTO ZOOM LOGIC ---
         // Нулираме zoom-а преди измерване
         calendarContainer.style.transform = 'none';
@@ -426,38 +407,29 @@ function renderCalendarView() {
         calendarContainer.style.width = ''; // Премахваме изрично зададената ширина
         calendarContainer.style.height = ''; // Премахваме изрично зададената височина
         calendarContainer.style.marginBottom = ''; // Нулираме марджина
-
         const windowHeight = window.innerHeight;
         // Използваме getBoundingClientRect за по-точни размери, включително padding/margin ако има
         const rect = calendarContainer.getBoundingClientRect();
         const contentHeight = rect.height;
         const contentWidth = rect.width;
-
         // Оставяме малък буфер (напр. 20px)
         const availableHeight = windowHeight - 20;
         const availableWidth = window.innerWidth;
-
         // Изчисляваме мащаба
         let scaleH = availableHeight / contentHeight;
         let scaleW = availableWidth / contentWidth;
-
         // Избираме по-малкия мащаб, за да се побере всичко
         let scale = Math.min(scaleH, scaleW, 1);
-
         // Прилагаме мащаба само ако е нужно намаляване
         if (scale < 0.99) {
             calendarContainer.style.transform = `scale(${scale})`;
-
             // КОРЕКЦИЯ 2: Задаваме изрично височината на контейнера да е равна на новия визуален размер.
             // Тъй като съдържанието е по-голямо, то ще прелее, но transform ще го свие обратно в тези граници.
             calendarContainer.style.height = `${contentHeight * scale}px`;
-
             // Уверяваме се, че няма да се отреже нищо важно
             calendarContainer.style.overflow = 'visible';
-
             // ОБРАТНО МАЩАБИРАНЕ: Увеличаваме font-size вместо transform, за да не се нарушава layout-а
             const counterScale = 1 / scale;
-
             // Увеличаваме font-size на бутоните в хедъра
             const calendarHeader = calendarContainer.querySelector('.calendar-header');
             if (calendarHeader) {
@@ -465,24 +437,20 @@ function renderCalendarView() {
                 headerButtons.forEach(btn => {
                     const currentFontSize = parseFloat(window.getComputedStyle(btn).fontSize);
                     btn.style.fontSize = `${currentFontSize * counterScale}px`;
-
                     // Увеличаваме и размерите на бутона, за да се побират символите
                     const currentWidth = parseFloat(window.getComputedStyle(btn).width);
                     const currentHeight = parseFloat(window.getComputedStyle(btn).height);
                     btn.style.width = `${currentWidth * counterScale}px`;
                     btn.style.height = `${currentHeight * counterScale}px`;
-
                     // Гарантираме центриране на съдържанието
                     btn.style.display = 'flex';
                     btn.style.alignItems = 'center';
                     btn.style.justifyContent = 'center';
-
                     // Корекция за символите « и » - леко ги вдигаме нагоре
                     if (btn.id === 'prev-month-btn' || btn.id === 'next-month-btn') {
                         btn.style.paddingTop = '0';
                         btn.style.paddingBottom = `${4 * counterScale}px`;
                     }
-
                     // Специално мащабиране за бутона за седмичен изглед
                     if (btn.id === 'weekly-view-btn') {
                         const svgIcon = btn.querySelector('svg');
@@ -498,14 +466,12 @@ function renderCalendarView() {
                     headerTitle.style.fontSize = `${currentFontSize * counterScale}px`;
                 }
             }
-
             // Увеличаваме font-size на имената на дните
             const dayNames = calendarContainer.querySelectorAll('.calendar-day-name');
             dayNames.forEach(dayName => {
                 const currentFontSize = parseFloat(window.getComputedStyle(dayName).fontSize);
                 dayName.style.fontSize = `${currentFontSize * counterScale}px`;
             });
-
             // Увеличаваме font-size на номерата на датите
             const dateNumbers = calendarContainer.querySelectorAll('.calendar-date-number');
             dateNumbers.forEach(dateNum => {
@@ -513,7 +479,6 @@ function renderCalendarView() {
                 dateNum.style.fontSize = `${currentFontSize * counterScale}px`;
             });
         }
-
         // Ако не сме мащабирали (или малко), скролираме до днес
         if (scale >= 0.99) {
             const todayElement = document.querySelector('.today-date');
@@ -527,19 +492,16 @@ function renderCalendarView() {
         currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
         renderCalendarView();
     });
-
     // Добавяме event listener за новия бутон за седмичен изглед
     document.getElementById('weekly-view-btn').addEventListener('click', () => {
         calendarContainer.style.display = 'none'; // Затваряме месечния изглед
         renderWeeklyCalendarView(new Date()); // Отваряме седмичния изглед за текущата седмица
     });
-
     // Добавяме event listener за бутона "Днес" ---
     document.getElementById('today-month-btn').addEventListener('click', () => {
         currentCalendarDate = new Date(); // Връщаме се към днешна дата
         renderCalendarView(); // Прерисуваме календара
     });
-
     document.getElementById('next-month-btn').addEventListener('click', () => {
         currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
         renderCalendarView();
@@ -549,13 +511,11 @@ function renderCalendarView() {
         // --- Анимация в бутона за затваряне ---
         const closeSymbol = closeBtn.querySelector('.close-symbol');
         const loadingIcon = closeBtn.querySelector('.close-loading-icon');
-
         if (closeSymbol && loadingIcon) {
             closeSymbol.style.display = 'none';
             loadingIcon.style.display = 'inline';
             loadingIcon.classList.add('button-loading');
         }
-
         setTimeout(() => {
             requestAnimationFrame(() => {
                 // --- Програмен клик на активния борд ---
@@ -563,10 +523,8 @@ function renderCalendarView() {
                 if (boardToClick === 'calendar') {
                     boardToClick = localStorage.getItem('startBoard') || 'all';
                 }
-
                 // Търсим бутона в хедъра
                 const activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
-
                 if (activeBoardBtn) {
                     activeBoardBtn.click();
                 } else {
@@ -577,7 +535,6 @@ function renderCalendarView() {
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
                 }
-
                 // Спираме анимацията (ако все още е видима)
                 if (closeSymbol && loadingIcon) {
                     loadingIcon.classList.remove('button-loading');
@@ -593,7 +550,6 @@ function renderWeeklyCalendarView(dateForWeek) {
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
     scrollTopBtn.style.display = 'none';
-
     let startDate;
     if (!dateForWeek) {
         // Ако не е подадена дата, използваме днешната, за да намерим текущата седмица
@@ -601,13 +557,11 @@ function renderWeeklyCalendarView(dateForWeek) {
     } else {
         currentWeeklyViewDate = dateForWeek; // Обновяваме глобалното състояние
     }
-
     const tempDate = new Date(dateForWeek);
     const day = tempDate.getDay();
     const diff = tempDate.getDate() - day + (day === 0 ? -6 : 1);
     startDate = new Date(tempDate.setDate(diff));
     startDate.setHours(0, 0, 0, 0);
-
     let weeklyContainer = document.getElementById('weekly-calendar-container');
     if (!weeklyContainer) {
         weeklyContainer = document.createElement('div');
@@ -617,16 +571,13 @@ function renderWeeklyCalendarView(dateForWeek) {
     weeklyContainer.style.display = 'flex'; // Променяме на flex за по-добър контрол
     weeklyContainer.style.flexDirection = 'column';
     weeklyContainer.innerHTML = ''; // Изчистваме предишното съдържание
-
     // Генериране на динамично заглавие с месеца(ите) ---
     const endDate = new Date(startDate);
     endDate.setDate(startDate.getDate() + 6); // Крайната дата на 7-дневния период
-
     const startMonthName = startDate.toLocaleString(currentLang, { month: 'long' });
     const endMonthName = endDate.toLocaleString(currentLang, { month: 'long' });
     const startYear = startDate.getFullYear();
     const endYear = endDate.getFullYear();
-
     let titleText;
     if (startMonthName === endMonthName) {
         titleText = `${startMonthName} ${startYear}`;
@@ -635,7 +586,6 @@ function renderWeeklyCalendarView(dateForWeek) {
     } else {
         titleText = `${startMonthName} ${startYear} - ${endMonthName} ${endYear}`;
     }
-
     // Създаваме хедър с бутон за затваряне
     const header = document.createElement('div');
     header.className = 'calendar-header'; // Използваме същия стил като другия календар
@@ -653,7 +603,6 @@ function renderWeeklyCalendarView(dateForWeek) {
         <img src="Refresh.png" class="close-loading-icon" style="display: none;"></button>
         </div><h2 style="cursor: default;">${titleText}</h2>`;
     weeklyContainer.appendChild(header);
-
     // Добавяме клик събитие за преход към месечен изглед ---
     const goToMonthView = () => {
         weeklyContainer.style.display = 'none'; // Затваряме седмичния изглед
@@ -664,19 +613,16 @@ function renderWeeklyCalendarView(dateForWeek) {
     // Добавяме същото събитие и към новия бутон
     const monthViewBtn = header.querySelector('#month-view-btn');
     monthViewBtn.addEventListener('click', goToMonthView);
-
     header.querySelector('.close-calendar-btn').addEventListener('click', (e) => {
         // --- Анимация в бутона за затваряне ---
         const closeBtn = e.currentTarget;
         const closeSymbol = closeBtn.querySelector('.close-symbol');
         const loadingIcon = closeBtn.querySelector('.close-loading-icon');
-
         if (closeSymbol && loadingIcon) {
             closeSymbol.style.display = 'none';
             loadingIcon.style.display = 'inline';
             loadingIcon.classList.add('button-loading');
         }
-
         setTimeout(() => {
             requestAnimationFrame(() => {
                 // --- КОРЕКЦИЯ: Програмен клик на активния борд ---
@@ -684,9 +630,7 @@ function renderWeeklyCalendarView(dateForWeek) {
                 if (boardToClick === 'calendar') {
                     boardToClick = localStorage.getItem('startBoard') || 'all';
                 }
-
                 const activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
-
                 if (activeBoardBtn) {
                     // ВАЖНО: Скриваме седмичния календар ПРЕДИ програмния клик
                     weeklyContainer.style.display = 'none';
@@ -699,7 +643,6 @@ function renderWeeklyCalendarView(dateForWeek) {
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
                 }
-
                 // Спираме анимацията (ако все още е видима, въпреки че click() ще преначертае UI)
                 if (closeSymbol && loadingIcon) {
                     loadingIcon.classList.remove('button-loading');
@@ -715,7 +658,6 @@ function renderWeeklyCalendarView(dateForWeek) {
         newStartDate.setDate(newStartDate.getDate() - 7); // Връщаме 7 дни назад
         renderWeeklyCalendarView(newStartDate);
     });
-
     header.querySelector('#next-week-btn').addEventListener('click', () => {
         const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
         newStartDate.setDate(newStartDate.getDate() + 7); // Отиваме 7 дни напред
@@ -725,7 +667,6 @@ function renderWeeklyCalendarView(dateForWeek) {
     header.querySelector('#today-week-btn').addEventListener('click', () => {
         renderWeeklyCalendarView(); // Показваме текущата седмица от понеделник
     });
-
     // Групираме бележките по дата
     const notesByDate = new Map();
     allNotesData.forEach(noteData => {
@@ -747,12 +688,10 @@ function renderWeeklyCalendarView(dateForWeek) {
     const listContainer = document.createElement('div');
     listContainer.className = 'weekly-list-container';
     weeklyContainer.appendChild(listContainer);
-
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const daysToRender = 7; // Показваме 7 дни наведнъж
     let todayRowElement = null;
     let weekHasNotes = false; // Флаг, който проверява дали в седмицата има бележки
-
     // Първо обхождаме, за да проверим дали има поне един ден с бележки
     for (let i = 0; i < daysToRender; i++) {
         const date = new Date(startDate);
@@ -763,42 +702,33 @@ function renderWeeklyCalendarView(dateForWeek) {
             break;
         }
     }
-
     for (let i = 0; i < daysToRender; i++) {
         const date = new Date(startDate);
         date.setDate(startDate.getDate() + i);
-
         // --- КОРЕКЦИЯ: Прилагаме същата UTC логика и тук, за да има пълно съответствие ---
         const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
         const dateStr = utcDate.toISOString().split('T')[0];
-
         const noteGdimsForDay = notesByDate.get(dateStr);
-
         const dayRow = document.createElement('div');
         dayRow.className = 'weekly-day-row';
         if (date.getTime() === today.getTime()) {
             dayRow.classList.add('today-row');
             todayRowElement = dayRow; // Запазваме елемента за днешния ден
         }
-
         const dateInfo = document.createElement('div');
         dateInfo.className = 'weekly-date-info';
-
         // Добавяме клас за почивните дни ---
         const dayOfWeek = date.getDay();
         if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Неделя, 6 = Събота
             dateInfo.classList.add('weekend-day');
         }
-
         dateInfo.innerHTML = `
                 <div class="weekly-date-number">${date.getDate()}</div>
                 <div class="weekly-day-name">${date.toLocaleString(currentLang, { weekday: 'long' })}</div>
             `;
         dayRow.appendChild(dateInfo);
-
         const notesContainerForRow = document.createElement('div');
         notesContainerForRow.className = 'weekly-notes-container';
-
         if (noteGdimsForDay) {
             noteGdimsForDay.forEach(gdid => {
                 const originalNote = document.querySelector(`.note[data-g="${gdid}"]`);
@@ -812,12 +742,10 @@ function renderWeeklyCalendarView(dateForWeek) {
                         const clonedCtx = clonedCanvas.getContext('2d');
                         clonedCtx.drawImage(originalCanvas, 0, 0);
                     }
-
                     // Опаковаме клонинга в div с фиксирани размери ---
                     const wrapper = document.createElement('div');
                     wrapper.className = 'mini-note-wrapper';
                     wrapper.appendChild(clone);
-
                     // --- КОРЕКЦИЯ: Променяме начина на отваряне на бележката ---
                     // Вместо да симулираме клик върху оригиналния елемент,
                     // директно извикваме showModal с данните на бележката,
@@ -835,6 +763,7 @@ function renderWeeklyCalendarView(dateForWeek) {
                     notesContainerForRow.appendChild(wrapper);
                 }
             });
+
         } else {
             if (weekHasNotes) {
                 dateInfo.classList.add('no-notes-day');
@@ -845,12 +774,10 @@ function renderWeeklyCalendarView(dateForWeek) {
         dayRow.appendChild(notesContainerForRow);
         listContainer.appendChild(dayRow);
     }
-
     // Скролираме до днешния ден, ако е видим
     if (todayRowElement) {
         todayRowElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-
     // Добавяме брояч, ако има повече бележки ---
     // Тази проверка се прави след като елементите са в DOM, за да има реални размери.
     listContainer.querySelectorAll('.weekly-day-row').forEach(row => {
@@ -870,7 +797,9 @@ function renderWeeklyCalendarView(dateForWeek) {
             }
         }
     });
+
 }
+
 /**
  * Обработва изтриването на бележка.
  * @param {HTMLElement} noteEl - DOM елементът на бележката.
@@ -880,21 +809,21 @@ function renderWeeklyCalendarView(dateForWeek) {
 async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     if (e) e.stopPropagation();
     if (e) e.preventDefault();
-
     if (!useIndexedDb) return; // Изтриването работи само с база данни
-
     // --- SUPPORT FOR NEW DATASET ATTRIBUTES (g/b) ---
     // Try to get gdid from dataset.g, fallback to extraInfo (legacy)
     let noteGdid = noteEl.dataset ? noteEl.dataset.g : null;
     let extraInfo = {};
-
     if (!noteGdid) {
-        extraInfo = JSON.parse((noteEl.dataset && noteEl.dataset.extraInfo) ? noteEl.dataset.extraInfo : '{}');
-        noteGdid = extraInfo.gdid;
+        // Fallback for mock objects that might not have dataset structured exactly as DOM element or strictly for safety
+        if (noteEl.gdid) noteGdid = noteEl.gdid; // Direct property fallback
+        else {
+            extraInfo = JSON.parse((noteEl.dataset && noteEl.dataset.extraInfo) ? noteEl.dataset.extraInfo : '{}');
+            noteGdid = extraInfo.gdid;
+        }
     }
 
     if (!noteGdid) return;
-
     // --- BOARD ID retrieval ---
     let boardIdOfDeletedNote = noteEl.dataset ? noteEl.dataset.b : null;
     if (!boardIdOfDeletedNote) {
@@ -905,24 +834,19 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
             if (found) boardIdOfDeletedNote = found.boardid;
         }
     }
-
     // Ако е извикано от модала, първо го затваряме.
     if (fromModal) {
         document.getElementById('content-modal').classList.remove('visible');
         // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
         await new Promise(resolve => setTimeout(resolve, 150));
     }
-
     const confirmed = await showConfirmation(_('confirmNoteDelete'));
     if (confirmed) {
         try {
             await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-
             // Remove from DOM if method exists (it might be a mock object)
             if (noteEl.remove) noteEl.remove();
-
             allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
-
             // Актуализираме общия брояч
             const noteCounter = document.getElementById('note-counter');
             let newTotalCount = 0;
@@ -930,26 +854,21 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                 newTotalCount = parseInt(noteCounter.textContent, 10) - 1;
                 noteCounter.textContent = Math.max(0, newTotalCount);
             }
-
             // Актуализираме брояча на борда
             // В режим Архив, boardid е число. В другите режими е gdid.
             const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
-
             if (boardGdidToUpdate) {
                 // Както е поискано: използваме стойността от note-counter
                 const newBoardCount = newTotalCount;
-
                 // Обновяваме данните за борда
                 const boardData = boardsData.find(b => b.gdid == boardGdidToUpdate);
                 if (boardData) {
                     boardData.noteCount = newBoardCount;
                 }
-
                 const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardGdidToUpdate}"]`);
                 if (boardButton) {
                     // Взимаме само името на борда (ако вече има скоби, ги махаме) или използваме title от boardData
                     let boardName = boardData ? boardData.title : boardButton.textContent.replace(/\s\(\d+\)$/, '');
-
                     // Ако потребителят иска да използва стойността от брояча (ако е в същия борд) - това е newBoardCount
                     if (newBoardCount > 0) {
                         boardButton.textContent = `${boardName} (${newBoardCount})`;
@@ -958,13 +877,30 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                     }
                 }
             }
-
             // --- REFRESH CALENDARS ---
             // If in calendar view, re-render to remove the note visually
             const calendarContainer = document.getElementById('calendar-container');
             if (calendarContainer && calendarContainer.style.display !== 'none') {
                 renderCalendarView();
             }
+            // --- REFRESH BOARD ---
+            // If we are on the board that contained the note, we must remove it from the DOM or refresh
+            // Case 1: Deleting from modal when board is in background (e.g. opened from calendar, then closed calendar)
+            // The noteEl.remove() handles the specific element if passed. 
+            // But if we deleted a note that exists on the current board by passing a MOCK element (from calendar),
+            // the board's DOM element for that note still exists.
+            if (!noteEl.remove || noteEl.remove.name === '') { // Mock element check (it has a no-op remove)
+                // --- CORRECT FIXED LOGIC ---
+                // We trust the DOM selector. If it fails, we simply do nothing.
+                // Reloading the board (filterNotesByBoard) caused state corruption (showing wrong notes in Main board)
+                // because it likely reset the filter state while the calendar was closing or confusing the app state.
+                const realNoteEl = document.querySelector(`.note[data-g="${noteGdid}"]`);
+                if (realNoteEl) {
+                    realNoteEl.remove();
+                }
+            }
+
+
             if (typeof renderWeeklyCalendarView === 'function') {
                 // Check if weekly view is active?
                 // Usually checking if the container is visible or header state?
@@ -979,7 +915,6 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                     // For now, let's assume monthly view is primary user of this global fn.
                 }
             }
-
             showToast(_('noteDeletedSuccess'), 3000);
         } catch (error) {
             console.log("Failed to delete note:", error);
@@ -1018,6 +953,7 @@ async function createColoredNoteBackground(color, src, width, height) {
             resolve(canvas);
         };
     });
+
 }
 
 /**
@@ -1074,7 +1010,6 @@ async function bulkPutDB(storeName, data, incremental = false) {
             transaction.oncomplete = () => { db.close(); resolve(); };
             transaction.onerror = (event) => { db.close(); reject("DB Transaction Error: " + event.target.error); };
             transaction.onabort = () => db.close(); // Затваряме и при прекратяване
-
             if (incremental) {
                 putData();
             } else {
@@ -1220,6 +1155,7 @@ function deleteNotesDB() {
     deleteRequest.onsuccess = () => {
         showToast(_('dbDeleted'), 3000);
     };
+
     deleteRequest.onerror = (event) => { showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000); };
     deleteRequest.onblocked = (event) => { showToast(_('errorDbDeletionBlocked'), 10000); console.log('Database deletion is blocked unexpectedly:', event); };
 }
@@ -1233,7 +1169,6 @@ async function clearDbStores() {
         const db = await openNotesDB();
         const storesToClear = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME];
         const transaction = db.transaction(storesToClear, 'readwrite');
-
         const clearPromises = storesToClear.map(storeName => {
             return new Promise((resolve, reject) => {
                 const request = transaction.objectStore(storeName).clear();
@@ -1241,7 +1176,6 @@ async function clearDbStores() {
                 request.onerror = reject;
             });
         });
-
         await Promise.all(clearPromises);
         console.log('Data stores cleared, config preserved.');
     } catch (error) {
@@ -1281,7 +1215,6 @@ async function deleteFromDB(storeName, key) {
 async function startApp() {
     // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
     document.body.style.display = 'block';
-
     /*if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
             .then(reg => console.log('SW registered', reg))
@@ -1290,20 +1223,17 @@ async function startApp() {
     console.log('First start:', Date.now());
     ts = await getFirstStartEncoded();
     console.log('First start in cache:', ts);
-
     // --- Предварително изчисляване на оставащите дни за UI ---
     try {
         const url = new URL(window.location.href);
         const urlTokenParam = url.searchParams.get("token");
         if (urlTokenParam) localStorage.setItem('urlToken', urlTokenParam);
-
         const urlToken = localStorage.getItem('urlToken');
         if (urlToken) {
             const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
             const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
             const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
             const iv = raw.slice(0, 12), data = raw.slice(12);
-
             const key = await crypto.subtle.importKey(
                 'raw',
                 new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
@@ -1313,7 +1243,6 @@ async function startApp() {
             );
             const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
             const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-
             const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
             let validityInDays = 30;
             if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
@@ -1324,9 +1253,7 @@ async function startApp() {
     } catch (e) {
         console.log("Error pre-calculating token days:", e);
     }
-
     initApp(); // Инициализира UI елементите и event listeners
-
     // --- Задаване на настройки по подразбиране при първо стартиране ---
     // Ако никога не са задавани настройки за източник на данни,
     // избираме Google Drive + База данни по подразбиране.
@@ -1334,11 +1261,9 @@ async function startApp() {
         localStorage.setItem('useGoogleDb', 'true');
         localStorage.setItem('useIndexedDb', 'true');
     }
-
     // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
     // Това е критично, за да може userCheck() да работи правилно.
     dbExists = await checkDbExists(NOTES_DB_NAME);
-
     // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
     const authResult = await checkAuth();
     if (!authResult || !authResult.pass) {
@@ -1350,10 +1275,8 @@ async function startApp() {
     authToken = authResult.tokenData;
     // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
     updateGlobalStateFlags();
-
     await createBoardsUI([], false);
     await createSettingsUI([], false); // Предварително създава UI на настройките
-
     // Проверката за потребител и основната логика се извикват директно.
     // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
     // само ако е необходимо.
@@ -1364,7 +1287,6 @@ async function startApp() {
         if (scrollTopBtnElement) {
             makeElementDraggable(scrollTopBtnElement, 'scrollTopBtnPosition');
         }
-
         // KB Assistant Button (wait for it if necessary)
         // Since KBUI might initialize later, we attempt to find it
         const initKbFab = () => {
@@ -1382,10 +1304,8 @@ async function startApp() {
         initKbFab();
     };
     initDraggableButtons();
-
     await mainLogic();
 }
-
 
 // Записва timestamp като кодиран низ (Base64), без да пази число в кеша
 async function getFirstStartEncoded() {
@@ -1422,7 +1342,6 @@ async function getFirstStartEncoded() {
 function _(key) {
     return translations[currentLang][key] || key;
 }
-
 function hideToast() {
     const toast = document.getElementById('toastNotification');
     if (toast.classList.contains('show')) {
@@ -1445,7 +1364,6 @@ function showToast(message, duration = 10000) {
     toast.classList.add('show');
     toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
 }
-
 function showMessagePopup(message, showInput = false) {
     folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
     folderIdInput = document.getElementById('folderIdInput');
@@ -1468,7 +1386,6 @@ function hideFolderIdPrompt() {
         folderIdPromptPopup.classList.remove('show');
     }
 }
-
 function handleSubmitFolderId() {
     // If input is not visible, just close the popup
     if (folderIdInput.style.display === 'none') {
@@ -1485,7 +1402,6 @@ function showConfirmation(message, options = {}) {
         const messagePara = popup.querySelector('p');
         const okButton = document.getElementById('submitFolderIdBtn');
         const folderIdInput = document.getElementById('folderIdInput');
-
         let noButton = document.getElementById('prompt-no-btn');
         if (!noButton) {
             noButton = document.createElement('button');
@@ -1494,7 +1410,6 @@ function showConfirmation(message, options = {}) {
             noButton.style.marginLeft = '10px';
             okButton.parentNode.appendChild(noButton);
         }
-
         // --- CUSTOM STYLING ---
         // Save original inline styles to restore later
         const originalStyles = {
@@ -1502,22 +1417,18 @@ function showConfirmation(message, options = {}) {
             width: popupContent.style.width,
             maxWidth: popupContent.style.maxWidth
         };
-
         if (options.backgroundColor) popupContent.style.backgroundColor = options.backgroundColor;
         if (options.width) {
             popupContent.style.width = options.width;
             popupContent.style.maxWidth = '90vw'; // Override constraint if specific width requested
         }
-
         messagePara.textContent = message;
         folderIdInput.style.display = 'none';
         okButton.textContent = _('confirmCreateDbYes');
         noButton.textContent = _('confirmCreateDbNo');
         noButton.style.display = 'inline-block';
-
         // Remove existing listener to avoid conflicts
         okButton.removeEventListener('click', handleSubmitFolderId);
-
         const cleanup = () => {
             popup.classList.remove('show');
             okButton.removeEventListener('click', onOk);
@@ -1525,28 +1436,24 @@ function showConfirmation(message, options = {}) {
             noButton.style.display = 'none';
             // Restore original listener
             okButton.addEventListener('click', handleSubmitFolderId);
-
             // Restore Styles
             popupContent.style.backgroundColor = originalStyles.backgroundColor;
             popupContent.style.width = originalStyles.width;
             popupContent.style.maxWidth = originalStyles.maxWidth;
         };
-
         const onOk = () => {
             cleanup();
             resolve(true);
         };
-
         const onNo = () => {
             cleanup();
             resolve(false);
         };
-
         okButton.addEventListener('click', onOk);
         noButton.addEventListener('click', onNo);
-
         popup.classList.add('show');
     });
+
 }
 
 /**
@@ -1557,7 +1464,6 @@ function showConfirmation(message, options = {}) {
 function addLongPressOrCtrlClick(element, callback) {
     let longPressTimer;
     let isLongPress = false;
-
     const startPress = (e) => {
         isLongPress = false;
         // Започваме таймер за продължително натискане
@@ -1566,11 +1472,9 @@ function addLongPressOrCtrlClick(element, callback) {
             // callback(e); // ВРЕМЕННО: Изключено изтриване при long press
         }, 500); // 500ms за long press
     };
-
     const endPress = () => {
         clearTimeout(longPressTimer);
     };
-
     element.addEventListener('mousedown', startPress);
     element.addEventListener('mouseup', endPress);
     element.addEventListener('mouseleave', endPress);
@@ -1585,12 +1489,10 @@ function addLongPressOrCtrlClick(element, callback) {
  */
 async function handleCalculateClick() {
     const selection = window.getSelection();
-
     const modalBody = document.getElementById('modal-body');
     let expression = '';
     let isFromClipboard = false;
     let range = null;
-
     // Проверяваме дали има маркиран текст в модалния прозорез
     if (selection.rangeCount > 0 && selection.toString().trim() !== '') {
         const tempRange = selection.getRangeAt(0);
@@ -1599,7 +1501,6 @@ async function handleCalculateClick() {
             range = tempRange;
         }
     }
-
     // Ако няма маркиран текст, опитваме да четем от клипборда
     if (expression === '') {
         try {
@@ -1612,34 +1513,27 @@ async function handleCalculateClick() {
             return;
         }
     }
-
     if (expression === '') return;
-
     try {
         // Премахваме всички интервали от израза
         expression = expression.replace(/\s/g, '');
-
         // Основна проверка за сигурност - позволяваме само определени символи
         const sanitizedExpression = expression.replace(/[^0-9+\-*/().]/g, '');
         if (sanitizedExpression !== expression) {
             throw new Error("Invalid characters in expression.");
         }
-
         // Използваме Function конструктор, който е малко по-сигурен от директен eval()
         const result = new Function('return ' + sanitizedExpression)();
         // Форматираме резултата с 2 десетични знака
         const formattedResult = Number(result.toFixed(2));
         const resultText = ` = ${formattedResult}`;
-
         // Ако имаме селекция и не е от клипборда, вмъкваме резултата
         if (range && !isFromClipboard) {
             // Създаваме текстов възел с резултата
             const resultNode = document.createTextNode(resultText);
-
             // Вмъкваме го след оригиналната селекция
             range.collapse(false); // Свиваме обхвата до края му
             range.insertNode(resultNode);
-
             // Създаваме нов обхват (range), който да обхване само числото
             const newRange = document.createRange();
             newRange.setStart(resultNode, resultText.indexOf(formattedResult.toString())); // Начало на числото
@@ -1664,23 +1558,19 @@ function initApp() {
         .sounds-filter-btn { color: #fcfcfc !important; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); }
     `;
     document.head.appendChild(style);
-
     // Set default showBoardAll to false if not set
     if (localStorage.getItem('showBoardAll') === null) {
         localStorage.setItem('showBoardAll', 'false');
     }
-
     // Set default showWeeklyCalendar to true if not set
     if (localStorage.getItem('showWeeklyCalendar') === null) {
         localStorage.setItem('showWeeklyCalendar', 'true');
     }
-
     // Инициализация на DOM елементи
     signoutButton = document.getElementById('signout_button');
     reloadButton = document.getElementById('reload_button');
     settingsButton = document.getElementById('settings_button');
     notesContainer = document.getElementById('notes-container');
-
     // --- Global Event Delegation for Note Tooltips ---
     let titleTimeout;
     notesContainer.addEventListener('mouseover', (e) => {
@@ -1707,18 +1597,15 @@ function initApp() {
     scrollTopBtn = document.getElementById("scrollTopBtn");
     // --- КОРЕКЦИЯ: Предотвратяваме контекстното меню в модала ---
     modalBody.addEventListener('contextmenu', e => e.preventDefault());
-
     searchBox = document.getElementById('search-box');
     loaderContainer = document.getElementById('loader-container');
     loaderText = document.getElementById('loader-text');
-
     // --- Add Title to Loader ---
     const loaderTitle = document.createElement('h3');
     loaderTitle.id = 'loader-title';
     loaderTitle.style.marginTop = '0';
     loaderTitle.style.marginBottom = '20px';
     loaderContainer.prepend(loaderTitle);
-
     // --- Add Cancel Button to Loader ---
     const cancelButton = document.createElement('button');
     cancelButton.id = 'cancel-load-btn';
@@ -1726,12 +1613,10 @@ function initApp() {
     cancelButton.style.marginTop = '20px';
     cancelButton.dataset.key = 'cancelButton'; // For i18n
     loaderContainer.appendChild(cancelButton);
-
     cancelButton.addEventListener('click', (e) => {
         // --- КОРЕКЦИЯ: Предотвратяваме други event listeners да се задействат ---
         e.preventDefault();
         e.stopPropagation();
-
         console.log("Load operation cancelled by user.");
         isLoadCancelled = true;
         // Hide loader and show settings
@@ -1743,15 +1628,12 @@ function initApp() {
     if (window.kbAssistant && !window.kbAssistant.isInitialized) {
         window.kbAssistant.init();
     }
-
     // Настройване на UI и езикови настройки
     const toast = document.getElementById('toastNotification');
     toast.addEventListener('click', hideToast);
-
     scrollTopBtn.innerHTML = arrowSvg;
     signoutButton.addEventListener('click', handleSignoutClick);
     reloadButton.addEventListener('click', () => mainLogic());
-
     settingsButton.addEventListener('click', () => {
         // Запомняме началното състояние на чекбоксовете при отваряне на настройките
         // Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
@@ -1759,7 +1641,6 @@ function initApp() {
         document.getElementById('use-local-db-checkbox').checked = localStorage.getItem('useLocalDb') === 'true';
         document.getElementById('use-arh-db-checkbox').checked = localStorage.getItem('useArhDb') === 'true';
         document.getElementById('use-indexeddb-checkbox').checked = localStorage.getItem('useIndexedDb') === 'true';
-
         settingsInitialState = {
             useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
             useLocalDb: document.getElementById('use-local-db-checkbox').checked,
@@ -1777,7 +1658,6 @@ function initApp() {
             scrollTopBtn.style.display = "none";
             return;
         }
-
         const isScrolled = document.body.scrollTop > 100 || document.documentElement.scrollTop > 100;
         if (currentBoardFilter !== 'all') {
             scrollTopBtn.style.display = "flex";
@@ -1790,21 +1670,17 @@ function initApp() {
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     // --- Search Box Enhancements ---
     const searchWrapper = document.getElementById('search-wrapper');
-
     // 1. Static Search Icon (Left)
     const staticSearchIcon = document.createElement('span');
     staticSearchIcon.className = 'search-icon-static';
     staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
-
     // 2. Clear Button (Right, next to Save)
     const clearSearchBtn = document.createElement('span');
     clearSearchBtn.className = 'search-action-btn search-btn-clear';
     clearSearchBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
     clearSearchBtn.style.display = 'none'; // Hidden initially
     clearSearchBtn.title = _('closeButton'); // "Close" or "Clear"
-
     // REMOVED: searchModeToggle logic. We now always search in content (which includes title).
-
     // Ensure placeholder is correct for content search
     updateSearchPlaceholder();
     saveSearchBtn = document.createElement('span');
@@ -1816,13 +1692,11 @@ function initApp() {
     saveSearchBtn.title = _('searchSavedTip');
     const savedSearchesPopup = document.createElement('div');
     savedSearchesPopup.id = 'saved-searches-popup';
-
     // Add all icons and popups to the wrapper
     searchWrapper.prepend(staticSearchIcon); // Add Magnifier
     searchWrapper.appendChild(clearSearchBtn); // Add Clear Button
     searchWrapper.appendChild(saveSearchBtn);
     searchWrapper.appendChild(savedSearchesPopup);
-
     // This function will be the single point for applying search and UI updates
     const triggerSearch = (isUserTyping = false) => {
         if (isUserTyping) {
@@ -1833,14 +1707,13 @@ function initApp() {
             }
         }
         applyFilters(); // This just filters the notes
-
         // Show/Hide buttons
         const hasText = searchBox.value.length > 0;
         const hasTextTrimmed = searchBox.value.trim().length > 0;
-
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
     };
+
     // Listen for user typing with Debounce
     let searchDebounceTimeout;
     searchBox.addEventListener('input', (event) => {
@@ -1849,9 +1722,7 @@ function initApp() {
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         // Save button might wait for debounce, but usually safer to show immediately too
         saveSearchBtn.style.display = searchBox.value.trim().length > 0 ? 'flex' : 'none';
-
         if (!event.isTrusted) return;
-
         clearTimeout(searchDebounceTimeout);
         searchDebounceTimeout = setTimeout(() => {
             triggerSearch(true);
@@ -1874,10 +1745,10 @@ function initApp() {
         triggerSearch(true); // Clear results
         searchBox.focus();
     });
+
     searchBox.addEventListener('focus', () => {
         renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
     });
-
     saveSearchBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const searchTerm = searchBox.value.trim();
@@ -1890,10 +1761,10 @@ function initApp() {
             document.getElementById('saved-searches-popup').style.display = 'block';
         }
     });
+
     // --- Calculator Button ---
     const calculateBtn = document.getElementById('calculate-modal-btn');
     calculateBtn.addEventListener('click', handleCalculateClick);
-
     // --- КОРЕКЦИЯ: Преместваме бутоните в хедъра на модала ---
     const modalHeader = contentModal.querySelector('.modal-header-controls');
     const modalCloseBtn = contentModal.querySelector('.modal-close');
@@ -1903,7 +1774,6 @@ function initApp() {
         modalHeader.insertBefore(copyBtn, modalCloseBtn);
     }
     // --- Край на корекцията ---
-
     copyBtn.innerHTML = copyIconSvg;
     copyBtn.addEventListener('click', () => {
         if (!navigator.clipboard) return;
@@ -1930,6 +1800,7 @@ function initApp() {
             });
         }
     });
+
     // Event listener for submit button in folder ID popup
     document.getElementById('submitFolderIdBtn').addEventListener('click', handleSubmitFolderId);
     document.getElementById('folderIdInput').addEventListener('keydown', (event) => {
@@ -1937,6 +1808,7 @@ function initApp() {
             handleSubmitFolderId();
         }
     });
+
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const modal = e.currentTarget.closest('.modal-overlay');
@@ -1946,8 +1818,8 @@ function initApp() {
                 notesBgrdChanged = false;
             }
         });
-    });
 
+    });
     // Specific listener for the settings close button (not class 'modal-close')
     document.getElementById('settings-close-btn').addEventListener('click', () => {
         document.getElementById('settings-modal').classList.remove('visible');
@@ -1956,6 +1828,7 @@ function initApp() {
             notesBgrdChanged = false;
         }
     });
+
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
@@ -1966,11 +1839,13 @@ function initApp() {
                 }
             }
         });
+
     });
     // Prevent clicks inside the content modal from propagating to the underlying notes
     contentModal.addEventListener('click', (e) => {
         e.stopPropagation();
     });
+
     // Apply initial font size settings from localStorage
     const initialNoteFontSize = localStorage.getItem('noteFontSize') || 12;
     document.documentElement.style.setProperty('--note-font-size', `${initialNoteFontSize}px`);
@@ -1991,7 +1866,6 @@ function initApp() {
     const modalContentBox = contentModal.querySelector('.modal-content-box');
     const resizeHandle = contentModal.querySelector('.modal-resize-handle');
     let startX, startY, startWidth, startHeight;
-
     function doDrag(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -2015,7 +1889,6 @@ function initApp() {
         localStorage.setItem('modalWidth', modalContentBox.style.width);
         localStorage.setItem('modalHeight', modalContentBox.style.height);
     }
-
     function startDrag(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -2023,7 +1896,6 @@ function initApp() {
         startY = e.touches ? e.touches[0].clientY : e.clientY;
         startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
         startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
-
         // Attach listeners for both mouse and touch
         document.documentElement.addEventListener('mousemove', doDrag, false);
         document.documentElement.addEventListener('mouseup', stopDrag, false);
@@ -2034,7 +1906,6 @@ function initApp() {
     // Attach start event for both mouse and touch
     resizeHandle.addEventListener('mousedown', startDrag);
     resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
-
     // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
     resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
             <path d="M12 2 L2 12" />
@@ -2042,13 +1913,10 @@ function initApp() {
             <!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
             <path d="M10 4 L4 4 L4 10" />
         </svg>`;
-
     // Load saved searches and settings from localStorage
     lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
     savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
     maxSavedSearches = parseInt(localStorage.getItem('maxSavedSearches') || '20', 10);
-
-
     setLanguage(currentLang);
     // Add app version to the settings modal title
     const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
@@ -2066,7 +1934,6 @@ function initApp() {
 
     // --- Mode Button Logic (Ctrl-click and long-press for advanced) ---
     const modeButton = document.getElementById('mode_button');
-
     const calendarButton = document.getElementById('calendar_button');
     // Ако потребителят е запазил 'calendar' като стартов борд, го променяме на 'all'
     if (localStorage.getItem('startBoard') === 'calendar') {
@@ -2076,11 +1943,10 @@ function initApp() {
         calendarButton.addEventListener('click', () => {
             renderCalendarView();
         });
-    }
 
+    }
     let longPressTimer;
     let isLongPress = false;
-
     const showAdvancedSettings = () => {
         const advancedSettingsSpan = document.getElementById('advanced-settings-span');
         if (advancedSettingsSpan) {
@@ -2092,7 +1958,6 @@ function initApp() {
         }
         // Отваряме настройките
         document.getElementById('settings_button').click();
-
         // Симулираме клик на accordion стрелката, за да разгърнем секцията
         // Използваме setTimeout, за да сме сигурни, че модалът е отворен
         setTimeout(() => {
@@ -2109,8 +1974,8 @@ function initApp() {
             isLongPress = true;
             showAdvancedSettings();
         }, 500); // 500ms за long press
-    };
 
+    };
     const endPress = () => {
         clearTimeout(longPressTimer);
     };
@@ -2121,7 +1986,6 @@ function initApp() {
     modeButton.addEventListener('mouseleave', endPress);
     modeButton.addEventListener('touchstart', startPress, { passive: true });
     modeButton.addEventListener('touchend', endPress);
-
     // Click handler
     modeButton.addEventListener('click', (e) => {
         // Ако е long press, не правим нищо (вече е обработено)
@@ -2129,7 +1993,6 @@ function initApp() {
             isLongPress = false;
             return;
         }
-
         if (e.ctrlKey) {
             // Логика за Ctrl+клик: Показване на разширените настройки
             e.preventDefault();
@@ -2138,7 +2001,6 @@ function initApp() {
             // Логика за обикновен клик: "Умен" бутон
             updateGlobalStateFlags();
             const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-
             if (isDbOnlyMode && dbExists) {
                 triggerSync();
             } else {
@@ -2153,11 +2015,9 @@ function initApp() {
         loaderContainer.style.display = 'block'; // Показваме статус панела
         const dbSource = await getConfig('dbSource');
         let updatedCount = 0;
-
         // Показваме лоудъра
         loaderContainer.style.display = 'block';
         const loaderTitle = document.getElementById('loader-title');
-
         if (dbSource === 1) { // Базата е създадена от Google Drive
             // --- КОРЕКЦИЯ: Зареждаме Google API, тъй като тази функция го пропуска ---
             try {
@@ -2169,7 +2029,6 @@ function initApp() {
             } catch (error) {
                 throw new Error(_('errorGoogleLibs'));
             }
-
             console.log("Triggering Google Drive sync...");
             if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
             updatedCount = await runGoogleDriveSync();
@@ -2183,16 +2042,13 @@ function initApp() {
             loaderContainer.style.display = 'none';
             return; // Не правим нищо, ако базата е от архив
         }
-
         // --- НОВА, ПО-ЕФИКАСНА ЛОГИКА ЗА ОБНОВЯВАНЕ ---
         if (updatedCount > 0) {
             // 1. Извличаме само новите бележки от базата данни
             const newNotesContent = await Promise.all(
                 updatedNoteGdims.map(gdid => getFromDB(NOTE_STORE_NAME, gdid))
             );
-
             const validNewNotes = newNotesContent.filter(Boolean);
-
             // 2. Обновяваме данните в паметта и DOM-а
             for (const newNote of validNewNotes) {
                 // A. Обновяване на данните
@@ -2202,28 +2058,25 @@ function initApp() {
                 } else {
                     allNotesData.push(newNote); // Добавяме, ако е нова
                 }
-
                 // B. Обновяване на DOM-а
                 // Първо премахваме съществуващия елемент, ако има такъв
                 const existingEl = document.querySelector(`.note[data-g="${newNote.gdid}"]`);
                 if (existingEl) {
                     existingEl.remove();
                 }
-
                 // Създаваме и добавяме новия елемент
                 const newEl = await createNoteElement(newNote);
                 if (newEl) {
                     notesContainer.prepend(newEl);
                 }
             }
-
             // 4. Обновяваме броячите и менюто с бордове
             await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             applyFilters(); // Прилагаме филтрите отново
         }
-
         loaderContainer.style.display = 'none';
     }
+
     // Добавяме event listener за показване на системна информация при клик на брояча
     const noteCounter = document.getElementById('note-counter');
     noteCounter.addEventListener('click', async () => {
@@ -2243,10 +2096,8 @@ function initApp() {
             } else if (dbSourceValue === 3) {
                 dbSourceText = _('sourceArchive');
             }
-
             const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
             const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
-
             // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
             const content = [
                 `${_('sysInfoUser')}: ${currentUserEmail}`,
@@ -2262,6 +2113,7 @@ function initApp() {
             showToast(_('errorSysInfo'));
         }
     });
+
 }
 
 /**
@@ -2270,30 +2122,24 @@ function initApp() {
 function updateSearchPlaceholder() {
     const searchInput = document.getElementById('search-box');
     if (!searchInput) return;
-
     // Префиксът с името на борда е премахнат, тъй като търсенето е във всички бележки
-
     // Simplified placeholder: always "Въведете текст..." (Type text...)
     // Assuming 'searchPlaceholder' might be "Search" or "Type text" depending on translation
     // But user explicitly asked for "Въведете текст".
     // Let's use the translation key but ensure it matches the request or hardcode if needed.
     // If _('searchPlaceholder') is generic, we might need a specific key or string.
-
     // User request: "Въведете текст"
     // I will set it to use a translation key if available, otherwise fallback.
     // Given the context, I'll modify the logic to be simpler.
-
     searchInput.placeholder = `${_('searchPlaceholder')}...`;
     // If 'searchPlaceholder' is "Search", this becomes "Search...".
     // If user specifically wants "Type text", I should check if there is a 'typeText' key or similar.
     // Since I don't see the translation file, I will assume the previous 'searchPlaceholder' was "Търсене".
     // The user wants "Въведете текст".
-
     // Let's just hardcode the behavior to match the translation function structure:
     // Ideally we update the dictionary, but here we can just set the placeholder.
     // Wait, the user speaks Bulgarian ("Въведете текст"). 
     // I should probably check if I can just change the string here.
-
     searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
 }
 
@@ -2313,7 +2159,6 @@ function saveSearchTerm(term) {
     }
     localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
 }
-
 function renderSavedSearchesPopup() {
     const popup = document.getElementById('saved-searches-popup');
     popup.style.display = 'block';
@@ -2336,14 +2181,11 @@ function renderSavedSearchesPopup() {
             searchBox.value = term;
             // Directly call applyFilters to ensure the search runs.
             applyFilters();
-
             // Find buttons dynamically as they might be local in other scopes
             const clearBtn = document.querySelector('.search-btn-clear');
             const saveBtn = document.getElementById('save-search-btn'); // ID logic used before
-
             if (clearBtn) clearBtn.style.display = 'flex';
             if (saveBtn) saveBtn.style.display = 'flex';
-
             popup.style.display = 'none';
         });
         contentContainer.appendChild(item); // Add items to the new container
@@ -2356,7 +2198,6 @@ function renderSavedSearchesPopup() {
     // Проверяваме за записа 's' в кеша
     const cache = await caches.open('app-cache');
     const cachedResponse = await cache.match('s');
-
     if (!cachedResponse) {
         // Няма запис 's' - създаваме го и показваме login с trial бутон
         const nowTs = Date.now();
@@ -2365,12 +2206,10 @@ function renderSavedSearchesPopup() {
             headers: { 'Content-Type': 'text/plain' }
         });
         await cache.put('s', response);
-
         // Показваме login страницата с trial бутон
         initLoginPage();
         return;
     }
-
     // Има запис 's', проверяваме за токен
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
@@ -2382,7 +2221,6 @@ function renderSavedSearchesPopup() {
         initLoginPage();
         // gisLoaded() ще инициализира Google authentication когато се зареди
     }
-
     // --- Selection Locking Logic ---
     // Persistent lock strategy: Lock strictly enforces selection on the active note. 
     // It remains active until the user clicks somewhere else.
@@ -2391,14 +2229,11 @@ function renderSavedSearchesPopup() {
         const note = e.target.closest('.note');
         // Exclude the boards menu (header note) from selection locking
         if (note && note.classList.contains('boards-note')) return;
-
         const isNoteContent = note && e.target.closest('.note-content');
-
         // 2. Clean up previous active state
         document.querySelectorAll('.active-selection-note').forEach(n => {
             if (n !== note) n.classList.remove('active-selection-note');
         });
-
         // 3. Apply logic
         if (isNoteContent) {
             // User clicked in a note content -> Lock everything else, activate this one
@@ -2409,16 +2244,15 @@ function renderSavedSearchesPopup() {
             // This restores default behavior when not interacting with text.
             document.body.classList.remove('selection-locked');
             document.querySelectorAll('.active-selection-note').forEach(n => n.classList.remove('active-selection-note'));
-
             // If the user clicked on the note container (but not content), allow selection to clear?
             // Default browser behavior handles focus handling.
         }
     });
-
     // We no longer remove the lock on mouseup, because doing so allows the browser to 
     // "expand" the selection to the mouse up position if it was outside the note.
     // By keeping the lock, we force the selection to stay contained.
 })();
+
 // След успешно удостоверяване gisLoaded() ще извика startApp()
 
 // Функция за инициализация на login страницата
@@ -2426,13 +2260,11 @@ function initLoginPage() {
     document.getElementById('login-page').hidden = false;
     document.getElementById('loader-container').style.display = 'none';
     // document.getElementById("mode_button").style.display = 'none';
-
     // Language switcher event listeners - комбинирани за всички бутони
     const langBgMain = document.getElementById('lang-bg-main');
     const langEnMain = document.getElementById('lang-en-main');
     const langBgBox = document.getElementById('lang-bg-box');
     const langEnBox = document.getElementById('lang-en-box');
-
     // Функция за смяна на език, която актуализира всички бутони
     const switchLanguage = (lang) => {
         setLanguage(lang);
@@ -2443,20 +2275,17 @@ function initLoginPage() {
         if (langBgBox) langBgBox.classList.toggle('active', isBg);
         if (langEnBox) langEnBox.classList.toggle('active', !isBg);
     };
-
     // Добавяме event listeners към всички бутони
     if (langBgMain) langBgMain.onclick = () => switchLanguage('bg');
     if (langEnMain) langEnMain.onclick = () => switchLanguage('en');
     if (langBgBox) langBgBox.onclick = () => switchLanguage('bg');
     if (langEnBox) langEnBox.onclick = () => switchLanguage('en');
-
     // Set initial active state за всички бутони
     const isBg = currentLang === 'bg';
     if (langBgMain) langBgMain.classList.toggle('active', isBg);
     if (langEnMain) langEnMain.classList.toggle('active', !isBg);
     if (langBgBox) langBgBox.classList.toggle('active', isBg);
     if (langEnBox) langEnBox.classList.toggle('active', !isBg);
-
     // Добавяне на действие при натискане на trial бутона
     const trialBtn = document.getElementById("trialBtn");
     if (trialBtn) {
@@ -2476,7 +2305,6 @@ function initLoginPage() {
             document.getElementById('authorize_button').click();
         });
     }
-
     // Запазваме състоянието на "Запомни ме" при промяна
     const rememberMeCheckbox = document.getElementById('rememberMe');
     if (rememberMeCheckbox) {
@@ -2484,7 +2312,6 @@ function initLoginPage() {
             localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
         });
     }
-
     // Event listener за authorize бутона
     const authorizeBtn = document.getElementById('authorize_button');
     if (authorizeBtn) {
@@ -2517,7 +2344,6 @@ function updateSignoutTooltip() {
 async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
     if (!loginHint) return null;
-
     // Изчакваме Google библиотеката да се зареди, ако не е готова
     if (typeof google === 'undefined') {
         await new Promise(resolve => {
@@ -2529,7 +2355,6 @@ async function refreshAuthToken() {
             }, 100);
         });
     }
-
     return new Promise((resolve) => {
         // Създаваме скрит iframe за OAuth redirect
         let hiddenIframe = document.getElementById('google-auth-iframe');
@@ -2546,7 +2371,6 @@ async function refreshAuthToken() {
             hiddenIframe.style.pointerEvents = 'none';
             document.body.appendChild(hiddenIframe);
         }
-
         // Създаваме token client с redirect режим в iframe
         const iframeTokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
@@ -2571,7 +2395,6 @@ async function refreshAuthToken() {
                 resolve(null);
             }
         });
-
         // Request token silently - използваме iframe вместо popup
         try {
             iframeTokenClient.requestAccessToken({
@@ -2586,22 +2409,18 @@ async function refreshAuthToken() {
     });
 }
 
-
 async function silentLoginWithIframe(loginHint) {
     const REDIRECT_URI = window.location.origin + window.location.pathname;
-
     return new Promise((resolve, reject) => {
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
         iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${SCOPES}&redirect_uri=${REDIRECT_URI}&prompt=none&login_hint=${loginHint}`;
-
         // Слушаме за съобщения от iframe
         const messageListener = (event) => {
             // Приемаме съобщения от нашия собствен origin (след redirect)
             if (event.origin !== window.location.origin) {
                 return;
             }
-
             const hash = event.data;
             if (hash && hash.includes('access_token')) {
                 const params = new URLSearchParams(hash.substring(1)); // Премахваме #
@@ -2612,12 +2431,10 @@ async function silentLoginWithIframe(loginHint) {
                     expires_in: expiresIn,
                     issued_at: Date.now()
                 };
-
                 // Обновяваме storage според rememberMe
                 const rememberMe = localStorage.getItem('rememberMe') === 'true';
                 const storage = rememberMe ? localStorage : sessionStorage;
                 storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-
                 window.removeEventListener('message', messageListener);
                 if (document.body.contains(iframe)) {
                     document.body.removeChild(iframe);
@@ -2631,10 +2448,8 @@ async function silentLoginWithIframe(loginHint) {
                 resolve(null);
             }
         };
-
         window.addEventListener('message', messageListener);
         document.body.appendChild(iframe);
-
         // Таймаут за безопасност
         setTimeout(() => {
             window.removeEventListener('message', messageListener);
@@ -2644,13 +2459,12 @@ async function silentLoginWithIframe(loginHint) {
             resolve(null); // Връщаме null вместо reject
         }, 5000); // 5 секунди
     });
-}
 
+}
 function handleAuthClick() {
     if (tokenClient) {
         const rememberMe = localStorage.getItem('rememberMe') === 'true';
         const loginHint = localStorage.getItem('google_login_hint');
-
         if (rememberMe && loginHint) {
             // Ако "Запомни ме" е активно и има запазен имейл, влизаме с hint
             // Popup-ът ще покаже само запазения акаунт
@@ -2672,23 +2486,23 @@ async function checkAuth() {
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     const storedTokenString = sessionToken || localToken;
-
     if (!storedTokenString) {
         // Добавяне на действие при натискане
         document.getElementById("trialBtn").addEventListener("click", () => {
             window.location.href = TRIAL_URL;
         });
+
         // Запазваме състоянието на "Запомни ме" при промяна
         const rememberMeCheckbox = document.getElementById('rememberMe');
         rememberMeCheckbox.addEventListener('change', () => {
             localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
         });
+
         document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
         // Показваме login страницата
         document.getElementById('login-page').hidden = false;
         return null; // Stop execution
     }
-
     const tokenData = JSON.parse(storedTokenString);
     // --- Винаги добавяме email_hint от sessionStorage ---
     // Това гарантира, че проверката на токена ще работи коректно,
@@ -2702,7 +2516,6 @@ async function checkAuth() {
             console.log("Silent refresh successful.");
             return refreshResult;
         }
-
         console.log("Token expired. Reloading for re-authentication.");
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token'); // Изчистваме и от localStorage
@@ -2710,12 +2523,10 @@ async function checkAuth() {
         window.location.reload();
         return null; // Stop execution
     }
-
     // --- 🔐 Вградена декрипция ---
     // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
     const url = new URL(window.location.href);
     const urlTokenParam = url.searchParams.get("token");
-
     if (urlTokenParam) {
         // Ако има токен в URL-а, той е с приоритет и презаписва стария, само ако е различен
         const currentStoredToken = localStorage.getItem('urlToken');
@@ -2723,12 +2534,9 @@ async function checkAuth() {
             localStorage.setItem('urlToken', urlTokenParam);
         }
     }
-
     let urlToken = localStorage.getItem('urlToken');
-
     let isUrlTokenValidTime = false;
     let decryptedEmailFromToken = null;
-
     if (urlToken) {
         // --- Извличаме валидността от самия токен ---
         let validityInDays = 30; // 3. Стойност по подразбиране в дни
@@ -2737,7 +2545,6 @@ async function checkAuth() {
             const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
             const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
             const iv = raw.slice(0, 12), data = raw.slice(12);
-
             const key = await crypto.subtle.importKey(
                 'raw',
                 new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
@@ -2748,31 +2555,24 @@ async function checkAuth() {
             const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
             // Декодираме токена, който вече съдържа и валидността
             const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-
             // 3. Изчисляваме възрастта в дни
             const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-
             if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
                 validityInDays = parseInt(tokenValidity, 10);
             }
-
             tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
             console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
             // let tooltipText = _('signoutButtonTooltip');
             // tooltipText += ` [${tokenRemainingDays}]`;
             console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
-
             if (ageInDays < validityInDays) {
                 isUrlTokenValidTime = true;
                 pass = true;
-
                 // --- WHITELIST LOGIC ---
                 const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
                 const action = isTrialStart ? 'log' : 'check';
-
                 // Взимаме реалния имейл на потребителя, а не този от токена
                 const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-
                 if (currentUserEmail) {  //  && isTrialStart - logging only
                     // Винаги правим заявка към сървъра - или за добавяне (trial), или за проверка (login)
                     // white list - fetch('https://script.google.com/macros/s/AKfycbwDT37UO2ayL2FZf300X5zWXjA32g5geAN09H0iLGasMjON0kkOoYEkSMLMpG3wsrQPAA/exec', {
@@ -2789,7 +2589,6 @@ async function checkAuth() {
                         .then(response => response.json())
                         .then(data => {
                             console.log('Whitelist check:', data);
-
                             /*if (action === 'check' && !data.exists) {
                                 // Потребителят не е в белия списък!
                                 alert(_('accessDenied') || 'Access Denied: Your email is not registered.');
@@ -2802,6 +2601,7 @@ async function checkAuth() {
                                 console.log('Trial registered/verified for:', currentUserEmail);
                             }
                         })
+
                         .catch(error => {
                             console.log('Whitelist check failed:', error);
                         });
@@ -2833,7 +2633,6 @@ async function checkAuth() {
         document.body.style.justifyContent = 'center';
         document.body.style.minHeight = '100vh';
         document.body.style.margin = '0';
-
         // Създаваме лого
         const logoImg = document.createElement('img');
         logoImg.src = 'MNVLogo.png';
@@ -2842,11 +2641,9 @@ async function checkAuth() {
         logoImg.style.marginBottom = '30px';
         // logoImg.style.cursor = 'pointer';
         logoImg.style.userSelect = 'none';
-
         // Добавяме функционалност за Ctrl+click и long-press
         let longPressTimer;
         let isLongPress = false;
-
         const handleTokenRefresh = () => {
             const url = new URL(TRIAL_URL);
             const urlTokenParam = url.searchParams.get("token");
@@ -2862,11 +2659,11 @@ async function checkAuth() {
                 isLongPress = true;
                 handleTokenRefresh();
             }, 500);
+
             if (e.type === 'touchstart') {
                 e.preventDefault();
             }
         };
-
         const endPress = () => {
             clearTimeout(longPressTimer);
         };
@@ -2882,7 +2679,6 @@ async function checkAuth() {
         });
 
         document.body.appendChild(logoImg);
-
         const errorElement = document.createElement('h1');
         errorElement.innerHTML = _('invalidCertificate');
         errorElement.style.color = 'yellow';
@@ -2894,22 +2690,17 @@ async function checkAuth() {
     }
     return { tokenData, pass }; // Връщаме обект с данните и резултата от проверката
 }
-
 /*/ --- 🔐 Вградена декрипция ---
 // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
 const url = new URL(window.location.href);
 const urlTokenParam = url.searchParams.get("token");
- 
 if (urlTokenParam) {
     // Ако има токен в URL-а, той е с приоритет и презаписва стария
     localStorage.setItem('urlToken', urlTokenParam);
 }
- 
 let urlToken = localStorage.getItem('urlToken');
- 
 let isUrlTokenValidTime = false;
 let decryptedEmailFromToken = null;
- 
 if (urlToken) {
     // --- Извличаме валидността от самия токен ---
     let validityInDays = 365; // 3. Стойност по подразбиране в дни
@@ -2918,7 +2709,6 @@ if (urlToken) {
         const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
         const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
         const iv = raw.slice(0, 12), data = raw.slice(12);
- 
         const key = await crypto.subtle.importKey(
             'raw',
             new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
@@ -2929,19 +2719,15 @@ if (urlToken) {
         const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
         // Декодираме токена, който вече съдържа и валидността
         const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
- 
         // 3. Изчисляваме възрастта в дни
         const ageInDays = (Date.now() - parseInt(timestamp, 10)) / (1000 * 60 * 60 * 24);
- 
         if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
             validityInDays = parseInt(tokenValidity, 10);
         }
- 
         tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
         updateSignoutTooltip();
         console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}`);
         console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
- 
         if (ageInDays < validityInDays) {
             isUrlTokenValidTime = true;
             decryptedEmailFromToken = decryptedEmail;
@@ -2957,18 +2743,15 @@ else DEMO_MODE = true;
 */
 /*/ --- Финална проверка на urlToken срещу логнатия потребител ---
 let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
- 
 if (isUrlTokenValidTime) {
     // Проверяваме дали имейлът съвпада с логнатия потребител
     console.log(`Сравняване на имейли: Токен=${decryptedEmailFromToken}, Сесия=${tokenData.email_hint}`);
- 
     if (decryptedEmailFromToken == tokenData.email_hint) {
         pass = true;
     } else {
         console.log('Резултат от проверката: НЕВАЛИДЕН (грешен имейл)');
     }
 }
- 
 if (!pass) {
     document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
     const errorElement = document.createElement('h1');
@@ -2983,7 +2766,6 @@ if (!pass) {
 const url = new URL(window.location.href);
 const urlToken = url.searchParams.get("token");
 let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
- 
 if (urlToken) {
     // --- КОРЕКЦИЯ: Извличаме валидността от самия токен ---
     let validityInMinutes = 5; // Стойност по подразбиране, ако не е намерена в токена
@@ -2992,7 +2774,6 @@ if (urlToken) {
         const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
         const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
         const iv = raw.slice(0, 12), data = raw.slice(12);
-        
         const key = await crypto.subtle.importKey(
             'raw',
             new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
@@ -3004,11 +2785,9 @@ if (urlToken) {
         // Декодираме токена, който вече съдържа и валидността
         const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
         const ageInMinutes = (Date.now() - parseInt(timestamp, 10)) / 60000;
- 
         if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
             validityInMinutes = parseInt(tokenValidity, 10);
         }
- 
         // Проверяваме дали токенът е изтекъл, дали имейлът съвпада и дали съвпада с логнатия потребител
         console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}, Имейл от сесия: ${tokenData.email_hint}`);
         console.log(`Проверка на токен: Възраст: ${ageInMinutes.toFixed(2)} мин, Проверявана валидност: ${validityInMinutes} мин`);
@@ -3029,7 +2808,6 @@ if (!pass) {
     errorElement.style.marginTop = '50px';
     document.body.appendChild(errorElement);
 }*/
-
 function loadScript(src) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -3059,16 +2837,13 @@ function handleSignoutClick() {
     localStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_email_hint');
-
     // Премахваме google_login_hint САМО ако "Запомни ме" НЕ е активно
     const rememberMe = localStorage.getItem('rememberMe') === 'true';
     if (!rememberMe) {
         localStorage.removeItem('google_login_hint'); // Спираме автоматичния вход
     }
-
     // Задаваме флаг за изход, за да се покаже login формата
     sessionStorage.setItem('logout_flag', 'true');
-
     // Презареждаме страницата - checkAuth ще покаже login формата
     window.location.reload();
 }
@@ -3076,7 +2851,6 @@ function handleSignoutClick() {
 // =================================================================================
 // IV. ЧЕТЕНЕ НА ДАННИ ОТ GOOGLE DRIVE
 // =================================================================================
-
 async function parseFileResults(results, filenameForError) {
     const data = [];
     let parseError = false;
@@ -3112,7 +2886,6 @@ async function loadAndParseFile(filename, folderId, modifiedSince = null) {
     const { data, parseError } = await parseFileResults(results, filename);
     return { data, parseError }; // Връщаме обекта, за да може fetchAllData да го обработи
 }
-
 async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     let folderId = folderIdFromPrompt || await getFolderID();
     if (!folderId) {
@@ -3136,7 +2909,6 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     // Proceed with fetching from Google Drive
     const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId, modifiedSince);
     boardsData = boardFileData;
-
     // Check for at least one board.txt file
     if (boardsData.length === 0) {
         showToast(_('errorNoBoardFilesFound'), 15000);
@@ -3150,12 +2922,10 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     loaderText.textContent = _('loadingFile') + ' note.txt...';
     const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress, modifiedSince);
     allNotesData = noteResults.map(r => JSON.parse(r.res.body));
-
     if (allNotesData.length === 0) {
         showToast(_('errorNoNoteFilesFound'));
         return { error: 'NO_NOTE_FILES' }; // Връщаме специален статус
     }
-
     return { boardParseError };
 }
 
@@ -3170,7 +2940,6 @@ async function runGoogleDriveSync() {
         console.log("Skipping Google Drive sync because IndexedDB is disabled for this mode.");
         return 0;
     }
-
     let updatedFilesCount = 0;
     let lastSyncTimestamp = null;
     // Коригирана проверка: използваме общата настройка 'updateFromSource'
@@ -3187,7 +2956,6 @@ async function runGoogleDriveSync() {
     // This will be null if updateOnly is false or if no timestamp is found,
     // triggering a full sync in those cases.
     const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
-
     if (updateOnly && modifiedSince) {
         console.log(`Checking for Google Drive updates since ${modifiedSince}`);
         // --- КОРЕКЦИЯ: Преместваме съобщението в заглавието ---
@@ -3215,7 +2983,6 @@ async function runGoogleDriveSync() {
             if (data.length > 0) {
                 loaderText.textContent = _('savingChangesFromFile').replace('{filename}', filename);
                 await bulkPutDB(storeName, data, true);
-
                 // --- КОРЕКЦИЯ: Обновяваме глобалните променливи в паметта ---
                 if (filename === 'media.txt') {
                     data.forEach(newMedia => {
@@ -3230,7 +2997,6 @@ async function runGoogleDriveSync() {
                         else boardsData.push(newBoard);
                     });
                 }
-
                 if (isNote) {
                     data.forEach(note => updatedNoteGdims.push(note.gdid));
                 }
@@ -3240,11 +3006,9 @@ async function runGoogleDriveSync() {
     await syncFile('board.txt', BOARD_STORE_NAME, false);
     await syncFile('media.txt', MEDIA_STORE_NAME, false);
     await syncFile('note.txt', NOTE_STORE_NAME, true); // Подаваме флаг, че това са бележки
-
     // ЗАПИСВАМЕ TIMESTAMP-А СЛЕД УСПЕШНА СИНХРОНИЗАЦИЯ
     const now = Date.now();
     await saveConfig('lastGDTimestamp', now);
-
     loaderText.textContent = _('syncFinishedLoadingData');
     console.log('Google Drive sync finished.');
     return updatedFilesCount;
@@ -3261,7 +3025,6 @@ async function userCheck() {
         isDbOwner = true;
         return;
     }
-
     // Базата съществува, продължаваме с проверката на потребителя
     const storedUserEmail = await getConfig('userEmail');
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
@@ -3291,7 +3054,6 @@ async function handleUserMismatch(storedUser) {
         // Fallback, ако нищо не е избрано, въпреки че не би трябвало да се случва
         sourceName = _('sourceGoogleDrive');
     }
-
     showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceName), 15000);
     // Принудително превключваме към режим "Google Drive" без IndexedDB
     localStorage.setItem('useIndexedDb', 'false');
@@ -3339,26 +3101,22 @@ async function handleUserMismatch(storedUser) {
 function enableSettingsControls() {
     const settingsModal = document.getElementById('settings-modal');
     if (!settingsModal) return;
-
     const controlsToEnable = [
         'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
         'create-db-btn', 'select-folder-btn', 'select-arh-btn'
     ];
-
     controlsToEnable.forEach(id => {
         const el = settingsModal.querySelector(`#${id}`);
         if (el) {
             el.disabled = false;
         }
     });
-
     // Активираме и акордеона за разширени настройки
     const accordionHeader = settingsModal.querySelector('.accordion-header');
     if (accordionHeader) {
         accordionHeader.style.pointerEvents = 'auto';
         accordionHeader.style.opacity = '1';
     }
-
     console.log("Settings controls have been re-enabled after DB deletion.");
 }
 
@@ -3379,12 +3137,10 @@ async function createDatabaseFromMemory() {
         if (currentUserEmail) {
             await saveConfig('userEmail', currentUserEmail);
         }
-
         // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
         const noteIdType = useArhDb ? 'id' : 'gdid';
         await saveConfig('dbNoteIdType', noteIdType);
         const dbSource = useArhDb ? 3 : (useLocalFolder ? 2 : 1);
-
         // Запазваме timestamp само за източника, от който създаваме базата.
         // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
         const now = Date.now();
@@ -3393,9 +3149,7 @@ async function createDatabaseFromMemory() {
         } else if (dbSource === 2) { // Local Folder
             await saveConfig('lastLocalTimestamp', now);
         }
-
         await saveConfig('dbSource', dbSource);
-
         dbExists = true; // Маркираме, че базата вече съществува
         return true;
     } catch (error) {
@@ -3412,7 +3166,6 @@ async function finalizeDbCreation() {
     const now = Date.now();
     await saveConfig('lastGDTimestamp', now);
     await saveConfig('lastLocalTimestamp', now);
-
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
     if (currentUserEmail) {
         await saveConfig('userEmail', currentUserEmail);
@@ -3428,30 +3181,24 @@ function updateModeButton() {
     const currentUseLocalFolder = localStorage.getItem('useLocalDb') === 'true';
     const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
     const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-
     const modeButton = document.getElementById('mode_button');
     if (!modeButton) return;
-
     let iconWrapper = modeButton.querySelector('.mode-icon-wrapper');
     if (!iconWrapper) {
         iconWrapper = document.createElement('div');
         iconWrapper.className = 'mode-icon-wrapper';
         modeButton.prepend(iconWrapper);
     }
-
     let iconSrc = '';
     let title = '';
-
     // --- РАЗШИРЕНА ЛОГИКА: Проверяваме за всяка комбинация с база данни ---
     const isCombinedWithDb = currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb);
-
     if (!modeButton.querySelector('#mode-button-loading-icon')) {
         const loadingIcon = document.createElement('img');
         loadingIcon.src = 'Refresh.png';
         loadingIcon.id = 'mode-button-loading-icon';
         modeButton.appendChild(loadingIcon);
     }
-
     if (isCombinedWithDb) {
         // Когато имаме комбинация, базата е основна
         iconSrc = 'Database.png';
@@ -3475,16 +3222,13 @@ function updateModeButton() {
         iconSrc = 'Database.png';
         title = _('noData');
     }
-
     iconWrapper.innerHTML = '';
-
     const mainIcon = document.createElement('img');
     mainIcon.src = iconSrc;
     mainIcon.alt = title;
     mainIcon.style.width = '24px';
     mainIcon.style.height = '24px';
     iconWrapper.appendChild(mainIcon);
-
     // Добавяме иконата за наслагване, ако сме в комбиниран режим
     if (isCombinedWithDb) {
         let overlaySrc = '';
@@ -3496,13 +3240,11 @@ function updateModeButton() {
         } else if (currentUseArhDb) {
             overlaySrc = 'Zip.png'; overlayAlt = 'Archive Source';
         }
-
         const overlay = document.createElement('div');
         overlay.className = 'mode-db-overlay';
         overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}">`;
         iconWrapper.appendChild(overlay);
     }
-
     modeButton.title = title;
 }
 
@@ -3537,27 +3279,20 @@ function validateDataSourceSelection() {
  */
 function filterNotesForDemo() {
     if (!DEMO_MODE) return; // Изпълнява се само ако демо флагът е активен
-
     console.log("DEMO MODE: Filtering notes to 5 per board.");
-
     if (!boardsData || boardsData.length === 0 || !allNotesData || allNotesData.length === 0) {
         return;
     }
-
     const filteredNotes = new Set();
     const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-
     boardsData.forEach(board => {
         const boardIdToMatch = isArh ? board.id : board.gdid;
-
         const notesForBoard = allNotesData
             .filter(note => note.boardid == boardIdToMatch)
             .sort((a, b) => (a.numord || 0) - (b.numord || 0)) // Сортираме за консистентност
             .slice(0, DEMO_NOTE_LIMIT); // Взимаме броя бележки от константата
-
         notesForBoard.forEach(note => filteredNotes.add(note));
     });
-
     const originalCount = allNotesData.length;
     allNotesData = Array.from(filteredNotes);
     console.log(`DEMO MODE: Notes reduced from ${originalCount} to ${allNotesData.length}.`);
@@ -3574,10 +3309,8 @@ async function mainLogic() {
     isInitialLoad = true; // --- КОРЕКЦИЯ: Нулираме флага, за да работи скролирането при презареждане ---
     updateGlobalStateFlags();
     enableSettingsControls();
-
     // Извикваме новата функция за валидация
     if (!validateDataSourceSelection()) return;
-
     // --- ЗАДАВАНЕ НА ГЛОБАЛЕН ИЗТОЧНИК И ТИП ВРЪЗКА ЗА ТЕКУЩАТА СЕСИЯ ---
     // Това е необходимо, за да работят коректно функции като createNoteElement,
     // дори когато не се използва база данни.
@@ -3602,7 +3335,6 @@ async function mainLogic() {
                 return; // Прекратяваме, checkAuth вече е пренасочил.
             }
             authToken = tokenData;
-    
             // Проверяваме за съвпадение на потребителя, ако има локална база.
             // Тази функция може да промени настройките в localStorage.
             await userCheck();
@@ -3611,9 +3343,7 @@ async function mainLogic() {
             updateGlobalStateFlags();
     */
     const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
-
     updateModeButton(); // Актуализираме иконата за режим веднага
-
     // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
     let boardsInDb = [];
     if (useIndexedDb) {
@@ -3622,7 +3352,6 @@ async function mainLogic() {
             boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
             if (isLoadCancelled) return;
         }
-
         // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
         // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
         if (dbExists && boardsInDb.length > 0) {
@@ -3631,7 +3360,6 @@ async function mainLogic() {
             // Това е важно за режим "само база данни".
             if (dbSourceGlobal === null) dbSourceGlobal = await getConfig('dbSource');
             if (dbNoteIdTypeGlobal === null) dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
-
             const dbNoteIdType = await getConfig('dbNoteIdType');
             if (dbNoteIdType) { // Проверяваме само ако типът е записан
                 // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
@@ -3643,7 +3371,6 @@ async function mainLogic() {
                 }
             }
         }
-
         // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
         // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
         // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
@@ -3652,7 +3379,6 @@ async function mainLogic() {
             let handleKey = null;
             if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
             else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
-
             if (handleKey) {
                 const handle = await getConfig(handleKey);
                 const verifiedHandle = handle ? await verifyPermission(handle) : null;
@@ -3664,11 +3390,9 @@ async function mainLogic() {
             }
         }
     }
-
     // --- КОРЕКЦИЯ: Извикваме проверката за потребител тук, след като UI е готов ---
     await userCheck();
     if (isLoadCancelled) return;
-
     // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
     if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
         showToast(_('errorDbOnlyAndEmpty'), 15000);
@@ -3684,7 +3408,6 @@ async function mainLogic() {
             await loadGoogleApis();
             gapi.client.setToken({ access_token: authToken.access_token });
         }
-
         if (useArhDb) {
             // --- РЕЖИМ 0: Зареждане от Архив ---
             console.log("Mode: Archive");
@@ -3709,7 +3432,6 @@ async function mainLogic() {
                 return; // Stop execution if no permission
             }
             dirHandle = verifiedHandle; // <-- ДОБАВЕН РЕД
-
             if (useIndexedDb) {
                 // Archive + IndexedDB mode
                 console.log("Mode: Archive + IndexedDB");
@@ -3795,13 +3517,11 @@ async function mainLogic() {
         } else {
             // --- РЕЖИМ 2: С IndexedDB
             console.log("Mode: Using IndexedDB");
-
             if (!dbExists || boardsInDb.length === 0) {
                 // Първоначално създаване на базата данни
                 console.log("DB is empty or does not exist. Performing initial data load.");
                 if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
                 loaderText.textContent = _('initialDataLoad');
-
                 if (useGoogleDb) {
                     console.log("Source for initial load: Google Drive");
                     if (isLoadCancelled) return;
@@ -3813,7 +3533,6 @@ async function mainLogic() {
                     filterNotesForDemo();
                     await createDatabaseFromMemory();
                     await renderUI({ boardParseError: result.boardParseError });
-
                 } else if (useLocalFolder) {
                     console.log("Source for initial load: Local Folder");
                     const { boardParseError } = await fetchAllDataFromLocalFolder();
@@ -3839,15 +3558,12 @@ async function mainLogic() {
                     const updatedCount = await runLocalSync();
                     showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 10000);
                 }
-
                 // След синхронизация, винаги зареждаме ВСИЧКИ данни от базата
                 loaderText.textContent = _('fetchingFromDb');
                 if (isLoadCancelled) return;
                 await fetchAllDataLocal();
-
                 // Създаваме UI с всички данни
                 await renderUI({ boardParseError: false });
-
                 // Ако има обновени бележки, автоматично филтрираме по тях
                 if (updatedNoteGdims.length > 0) {
                     filterNotesByBoard('new-updates', false);
@@ -3865,11 +3581,9 @@ async function mainLogic() {
         const loaderTitle = document.getElementById('loader-title');
         if (loaderTitle) loaderTitle.textContent = '';
         loaderText.textContent = ''; // Изчистваме текста за прогреса
-
         updateSearchPlaceholder();
         document.body.style.backgroundImage = `url('Board.png')`; // Reset background
         notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
-
         // Скриваме лоудъра
         loaderContainer.style.display = 'none';
         // Показваме основните елементи, след като всичко е заредено
@@ -3877,9 +3591,9 @@ async function mainLogic() {
         document.querySelector('#search-wrapper').style.display = 'flex';
         notesContainer.style.visibility = 'visible';
     }
+
     if (guide) showStep(1); // Първи стъпки
 }
-
 /**
  * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
  * Аналогична на fetchAllData, но за локален източник.
@@ -3892,12 +3606,10 @@ async function fetchAllDataFromLocalFolder() {
         document.getElementById('settings-modal').classList.add('visible');
         return { boardParseError: false };
     }
-
     let localBoards = [];
     let localMedia = [];
     let localNotes = [];
     let boardParseError = false;
-
     try {
         const entries = [];
         for await (const entry of handle.values()) {
@@ -3905,20 +3617,16 @@ async function fetchAllDataFromLocalFolder() {
                 entries.push(entry);
             }
         }
-
         const CHUNK_SIZE = 50; // Process in chunks to avoid UI freeze
         for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
             const chunk = entries.slice(i, i + CHUNK_SIZE);
-
             // Optimize UI updates - only update once per chunk
             loaderText.textContent = `${_('loadingFile')} (${Math.min(i + CHUNK_SIZE, entries.length)}/${entries.length})`;
-
             await Promise.all(chunk.map(async (entry) => {
                 const file = await entry.getFile();
                 const content = await file.text();
                 const fileObject = JSON.parse(content);
                 const lowerCaseName = entry.name.toLowerCase();
-
                 if (lowerCaseName.includes('board')) {
                     localBoards.push(fileObject);
                 } else if (lowerCaseName.includes('media')) {
@@ -3945,19 +3653,16 @@ async function fetchAllDataFromLocalFolder() {
         }
         boardParseError = true; // Вдигаме флага за грешка и в двата случая
     }
-
     // Зареждаме данните в глобалните променливи
     boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
     mediaData = localMedia.flat();
     allNotesData = localNotes;
-
     return { boardParseError };
 }
 
 // =================================================================================
 // IV.a. ЛОКАЛНИ ДАННИ (INDEXEDDB)
 // =================================================================================
-
 /**
  * Зарежда всички данни (boards, media, notes) от локалната IndexedDB.
  */
@@ -3967,7 +3672,6 @@ async function fetchAllDataLocal() {
     mediaData = await getAllFromDB(MEDIA_STORE_NAME);
     const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
     allNotesData = notesFromDB;
-
     console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
 }
 
@@ -3980,17 +3684,14 @@ async function runLocalSync() {
         console.log("Skipping local sync because IndexedDB is disabled for this mode.");
         return 0;
     }
-
     const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
     const updateDate = lastLocalTimestamp ? new Date(lastLocalTimestamp) : null;
     let updatedCount = 0;
     const handle = await getDirectoryHandle();
     if (!handle) return 0;
-
     loaderText.innerText = updateDate
         ? _('updatingFilesSince').replace('{date}', updateDate.toLocaleString())
         : _('performingFullSync');
-
     // Коригирана проверка: използваме 'updateFromSource' вместо старата 'updateIndexedDb'
     if (localStorage.getItem('updateFromSource') !== 'false') {
         updatedCount = await processDirectoryContent(lastLocalTimestamp);
@@ -4075,8 +3776,6 @@ async function validateArhFolderContent(directoryHandle) {
     console.log('Arh validation failed: Not found boards.bcp or notes.bcp.');
     return { isValid: false, reason: 'criteria_not_met' };
 }
-
-
 /**
  * Взима handle на директория - от паметта, от IndexedDB или чрез избор от потребителя.
  * @param {boolean} promptUser - Дали да се покаже диалог за избор, ако няма запазен handle.
@@ -4088,7 +3787,6 @@ async function getDirectoryHandle(promptUser = false) {
         const useLocal = localStorage.getItem('useLocalDb') === 'true';
         const useArh = localStorage.getItem('useArhDb') === 'true';
         const configKey = useLocal ? 'directoryHandle' : (useArh ? 'arhHandle' : null);
-
         const savedHandle = configKey ? await getConfig(configKey) : null;
         if (savedHandle) {
             const verifiedHandle = await verifyPermission(savedHandle);
@@ -4097,7 +3795,6 @@ async function getDirectoryHandle(promptUser = false) {
                 return dirHandle;
             }
         }
-
         if (promptUser) {
             const newHandle = await window.showDirectoryPicker();
             // Запазването ще се случи в извикващата функция СЛЕД валидация.
@@ -4135,7 +3832,6 @@ async function processDirectoryContent(minModificationDate) {
         console.log("Skipping processDirectoryContent because useIndexedDb is disabled.");
         return 0; // Връщаме 0, защото нищо не е обновено.
     }
-
     const minTimestamp = minModificationDate || 0;
     const handle = await getDirectoryHandle();
     if (!handle) return 0;
@@ -4151,14 +3847,11 @@ async function processDirectoryContent(minModificationDate) {
             entries.push(entry);
         }
     }
-
     const CHUNK_SIZE = 50;
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         const chunk = entries.slice(i, i + CHUNK_SIZE);
-
         // Update UI once per chunk
         loaderText.textContent = _('checkedFilesCount').replace('{count}', Math.min(i + CHUNK_SIZE, entries.length));
-
         await Promise.all(chunk.map(async (entry) => {
             try {
                 const file = await entry.getFile();
@@ -4203,7 +3896,6 @@ function showImageVideoOverlay(src, isVideo = false) {
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) overlay.remove();
     });
-
     const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
     mediaElement.src = src;
     if (isVideo) {
@@ -4211,13 +3903,11 @@ function showImageVideoOverlay(src, isVideo = false) {
         mediaElement.autoplay = true;
     }
     overlay.appendChild(mediaElement);
-
     const closeButton = document.createElement('button');
     closeButton.className = 'modal-close';
     closeButton.innerHTML = '&times;';
     closeButton.addEventListener('click', () => overlay.remove());
     overlay.appendChild(closeButton);
-
     document.body.appendChild(overlay);
 }
 
@@ -4242,7 +3932,6 @@ async function showLocalPreview(folderName, fileName, mode) {
     const file = await fileHandle.getFile();
     showImageVideoOverlay(URL.createObjectURL(file), file.type.startsWith('video'));
 }
-
 /**
  * Показва преглед на изображение/видео в рамките на самата бележка.
  * @param {HTMLElement} noteElement - DOM елементът на бележката.
@@ -4253,9 +3942,7 @@ async function showLocalPreview(folderName, fileName, mode) {
  */
 async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
     if (!noteElement || noteElement.querySelector('.image-preview-overlay')) return;
-
     let currentIndex = startIndex;
-
     // 1. Create overlay immediately
     const overlay = document.createElement('div');
     overlay.className = 'image-preview-overlay';
@@ -4265,17 +3952,14 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
         zIndex: '10', borderRadius: '8px', padding: '5px', boxSizing: 'border-box',
         flexDirection: 'column' // Changed to column to accommodate arrows easily or keeping centered
     });
-
     // Prevent bubbling
     overlay.addEventListener('click', (e) => e.stopPropagation());
-
     // Create container for media to easily clear/replace it
     const mediaContainer = document.createElement('div');
     Object.assign(mediaContainer.style, {
         width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
     });
     overlay.appendChild(mediaContainer);
-
     // --- Navigation Arrows ---
     if (attachments.length > 1) {
         const createArrow = (direction) => {
@@ -4303,14 +3987,12 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
         overlay.appendChild(createArrow('prev'));
         overlay.appendChild(createArrow('next'));
     }
-
     // Close button
     const closeButton = document.createElement('button');
     closeButton.className = 'view-button';
     closeButton.innerHTML = eyeOffIconSvg;
     Object.assign(closeButton.style, { position: 'absolute', top: '5px', right: '5px', zIndex: '21' });
     if (closeButton.querySelector('svg')) closeButton.querySelector('svg').style.stroke = 'white';
-
     // Cleanup function
     const cleanup = () => {
         if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -4318,38 +4000,31 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
             URL.revokeObjectURL(overlay.mediaUrlToRevoke);
         }
     };
-
     closeButton.addEventListener('click', (ev) => {
         ev.stopPropagation();
         cleanup();
     });
     overlay.appendChild(closeButton);
     noteElement.appendChild(overlay);
-
     // --- Load Media Function ---
     async function loadMedia(index) {
         // Clear container
         mediaContainer.innerHTML = '';
-
         // Revoke previous URL if any (local scope reuse)
         if (overlay.mediaUrlToRevoke) {
             URL.revokeObjectURL(overlay.mediaUrlToRevoke);
             overlay.mediaUrlToRevoke = null;
         }
-
         // Add spinner
         const spinner = document.createElement('div');
         spinner.className = 'loader';
         Object.assign(spinner.style, { width: '40px', height: '40px', border: '4px solid #f3f3f3', borderTop: '4px solid #3498db', borderRadius: '50%', animation: 'spin 1s linear infinite' });
         mediaContainer.appendChild(spinner);
-
         const folderName = isVideo ? 'Video' : 'Images';
         const attachment = attachments[index];
         const fileIdOrPath = sourceMode === 'gdrive' ? attachment.pathGD : attachment.path;
-
         let mediaUrl;
         let isIframe = false;
-
         try {
             if (sourceMode === 'gdrive') {
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
@@ -4357,7 +4032,6 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                     if (!authToken) throw new Error(_('errorTokenMissing'));
                     gapi.client.setToken({ access_token: authToken.access_token });
                 }
-
                 if (isVideo) {
                     try {
                         const videoResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
@@ -4388,7 +4062,6 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                     let handleKey = null;
                     if (dbSource === 2) handleKey = 'directoryHandle';
                     else if (dbSource === 3) handleKey = 'arhHandle';
-
                     if (handleKey) {
                         const handle = await getConfig(handleKey);
                         const verifiedHandle = handle ? await verifyPermission(handle) : null;
@@ -4401,7 +4074,6 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                         }
                     }
                 }
-
                 let fileHandle;
                 const fileName = fileIdOrPath.split('/').pop();
                 if (sourceMode === 'local') {
@@ -4414,10 +4086,8 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 mediaUrl = URL.createObjectURL(file);
                 overlay.mediaUrlToRevoke = mediaUrl;
             }
-
             // Remove spinner
             if (spinner.parentNode) spinner.remove();
-
             let mediaElement;
             if (isIframe) {
                 mediaElement = document.createElement('iframe');
@@ -4440,11 +4110,9 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 Object.assign(mediaElement.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
             }
             mediaContainer.appendChild(mediaElement);
-
         } catch (e) {
             console.log("Preview failed:", e);
             if (spinner.parentNode) spinner.remove();
-
             const errorMsg = document.createElement('div');
             errorMsg.style.color = 'white';
             errorMsg.style.textAlign = 'center';
@@ -4452,7 +4120,6 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
             mediaContainer.appendChild(errorMsg);
         }
     }
-
     // Initial load
     loadMedia(currentIndex);
 }
@@ -4478,7 +4145,6 @@ function addInNotePreviewListener(element, attachments, currentIndex, sourceMode
 // =================================================================================
 // V. СЪЗДАВАНЕ И УПРАВЛЕНИЕ НА UI ЕЛЕМЕНТИ
 // =================================================================================
-
 /**
  * Makes an element draggable and saves its position to localStorage.
  * @param {HTMLElement} element - The element to make draggable.
@@ -4486,7 +4152,6 @@ function addInNotePreviewListener(element, attachments, currentIndex, sourceMode
  */
 function makeElementDraggable(element, storageKey) {
     if (!element) return;
-
     // Restore position
     const savedPos = localStorage.getItem(storageKey);
     if (savedPos) {
@@ -4498,16 +4163,13 @@ function makeElementDraggable(element, storageKey) {
             element.style.left = 'auto';
         } catch (e) { console.log(e); }
     }
-
     let isDragging = false;
     let hasMoved = false;
     let startX, startY, startTop, startRight;
-
     const onDragStart = (e) => {
         if (e.type === 'mousedown' && e.button !== 0) return;
         // Prevent native drag behavior (e.g. ghost image) for mouse events
         if (e.type === 'mousedown') e.preventDefault();
-
         const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
         const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
         isDragging = true;
@@ -4518,7 +4180,6 @@ function makeElementDraggable(element, storageKey) {
         startTop = rect.top;
         startRight = window.innerWidth - rect.right;
     };
-
     const onDragMove = (e) => {
         if (!isDragging) return;
         const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
@@ -4538,7 +4199,6 @@ function makeElementDraggable(element, storageKey) {
         element.style.bottom = 'auto';
         element.style.left = 'auto';
     };
-
     const onDragEnd = () => {
         if (!isDragging) return;
         isDragging = false;
@@ -4547,20 +4207,17 @@ function makeElementDraggable(element, storageKey) {
             localStorage.setItem(storageKey, JSON.stringify({ top: element.style.top, right: element.style.right }));
         }
     };
-
     element.addEventListener('mousedown', onDragStart);
     element.addEventListener('touchstart', onDragStart, { passive: false });
     window.addEventListener('mousemove', onDragMove, { passive: false });
     window.addEventListener('touchmove', onDragMove, { passive: false });
     window.addEventListener('mouseup', onDragEnd);
     window.addEventListener('touchend', onDragEnd);
-
     // Block context menu on mobile/touch
     element.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
     });
-
     // Block click if moved
     element.addEventListener('click', (e) => {
         if (hasMoved) {
@@ -4588,11 +4245,9 @@ function showModal(options, noteElement = null) {
     }
     // --- Board Name Display in Modal ---
     const modalContentBox = contentModal.querySelector('.modal-content-box');
-
     // Прилагаме запазените размери, ако съществуват
     const savedWidth = localStorage.getItem('modalWidth');
     const savedHeight = localStorage.getItem('modalHeight');
-
     if (savedWidth && savedHeight) {
         modalContentBox.style.width = savedWidth;
         modalContentBox.style.height = savedHeight;
@@ -4615,17 +4270,14 @@ function showModal(options, noteElement = null) {
             if (board) {
                 modalBoardNameEl.textContent = board.title;
                 modalBoardNameEl.style.display = 'block';
-
                 // --- Make Board Name Clickable ---
                 modalBoardNameEl.style.cursor = 'pointer';
                 modalBoardNameEl.style.textDecoration = 'underline';
                 modalBoardNameEl.style.fontWeight = 'bold';
                 modalBoardNameEl.title = _('goToBoard');
-
                 // Clean old event listeners
                 const newEl = modalBoardNameEl.cloneNode(true);
                 modalBoardNameEl.parentNode.replaceChild(newEl, modalBoardNameEl);
-
                 newEl.addEventListener('click', () => {
                     document.getElementById('content-modal').classList.remove('visible');
                     const boardBtn = document.querySelector(`.board-filter-link[data-boardid="${board.gdid}"]`);
@@ -4635,6 +4287,7 @@ function showModal(options, noteElement = null) {
                         filterNotesByBoard(board.gdid);
                     }
                 });
+
                 // --------------------------------
             } else {
                 modalBoardNameEl.style.display = 'none';
@@ -4660,7 +4313,6 @@ function showModal(options, noteElement = null) {
     modalBody.innerHTML = displayContent;
     // Set modal background color
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
-
     if (noteColor) {
         modalContentBox.style.backgroundColor = noteColor;
         // Ако графичният фон е изключен, премахваме background-image
@@ -4679,13 +4331,11 @@ function showModal(options, noteElement = null) {
         }
     }
     contentModal.classList.add('visible');
-
     // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
     // Проверяваме дали имаме ID-та, за да търсим прикачени файлове
     if (noteId || noteGdid) {
         // --- Логика за показване на бутона за изтриване ---
         let attachments = [];
-
         if (useIndexedDb) {
             const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid';
             if (dbNoteIdType === 'id') {
@@ -4697,23 +4347,19 @@ function showModal(options, noteElement = null) {
             if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
             else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
         }
-
         if (attachments.length > 0) {
             const separator = document.createElement('hr');
             separator.style.marginTop = '10px';
             separator.style.marginBottom = '10px';
             modalBody.appendChild(separator);
-
             attachments.forEach(async attachment => {
                 const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
                 if (!iconData) return;
-
                 const attachmentWrapper = document.createElement('div');
                 attachmentWrapper.style.display = 'flex';
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
                 attachmentWrapper.style.marginTop = '5px';
-
                 if (useArhDb) {
                     await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
                 } else if (useLocalFolder) {
@@ -4723,16 +4369,42 @@ function showModal(options, noteElement = null) {
                 }
                 modalBody.appendChild(attachmentWrapper);
             });
+
         }
     }
     // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
+    // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
+    // --- ДОБАВЕНА ЛОГИКА ЗА ФУТЪР В МОДАЛА ---
+    // Първо премахваме стария футър, ако има такъв
+    const oldFooter = modalContentBox.querySelector('.modal-note-footer');
+    if (oldFooter) {
+        oldFooter.remove();
+    }
+
+    // Ако не е подаден noteElement (напр. от календара), опитваме се да го намерим в DOM-а
+    if (!noteElement && (options.gdid || noteGdid)) {
+        const gdidToFind = options.gdid || noteGdid;
+        noteElement = document.querySelector(`.note[data-g="${gdidToFind}"]`);
+    }
+
+    if (noteElement) {
+        const noteHeaderInfo = noteElement.querySelector('.note-header-info');
+        // Показваме футъра само ако има информация в хедъра на бележката
+        // И само ако сме в режим "преглед" (не при редакция, въпреки че тук е само showModal)
+        if (noteHeaderInfo && noteHeaderInfo.innerText.trim() !== '') {
+            const footer = document.createElement('div');
+            footer.className = 'modal-note-footer';
+            footer.innerHTML = noteHeaderInfo.innerHTML;
+            modalContentBox.appendChild(footer); // Закачаме го за content box-a, не за body-то
+        }
+    }
+
 
     copyBtn.innerHTML = copyIconSvg;
     // --- Логика за навигация между бележките ---
     const prevBtn = document.getElementById('prev-note-btn');
     const nextBtn = document.getElementById('next-note-btn');
     const deleteBtn = document.getElementById('delete-modal-btn');
-
     // Показваме/скриваме бутона за изтриване
     if (useIndexedDb && (noteElement || noteGdid)) {
         deleteBtn.style.display = 'flex';
@@ -4746,24 +4418,25 @@ function showModal(options, noteElement = null) {
             } else {
                 // Calendar/System case: Pass mock element with dataset
                 const mockEl = {
+                    gdid: options.gdid || noteGdid, // Direct property for fallback logic
                     dataset: {
-                        g: noteGdid,
+                        g: options.gdid || noteGdid, // Ensure we get it from options if variable is not in scope
                         b: (options && options.boardId) ? options.boardId : null
                     },
                     remove: () => { } // No-op
                 };
+
+
                 await handleNoteDelete(mockEl, e, true);
             }
         });
+
     } else {
         deleteBtn.style.display = 'none';
     }
-
-
     if (noteElement) {
         const visibleNotes = Array.from(notesContainer.querySelectorAll('.note-item[style*="display: flex"]'));
         const currentIndex = visibleNotes.indexOf(noteElement);
-
         const navigate = (direction) => {
             const newIndex = currentIndex + direction;
             if (newIndex >= 0 && newIndex < visibleNotes.length) {
@@ -4774,11 +4447,9 @@ function showModal(options, noteElement = null) {
 
         prevBtn.onclick = () => navigate(-1);
         nextBtn.onclick = () => navigate(1);
-
         // Показваме/скриваме бутоните в зависимост от позицията
         prevBtn.style.display = (currentIndex > 0) ? 'flex' : 'none';
         nextBtn.style.display = (currentIndex < visibleNotes.length - 1) ? 'flex' : 'none';
-
     } else {
         // Ако не е подаден елемент на бележка (напр. за системна информация), скриваме бутоните
         prevBtn.style.display = 'none';
@@ -4787,35 +4458,28 @@ function showModal(options, noteElement = null) {
         if (boardNameEl) boardNameEl.style.left = '15px';
     }
 }
-
 function showAllBoardsModal() {
     const modalContent = document.createElement('div');
     const boardsModal = document.getElementById('boards-menu-modal');
     modalContent.className = 'all-boards-modal-container';
-
     // Взимаме всички бутони от главното меню в хедъра
     const headerMenuContainer = document.querySelector('header .board-menu-container');
     if (!headerMenuContainer) return; // Предпазна мярка
-
     const headerButtons = headerMenuContainer.querySelectorAll('.board-filter-link');
-
     headerButtons.forEach(button => {
         const clone = button.cloneNode(true);
         // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
         clone.style.width = `${maxWidthForButtons}px`;
         modalContent.appendChild(clone);
     });
-
     // Делегиран слушател за събития върху контейнера на модала
     modalContent.addEventListener('click', (e) => {
         const targetButton = e.target.closest('.board-filter-link');
         if (targetButton) {
             e.preventDefault();
             const boardId = targetButton.dataset.boardid;
-
             // Намираме съответния бутон в хедъра
             const headerButton = headerMenuContainer.querySelector(`.board-filter-link[data-boardid="${boardId}"]`);
-
             if (headerButton) {
                 // Затваряме модала
                 boardsModal.classList.remove('visible');
@@ -4824,11 +4488,9 @@ function showAllBoardsModal() {
             }
         }
     });
-
     const boardsModalBody = document.getElementById('boards-menu-modal-body');
     boardsModalBody.innerHTML = '';
     boardsModalBody.appendChild(modalContent);
-
     // --- Calculate optimal width to fit columns exactly ---
     let buttonWidth = maxWidthForButtons;
     // Fallback if global variable is not set or 0
@@ -4839,15 +4501,12 @@ function showAllBoardsModal() {
             buttonWidth = parseFloat(tempClone.style.width) || 150;
         }
     }
-
     if (buttonWidth) {
         const gap = 10;
         const paddingOverhead = 40; // Exact fit: ContainerPadding (20px) + Scrollbar (approx 17px) + Buffer
         const availableWidth = window.innerWidth * 0.95; // Max allowed width (95% of screen)
-
         let cols = Math.floor((availableWidth - paddingOverhead + gap) / (buttonWidth + gap));
         cols = Math.max(1, cols); // At least 1 column
-
         const optimalWidth = cols * (buttonWidth + gap) - gap + paddingOverhead;
         const modalBox = boardsModal.querySelector('.modal-content-box');
         if (modalBox) {
@@ -4855,7 +4514,6 @@ function showAllBoardsModal() {
             modalBox.style.maxWidth = '95vw'; // Ensure it doesn't overflow viewport width logic
         }
     }
-
     boardsModal.classList.add('visible');
 }
 
@@ -4869,7 +4527,6 @@ function formatDate(dateString) {
         return `${day}.${month}.${year}`;
     } catch (e) { return dateString; }
 }
-
 function formatDateTime(timestamp) {
     if (!timestamp) return '';
     try {
@@ -4896,7 +4553,6 @@ function formatTime(timestamp) {
         return ''; // Fallback
     }
 }
-
 // Add an event listener to the modal's close button to reset button visibility
 document.querySelectorAll('.modal-close').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -4927,11 +4583,9 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const firstAvailableBoard = boardsData.find(b => b.gdid);
         boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
     }
-
     // --- КОРЕКЦИЯ: Дефинираме buttonBoardId тук ---
     // Независимо дали boardId е число (id) или текст (gdid), за бутона ни трябва gdid.
     const buttonBoardId = typeof boardId === 'number' ? boardsData.find(b => b.id == boardId)?.gdid : boardId;
-
     // --- Проверка за съществуващ борд ---
     // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
     // и не съществува в boardsData, превключваме към 'all'.
@@ -4943,27 +4597,22 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         // Бутоните за филтриране винаги подават `gdid`.
         // Тази логика проверява дали бордът съществува и задава правилния
         // идентификатор за филтриране (`currentBoardFilter`).
-
         let boardToFilter = null;
         // Търсим борда по gdid, който идва от клик на бутон
         const board = boardsData.find(b => b.gdid === boardId);
-
         if (board) {
             // Ако сме в режим Архив, ще филтрираме по числовото `id`.
             // В противен случай - по `gdid`.
             boardToFilter = useArhDb ? board.id : board.gdid;
         }
-
         // Проверяваме дали сме намерили борд. `boardId` е оригиналният gdid от бутона.
         const boardExists = boardsData.some(b => b.gdid === boardId);
-
         if (!boardExists) {
             console.warn(`Board with ID '${boardId}' not found. Defaulting to 'all'.`);
             boardId = 'all';
         }
     }
     const searchInput = document.getElementById('search-box'); // The search input field
-
     // --- КОРЕКЦИЯ: Първо скролираме, после анимираме ---
     // Преместваме логиката за скролиране в началото.
     if (shouldScroll) {
@@ -4991,17 +4640,14 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     }
     searchInput.value = ''; // Clear the search box
     saveSearchBtn.style.display = 'none';
-
     // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
     // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
     const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
     currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid === boardId)?.id : boardId);
-
     // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
     const modeButton = document.getElementById('mode_button');
     const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
     let animationStartTime = 0;
-
     const runFilter = () => {
         applyFilters();
         // Спираме анимацията СЛЕД като браузърът е прерисувал екрана
@@ -5009,27 +4655,22 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
             // Update UI immediately (Stop spinner, show image)
             modeButton.classList.remove('mode-button-loading');
             loadingIcon.classList.remove('button-loading');
-
             if (typeof debug !== 'undefined' && debug) {
                 setTimeout(() => {
                     const duration = performance.now() - animationStartTime;
-
                     let logName = boardId;
                     if (boardId !== 'all' && typeof boardsData !== 'undefined') {
                         const b = boardsData.find(b => b.gdid === boardId || b.id === boardId);
                         if (b) logName = b.title;
                     }
-
                     // Get note count from the UI counter which is updated in applyFilters
                     const noteCounter = document.getElementById('note-counter');
                     const count = noteCounter ? noteCounter.textContent : '0';
-
                     console.log(`Board "${logName}" (${count} notes) render duration: ${duration.toFixed(0)}ms`);
                 }, 0);
             }
         }
     };
-
     if (modeButton && loadingIcon) {
         animationStartTime = performance.now();
         modeButton.classList.add('mode-button-loading');
@@ -5040,16 +4681,12 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     } else {
         runFilter(); // За всички други бутони, изпълняваме веднага
     }
-
     // Маркираме избрания бутон. `boardId` тук е оригиналният `gdid` от бутона.
     document.querySelectorAll('.board-filter-link').forEach(link => {
         link.classList.toggle('selected-board', link.dataset.boardid === boardId);
     });
-
-
     // Placeholder-ът вече не включва името на борда, тъй като търсенето е във всички бележки
     // updateSearchPlaceholder() ще зададе общ placeholder
-
     if (boardId === 'all') {
         // For the 'all' view, clear the inline style to let the default CSS background apply.
         // This prevents flickering on initial load.
@@ -5097,20 +4734,17 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         }
     }*/
     window.dispatchEvent(new Event('scroll'));
-
     // --- КОРЕКЦИЯ: Възстановяване на UI след затваряне на календара ---
     // Тъй като renderCalendarView скрива хедъра и контейнера с бележки,
     // тук трябва изрично да ги покажем отново, ако не сме в режим календар.
     if (boardId !== 'calendar') {
         const calendarContainer = document.getElementById('calendar-container');
         if (calendarContainer) calendarContainer.style.display = 'none';
-
         // Възстановяваме видимостта на основните елементи
         document.querySelector('header').style.display = 'flex';
         notesContainer.style.display = 'flex';
         scrollTopBtn.style.display = 'block';
     }
-
     // Add or remove a class from the container to control child visibility
     // This part is no longer needed as calendar has its own view
     notesContainer.classList.remove('calendar-view');
@@ -5127,13 +4761,10 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
 /*function applySearchFilter() {
     applyFilters();
 }*/
-
 function applyFilters() {
     const searchTerm = searchBox.value.toLowerCase();
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
-
     let visibleCount = 0;
-
     // --- PRE-CALCULATE FILTER MODES ---
     const isAll = currentBoardFilter === 'all';
     const isReminder = currentBoardFilter === 'reminder';
@@ -5144,7 +4775,6 @@ function applyFilters() {
     const isWithOther = currentBoardFilter === 'with-other';
     // If none of the above special modes, it's a standard board filter (by ID)
     const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther;
-
     // --- ENHANCED ID FILTERING (Pre-calc) ---
     // Handle scenarios where notes use legacy ID but filter uses GDID (or vice versa)
     let validBoardIds = [currentBoardFilter];
@@ -5155,14 +4785,11 @@ function applyFilters() {
             if (board.id) validBoardIds.push(board.id);
         }
     }
-
     for (const note of notes) {
         if (note.classList.contains('boards-note')) {
             continue;
         }
-
         let isVisibleByBoard = false;
-
         // Optimized Branching
         if (isAll) {
             isVisibleByBoard = true;
@@ -5183,10 +4810,8 @@ function applyFilters() {
         } else if (isWithOther) {
             isVisibleByBoard = (note.dataset.ho === '1');
         }
-
         // Filter by Search Term
         let matchesSearch = true;
-
         // OPTIMIZATION: Only access DOM textContent if there is a search term!
         if (searchTerm !== '') {
             const titleEl = note.querySelector('.note-title-truncated');
@@ -5194,7 +4819,6 @@ function applyFilters() {
             const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
             matchesSearch = noteText.toLowerCase().includes(searchTerm);
         }
-
         if ((searchTerm !== '' ? matchesSearch : isVisibleByBoard)) {
             note.style.display = 'flex';
             visibleCount++;
@@ -5202,20 +4826,16 @@ function applyFilters() {
             note.style.display = 'none';
         }
     }
-
     // --- Sorting Logic ---
     if (localStorage.getItem('enableNoteSorting') === 'true') {
         const sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
         const sortReverse = localStorage.getItem('sortInReverse') === 'true';
         const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
         const sortOrder = sortReverse ? -1 : 1;
-
         const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not([style*="display: none"])'));
-
         visibleNotes.sort((a, b) => {
             if (a.classList.contains('boards-note')) return -1;
             if (b.classList.contains('boards-note')) return 1;
-
             // 1. Reminder Priority
             if (sortRemindersTop) {
                 const isReminderA = a.dataset.tm === '1';
@@ -5223,9 +4843,7 @@ function applyFilters() {
                 if (isReminderA && !isReminderB) return -1;
                 if (!isReminderA && isReminderB) return 1;
             }
-
             let valA, valB;
-
             // 2. Main Sorting Criteria (Read from SHORT CODES in dataset)
             if (sortCriteria === 'numord') {
                 valA = parseFloat(a.dataset.no || 0);
@@ -5248,28 +4866,18 @@ function applyFilters() {
             } else {
                 valA = 0; valB = 0; // Fallback
             }
-
             // Handle Null/Undefined values (always push to bottom)
             const aExists = valA !== null && valA !== undefined && !Number.isNaN(valA) && valA !== '';
             const bExists = valB !== null && valB !== undefined && !Number.isNaN(valB) && valB !== '';
-
             if (!aExists && bExists) return 1;
             if (aExists && !bExists) return -1;
             if (!aExists && !bExists) return 0;
-
             if (valA < valB) return -1 * sortOrder;
             if (valA > valB) return 1 * sortOrder;
             return 0;
         });
-
         visibleNotes.forEach(note => notesContainer.appendChild(note));
     }
-
-
-
-
-
-
     const noteCounter = document.getElementById('note-counter');
     if (noteCounter) {
         noteCounter.textContent = visibleCount;
@@ -5281,12 +4889,10 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         showMessagePopup(_('errorInvalidFolderIdSession'));
         throw new Error("Invalid Folder ID provided to fetchFiles.");
     }
-
     let query = `'${folderId}' in parents and name = '${filename}' and mimeType='text/plain' and trashed = false`;
     if (modifiedSince) {
         query += ` and modifiedTime > '${modifiedSince}'`;
     }
-
     const allFiles = [];
     let pageToken = null;
     do {
@@ -5302,12 +4908,10 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         allFiles.push(...response.result.files);
         pageToken = response.result.nextPageToken;
     } while (pageToken);
-
     if (allFiles.length === 0) {
         if (modifiedSince) console.log(`No files named '${filename}' modified since ${modifiedSince}.`);
         return [];
     }
-
     let loadedFiles = 0;
     const totalFiles = allFiles.length;
     const filePromises = allFiles.map(file =>
@@ -5319,10 +4923,10 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
                 }
                 return { file, res };
             })
+
     );
     return Promise.all(filePromises);
 }
-
 async function getFileID(folderId, fileName) {
     try {
         const response = await gapi.client.drive.files.list({
@@ -5372,7 +4976,6 @@ async function getFolderID() {
         return null;
     }
 }
-
 async function getMultinotesDataFolderID() {
     try {
         const response = await gapi.client.drive.files.list({
@@ -5410,11 +5013,9 @@ function initializeLoad() {
     allNotesData = [];
     notesContainer.innerHTML = ''; // Продължаваме да изчистваме бележките
     loaderContainer.style.display = 'block'; // Показваме лоудъра веднага
-
     // Задаваме първоначален текст, за да избегнем "премигване" на празен панел
     const loaderTitle = document.getElementById('loader-title');
     if (loaderTitle) loaderTitle.textContent = _('initialDataLoad');
-
     currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
     const popup = document.getElementById('board-filter-popup');
     if (popup) {
@@ -5447,7 +5048,6 @@ async function createBoardsUI(boardsData, boardParseError) {
     }
     contentWrapper.appendChild(contentEl);
     boardsNote.appendChild(contentWrapper);
-
     /**
      * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
      * @param {HTMLElement} element The element to attach events to.
@@ -5484,6 +5084,7 @@ async function createBoardsUI(boardsData, boardParseError) {
             if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(e);
         });
     };
+
     let lastActive = null;
     const allButtonLinks = [];
     const boardClick = (e, boardId, forcePreview = false) => {
@@ -5496,14 +5097,12 @@ async function createBoardsUI(boardsData, boardParseError) {
         link.style.height = '39px';
         lastActive = link;
         if (e.preventDefault) e.preventDefault();
-
         // 1. Logic for Debug JSON (Ctrl+Click in Debug Mode)
         if (debug && e.ctrlKey && !e.shiftKey && !forcePreview) {
             const board = boardsData.find(b => b.gdid == boardId) || { id: boardId, warning: 'Special Board or Data Not Found' };
             showModal(JSON.stringify(board, null, 2));
             return;
         }
-
         // 2. Logic for Preview Toggle (Ctrl+Click or Long Press)
         if (e.ctrlKey || forcePreview) {
             if (link.scrollIntoView) link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
@@ -5524,7 +5123,6 @@ async function createBoardsUI(boardsData, boardParseError) {
         let longPressTimer;
         let isLongPress = false;
         let isTouchMove = false;
-
         const startPress = (e) => {
             isTouchMove = false;
             isLongPress = false;
@@ -5535,15 +5133,12 @@ async function createBoardsUI(boardsData, boardParseError) {
                     // Simulate Ctrl+Click behavior
                     // This creates consistency: If Debug is ON -> JSON; If Debug is OFF -> Preview
                     boardClick({ currentTarget: element, ctrlKey: true, preventDefault: () => { } }, boardId);
-
                     // Optional: Vibrate to indicate success
                     if (navigator.vibrate) navigator.vibrate(50);
                 }
             }, 600);
         };
-
         const cancelPress = () => clearTimeout(longPressTimer);
-
         const endPress = (e) => {
             clearTimeout(longPressTimer);
             if (isLongPress) {
@@ -5551,24 +5146,20 @@ async function createBoardsUI(boardsData, boardParseError) {
                 e.stopPropagation();
             }
         };
-
         const onMove = () => {
             isTouchMove = true;
             clearTimeout(longPressTimer);
         };
-
         element.addEventListener('touchstart', startPress, { passive: true });
         element.addEventListener('touchend', endPress);
         element.addEventListener('touchmove', onMove, { passive: true });
         element.addEventListener('touchcancel', cancelPress);
-
         // Prevent context menu on long press
         element.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             e.stopPropagation();
             return false;
         });
-
         // Standard Click
         element.addEventListener('click', (e) => {
             if (isLongPress) {
@@ -5580,6 +5171,7 @@ async function createBoardsUI(boardsData, boardParseError) {
             boardClick(e, boardId);
         });
     };
+
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ВСИЧКИ" ---
     if (localStorage.getItem('showBoardAll') !== 'false') {
         const allBoardsLink = document.createElement('span');
@@ -5593,8 +5185,6 @@ async function createBoardsUI(boardsData, boardParseError) {
         allButtonLinks.push(allBoardsLink);
     }
     const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-
-
     // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
     if (updatedNoteGdims.length > 0) {
         const newUpdatesLink = document.createElement('span');
@@ -5604,7 +5194,6 @@ async function createBoardsUI(boardsData, boardParseError) {
         addBoardButtonEvents(newUpdatesLink, 'new-updates');
         allButtonLinks.push(newUpdatesLink);
     }
-
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
     if (localStorage.getItem('showBoardRemind') !== 'false') {
         const reminderNoteCount = boardsData.reminderNoteCount || 0;
@@ -5615,7 +5204,6 @@ async function createBoardsUI(boardsData, boardParseError) {
         addBoardButtonEvents(reminderLink, 'reminder');
         allButtonLinks.push(reminderLink);
     }
-
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС СНИМКИ" ---
     if (localStorage.getItem('showPhotosBoard') === 'true') {
         const photosLink = document.createElement('span');
@@ -5625,7 +5213,6 @@ async function createBoardsUI(boardsData, boardParseError) {
         addBoardButtonEvents(photosLink, 'with-photos');
         allButtonLinks.push(photosLink);
     }
-
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "С ВИДЕО" ---
     if (localStorage.getItem('showVideosBoard') === 'true') {
         const videosLink = document.createElement('span');
@@ -5635,7 +5222,6 @@ async function createBoardsUI(boardsData, boardParseError) {
         addBoardButtonEvents(videosLink, 'with-videos');
         allButtonLinks.push(videosLink);
     }
-
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС ЗВУК" ---
     if (localStorage.getItem('showSoundsBoard') === 'true') {
         const soundsLink = document.createElement('span');
@@ -5645,7 +5231,6 @@ async function createBoardsUI(boardsData, boardParseError) {
         addBoardButtonEvents(soundsLink, 'with-sounds');
         allButtonLinks.push(soundsLink);
     }
-
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ДРУГИ ПРИЛОЖЕНИЯ" ---
     if (localStorage.getItem('showOtherBoard') === 'true') {
         const otherLink = document.createElement('span');
@@ -5662,16 +5247,15 @@ async function createBoardsUI(boardsData, boardParseError) {
         const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
         return numordA - numordB;
     })
+
     boardsData.forEach(board => {
         if (!board.title || !board.gdid) return;
         const noteCount = board.noteCount || 0;
         const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-
         const link = document.createElement('span');
         link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
         link.classList.add('board-filter-link');
         link.dataset.boardid = board.gdid;
-
         // Обработка на цвят на фона
         if (board.color !== undefined && !isNaN(board.color)) {
             if (board.color >= 0 && board.color <= 6) {
@@ -5686,7 +5270,6 @@ async function createBoardsUI(boardsData, boardParseError) {
                 link.style.backgroundColor = hexColor;
             }
         }
-
         // Обработка на цвят на шрифта
         link.style.color = 'black'; // Default
         if (board.status === 1) {
@@ -5699,7 +5282,6 @@ async function createBoardsUI(boardsData, boardParseError) {
         // Custom цвят на шрифта (отрицателно число)
         const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
         link.style.color = hexFontColor;
-
         addBoardButtonEvents(link, board.gdid);
         allButtonLinks.push(link);
     });
@@ -5712,12 +5294,14 @@ async function createBoardsUI(boardsData, boardParseError) {
         tempContainer.appendChild(link);
         maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
     });
+
     document.body.removeChild(tempContainer);
     maxWidthForButtons += 10;
     allButtonLinks.forEach(link => {
         link.style.width = `${maxWidthForButtons}px`;
         contentEl.appendChild(link);
     });
+
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
     const allBoardsBtn = document.createElement('button');
@@ -5738,25 +5322,20 @@ async function createBoardsUI(boardsData, boardParseError) {
         const allBoardsBtnForContainer = document.createElement('button');
         allBoardsBtnForContainer.className = 'popup-menu-btn-floating'; // Използваме floating стил, за да стои над страницата
         allBoardsBtnForContainer.innerHTML = boardIconSvg;
-
         // --- DRAGGABLE FUNCTIONALITY ---
         // Използваме новата функция за drag-and-drop
         makeElementDraggable(allBoardsBtnForContainer, 'popupMenuBtnPosition');
-
         // Long press logic remains for specific actions if needed, but for now standard draggable covers the move.
         // The original code had specific long press interaction which we preserve via showAllBoardsModal call logic below if needed.
         // But here we just need to attach the click handler. makeElementDraggable blocks click if dragged.
-
         // Click event - отваря менюто с малко забавяне, за да има време за drag (ако не е преместен)
         let clickTimer;
         allBoardsBtnForContainer.addEventListener('click', (e) => {
             // makeElementDraggable already handles stopping propagation if moved.
             // If we are here, it wasn't a drag.
-
             // Малко забавяне преди отваряне на менюто
             e.preventDefault();
             e.stopPropagation();
-
             clearTimeout(clickTimer);
             clickTimer = setTimeout(() => {
                 showAllBoardsModal();
@@ -5767,17 +5346,13 @@ async function createBoardsUI(boardsData, boardParseError) {
         boardsMenuContainer.innerHTML = '';
         boardsMenuContainer.appendChild(allBoardsBtnForContainer);
     }
-
     scrollWrapper.appendChild(contentEl);
     contentWrapper.appendChild(scrollWrapper);
-
     // Лявата стрелка вече е винаги видима чрез CSS или директно добавяне на клас.
     // Няма нужда от динамична проверка при скрол.
     allBoardsBtn.classList.add('visible');
-
     return boardsNote;
 }
-
 async function createSettingsUI(boardsData, boardParseError) {
     const settingsModalBody = document.getElementById('settings-modal-body');
     // --- Get Element References ---
@@ -5808,9 +5383,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const selectFolderBtn = document.getElementById('select-folder-btn');
     const folderNameDisplay = document.getElementById('local-sync-folder-name');
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
-
     if (!settingsModalBody.dataset.initialized) {
-
         // Hide Assistant Logic
         if (hideAssistantCheckbox) {
             hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
@@ -5824,7 +5397,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         }
-
         // Zooom
         const updateZoom = (value) => {
             value = Math.max(25, Math.min(175, parseInt(value, 10)));
@@ -5857,7 +5429,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             updateZoom(zoomValue);
             localStorage.setItem('zoomLevel', zoomValue);
         });
-
         // --- Прозрачност при използване на плъзгача ---
         const settingsModal = document.getElementById('settings-modal');
         const startOpacityChange = () => {
@@ -5866,10 +5437,8 @@ async function createSettingsUI(boardsData, boardParseError) {
         const endOpacityChange = () => {
             if (settingsModal) settingsModal.style.opacity = '1';
         };
-
         scaleSlider.addEventListener('mousedown', startOpacityChange);
         scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
-
         scaleSlider.addEventListener('mouseup', endOpacityChange);
         scaleSlider.addEventListener('touchend', endOpacityChange);
         scaleSlider.addEventListener('mouseleave', endOpacityChange); // За всеки случай
@@ -5892,7 +5461,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 localStorage.setItem('zoomLevel', newValue);
             }
         });
-
         // Fonts
         const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
             const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
@@ -5914,7 +5482,6 @@ async function createSettingsUI(boardsData, boardParseError) {
         };
         setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
         setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
-
         // Date
         showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
         showDatemodCheckbox.addEventListener('change', () => {
@@ -5923,7 +5490,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             document.body.classList.toggle('hide-datemod', !isChecked);
             showToast(_('settingSaved'), 2000);
         });
-
         // One-tap links
         oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') !== 'false'; // Default to true
         oneTapLinkCheckbox.addEventListener('change', () => {
@@ -5935,7 +5501,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             // Презареждаме бележките, за да се отрази промяната веднага
             mainLogic();
         });
-
         // Graphical background
         const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
         imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
@@ -5944,7 +5509,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             localStorage.setItem('imgBgrd', isChecked);
             showToast(_('settingSaved'), 2000);
         });
-
         // Graphical background (notes list)
         const notesBgrdCheckbox = document.getElementById('notes-bgrd-checkbox');
         notesBgrdCheckbox.checked = localStorage.getItem('notesBgrd') !== 'false'; // Default to true
@@ -5954,9 +5518,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             showToast(_('settingSaved'), 2000);
             notesBgrdChanged = true;
         });
-
-
-
         // Board Note Count
         if (showBoardNoteCountCheckbox) {
             showBoardNoteCountCheckbox.checked = localStorage.getItem('showBoardNoteCount') === 'true';
@@ -5967,7 +5528,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             });
         }
-
         // Show 'All' Board Checkbox
         if (showBoardAllCheckbox) {
             showBoardAllCheckbox.checked = localStorage.getItem('showBoardAll') !== 'false'; // Default to true
@@ -5977,7 +5537,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             });
         }
-
         // Show 'Reminders' Board Checkbox
         if (showBoardRemindCheckbox) {
             showBoardRemindCheckbox.checked = localStorage.getItem('showBoardRemind') !== 'false'; // Default to true
@@ -5987,7 +5546,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             });
         }
-
         // Show 'Photos' Board Checkbox
         if (showPhotosBoardCheckbox) {
             showPhotosBoardCheckbox.checked = localStorage.getItem('showPhotosBoard') === 'true';
@@ -5997,7 +5555,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             });
         }
-
         // Show 'Videos' Board Checkbox
         if (showVideosBoardCheckbox) {
             showVideosBoardCheckbox.checked = localStorage.getItem('showVideosBoard') === 'true';
@@ -6007,7 +5564,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             });
         }
-
         // Show 'Sounds' Board Checkbox
         if (showSoundsBoardCheckbox) {
             showSoundsBoardCheckbox.checked = localStorage.getItem('showSoundsBoard') === 'true';
@@ -6017,7 +5573,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             });
         }
-
         // Show 'Other' Board Checkbox
         if (showOtherBoardCheckbox) {
             showOtherBoardCheckbox.checked = localStorage.getItem('showOtherBoard') === 'true';
@@ -6027,7 +5582,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             });
         }
-
         // Weekly Calendar Checkbox
         if (weeklyCalendarCheckbox) {
             weeklyCalendarCheckbox.checked = localStorage.getItem('showWeeklyCalendar') === 'true';
@@ -6037,21 +5591,18 @@ async function createSettingsUI(boardsData, boardParseError) {
                 // No need to rerender, it's checked on calendar view open
             });
         }
-
         // Order checkbox
         orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
         const sortingOptionsSection = document.getElementById('sorting-options-section');
         const sortingArrow = document.getElementById('sorting-arrow');
         const boardsOptionsSection = document.getElementById('boards-options-section');
         const boardsArrow = document.getElementById('boards-arrow');
-
         // Event listener for the checkbox itself
         orderCheckbox.addEventListener('change', () => {
             localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
             applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
             showToast(_('settingSaved'), 2000);
         });
-
         // Event listener for the arrow ONLY
         sortingArrow.addEventListener('click', () => {
             const isActive = sortingOptionsSection.style.display === 'block';
@@ -6060,7 +5611,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             sortingArrow.style.transition = 'transform 0.3s ease';
             sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
         });
-
         // Event listener for the arrow ONLY
         boardsArrow.addEventListener('click', () => {
             const isActive = boardsOptionsSection.style.display === 'block';
@@ -6069,7 +5619,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             boardsArrow.style.transition = 'transform 0.3s ease';
             boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
         });
-
         // Sorting options
         const sortCriteriaRadios = document.querySelectorAll('input[name="sort-criteria"]');
         const savedSortCriteria = localStorage.getItem('sortCriteria') || 'numord';
@@ -6090,7 +5639,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             });
         });
-
         const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
         sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
         sortReverseCheckbox.addEventListener('change', () => {
@@ -6103,7 +5651,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             applyFilters();
             showToast(_('settingSaved'), 2000);
         });
-
         const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
         sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
         sortRemindersTopCheckbox.addEventListener('change', () => {
@@ -6116,7 +5663,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             applyFilters();
             showToast(_('settingSaved'), 2000);
         });
-
         // Start Board
         let startBoardSelect; // Declare here to be accessible in the whole function
         startBoardSelect = document.getElementById('start-board-select');
@@ -6125,7 +5671,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             localStorage.setItem('startBoard', startBoardSelect.value);
             showToast(_('settingSaved'), 2000);
         });
-
         // Max Searches
         // let maxSearchesInput; // Declare here as well
         maxSearchesInput.value = maxSavedSearches;
@@ -6142,14 +5687,12 @@ async function createSettingsUI(boardsData, boardParseError) {
             }
             showToast(_('settingSaved'), 2000);
         });
-
         // --- New Data Source Selection Logic ---
         const dataSources = [
             { checkbox: useGoogleDbCheckbox, key: 'useGoogleDb' },
             { checkbox: useLocalDbCheckbox, key: 'useLocalDb' },
             { checkbox: useArhDbCheckbox, key: 'useArhDb' }
         ];
-
         const handleDataSourceChange = (changedCheckbox, changedKey) => {
             // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
             if (!changedCheckbox.checked && !dbExists) {
@@ -6183,11 +5726,9 @@ async function createSettingsUI(boardsData, boardParseError) {
             localStorage.setItem(changedKey, changedCheckbox.checked);
             showToast(_('settingSaved'), 2000);
         };
-
         dataSources.forEach(({ checkbox, key }) => {
             checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key)); // Вече е async
         });
-
         // indexedDB
         const dbSectionWrapper = document.getElementById('db-section-wrapper');
         const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
@@ -6197,7 +5738,6 @@ async function createSettingsUI(boardsData, boardParseError) {
         useIndexedDbCheckbox.addEventListener('change', (e) => {
             const isChecked = e.target.checked;
             localStorage.setItem('useIndexedDb', isChecked);
-
             // --- НОВА ЛОГИКА: Ако се сложи отметка, симулираме клик на "Създай" ---
             if (isChecked) {
                 document.getElementById('create-db-btn').click();
@@ -6205,7 +5745,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             }
         });
-
         // Accordion logic
         const accordionHeader = document.querySelector('.accordion-header');
         if (accordionHeader) {
@@ -6240,17 +5779,13 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             });
         }
-
         // --- End of DB Section ---
-
         // DB delete
         const createDbBtn = document.getElementById('create-db-btn');
         createDbBtn.addEventListener('click', async () => {
             let confirmed = false;
-
             // Проверяваме дали базата съществува И дали не е празна.
             const boardsInDb = dbExists ? await getAllFromDB(BOARD_STORE_NAME) : [];
-
             if (dbExists && boardsInDb.length > 0) {
                 // Показваме диалог за потвърждение само ако базата съществува и има данни.
                 document.getElementById('settings-modal').classList.remove('visible');
@@ -6260,7 +5795,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 // Ако базата не съществува или е празна, продължаваме директно със създаването.
                 confirmed = true;
             }
-
             if (confirmed) {
                 const success = await createDatabaseFromMemory();
                 if (success) {
@@ -6269,7 +5803,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             }
         });
-
         const deleteDbBtn = document.getElementById('delete-db-btn');
         deleteDbBtn.addEventListener('click', async () => {
             // --- КОРЕКЦИЯ: Запомняме дали сме в режим "Само база данни" ПРЕДИ изтриването ---
@@ -6278,7 +5811,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 !document.getElementById('use-google-db-checkbox').checked &&
                 !document.getElementById('use-local-db-checkbox').checked &&
                 !document.getElementById('use-arh-db-checkbox').checked;
-
             // Затваряме настройките, за да се видят диалозите за потвърждение
             document.getElementById('settings-modal').classList.remove('visible');
             // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
@@ -6286,7 +5818,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
             if (confirmedDataDelete) {
                 const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
-                    backgroundColor: '#d92222ff', // Light red background for warning
+                    backgroundColor: '#lightgreen', // Light red background for warning
                     width: '450px'
                 });
                 if (confirmedConfigDelete) {
@@ -6298,7 +5830,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                     if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
                     if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
                     dbExists = false; // Актуализираме глобалния флаг
-
                     // --- НОВА ЛОГИКА: Премахваме отметките за локални източници ---
                     const localCheckbox = document.getElementById('use-local-db-checkbox');
                     const arhCheckbox = document.getElementById('use-arh-db-checkbox');
@@ -6306,7 +5837,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                     if (arhCheckbox) arhCheckbox.checked = false;
                     localStorage.setItem('useLocalDb', 'false');
                     localStorage.setItem('useArhDb', 'false');
-
                     dirHandle = null; // Нулираме и handle-a в паметта
                 } else {
                     // Потребителят иска да изтрие само данните, но да запази настройките
@@ -6314,21 +5844,18 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
                 // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
                 localStorage.removeItem('startBoard');
-
                 // --- НОВА МИНИМАЛНА КОРЕКЦИЯ ---
                 // След успешно изтриване, ВИНАГИ премахваме отметката и обновяваме localStorage.
                 showToast(_('dbDeleted'), 5000);
                 const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
                 useIndexedDbCheckbox.checked = false;
                 localStorage.setItem('useIndexedDb', 'false');
-
                 // Ако сме били в режим "Само база данни", автоматично включваме Google Drive
                 if (isDbOnlyMode) {
                     localStorage.setItem('useGoogleDb', 'true');
                     document.getElementById('use-google-db-checkbox').checked = true;
                     updateGlobalStateFlags();
                 }
-
                 // --- КОРЕКЦИЯ: Актуализираме иконата за режим веднага ---
                 updateModeButton();
             } else {
@@ -6338,7 +5865,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             // Активираме контролите, в случай че са били деактивирани от userCheck
             enableSettingsControls();
         });
-
         // --- Local Sync Folder ---
         const selectFolderBtn = document.getElementById('select-folder-btn');
         const folderNameDisplay = document.getElementById('local-sync-folder-name');
@@ -6369,7 +5895,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             }
         });
-
         // --- Archive Folder Setting ---
         const selectArhBtn = document.getElementById('select-arh-btn');
         const arhFolderNameDisplay = document.getElementById('arh-folder-name');
@@ -6404,27 +5929,21 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             }
         });
-
         // Close
         /*const settingsCloseBtn = */
         document.getElementById('settings-close-btn').addEventListener('click', async () => {
             /* const configData = await exportConfig();
             console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
-
             const currentState = {
                 useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
                 useLocalDb: document.getElementById('use-local-db-checkbox').checked,
                 useArhDb: document.getElementById('use-arh-db-checkbox').checked,
                 useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
             };
-
             document.getElementById('settings-modal').classList.remove('visible');
-
             // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
             updateModeButton();
-
             const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
-
             // Ако прозорецът е бил отворен принудително, презареждаме данните.
             if (window.wasOpenedForMissingFolder) {
                 window.wasOpenedForMissingFolder = false; // Нулираме флага
@@ -6436,14 +5955,12 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
         settingsModalBody.dataset.initialized = true;
     }
-
     // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
     const advancedSettingsSpan = document.getElementById('advanced-settings-span');
     if (advancedSettingsSpan) {
         const showAdvanced = localStorage.getItem('showAdvancedSettings') === 'true';
         advancedSettingsSpan.hidden = !showAdvanced;
     }
-
 }
 
 // Асинхронно зареждане на името на папката за архив
@@ -6478,7 +5995,6 @@ async function createSettingsUI(boardsData, boardParseError) {
     } else { folderNameDisplay.textContent = _('folderNotSelected'); }
 })();
 
-
 /**
  * Попълва падащото меню за избор на стартов борд в настройките.
  */
@@ -6497,7 +6013,6 @@ function populateStartBoardSelect() {
     // Изчистваме напълно списъка, преди да го попълним наново
     startBoardSelect.innerHTML = `
             <option value="all">${_('allBoards')}</option>
-
             <option value="reminder">${_('reminder')}</option>
         `;
     boardsData.forEach(board => {
@@ -6516,7 +6031,6 @@ function escapeHtml(text) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
-
 /**
  * Processes note content to handle links, code blocks, and newlines.
  * @param {string} text - The raw text content of the note.
@@ -6525,7 +6039,6 @@ function escapeHtml(text) {
  */
 function processNoteContent(text, isForModal = false) { // isForModal is now used to decide about links
     if (!text) return '';
-
     // 1. Handle code blocks first, just like in renderNoteContent
     const codeBlocks = [];
     const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
@@ -6533,14 +6046,11 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
         codeBlocks.push(escapeHtml(code)); // escapeHtml is crucial here
         return '%%CODE_BLOCK%%';
     });
-
     // 2. Escape the rest of the text to prevent HTML injection
     const escapedText = escapeHtml(textWithoutCode);
-
     // 3. Decide whether to create links based on the setting and context (modal/card)
     const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false'; // true by default
     let html;
-
     if (isForModal || oneTapLinksEnabled) {
         // В модала или ако е включено - показваме линковете
         const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
@@ -6550,12 +6060,10 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
         const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
         html = escapedText.replace(urlRegex, ''); // Премахваме линковете изцяло
     }
-
     // 4. Re-insert code blocks
     codeBlocks.forEach(block => {
         html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
     });
-
     // 5. Finally, replace newlines with <br>
     // This needs to be done on the final HTML string, not on the escaped text
     return html.replace(/\n/g, '<br>');
@@ -6569,6 +6077,7 @@ function renderNoteContent(text) {
         codeBlocks.push(escapeHtml(code));
         return '%%CODE_BLOCK%%';
     });
+
     // First, escape the entire remaining text to neutralize any HTML
     const escapedText = escapeHtml(textWithoutCode);
     // Then, find URLs in the *escaped* text and wrap them in <a> tags.
@@ -6577,9 +6086,9 @@ function renderNoteContent(text) {
     codeBlocks.forEach(block => {
         html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
     });
+
     return html;
 }
-
 /**
  * Форматира текстов низ възоснова на JSON параметри.
  * @param {string} text - Текстовият низ за форматиране.
@@ -6595,7 +6104,6 @@ function renderNoteContent(text) {
  */
 function formatText(text, formatString, isForModal = false) {
     if (!formatString) return processNoteContent(text, isForModal);
-
     if (formatString.endsWith('|')) {
         formatString = formatString.slice(0, -1);
     }
@@ -6607,11 +6115,9 @@ function formatText(text, formatString, isForModal = false) {
             return null;
         }
     }).filter(f => f !== null);
-
     if (formats.length === 0) {
         return processNoteContent(text, isForModal);
     }
-
     const points = new Set([0, text.length]);
     formats.forEach(f => {
         points.add(f.start);
@@ -6625,10 +6131,8 @@ function formatText(text, formatString, isForModal = false) {
         const segmentText = text.substring(start, end);
         if (segmentText.length === 0) continue;
         const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
-
         // Use processNoteContent instead of renderNoteContent
         let formattedSegment = processNoteContent(segmentText, isForModal);
-
         activeFormats.sort((a, b) => b.type - a.type);
         activeFormats.forEach(format => {
             const {
@@ -6691,12 +6195,10 @@ function formatText(text, formatString, isForModal = false) {
 async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local', isForModal = false) {
     const iconDiv = document.createElement('div');
     iconDiv.innerHTML = iconData.svg;
-
     const filename = attachment.path ? attachment.path.split('/').pop() : '';
     const archiveFolderName = dirHandle.name;
     const createLink = async (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-
         if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             const span = document.createElement('span');
             span.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
@@ -6714,7 +6216,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 let handleKey = null;
                 if (dbSource === 2) handleKey = 'directoryHandle';
                 else if (dbSource === 3) handleKey = 'arhHandle';
-
                 if (handleKey) {
                     const handle = await getConfig(handleKey);
                     if (handle) {
@@ -6728,7 +6229,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                     return;
                 }
             }
-
             if (!filename) return;
             console.log(`Opening file: ${folderName}/${filename}   DirHandle:`, dirHandle);
             try {
@@ -6745,7 +6245,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         link.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
         return link;
     };
-
     const appendWithDescription = async (folder, prefix, description) => {
         const container = document.createElement('div');
         container.style.flexGrow = '1';
@@ -6757,7 +6256,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         container.appendChild(line2);
         attachmentWrapper.appendChild(container);
     };
-
     switch (attachment.type) {
         case 1: // Image
             const imgLink = await createLink(mode === 'local' ? 'Images' : '', mode === 'local' ? '' : '');
@@ -6788,13 +6286,10 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         case 5: // Location
             const parts = attachment.path.split('|');
             if (parts.length < 3) break;
-
             const [lat, lng, label] = parts;
             const textContainer = document.createElement('div');
-
             const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
             const isForModal = !!attachmentWrapper.closest('#modal-body');
-
             let linkElement;
             if (!isForModal && !oneTapLinksEnabled) {
                 linkElement = document.createElement('span');
@@ -6808,15 +6303,12 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 linkElement.onclick = (e) => e.stopPropagation();
             }
             textContainer.appendChild(linkElement);
-
             const line2 = document.createElement('div');
             line2.textContent = label;
             textContainer.appendChild(line2);
             attachmentWrapper.appendChild(textContainer);
-
             break;
     }
-
     // Добавяме стандартния listener за показване на JSON данни само в дебъг режим
     if (debug) {
         iconDiv.style.cursor = 'pointer';
@@ -6825,7 +6317,6 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             showModal(JSON.stringify(attachment, null, 2));
         });
     }
-
     attachmentWrapper.prepend(iconDiv);
 }
 
@@ -6838,23 +6329,18 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
 async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, isForModal = false) {
     const iconDiv = document.createElement('div');
     iconDiv.innerHTML = iconData.svg;
-
     if (!attachment.path) {
         iconDiv.style.cursor = 'pointer';
         iconDiv.addEventListener('click', (e) => { e.stopPropagation(); showModal(JSON.stringify(attachment, null, 2)); });
         attachmentWrapper.prepend(iconDiv);
         return;
     }
-
     const filename = attachment.path.split('/').pop();
     const fileId = attachment.pathGD; // Вече имаме fileId директно в attachment обекта.
-
     // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
     const setupLink = (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-
         let linkElement;
-
         if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             linkElement = document.createElement('span');
             linkElement.textContent = textPrefix + filename;
@@ -6866,12 +6352,10 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
         linkElement.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
         linkElement.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
         linkElement.title = `Click to open ${filename} from Google Drive`;
-
         linkElement.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
             if (!checkAuth()) return;
-
             showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
             // const fileId = await getFileID(folderIds[linkElement.dataset.folderName], linkElement.dataset.fileName);
             if (fileId) {
@@ -6880,10 +6364,8 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
                 showToast(_('errorFetchFileId').replace('{fileName}', linkElement.dataset.fileName));
             }
         };
-
         return linkElement; // Връщаме конфигурирания 'a' елемент
     };
-
     switch (attachment.type) {
         case 1: // Image
             const imgLink = setupLink('Images', '');
@@ -6922,13 +6404,10 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
         case 5: // Location
             const parts = attachment.path.split('|');
             if (parts.length < 3) break;
-
             const [lat, lng, label] = parts;
             const textContainer = document.createElement('div');
-
             const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
             const isForModal = !!attachmentWrapper.closest('#modal-body');
-
             let linkElement;
             if (!isForModal && !oneTapLinksEnabled) {
                 linkElement = document.createElement('span');
@@ -6942,18 +6421,15 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
                 linkElement.onclick = (e) => e.stopPropagation();
             }
             textContainer.appendChild(linkElement);
-
             const line2 = document.createElement('div');
             line2.textContent = label;
             textContainer.appendChild(line2);
             attachmentWrapper.appendChild(textContainer);
             break;
     }
-
     if (attachment.type !== 1 && attachment.type !== 4) { // Add generic info click for non-preview types
         iconDiv.style.cursor = 'pointer';
     }
-
     // Винаги добавяме listener за показване на JSON в дебъг режим
     if (debug) {
         iconDiv.style.cursor = 'pointer';
@@ -6968,7 +6444,6 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
 async function createNoteElement(noteContent) {
     const note = document.createElement('div');
     const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
-
     note.className = 'note';
     if (notesBgrdEnabled) {
         note.classList.add('note-item');
@@ -6985,24 +6460,20 @@ async function createNoteElement(noteContent) {
             fileContent = noteContent.notetxt;
             noteGdid = noteContent.gdid;
             noteID = noteContent.id;
-
             // --- Mark as update if in updated list ---
             if (updatedNoteGdims.includes(noteGdid)) {
                 note.classList.add('new-update');
             }
-
             noteColor = noteContent.color;
             if (noteContent.text_span) {
                 textSpan = noteContent.text_span;
             }
             extraData = { ...noteContent };
             delete extraData.notetxt;
-
             // --- OPTIMIZATION: Use individual SHORT dataset attributes ---
             // data-g -> gdid, data-i -> id
             if (noteGdid) note.dataset.g = noteGdid;
             if (noteID) note.dataset.i = noteID;
-
             // data-b -> boardid
             if (extraData.boardid !== undefined) note.dataset.b = extraData.boardid;
             // data-dm -> datemod
@@ -7017,12 +6488,10 @@ async function createNoteElement(noteContent) {
             if (extraData.calendarDate) note.dataset.cda = extraData.calendarDate;
             // data-c -> color
             if (noteColor !== null && noteColor !== undefined) note.dataset.c = noteColor;
-
             // --- Set attributes for special filters (SHORT CODES, "1" for true) ---
             if (extraData.timer && extraData.timer !== 0) {
                 note.dataset.tm = '1'; // data-tm
             }
-
             // if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
             if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
                 // Color will be handled by canvas background
@@ -7060,7 +6529,6 @@ async function createNoteElement(noteContent) {
         }
     }
     if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
-
     const titleWrapper = document.createElement('div');
     const titleEl = document.createElement('h3');
     titleEl.textContent = noteTitle;
@@ -7068,7 +6536,6 @@ async function createNoteElement(noteContent) {
     // Create header info container for date and time
     const headerInfoContainer = document.createElement('div');
     headerInfoContainer.className = 'note-header-info';
-
     const headerDate = document.createElement('span');
     headerDate.className = 'note-header-date';
     const headerTime = document.createElement('span');
@@ -7080,6 +6547,7 @@ async function createNoteElement(noteContent) {
             showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
         }
     });
+
     if (extraData.timer) {
         const dateText = formatDate(extraData.timer);
         if (dateText) headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
@@ -7108,9 +6576,9 @@ async function createNoteElement(noteContent) {
         try {
             // Apply margin to prevent notes from sticking together (same as in else block)
             note.style.margin = '5px';
-
             // Pass the note's dimensions (from CSS) to the canvas function
             const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
+
             const backgroundCanvas = await createColoredNoteBackground(noteBgColor, imageName, 250, 250);
             backgroundCanvas.className = 'note-background-canvas';
             // Prepend the canvas so it's the first child and sits behind the content wrapper
@@ -7133,7 +6601,6 @@ async function createNoteElement(noteContent) {
     }
     const contentEl = document.createElement('div');
     contentEl.className = 'note-content';
-
     const isForModal = (note.closest('#modal-body') !== null);
     if (isHiddenNote) {
         const pipeIndex = fileContent.indexOf('|');
@@ -7141,24 +6608,20 @@ async function createNoteElement(noteContent) {
         contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
     } else {
         const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
-
         if (formatSource) {
             // Use the exact same logic as in showModal to ensure indices match
             let contentToFormat = fileContent;
             if (contentToFormat.includes('|')) {
                 contentToFormat = contentToFormat.replace('|', '\n');
             }
-
             // Format the full content
             let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
-
             contentEl.innerHTML = formattedHtml;
         } else {
             contentEl.innerHTML = processNoteContent(displayContent, isForModal);
         }
     }
     let attachments = [];
-
     if (useIndexedDb) {
         // Когато използваме база данни, трябва да знаем как е създадена.
         // Използваме глобалната променлива, която е заредена в mainLogic
@@ -7173,13 +6636,11 @@ async function createNoteElement(noteContent) {
         if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteID);
         else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
     }
-
     if (attachments.length > 0) {
         note.dataset.hasAttachments = 'true';
         // --- КОРЕКЦИЯ: Добавяме специфична проверка за снимки (тип 1) ---
         if (attachments.some(att => att.type === 1)) {
             note.dataset.hp = '1';
-
             // --- Store preview data for programmatic access (e.g. Board Previews) ---
             const firstPhoto = attachments.find(att => att.type === 1);
             let mode = 'gdrive';
@@ -7193,9 +6654,7 @@ async function createNoteElement(noteContent) {
             } else if (useLocalFolder) {
                 mode = 'local';
             }
-
             const fileId = (mode === 'gdrive') ? (firstPhoto.pathGD || firstPhoto.path) : firstPhoto.path;
-
             const previewData = {
                 fileId: fileId,
                 mode: mode,
@@ -7216,11 +6675,9 @@ async function createNoteElement(noteContent) {
         if (attachments.some(att => att.type !== 1 && att.type !== 4 && att.type !== 2)) {
             note.dataset.ho = '1';
         }
-
         // Проверка дали да показваме иконите за прикачени файлове в затворената бележка
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
         const shouldShowAttachments = isForModal || oneTapLinksEnabled;
-
         if (shouldShowAttachments) {
             const separator = document.createElement('hr');
             separator.style.marginTop = '10px';
@@ -7234,9 +6691,7 @@ async function createNoteElement(noteContent) {
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
                 attachmentWrapper.dataset.type = attachment.type; // Add type for easy selection
-
                 const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-
                 if (isDbOnlyMode) {
                     // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
                     // Използваме глобалните променливи, зададени в mainLogic.
@@ -7261,54 +6716,45 @@ async function createNoteElement(noteContent) {
                 }
                 contentEl.appendChild(attachmentWrapper);
             }));
+
         }
     }
-
     // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
     let longPressTimer;
     let isLongPress = false;
-
     const handleNoteDelete = async (noteEl, e, fromModal = false) => {
         e.stopPropagation();
         e.preventDefault();
         isLongPress = false;
         clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
-
         if (!useIndexedDb) return; // Изтриването работи само с база данни
-
         // Ако е извикано от модала, първо го затваряме.
         if (fromModal) {
             document.getElementById('content-modal').classList.remove('visible');
             // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
             await new Promise(resolve => setTimeout(resolve, 150));
         }
-
         const confirmed = await showConfirmation(_('confirmNoteDelete'));
         if (confirmed) {
             try {
                 let totalNotes;
                 await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-
                 // Стъпка 1: Премахване от DOM и allNotesData
                 noteEl.remove();
                 allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
-
                 // Стъпка 2: Намиране на борда
                 const deletedNoteBoardId = extraData.boardid;
                 const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
                 const boardToUpdate = boardsData.find(b => (isArh ? b.id : b.gdid) == deletedNoteBoardId);
-
                 // Стъпка 3: Намаляване на брояча в хедъра
                 const noteCounter = document.getElementById('note-counter');
                 if (noteCounter) {
                     noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
                     totalNotes = parseInt(noteCounter.textContent, 10);
                 }
-
                 if (boardToUpdate) {
                     // Стъпка 4: Актуализация на boardsData
                     boardToUpdate.noteCount = totalNotes;
-
                     // Стъпка 5: Актуализация на UI (винаги използваме новата стойност от noteCounter)
                     const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardToUpdate.gdid}"]`);
                     if (boardButton) {
@@ -7332,7 +6778,6 @@ async function createNoteElement(noteContent) {
         if (selection.toString().length > 0) {
             return;
         }
-
         // Отваряме модала, само ако не е long press и кликът не е върху футъра
         if (!isLongPress && !e.target.closest('.note-footer')) {
             const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
@@ -7342,33 +6787,29 @@ async function createNoteElement(noteContent) {
 
     // Обработва клик върху хедъра (за изтриване)
     const handleHeaderClick = (e) => { if (e.ctrlKey) handleNoteDelete(note, e); };
-
     // Закачаме събитията за изтриване само за хедъра
+
     titleWrapper.addEventListener('click', handleHeaderClick);
     addLongPressOrCtrlClick(titleWrapper, (e) => handleNoteDelete(note, e));
+
     // Закачаме събитието за отваряне на модала за цялата бележка
     note.addEventListener('click', handleNoteClick);
     note.addEventListener('contextmenu', e => e.preventDefault());
-
     contentWrapper.appendChild(titleWrapper);
     contentWrapper.appendChild(contentEl);
-
     // --- Създаване на футър с икони за прикачени файлове ---
     // Проверяваме дали има прикачени файлове (масивът `attachments` вече е попълнен правилно по-горе)
     // и дали бележката има идентификатор.
     if (!isHiddenNote && (noteGdid || noteID) && attachments.length > 0) {
         const uniqueTypes = [...new Set(attachments.map(att => att.type))];
-
         // --- Set explicit SHORT dataset attributes for attachment types ---
         if (uniqueTypes.includes(1)) note.dataset.hp = '1'; // data-hp = hasPhoto
         if (uniqueTypes.includes(4)) note.dataset.hv = '1'; // data-hv = hasVideo
         if (uniqueTypes.includes(2)) note.dataset.hs = '1'; // data-hs = hasSound
         if (uniqueTypes.includes(3)) note.dataset.ho = '1'; // data-ho = hasOther
-
         if (uniqueTypes.length > 0) {
             const footerEl = document.createElement('div');
             footerEl.className = 'note-footer';
-
             uniqueTypes.sort((a, b) => a - b).forEach(type => {
                 const iconData = attachmentIcons.find(icon => icon.type === type);
                 if (iconData) {
@@ -7378,7 +6819,6 @@ async function createNoteElement(noteContent) {
                     iconDiv.style.borderRadius = '5px'; // Добавяме заобляне на ъглите
                     iconDiv.style.backgroundColor = noteBgColor;
                     iconDiv.dataset.type = type; // Add type for easier selection
-
                     // Calculate count of attachments of this type
                     const typeCount = attachments.filter(att => att.type === type).length;
                     if (typeCount > 1) {
@@ -7388,16 +6828,13 @@ async function createNoteElement(noteContent) {
                         plusSpan.style.fontWeight = 'bold';
                         plusSpan.style.fontSize = '14px'; // Adjust size as needed
                         plusSpan.style.color = '#333'; // Make sure it's visible
-
                         // Use inline-flex to align SVG and text
                         iconDiv.style.display = 'inline-flex';
                         iconDiv.style.alignItems = 'center';
                         iconDiv.style.justifyContent = 'center';
                         iconDiv.style.paddingRight = '4px'; // Add some padding
-
                         iconDiv.appendChild(plusSpan);
                     }
-
                     // Добавяме preview само за снимки (type 1) и видео (type 4),
                     // и само ако текущият режим на работа е Google Drive.
                     if (type === 1 || type === 4) {
@@ -7411,7 +6848,6 @@ async function createNoteElement(noteContent) {
                                 else if (dbSourceGlobal === 2) sourceMode = 'local'; // Или базата е от локална папка
                                 // Ако dbSourceGlobal е 1 (Google Drive), sourceMode остава 'gdrive'
                             }
-
                             // Активираме превюто, ако източникът е Google Drive, Локална папка или Архив
                             // Only add preview listener if we actually found the attachment
                             if (sourceMode === 'gdrive' || sourceMode === 'local' || sourceMode === 'archive') {
@@ -7422,23 +6858,20 @@ async function createNoteElement(noteContent) {
                             }
                         }
                     }
-
                     footerEl.appendChild(iconDiv);
                 }
             });
+
             note.appendChild(footerEl); // Преместваме футъра да е директен наследник на .note
         }
     }
-
     return note;
 }
-
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Изчистваме бележките само ако не презареждаме единствено менюто
     if (!rerenderOnlyMenu) {
         notesContainer.innerHTML = '';
     }
-
     let boardsNoteElement = null;
     if (boardsData.length > 0 || boardParseError) {
         // Изчисляваме броячите само при пълно презареждане, не и когато се сменя само менюто.
@@ -7449,20 +6882,17 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
                 board.noteCount = allNotesData.filter(note => note.boardid == boardIdToMatch && note.status !== 1).length;
             });
-
             // ВИНАГИ изчисляваме броячите за напомняния и календар.
             boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1).length;
             boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate && note.status !== 1).length;
         }
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
-
     // Винаги премахваме старото меню, за да го заменим с новото
     const oldBoardsNote = document.querySelector('header .boards-note');
     if (oldBoardsNote) {
         oldBoardsNote.remove();
     }
-
     // Ако само презареждаме менюто, добавяме новото и спираме дотук.
     if (rerenderOnlyMenu) {
         if (boardsNoteElement) {
@@ -7490,11 +6920,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         }
         return; // КЛЮЧОВА СТЪПКА: Прекратяваме функцията тук
     }
-
     // --- Оттук надолу е логиката за ПЪЛНО презареждане ---
-
     const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
-
     let notesCount = 0;
     noteElements.forEach(noteEl => {
         if (noteEl) {
@@ -7502,29 +6929,24 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             notesCount++;
         }
     });
-
     if (boardsNoteElement) {
         document.querySelector('header').appendChild(boardsNoteElement);
     }
-
     // --- OWNER CHECK ---
     // If the user is not the owner, force 'all' boards view instead of saved startup board.
     if (!isDbOwner) {
         currentBoardFilter = 'all';
     }
-
     // Обработка на стартов борд 'Main'
     if (currentBoardFilter === 'Main') {
         const mainBoard = boardsData.find(b => b.title === 'Main');
         currentBoardFilter = mainBoard ? mainBoard.gdid : 'all';
     }
-
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     if (isInitialLoad) {
         // --- КОРЕКЦИЯ: Програмен клик на стартовия борд ---
         // Вместо директно филтриране, намираме бутона и го кликваме.
         // Това гарантира, че всички визуални ефекти (активен клас, скролиране) се прилагат.
-
         // Изчакваме малко, за да сме сигурни, че DOM е обновен
         setTimeout(() => {
             const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
@@ -7538,10 +6960,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     } else {
         filterNotesByBoard(currentBoardFilter, false);
     }
-
     // След първото зареждане, флагът става false.
     isInitialLoad = false;
-
     const counterEl = document.getElementById('note-counter');
     if (counterEl) {
         counterEl.textContent = notesCount;
@@ -7562,10 +6982,8 @@ async function readArh(dirHandle) {
         showToast(_('errorNoArchiveFolderSelected'), 10000);
         return false;
     }
-
     console.log(`Започва четене на архив от папка: ${dirHandle.name}`);
     let success = true;
-
     try {
         // 1. Четене на boards.bcp
         const boardsFileHandle = await dirHandle.getFileHandle('boards.bcp');
@@ -7573,16 +6991,13 @@ async function readArh(dirHandle) {
         const boardsContent = await boardsFile.text();
         boardsData = JSON.parse(boardsContent);
         console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
-
         // 2. Четене на notes.bcp
         const notesFileHandle = await dirHandle.getFileHandle('notes.bcp');
         const notesFile = await notesFileHandle.getFile();
         const notesContent = await notesFile.text();
         const notesArray = JSON.parse(notesContent);
-
         allNotesData = notesArray; // Вече директно присвояваме масива с обекти
         console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
-
         // 3. Четене на medias.bcp (ако съществува)
         try {
             const mediaFileHandle = await dirHandle.getFileHandle('medias.bcp');
@@ -7598,7 +7013,6 @@ async function readArh(dirHandle) {
                 throw mediaError; // Хвърляме други грешки нагоре
             }
         }
-
     } catch (error) {
         success = false;
         if (error.name === 'NotFoundError') {
@@ -7612,11 +7026,9 @@ async function readArh(dirHandle) {
             showToast(_('errorReadingArchive'), 10000);
         }
     }
-
     if (success) {
         console.log("Четенето на архива приключи успешно.");
     }
-
     return success;
 }
 
@@ -7629,6 +7041,7 @@ function setLanguage(lang) {
         const key = element.getAttribute('data-key');
         element.innerHTML = _(key);
     });
+
     document.querySelectorAll('[data-key-placeholder]').forEach(element => {
         const key = element.getAttribute('data-key-placeholder');
         element.placeholder = _(key);
@@ -7637,18 +7050,18 @@ function setLanguage(lang) {
         const key = element.getAttribute('data-key-title');
         element.title = _(key);
     });
+
     // Update active button
     const langBg = document.getElementById('lang-bg');
     const langEn = document.getElementById('lang-en');
     if (langBg) langBg.classList.toggle('active', lang === 'bg');
     if (langEn) langEn.classList.toggle('active', lang === 'en');
-
     // Check if updateSignoutTooltip exists before calling it
     if (typeof updateSignoutTooltip === 'function') {
         updateSignoutTooltip();
     }
-}
 
+}
 // --- Service Worker Registration ---
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -7659,8 +7072,8 @@ if ('serviceWorker' in navigator) {
                 console.log('ServiceWorker registration failed: ', err);
             });
     });
-}
 
+}
 /*
  * Iterates through all visible notes and opens the preview for the first image attachment.
  */
@@ -7669,10 +7082,8 @@ async function showBoardPreviews() {
     // Robustly find visible notes (not 'none'). The previous selector [style*="display: flex"] might fail if style is empty.
     const allNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note)'));
     const visibleNotes = allNotes.filter(n => n.style.display !== 'none');
-
     // Check if there are any open previews
     const openPreviews = visibleNotes.filter(n => n.querySelector('.image-preview-overlay'));
-
     if (openPreviews.length > 0) {
         // Close all open previews
         console.log("Closing open previews...");
@@ -7691,7 +7102,6 @@ async function showBoardPreviews() {
                 footerIcon.click();
                 continue; // Success, move to next note
             }
-
             // 2. Fallback Method: Check dataset.previewAttachment (Invisible Metadata)
             // Useful if for some reason the footer icon is not rendered or found.
             if (note.dataset.previewAttachment) {
