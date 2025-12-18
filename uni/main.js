@@ -1249,6 +1249,7 @@ async function startApp() {
                 validityInDays = parseInt(tokenValidity, 10);
             }
             tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
+            if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
         }
     } catch (e) {
         console.log("Error pre-calculating token days:", e);
@@ -1651,22 +1652,25 @@ function initApp() {
         if (guide) showStep(4); // Настройки
     });
 
-    window.onscroll = () => {
-        const weeklyCalendar = document.getElementById('weekly-calendar-container');
-        // Скриваме бутона, ако седмичният календар е видим
-        if (weeklyCalendar && weeklyCalendar.style.display !== 'none') {
-            scrollTopBtn.style.display = "none";
-            return;
-        }
-        const isScrolled = document.body.scrollTop > 100 || document.documentElement.scrollTop > 100;
-        if (currentBoardFilter !== 'all') {
-            scrollTopBtn.style.display = "flex";
-        } else if (isScrolled) {
+    const scrollHandler = function () {
+        const scrolled = document.documentElement.scrollTop || document.body.scrollTop;
+        // Check both scroll threshold and body visibility to ensure button doesn't appear on hidden/login pages
+        if (
+            (scrolled > 50) &&
+            document.body.style.display !== 'none' &&
+            // Also check if we are not on the login page (hidden check acts as proxy often)
+            // but explicitly: the login page should have its own logic, 
+            // verifying specific container visibility is safer if body is always visible.
+            // Using user's strict condition:
+            document.body.style.display !== 'none'
+        ) {
+            // Keep the user's logic exactly as requested
             scrollTopBtn.style.display = "flex";
         } else {
             scrollTopBtn.style.display = "none";
         }
     };
+    window.onscroll = scrollHandler;
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     // --- Search Box Enhancements ---
     const searchWrapper = document.getElementById('search-wrapper');
@@ -2320,7 +2324,7 @@ function initLoginPage() {
 }
 
 function updateSignoutTooltip() {
-    const email = sessionStorage.getItem('google_auth_email_hint');
+    const email = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
     const signoutBtn = document.getElementById('signout_button');
     if (signoutBtn) {
         const baseTooltip = _('signoutButtonTooltip');
@@ -2332,7 +2336,7 @@ function updateSignoutTooltip() {
             }
             signoutBtn.title = tooltipText;
         } else {
-            signoutBtn.title = baseTooltip + ` [${tokenRemainingDays}]`;
+            signoutBtn.title = baseTooltip + (tokenRemainingDays !== null ? ` [${tokenRemainingDays}]` : '');
         }
     }
 }
@@ -2564,6 +2568,7 @@ async function checkAuth() {
             console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
             // let tooltipText = _('signoutButtonTooltip');
             // tooltipText += ` [${tokenRemainingDays}]`;
+            if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
             console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
             if (ageInDays < validityInDays) {
                 isUrlTokenValidTime = true;
@@ -4153,15 +4158,72 @@ function addInNotePreviewListener(element, attachments, currentIndex, sourceMode
 function makeElementDraggable(element, storageKey) {
     if (!element) return;
     // Restore position
+    const setDefaultPosition = () => {
+        element.style.right = '10px';
+        element.style.left = 'auto';
+        element.style.top = ''; // Clear top to fallback to bottom
+
+        if (element.id === 'kb-fab') {
+            element.style.bottom = '10px';
+        } else if (element.id === 'scrollTopBtn') {
+            element.style.bottom = '80px';
+        } else {
+            // Default for other elements if any, fallback to CSS or a safe default
+            // Assume CSS handles it if we don't set it, or set a safe default.
+            // But to be safe if we are clearing top, let's look at ID or just leave custom styles alone
+            // However, for consistency with 'no values', we might want to respect CSS.
+            // If we set top='', bottom takes over from CSS.
+            // If we want to enforce bottom right for others too:
+            element.style.bottom = '20px';
+        }
+    };
+
+    // Restore position
     const savedPos = localStorage.getItem(storageKey);
+    let positionRestored = false;
+
     if (savedPos) {
         try {
             const pos = JSON.parse(savedPos);
-            if (pos.top) element.style.top = pos.top;
-            if (pos.right) element.style.right = pos.right;
-            element.style.bottom = 'auto';
-            element.style.left = 'auto';
-        } catch (e) { console.log(e); }
+            // Check if pos properties exist
+            if (pos.top !== undefined && pos.right !== undefined) {
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                // Use fallback dimensions if element is hidden (offset is 0)
+                const elHeight = element.offsetHeight || 60;
+                const elWidth = element.offsetWidth || 60;
+
+                let topVal = parseInt(pos.top, 10);
+                let rightVal = parseInt(pos.right, 10);
+
+                // Define "off-screen" tolerance
+                // If top is negative or way below viewport
+                // If right is negative or way to the left (right > viewportWidth)
+                const isVerticalOut = (topVal < 0) || (topVal > viewportHeight - 20); // At least 20px visible
+                const isHorizontalOut = (rightVal < 0) || (rightVal > viewportWidth - 20);
+
+                if (isVerticalOut || isHorizontalOut) {
+                    console.log(`Element ${element.id} position reset (was off-screen):`, pos);
+                    setDefaultPosition();
+                } else {
+                    // Clamp values to be within the viewport
+                    topVal = Math.max(0, Math.min(topVal, viewportHeight - elHeight));
+                    rightVal = Math.max(0, Math.min(rightVal, viewportWidth - elWidth));
+
+                    element.style.top = `${topVal}px`;
+                    element.style.right = `${rightVal}px`;
+                    element.style.bottom = 'auto';
+                    element.style.left = 'auto';
+                }
+                positionRestored = true;
+            }
+        } catch (e) {
+            console.log("Error restoring position:", e);
+        }
+    }
+
+    if (!positionRestored) {
+        setDefaultPosition();
     }
     let isDragging = false;
     let hasMoved = false;
@@ -4743,7 +4805,8 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         // Възстановяваме видимостта на основните елементи
         document.querySelector('header').style.display = 'flex';
         notesContainer.style.display = 'flex';
-        scrollTopBtn.style.display = 'block';
+        // scrollTopBtn visibility is handled by the scroll event
+        // scrollTopBtn.style.display = 'block';
     }
     // Add or remove a class from the container to control child visibility
     // This part is no longer needed as calendar has its own view

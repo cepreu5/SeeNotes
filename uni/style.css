@@ -36,8 +36,8 @@ body {
 
 header {
     padding: 5px 1em 0px 5px;
-    /*border-bottom: 1px solid #eee;*/
-    /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
+    border-bottom: 3px solid #6c6c6c;
+    box-shadow: 0 5px 8px rgba(0, 0, 0, 0.16), 0 5px 8px rgba(0, 0, 0, 0.23);
     /* margin-bottom: 1em; */
     /* Removed to stick the boards note to the header */
     display: flex;
