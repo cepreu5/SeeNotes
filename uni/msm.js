@@ -47,6 +47,18 @@ window.toggleHero = function () {
 // Make showStep globally available for internal use (if needed) but showGuideStep is preferred for single steps
 window.showStep = showStep;
 
+// Expose removeGuide for external control (e.g. from KB Assistant)
+window.removeGuide = function () {
+  if (container) {
+    container.remove();
+    container = null;
+  }
+  let dbg = document.getElementById('msm-debug-overlay');
+  if (dbg) dbg.remove();
+  if (stepTimer) clearTimeout(stepTimer);
+  if (animationFrameId) cancelAnimationFrame(animationFrameId);
+};
+
 function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   if (stepTimer) clearTimeout(stepTimer);
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -392,7 +404,45 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     originalNextStep();
   };
   // Заменяме nextStep с обвитата версия
-  img.onclick = wrappedNextStep;
+  // Заменяме nextStep с обвитата версия (Support Ctrl+Click to stop)
+  img.onclick = (e) => {
+    if (e.ctrlKey) {
+      window.removeGuide();
+    } else {
+      wrappedNextStep();
+    }
+  };
+
+  // Long press logic (for stopping the guide)
+  let longPressTimer;
+  const longPressDuration = 800; // 800ms for long press
+
+  const startLongPress = (e) => {
+    // Only start if not already dragging
+    if (isDragging) return;
+
+    longPressTimer = setTimeout(() => {
+      window.removeGuide();
+      // Vibrating feedback if available
+      if (navigator.vibrate) navigator.vibrate(50);
+    }, longPressDuration);
+  };
+
+  const endLongPress = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
+  img.addEventListener('mousedown', startLongPress);
+  img.addEventListener('mouseup', endLongPress);
+  img.addEventListener('mouseleave', endLongPress);
+
+  img.addEventListener('touchstart', startLongPress, { passive: true });
+  img.addEventListener('touchend', endLongPress);
+  img.addEventListener('touchcancel', endLongPress);
+
   // Автоматично преминаване след 10 секунди (само ако не е single режим)
   if (!single) {
     stepTimer = setTimeout(wrappedNextStep, stepTime);

@@ -27,7 +27,7 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    line-height: 1.4;
+    line-height: 1.2;
 }
 
 .speech-bubble i,
@@ -60,4 +60,17 @@
     padding: 6px 10px;
     border-radius: 4px;
     cursor: pointer;
+}
+
+.speech-bubble img {
+    max-width: 100%;
+    height: auto;
+    vertical-align: middle;
+    margin: 2px 5px;
+}
+
+.speech-bubble span[align='left'] {
+    text-align: left;
+    display: block;
+    width: 100%;
 }

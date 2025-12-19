@@ -786,6 +786,58 @@
             }
         },*/
 {
+            "id": "guide-1",
+            "category": "workflow",
+            "keywords": {
+                "bg": ["основни функции", "help", "помощ", "помощна", "работи", "работа", "функции"],
+                "en": ["basic functions", "help", "how to", "how to use", "functions", "how it works"]
+            },
+            "question": {
+                "bg": "Какво се вижда на основния екран и защо е важно?",
+                "en": "What do you see on the main screen and why is it important?"
+            },
+            "answer": {
+                "bg": "На основния екран се вижда меню с имената на различните бордове и бутона, с който може да ме извикаш. Отварянето на чат прозореца позволява да ми задаваш въпроси и да търсиш информация.",
+                "en": "On the main screen, you see the menu with the names of the different boards and the button to call me. Opening the chat window allows you to ask me questions and search for information."
+            },
+            "guide": {
+                "stopAfter": false, "action": "explain", "context": "",
+                1: {
+                    "image": "msm/l-up-w.png", "height": 100,
+                    x: 24, y: 37, bx: 43, by: 63, bWidth: 303, bHeight: 200, "target": "#mode_button", 
+                    "text": {
+                        "bg": "<span align='left'>Тук ще виждаш откъде се зареждат бележките ти. Има следните възможности:<br><br><span align='left'><img src='msm/gddb.png'>от База данни и <i>Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'>само от <i>Google Drive</i></span><br><span align='left'><img src='Database.png' width='30px'>само от <i>База данни</i></span>",
+                        "en": "<span align='left'>Here you will see where your notes are loaded from. The following options are available:<br><br><span align='left'><img src='msm/gddb.png'> <i>Database and Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'> <i>Google Drive</i> only</span><br><span align='left'><img src='Database.png' width='30px'> <i>Database</i> only</span>"
+                    }
+                },
+                2: {
+                    "image": "msm/expl.png", "height": 70,
+                    x: -46, y: -2, bx: 133, by: 68, bWidth: 294, bHeight: 111, "target": "#mode_button",
+                    "text": {
+                        "bg": "<span align='left'><img src='msm/gddb.png'>Основният режим на работа използва локална база данни в браузъра, която се <b>обновява</b> с новите и редактирани бележки от <i>Google Drive</i>. По този начин се осигурява оптимална производителност.</span>",
+                        "en": "<span align='left'><img src='msm/gddb.png'>The main mode of operation uses a local database in the browser, which is <b>updated</b> with new and edited notes from the <i>Google Drive</i>. This way ensures optimal performance.</span>"
+                    }
+                },
+                3: {
+                    "image": "msm/expl.png", "height": 70,
+                    x: -46, y: -2, bx: 133, by: 68, bWidth: 296, bHeight: 62, "target": "#mode_button", 
+                    "text": {
+                        "bg": "При първо стартиране приложението изтегля всички бележки от <i>Google Drive</i> и създава локална база данни (кеш) в браузъра, където ги записва.",
+                        "en": "On the first start, all notes are downloaded from <i>Google Drive</i> and creates a local database (cache) in the browser, where it stores the notes."
+                    }
+                },
+                4: {
+                    "stopAfter": false, "action": "explain!", "context": "",
+                    "image": "msm/expl.png", "height": 70,
+                    x: -46, y: -2, bx: 133, by: 68, bWidth: 293, bHeight: 81, "target": "#mode_button",
+                    "text": {
+                        "bg": "Всяко следващо зареждане на бележките става директно от тази база, като се прави проверка и се изтеглят само новите и променените. Това съществено ускорява процеса.",
+                        "en": "Every subsequent load is done directly from this database, with a check to download only new and modified notes. This significantly speeds up the process."
+                    }
+                },
+            }
+        },
+{
             "id": "assistant",
             "category": "features",
             "keywords": {

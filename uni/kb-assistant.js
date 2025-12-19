@@ -696,7 +696,8 @@ class KBAssistant {
             }
 
             if (result.guide) {
-                html += `<button class="kb-show-me-btn" data-guide='${JSON.stringify(result.guide)}'>`;
+                const guideJson = JSON.stringify(result.guide).replace(/'/g, "&#39;");
+                html += `<button class="kb-show-me-btn" data-guide='${guideJson}'>`;
                 html += `${this.getText('showMe')} →</button>`;
             }
 
@@ -719,7 +720,8 @@ class KBAssistant {
             html += `<div class="kb-answer-text">${result.description}</div>`;
 
             if (result.guide) {
-                html += `<button class="kb-show-me-btn" data-guide='${JSON.stringify(result.guide)}'>`;
+                const guideJson = JSON.stringify(result.guide).replace(/'/g, "&#39;");
+                html += `<button class="kb-show-me-btn" data-guide='${guideJson}'>`;
                 html += `${this.getText('showMe')} →</button>`;
             }
             html += `</div>`;
@@ -731,7 +733,8 @@ class KBAssistant {
             html += `<div class="kb-answer-text">${result.answer}</div>`;
 
             if (result.guide) {
-                html += `<button class="kb-show-me-btn" data-guide='${JSON.stringify(result.guide)}'>`;
+                const guideJson = JSON.stringify(result.guide).replace(/'/g, "&#39;");
+                html += `<button class="kb-show-me-btn" data-guide='${guideJson}'>`;
                 html += `${this.getText('showMe')} →</button>`;
             }
 
