@@ -400,8 +400,8 @@
             "relatedSettings": ["modal-font-size-input","scaleSlider"],
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#note-font-size-input", "stopAfter": true, "action": "highlight", "context": "display"
+                x: 59, y: 9, bx: -200, by: 80, bWidth: 250, bHeight: 100, "target": "#note-font-size-input",
+                "stopAfter": true, "action": "highlight", "context": "display"
             }
         },
 {
@@ -458,33 +458,6 @@
                 "image": "msm/r-up.png", "height": 100,
                 x: -88, y: 1, bx: 199, by: 166, bWidth: 275, bHeight: 118,
                 "target": "#scaleSlider", "stopAfter": true, "action": "highlight", "context": "display"
-            }
-        },
-{
-            "id": "max-searches-input",
-            "type": "number",
-            "category": "search",
-            "label": {
-                "bg": "Запазени търсения:",
-                "en": "Saved Searches:"
-            },
-            "keywords": {
-                "bg": ["търсене","запазени","история"],
-                "en": ["search","saved","history","searches"]
-            },
-            "question": {
-                "bg": "Как работят запазените търсения?",
-                "en": "How do saved searches work?"
-            },
-            "answer": {
-                "bg": "Можеш да запазиш често използвани търсения за бърз достъп.<br><img src='msm/search.png' ID='sbox' alt='Search box'><br>В <b><i>Настройки</i></b> избери колко търсения да се запазват (0-20). Възможно е запазените търсения да се показват под стандартния списък от последни търсения на браузъра - затвори го с х",
-                "en": "You can save frequently used searches for quick access.<br><img src='msm/search.png' ID='sbox' alt='Search box'><br> In <b><i>Settings</i></b> choose how many searches to save (0-20). it is possible to show saved searches below the browser's search field - close it with x."
-            },
-            "relatedSettings": [],
-            "guide": {
-                "image": "msm/l-down-w.png", "height": 100,
-                x: 52, y: -26, bx: 73, by: -63, bWidth: 185, bHeight: 50,
-                "target": "#sbox","stopAfter": false, "action": "explain!", "context": "",
             }
         },
 {
@@ -769,7 +742,7 @@
         },
     ],
     "general": [
-/*{
+        /*{
             "id": "how-to-start",
             "category": "getting-started",
             "keywords": {
@@ -797,42 +770,49 @@
                 "en": "What do you see on the main screen and why is it important?"
             },
             "answer": {
-                "bg": "На основния екран се вижда меню с имената на различните бордове и бутона, с който може да ме извикаш. Отварянето на чат прозореца позволява да ми задаваш въпроси и да търсиш информация.",
-                "en": "On the main screen, you see the menu with the names of the different boards and the button to call me. Opening the chat window allows you to ask me questions and search for information."
+                "bg": "На основния екран се вижда меню с имената на различните бордове, бутоните за управление, полето за търсене, бележките и бутона, с който може да ме извикаш. Отварянето на чат прозореца позволява да ми задаваш въпроси за работата с CX Multinotes Viewer.",
+                "en": "On the main screen, you see the menu with the names of the different boards, buttons for control, the search field, the notes, and the button to call me. Opening the chat window allows you to ask me questions about how to use the CX Multinotes Viewer."
             },
             "guide": {
                 "stopAfter": false, "action": "explain", "context": "",
                 1: {
                     "image": "msm/l-up-w.png", "height": 100,
-                    x: 24, y: 37, bx: 43, by: 63, bWidth: 303, bHeight: 200, "target": "#mode_button", 
+                    x: 14, y: 18, bx: 199, by: -78, bWidth: 272, bHeight: 108, "target": "button.board-menu-button", 
                     "text": {
-                        "bg": "<span align='left'>Тук ще виждаш откъде се зареждат бележките ти. Има следните възможности:<br><br><span align='left'><img src='msm/gddb.png'>от База данни и <i>Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'>само от <i>Google Drive</i></span><br><span align='left'><img src='Database.png' width='30px'>само от <i>База данни</i></span>",
-                        "en": "<span align='left'>Here you will see where your notes are loaded from. The following options are available:<br><br><span align='left'><img src='msm/gddb.png'> <i>Database and Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'> <i>Google Drive</i> only</span><br><span align='left'><img src='Database.png' width='30px'> <i>Database</i> only</span>"
+                        "bg": "Когато броят на бордовете е голям и не се събират на екрана, с този бутон може да извикаш изкачащ прозорец с всички бордовете. На екрана на таблет или телефон бутонът е плаващ и може да го поставиш на удобно за тем място.",
+                        "en": "When the number of boards is large and they are not displayed on the screen, this button allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place."
                     }
                 },
                 2: {
                     "image": "msm/expl.png", "height": 70,
-                    x: -46, y: -2, bx: 133, by: 68, bWidth: 294, bHeight: 111, "target": "#mode_button",
+                    x: 23, y: 18, bx: 69, by: 71, bWidth: 228, bHeight: 115, "target": "span.board-filter-link",
                     "text": {
-                        "bg": "<span align='left'><img src='msm/gddb.png'>Основният режим на работа използва локална база данни в браузъра, която се <b>обновява</b> с новите и редактирани бележки от <i>Google Drive</i>. По този начин се осигурява оптимална производителност.</span>",
-                        "en": "<span align='left'><img src='msm/gddb.png'>The main mode of operation uses a local database in the browser, which is <b>updated</b> with new and edited notes from the <i>Google Drive</i>. This way ensures optimal performance.</span>"
+                        "bg": "Броят и размерът на бележките на екрана може да се променя от <b><i>Настройки</i></b> -> <b><i>Мащаб</i></b>. Клик върху бележката я отваря. Размерът на отворената бележка може да се променя като хванеш и дръпеш долния десен ъгъл.",
+                        "en": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> -> <b><i>Zoom</i></b>. Clicking on the note opens it. The size of the opened note can be changed by dragging the bottom right angle."
                     }
                 },
                 3: {
                     "image": "msm/expl.png", "height": 70,
-                    x: -46, y: -2, bx: 133, by: 68, bWidth: 296, bHeight: 62, "target": "#mode_button", 
+                    x: 9, y: 15, bx: 133, by: 68, bWidth: 296, bHeight: 62, "target": "span.board-filter-link", 
                     "text": {
-                        "bg": "При първо стартиране приложението изтегля всички бележки от <i>Google Drive</i> и създава локална база данни (кеш) в браузъра, където ги записва.",
-                        "en": "On the first start, all notes are downloaded from <i>Google Drive</i> and creates a local database (cache) in the browser, where it stores the notes."
+                        "bg": "Веднъж променен, размерът се запомня и се използва за всички бележки.",
+                        "en": "Once changed, the size is remembered and used for all notes."
                     }
                 },
                 4: {
-                    "stopAfter": false, "action": "explain!", "context": "",
                     "image": "msm/expl.png", "height": 70,
-                    x: -46, y: -2, bx: 133, by: 68, bWidth: 293, bHeight: 81, "target": "#mode_button",
+                    x: 3, y: 28, bx: 133, by: 68, bWidth: 284, bHeight: 80, "target": "#search-box",
                     "text": {
-                        "bg": "Всяко следващо зареждане на бележките става директно от тази база, като се прави проверка и се изтеглят само новите и променените. Това съществено ускорява процеса.",
-                        "en": "Every subsequent load is done directly from this database, with a check to download only new and modified notes. This significantly speeds up the process."
+                        "bg": "За търсене на информация се използва полето за търсене. За да научиш какви допълния възможности имаш при търсене отвори чат прозореца и напиши <b><i>търсене</i></b>.",
+                        "en": "For searching information, the search field is used. To learn more about the search options, open the chat window and type <b><i>search</i></b>."
+                    }
+                },
+                5: {
+                    "image": "msm/r-down-w.png", "height": 70,
+                    x: -36, y: -49, bx: -175, by: -58, bWidth: 266, bHeight: 62, "target": "#kb-fab",
+                    "text": {
+                        "bg": "Иконата на асистента е плаваща и можеш да я поставиш на удобно място. С Ctrl-click тя става полупрозрачна.",
+                        "en": "The assistant icon is floating and can be placed in a convenient place. With Ctrl-click, it becomes semi-transparent."
                     }
                 },
             }
@@ -883,8 +863,60 @@
                 },
                 4: {
                     "stopAfter": false, "action": "explain!", "context": "",
-                    "image": "msm/l-up-w.png", "height": 100,
-                    x: 2, y: -50, bx: 59, by: 97, bWidth: 281, bHeight: 65, "target": "div.kb-answer-text",
+                    "image": "msm/expl.png", "height": 100,
+                    x: 2, y: -50, bx: 59, by: 115, bWidth: 281, bHeight: 65, "target": "div.kb-answer-text",
+                    "text": {
+                        "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
+                        "en": "If you click on the text of your last question, it will be filled in the editing field."
+                    }
+                },
+            }
+        },
+{
+            "id": "note",
+            "category": "features",
+            "keywords": {
+                "bg": ["бележка", "бележки", "снимка", "video", "видео", "приложение", "приложения"],
+                "en": ["note", "notes", "screenshot", "video", "video", "attached", "attachment", "attachments"]
+            },
+            "question": {
+                "bg": "Какви допълнителни функции имат бележките в борда?",
+                "en": "What additional functions do notes have in the board?"
+            },
+            "answer": {
+                "bg": "Ако бележката съдържа снимка или видео като приложение, то може да се отвори за предварителен преглед от иконката в долната част",
+                "en": "If the note contains an image or video as an attachment, it can be opened by clicking on the icon at the bottom."
+            },
+            "guide": {
+                "stopAfter": false, "action": "explain!", "context": "",
+                1: {
+                    "text": {
+                        "bg": "<img src='msm/attach.png' ID='attach' alt='Attachment'><br>Изображението може да остане отворено, а с Ctrl-click на името на борда можеш да отвориш/затвориш всички изображения в даден борд.",
+                        "en": "The image can stay open, and with Ctrl-click on the board name you can open/close all images in the board."
+                    }
+                },
+                2: {
+                    "image": "msm/r-down-l.png", "height": 100,
+                    x: 74, y: -89, bx: 90, by: -94, bWidth: 281, bHeight: 65,
+                    "target": "#kb-input", 
+                    "text": {
+                        "bg": "Има два специални борда - <b><i>Със снимки</i></b> и <b><i>С видео</i></b>, които показват на едно място всички бележки, съдържащи изображение/видео. Можеш да ги включиш от <b><i>Настройки</i></b>.",
+                        "en": "There are two special boards - <b><i>With photos</i></b> and <b><i>With video</i></b>, which show at once all notes containing an image/video. You can enable them from <b><i>Settings</i></b>."
+                    }
+                },
+                3: {
+                    "image": "msm/r-down-w.png", "height": 100,
+                    x: -55, y: -88, bx: -101, by: -88, bWidth: 281, bHeight: 65,
+                    "target": "#kb-send-btn", 
+                    "text": {
+                        "bg": "Ако натиснеш този бутон без да си написал нищо, чат прозорецът ще се затвори.",
+                        "en": "If you press this button without writing anything, the chat window will close."
+                    }
+                },
+                4: {
+                    "stopAfter": false, "action": "explain!", "context": "",
+                    "image": "msm/expl.png", "height": 100,
+                    x: 2, y: -50, bx: 59, by: 115, bWidth: 281, bHeight: 65, "target": "div.kb-answer-text",
                     "text": {
                         "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
                         "en": "If you click on the text of your last question, it will be filled in the editing field."
@@ -910,40 +942,28 @@
             "guide": {
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
-                    "image": "msm/l-up.png", "height": 100,
-                    x: 14, y: 16, bx: 123, by: -93, bWidth: 190, bHeight: 78,
-                    "target": "#sbox",
-                    "text": {
-                        "bg": "Може да търсиш само в заглавията или в цялото съдържание - натисни, за да превключиш.",
-                        "en": "You can search only in titles or in the entire content - press to switch."
-                    }
-                },
-                2: {
                     "image": "msm/r-up.png", "height": 100,
-                    x: 111, y: 14, bx: -83, by: -102, bWidth: 229, bHeight: 70,
-                    "target": "#sbox",
+                    x: 133, y: 19, bx: -83, by: -102, bWidth: 229, bHeight: 70, "target": "#sbox",
                     "text": {
                         "bg": "Търсенията могат да се запазват за бърз достъп (броят на запомнените търсения 1-20 се задава в настройките).",
                         "en": "Searches can be saved for quick access (the number of saved searches 1-20 is set in the settings)."
                     }
                 },
-                3: {
+                2: {
                     "image": "msm/l-down-w.png", "height": 100,
-                    x: 35, y: -55, bx: 77, by: 121, bWidth: 220, bHeight: 50,
-                    "target": "#sbox",
+                    x: 35, y: -36, bx: 77, by: 121, bWidth: 220, bHeight: 50, "target": "#sbox",
                     "text": {
                         "bg": "На първия ред е текстът на последното търсене, той се променя при всяко ново търсене.",
                         "en": "On the first line is the text of the last search, it changes with every new search."
                     }
                 },
-                4: {
+                3: {
                     "image": "msm/l-down-w.png", "height": 100,
-                    x: 52, y: -26, bx: 73, by: -63, bWidth: 185, bHeight: 50,
-                    "target": "#sbox",
+                    x: 28, y: -1, bx: 73, by: -63, bWidth: 185, bHeight: 50, "target": "#sbox",
                     "text": {
                         "bg": "На следващите редове са запазените търсенения, те не се променят.",
                         "en": "On the next lines are the saved searches, they do not change."
-                        }
+                    }
                 }
             }
         },
@@ -982,6 +1002,58 @@
             "answer": {
                 "bg": "Кликни на бутона <b><i>Календар</i></b> в менюто с имена на бордовете. Календарът показва бележки, за които си задал дата в календара. Можеш да превключваш между месечен и седмичен изглед. Ако в месечния календа кликнеш върху избрана дата ще се отвори седмичния календар, показващ седмицата, съдържаща избраната дата.",
                 "en": "Click the <b><i>Calendar</i></b> button in the board names menu. The calendar shows notes for which you have set a date in the calendar. You can switch between monthly and weekly view. If in the monthly calendar you click on a selected date, the weekly calendar will open, showing the week containing the selected date."
+            }
+        },
+{
+            "id": "modes",
+            "category": "interface",
+            "keywords": {
+                "bg": ["режим", "зарежда", "чете", "бележки", "данни", "база", "google drive"],
+                "en": ["mode", "load", "read", "notes", "data", "database", "google drive"]
+            },
+            "question": {
+                "bg": "Какви режими на работа има?",
+                "en": "What are the different modes of operation?"
+            },
+            "answer": {
+                "bg": "Можеш да използваш <b><i>Настройки</i></b> > <b><i>Четене на данни</i></b>, за да ги промениш.",
+                "en": "You can use <b><i>Settings</i></b> > <b><i>Data loading</i></b> to change them."
+            },
+            "guide": {
+                "stopAfter": false, "action": "explain", "context": "",
+                1: {
+                    "image": "msm/l-up-w.png", "height": 100,
+                    x: 24, y: 37, bx: 43, by: 63, bWidth: 303, bHeight: 200, "target": "#mode_button", 
+                    "text": {
+                        "bg": "<span align='left'>Тук ще виждаш откъде се зареждат бележките ти. Има следните възможности:<br><br><span align='left'><img src='msm/gddb.png'>от База данни и <i>Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'>само от <i>Google Drive</i></span><br><span align='left'><img src='Database.png' width='30px'>само от <i>База данни</i></span>",
+                        "en": "<span align='left'>Here you will see where your notes are loaded from. The following options are available:<br><br><span align='left'><img src='msm/gddb.png'> <i>Database and Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'> <i>Google Drive</i> only</span><br><span align='left'><img src='Database.png' width='30px'> <i>Database</i> only</span>"
+                    }
+                },
+                2: {
+                    "image": "msm/expl.png", "height": 70,
+                    x: -46, y: -2, bx: 133, by: 68, bWidth: 294, bHeight: 111, "target": "#mode_button",
+                    "text": {
+                        "bg": "<span align='left'><img src='msm/gddb.png'>Основният режим на работа използва локална база данни в браузъра, която се <b>обновява</b> с новите и редактирани бележки от <i>Google Drive</i>. По този начин се осигурява оптимална производителност.</span>",
+                        "en": "<span align='left'><img src='msm/gddb.png'>The main mode of operation uses a local database in the browser, which is <b>updated</b> with new and edited notes from the <i>Google Drive</i>. This way ensures optimal performance.</span>"
+                    }
+                },
+                3: {
+                    "image": "msm/expl.png", "height": 70,
+                    x: -46, y: -2, bx: 133, by: 68, bWidth: 296, bHeight: 62, "target": "#mode_button", 
+                    "text": {
+                        "bg": "При първо стартиране приложението изтегля всички бележки от <i>Google Drive</i> и създава локална база данни (кеш) в браузъра, където ги записва.",
+                        "en": "On the first start, all notes are downloaded from <i>Google Drive</i> and creates a local database (cache) in the browser, where it stores the notes."
+                    }
+                },
+                4: {
+                    "stopAfter": false, "action": "explain!", "context": "",
+                    "image": "msm/expl.png", "height": 70,
+                    x: -46, y: -2, bx: 133, by: 68, bWidth: 293, bHeight: 81, "target": "#mode_button",
+                    "text": {
+                        "bg": "Всяко следващо зареждане на бележките става директно от тази база, като се прави проверка и се изтеглят само новите и променените. Това съществено ускорява процеса.",
+                        "en": "Every subsequent load is done directly from this database, with a check to download only new and modified notes. This significantly speeds up the process."
+                    }
+                },
             }
         },
 {
