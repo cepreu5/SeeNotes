@@ -2,7 +2,6 @@
  * KB UI - Потребителски интерфейс на асистента
  * Чат прозорец, FAB бутон, предложения
  */
-
 class KBUI {
     constructor() {
         this.isOpen = false;
@@ -793,7 +792,11 @@ class KBUI {
         // Обновяваме header title
         const headerTitle = this.container.querySelector('.kb-title');
         if (headerTitle) {
-            headerTitle.textContent = titles[lang] || titles.en;
+            if (window.kbAssistant && typeof window.kbAssistant.getText === 'function') {
+                headerTitle.textContent = window.kbAssistant.getText('assistantName');
+            } else {
+                headerTitle.textContent = titles[lang] || titles.en;
+            }
         }
 
         // Обновяваме All Questions Button tooltip

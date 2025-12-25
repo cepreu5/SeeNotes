@@ -59,6 +59,48 @@ window.removeGuide = function () {
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
 };
 
+// Функция за обновяване на езика на текущия балон
+window.refreshGuideLanguage = function () {
+  if (!container || !document.body.contains(container) || !currentActiveStep) return;
+
+  // Взимаме новия език
+  let newLang = localStorage.getItem('language') || 'en';
+  let step = currentActiveStep;
+
+  // Намираме текста за новия език
+  let newText = '';
+  if (step.text) {
+    if (typeof step.text === 'object') {
+      newText = step.text[newLang] || step.text['en'] || '';
+    } else {
+      newText = step.text;
+    }
+  } else if (typeof guideTexts !== 'undefined' && step.textKey) {
+    newText = guideTexts[newLang] ? guideTexts[newLang][step.textKey] : '';
+  }
+
+  // Обновяваме текста в DOM
+  const bubble = container.querySelector('.speech-bubble');
+  if (bubble) {
+    const span = bubble.querySelector('span');
+    if (span) {
+      span.innerHTML = newText;
+    } else {
+      // Ако span липсва, създаваме го (запазвайки resize handle ако има)
+      const resizeHandle = bubble.querySelector('div'); // Handle е div
+      bubble.innerHTML = `<span>${newText}</span>`;
+      if (resizeHandle) bubble.appendChild(resizeHandle);
+    }
+
+    // Ако няма текст, може да искаме да скрием балона, или обратно
+    if (!newText) {
+      bubble.style.display = 'none';
+    } else {
+      bubble.style.display = 'block';
+    }
+  }
+};
+
 function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   if (stepTimer) clearTimeout(stepTimer);
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -138,8 +180,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   // Create Bubble Text elements
   const bubble = document.createElement('div');
   bubble.className = 'speech-bubble';
-  // Език на балона (по подразбиране 'bg')
-  let currentBubbleLang = 'bg';
+  // Език на балона (по подразбиране 'en', ако няма в localStorage)
+  let currentBubbleLang = localStorage.getItem('language') || 'en';
   // Текстът
   let initialText = '';
   if (step.text) {

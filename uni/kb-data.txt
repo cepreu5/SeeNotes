@@ -2,28 +2,28 @@
     "metadata": {
         "generated": "2025-12-04T15:21:00.000Z",
         "version": "2.0.0",
-        "description": "Knowledge Base for CX MultiNotes Viewer Assistant - With Guide Integration",
+        "description": "Knowledge Base for CX MultiNotes Viewer Assistant",
         "updated": "2025-12-04T21:07:02.667Z"
     },
     "ui_texts": {
         "bg": {
-            // "greeting": "Здравей! 👋 Аз съм твоят асистент. С какво да ти помогна?",
-            "greeting": "Влез в <b><i>CX MultiNotes Viewer</i></b> със същия Google акаунт, който използваш в <b><i>MultiNotes</i></b> на телефона си. Приложението автоматично ще изтегли бележките от <b><i>Google Drive</i></b> и ще създаде локална <b><i>база данни</i></b> за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
+            "greeting": "Здравей! 👋 Аз съм твоят асистент. С какво да ти помогна?",
+            // "greeting": "Влез в <b><i>CX MultiNotes Viewer</i></b> със същия Google акаунт, който използваш в <b><i>MultiNotes</i></b> на телефона си. Приложението автоматично ще изтегли бележките от <b><i>Google Drive</i></b> и ще създаде локална <b><i>база данни</i></b> за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
             "noResults": "Съжалявам, не намерих отговор на този въпрос. 😔",
-            "suggestions": "Може да попитате:",
+            "suggestions": "Може да попиташ:",
             "showMe": "Покажи ми",
             "relatedTopics": "Свързани теми:",
-            "alsoInterested": "Може също да ви интересува:",
+            "alsoInterested": "Може също да те интересува:",
             "recentQuestions": "Последните въпроси, на които отговорих:",
             "noRecentQuestions": "Няма запазени въпроси.",
             "loading": "Зареждам...",
             "error": "Възникна грешка при зареждане на базата от знания.",
             "inputPlaceholder": "Задай въпрос, ? за история...",
-            "assistantName": "Лепчо"
+            "assistantName": "{{assistantNameBG}}"
         },
         "en": {
-            // "greeting": "Hello! 👋 I'm your assistant. How can I help?",
-            "greeting": "First, sign in to <b><i>CX MultiNotes Viewer</i></b> with the same Google account you use in the <b><i>MultiNotes</i></b> app. The application will automatically download notes from <b><i>Google Drive</i></b> and create a local <b><i>database</i></b> for fast access. Then you can view, search, and organize your notes.",
+            "greeting": "Hello! 👋 I'm your assistant. How can I help?",
+            // "greeting": "First, sign in to <b><i>CX MultiNotes Viewer</i></b> with the same Google account you use in the <b><i>MultiNotes</i></b> app. The application will automatically download notes from <b><i>Google Drive</i></b> and create a local <b><i>database</i></b> for fast access. Then you can view, search, and organize your notes.",
             "noResults": "Sorry, I couldn't find an answer to that question. 😔",
             "suggestions": "You might ask:",
             "showMe": "Show me",
@@ -34,7 +34,7 @@
             "loading": "Loading...",
             "error": "An error occurred while loading the knowledge base.",
             "inputPlaceholder": "Ask a question, ? for history...",
-            "assistantName": "Mr. StickyMan"
+            "assistantName": "{{assistantNameEN}}"
         }
     },
     "settings": [
@@ -820,13 +820,73 @@
 {
             "id": "assistant",
             "category": "features",
+            "keywords": {},
+            "question": {},
+            "answer": {},
+            "guide": {
+                "stopAfter": false, "action": "explain!", "context": "",
+                1: {
+                    "image": "msm/1.png", "height": 150,
+                    x: -86, y: 40, bx: -53, by: -97, bWidth: 175, bHeight: 72, "target": "div.login-box",
+                    "text": {
+                        "bg": "Здравей!<br>👋 Аз съм твоят асистент и винаги съм готов да помогна.",
+                        "en": "Hello!<br>👋 I'm your assistant, always ready to help."
+                    }
+                },
+            }
+        },
+{
+            "id": "assistant-1",
+            "category": "features",
+            "keywords": {},
+            "question": {},
+            "answer": {},
+            "guide": {
+                "stopAfter": false, "action": "explain!", "context": "",
+                1: {
+                    "image": "msm/1.png", "height": 150,
+                    x: -50, y: 22, bx: 107, by: -33, bWidth: 156, bHeight: 50, "target": "#settings_button",
+                    "text": {
+                        "bg": "Няколко бързи съвета, преди да започнем.",
+                        "en": "A few quick tips before we start."
+                    }
+                },
+                2: {
+                    "image": "msm/expl.png", "height": 100,
+                    x: -31, y: 157, bx: 66, by: -109, bWidth: 224, bHeight: 84, "target": "#calendar_button",
+                    "text": {
+                        "bg": "Кликни балончето с текст, за да имаш време да го прочетеш. От бутончето в долния ъгъл може да продължиш, когато си готов.",
+                        "en": "Tap the speech bubble to pause it. A corner button will appear so you can continue when you're ready."
+                    }
+                },
+                3: {
+                    "image": "msm/1.png", "height": 100,
+                    x: -65, y: 10, bx: 138, by: -48, bWidth: 225, bHeight: 59, "target": "#settings_button",
+                    "text": {
+                        "bg": "Ако кликнеш върху мен ще премина към следващата стъпка. Ctrl-click прекратява обяснението.",
+                        "en": "If you click on me, I’ll move to the next step. Ctrl‑click stops the explanation."
+                    }
+                },
+                4: {
+                    "image": "msm/r-down.png", "height": 100,
+                    x: -67, y: -66, bx: -31, by: -64, bWidth: 175, bHeight: 50, "target": "#kb-fab",
+                    "text": {
+                        "bg": "Отвори от тук чат-прозореца за връзка с мен.",
+                        "en": "Open the chat here anytime to reach me."
+                    }
+                },
+            }
+        },
+{
+            "id": "assistant-2",
+            "category": "features",
             "keywords": {
-                "bg": ["асистент", "AI", "помощник", "помощ", "help", "Лепчо", "Mr. StickyMan"],
-                "en": ["assistant", "AI", "AI assistant", "Mr. StickyMan"]
+                "bg": ["асистент", "AI", "помощник", "помощ", "help", "{{assistantNameBG}}", "{{assistantNameEN}}"],
+                "en": ["assistant", "AI", "AI assistant", "{{assistantNameEN}}"]
             },
             "question": {
-                "bg": "Какво е хубаво да знам за използване на чат прозореца?",
-                "en": "What is good to know about using the chat window?"
+                "bg": "Какво ще е полезно да знаеш за използване на чат прозореца?",
+                "en": "What might be helpful while using the chat window?"
             },
             "answer": {
                 "bg": "Чат прозорецът ти позволява да търсиш информация с помощта на асистента. Той може да отговаря на въпросите ти, да помага със задачи и да обяснява елементите на интерфейса. Винаги поглеждай точния въпрос, на който отговаря асистентът (намира се в началото на отговора му), защото въпросът се формира на базата на написаното от теб, но не е задължително и много често не съвпада точно с твоята формулировка. Ако отговорът не съдържа търсената от теб информаця, опитай да перефразираш въпроса си.<br>Освен стандартните функции, чат прозорецът има и някои полезни допълния, за удобство на потребителя. За да се запознаеш с тях натисни бутона:",

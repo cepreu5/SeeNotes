@@ -231,13 +231,17 @@ class KBMatcher {
 
         // Вземаме първите N general въпроса
         if (this.kbData.general) {
-            this.kbData.general.slice(0, count).forEach(item => {
-                suggestions.push({
-                    type: 'general',
-                    question: item.question[lang],
-                    item: item
-                });
-            });
+            for (const item of this.kbData.general) {
+                if (suggestions.length >= count) break;
+
+                if (item.question && item.question[lang]) {
+                    suggestions.push({
+                        type: 'general',
+                        question: item.question[lang],
+                        item: item
+                    });
+                }
+            }
         }
 
         return suggestions;

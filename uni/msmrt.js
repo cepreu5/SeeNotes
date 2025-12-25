@@ -33,6 +33,43 @@ window.removeGuide = function () {
 
 window.showStep = showStep;
 
+window.refreshGuideLanguage = function () {
+    if (!container || !document.body.contains(container) || !currentActiveStep) return;
+
+    let newLang = localStorage.getItem('language') || 'en';
+    let step = currentActiveStep;
+    let newText = '';
+
+    if (step.text) {
+        if (typeof step.text === 'object') {
+            newText = step.text[newLang] || step.text['en'] || '';
+        } else {
+            newText = step.text;
+        }
+    } else if (typeof guideTexts !== 'undefined' && step.textKey) {
+        newText = guideTexts[newLang] ? guideTexts[newLang][step.textKey] : '';
+    }
+
+    const bubble = container.querySelector('.speech-bubble');
+    if (bubble) {
+        const span = bubble.querySelector('span');
+        if (span) {
+            span.innerHTML = newText;
+        } else {
+            bubble.innerHTML = `<span>${newText}</span>`;
+        }
+
+        if (step.bWidth) bubble.style.width = step.bWidth + 'px';
+        if (step.bHeight) bubble.style.height = step.bHeight + 'px';
+
+        if (!newText) {
+            bubble.style.display = 'none';
+        } else {
+            bubble.style.display = 'block';
+        }
+    }
+};
+
 function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     if (stepTimer) clearTimeout(stepTimer);
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -117,6 +154,36 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const by = step.by || 0;
         bubble.style.transform = `translate(${bx}px, ${by}px)`;
 
+        // Create Play/Resume Button
+        const playBtn = document.createElement('div');
+        playBtn.className = 'msm-play-btn';
+        playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+        playBtn.style.position = 'absolute';
+        playBtn.style.bottom = '5px';
+        playBtn.style.right = '5px';
+        playBtn.style.width = '24px';
+        playBtn.style.height = '24px';
+        playBtn.style.background = 'rgba(0,0,0,0.1)';
+        playBtn.style.borderRadius = '50%';
+        playBtn.style.cursor = 'pointer';
+        playBtn.style.display = 'none'; // Hidden by default
+        playBtn.style.alignItems = 'center';
+        playBtn.style.justifyContent = 'center';
+        playBtn.style.color = '#555';
+        playBtn.style.zIndex = '10';
+        playBtn.title = 'Resume';
+
+        // Hover effect via JS since inline styles
+        playBtn.onmouseenter = () => playBtn.style.background = 'rgba(0,0,0,0.2)';
+        playBtn.onmouseleave = () => playBtn.style.background = 'rgba(0,0,0,0.1)';
+
+        playBtn.onclick = (e) => {
+            e.stopPropagation(); // Stop bubbling to bubble click handler
+            nextStep();
+        };
+
+        bubble.appendChild(playBtn);
+
         container.appendChild(bubble);
     } else {
         bubble.style.display = 'none';
@@ -140,8 +207,33 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         }
     };
 
-    img.onclick = nextStep;
-    bubble.onclick = nextStep;
+    const imgClickHandler = (e) => {
+        if (e.ctrlKey) {
+            window.removeGuide();
+        } else {
+            nextStep();
+        }
+    };
+
+    const bubbleClickHandler = (e) => {
+        if (e.ctrlKey) {
+            window.removeGuide();
+        } else {
+            // "Pause" - just clear the timer so it doesn't auto-advance
+            if (stepTimer) {
+                clearTimeout(stepTimer);
+                stepTimer = null;
+                // Show play button
+                const btn = container.querySelector('.msm-play-btn');
+                if (btn) {
+                    btn.style.display = 'flex';
+                }
+            }
+        }
+    };
+
+    img.onclick = imgClickHandler;
+    bubble.onclick = bubbleClickHandler;
 
     // Keyboard Navigation
     const handleKeyPress = (e) => {
@@ -186,21 +278,26 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     const updatePosition = () => {
         if (!container || !document.body.contains(container)) return;
 
+        // --- FIX: Check image and target readiness to prevent loops ---
+        if (!img.complete || img.naturalWidth === 0) {
+            animationFrameId = requestAnimationFrame(updatePosition);
+            return;
+        }
+
         if (!img.offsetParent) {
-            // Image not visible/ready yet
+            // Image hidden
             animationFrameId = requestAnimationFrame(updatePosition);
             return;
         }
 
         if (!targetEl || !document.body.contains(targetEl)) {
-            // Try validation again
             targetEl = step.target ? document.querySelector(step.target) : document.body;
             if (!targetEl) targetEl = document.body;
         }
 
         const rect = targetEl.getBoundingClientRect();
 
-        // Check if target is actually visible (has dimensions)
+        // Check if target is actually visible
         if (rect.width === 0 && rect.height === 0) {
             container.style.visibility = 'hidden';
             animationFrameId = requestAnimationFrame(updatePosition);
@@ -220,88 +317,53 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
         // Bubble screen boundary check
         if (text) {
-            const vpW = window.innerWidth || document.documentElement.clientWidth;
-            const vpH = window.innerHeight || document.documentElement.clientHeight;
+            // --- FIX: Use clientWidth/Height to exclude scrollbars logic ---
+            const vpW = document.documentElement.clientWidth;
+            const vpH = document.documentElement.clientHeight;
 
             const curBx = step.bx || 0;
             const curBy = step.by || 0;
             const cRect = container.getBoundingClientRect();
 
-            const bubbleRect = bubble.getBoundingClientRect();
-            const padding = 5;
+            // Calculate "Ideal" position relative to viewport
+            const idealLeft = cRect.left + curBx;
+            const idealTop = cRect.top + curBy;
+            const bubbleW = bubble.offsetWidth;
+            const bubbleH = bubble.offsetHeight;
+            const idealRight = idealLeft + bubbleW;
+            const idealBottom = idealTop + bubbleH;
 
-            let corrX = 0;
-            let corrY = 0;
+            const padding = 10;
+            let shiftX = 0;
+            let shiftY = 0;
 
-            // Simple Check: is bubble off screen?
-            // We calculate intended position relative to screen using the container rect + translate
-            // Actually getBoundingClientRect of bubble is enough to check current status, 
-            // but we want to correct it.
+            if (idealLeft < padding) shiftX = padding - idealLeft;
+            else if (idealRight > vpW - padding) shiftX = (vpW - padding) - idealRight;
 
-            if (bubbleRect.left < padding) {
-                corrX = padding - bubbleRect.left;
-            } else if (bubbleRect.right > vpW - padding) {
-                corrX = (vpW - padding) - bubbleRect.right;
-            }
+            if (idealTop < padding) shiftY = padding - idealTop;
+            else if (idealBottom > vpH - padding) shiftY = (vpH - padding) - idealBottom;
 
-            if (bubbleRect.top < padding) {
-                corrY = padding - bubbleRect.top;
-            } else if (bubbleRect.bottom > vpH - padding) {
-                // Only correct up if room?
-                corrY = (vpH - padding) - bubbleRect.bottom;
-            }
-
-            if (corrX !== 0 || corrY !== 0) {
-                // Apply cumulative transform
-                // We need to add correction to base translation
-                // Note: transform is not additive in JS style string unless we parse it.
-                // But we know base is translate(bx, by).
-                // Wait, if we keep adding corrX to previous transform, it spirals.
-                // We should calculate corrX based on "ideal" position vs viewport.
-
-                // Let's rely on standard calculating:
-                // relativeBaseX = cRect.left + curBx;
-                // relativeBaseY = cRect.top + curBy;
-
-                // if (relativeBaseX < 0) ...
-                // Easier: just set transform with correction
-                // But we need to know the correction relative to the Step's bx/by.
-                // If we used the logic from msm.js it would be cleaner, but I'll stick to a simpler CSS transform update if needed.
-                // Since this runs in a loop, direct transform modification based on current rect acts like a feedback loop which can jitter.
-                // Better to calculate "Ideal" rect first.
-
-                const idealLeft = cRect.left + curBx;
-                const idealTop = cRect.top + curBy;
-                const idealRight = idealLeft + bubble.offsetWidth;
-                const idealBottom = idealTop + bubble.offsetHeight;
-
-                let shiftX = 0;
-                let shiftY = 0;
-
-                if (idealLeft < padding) shiftX = padding - idealLeft;
-                else if (idealRight > vpW - padding) shiftX = (vpW - padding) - idealRight;
-
-                if (idealTop < padding) shiftY = padding - idealTop;
-                else if (idealBottom > vpH - padding) shiftY = (vpH - padding) - idealBottom;
-
-                bubble.style.transform = `translate(${curBx + shiftX}px, ${curBy + shiftY}px)`;
-            } else {
-                bubble.style.transform = `translate(${curBx}px, ${curBy}px)`;
-            }
+            // Apply transform
+            bubble.style.transform = `translate(${curBx + shiftX}px, ${curBy + shiftY}px)`;
         }
 
         animationFrameId = requestAnimationFrame(updatePosition);
     };
 
-    const startLoop = () => {
-        if (img.complete) updatePosition();
-        else img.onload = updatePosition;
-    };
-
-    if (scrollDelay > 0) {
-        setTimeout(startLoop, scrollDelay);
+    if (img.complete) {
+        if (scrollDelay > 0) {
+            setTimeout(updatePosition, scrollDelay);
+        } else {
+            updatePosition();
+        }
     } else {
-        startLoop();
+        img.onload = () => {
+            if (scrollDelay > 0) {
+                setTimeout(updatePosition, scrollDelay);
+            } else {
+                updatePosition();
+            }
+        };
     }
 }
 

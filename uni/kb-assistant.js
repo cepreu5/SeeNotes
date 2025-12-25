@@ -49,7 +49,13 @@ class KBAssistant {
                 throw new Error('Failed to load KB data');
             }
 
-            const text = await response.text();
+            let text = await response.text();
+
+
+
+            text = text.replace(/{{assistantNameBG}}/g, assistantNames.bg)
+                .replace(/{{assistantNameEN}}/g, assistantNames.en);
+
             try {
                 this.kbData = JSON.parse(text);
             } catch (e) {
@@ -751,6 +757,14 @@ class KBAssistant {
         this.currentLang = this.getCurrentLanguage();
         if (this.matcher) {
             this.matcher.currentLang = this.currentLang;
+        }
+        // Обновяваме UI компонентите (title, input placeholder)
+        if (this.ui) {
+            this.ui.updateLanguage();
+        }
+        // Обновяваме и езика на "героя" (msm guide), ако е активен
+        if (window.refreshGuideLanguage) {
+            window.refreshGuideLanguage();
         }
     }
 }

@@ -8,9 +8,9 @@
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 const version = '0.19'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const debug = true; // Глобален флаг за дебъг режим
 const msm = true;
-let guide = false;
+let guide = true;
 
 // --- OAuth Redirect Handler for iframe ---
 // Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
@@ -197,7 +197,19 @@ function gisLoaded() {
     // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
     loginBox.style.visibility = 'visible';
     document.getElementById('authorize_button').disabled = false;
-    if (guide) showStep(0, 0, true); // Интро
+    if (guide) {
+        const startAssistantGuide = () => {
+            if (window.kbAssistant && window.kbAssistant.isInitialized) {
+                const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant');
+                if (entry && entry.guide) {
+                    window.kbAssistant.showGuide(entry.guide);
+                }
+            } else {
+                setTimeout(startAssistantGuide, 100);
+            }
+        };
+        startAssistantGuide();
+    } // Интро
 }
 
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
@@ -7008,18 +7020,30 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     if (isInitialLoad) {
         // --- КОРЕКЦИЯ: Програмен клик на стартовия борд ---
-        // Вместо директно филтриране, намираме бутона и го кликваме.
-        // Това гарантира, че всички визуални ефекти (активен клас, скролиране) се прилагат.
-        // Изчакваме малко, за да сме сигурни, че DOM е обновен
         setTimeout(() => {
             const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
             if (startBoardBtn) {
                 startBoardBtn.click();
             } else {
-                // Fallback, ако бутонът не е намерен
                 filterNotesByBoard(currentBoardFilter, true);
             }
         }, 300);
+
+        // Start Assistant Guide if needed
+        if (guide) {
+            const startAssistantGuide = () => {
+                if (window.kbAssistant && window.kbAssistant.isInitialized) {
+                    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
+                    if (entry && entry.guide) {
+                        window.kbAssistant.showGuide(entry.guide);
+                    }
+                } else {
+                    setTimeout(startAssistantGuide, 100);
+                }
+            };
+            // Delay slightly to ensure UI is ready
+            setTimeout(startAssistantGuide, 1500);
+        }
     } else {
         filterNotesByBoard(currentBoardFilter, false);
     }
@@ -7124,6 +7148,10 @@ function setLanguage(lang) {
         updateSignoutTooltip();
     }
 
+    // Update KB Assistant Language
+    if (window.kbAssistant) {
+        window.kbAssistant.updateLanguage();
+    }
 }
 // --- Service Worker Registration ---
 if ('serviceWorker' in navigator) {

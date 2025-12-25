@@ -1,4 +1,10 @@
 // --- I18N ---
+// Замяна на имената с константи
+const assistantNames = {
+    bg: 'Лепчо',
+    en: 'Noto'
+};
+
 const translations = {
     en: {
         appTitle: 'CX MultiNotes Viewer',
@@ -146,8 +152,6 @@ const translations = {
         errorReadArh: 'Error reading from archive.',
         syncTitleGD: 'Sync with Google Drive',
         syncTitleLocal: 'Sync with Local Folder',
-        /*advHidden: 'Advanced settings are hidden.',
-        advShown: 'Advanced settings are shown.',*/
         errorArhFolderNotSelected: 'Please select an archive folder from settings.',
         showBoardNoteCountLabel: 'Notes count in board:',
         calculateTooltip: 'Calculate expression',
@@ -181,7 +185,6 @@ const translations = {
         feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com',
         errorForbidden: 'Forbidden: Request had insufficient authentication scopes.',
         cancelButton: 'Cancel',
-
         loginPrompt: 'Please sign in with the Google account you used to sync <i>MultiNotes</i>.',
         authorizeButton: 'Authorize with Google',
         rememberMeLabel: 'Remember me',
@@ -192,7 +195,6 @@ const translations = {
         intro1a: 'A necessary condition for the application to work is that you have enabled synchronization with <strong>Google Drive</strong> in the <strong>Multinotes</strong> settings.',
         intro2: '<strong>CX MultiNotes Viewer</strong> provides quick access to your notes, without the need for installation, and even allows for offline work if necessary. The main mode of operation uses a local database in the browser, which is updated with new and edited notes from the application, thus ensuring optimal performance.',
         modeDbTitle: 'Here is how it works:',
-        // modeDbDesc: 'This mode is active by default and offers the best combination of speed, efficiency, and independence from an internet connection.',
         modeDbPoint1: 'On first launch, the application downloads all notes from <strong>Google Drive</strong> and saves them to the browser\'s local database.',
         modeDbPoint2: 'Each subsequent load is done directly from this database, with a check to download only the new and changed notes since the last launch, which significantly speeds up the process.',
         modeDbPoint3: 'If, after the initial load, you uncheck <strong>Google Drive</strong> in <strong>Settings</strong>, the notes will be loaded only from the database, which will significantly speed up the process and you will even be able to work without an internet connection. In this case, no check for new and changed notes will be performed, so it is useful to periodically re-check the box to update your data.',
@@ -220,7 +222,6 @@ const translations = {
         modeDrive: 'Mode: Google Drive',
         modeDb: 'Mode: Database',
         supportMessage: 'If you like this app and find it useful, support the developer with a small amount.'
-
     },
     bg: {
         appTitle: 'CX MultiNotes Viewer',
@@ -369,8 +370,6 @@ const translations = {
         errorReadArh: 'Грешка при четене от архива.',
         syncTitleGD: 'Синхронизиране с Google Drive',
         syncTitleLocal: 'Синхронизиране с Локална папка',
-        /*advHidden: 'Разширените настройки са скрити.',
-        advShown: 'Разширените настройки са достъпни.',*/
         errorArhFolderNotSelected: 'Моля, изберете папка за архив от настройките.',
         showBoardNoteCountLabel: 'Брой бележки в борда:',
         calculateTooltip: 'Изчисли израз',
@@ -414,7 +413,6 @@ const translations = {
         intro1a: 'Необходимо условие за работа на приложението е да сте включили синхронизация с <strong>Google Drive</strong> в настройките на <strong>Multinotes</strong>.',
         intro2: '<strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без нужда от инсталация и дори при необходимост дава възможност за работа без връзка с интернет. Основният режим на работа използва локална база данни в браузъра, която се обновява с новите и редактирани бележки от приложението и по този начин осигурява оптимална производителност.',
         modeDbTitle: 'Ето как работи:',
-        // modeDbDesc: 'Този режим е активен по подразбиране и предлага най-добро съчетание между бързина, ефективност и независимост от интернет връзка.',
         modeDbPoint1: 'При първо стартиране приложението изтегля всички бележки от <strong>Google Drive</strong> и ги записва в локалната база данни на браузъра.',
         modeDbPoint2: 'Всяко следващо зареждане става директно от тази база, като се прави проверка и се изтеглят само новите и променените бележки след последното стартиране, което съществено ускорява процеса.',
         modeDbPoint3: 'Ако, след първоначално зареждане, махнете отметката на <strong>Google Drive</strong> в <strong>Настройки</strong>, бележките ще се зареждат само от базата данни, което съществено ще ускори процеса и дори ще може да работите без връзка с интернет. В този случай няма да се прави проверка за нови и променени бележки, затова ще е полезно периодично да връщате отметката, за да актуализирате данните си.',
@@ -442,6 +440,5 @@ const translations = {
         modeDrive: 'Режим: Google Drive',
         modeDb: 'Режим: База данни',
         supportMessage: 'Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.'
-
     }
 };
