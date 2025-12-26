@@ -95,292 +95,323 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     }
     currentActiveStep = step;
 
-    // Execute onStart callback if exists
-    if (typeof step.onStart === 'function') {
-        step.onStart();
-    }
-
-    let imagePath = step.image;
-    let stopAfter = step.stopAfter || false;
-    if (imagePath && imagePath.endsWith('!')) {
-        stopAfter = true;
-        imagePath = imagePath.slice(0, -1);
-    }
-
-    if (!container || !document.body.contains(container)) {
-        container = document.createElement('div');
-        container.className = 'guide-container';
-        container.style.position = 'absolute';
-        container.style.visibility = 'hidden'; // Hide initially to prevent jump
-        container.style.zIndex = '10000';
-        container.style.pointerEvents = 'none'; // Pass clicks through container
-        document.body.appendChild(container);
-    } else {
-        // Reuse container but hide it until ready
-        container.style.visibility = 'hidden';
-        container.style.left = '0px';
-        container.style.top = '0px';
-    }
-
-    container.innerHTML = '';
-
-    const img = document.createElement('img');
-    img.src = imagePath;
-    img.className = 'guide-img';
-    img.style.cursor = "pointer";
-    img.style.pointerEvents = "auto"; // Catch clicks on image
-
-    if (step.height) {
-        img.style.height = step.height + 'px';
-        img.style.width = 'auto';
-    }
-
-    container.appendChild(img);
-
-    // Bubble
-    const bubble = document.createElement('div');
-    bubble.className = 'speech-bubble';
-    bubble.style.position = 'absolute';
-    bubble.style.pointerEvents = "auto"; // Catch clicks on bubble
-
-    let currentLang = localStorage.getItem('language') || 'en';
-    let text = '';
-    if (step.text) {
-        if (typeof step.text === 'object') {
-            text = step.text[currentLang] || step.text['en'] || '';
-        } else {
-            text = step.text;
+    // Execute onStart callback if exists and wait for animations
+    const continueShowStep = () => {
+        let imagePath = step.image;
+        let stopAfter = step.stopAfter || false;
+        if (imagePath && imagePath.endsWith('!')) {
+            stopAfter = true;
+            imagePath = imagePath.slice(0, -1);
         }
-    } else if (typeof guideTexts !== 'undefined' && step.textKey) {
-        text = guideTexts[currentLang][step.textKey];
-    }
 
-    if (text) {
-        bubble.innerHTML = `<span>${text}</span>`;
+        if (!container || !document.body.contains(container)) {
+            container = document.createElement('div');
+            container.className = 'guide-container';
+            container.style.position = 'absolute';
+            container.style.visibility = 'hidden'; // Hide initially to prevent jump
+            container.style.zIndex = '10000';
+            container.style.pointerEvents = 'none'; // Pass clicks through container
+            document.body.appendChild(container);
+        } else {
+            // Reuse container but hide it until ready
+            container.style.visibility = 'hidden';
+            container.style.left = '0px';
+            container.style.top = '0px';
+        }
 
-        if (step.bWidth) bubble.style.width = step.bWidth + 'px';
-        if (step.bHeight) bubble.style.height = step.bHeight + 'px';
+        container.innerHTML = '';
 
-        const bx = step.bx || 0;
-        const by = step.by || 0;
-        bubble.style.transform = `translate(${bx}px, ${by}px)`;
+        const img = document.createElement('img');
+        img.src = imagePath;
+        img.className = 'guide-img';
+        img.style.cursor = "pointer";
+        img.style.pointerEvents = "auto"; // Catch clicks on image
 
-        // Create Play/Resume Button
-        const playBtn = document.createElement('div');
-        playBtn.className = 'msm-play-btn';
-        playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-        playBtn.style.position = 'absolute';
-        playBtn.style.bottom = '5px';
-        playBtn.style.right = '5px';
-        playBtn.style.width = '24px';
-        playBtn.style.height = '24px';
-        playBtn.style.background = 'rgba(0,0,0,0.1)';
-        playBtn.style.borderRadius = '50%';
-        playBtn.style.cursor = 'pointer';
-        playBtn.style.display = 'none'; // Hidden by default
-        playBtn.style.alignItems = 'center';
-        playBtn.style.justifyContent = 'center';
-        playBtn.style.color = '#555';
-        playBtn.style.zIndex = '10';
-        playBtn.title = 'Resume';
+        if (step.height) {
+            img.style.height = step.height + 'px';
+            img.style.width = 'auto';
+        }
 
-        // Hover effect via JS since inline styles
-        playBtn.onmouseenter = () => playBtn.style.background = 'rgba(0,0,0,0.2)';
-        playBtn.onmouseleave = () => playBtn.style.background = 'rgba(0,0,0,0.1)';
+        container.appendChild(img);
 
-        playBtn.onclick = (e) => {
-            e.stopPropagation(); // Stop bubbling to bubble click handler
-            nextStep();
+        // Bubble
+        const bubble = document.createElement('div');
+        bubble.className = 'speech-bubble';
+        bubble.style.position = 'absolute';
+        bubble.style.pointerEvents = "auto"; // Catch clicks on bubble
+
+        let currentLang = localStorage.getItem('language') || 'en';
+        let text = '';
+        if (step.text) {
+            if (typeof step.text === 'object') {
+                text = step.text[currentLang] || step.text['en'] || '';
+            } else {
+                text = step.text;
+            }
+        } else if (typeof guideTexts !== 'undefined' && step.textKey) {
+            text = guideTexts[currentLang][step.textKey];
+        }
+
+        if (text) {
+            bubble.innerHTML = `<span>${text}</span>`;
+
+            if (step.bWidth) bubble.style.width = step.bWidth + 'px';
+            if (step.bHeight) bubble.style.height = step.bHeight + 'px';
+
+            const bx = step.bx || 0;
+            const by = step.by || 0;
+            bubble.style.transform = `translate(${bx}px, ${by}px)`;
+
+            // Create Play/Resume Button
+            const playBtn = document.createElement('div');
+            playBtn.className = 'msm-play-btn';
+            playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+            playBtn.style.position = 'absolute';
+            playBtn.style.bottom = '5px';
+            playBtn.style.right = '5px';
+            playBtn.style.width = '24px';
+            playBtn.style.height = '24px';
+            playBtn.style.background = 'rgba(0,0,0,0.1)';
+            playBtn.style.borderRadius = '50%';
+            playBtn.style.cursor = 'pointer';
+            playBtn.style.display = 'none'; // Hidden by default
+            playBtn.style.alignItems = 'center';
+            playBtn.style.justifyContent = 'center';
+            playBtn.style.color = '#555';
+            playBtn.style.zIndex = '10';
+            playBtn.title = 'Resume';
+
+            // Hover effect via JS since inline styles
+            playBtn.onmouseenter = () => playBtn.style.background = 'rgba(0,0,0,0.2)';
+            playBtn.onmouseleave = () => playBtn.style.background = 'rgba(0,0,0,0.1)';
+
+            playBtn.onclick = (e) => {
+                e.stopPropagation(); // Stop bubbling to bubble click handler
+                nextStep();
+            };
+
+            bubble.appendChild(playBtn);
+
+            container.appendChild(bubble);
+        } else {
+            bubble.style.display = 'none';
+        }
+
+        // Navigation Logic
+        const nextStep = () => {
+            if (stepTimer) clearTimeout(stepTimer);
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            if (single || stopAfter) {
+                window.removeGuide();
+                return;
+            }
+
+            const nextIndex = nextStepIndex !== null ? nextStepIndex : (stepIndex !== -1 ? stepIndex + 1 : -1);
+            if (nextIndex !== -1 && nextIndex < activeSteps.length) {
+                showStep(nextIndex);
+            } else {
+                window.removeGuide();
+            }
         };
 
-        bubble.appendChild(playBtn);
+        const imgClickHandler = (e) => {
+            if (e.ctrlKey) {
+                window.removeGuide();
+            } else {
+                nextStep();
+            }
+        };
 
-        container.appendChild(bubble);
-    } else {
-        bubble.style.display = 'none';
-    }
+        const bubbleClickHandler = (e) => {
+            if (e.ctrlKey) {
+                window.removeGuide();
+            } else {
+                // "Pause" - just clear the timer so it doesn't auto-advance
+                if (stepTimer) {
+                    clearTimeout(stepTimer);
+                    stepTimer = null;
+                    // Show play button
+                    const btn = container.querySelector('.msm-play-btn');
+                    if (btn) {
+                        btn.style.display = 'flex';
+                    }
+                }
+            }
+        };
 
-    // Navigation Logic
-    const nextStep = () => {
-        if (stepTimer) clearTimeout(stepTimer);
-        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        img.onclick = imgClickHandler;
+        bubble.onclick = bubbleClickHandler;
 
-        if (single || stopAfter) {
-            window.removeGuide();
-            return;
-        }
+        // Keyboard Navigation
+        const handleKeyPress = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                return;
+            }
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                document.removeEventListener('keydown', handleKeyPress);
+                nextStep();
+            }
+        };
+        document.addEventListener('keydown', handleKeyPress);
 
-        const nextIndex = nextStepIndex !== null ? nextStepIndex : (stepIndex !== -1 ? stepIndex + 1 : -1);
-        if (nextIndex !== -1 && nextIndex < activeSteps.length) {
-            showStep(nextIndex);
-        } else {
-            window.removeGuide();
-        }
-    };
+        // Auto Advance logic moved to updatePosition to ensure full view time
+        let stepTimerStarted = false;
 
-    const imgClickHandler = (e) => {
-        if (e.ctrlKey) {
-            window.removeGuide();
-        } else {
-            nextStep();
-        }
-    };
 
-    const bubbleClickHandler = (e) => {
-        if (e.ctrlKey) {
-            window.removeGuide();
-        } else {
-            // "Pause" - just clear the timer so it doesn't auto-advance
-            if (stepTimer) {
-                clearTimeout(stepTimer);
-                stepTimer = null;
-                // Show play button
-                const btn = container.querySelector('.msm-play-btn');
-                if (btn) {
-                    btn.style.display = 'flex';
+        // Positioning
+        let targetEl = step.target ? document.querySelector(step.target) : document.body;
+        let scrollDelay = 0;
+
+        if (targetEl && targetEl !== document.body && targetEl !== document.documentElement) {
+            // Check if element is in a scrollable container (like Settings modal)
+            const scrollableParent = targetEl.closest('.modal-content-box, #settings-modal-body, .scrollable-content');
+
+            if (scrollableParent) {
+                // Scroll within the modal/container
+                const parentRect = scrollableParent.getBoundingClientRect();
+                const elementRect = targetEl.getBoundingClientRect();
+
+                // Check if element is outside the visible area of the scrollable parent
+                if (elementRect.top < parentRect.top || elementRect.bottom > parentRect.bottom) {
+                    // Calculate scroll position to center the element
+                    const scrollTop = targetEl.offsetTop - (scrollableParent.clientHeight / 2) + (targetEl.offsetHeight / 2);
+                    scrollableParent.scrollTo({
+                        top: scrollTop,
+                        behavior: 'smooth'
+                    });
+                    scrollDelay = 600;
+                }
+            } else {
+                // Scroll the window
+                const rect = targetEl.getBoundingClientRect();
+                const isVisible = (
+                    rect.top >= 0 &&
+                    rect.left >= 0 &&
+                    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+                    rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+                );
+
+                if (!isVisible) {
+                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                    scrollDelay = 600;
                 }
             }
         }
-    };
 
-    img.onclick = imgClickHandler;
-    bubble.onclick = bubbleClickHandler;
+        const updatePosition = () => {
+            if (!container || !document.body.contains(container)) return;
 
-    // Keyboard Navigation
-    const handleKeyPress = (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-            return;
-        }
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            document.removeEventListener('keydown', handleKeyPress);
-            nextStep();
-        }
-    };
-    document.addEventListener('keydown', handleKeyPress);
+            // --- FIX: Check image and target readiness to prevent loops ---
+            if (!img.complete || img.naturalWidth === 0) {
+                animationFrameId = requestAnimationFrame(updatePosition);
+                return;
+            }
 
-    // Auto Advance logic moved to updatePosition to ensure full view time
-    let stepTimerStarted = false;
+            if (!img.offsetParent) {
+                // Image hidden
+                animationFrameId = requestAnimationFrame(updatePosition);
+                return;
+            }
 
+            if (!targetEl || !document.body.contains(targetEl)) {
+                targetEl = step.target ? document.querySelector(step.target) : document.body;
+                if (!targetEl) targetEl = document.body;
+            }
 
-    // Positioning
-    let targetEl = step.target ? document.querySelector(step.target) : document.body;
-    let scrollDelay = 0;
+            const rect = targetEl.getBoundingClientRect();
 
-    if (targetEl && targetEl !== document.body && targetEl !== document.documentElement) {
-        const rect = targetEl.getBoundingClientRect();
-        const isVisible = (
-            rect.top >= 0 &&
-            rect.left >= 0 &&
-            rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-            rect.right <= (window.innerWidth || document.documentElement.clientWidth)
-        );
+            // Check if target is actually visible
+            if (rect.width === 0 && rect.height === 0) {
+                container.style.visibility = 'hidden';
+                animationFrameId = requestAnimationFrame(updatePosition);
+                return;
+            }
 
-        if (!isVisible) {
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-            scrollDelay = 600;
-        }
-    }
+            const imgOffsetLeft = img.offsetLeft;
+            const imgOffsetTop = img.offsetTop;
 
-    const updatePosition = () => {
-        if (!container || !document.body.contains(container)) return;
+            // Position container
+            container.style.left = (rect.left + window.scrollX + (step.x || 0) - imgOffsetLeft) + "px";
+            container.style.top = (rect.top + window.scrollY + (step.y || 0) - imgOffsetTop) + "px";
 
-        // --- FIX: Check image and target readiness to prevent loops ---
-        if (!img.complete || img.naturalWidth === 0) {
+            if (container.style.visibility === 'hidden') {
+                container.style.visibility = 'visible';
+            }
+
+            // Start timer only when visible
+            if (!stepTimer && !single && !stepTimerStarted) {
+                stepTimerStarted = true;
+                let duration = step.time || stepTime;
+                stepTimer = setTimeout(() => {
+                    document.removeEventListener('keydown', handleKeyPress);
+                    nextStep();
+                }, duration);
+            }
+
+            // Bubble screen boundary check
+            if (text) {
+                // --- FIX: Use clientWidth/Height to exclude scrollbars logic ---
+                const vpW = document.documentElement.clientWidth;
+                const vpH = document.documentElement.clientHeight;
+
+                const curBx = step.bx || 0;
+                const curBy = step.by || 0;
+                const cRect = container.getBoundingClientRect();
+
+                // Calculate "Ideal" position relative to viewport
+                const idealLeft = cRect.left + curBx;
+                const idealTop = cRect.top + curBy;
+                const bubbleW = bubble.offsetWidth;
+                const bubbleH = bubble.offsetHeight;
+                const idealRight = idealLeft + bubbleW;
+                const idealBottom = idealTop + bubbleH;
+
+                const padding = 10;
+                let shiftX = 0;
+                let shiftY = 0;
+
+                if (idealLeft < padding) shiftX = padding - idealLeft;
+                else if (idealRight > vpW - padding) shiftX = (vpW - padding) - idealRight;
+
+                if (idealTop < padding) shiftY = padding - idealTop;
+                else if (idealBottom > vpH - padding) shiftY = (vpH - padding) - idealBottom;
+
+                // Apply transform
+                bubble.style.transform = `translate(${curBx + shiftX}px, ${curBy + shiftY}px)`;
+            }
+
             animationFrameId = requestAnimationFrame(updatePosition);
-            return;
-        }
+        };
 
-        if (!img.offsetParent) {
-            // Image hidden
-            animationFrameId = requestAnimationFrame(updatePosition);
-            return;
-        }
-
-        if (!targetEl || !document.body.contains(targetEl)) {
-            targetEl = step.target ? document.querySelector(step.target) : document.body;
-            if (!targetEl) targetEl = document.body;
-        }
-
-        const rect = targetEl.getBoundingClientRect();
-
-        // Check if target is actually visible
-        if (rect.width === 0 && rect.height === 0) {
-            container.style.visibility = 'hidden';
-            animationFrameId = requestAnimationFrame(updatePosition);
-            return;
-        }
-
-        const imgOffsetLeft = img.offsetLeft;
-        const imgOffsetTop = img.offsetTop;
-
-        // Position container
-        container.style.left = (rect.left + window.scrollX + (step.x || 0) - imgOffsetLeft) + "px";
-        container.style.top = (rect.top + window.scrollY + (step.y || 0) - imgOffsetTop) + "px";
-
-        if (container.style.visibility === 'hidden') {
-            container.style.visibility = 'visible';
-        }
-
-        // Start timer only when visible
-        if (!stepTimer && !single && !stepTimerStarted) {
-            stepTimerStarted = true;
-            let duration = step.time || stepTime;
-            stepTimer = setTimeout(() => {
-                document.removeEventListener('keydown', handleKeyPress);
-                nextStep();
-            }, duration);
-        }
-
-        // Bubble screen boundary check
-        if (text) {
-            // --- FIX: Use clientWidth/Height to exclude scrollbars logic ---
-            const vpW = document.documentElement.clientWidth;
-            const vpH = document.documentElement.clientHeight;
-
-            const curBx = step.bx || 0;
-            const curBy = step.by || 0;
-            const cRect = container.getBoundingClientRect();
-
-            // Calculate "Ideal" position relative to viewport
-            const idealLeft = cRect.left + curBx;
-            const idealTop = cRect.top + curBy;
-            const bubbleW = bubble.offsetWidth;
-            const bubbleH = bubble.offsetHeight;
-            const idealRight = idealLeft + bubbleW;
-            const idealBottom = idealTop + bubbleH;
-
-            const padding = 10;
-            let shiftX = 0;
-            let shiftY = 0;
-
-            if (idealLeft < padding) shiftX = padding - idealLeft;
-            else if (idealRight > vpW - padding) shiftX = (vpW - padding) - idealRight;
-
-            if (idealTop < padding) shiftY = padding - idealTop;
-            else if (idealBottom > vpH - padding) shiftY = (vpH - padding) - idealBottom;
-
-            // Apply transform
-            bubble.style.transform = `translate(${curBx + shiftX}px, ${curBy + shiftY}px)`;
-        }
-
-        animationFrameId = requestAnimationFrame(updatePosition);
-    };
-
-    if (img.complete) {
-        if (scrollDelay > 0) {
-            setTimeout(updatePosition, scrollDelay);
-        } else {
-            updatePosition();
-        }
-    } else {
-        img.onload = () => {
+        if (img.complete) {
             if (scrollDelay > 0) {
                 setTimeout(updatePosition, scrollDelay);
             } else {
                 updatePosition();
             }
-        };
+        } else {
+            img.onload = () => {
+                if (scrollDelay > 0) {
+                    setTimeout(updatePosition, scrollDelay);
+                } else {
+                    updatePosition();
+                }
+            };
+        }
+    };
+
+    // Execute onStart callback if exists, then continue after delay
+    if (typeof step.onStart === 'function') {
+        step.onStart();
+        // Wait for accordion animation to complete (increased to 500ms)
+        setTimeout(() => {
+            continueShowStep();
+        }, 500);
+    } else {
+        // No onStart, continue immediately
+        continueShowStep();
     }
 }
 

@@ -227,11 +227,38 @@ class KBAssistant {
                     const isPrevSettings = prevCtx && settingsContexts.includes(prevCtx);
                     const isCurrSettings = settingsContexts.includes(currentCtx);
 
+                    // Handle context transitions (Settings open/close)
                     if (isPrevSettings && !isCurrSettings) {
-                        step.onStart = () => { this.closeSettings(); };
+                        const existingOnStart = step.onStart;
+                        step.onStart = () => {
+                            if (existingOnStart) existingOnStart();
+                            this.closeSettings();
+                        };
                     } else if (!isPrevSettings && isCurrSettings) {
-                        step.onStart = () => { this.openSettings(); };
+                        const existingOnStart = step.onStart;
+                        step.onStart = () => {
+                            if (existingOnStart) existingOnStart();
+                            this.openSettings();
+                        };
                     }
+
+                    // Handle action (click element to reveal target)
+                    if (step.action && step.action !== 'highlight' && step.action !== 'explain' && step.action !== 'explain!') {
+                        const existingOnStart = step.onStart;
+                        step.onStart = () => {
+                            if (existingOnStart) existingOnStart();
+
+                            // Click the action element
+                            const actionElement = document.querySelector(step.action);
+                            if (actionElement) {
+                                console.log(`[KB Assistant] Clicking action element: ${step.action}`);
+                                actionElement.click();
+                            } else {
+                                console.warn(`[KB Assistant] Action element not found: ${step.action}`);
+                            }
+                        };
+                    }
+
                     prevCtx = currentCtx;
                 });
 

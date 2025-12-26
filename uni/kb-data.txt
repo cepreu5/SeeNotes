@@ -810,7 +810,7 @@
             "guide": {
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
-                    "image": "msm/1.png", "height": 150,
+                    "image": "msm/1.png", "height": 150, "time": 25000,
                     x: -86, y: 40, bx: -53, by: -97, bWidth: 175, bHeight: 72, "target": "div.login-box",
                     "text": {
                         "bg": "Здравей!<br>👋 Аз съм твоят асистент и винаги съм готов да помогна.",
@@ -928,44 +928,19 @@
                 "en": "What additional functions do notes have in the board?"
             },
             "answer": {
-                "bg": "Ако бележката съдържа снимка или видео като приложение, то може да се отвори за предварителен преглед от иконката в долната част",
-                "en": "If the note contains an image or video as an attachment, it can be opened by clicking on the icon at the bottom."
+                "bg": "Ако бележката съдържа снимка или видео като приложение, то може да се отвори за предварителен преглед от иконката в долната част на бележката.<br><img src='msm/attach.png' ID='attach' alt='Attachment'><br>Изображението може да остане отворено, а с Ctrl-click на името на борда можеш да отвориш/затвориш всички изображения в даден борд.",
+                "en": "If the note contains an image or video as an attachment, it can be opened by clicking on the icon at the bottom.<br><img src='msm/attach.png' ID='attach' alt='Attachment'><br>The image can stay open, and with Ctrl-click on the board name you can open/close all images in the board."
             },
             "guide": {
-                "stopAfter": false, "action": "explain!", "context": "",
+                "stopAfter": true, "action": "#boards-arrow", "context": "boards",
                 1: {
-                    "text": {
-                        "bg": "<img src='msm/attach.png' ID='attach' alt='Attachment'><br>Изображението може да остане отворено, а с Ctrl-click на името на борда можеш да отвориш/затвориш всички изображения в даден борд.",
-                        "en": "The image can stay open, and with Ctrl-click on the board name you can open/close all images in the board."
-                    }
-                },
-                2: {
-                    "image": "msm/r-down-l.png", "height": 100,
-                    x: 74, y: -89, bx: 90, by: -94, bWidth: 281, bHeight: 65,
-                    "target": "#kb-input", 
+                    "image": "msm/l-up-w.png", "height": 100,
+                    x: 291, y: 14, bx: -45, by: -110, bWidth: 305, bHeight: 70, "target": "#show-photos-board",
                     "text": {
                         "bg": "Има два специални борда - <b><i>Със снимки</i></b> и <b><i>С видео</i></b>, които показват на едно място всички бележки, съдържащи изображение/видео. Можеш да ги включиш от <b><i>Настройки</i></b>.",
                         "en": "There are two special boards - <b><i>With photos</i></b> and <b><i>With video</i></b>, which show at once all notes containing an image/video. You can enable them from <b><i>Settings</i></b>."
-                    }
-                },
-                3: {
-                    "image": "msm/r-down-w.png", "height": 100,
-                    x: -55, y: -88, bx: -101, by: -88, bWidth: 281, bHeight: 65,
-                    "target": "#kb-send-btn", 
-                    "text": {
-                        "bg": "Ако натиснеш този бутон без да си написал нищо, чат прозорецът ще се затвори.",
-                        "en": "If you press this button without writing anything, the chat window will close."
-                    }
-                },
-                4: {
-                    "stopAfter": false, "action": "explain!", "context": "",
-                    "image": "msm/expl.png", "height": 100,
-                    x: 2, y: -50, bx: 59, by: 115, bWidth: 281, bHeight: 65, "target": "div.kb-answer-text",
-                    "text": {
-                        "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
-                        "en": "If you click on the text of your last question, it will be filled in the editing field."
-                    }
-                },
+                    },
+                }
             }
         },
 {
