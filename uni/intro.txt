@@ -1,0 +1,41 @@
+Маркетингови версии
+intro1 — marketing
+<strong>CX MultiNotes Viewer</strong> brings your Multinotes Android notes to any device you use — instantly. Open your notes in any browser, on any platform, and stay connected to your ideas wherever you are.
+
+intro1a — marketing
+Just turn on <strong>Google Drive</strong> sync in your <strong>Multinotes</strong> app, and you're ready to go.
+
+intro2 — marketing
+With <strong>CX MultiNotes Viewer</strong>, your notes are always just a click away — no installation, no setup, no hassle. It even works offline. Your browser keeps everything fast, up‑to‑date, and ready whenever inspiration strikes.
+
+Препоръчани, по‑естествени версии
+intro1 (подобрена версия)  
+<strong>CX MultiNotes Viewer</strong> is a browser‑based application that lets you access notes created with the <a href="https://play.google.com/store/apps/details?id=monitor.kmv.multinotes" target="_blank"><strong>Multinotes Android app</strong></a> from your computer, tablet, iPhone, and more—whether you're using Windows, Android, macOS, iOS, or Linux.
+
+Защо е по‑добре:
+
+„lets you access“ звучи по‑естествено от „allows you to access“.
+
+„and more“ е по‑естествено от „etc.“
+
+По‑гладка структура на изречението.
+
+intro1a (подобрена версия)  
+For the application to work, synchronization with <strong>Google Drive</strong> must be enabled in the <strong>Multinotes</strong> settings.
+
+Защо е по‑добре:
+
+„A necessary condition…“ е граматически правилно, но звучи твърде академично.
+
+Новата версия е по‑естествена и директна.
+
+intro2 (подобрена версия)  
+<strong>CX MultiNotes Viewer</strong> gives you quick access to your notes without requiring installation, and it can even work offline when needed. It uses a local database in your browser, which is automatically updated with new and edited notes from the app to ensure optimal performance.
+
+Защо е по‑добре:
+
+По‑естествен ритъм и по‑ясна структура.
+
+„automatically updated“ е по‑информативно и звучи естествено.
+
+Избягва се повторението на „work“ в едно изречение.

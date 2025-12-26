@@ -53,8 +53,8 @@ class KBAssistant {
 
 
 
-            text = text.replace(/{{assistantNameBG}}/g, assistantNames.bg)
-                .replace(/{{assistantNameEN}}/g, assistantNames.en);
+            text = text.replace(/{{assistantNameBG}}/g, appAssistantNames.bg)
+                .replace(/{{assistantNameEN}}/g, appAssistantNames.en);
 
             try {
                 this.kbData = JSON.parse(text);

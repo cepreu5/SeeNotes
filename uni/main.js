@@ -7,10 +7,15 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = '0.19'; // App version
+const version = '0.20'; // App version
 const debug = true; // Глобален флаг за дебъг режим
-const msm = true;
+// const msm = true;
 let guide = true;
+guide = localStorage.getItem('guide');
+if (guide === 'false') {
+    guide = false;
+}
+else guide = true;
 
 // --- OAuth Redirect Handler for iframe ---
 // Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
@@ -117,6 +122,13 @@ const attachmentIcons = [
 ];
 
 let currentLang = localStorage.getItem('language') || 'en';
+
+let appTranslations = {};
+
+const appAssistantNames = {
+    bg: 'Лепчо',
+    en: 'Noto'
+};
 const noteBackgrounds = [
     'wg1_1.png', // 0
     'wr1_1.png', // 1
@@ -203,6 +215,10 @@ function gisLoaded() {
                 const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant');
                 if (entry && entry.guide) {
                     window.kbAssistant.showGuide(entry.guide);
+                    window.kbAssistant.showGuide(entry.guide);
+                    setTimeout(() => {
+                        localStorage.setItem('guide', 'false');
+                    }, 2000);
                 }
             } else {
                 setTimeout(startAssistantGuide, 100);
@@ -213,7 +229,10 @@ function gisLoaded() {
 }
 
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Load translations immediately to ensure they're available
+    await loadTranslations(currentLang);
+
     const rememberMeCheckbox = document.getElementById('rememberMe');
     if (rememberMeCheckbox) {
         rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
@@ -1353,7 +1372,24 @@ async function getFirstStartEncoded() {
 }
 
 function _(key) {
-    return translations[currentLang][key] || key;
+    // If translations aren't loaded yet, try to load them synchronously
+    if (!appTranslations[currentLang]) {
+        try {
+            const isUniContext = window.location.pathname.includes('/uni/');
+            const pathPrefix = isUniContext ? '' : 'uni/';
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `${pathPrefix}i18n-${currentLang}.txt`, false); // false = synchronous
+            xhr.send();
+            if (xhr.status === 200) {
+                const data = new Function('return {' + xhr.responseText + '}')();
+                appTranslations[currentLang] = data[currentLang];
+            }
+        } catch (e) {
+            console.error("Failed to load translations synchronously:", e);
+            return key;
+        }
+    }
+    return appTranslations[currentLang][key] || key;
 }
 function hideToast() {
     const toast = document.getElementById('toastNotification');
@@ -1661,7 +1697,7 @@ function initApp() {
             useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
         };
         document.getElementById('settings-modal').classList.add('visible');
-        if (guide) showStep(4); // Настройки
+        // if (guide) showStep(4); // Настройки
     });
 
     const scrollHandler = function () {
@@ -3609,7 +3645,7 @@ async function mainLogic() {
         notesContainer.style.visibility = 'visible';
     }
 
-    if (guide) showStep(1); // Първи стъпки
+    // if (guide) showStep(1); // Първи стъпки
 }
 /**
  * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
@@ -7119,8 +7155,29 @@ async function readArh(dirHandle) {
     return success;
 }
 
-function setLanguage(lang) {
-    if (!translations[lang]) return;
+async function loadTranslations(lang) {
+    if (appTranslations[lang]) return;
+    try {
+        // Determine path based on current location to avoid 404s
+        const isUniContext = window.location.pathname.includes('/uni/');
+        const pathPrefix = isUniContext ? '' : 'uni/';
+
+        const response = await fetch(`${pathPrefix}i18n-${lang}.txt`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const text = await response.text();
+        const data = new Function('return {' + text + '}')();
+        appTranslations[lang] = data[lang];
+    } catch (e) {
+        console.error("Failed to load translations:", e);
+    }
+}
+
+async function setLanguage(lang) {
+    if (!appTranslations[lang]) {
+        await loadTranslations(lang);
+    }
+    if (!appTranslations[lang]) return;
     currentLang = lang;
     localStorage.setItem('language', lang);
     document.documentElement.lang = lang;

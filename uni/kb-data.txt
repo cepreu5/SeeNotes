@@ -770,20 +770,12 @@
                 "en": "What do you see on the main screen and why is it important?"
             },
             "answer": {
-                "bg": "На основния екран се вижда меню с имената на различните бордове, бутоните за управление, полето за търсене, бележките и бутона, с който може да ме извикаш. Отварянето на чат прозореца позволява да ми задаваш въпроси за работата с CX Multinotes Viewer.",
-                "en": "On the main screen, you see the menu with the names of the different boards, buttons for control, the search field, the notes, and the button to call me. Opening the chat window allows you to ask me questions about how to use the CX Multinotes Viewer."
+                "bg": "Когато броят на бордовете е голям и не се събират на екрана, с този бутон <img src='msm/menuBtn.png' alt='Menu' /> може да извикаш изкачащ прозорец с всички бордовете. На екрана на таблет или телефон бутонът е плаващ и може да го поставиш на удобно за теб място.",
+                "en": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place."
             },
             "guide": {
                 "stopAfter": false, "action": "explain", "context": "",
                 1: {
-                    "image": "msm/l-up-w.png", "height": 100,
-                    x: 14, y: 18, bx: 199, by: -78, bWidth: 272, bHeight: 108, "target": "button.board-menu-button", 
-                    "text": {
-                        "bg": "Когато броят на бордовете е голям и не се събират на екрана, с този бутон може да извикаш изкачащ прозорец с всички бордовете. На екрана на таблет или телефон бутонът е плаващ и може да го поставиш на удобно за тем място.",
-                        "en": "When the number of boards is large and they are not displayed on the screen, this button allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place."
-                    }
-                },
-                2: {
                     "image": "msm/expl.png", "height": 70,
                     x: 23, y: 18, bx: 69, by: 71, bWidth: 228, bHeight: 115, "target": "span.board-filter-link",
                     "text": {
@@ -791,7 +783,7 @@
                         "en": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> -> <b><i>Zoom</i></b>. Clicking on the note opens it. The size of the opened note can be changed by dragging the bottom right angle."
                     }
                 },
-                3: {
+                2: {
                     "image": "msm/expl.png", "height": 70,
                     x: 9, y: 15, bx: 133, by: 68, bWidth: 296, bHeight: 62, "target": "span.board-filter-link", 
                     "text": {
@@ -799,20 +791,12 @@
                         "en": "Once changed, the size is remembered and used for all notes."
                     }
                 },
-                4: {
+                3: {
                     "image": "msm/expl.png", "height": 70,
                     x: 3, y: 28, bx: 133, by: 68, bWidth: 284, bHeight: 80, "target": "#search-box",
                     "text": {
                         "bg": "За търсене на информация се използва полето за търсене. За да научиш какви допълния възможности имаш при търсене отвори чат прозореца и напиши <b><i>търсене</i></b>.",
                         "en": "For searching information, the search field is used. To learn more about the search options, open the chat window and type <b><i>search</i></b>."
-                    }
-                },
-                5: {
-                    "image": "msm/r-down-w.png", "height": 70,
-                    x: -36, y: -49, bx: -175, by: -58, bWidth: 266, bHeight: 62, "target": "#kb-fab",
-                    "text": {
-                        "bg": "Иконата на асистента е плаваща и можеш да я поставиш на удобно място. С Ctrl-click тя става полупрозрачна.",
-                        "en": "The assistant icon is floating and can be placed in a convenient place. With Ctrl-click, it becomes semi-transparent."
                     }
                 },
             }
@@ -844,7 +828,7 @@
             "guide": {
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
-                    "image": "msm/1.png", "height": 150,
+                    "image": "msm/1.png", "height": 150, "time": 5000,
                     x: -50, y: 22, bx: 107, by: -33, bWidth: 156, bHeight: 50, "target": "#settings_button",
                     "text": {
                         "bg": "Няколко бързи съвета, преди да започнем.",
@@ -852,6 +836,14 @@
                     }
                 },
                 2: {
+                    "image": "msm/1.png", "height": 100,
+                    x: -65, y: 10, bx: 39, by: 101, bWidth: 225, bHeight: 59, "target": "#settings_button",
+                    "text": {
+                        "bg": "Ако кликнеш върху мен, ще премина към следващата стъпка. Ctrl-click прекратява обяснението.",
+                        "en": "If you click on me, I’ll move to the next step. Ctrl‑click stops the explanation."
+                    }
+                },
+                3: {
                     "image": "msm/expl.png", "height": 100,
                     x: -31, y: 157, bx: 66, by: -109, bWidth: 224, bHeight: 84, "target": "#calendar_button",
                     "text": {
@@ -859,22 +851,14 @@
                         "en": "Tap the speech bubble to pause it. A corner button will appear so you can continue when you're ready."
                     }
                 },
-                3: {
-                    "image": "msm/1.png", "height": 100,
-                    x: -65, y: 10, bx: 138, by: -48, bWidth: 225, bHeight: 59, "target": "#settings_button",
-                    "text": {
-                        "bg": "Ако кликнеш върху мен ще премина към следващата стъпка. Ctrl-click прекратява обяснението.",
-                        "en": "If you click on me, I’ll move to the next step. Ctrl‑click stops the explanation."
-                    }
-                },
                 4: {
-                    "image": "msm/r-down.png", "height": 100,
-                    x: -67, y: -66, bx: -31, by: -64, bWidth: 175, bHeight: 50, "target": "#kb-fab",
+                    "image": "msm/r-down.png", "height": 100, "time": 8000,
+                    x: -67, y: -66, bx: -8, by: -108, bWidth: 229, bHeight: 91, "target": "#kb-fab",
                     "text": {
-                        "bg": "Отвори от тук чат-прозореца за връзка с мен.",
-                        "en": "Open the chat here anytime to reach me."
+                        "bg": "Тази икона е плаваща и може да я поставиш на друго място. Ctrl-click я прави полупрозрачна, а в <strong>Настройки</strong> има възможност за изключване на асистента.",
+                        "en": "This icon is floating and can be placed in a convenient place. With Ctrl-click, it becomes semi-transparent. In <strong>Settings</strong>, you can disable the assistant."
                     }
-                },
+                }
             }
         },
 {
@@ -924,7 +908,7 @@
                 4: {
                     "stopAfter": false, "action": "explain!", "context": "",
                     "image": "msm/expl.png", "height": 100,
-                    x: 2, y: -50, bx: 59, by: 115, bWidth: 281, bHeight: 65, "target": "div.kb-answer-text",
+                    x: 57, y: 7, bx: 8, by: -89, bWidth: 225, bHeight: 65, "target": "div.kb-additional-results",
                     "text": {
                         "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
                         "en": "If you click on the text of your last question, it will be filled in the editing field."

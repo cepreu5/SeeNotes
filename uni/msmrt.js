@@ -71,8 +71,14 @@ window.refreshGuideLanguage = function () {
 };
 
 function showStep(stepOrIndex, nextStepIndex = null, single = false) {
-    if (stepTimer) clearTimeout(stepTimer);
-    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    if (stepTimer) {
+        clearTimeout(stepTimer);
+        stepTimer = null;
+    }
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
 
     let step;
     let stepIndex = -1;
@@ -89,8 +95,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     }
     currentActiveStep = step;
 
+    // Execute onStart callback if exists
+    if (typeof step.onStart === 'function') {
+        step.onStart();
+    }
+
     let imagePath = step.image;
-    let stopAfter = false;
+    let stopAfter = step.stopAfter || false;
     if (imagePath && imagePath.endsWith('!')) {
         stopAfter = true;
         imagePath = imagePath.slice(0, -1);
@@ -248,13 +259,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     };
     document.addEventListener('keydown', handleKeyPress);
 
-    // Auto Advance
-    if (!single) {
-        stepTimer = setTimeout(() => {
-            document.removeEventListener('keydown', handleKeyPress);
-            nextStep();
-        }, stepTime);
-    }
+    // Auto Advance logic moved to updatePosition to ensure full view time
+    let stepTimerStarted = false;
+
 
     // Positioning
     let targetEl = step.target ? document.querySelector(step.target) : document.body;
@@ -313,6 +320,16 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
         if (container.style.visibility === 'hidden') {
             container.style.visibility = 'visible';
+        }
+
+        // Start timer only when visible
+        if (!stepTimer && !single && !stepTimerStarted) {
+            stepTimerStarted = true;
+            let duration = step.time || stepTime;
+            stepTimer = setTimeout(() => {
+                document.removeEventListener('keydown', handleKeyPress);
+                nextStep();
+            }, duration);
         }
 
         // Bubble screen boundary check
@@ -375,3 +392,4 @@ window.toggleHero = function () {
     }
     return true;
 };
+
