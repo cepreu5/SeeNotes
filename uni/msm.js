@@ -32,7 +32,9 @@ window.toggleHero = function () {
       const debugStep = {
         image: 'msm/msm-show.png',
         text: { bg: 'Здравей! Аз съм твоят асистент в Debug режим. 🐛', en: 'Hello! I am your assistant in Debug mode. 🐛' },
-        x: 50, y: 50,
+        x: window.innerWidth / 2 - 50, // Center roughly
+        y: window.innerHeight / 2 - 100,
+        target: 'html',
         bx: 0, by: 120,
         bWidth: 220, bHeight: 100
       };
@@ -131,7 +133,16 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   if (!container || !document.body.contains(container)) {
     container = document.createElement('div');
     container.className = 'guide-container';
+    container.style.position = 'absolute';
+    container.style.opacity = '0'; // Hide initially
+    container.style.zIndex = '10000';
+    container.style.pointerEvents = 'none'; // Pass clicks through
     document.body.appendChild(container);
+  } else {
+    // Reuse
+    container.style.opacity = '0';
+    container.style.left = '0px';
+    container.style.top = '0px';
   }
   // --- DEBUG OVERLAY ---
   let debugOverlay = document.getElementById('msm-debug-overlay');
@@ -171,6 +182,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   img.src = imagePath;
   img.className = 'guide-img';
   img.style.cursor = "pointer";
+  img.style.pointerEvents = "auto"; // Catch clicks on image
   // Задаване на височина, ако е дефинирана в стъпката
   if (step.height) {
     img.style.height = step.height + 'px';
@@ -180,6 +192,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   // Create Bubble Text elements
   const bubble = document.createElement('div');
   bubble.className = 'speech-bubble';
+  bubble.style.pointerEvents = "auto"; // Catch clicks on bubble
   // Език на балона (по подразбиране 'en', ако няма в localStorage)
   let currentBubbleLang = localStorage.getItem('language') || 'en';
   // Текстът
@@ -191,13 +204,15 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       initialText = step.text;
     }
   } else if (typeof guideTexts !== 'undefined' && step.textKey) {
-    initialText = guideTexts[currentBubbleLang] ? guideTexts[currentBubbleLang][step.textKey] : '';
+    initialText = (guideTexts[currentBubbleLang] && guideTexts[currentBubbleLang][step.textKey])
+      ? guideTexts[currentBubbleLang][step.textKey]
+      : (guideTexts['en'] ? guideTexts['en'][step.textKey] : '');
   }
   // Append innerHTML for bubble
   bubble.innerHTML = `<span>${initialText}</span>`;
-  if (!initialText) {
-    bubble.style.display = 'none';
-  }
+  // if (!initialText) {
+  //   bubble.style.display = 'none';
+  // }
   container.appendChild(bubble);
 
   // --- PLAY/RESUME BUTTON (New) ---
@@ -574,21 +589,38 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     let isDragging = false;
     // Функция за непрекъснато обновяване на позицията
     const updatePosition = () => {
-      if (!container || !document.body.contains(container)) return;
+      // Update Loop
+      if (!img.complete) {
+        animationFrameId = requestAnimationFrame(updatePosition);
+        return;
+      }
+      // Removed strict offsetParent check to avoid deadlock
+
       // Ако влачим, не обновяваме автоматично, за да не пречим на потребителя
       if (!isDragging && !isBubbleInteracting && !isResizing) {
         const imgOffsetLeft = img.offsetLeft;
         const imgOffsetTop = img.offsetTop;
         const rect = targetEl.getBoundingClientRect();
+
+        // Check if target has 0 dimensions (hidden), unless it's body/html
+        const isBodyOrHtml = targetEl.tagName === 'BODY' || targetEl.tagName === 'HTML';
+        if (!isBodyOrHtml && rect.width === 0 && rect.height === 0) {
+          container.style.opacity = '0';
+          animationFrameId = requestAnimationFrame(updatePosition);
+          return;
+        }
+
         container.style.left = (rect.left + window.scrollX + step.x - imgOffsetLeft) + "px";
         container.style.top = (rect.top + window.scrollY + step.y - imgOffsetTop) + "px";
-        // Показваме контейнера едва след като сме го позиционирали
-        if (container.style.visibility === 'hidden') {
-          container.style.visibility = 'visible';
+
+        // Show container
+        if (container.style.opacity === '0') {
+          container.style.transition = 'opacity 0.3s ease';
+          container.style.opacity = '1';
         }
         // Boundary Check for Bubble
-        const vpW = window.innerWidth || document.documentElement.clientWidth;
-        const vpH = window.innerHeight || document.documentElement.clientHeight;
+        const vpW = window.visualViewport ? window.visualViewport.width : (window.innerWidth || document.documentElement.clientWidth);
+        const vpH = window.visualViewport ? window.visualViewport.height : (window.innerHeight || document.documentElement.clientHeight);
         let curBx = step.bx || 0;
         let curBy = step.by || 0;
         const cRect = container.getBoundingClientRect();
@@ -605,8 +637,6 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         // Check horizontal
         if (baseLeft < padding) {
           corrX = -baseLeft + padding;
-        } else if (baseRight > vpW - padding) {
-          corrX = (vpW - padding) - baseRight;
         }
         // Check vertical
         if (baseTop < padding) {

@@ -414,9 +414,9 @@ class KBUI {
         this.fabButton.classList.remove('kb-fab-hidden');
 
         // Stop guide execution if running
-        if (typeof window.removeGuide === 'function') {
-            window.removeGuide();
-        }
+        // if (typeof window.removeGuide === 'function') {
+        //     window.removeGuide();
+        // }
     }
 
     /**

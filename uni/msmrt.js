@@ -294,11 +294,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             } else {
                 // Scroll the window
                 const rect = targetEl.getBoundingClientRect();
+                const vpW = window.visualViewport ? window.visualViewport.width : (window.innerWidth || document.documentElement.clientWidth);
+                const vpH = window.visualViewport ? window.visualViewport.height : (window.innerHeight || document.documentElement.clientHeight);
                 const isVisible = (
                     rect.top >= 0 &&
                     rect.left >= 0 &&
-                    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-                    rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+                    rect.bottom <= vpH &&
+                    rect.right <= vpW
                 );
 
                 if (!isVisible) {
@@ -362,8 +364,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             // Bubble screen boundary check
             if (text) {
                 // --- FIX: Use clientWidth/Height to exclude scrollbars logic ---
-                const vpW = window.innerWidth || document.documentElement.clientWidth;
-                const vpH = window.innerHeight || document.documentElement.clientHeight;
+                // --- FIX: Use visualViewport if available for better mobile accuracy ---
+                const vpW = window.visualViewport ? window.visualViewport.width : (window.innerWidth || document.documentElement.clientWidth);
+                const vpH = window.visualViewport ? window.visualViewport.height : (window.innerHeight || document.documentElement.clientHeight);
 
                 const curBx = step.bx || 0;
                 const curBy = step.by || 0;
@@ -382,7 +385,6 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
                 let shiftY = 0;
 
                 if (idealLeft < padding) shiftX = padding - idealLeft;
-                else if (idealRight > vpW - padding) shiftX = (vpW - padding) - idealRight;
 
                 if (idealTop < padding) shiftY = padding - idealTop;
                 else if (idealBottom > vpH - padding) shiftY = (vpH - padding) - idealBottom;

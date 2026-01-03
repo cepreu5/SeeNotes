@@ -853,7 +853,7 @@
                 },
                 5: {
                     "image": "msm/r-down.png", "height": 100, "time": 8000,
-                    x: -67, y: -66, bx: -8, by: -108, bWidth: 229, bHeight: 91, "target": "#kb-fab",
+                    x: -67, y: -66, bx: -119, by: -109, bWidth: 229, bHeight: 91, "target": "#kb-fab",
                     "text": {
                         "bg": "Тази икона е плаваща и може да я поставиш на друго място. Ctrl-click я прави полупрозрачна, а в <strong>Настройки</strong> има възможност за изключване на асистента.",
                         "en": "This icon is floating and can be placed in a convenient place. With Ctrl-click, it becomes semi-transparent. In <strong>Settings</strong>, you can disable the assistant."
@@ -912,6 +912,15 @@
                     "text": {
                         "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
                         "en": "If you click on the text of your last question, it will be filled in the editing field."
+                    }
+                },
+                5: {
+                    "stopAfter": false, "action": "explain!", "context": "",
+                    "image": "msm/r-up-w.png", "height": 100,
+                    x: -71, y: 15, bx: -136, by: -14, bWidth: 163, bHeight: 50, "target": "#kb-all-questions-btn",
+                    "text": {
+                        "bg": "От тук може да отвориш всички въпроси, на които имам отговор.",
+                        "en": "From here you can open all the questions I can answer."
                     }
                 },
             }
