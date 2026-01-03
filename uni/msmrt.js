@@ -108,13 +108,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             container = document.createElement('div');
             container.className = 'guide-container';
             container.style.position = 'absolute';
-            container.style.visibility = 'hidden'; // Hide initially to prevent jump
+            container.style.opacity = '0'; // Hide initially to prevent jump
             container.style.zIndex = '10000';
             container.style.pointerEvents = 'none'; // Pass clicks through container
             document.body.appendChild(container);
         } else {
             // Reuse container but hide it until ready
-            container.style.visibility = 'hidden';
+            container.style.opacity = '0';
             container.style.left = '0px';
             container.style.top = '0px';
         }
@@ -165,25 +165,33 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             // Create Play/Resume Button
             const playBtn = document.createElement('div');
             playBtn.className = 'msm-play-btn';
-            playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+            playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
             playBtn.style.position = 'absolute';
-            playBtn.style.bottom = '5px';
-            playBtn.style.right = '5px';
-            playBtn.style.width = '24px';
-            playBtn.style.height = '24px';
-            playBtn.style.background = 'rgba(0,0,0,0.1)';
+            playBtn.style.top = '-10px'; // Top-right corner
+            playBtn.style.right = '-10px';
+            playBtn.style.width = '32px';
+            playBtn.style.height = '32px';
+            playBtn.style.background = '#ffffff';
+            playBtn.style.border = '2px solid #0078d7';
             playBtn.style.borderRadius = '50%';
             playBtn.style.cursor = 'pointer';
             playBtn.style.display = 'none'; // Hidden by default
             playBtn.style.alignItems = 'center';
             playBtn.style.justifyContent = 'center';
-            playBtn.style.color = '#555';
-            playBtn.style.zIndex = '10';
-            playBtn.title = 'Resume';
+            playBtn.style.color = '#0078d7';
+            playBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+            playBtn.style.zIndex = '100';
+            playBtn.title = 'Resume / Next';
 
             // Hover effect via JS since inline styles
-            playBtn.onmouseenter = () => playBtn.style.background = 'rgba(0,0,0,0.2)';
-            playBtn.onmouseleave = () => playBtn.style.background = 'rgba(0,0,0,0.1)';
+            playBtn.onmouseenter = () => {
+                playBtn.style.transform = 'scale(1.1)';
+                playBtn.style.background = '#f0f0f0';
+            };
+            playBtn.onmouseleave = () => {
+                playBtn.style.transform = 'scale(1)';
+                playBtn.style.background = '#ffffff';
+            };
 
             playBtn.onclick = (e) => {
                 e.stopPropagation(); // Stop bubbling to bubble click handler
@@ -303,14 +311,14 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const updatePosition = () => {
             if (!container || !document.body.contains(container)) return;
 
-            // --- FIX: Check image and target readiness to prevent loops ---
-            if (!img.complete || img.naturalWidth === 0) {
+            // --- FIX: Check image readiness, allow proceeding if complete even if size is 0 (load error) ---
+            if (!img.complete) {
                 animationFrameId = requestAnimationFrame(updatePosition);
                 return;
             }
 
-            if (!img.offsetParent) {
-                // Image hidden
+            // Removed strict offsetParent check to avoid potential deadlock with visibility/opacity
+            if (!document.body.contains(img)) {
                 animationFrameId = requestAnimationFrame(updatePosition);
                 return;
             }
@@ -324,7 +332,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
             // Check if target is actually visible
             if (rect.width === 0 && rect.height === 0) {
-                container.style.visibility = 'hidden';
+                container.style.opacity = '0';
                 animationFrameId = requestAnimationFrame(updatePosition);
                 return;
             }
@@ -336,8 +344,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             container.style.left = (rect.left + window.scrollX + (step.x || 0) - imgOffsetLeft) + "px";
             container.style.top = (rect.top + window.scrollY + (step.y || 0) - imgOffsetTop) + "px";
 
-            if (container.style.visibility === 'hidden') {
-                container.style.visibility = 'visible';
+            if (container.style.opacity === '0') {
+                container.style.transition = 'opacity 0.3s ease';
+                container.style.opacity = '1';
             }
 
             // Start timer only when visible
@@ -353,8 +362,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             // Bubble screen boundary check
             if (text) {
                 // --- FIX: Use clientWidth/Height to exclude scrollbars logic ---
-                const vpW = document.documentElement.clientWidth;
-                const vpH = document.documentElement.clientHeight;
+                const vpW = window.innerWidth || document.documentElement.clientWidth;
+                const vpH = window.innerHeight || document.documentElement.clientHeight;
 
                 const curBx = step.bx || 0;
                 const curBy = step.by || 0;
@@ -368,7 +377,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
                 const idealRight = idealLeft + bubbleW;
                 const idealBottom = idealTop + bubbleH;
 
-                const padding = 10;
+                const padding = 3;
                 let shiftX = 0;
                 let shiftY = 0;
 

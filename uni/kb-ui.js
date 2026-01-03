@@ -30,8 +30,8 @@ class KBUI {
         this.fabButton = document.createElement('button');
         this.fabButton.id = 'kb-fab';
         this.fabButton.className = 'kb-fab';
-        this.fabButton.innerHTML = '<img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 40px; height: 40px; object-fit: contain;">';
-        this.fabButton.title = 'Mr. StickyMan Assistant';
+        this.fabButton.innerHTML = '<img src="msm/msm-assist.png" alt="Assistant" style="width: 40px; height: 40px; object-fit: contain;">';
+        this.fabButton.title = 'Assistant';
 
         document.body.appendChild(this.fabButton);
     }
@@ -52,7 +52,7 @@ class KBUI {
         const debugControlsHtml = isDebug
             ? `
             <button class="kb-reload-btn" id="kb-lang-btn" title="Toggle Language" style="font-size: 16px; font-weight: bold;">🌐</button>
-            <button class="kb-reload-btn" id="kb-hero-btn" title="Show Hero" style="font-size: 20px;"><img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 24px; height: 24px; object-fit: contain;"></button>
+            <button class="kb-reload-btn" id="kb-hero-btn" title="Show Hero" style="font-size: 20px;"><img src="msm/msm-assist.png" alt="Assistant" style="width: 24px; height: 24px; object-fit: contain;"></button>
             <button class="kb-reload-btn" id="kb-flip-btn" title="Flip Image" style="font-size: 20px;">↔</button>
             <button class="kb-reload-btn" id="kb-reload-btn" title="Reload Knowledge Base">↻</button>
             `
@@ -61,8 +61,8 @@ class KBUI {
         this.container.innerHTML = `
             <div class="kb-header">
                 <div class="kb-header-title">
-                    <span class="kb-icon"><img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 24px; height: 24px; object-fit: contain;"></span>
-                    <span class="kb-title">Mr. StickyMan</span>
+                    <span class="kb-icon"><img src="msm/msm-assist.png" alt="Assistant" style="width: 24px; height: 24px; object-fit: contain;"></span>
+                    <span class="kb-title">Assistant</span>
                 </div>
                 <div class="kb-header-controls" style="display: flex; gap: 8px; align-items: center;">
                     ${debugControlsHtml}
@@ -378,10 +378,10 @@ class KBUI {
         // Обновяваме текстовете
         this.updateLanguage();
 
-        // Фокус на input полето
-        setTimeout(() => {
-            this.inputField.focus();
-        }, 300);
+        // Фокус на input полето - премахнато по желание на потребителя (за мобилни устройства)
+        // setTimeout(() => {
+        //     this.inputField.focus();
+        // }, 300);
 
         // Показваме greeting ако няма история
         if (this.chatHistory.length === 0) {
@@ -553,7 +553,7 @@ class KBUI {
             // Използваме изображения вместо emoji - Fix case sensitivity for user-icon.png
             const icon = type === 'user'
                 ? '<img src="user-icon.png" alt="User" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'
-                : '<img src="msm/msm-assist.png" alt="Mr. StickyMan" style="width: 100%; height: 100%; object-fit: contain;">';
+                : '<img src="msm/msm-assist.png" alt="Assistant" style="width: 100%; height: 100%; object-fit: contain;">';
             iconHtml = `<div class="kb-message-icon">${icon}</div>`;
         }
 

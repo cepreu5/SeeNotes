@@ -199,6 +199,47 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     bubble.style.display = 'none';
   }
   container.appendChild(bubble);
+
+  // --- PLAY/RESUME BUTTON (New) ---
+  const playBtn = document.createElement('div');
+  playBtn.className = 'msm-play-btn';
+  playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  playBtn.style.position = 'absolute';
+  playBtn.style.top = '-10px'; // Top Right
+  playBtn.style.right = '-10px';
+  playBtn.style.width = '32px';
+  playBtn.style.height = '32px';
+  playBtn.style.background = '#ffffff';
+  playBtn.style.border = '2px solid #0078d7';
+  playBtn.style.borderRadius = '50%';
+  playBtn.style.cursor = 'pointer';
+  playBtn.style.display = 'none'; // Hidden initially
+  playBtn.style.alignItems = 'center';
+  playBtn.style.justifyContent = 'center';
+  playBtn.style.color = '#0078d7';
+  playBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+  playBtn.style.zIndex = '100';
+  playBtn.title = 'Resume / Next';
+  playBtn.style.transition = 'transform 0.2s, background 0.2s';
+
+  playBtn.onmouseenter = () => {
+    playBtn.style.transform = 'scale(1.1)';
+    playBtn.style.background = '#f0f0f0';
+  };
+  playBtn.onmouseleave = () => {
+    playBtn.style.transform = 'scale(1)';
+    playBtn.style.background = '#ffffff';
+  };
+
+  // We attach onclick later when nextStep is defined, or define a proxy now
+  playBtn.onclick = (e) => {
+    e.stopPropagation();
+    // wrappedNextStep will be defined below
+    if (typeof wrappedNextStep === 'function') wrappedNextStep();
+  };
+
+  bubble.appendChild(playBtn);
+
   // Resize handle
   const resizeHandle = document.createElement('div');
   resizeHandle.style.width = '15px';
@@ -212,7 +253,12 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   resizeHandle.onmousedown = (e) => {
     e.preventDefault();
     e.stopPropagation(); // Спираме влаченето на балона
-    if (stepTimer) clearTimeout(stepTimer);
+    if (stepTimer) {
+      clearTimeout(stepTimer);
+      stepTimer = null;
+      // Show resume button
+      if (playBtn) playBtn.style.display = 'flex';
+    }
     isBubbleInteracting = true;
     isResizing = true;
     const startX = e.clientX;
@@ -249,7 +295,11 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   resizeHandle.ontouchstart = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (stepTimer) clearTimeout(stepTimer);
+    if (stepTimer) {
+      clearTimeout(stepTimer);
+      stepTimer = null;
+      if (playBtn) playBtn.style.display = 'flex';
+    }
     isResizing = true;
     isBubbleInteracting = true;
     const touch = e.touches[0];
@@ -288,7 +338,12 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   bubble.onmousedown = (e) => {
     if (e.target === resizeHandle) return; // Ignore if clicking resize handle
     e.preventDefault();
-    if (stepTimer) clearTimeout(stepTimer);
+    e.preventDefault();
+    if (stepTimer) {
+      clearTimeout(stepTimer);
+      stepTimer = null;
+      if (playBtn) playBtn.style.display = 'flex';
+    }
     isBubbleInteracting = true;
     bubbleWasDragged = false;
     const startX = e.clientX;
@@ -354,7 +409,12 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     // Ignore if touching resize handle (it stops propagation anyway, but good to be safe)
     if (e.target === resizeHandle) return;
     e.preventDefault();
-    if (stepTimer) clearTimeout(stepTimer);
+    e.preventDefault();
+    if (stepTimer) {
+      clearTimeout(stepTimer);
+      stepTimer = null;
+      if (playBtn) playBtn.style.display = 'flex';
+    }
     isBubbleInteracting = true; // Use same flag as mouse interaction
     bubbleWasDragged = false;
     const touch = e.touches[0];
@@ -587,6 +647,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       if (stepTimer) {
         clearTimeout(stepTimer);
         stepTimer = null;
+        if (playBtn) playBtn.style.display = 'flex';
       }
       isDragging = true; // Спираме автоматичното позициониране
       wasDragged = false;
@@ -697,6 +758,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       if (stepTimer) {
         clearTimeout(stepTimer);
         stepTimer = null;
+        if (playBtn) playBtn.style.display = 'flex';
       }
       isDragging = true;
       wasDragged = false;

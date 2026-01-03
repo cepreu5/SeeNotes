@@ -209,7 +209,7 @@ function gisLoaded() {
     // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
     loginBox.style.visibility = 'visible';
     document.getElementById('authorize_button').disabled = false;
-    if (guide) {
+    /*if (guide) {
         const startAssistantGuide = () => {
             if (window.kbAssistant && window.kbAssistant.isInitialized) {
                 const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant');
@@ -221,7 +221,7 @@ function gisLoaded() {
             }
         };
         startAssistantGuide();
-    } // Интро
+    }*/ // Интро
 }
 
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
@@ -7068,6 +7068,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                     const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
                     if (entry && entry.guide) {
                         window.kbAssistant.showGuide(entry.guide);
+                        localStorage.setItem('guide', 'false');
+                        guide = false;
                     }
                 } else {
                     setTimeout(startAssistantGuide, 100);

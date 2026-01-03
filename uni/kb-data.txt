@@ -809,14 +809,6 @@
             "answer": {},
             "guide": {
                 "stopAfter": false, "action": "explain!", "context": "",
-                1: {
-                    "image": "msm/1.png", "height": 150, "time": 25000,
-                    x: -86, y: 40, bx: -53, by: -97, bWidth: 175, bHeight: 72, "target": "div.login-box",
-                    "text": {
-                        "bg": "Здравей!<br>👋 Аз съм твоят асистент и винаги съм готов да помогна.",
-                        "en": "Hello!<br>👋 I'm your assistant, always ready to help."
-                    }
-                },
             }
         },
 {
@@ -829,29 +821,37 @@
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
                     "image": "msm/1.png", "height": 150, "time": 5000,
-                    x: -50, y: 22, bx: 107, by: -33, bWidth: 156, bHeight: 50, "target": "#settings_button",
+                    x: 89, y: 28, bx: 115, by: -46, bWidth: 175, bHeight: 72, "target": "#search-box",
+                    "text": {
+                        "bg": "Здравей!<br>👋 Аз съм твоят асистент и винаги съм готов да помогна.",
+                        "en": "Hello!<br>👋 I'm your assistant, always ready to help."
+                    }
+                },
+                2: {
+                    "image": "msm/1.png", "height": 150, "time": 5000,
+                    x: 89, y: 28, bx: 107, by: -33, bWidth: 156, bHeight: 50, "target": "#search-box",
                     "text": {
                         "bg": "Няколко бързи съвета, преди да започнем.",
                         "en": "A few quick tips before we start."
                     }
                 },
-                2: {
-                    "image": "msm/1.png", "height": 100,
-                    x: -65, y: 10, bx: 39, by: 101, bWidth: 225, bHeight: 59, "target": "#settings_button",
+                3: {
+                    "image": "msm/1.png", "height": 150,
+                    x: 89, y: 28, bx: 118, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
                     "text": {
                         "bg": "Ако кликнеш върху мен, ще премина към следващата стъпка. Ctrl-click прекратява обяснението.",
                         "en": "If you click on me, I’ll move to the next step. Ctrl‑click stops the explanation."
                     }
                 },
-                3: {
+                4: {
                     "image": "msm/expl.png", "height": 100,
-                    x: -31, y: 157, bx: 66, by: -109, bWidth: 224, bHeight: 84, "target": "#calendar_button",
+                    x: -1, y: 23, bx: 174, by: -28, bWidth: 224, bHeight: 84, "target": "#search-box",
                     "text": {
                         "bg": "Кликни балончето с текст, за да имаш време да го прочетеш. От бутончето в долния ъгъл може да продължиш, когато си готов.",
                         "en": "Tap the speech bubble to pause it. A corner button will appear so you can continue when you're ready."
                     }
                 },
-                4: {
+                5: {
                     "image": "msm/r-down.png", "height": 100, "time": 8000,
                     x: -67, y: -66, bx: -8, by: -108, bWidth: 229, bHeight: 91, "target": "#kb-fab",
                     "text": {
