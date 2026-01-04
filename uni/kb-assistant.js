@@ -734,15 +734,7 @@ class KBAssistant {
                 html += `${this.getText('showMe')} →</button>`;
             }
 
-            if (this.showRelatedSettings && result.relatedSettings && result.relatedSettings.length > 0) {
-                html += `<div class="kb-related">`;
-                html += `<div class="kb-related-title">${this.getText('relatedTopics')}</div>`;
-                html += `<div class="kb-related-items">`;
-                result.relatedSettings.forEach(id => {
-                    html += `<span class="kb-related-item" data-id="${id}">${id}</span>`;
-                });
-                html += `</div></div>`;
-            }
+
 
             html += `</div>`;
         } else if (result.type === 'ui') {

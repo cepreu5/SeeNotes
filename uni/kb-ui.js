@@ -286,14 +286,7 @@ class KBUI {
                 this.sendMessage();
             }
 
-            // Event delegation за свързани теми
-            const relatedItem = e.target.closest('.kb-related-item');
-            if (relatedItem) {
-                const settingId = relatedItem.dataset.id;
-                // Търсим настройката по ID
-                this.inputField.value = settingId.replace(/-/g, ' ');
-                this.sendMessage();
-            }
+
 
             // Copy user question text to input on click
             const userMsgContent = e.target.closest('.kb-message-user .kb-message-content');
@@ -608,11 +601,14 @@ class KBUI {
         if (results.length === 0) return;
 
         let html = '<div class="kb-additional-results">';
-        html += `<div class="kb-additional-title">${window.kbAssistant.getText('alsoInterested')}</div>`;
+        const titleText = window.kbAssistant.getText('alsoInterested') || 'You might also be interested in:';
+        html += `<div class="kb-additional-title">${titleText}</div>`;
 
         results.forEach(result => {
-            const question = result.question || result.label;
-            html += `<div class="kb-additional-item">${question}</div>`;
+            const question = result.question || result.label || result.term || '...';
+            if (question && question !== '...') {
+                html += `<div class="kb-additional-item">${question}</div>`;
+            }
         });
 
         html += '</div>';

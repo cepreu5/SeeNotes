@@ -263,18 +263,18 @@ class KBMatcher {
         };
 
         if (result.type === 'setting') {
-            formattedResult.question = item.question[lang];
-            formattedResult.answer = item.answer[lang];
+            formattedResult.question = item.question[lang] || item.question['en'];
+            formattedResult.answer = item.answer[lang] || item.answer['en'];
             formattedResult.location = item.location;
             formattedResult.guide = item.guide;
             formattedResult.relatedSettings = item.relatedSettings;
         } else if (result.type === 'ui') {
-            formattedResult.label = item.label[lang];
-            formattedResult.description = item.description[lang];
+            formattedResult.label = item.label[lang] || item.label['en'];
+            formattedResult.description = item.description[lang] || item.description['en'];
             formattedResult.guide = item.guide;
         } else if (result.type === 'general') {
-            formattedResult.question = item.question[lang];
-            formattedResult.answer = item.answer[lang];
+            formattedResult.question = item.question[lang] || item.question['en'];
+            formattedResult.answer = item.answer[lang] || item.answer['en'];
             formattedResult.category = item.category;
             formattedResult.guide = item.guide;
         }

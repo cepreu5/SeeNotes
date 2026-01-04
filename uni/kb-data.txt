@@ -59,7 +59,7 @@
                 "bg": "Когато е активирана, линковете се показват в общия преглед на бележките в борда. Когато е изключена, линковете са достъпни само при отваряне на бележката.",
                 "en": "When enabled, links are shown in the board view of notes. When disabled, links are available only when opening the note. Find this setting in <b><i>Settings</i></b>."
             },
-            "relatedSettings": [],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 8, y: 9, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -87,7 +87,7 @@
                 "bg": "Бордът <b><i>Напомняния</i></b> показва всички бележки, в които има зададени напомняния. Показва се по подразбиране, но можеш да го скриеш от <b><i>Настройки</i></b>.",
                 "en": "The <b><i>Reminders</i></b> board shows all notes that have reminders set. It is shown by default, but you can hide it from <b><i>Settings</i></b>."
             },
-            "relatedSettings": ["all-board-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 9, y: 10, bx: -101, by: -86, bWidth: 93, bHeight: 50,
@@ -115,7 +115,7 @@
                 "bg": "Бордът <b><i>Всички</i></b> показва бележките от всички бордове на едно място. Полезен е за бърз преглед. По подразбиране е изключен, но можеш да го покажеш от <b><i>Настройки</i></b>.",
                 "en": "The <b><i>All</i></b> board shows notes from all boards in one place. It is useful for a quick overview. It is disabled by default, but you can show it from <b><i>Settings</i></b>."
             },
-            "relatedSettings": ["remind-board-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 10, y: 8, bx: -200, by: 80, bWidth: 250, bHeight: 100, "target": "#all-board-checkbox",
@@ -143,7 +143,7 @@
                 "bg": "Бордът <b><i>Със снимки</i></b> показва само бележки, които имат приложени снимки. Полезен е за бърз достъп до бележки с изображения. По подразбиране е изключен, но можеш да го покажеш от <b><i>Настройки</i></b>.",
                 "en": "The <b><i>With Photos</i></b> board shows only notes that have attached photos. Useful for quick access to notes with images. It is disabled by default, but you can show it from <b><i>Settings</i></b>."
             },
-            "relatedSettings": ["show-videos-board-checkbox","show-sounds-board-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: -150, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -171,7 +171,7 @@
                 "bg": "Бордът <b><i>С видео</i></b> показва само бележки които съдържат приложени видео файлове. Полезен е за бърз достъп до бележки с видео. По подразбиране е изключен, но можеш да го покажеш от <b><i>Настройки</i></b>.",
                 "en": "The <b><i>With Video</i></b> board shows only notes that contain attached video files. Useful for quick access to notes with videos. It is disabled by default, but you can show it from <b><i>Settings</i></b>."
             },
-            "relatedSettings": ["show-photos-board-checkbox","show-sounds-board-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -199,7 +199,7 @@
                 "bg": "Бордът <b><i>Със звук</i></b> показва само бележки, които съдържат приложени аудио файлове. Полезен е за бърз достъп до бележки със звукови записи. По подразбиране е изключен, но можеш да го покажеш от <b><i>Настройки</i></b>.",
                 "en": "The <b><i>With Sounds</i></b> board shows only notes that contain attached audio files. Useful for quick access to notes with audio recordings. It is disabled by default, but you can show it from <b><i>Settings</i></b>."
             },
-            "relatedSettings": ["show-photos-board-checkbox","show-videos-board-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -227,7 +227,7 @@
                 "bg": "Бордът <b><i>Други приложения</i></b> показва бележки с приложени файлове, които не са снимки, видео или звук (напр. документи, PDF и др.). Трябва да имаш предвид, че тук се показват и снимки, които не са направени от бележка в <b><i>Multinotes</i></b>, а са приложени като документ.",
                 "en": "The <b><i>Other Attachments</i></b> board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.). You should keep in mind that photos not taken from a note in <b><i>Multinotes</i></b> but are attached as documents will appear in <b><i>With photos</i></b> board."
             },
-            "relatedSettings": ["show-photos-board-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -255,7 +255,7 @@
                 "bg": "Това е изгледът на календара по подразбиране. Ако предпочиташ месечния изглед, махни отметката от <b><i>Седмичен календар</i></b> в <b><i>Настройки</i></b>. Можеш да превключваш между месечен и седмичен изглед за по-детайлен преглед на бележките. Календарът може да се зададе като стартов борд, така че при отваряне на приложението да получиш поглед за задачите си за седмицата/месеца",
                 "en": "This is the default calendar view. If you prefer the monthly view, uncheck <b><i>Weekly calendar view</i></b> in <b><i>Settings</i></b>. You can switch between monthly and weekly view for a more detailed view of the notes. The calendar can be set as the start board, so that when opening the application you get a view of your tasks for the week/month"
             },
-            "relatedSettings": [],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 1, y: 4, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -283,7 +283,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b> и маркирай <b><i>Покажи дата на промяна/календар</i></b>. Това ще покаже датата на създаване/последна промяна. За бележките, поставени в календара, ще се покаже календарната дата. За бележки, които имат напомняния, вдясно ще се покаже зададеният чес на напомняне.",
                 "en": "Go to <b><i>Settings</i></b> and check <b><i>Show modification/calendar date</i></b>. This will show the creation/last modification date. For notes placed in the calendar, the calendar date will be shown. For notes that have reminders, the set reminder time will be shown on the right."
             },
-            "relatedSettings": [],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 8, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -311,7 +311,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b> и маркирай <b><i>Покажи дата на промяна/календар</i></b>. За бележки, които имат напомняния, вдясно ще се покаже зададеният чес на напомняне.",
                 "en": "Go to <b><i>Settings</i></b> and check <b><i>Show modification/calendar date</i></b>. For notes that have reminders, the set reminder time will be shown on the right."
             },
-            "relatedSettings": [],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 8, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -339,7 +339,7 @@
                 "bg": "По подразбиране тази настройка е активирана. Когато се отвори бележка, съдържанието й се показва на графичен фон. Това прави бележките визуално по-привлекателни. Ако предпочиташ по семпъл изглед, може да махнеш отметката и ще се използва обикновен цветен фон.",
                 "en": "This setting is enabled by default. When a note is opened, its content is shown on a graphical background. This makes notes visually more appealing. If you prefer a simpler view, you can uncheck it and a plain color background will be used."
             },
-            "relatedSettings": []
+            
         },
 {
             "id": "show-board-note-count-checkbox",
@@ -362,7 +362,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b> и маркирай <b><i>Брой бележки в борда</i></b>. Това ще покаже броя на бележките в скоби до името на всеки борд. Изключение правят сборни бордове като <b><i>Всички</i></b>, <b><i>Със снимки</i></b> и др. По подразбиране тази настройка е изключена, тогава броят на бележките в активния борд може да се види от брояча в заглавната част.",
                 "en": "Go to <b><i>Settings</i></b> and check <b><i>Notes count in board</i></b>. This will show the number of notes in brackets next to the name of each board. Exceptions are aggregate boards like <b><i>All</i></b>, <b><i>With Photos</i></b> etc. By default this setting is disabled then the number of notes in the active board can be seen in the counter in the header."
             },
-            "relatedSettings": [],
+            
             "guide": {
                 1:{
                     "image": "msm/l-up.png", "height": 100,
@@ -397,7 +397,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b> и избери размер от <b><i>Размер шрифт (бележка)</i></b>. Това променя размера на текста в самите бележки.",
                 "en": "Go to <b><i>Settings</i></b> and select a size from <b><i>Note Font Size</i></b>. This changes the text size in the notes themselves."
             },
-            "relatedSettings": ["modal-font-size-input","scaleSlider"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 59, y: 9, bx: -200, by: 80, bWidth: 250, bHeight: 100, "target": "#note-font-size-input",
@@ -425,7 +425,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b> и избери размер от <b><i>Размер шрифт (преглед)</i></b>. Това променя размера на текста когато отвориш бележка за пълен преглед.",
                 "en": "Go to <b><i>Settings</i></b> and select a size from <b><i>Modal Font Size</i></b>. This changes the text size when you open a note for full view."
             },
-            "relatedSettings": ["note-font-size-input","scaleSlider"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -453,7 +453,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b> и използвай плъзгача <b><i>Мащаб</i></b> (25%-175%). Прозорецът <b><i>Настройки</i></b> става полупрозрачен, така че да може да следиш резултата. Ако борда, който е активен в момента има много бележки, това може да предизвика забавяне на процеса, затова за предпочитане е да избираш борд с по-малко бележки, когато правиш настройката. Можеш да въведеш и точна стойност за фина настройка, след което натисни <b><i>Потвърди</i></b> за да приложиш промяната.",
                 "en": "Go to <b><i>Settings</i></b> and use the <b><i>Zoom</i></b> slider (25%-175%). The Settings window becomes semi-transparent so you can monitor the result. If the currently active board has many notes, this may cause a delay in the process, so it is preferable to choose a board with fewer notes when making the setting. You can also enter an exact value for fine tuning, then press <b><i>Confirm</i></b> to apply the change."
             },
-            "relatedSettings": ["note-font-size-input","modal-font-size-input"],
+            
             "guide": {
                 "image": "msm/r-up.png", "height": 100,
                 x: -88, y: 1, bx: 199, by: 166, bWidth: 275, bHeight: 118,
@@ -481,7 +481,7 @@
                 "bg": "Маркирай <b><i>Подреждане на бележките</i></b> в <b><i>Настройки</i></b> и избери критерий - по номер, цвят, дата на създаване/промяна, календарна дата или азбучен ред. Можеш да зададеш и обратен ред - например, ако подреждаш по дата, така ще видиш най-новите бележки в началото.",
                 "en": "Check <b><i>Order notes</i></b> in <b><i>Settings</i></b> and choose criteria - by number, color, creation/modification date, calendar date, or alphabetically. You can also set reverse order - for example, if sorting by date, you will see the newest notes at the beginning."
             },
-            "relatedSettings": [],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 77, y: 13, bx: -200, by: 80, bWidth: 250, bHeight: 100, "target": "#order-notes",
@@ -509,7 +509,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по пореден номер</i></b>. Бележките ще се подредят в реда, в който са създадени.",
                 "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by number</i></b>. Notes will be sorted in the order they were created."
             },
-            "relatedSettings": ["order-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 16, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -537,7 +537,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по цвят</i></b>. Бележките ще се групират по цвят.",
                 "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by color</i></b>. Notes will be grouped by color."
             },
-            "relatedSettings": ["order-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 6, y: 6, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -565,7 +565,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по дата на създаване</i></b>. Бележките ще се подредят от най-стари към най-нови. Ако предпочиташ най-новите в началото, маркирай и <b><i>в обратен ред</i></b>.",
                 "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by creation date</i></b>. Notes will be sorted from oldest to newest. If you prefer the newest at the beginning, check <b><i>reverse order</i></b> as well."
             },
-            "relatedSettings": ["order-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 8, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -593,7 +593,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по дата на промяна</i></b>. Бележките ще се подредят в зависимост от последната дата на тяхната промяна. Ако предпочиташ последно променените в началото, маркирай и <b><i>в обратен ред</i></b>.",
                 "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by modification date</i></b>. Notes will be sorted depending on the last date of their modification. If you prefer the last changed at the beginning, check <b><i>reverse order</i></b> as well."
             },
-            "relatedSettings": ["order-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 10, y: 8, bx: -200, by: 80, bWidth: 250, bHeight: 100, "target": "#sort-criteria-datemod",
@@ -621,7 +621,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по дата в календара</i></b>. Бележките ще се подредят по датата, на която са включени в календара.",
                 "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by calendar date</i></b>. Notes will be sorted by the date they are included in the calendar."
             },
-            "relatedSettings": ["order-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 0, y: 87, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -649,7 +649,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b>, маркирай <b><i>Подреждане на бележките</i></b> и избери <b><i>по азбучен ред</i></b>. Бележките ще се подредят в азбучен ред, в зависимост от тяхното заглавие от A до Z и от А до Я.",
                 "en": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>alphabetically</i></b>. Notes will be sorted alphabetically, depending on their title from A to Z and from A to Я."
             },
-            "relatedSettings": ["order-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: 6, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -677,7 +677,7 @@
                 "bg": "Отиди в <b><i>Настройки</i></b> и избери борд от <b><i>Стартов борд</i></b>. Този борд ще се показва автоматично всеки път когато отвориш приложението.",
                 "en": "Go to <b><i>Settings</i></b> and select a board from <b><i>Start Board</i></b>. This board will be shown automatically every time you open the application."
             },
-            "relatedSettings": [],
+            
             "guide": {
                 "image": "msm/l-down.png", "height": 100,
                 x: 33, y: -81, bx: -19, by: 175, bWidth: 93, bHeight: 50,
@@ -705,7 +705,7 @@
                 "bg": "По подразбиране тази настройка е активирана, заедно с <b><i>База данни</i></b> и при първо отваряне приложението зарежда бележките от <b><i>Google Drive</i></b> и създава локална база за по-бърз достъп. При всяко следващо отваряне на програмата само се проверява за нови и променени бележки. Ако искаш всички бележки винаги да се четат от  <b><i>Google Drive</i></b> махни отметката на <b><i>База данни</i></b>.",
                 "en": "By default, this setting is enabled, together with <b><i>Database</i></b> and on first open the application loads notes from <b><i>Google Drive</i></b> and creates a local database for faster access. Every subsequent time you open the program, it only checks for new and changed notes. If you want all notes to always be read from <b><i>Google Drive</i></b> uncheck <b><i>Database</i></b>."
             },
-            "relatedSettings": ["use-indexeddb-checkbox"],
+            
             "guide": {
                 "image": "msm/r-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -733,7 +733,7 @@
                 "bg": "По подразбиране тази настройка е включена и след първоначално зареждане бележките се съхраняват в локалната база данни на браузъра за бърз достъп. Това позволява същращаване на времето за зареждане и работа без интернет, ако това се наложи. Ако използваш за зареждане само <b><i>База данни</i></b>, кликни бутона <b><i>Режим</i></b> и новите и променени бележки ще се заредят от <b><i>Google Drive</i></b>.",
                 "en": "By default, this setting is enabled and after initial loading notes are stored in the browser's local database for fast access. This allows shortening the loading time and working without internet if necessary. If you use only <b><i>Database</i></b> for loading, click the <b><i>Mode</i></b> button and the new and changed notes will be loaded from <b><i>Google Drive</i></b>."
             },
-            "relatedSettings": ["use-google-db-checkbox","use-local-db-checkbox"],
+            
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
                 x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
@@ -847,7 +847,7 @@
                     "image": "msm/expl.png", "height": 100,
                     x: -1, y: 23, bx: 174, by: -28, bWidth: 224, bHeight: 84, "target": "#search-box",
                     "text": {
-                        "bg": "Кликни балончето с текст, за да имаш време да го прочетеш. От бутончето в долния ъгъл може да продължиш, когато си готов.",
+                        "bg": "Кликни балончето с текст, за да имаш време да го прочетеш. От бутончето в горния ъгъл може да продължиш, когато си готов.",
                         "en": "Tap the speech bubble to pause it. A corner button will appear so you can continue when you're ready."
                     }
                 },
