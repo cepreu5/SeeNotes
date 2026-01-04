@@ -158,6 +158,7 @@ class KBUI {
         const heroBtn = document.getElementById('kb-hero-btn');
         if (heroBtn) {
             heroBtn.addEventListener('click', () => {
+                this.close(); // Затваряме чата при клик
                 if (typeof window.toggleHero === 'function') {
                     window.toggleHero();
                 } else if (typeof showStep === 'function') {
@@ -604,9 +605,12 @@ class KBUI {
         const titleText = window.kbAssistant.getText('alsoInterested') || 'You might also be interested in:';
         html += `<div class="kb-additional-title">${titleText}</div>`;
 
+        const seenQuestions = new Set();
+
         results.forEach(result => {
             const question = result.question || result.label || result.term || '...';
-            if (question && question !== '...') {
+            if (question && question !== '...' && !seenQuestions.has(question)) {
+                seenQuestions.add(question);
                 html += `<div class="kb-additional-item">${question}</div>`;
             }
         });

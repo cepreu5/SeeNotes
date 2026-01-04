@@ -285,8 +285,8 @@
             },
             
             "guide": {
-                "image": "msm/l-up.png", "height": 100,
-                x: 8, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                "image": "msm/r-up.png", "height": 100,
+                x: -78, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-datemod-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
         },
@@ -314,7 +314,7 @@
             
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: 8, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                x: -78, y: 7, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#show-datemod-checkbox", "stopAfter": true, "action": "highlight", "context": "display"
             }
         },
@@ -944,7 +944,7 @@
                 "stopAfter": true, "action": "#boards-arrow", "context": "boards",
                 1: {
                     "image": "msm/l-up-w.png", "height": 100,
-                    x: 291, y: 14, bx: -45, by: -110, bWidth: 305, bHeight: 70, "target": "#show-photos-board",
+                    x: 291, y: 14, bx: -141, by: -111, bWidth: 305, bHeight: 70, "target": "#show-photos-board",
                     "text": {
                         "bg": "Има два специални борда - <b><i>Със снимки</i></b> и <b><i>С видео</i></b>, които показват на едно място всички бележки, съдържащи изображение/видео. Можеш да ги включиш от <b><i>Настройки</i></b>.",
                         "en": "There are two special boards - <b><i>With photos</i></b> and <b><i>With video</i></b>, which show at once all notes containing an image/video. You can enable them from <b><i>Settings</i></b>."

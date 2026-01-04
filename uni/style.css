@@ -272,6 +272,29 @@ header h1 {
     padding: 15px;
 }
 
+.saved-search-close-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    cursor: pointer;
+    font-size: 20px;
+    font-weight: bold;
+    color: #555;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    z-index: 10;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.saved-search-close-btn:hover {
+    color: #000;
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
 .saved-search-item {
     padding: 10px 15px;
     cursor: pointer;
@@ -976,7 +999,7 @@ code {
 }
 
 /* Show floating button on narrow screens */
-@media (max-width: 1160px) {
+@media (max-width: 1220px) {
     .popup-menu-btn-floating {
         display: flex;
     }
@@ -1396,7 +1419,7 @@ code {
     opacity: 1;
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 1220px) {
     header {
         flex-direction: column;
         align-items: center;
@@ -1478,7 +1501,7 @@ code {
         max-width: 100% !important;
         max-height: 100% !important;
         border-radius: 0 !important;
-        margin: 0 !important;
+        margin: 10px 0 0px 0 !important;
     }
 
     /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
@@ -1768,7 +1791,7 @@ code {
     background-color: #cfe6f8;
     width: 70%;
     max-width: 480px;
-    padding: 20px;
+    padding: 10px;
     height: auto;
     max-height: 90vh;
     display: flex;
@@ -1782,7 +1805,7 @@ code {
 }
 
 #settings-modal .modal-content-box h2 {
-    margin: 0 0 15px 0;
+    margin: 5px 0 8px 0;
     text-align: center;
     color: #1f3b52;
 }
@@ -1790,6 +1813,7 @@ code {
 /* Close button for settings modal */
 #settings-modal .modal-close {
     right: 15px;
+    margin-top: 0px;
 }
 
 #settings-modal-body {
@@ -1852,7 +1876,7 @@ code {
     font-size: 1em;
     color: #555;
     margin-top: 0px;
-    margin-bottom: 20px;
+    margin-bottom: 5px;
     padding-bottom: 0px;
     align-self: center;
 }
@@ -1860,7 +1884,7 @@ code {
 .set-modal {
     background: linear-gradient(135deg, #858585, #E4E4E4);
     border-radius: 3px;
-    padding: 20px;
+    padding: 10px;
     position: relative;
     height: 300px;
 }
@@ -1927,9 +1951,10 @@ code {
 
 .settings-close-btn-wrapper {
     display: flex;
-    justify-content: flex-end;
-    margin-top: 10px;
-    /* Increased margin for better separation */
+    justify-content: center;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    /* Increased margin `for better separation */
     width: 100%;
     /* Ensure the wrapper takes full width to allow alignment */
 }
@@ -2756,6 +2781,4 @@ body.selection-locked .note.active-selection-note .note-content {
     max-width: 95vw;
     display: block;
     /* Override flex display if needed to allow fit-content behavior on children properly? No, flex column is fine */
-}
-
 }

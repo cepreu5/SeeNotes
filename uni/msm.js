@@ -40,7 +40,13 @@ window.toggleHero = function () {
       };
       showStep(debugStep);
     } else {
-      showStep(0);
+      let step = { ...activeSteps[0] };
+      if (step.x !== undefined) {
+        step.x += 150;
+      } else {
+        step.x = 150;
+      }
+      showStep(step);
     }
     return true;
   }

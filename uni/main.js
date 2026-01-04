@@ -2211,6 +2211,18 @@ function renderSavedSearchesPopup() {
     const popup = document.getElementById('saved-searches-popup');
     popup.style.display = 'block';
     popup.innerHTML = ''; // Clear everything
+
+    // --- Close Button ---
+    const closeBtn = document.createElement('div');
+    closeBtn.className = 'saved-search-close-btn';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.title = _('closeButton') || 'Close';
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        popup.style.display = 'none';
+    });
+    popup.appendChild(closeBtn);
+
     // Add corner dots for styling
     // popup.insertAdjacentHTML('beforeend', `<div class="corner-dot top-left"></div><div class="corner-dot top-right"></div><div class="corner-dot bottom-left"></div><div class="corner-dot bottom-right"></div>`);
     // Create a dedicated container for the scrollable items
@@ -5519,12 +5531,22 @@ async function createSettingsUI(boardsData, boardParseError) {
         } else {
             updateZoom(scaleSlider.value);
         }
+        let opacityTimeout;
         const applyBtn = document.getElementById('applyZoomBtn');
         applyBtn.addEventListener('click', () => {
             const zoomValue = scaleInput.value;
             updateZoom(zoomValue);
             localStorage.setItem('zoomLevel', zoomValue);
             showToast(_('settingSaved'), 2000);
+
+            // Keep transparency for 5 seconds
+            if (typeof startOpacityChange === 'function') {
+                startOpacityChange();
+                if (opacityTimeout) clearTimeout(opacityTimeout);
+                opacityTimeout = setTimeout(() => {
+                    endOpacityChange();
+                }, 5000);
+            }
         });
         scaleInput.addEventListener('change', () => {
             const zoomValue = scaleInput.value;
@@ -5568,6 +5590,12 @@ async function createSettingsUI(boardsData, boardParseError) {
                 localStorage.setItem('zoomLevel', newValue);
             }
         });
+        // Make modal transparent when typing in scaleInput
+        scaleInput.addEventListener('focus', () => {
+            startOpacityChange();
+            if (opacityTimeout) clearTimeout(opacityTimeout);
+        });
+        scaleInput.addEventListener('blur', endOpacityChange);
         // Fonts
         const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
             const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];

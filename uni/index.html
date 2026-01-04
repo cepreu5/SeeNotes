@@ -66,7 +66,7 @@
             <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Презареди">
                 <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
             </button>
-            <!-- FEEDBACK BUTTON -->
+            <!-- FEEDBACK BUTTON 
             <a id="feedback_button" href="mailto:multinotes.web@gmail.com" class="header-btn"
                 data-key-title="feedbackButtonTooltip" title="Обратна връзка">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -74,7 +74,7 @@
                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                     <polyline points="22,6 12,13 2,6"></polyline>
                 </svg>
-            </a>
+            </a> -->
             <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Изход">
                 <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
             </button>
@@ -294,6 +294,17 @@
         <div class="modal-content-box set-modal">
             <h2 data-key="settingsTitle">Настройки</h2>
             <h3 class="modal-version">CX MultiNotes Viewer ver. </h3>
+            <div style="text-align: center; margin-bottom: 3px;">
+                <a href="mailto:multinotes.web@gmail.com"
+                    style="text-decoration: none; color: #555; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: bold; font-size: 0.9em;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                        <polyline points="22,6 12,13 2,6"></polyline>
+                    </svg>
+                    <span data-key="feedbackButtonTooltip">Обратна връзка</span>
+                </a>
+            </div>
             <button class="modal-close modal-header-btn">&times;</button>
             <div class="corner-dot top-left"></div>
             <div class="corner-dot top-right"></div>
@@ -665,7 +676,7 @@
     <script src="msmguide.js"></script>
     <link rel="stylesheet" href="msmstyle.css">
     <link rel="stylesheet" href="kb-assistant.css">
-    <script src="msmrt.js"></script>
+    <script src="msm.js"></script>
     <script src="kb-matcher.js"></script>
     <script src="kb-assistant.js"></script>
     <script src="kb-ui.js"></script>
