@@ -1677,7 +1677,34 @@ function initApp() {
     const toast = document.getElementById('toastNotification');
     toast.addEventListener('click', hideToast);
     scrollTopBtn.innerHTML = arrowSvg;
-    signoutButton.addEventListener('click', handleSignoutClick);
+    const appTitle = document.querySelector('header h1');
+    if (appTitle) {
+        appTitle.style.cursor = 'pointer';
+        appTitle.addEventListener('click', async () => {
+            console.log('Title clicked');
+            // Trigger the assistant-1 guide from kb-data.txt
+            if (window.kbAssistant && window.kbAssistant.isInitialized) {
+                console.log('KB Assistant is initialized');
+                // Search in all possible arrays
+                const allItems = [
+                    ...(window.kbAssistant.kbData?.settings || []),
+                    ...(window.kbAssistant.kbData?.general || []),
+                    ...(window.kbAssistant.kbData?.features || []),
+                    ...(window.kbAssistant.kbData?.workflow || [])
+                ];
+                const assistantGuide = allItems.find(item => item.id === 'assistant-1');
+                console.log('Found guide:', assistantGuide);
+                if (assistantGuide && assistantGuide.guide) {
+                    console.log('Showing guide');
+                    window.kbAssistant.showGuide(assistantGuide.guide);
+                } else {
+                    console.warn('assistant-1 guide not found');
+                }
+            } else {
+                console.warn('KB Assistant not initialized');
+            }
+        });
+    }
     reloadButton.addEventListener('click', () => mainLogic());
     settingsButton.addEventListener('click', () => {
         // Запомняме началното състояние на чекбоксовете при отваряне на настройките

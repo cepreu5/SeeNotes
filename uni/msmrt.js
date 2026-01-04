@@ -432,6 +432,7 @@ window.toggleHero = function () {
         window.removeGuide();
         return false;
     }
+    showStep(0);
     return true;
 };
 
