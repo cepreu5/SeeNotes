@@ -235,7 +235,7 @@
             }
         },
 {
-            "id": "show-datemod-checkbox",
+            "id": "weekly-calendar-checkbox",
             "type": "checkbox",
             "category": "calendar",
             "label": {
@@ -272,8 +272,8 @@
             },
             "location": "Settings",
             "keywords": {
-                "bg": ["дата","време","час","напомняне","промяна","редактиране","създаване","календар","показване","покажи","виждам"],
-                "en": ["date","time","modification","change","edit","creation","calendar","show","display","see"]
+                "bg": ["дата","време","час","напомняне","промяна","редактиране","създаване","показване","покажи","виждам"],
+                "en": ["date","time","modification","change","edit","creation","show","display","see"]
             },
             "question": {
                 "bg": "Как да покажа датата на създаване/промяна на бележките?",
@@ -301,11 +301,11 @@
             "location": "Settings",
             "keywords": {
                 "bg": ["време","час","напомняне","показване","покажи","виждам"],
-                "en": ["date","time","modification","change","edit","creation","calendar","show","display","see"]
+                "en": ["time","reminder","hour","show","display","see"]
             },
             "question": {
                 "bg": "Как да покажа часа на напомняне?",
-                "en": "How to show the modification date of notes?"
+                "en": "How to show the reminder time?"
             },
             "answer": {
                 "bg": "Отиди в <b><i>Настройки</i></b> и маркирай <b><i>Покажи дата на промяна/календар</i></b>. За бележки, които имат напомняния, вдясно ще се покаже зададеният чес на напомняне.",
@@ -428,7 +428,7 @@
             
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                x: 57, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
                 "target": "#modal-font-size-input", "stopAfter": true, "action": "highlight", "context": "display"
             }
         },
@@ -456,7 +456,7 @@
             
             "guide": {
                 "image": "msm/r-up.png", "height": 100,
-                x: -88, y: 1, bx: 199, by: 166, bWidth: 275, bHeight: 118,
+                x: 43, y: 0, bx: 199, by: 166, bWidth: 275, bHeight: 118,
                 "target": "#scaleSlider", "stopAfter": true, "action": "highlight", "context": "display"
             }
         },
@@ -624,8 +624,8 @@
             
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
-                x: 0, y: 87, bx: -200, by: 80, bWidth: 250, bHeight: 100,
-                "target": "#sort-criteria-color", "stopAfter": true, "action": "highlight", "context": "sorting"
+                x: 14, y: 125, bx: -170, by: 77, bWidth: 250, bHeight: 100, "target": "div.sort-options-container",
+                "stopAfter": true, "action": "highlight", "context": "sorting"
             }
         },
 {
@@ -680,8 +680,8 @@
             
             "guide": {
                 "image": "msm/l-down.png", "height": 100,
-                x: 33, y: -81, bx: -19, by: 175, bWidth: 93, bHeight: 50,
-                "target": "#start-board-select", "stopAfter": true, "action": "highlight", "context": "startup"
+                x: 139, y: -89, bx: -15, by: 172, bWidth: 93, bHeight: 50, "target": "#start-board-select",
+                "stopAfter": true, "action": "highlight", "context": "startup"
             }
         },
 {
@@ -708,7 +708,7 @@
             
             "guide": {
                 "image": "msm/r-up.png", "height": 100,
-                x: -50, y: 10, bx: -200, by: 80, bWidth: 250, bHeight: 100,
+                x: -73, y: 8, bx: -164, by: 78, bWidth: 250, bHeight: 100,
                 "target": "#use-google-db-checkbox", "stopAfter": true, "action": "highlight", "context": "data"
             }
         },
@@ -889,8 +889,7 @@
                 },
                 2: {
                     "image": "msm/r-down-l.png", "height": 100,
-                    x: 74, y: -89, bx: 90, by: -94, bWidth: 281, bHeight: 65,
-                    "target": "#kb-input", 
+                    x: 33, y: -78, bx: 90, by: -94, bWidth: 281, bHeight: 65, "target": "#kb-input", 
                     "text": {
                         "bg": "Историята - последните въпроси, на които съм отговарял, може да извикаш и като изпратиш интнервал, вместо ?.",
                         "en": "History - the last questions I answered, you can also call by sending a space instead of ?."
