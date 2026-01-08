@@ -252,8 +252,15 @@ function loadGoogleIdentityServices(retries = 3) {
     script.defer = true;
     script.onload = () => { gisLoaded(); }; // Извикваме функцията след зареждане
     script.onerror = () => {
+        console.log('Failed to load Google Identity Services');
         if (retries > 0) {
+            console.log(`Retrying to load GIS... (${retries} attempts left)`);
             setTimeout(() => loadGoogleIdentityServices(retries - 1), 2000);
+        } else {
+            console.log('Giving up on loading Google Identity Services. Please check your internet connection or ad blockers.');
+            if (typeof showToast === 'function') {
+                showToast('Failed to load Google Login. Check internet/adblock.', 5000);
+            }
         }
     };
     document.head.appendChild(script);
@@ -4983,25 +4990,19 @@ function applyFilters() {
                 if (!isReminderA && isReminderB) return 1;
             }
             let valA, valB;
-            const parseDate = (val) => {
-                if (!val) return 0;
-                if (/^\d+$/.test(val)) return parseInt(val, 10);
-                const d = new Date(val);
-                return isNaN(d.getTime()) ? 0 : d.getTime();
-            };
             // 2. Main Sorting Criteria (Read from SHORT CODES in dataset)
             if (sortCriteria === 'numord') {
                 valA = parseFloat(a.dataset.no || 0);
                 valB = parseFloat(b.dataset.no || 0);
             } else if (sortCriteria === 'datemod') { // Last Modified
-                valA = parseDate(a.dataset.dm);
-                valB = parseDate(b.dataset.dm);
+                valA = new Date(a.dataset.dm || 0).getTime();
+                valB = new Date(b.dataset.dm || 0).getTime();
             } else if (sortCriteria === 'date') { // Creation Date
-                valA = parseDate(a.dataset.cd);
-                valB = parseDate(b.dataset.cd);
+                valA = new Date(a.dataset.cd || 0).getTime();
+                valB = new Date(b.dataset.cd || 0).getTime();
             } else if (sortCriteria === 'calendarDate') { // Calendar Date
-                valA = parseDate(a.dataset.cda) || null;
-                valB = parseDate(b.dataset.cda) || null;
+                valA = a.dataset.cda ? new Date(a.dataset.cda).getTime() : null;
+                valB = b.dataset.cda ? new Date(b.dataset.cda).getTime() : null;
             } else if (sortCriteria === 'alpha') { // Alphabetical
                 valA = a.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
                 valB = b.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
