@@ -3067,6 +3067,12 @@ async function createDatabaseFromMemory() {
         // Тъй като базата използва 'gdid' като keyPath, ако полето е празно (както е в архивите),
         // всички записи ще се презаписват един друг.
         const ensureGdid = (data) => data.map(item => {
+            // АКО СМЕ В РЕЖИМ АРХИВ: Винаги използваме цифровия 'id' като основен ключ 'gdid' за базата.
+            // Това гарантира, че връзките в архива ще работят правилно в IndexedDB.
+            if (useArhDb && item.id !== undefined) {
+                return { ...item, gdid: String(item.id) };
+            }
+            // ЗА ДРУГИ РЕЖИМИ: Само ако gdid липсва, ползваме id като резервен вариант.
             if ((!item.gdid || item.gdid === "") && item.id !== undefined) {
                 return { ...item, gdid: String(item.id) };
             }
@@ -4634,7 +4640,9 @@ function showAllBoardsModal() {
 function formatDate(dateString) {
     if (!dateString) return '';
     try {
-        const date = new Date(dateString);
+        // Проверка: ако е низ, който е чисто числово (timestamp), го превръщаме в число
+        const parsedValue = !isNaN(dateString) && !isNaN(parseFloat(dateString)) ? Number(dateString) : dateString;
+        const date = new Date(parsedValue);
         const day = String(date.getDate()).padStart(2, '0');
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const year = date.getFullYear();
@@ -4659,7 +4667,8 @@ function formatDateTime(timestamp) {
 function formatTime(timestamp) {
     if (!timestamp) return '';
     try {
-        const date = new Date(timestamp);
+        const parsedValue = !isNaN(timestamp) && !isNaN(parseFloat(timestamp)) ? Number(timestamp) : timestamp;
+        const date = new Date(parsedValue);
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
         return `${hours}:${minutes}`;
@@ -4964,14 +4973,20 @@ function applyFilters() {
                 valA = parseFloat(a.dataset.no || 0);
                 valB = parseFloat(b.dataset.no || 0);
             } else if (sortCriteria === 'datemod') { // Last Modified
-                valA = new Date(a.dataset.dm || 0).getTime();
-                valB = new Date(b.dataset.dm || 0).getTime();
+                const val = a.dataset.dm || 0;
+                valA = !isNaN(val) ? Number(val) : new Date(val).getTime();
+                const vB = b.dataset.dm || 0;
+                valB = !isNaN(vB) ? Number(vB) : new Date(vB).getTime();
             } else if (sortCriteria === 'date') { // Creation Date
-                valA = new Date(a.dataset.cd || 0).getTime();
-                valB = new Date(b.dataset.cd || 0).getTime();
+                const val = a.dataset.cd || 0;
+                valA = !isNaN(val) ? Number(val) : new Date(val).getTime();
+                const vB = b.dataset.cd || 0;
+                valB = !isNaN(vB) ? Number(vB) : new Date(vB).getTime();
             } else if (sortCriteria === 'calendarDate') { // Calendar Date
-                valA = a.dataset.cda ? new Date(a.dataset.cda).getTime() : null;
-                valB = b.dataset.cda ? new Date(b.dataset.cda).getTime() : null;
+                const val = a.dataset.cda || 0;
+                valA = val ? (!isNaN(val) ? Number(val) : new Date(val).getTime()) : null;
+                const vB = b.dataset.cda || 0;
+                valB = vB ? (!isNaN(vB) ? Number(vB) : new Date(vB).getTime()) : null;
             } else if (sortCriteria === 'alpha') { // Alphabetical
                 valA = a.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
                 valB = b.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
