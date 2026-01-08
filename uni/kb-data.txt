@@ -787,8 +787,8 @@
                     "image": "msm/expl.png", "height": 70,
                     x: 9, y: 15, bx: 133, by: 68, bWidth: 296, bHeight: 62, "target": "span.board-filter-link", 
                     "text": {
-                        "bg": "Веднъж променен, размерът се запомня и се използва за всички бележки.",
-                        "en": "Once changed, the size is remembered and used for all notes."
+                        "bg": "Веднъж променен, размерът се запомня и се използва за всички бележки. Бележката се затваря с бутон X или клик извън нея.",
+                        "en": "Once changed, the size is saved and applied to all notes. Close the note by clicking the X button or anywhere outside it."
                     }
                 },
                 3: {

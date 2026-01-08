@@ -4004,16 +4004,35 @@ async function showLocalPreview(folderName, fileName, mode) {
  * @param {boolean} isVideo - Дали файлът е видео.
  */
 async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
-    if (!noteElement || noteElement.querySelector('.image-preview-overlay')) return;
+    if (!noteElement) return;
+
+    // Support legacy calls with single string fileId instead of attachments array
+    if (typeof attachments === 'string') {
+        const fileId = attachments;
+        attachments = [{ path: fileId, pathGD: fileId, type: isVideo ? 4 : 1 }];
+        startIndex = 0;
+    }
+
+    // Remove if already exists to replace it
+    const existingOverlay = noteElement.querySelector('.image-preview-overlay');
+    if (existingOverlay) existingOverlay.remove();
+
     let currentIndex = startIndex;
     // 1. Create overlay immediately
     const overlay = document.createElement('div');
     overlay.className = 'image-preview-overlay';
+
+    // Ensure parent has position: relative or higher to contain the absolute overlay
+    const parentPos = getComputedStyle(noteElement).position;
+    if (parentPos === 'static') {
+        noteElement.style.position = 'relative';
+    }
+
     Object.assign(overlay.style, {
         position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-        backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: '10', borderRadius: '8px', padding: '5px', boxSizing: 'border-box',
-        flexDirection: 'column' // Changed to column to accommodate arrows easily or keeping centered
+        backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: '1000', borderRadius: '8px', padding: '5px', boxSizing: 'border-box',
+        flexDirection: 'column'
     });
     // Prevent bubbling
     overlay.addEventListener('click', (e) => e.stopPropagation());
@@ -4032,7 +4051,7 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 position: 'absolute', top: '50%', transform: 'translateY(-50%)',
                 [direction === 'prev' ? 'left' : 'right']: '5px',
                 background: 'rgba(255,255,255,0.3)', color: 'white', border: 'none',
-                borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer',
+                borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '20px', fontWeight: 'bold', zIndex: '20'
             });
@@ -4083,39 +4102,43 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
         spinner.className = 'loader';
         Object.assign(spinner.style, { width: '40px', height: '40px', border: '4px solid #f3f3f3', borderTop: '4px solid #3498db', borderRadius: '50%', animation: 'spin 1s linear infinite' });
         mediaContainer.appendChild(spinner);
-        const folderName = isVideo ? 'Video' : 'Images';
+
         const attachment = attachments[index];
+        const isActuallyVideo = attachment.type === 4 || isVideo;
+        const isActuallySound = attachment.type === 2;
+        const folderName = isActuallyVideo ? 'Video' : (isActuallySound ? 'Sound' : 'Images');
         const fileIdOrPath = sourceMode === 'gdrive' ? attachment.pathGD : attachment.path;
         let mediaUrl;
-        let isIframe = false;
+
         try {
             if (sourceMode === 'gdrive') {
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
                     await loadGoogleApis();
-                    if (!authToken) throw new Error(_('errorTokenMissing'));
-                    gapi.client.setToken({ access_token: authToken.access_token });
                 }
-                if (isVideo) {
+                const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : gapi.auth.getToken();
+                if (!tokenObj) throw new Error(_('errorTokenMissing'));
+
+                if (isActuallyVideo || isActuallySound) {
                     try {
-                        const videoResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
+                        const mediaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
                             headers: {
-                                'Authorization': `Bearer ${authToken.access_token}`,
+                                'Authorization': `Bearer ${tokenObj.access_token}`,
                                 'Range': 'bytes=0-10000000'
                             }
                         });
-                        if (!videoResponse.ok) throw new Error(`Video fetch failed: ${videoResponse.status}`);
-                        const videoBlob = await videoResponse.blob();
-                        mediaUrl = URL.createObjectURL(videoBlob);
+                        if (!mediaResponse.ok) throw new Error(`Media fetch failed: ${mediaResponse.status}`);
+                        const mediaBlob = await mediaResponse.blob();
+                        mediaUrl = URL.createObjectURL(mediaBlob);
                         overlay.mediaUrlToRevoke = mediaUrl;
                     } catch (err) {
-                        console.log("Failed to load GDrive video blob:", err);
-                        throw new Error(_('noVideoPreview'));
+                        console.log("Failed to load GDrive media blob:", err);
+                        throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
                     }
-                    isIframe = false;
                 } else {
+                    // Image high-res thumbnail
                     const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
                     const thumbnailUrl = fileMetadata.result.thumbnailLink;
-                    if (!thumbnailUrl) throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+                    if (!thumbnailUrl) throw new Error(_('noImgPreview'));
                     mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
                 }
             } else { // 'local' or 'archive'
@@ -4151,34 +4174,50 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
             }
             // Remove spinner
             if (spinner.parentNode) spinner.remove();
+
             let mediaElement;
-            if (isIframe) {
-                mediaElement = document.createElement('iframe');
-                mediaElement.src = mediaUrl;
-                mediaElement.allow = "autoplay";
-                Object.assign(mediaElement.style, { width: '100%', height: '100%', border: 'none', borderRadius: '8px' });
-            } else {
-                mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
-                mediaElement.src = mediaUrl;
-                if (isVideo) {
-                    mediaElement.controls = true;
-                    // Limit preview to 5 seconds
+            if (isActuallyVideo) {
+                mediaElement = document.createElement('video');
+                mediaElement.controls = true;
+                mediaElement.autoplay = true;
+                // Limit preview to 15 seconds if it's a blob-based partial fetch
+                if (sourceMode === 'gdrive') {
                     mediaElement.addEventListener('timeupdate', () => {
-                        if (mediaElement.currentTime > 5) {
+                        if (mediaElement.currentTime > 15) {
                             mediaElement.pause();
-                            mediaElement.currentTime = 5;
                         }
                     });
                 }
-                Object.assign(mediaElement.style, { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', padding: '10px', boxSizing: 'border-box' });
+            } else if (isActuallySound) {
+                mediaElement = document.createElement('audio');
+                mediaElement.controls = true;
+                mediaElement.autoplay = true;
+            } else {
+                mediaElement = document.createElement('img');
             }
+
+            mediaElement.src = mediaUrl;
+            if (mediaElement.load) mediaElement.load(); // Explicitly load for better media handling
+            Object.assign(mediaElement.style, {
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                padding: '5px',
+                boxSizing: 'border-box',
+                display: 'block',
+                margin: 'auto'
+            });
             mediaContainer.appendChild(mediaElement);
+
         } catch (e) {
             console.log("Preview failed:", e);
             if (spinner.parentNode) spinner.remove();
             const errorMsg = document.createElement('div');
             errorMsg.style.color = 'white';
             errorMsg.style.textAlign = 'center';
+            errorMsg.style.padding = '20px';
             errorMsg.textContent = e.message || 'Error loading preview';
             mediaContainer.appendChild(errorMsg);
         }
@@ -4187,21 +4226,22 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
     loadMedia(currentIndex);
 }
 
-/**
- * Добавя event listener към елемент за показване на преглед в бележката.
- * @param {HTMLElement} element - DOM елементът, към който да се добави listener (напр. икона).
- * @param {Array} attachments - Масив с всички прикачени файлове от този тип.
- * @param {number} currentIndex - Индексът на текущия файл в масива.
- * @param {string} sourceMode - 'gdrive', 'local' или 'archive'.
- * @param {boolean} isVideo - Дали файлът е видео.
- */
-function addInNotePreviewListener(element, attachments, currentIndex, sourceMode, isVideo) {
+function addInNotePreviewListener(element, attachments, indexOrSource, sourceMode, isVideo) {
     element.style.cursor = 'pointer';
     element.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        const noteElement = e.currentTarget.closest('.note');
-        showInNotePreview(noteElement, attachments, currentIndex, sourceMode, isVideo);
+        const noteElement = e.currentTarget.closest('.note') || e.currentTarget.closest('#modal-body') || document.getElementById('modal-body');
+
+        // Handle both signatures:
+        // 1. (element, attachmentsArray, startIndex, sourceMode, isVideo)
+        // 2. (element, fileIdString, sourceMode, isVideo)
+        if (typeof attachments === 'string') {
+            // Legacy: attachments=fileId, indexOrSource=sourceMode, sourceMode=isVideo
+            showInNotePreview(noteElement, attachments, 0, indexOrSource, sourceMode);
+        } else {
+            showInNotePreview(noteElement, attachments, indexOrSource, sourceMode, isVideo);
+        }
     });
 }
 
@@ -6383,10 +6423,42 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
             e.preventDefault();
             e.stopPropagation();
             if (!checkAuth()) return;
-            showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
-            // const fileId = await getFileID(folderIds[linkElement.dataset.folderName], linkElement.dataset.fileName);
+
+            // --- IMPROVED ATTACHMENT OPENING (Avoid Account Prompt) ---
             if (fileId) {
-                window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer');
+                // For media (Images, Sound, Video), use internal authenticated viewer
+                if (attachment.type === 1 || attachment.type === 2 || attachment.type === 4) {
+                    let targetEl = linkElement.closest('.note') || document.getElementById('modal-body') || document.body;
+
+                    const noteGdid = attachment.noteid || (isForModal && typeof isForModal === 'object' ? isForModal.gdid : null);
+                    if (!noteGdid) {
+                        // Fallback: just preview this single one if we can't find others
+                        showInNotePreview(targetEl, [{ pathGD: fileId, type: attachment.type }], 0, 'gdrive', attachment.type === 4);
+                        return;
+                    }
+
+                    const attachmentsOfType = mediaData.filter(m => m.noteid === noteGdid && m.type === attachment.type);
+                    const currentIndex = attachmentsOfType.findIndex(m => (m.pathGD || m.path) === fileId);
+
+                    showInNotePreview(targetEl, attachmentsOfType, currentIndex !== -1 ? currentIndex : 0, 'gdrive', attachment.type === 4);
+                    return;
+                }
+
+                // For other files, try fetching with token and opening the blob to skip Google Auth prompt
+                showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
+                try {
+                    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : gapi.auth.getToken();
+                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                        headers: { 'Authorization': `Bearer ${tokenObj.access_token}` }
+                    });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const blob = await response.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    window.open(blobUrl, '_blank');
+                } catch (error) {
+                    console.warn("Auth-based fetch failed, falling back to direct link:", error);
+                    window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer');
+                }
             } else {
                 showToast(_('errorFetchFileId').replace('{fileName}', linkElement.dataset.fileName));
             }

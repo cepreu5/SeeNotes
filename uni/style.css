@@ -1169,15 +1169,14 @@ code {
     /* Добавено за съкращаване на текста */
     display: inline-block;
     white-space: nowrap;
-    /* overflow: hidden; -- Removed */
-    /* text-overflow: ellipsis; -- Removed */
     /* Prevent shrinking in flex container */
     flex-shrink: 0;
     text-align: center;
     line-height: 33px;
     /* Центриране по вертикала (35px височина - 2px padding) */
     vertical-align: middle;
-    opacity: 0.5;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 /* Общи стилове за пластмасов ефект */
@@ -1197,38 +1196,19 @@ code {
 }
 
 /* Стил за активен таб */
-/* Стил за активен таб */
-.board-filter-link.active {
-    /* transform: translateY(-5px); -- Removed to prevent gap below */
-    z-index: 10;
-    /* Ensure it's above others */
-    box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
-        inset 0 -1px 3px rgba(0, 0, 0, 0.3),
-        0 -2px 5px rgba(0, 0, 0, 0.2);
-    /* Remove bottom shadow to blend with container, show top shadow for lift */
-
-    /* Using box-shadow from previous state + adjustment */
-    /* Original orphaned styles:
-    box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
-        inset 0 -1px 3px rgba(0, 0, 0, 0.3),
-        0 6px 12px rgba(0, 0, 0, 0.4);
+.board-filter-link.active,
+.selected-board {
     z-index: 11;
-    */
-
-    /* Let's combine nicely */
-    z-index: 11;
+    font-weight: bold;
     box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
         inset 0 -1px 3px rgba(0, 0, 0, 0.3),
-        0 6px 12px rgba(0, 0, 0, 0.4);
-    /* Keep original shadow strength if preferred */
+        0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* Prevent text selection in board menu items */
 .board-filter-link,
 .popup-menu {
     -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
     user-select: none;
 }
 
@@ -1311,21 +1291,17 @@ code {
 .board-filter-link:hover {
     background-color: #e9ecef;
     text-decoration: none;
-    opacity: 1.0;
 }
 
 .selected-board {
-    font-weight: bold;
     background-color: #007bff;
+    color: #fff;
     text-decoration: underline;
     /* border: 3px solid #f70202 !important; Add a thick border to the selected board */
-    color: #fff;
-    opacity: 1.0;
 }
 
 .selected-board:hover {
     background-color: #0056b3;
-    color: #fff;
 }
 
 /* Special style for the 'All' button when it's selected */

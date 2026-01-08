@@ -80,6 +80,7 @@ bg: {
         errorImgPreview: 'Грешка при зареждане на преглед на изображение: {error}',
         videoNotFound: 'Видео файлът не е намерен за преглед.',
         noVideoPreview: 'Няма наличен преглед за това видео.',
+        noSoundPreview: 'Няма наличен преглед за този звуков файл.',
         errorVideoPreview: 'Грешка при зареждане на преглед на видео: {error}',
         errorOpenFile: 'Неуспешно отваряне на локален файл: {filename}',
         errorFetchFolderIds: 'Грешка при извличане на ID-та на папки.',

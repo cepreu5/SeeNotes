@@ -78,6 +78,7 @@ en: {
         errorImgPreview: 'Error loading image preview: {error}',
         videoNotFound: 'Video file not found for preview.',
         noVideoPreview: 'No preview available for this video.',
+        noSoundPreview: 'No preview available for this sound file.',
         errorVideoPreview: 'Error loading video preview: {error}',
         errorOpenFile: 'Could not open local file: {filename}',
         errorFetchFolderIds: 'Error fetching folder IDs.',
