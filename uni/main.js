@@ -4115,6 +4115,20 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
                     await loadGoogleApis();
                 }
+                // Check if token is valid or expired (approximate check, assuming 1 hour validity)
+                const now = Date.now();
+                const tokenTimestamp = parseInt(localStorage.getItem('tokenTimestamp') || '0', 10);
+                const isTokenExpired = (now - tokenTimestamp) > (55 * 60 * 1000); // Refresh if older than 50 mins
+
+                if (!authToken || isTokenExpired) {
+                    console.log("Token expired or missing in preview, refreshing...");
+                    const newToken = await checkAuth(true); // Force silent refresh
+                    if (newToken) {
+                        authToken = newToken;
+                        // Update timestamp if checkAuth doesn't do it automatically (it usually does via handleAuthResult)
+                    }
+                }
+
                 const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : gapi.auth.getToken();
                 if (!tokenObj) throw new Error(_('errorTokenMissing'));
 
@@ -5564,8 +5578,8 @@ async function createSettingsUI(boardsData, boardParseError) {
             showToast(_('settingSaved'), 2000);
             // Затваряме настройките, за да се вижда презареждането
             document.getElementById('settings-modal').classList.remove('visible');
-            // Презареждаме бележките, за да се отрази промяната веднага
-            mainLogic();
+            // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
+            renderUI({ boardParseError: false });
         });
         // Graphical background
         const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
@@ -6967,10 +6981,10 @@ async function createNoteElement(noteContent) {
     return note;
 }
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
-    // Изчистваме бележките само ако не презареждаме единствено менюто
-    if (!rerenderOnlyMenu) {
+    // Изчистваме бележките само ако не презареждаме единствено менюто - ПРЕМЕСТЕНО ПО-ДОЛУ ЗА ИЗБЯГВАНЕ НА 'МИГАНЕ'
+    /* if (!rerenderOnlyMenu) {
         notesContainer.innerHTML = '';
-    }
+    } */
     let boardsNoteElement = null;
     if (boardsData.length > 0 || boardParseError) {
         // Изчисляваме броячите само при пълно презареждане, не и когато се сменя само менюто.
@@ -7019,14 +7033,43 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         return; // КЛЮЧОВА СТЪПКА: Прекратяваме функцията тук
     }
     // --- Оттук надолу е логиката за ПЪЛНО презареждане ---
+
+    // 1. Show spinner immediately
+    if (!rerenderOnlyMenu && loaderContainer) {
+        loaderContainer.style.display = 'block';
+        if (loaderText) loaderText.textContent = _('loadingFile');
+    }
+
+    // Method 1: Clear immediately to save memory
+    if (!rerenderOnlyMenu) {
+        notesContainer.innerHTML = '';
+    }
+
+    // 2. Use setTimeout to allow browser to render the spinner
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
+
+    // Create fragment and populate it with new elements
+    const fragment = document.createDocumentFragment();
     let notesCount = 0;
     noteElements.forEach(noteEl => {
         if (noteEl) {
-            notesContainer.appendChild(noteEl);
+            fragment.appendChild(noteEl);
             notesCount++;
         }
     });
+
+    // Update container
+    if (!rerenderOnlyMenu) {
+        notesContainer.appendChild(fragment);
+    }
+
+    // Hide spinner
+    if (!rerenderOnlyMenu && loaderContainer) {
+        loaderContainer.style.display = 'none';
+        if (loaderText) loaderText.textContent = '';
+    }
     if (boardsNoteElement) {
         document.querySelector('header').appendChild(boardsNoteElement);
     }
