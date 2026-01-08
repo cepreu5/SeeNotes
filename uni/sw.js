@@ -1,11 +1,12 @@
 const CACHE_NAME = 'seenotes-v0.1';
 const ASSETS_TO_CACHE = [
   './',
-  // './index.html',
-  // './style.css',
-  // './main.js',
-  // './kb-data.txt',
-  // './msm.js',
+  './index.html',
+  './style.css',
+  './main.js',
+  './load.js',
+  './kb-data.txt',
+  './msm.js',
   './msm/msm-assist.png',
   './msm/msm-show.png',
   './msm/1.png',
@@ -42,15 +43,21 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
+  // --- FIX: Skip cross-origin requests (e.g. Google GSI, GDrive) to avoid 403/CORS or timeout issues ---
+  if (!event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       // Return cached response if found, otherwise fetch from network
-      // If network fails (e.g., offline), we fall back to cache for navigational requests or other critical assets logic if needed
-      // But for now, basic cache-first or network-first-fallback-to-cache is better.
-      // Let's do Network First, Fallback to Cache for logic files, Cache First for images could be better?
-      // Given the user's offline issue, Cache First for static assets is safest.
-
       if (cachedResponse) {
         return cachedResponse;
       }

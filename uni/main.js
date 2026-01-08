@@ -7,8 +7,9 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = '0.21'; // App version
+const version = '0.23'; // App version
 const debug = false; // Глобален флаг за дебъг режим
+
 // const msm = true;
 let guide = true;
 guide = localStorage.getItem('guide');
@@ -246,21 +247,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Динамично зареждане на Google Identity Services скрипта
 // Динамично зареждане на Google Identity Services скрипта с retry логика
 function loadGoogleIdentityServices(retries = 3) {
+    // Check if script already exists to avoid duplicates
+    if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
+        return;
+    }
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
     script.onload = () => { gisLoaded(); }; // Извикваме функцията след зареждане
     script.onerror = () => {
-        console.log('Failed to load Google Identity Services');
+        // console.log('Failed to load Google Identity Services');
         if (retries > 0) {
-            console.log(`Retrying to load GIS... (${retries} attempts left)`);
+            // console.log(`Retrying to load GIS... (${retries} attempts left)`);
             setTimeout(() => loadGoogleIdentityServices(retries - 1), 2000);
         } else {
-            console.log('Giving up on loading Google Identity Services. Please check your internet connection or ad blockers.');
-            if (typeof showToast === 'function') {
-                showToast('Failed to load Google Login. Check internet/adblock.', 5000);
-            }
+            // console.log('Giving up on loading Google Identity Services.');
         }
     };
     document.head.appendChild(script);
@@ -1034,7 +1036,10 @@ async function bulkPutDB(storeName, data, incremental = false) {
             const putData = () => {
                 data.forEach(item => store.put(item));
             };
-            transaction.oncomplete = () => { db.close(); resolve(); };
+            transaction.oncomplete = () => {
+                db.close();
+                resolve();
+            };
             transaction.onerror = (event) => { db.close(); reject("DB Transaction Error: " + event.target.error); };
             transaction.onabort = () => db.close(); // Затваряме и при прекратяване
             if (incremental) {
@@ -1613,6 +1618,9 @@ function initApp() {
     }
     // Инициализация на DOM елементи
     signoutButton = document.getElementById('signout_button');
+    if (signoutButton) {
+        signoutButton.addEventListener('click', handleSignoutClick);
+    }
     reloadButton = document.getElementById('reload_button');
     settingsButton = document.getElementById('settings_button');
     notesContainer = document.getElementById('notes-container');
@@ -2431,16 +2439,16 @@ function updateSignoutTooltip() {
 async function refreshAuthToken() {
     const loginHint = localStorage.getItem('google_login_hint');
     if (!loginHint) return null;
-    // Изчакваме Google библиотеката да се зареди, ако не е готова
-    if (typeof google === 'undefined') {
-        await new Promise(resolve => {
-            const interval = setInterval(() => {
-                if (typeof google !== 'undefined') {
-                    clearInterval(interval);
-                    resolve();
-                }
-            }, 100);
-        });
+    // Изчакваме Google библиотеката да се зареди, ако не е готова (максимум 5 секунди)
+    if (typeof google === 'undefined' || !google.accounts) {
+        const startTime = Date.now();
+        while ((typeof google === 'undefined' || !google.accounts) && (Date.now() - startTime < 5000)) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+    if (typeof google === 'undefined' || !google.accounts) {
+        console.log("Google library not loaded or blocked (GSI).");
+        return null;
     }
     return new Promise((resolve) => {
         // Създаваме скрит iframe за OAuth redirect
@@ -2603,11 +2611,13 @@ async function checkAuth() {
             console.log("Silent refresh successful.");
             return refreshResult;
         }
-        console.log("Token expired. Reloading for re-authentication.");
+        console.log("Token expired. Refresh failed. Showing login page.");
         sessionStorage.removeItem('google_auth_token');
-        localStorage.removeItem('google_auth_token'); // Изчистваме и от localStorage
-        sessionStorage.setItem('logout_flag', 'true');
-        window.location.reload();
+        localStorage.removeItem('google_auth_token');
+
+        // Показваме login страницата вместо безкраен reload
+        initLoginPage();
+        alert(_('sessionExpired'));
         return null; // Stop execution
     }
     // --- 🔐 Вградена декрипция ---
@@ -2659,43 +2669,31 @@ async function checkAuth() {
                 // --- WHITELIST LOGIC ---
                 const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
                 const action = isTrialStart ? 'log' : 'check';
-                // Взимаме реалния имейл на потребителя, а не този от токена
-                const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-                if (currentUserEmail) {  //  && isTrialStart - logging only
-                    // Винаги правим заявка към сървъра - или за добавяне (trial), или за проверка (login)
-                    // white list - fetch('https://script.google.com/macros/s/AKfycbwDT37UO2ayL2FZf300X5zWXjA32g5geAN09H0iLGasMjON0kkOoYEkSMLMpG3wsrQPAA/exec', {
-                    // fetch('https://script.google.com/macros/s/AKfycbxwPON0_BaosuEp0Y5onRa7puDFwDRzobpmAjkbY1IdvO8cC8C3tvyI80izNriSHTdnRQ/exec', { // logging only
-                    fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain' },
-                        body: JSON.stringify({
-                            email: currentUserEmail, // Използваме имейла на потребителя
-                            // action: action
-                            action: 'log' // logging only
-                        })
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            console.log('Whitelist check:', data);
-                            /*if (action === 'check' && !data.exists) {
-                                // Потребителят не е в белия списък!
-                                alert(_('accessDenied') || 'Access Denied: Your email is not registered.');
-                                sessionStorage.clear();
-                                localStorage.removeItem('google_auth_token');
-                                location.reload(); // Рестарт към login екрана
-                            } else */ if (action === 'log') {
-                                // Успешна регистрация на trial
-                                sessionStorage.removeItem('isTrialStart');
-                                console.log('Trial registered/verified for:', currentUserEmail);
-                            }
-                        })
 
-                        .catch(error => {
-                            console.log('Whitelist check failed:', error);
-                        });
-                } else {
-                    console.log('No user email found for whitelist check or trial registration only.');
-                }
+                // Изчакваме 2 секунди, за да не пречим на началната синхронизация
+                setTimeout(() => {
+                    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+                    if (currentUserEmail) {
+                        fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({
+                                email: currentUserEmail,
+                                action: 'log'
+                            })
+                        })
+                            .then(response => response.json())
+                            .then(data => {
+                                console.log('Whitelist check:', data);
+                                if (action === 'log') {
+                                    sessionStorage.removeItem('isTrialStart');
+                                    console.log('Trial registered for:', currentUserEmail);
+                                }
+                            })
+                            .catch(err => console.log('Whitelist check delayed fail:', err));
+                    }
+                }, 2000);
+
             } else {
                 console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
                 pass = false;
@@ -2919,12 +2917,18 @@ async function loadGoogleApis() {
     }
 }
 function handleSignoutClick() {
-    // localStorage.clear();
-    // sessionStorage.clear();
     // Премахваме само ключовете, свързани с удостоверяването
     localStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_email_hint');
+
+    // Премахваме кешираните ID-та на папки, за да не се ползват от друг потребител
+    localStorage.removeItem('gdrive_multinotes_data_id');
+    localStorage.removeItem('gdrive_folder_id_Other');
+    localStorage.removeItem('gdrive_folder_id_Sound');
+    localStorage.removeItem('gdrive_folder_id_Video');
+    localStorage.removeItem('gdrive_folder_id_Images');
+
     // Премахваме google_login_hint САМО ако "Запомни ме" НЕ е активно
     const rememberMe = localStorage.getItem('rememberMe') === 'true';
     if (!rememberMe) {
@@ -2939,168 +2943,8 @@ function handleSignoutClick() {
 // =================================================================================
 // IV. ЧЕТЕНЕ НА ДАННИ ОТ GOOGLE DRIVE
 // =================================================================================
-async function parseFileResults(results, filenameForError) {
-    const data = [];
-    let parseError = false;
-    results.forEach(({ res }) => {
-        if (res.body.trim() === '') return;
-        try {
-            const content = JSON.parse(res.body);
-            // For note.txt, the content is the object itself.
-            // For board.txt and media.txt, the content is an array of objects.
-            if (filenameForError === 'note.txt') {
-                if (typeof content === 'object' && content !== null && !Array.isArray(content)) {
-                    data.push(content);
-                }
-            } else { // board.txt, media.txt
-                if (Array.isArray(content)) {
-                    data.push(...content);
-                } else if (typeof content === 'object' && content !== null) {
-                    // Handle case where a file might contain a single object instead of an array
-                    data.push(content);
-                }
-            }
-        } catch (e) {
-            parseError = true;
-            console.log(`Error parsing content from a '${filenameForError}' file:`, e, "Content was:", res.body);
-        }
-    });
-    return { data, parseError };
-}
+// --- GDrive Data Loading logic moved to load.js ---
 
-async function loadAndParseFile(filename, folderId, modifiedSince = null) {
-    loaderText.textContent = _('loadingFile') + ` ${filename}`;
-    const results = await fetchFiles(filename, folderId, null, modifiedSince);
-    const { data, parseError } = await parseFileResults(results, filename);
-    return { data, parseError }; // Връщаме обекта, за да може fetchAllData да го обработи
-}
-async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
-    let folderId = folderIdFromPrompt || await getFolderID();
-    if (!folderId) {
-        // Try to load from local DB as a fallback
-        if (useIndexedDb && useGoogleDb) {
-            console.log("Main folder ID not found on Google Drive, attempting to load from local IndexedDB.");
-            try {
-                await fetchAllDataLocal();
-                if (allNotesData.length > 0) {
-                    showToast(_('loadedFromLocalNoDrive'), 5000);
-                    return { boardParseError: false }; // Assuming no parse error from local
-                }
-            } catch (localDbError) {
-                console.log("Failed to load from local DB as well:", localDbError);
-            }
-        }
-        // If local loading also fails or is empty, show the original error.
-        showMessagePopup(_('errorFolderNotFound'));
-        throw new Error("Main folder ID not found.");
-    }
-    // Proceed with fetching from Google Drive
-    const { data: boardFileData, parseError: boardParseError } = await loadAndParseFile('board.txt', folderId, modifiedSince);
-    boardsData = boardFileData;
-    // Check for at least one board.txt file
-    if (boardsData.length === 0) {
-        showToast(_('errorNoBoardFilesFound'), 15000);
-        return { error: 'NO_BOARD_FILES' }; // Връщаме специален статус
-    }
-    const { data: mediaFileData } = await loadAndParseFile('media.txt', folderId, modifiedSince);
-    mediaData = mediaFileData;
-    const onNoteProgress = (loaded, total) => {
-        loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
-    };
-    loaderText.textContent = _('loadingFile') + ' note.txt...';
-    const noteResults = await fetchFiles('note.txt', folderId, onNoteProgress, modifiedSince);
-    allNotesData = noteResults.map(r => JSON.parse(r.res.body));
-    if (allNotesData.length === 0) {
-        showToast(_('errorNoNoteFilesFound'));
-        return { error: 'NO_NOTE_FILES' }; // Връщаме специален статус
-    }
-    return { boardParseError };
-}
-
-/**
- * Fetches only updated files from Google Drive since the last sync and updates IndexedDB.
- */
-async function runGoogleDriveSync() {
-    const loaderTitle = document.getElementById('loader-title'); // Взимаме елемента за заглавие
-    // Коригирана проверка: използваме общата настройка 'useIndexedDb'
-    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-    if (!useIndexedDb) {
-        console.log("Skipping Google Drive sync because IndexedDB is disabled for this mode.");
-        return 0;
-    }
-    let updatedFilesCount = 0;
-    let lastSyncTimestamp = null;
-    // Коригирана проверка: използваме общата настройка 'updateFromSource'
-    const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
-    // Get the timestamp only if "update only" is checked
-    if (updateOnly) {
-        // Винаги четем timestamp-а от IndexedDB, тъй като е персистентен.
-        // localStorage се изтрива при logout, което правеше тази стойност невалидна.
-        if (dbExists) {
-            lastSyncTimestamp = await getConfig('lastGDTimestamp');
-            if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
-        }
-    }
-    // This will be null if updateOnly is false or if no timestamp is found,
-    // triggering a full sync in those cases.
-    const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
-    if (updateOnly && modifiedSince) {
-        console.log(`Checking for Google Drive updates since ${modifiedSince}`);
-        // --- КОРЕКЦИЯ: Преместваме съобщението в заглавието ---
-        if (loaderTitle) {
-            loaderTitle.innerText = _('checkingForGDriveUpdates')
-                .replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang));
-        }
-    } else {
-        console.log('Performing full initial sync from Google Drive to local DB.');
-        // --- КОРЕКЦИЯ: Преместваме съобщението в заглавието ---
-        if (loaderTitle) loaderTitle.textContent = _('initialGDriveSync');
-    }
-    const folderId = await getFolderID();
-    if (!folderId) {
-        showToast(_('errorFolderNotFound'));
-        return 0;
-    }
-    const syncFile = async (filename, storeName, isNote = false) => {
-        loaderText.textContent = _('checkingFile').replace('{filename}', filename);
-        const files = await fetchFiles(filename, folderId, null, modifiedSince);
-        if (files.length > 0) {
-            updatedFilesCount += files.length;
-            console.log(`Found ${files.length} updated '${filename}' file(s).`);
-            const { data } = await parseFileResults(files, filename);
-            if (data.length > 0) {
-                loaderText.textContent = _('savingChangesFromFile').replace('{filename}', filename);
-                await bulkPutDB(storeName, data, true);
-                // --- КОРЕКЦИЯ: Обновяваме глобалните променливи в паметта ---
-                if (filename === 'media.txt') {
-                    data.forEach(newMedia => {
-                        const idx = mediaData.findIndex(m => m.gdid === newMedia.gdid);
-                        if (idx !== -1) mediaData[idx] = newMedia;
-                        else mediaData.push(newMedia);
-                    });
-                } else if (filename === 'board.txt') {
-                    data.forEach(newBoard => {
-                        const idx = boardsData.findIndex(b => b.gdid === newBoard.gdid);
-                        if (idx !== -1) boardsData[idx] = newBoard;
-                        else boardsData.push(newBoard);
-                    });
-                }
-                if (isNote) {
-                    data.forEach(note => updatedNoteGdims.push(note.gdid));
-                }
-            }
-        }
-    };
-    await syncFile('board.txt', BOARD_STORE_NAME, false);
-    await syncFile('media.txt', MEDIA_STORE_NAME, false);
-    await syncFile('note.txt', NOTE_STORE_NAME, true); // Подаваме флаг, че това са бележки
-    // ЗАПИСВАМЕ TIMESTAMP-А СЛЕД УСПЕШНА СИНХРОНИЗАЦИЯ
-    const now = Date.now();
-    await saveConfig('lastGDTimestamp', now);
-    loaderText.textContent = _('syncFinishedLoadingData');
-    console.log('Google Drive sync finished.');
-    return updatedFilesCount;
-}
 
 /**
  * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
@@ -5030,126 +4874,8 @@ function applyFilters() {
     }
 }
 
-async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) {
-    if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
-        showMessagePopup(_('errorInvalidFolderIdSession'));
-        throw new Error("Invalid Folder ID provided to fetchFiles.");
-    }
-    let query = `'${folderId}' in parents and name = '${filename}' and mimeType='text/plain' and trashed = false`;
-    if (modifiedSince) {
-        query += ` and modifiedTime > '${modifiedSince}'`;
-    }
-    const allFiles = [];
-    let pageToken = null;
-    do {
-        const response = await gapi.client.drive.files.list({
-            q: query,
-            fields: 'files(id, name), nextPageToken',
-            pageSize: 1000,
-            pageToken: pageToken
-        });
-        if (!response.result || !response.result.files) {
-            throw new Error("Invalid response from Drive API.");
-        }
-        allFiles.push(...response.result.files);
-        pageToken = response.result.nextPageToken;
-    } while (pageToken);
-    if (allFiles.length === 0) {
-        if (modifiedSince) console.log(`No files named '${filename}' modified since ${modifiedSince}.`);
-        return [];
-    }
-    let loadedFiles = 0;
-    const totalFiles = allFiles.length;
-    const filePromises = allFiles.map(file =>
-        gapi.client.request({ path: `/drive/v3/files/${file.id}`, params: { alt: 'media' } })
-            .then(res => {
-                loadedFiles++;
-                if (onProgress) {
-                    onProgress(loadedFiles, totalFiles);
-                }
-                return { file, res };
-            })
+// --- GDrive Fetch & ID logic moved to load.js ---
 
-    );
-    return Promise.all(filePromises);
-}
-async function getFileID(folderId, fileName) {
-    try {
-        const response = await gapi.client.drive.files.list({
-            q: `'${folderId}' in parents and name = '${fileName}'`,
-            fields: 'files(id, name)',
-            pageSize: 1
-        });
-        const files = response.result.files;
-        if (files && files.length > 0) {
-            return files[0].id;
-        } else {
-            console.log(`File '${fileName}' not found in folder '${folderId}'.`);
-            return null;
-        }
-    } catch (error) {
-        console.log(`Error fetching file ID for '${fileName}' in folder '${folderId}':`, error);
-        showToast(_('errorFetchingFileId').replace('{fileName}', fileName));
-        return null;
-    }
-}
-
-async function getFolderID() {
-    try {
-        const multinotesDataId = await getMultinotesDataFolderID();
-        if (!multinotesDataId) {
-            return null;
-        }
-        const folderNames = ["Other", "Sound", "Video", "Images"];
-        for (const name of folderNames) {
-            const response = await gapi.client.drive.files.list({
-                q: `'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-                fields: 'files(id)',
-                pageSize: 1
-            });
-            const files = response.result.files;
-            if (files && files.length > 0) {
-                folderIds[name] = files[0].id;
-            } else {
-                console.log(`Folder '${name}' not found within 'Google Drive: multinotes_data'.`);
-                folderIds[name] = "";
-            }
-        }
-        return multinotesDataId;
-    } catch (error) {
-        console.log("Error in getFolderID:", error);
-        showToast(_('errorFetchingFolderIds'));
-        return null;
-    }
-}
-async function getMultinotesDataFolderID() {
-    try {
-        const response = await gapi.client.drive.files.list({
-            q: "name='multinotes_data' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-            fields: 'files(id)',
-            pageSize: 1
-        });
-        const files = response.result.files;
-        if (files && files.length > 0) {
-            return files[0].id;
-        } else {
-            console.log("Folder 'multinotes_data' not found.");
-            return null;
-        }
-    } catch (error) {
-        console.log("Error fetching multinotes_data folder ID:", error);
-        // If it's an auth error, redirect to login
-        if (error.result && error.result.error && error.result.error.code === 401) {
-            showToast(_('errorSessionExpired'));
-            handleSignoutClick();
-        }
-        if (error.result && error.result.error && error.result.error.code === 403) {
-            showToast(_('errorForbidden'));
-            handleSignoutClick();
-        }
-        return null;
-    }
-}
 
 /**
  * Initializes the loading process by resetting state and showing the loader.
@@ -7265,15 +6991,30 @@ async function setLanguage(lang) {
 }
 // --- Service Worker Registration ---
 if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
-            .then(registration => {
-                if (debug) console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            }, err => {
-                console.log('ServiceWorker registration failed: ', err);
-            });
-    });
+    window.addEventListener('load', async () => {
+        try {
+            // КОРЕКЦИЯ: Изчистваме старите или дублиращи се Service Workers
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (let registration of registrations) {
+                // Ако имаме множество регистрации, това може да причини забавяния (timeouts)
+                if (registrations.length > 1 || !registration.active || !registration.active.scriptURL.includes('sw.js')) {
+                    console.log('Unregistering stagnant/duplicate service worker:', registration.active?.scriptURL);
+                    await registration.unregister();
+                }
+            }
 
+            // Регистрираме версията с флаг, за да принудим браузъра да я презареди
+            const registration = await navigator.serviceWorker.register('sw.js?v=0.2.0');
+            if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
+
+            // Ако има чакащ нов SW, казваме му веднага да поеме контрола
+            if (registration.waiting) {
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+        } catch (err) {
+            console.log('ServiceWorker registration failed: ', err);
+        }
+    });
 }
 /*
  * Iterates through all visible notes and opens the preview for the first image attachment.
