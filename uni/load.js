@@ -69,6 +69,29 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     mediaData = mediaRes.data;
     allNotesData = noteRes.data;
 
+    // Integrity checks for initial Google Drive load
+    const gdidMap = new Map();
+    const checkIntegrity = (data, filename) => {
+        data.forEach(item => {
+            if (!item.gdid) {
+                dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive' });
+            } else if (gdidMap.has(item.gdid)) {
+                dataIntegrityIssues.push({
+                    type: 'duplicate',
+                    gdid: item.gdid,
+                    file1: gdidMap.get(item.gdid),
+                    file2: filename,
+                    mode: 'gdrive'
+                });
+            } else {
+                gdidMap.set(item.gdid, filename);
+            }
+        });
+    };
+    checkIntegrity(boardsData, 'board.txt');
+    checkIntegrity(mediaData, 'media.txt');
+    checkIntegrity(allNotesData, 'note.txt');
+
     if (boardsData.length === 0) {
         showToast(_('errorNoBoardFilesFound'), 15000);
         return { error: 'NO_BOARD_FILES' };
@@ -100,12 +123,30 @@ async function runGoogleDriveSync() {
     if (!folderId) return 0;
 
     let updatedFilesCount = 0;
+    const gdidMap = new Map(); // Track duplicates during GDrive sync
     const syncFileWorker = async (filename, storeName, isNote = false) => {
         const files = await fetchFiles(filename, folderId, null, modifiedSince);
         if (files.length > 0) {
             updatedFilesCount += files.length;
             const { data } = await parseFileResults(files, filename);
             if (data.length > 0) {
+                // Integrity check for the batch
+                data.forEach(item => {
+                    if (!item.gdid) {
+                        dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive' });
+                    } else if (gdidMap.has(item.gdid)) {
+                        dataIntegrityIssues.push({
+                            type: 'duplicate',
+                            gdid: item.gdid,
+                            file1: gdidMap.get(item.gdid),
+                            file2: filename,
+                            mode: 'gdrive'
+                        });
+                    } else {
+                        gdidMap.set(item.gdid, filename);
+                    }
+                });
+
                 await bulkPutDB(storeName, data, true);
                 if (filename === 'media.txt') {
                     data.forEach(n => {

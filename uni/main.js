@@ -88,6 +88,7 @@ let useLocalFolder = false;
 let useArhDb = false;
 let useIndexedDb = false;
 let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
+let dataIntegrityIssues = []; // Track missing/duplicate IDs during load
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -3062,9 +3063,23 @@ async function createDatabaseFromMemory() {
         return false;
     }
     try {
-        await bulkPutDB(BOARD_STORE_NAME, boardsData);
-        await bulkPutDB(MEDIA_STORE_NAME, mediaData);
-        await bulkPutDB(NOTE_STORE_NAME, allNotesData);
+        // --- КЛЮЧОВА КОРЕКЦИЯ: Осигуряваме gdid за IndexedDB (особено за архиви) ---
+        // Тъй като базата използва 'gdid' като keyPath, ако полето е празно (както е в архивите),
+        // всички записи ще се презаписват един друг.
+        const ensureGdid = (data) => data.map(item => {
+            if ((!item.gdid || item.gdid === "") && item.id !== undefined) {
+                return { ...item, gdid: String(item.id) };
+            }
+            return item;
+        });
+
+        const preparedBoards = ensureGdid(boardsData);
+        const preparedMedia = ensureGdid(mediaData);
+        const preparedNotes = ensureGdid(allNotesData);
+
+        await bulkPutDB(BOARD_STORE_NAME, preparedBoards);
+        await bulkPutDB(MEDIA_STORE_NAME, preparedMedia);
+        await bulkPutDB(NOTE_STORE_NAME, preparedNotes);
         const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
         if (currentUserEmail) {
             await saveConfig('userEmail', currentUserEmail);
@@ -3082,6 +3097,12 @@ async function createDatabaseFromMemory() {
             await saveConfig('lastLocalTimestamp', now);
         }
         await saveConfig('dbSource', dbSource);
+
+        // --- IMMEDIATELY UPDATE GLOBALS FOR CURRENT SESSION ---
+        dbSourceGlobal = dbSource;
+        dbNoteIdTypeGlobal = noteIdType;
+        console.log(`[createDatabaseFromMemory] Session globals updated: Source=${dbSourceGlobal}, IdType=${dbNoteIdTypeGlobal}`);
+
         dbExists = true; // Маркираме, че базата вече съществува
         return true;
     } catch (error) {
@@ -3207,6 +3228,36 @@ function validateDataSourceSelection() {
 }
 
 /**
+ * Отчита проблеми с целостта на данните (липсващи или дублирани ID-та).
+ */
+function reportDataIntegrityIssues() {
+    if (dataIntegrityIssues.length === 0) return;
+
+    const duplicates = dataIntegrityIssues.filter(i => i.type === 'duplicate');
+    const missing = dataIntegrityIssues.filter(i => i.type === 'missing');
+
+    console.group('%c Data Integrity Report ', 'background: #f44336; color: white; font-weight: bold;');
+    if (duplicates.length > 0) {
+        console.warn(`Found ${duplicates.length} duplicate IDs. IndexedDB will only keep the LAST version of each.`);
+        duplicates.forEach(d => {
+            console.log(` - ID: ${d.gdid} | Mode: ${d.mode || 'direct'} | Files: [${d.file1}] and [${d.file2}]`);
+        });
+    }
+    if (missing.length > 0) {
+        console.warn(`Found ${missing.length} items missing an ID property. These were likely skipped.`);
+        missing.forEach(m => {
+            console.log(` - File: ${m.file} | Mode: ${m.mode || 'direct'}`);
+        });
+    }
+    console.groupEnd();
+
+    // Show a small toast if there are many issues
+    if (duplicates.length > 0) {
+        showToast(`Warning: ${duplicates.length} duplicate IDs found. Check console for details.`, 10000);
+    }
+}
+
+/**
  * Филтрира бележките, за да остави само по 5 за всеки борд (за демо версия).
  */
 function filterNotesForDemo() {
@@ -3238,6 +3289,7 @@ async function mainLogic() {
     dbSourceGlobal = null; // Нулираме глобалните променливи
     isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
     updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
+    dataIntegrityIssues = []; // Reset integrity report
     isInitialLoad = true; // --- КОРЕКЦИЯ: Нулираме флага, за да работи скролирането при презареждане ---
     updateGlobalStateFlags();
     enableSettingsControls();
@@ -3290,14 +3342,20 @@ async function mainLogic() {
             // Извличаме конфигурацията на базата САМО ВЕДНЪЖ тук
             // Взимаме стойностите от базата само ако не са зададени вече от активен източник (GD, Local, Arh).
             // Това е важно за режим "само база данни".
-            if (dbSourceGlobal === null) dbSourceGlobal = await getConfig('dbSource');
-            if (dbNoteIdTypeGlobal === null) dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
+            const dbSource = await getConfig('dbSource');
             const dbNoteIdType = await getConfig('dbNoteIdType');
+
+            dbSourceGlobal = dbSource;
+            dbNoteIdTypeGlobal = dbNoteIdType;
+
+            console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
+
             if (dbNoteIdType) { // Проверяваме само ако типът е записан
                 // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
                 const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
                 if (isAnySourceActive) {
                     if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
+                        console.warn(`[mainLogic] Data source mismatch! DB expects ${dbNoteIdType}, but current mode is different.`);
                         showToast(_('errorDbSourceMismatch'), 15000);
                     }
                 }
@@ -3500,9 +3558,9 @@ async function mainLogic() {
                 if (updatedNoteGdims.length > 0) {
                     filterNotesByBoard('new-updates', false);
                 }
-                // }
             }
         }
+        reportDataIntegrityIssues(); // Generate report before finishing loading
     } catch (err) {
         console.log("Error in mainLogic:", err);
         showToast(_('errorProcessingFiles'));
@@ -3531,6 +3589,8 @@ async function mainLogic() {
  * Аналогична на fetchAllData, но за локален източник.
  */
 async function fetchAllDataFromLocalFolder() {
+    console.log("--- Local Folder fetch sequence started ---");
+    const startTime = performance.now();
     const handle = await getDirectoryHandle();
     if (!handle) {
         window.wasOpenedForMissingFolder = true; // Вдигаме флага
@@ -3542,29 +3602,57 @@ async function fetchAllDataFromLocalFolder() {
     let localMedia = [];
     let localNotes = [];
     let boardParseError = false;
+    const gdidMap = new Map(); // To track duplicates
     try {
         const entries = [];
         for await (const entry of handle.values()) {
             if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
-                entries.push(entry);
+                const lowerName = entry.name.toLowerCase();
+                const isBoard = lowerName.includes('board');
+                const isMedia = lowerName.includes('media');
+                const isNote = lowerName.includes('note');
+
+                if (isBoard || isMedia || isNote) {
+                    entries.push({ entry, lowerName, isBoard, isMedia, isNote });
+                }
             }
         }
-        const CHUNK_SIZE = 50; // Process in chunks to avoid UI freeze
+        console.log(`[Local Folder] Found ${entries.length} valid .txt files for processing.`);
+
+        const CHUNK_SIZE = 80; // Balanced parallelism
         for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
             const chunk = entries.slice(i, i + CHUNK_SIZE);
             // Optimize UI updates - only update once per chunk
             loaderText.textContent = `${_('loadingFile')} (${Math.min(i + CHUNK_SIZE, entries.length)}/${entries.length})`;
-            await Promise.all(chunk.map(async (entry) => {
-                const file = await entry.getFile();
-                const content = await file.text();
-                const fileObject = JSON.parse(content);
-                const lowerCaseName = entry.name.toLowerCase();
-                if (lowerCaseName.includes('board')) {
-                    localBoards.push(fileObject);
-                } else if (lowerCaseName.includes('media')) {
-                    localMedia.push(fileObject);
-                } else if (lowerCaseName.includes('note')) {
-                    localNotes.push(fileObject);
+            await Promise.all(chunk.map(async (item) => {
+                try {
+                    const file = await item.entry.getFile();
+                    const content = await file.text();
+                    const fileObject = JSON.parse(content);
+
+                    if (!fileObject.gdid) {
+                        const error = `[Missing ID] File '${item.entry.name}' is missing 'gdid' property.`;
+                        console.warn(error);
+                        dataIntegrityIssues.push({ type: 'missing', file: item.entry.name, gdid: null });
+                    } else {
+                        if (gdidMap.has(fileObject.gdid)) {
+                            const error = `[Duplicate ID] GDID '${fileObject.gdid}' found in multiple files: '${gdidMap.get(fileObject.gdid)}' and '${item.entry.name}'`;
+                            console.error(error);
+                            dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name });
+                        } else {
+                            gdidMap.set(fileObject.gdid, item.entry.name);
+                        }
+                    }
+
+                    if (item.isBoard) {
+                        localBoards.push(fileObject);
+                    } else if (item.isMedia) {
+                        localMedia.push(fileObject);
+                    } else if (item.isNote) {
+                        localNotes.push(fileObject);
+                    }
+                } catch (e) {
+                    console.log(`Failed to process ${item.entry.name}:`, e);
                 }
             }));
         }
@@ -3589,6 +3677,11 @@ async function fetchAllDataFromLocalFolder() {
     boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
     mediaData = localMedia.flat();
     allNotesData = localNotes;
+
+    const endTime = performance.now();
+    console.log(`--- Local Folder fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
+    console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
+
     return { boardParseError };
 }
 
@@ -3604,7 +3697,13 @@ async function fetchAllDataLocal() {
     mediaData = await getAllFromDB(MEDIA_STORE_NAME);
     const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
     allNotesData = notesFromDB;
+
+    // --- REFRESH GLOBAL FLAGS FROM DB CONFIG ---
+    dbSourceGlobal = await getConfig('dbSource');
+    dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
+
     console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
+    console.log(`[fetchAllDataLocal] dbSourceGlobal: ${dbSourceGlobal}, dbNoteIdTypeGlobal: ${dbNoteIdTypeGlobal}`);
 }
 
 /**
@@ -3765,6 +3864,8 @@ async function processDirectoryContent(minModificationDate) {
         return 0; // Връщаме 0, защото нищо не е обновено.
     }
     const minTimestamp = minModificationDate || 0;
+    console.log(`--- Local Folder sync sequence started (minTimestamp: ${minTimestamp}) ---`);
+    const startTime = performance.now();
     const handle = await getDirectoryHandle();
     if (!handle) return 0;
     const stores = {
@@ -3776,36 +3877,56 @@ async function processDirectoryContent(minModificationDate) {
     const entries = [];
     for await (const entry of handle.values()) {
         if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
-            entries.push(entry);
+            const lowerName = entry.name.toLowerCase();
+            const isBoard = lowerName.includes('board');
+            const isMedia = lowerName.includes('media');
+            const isNote = lowerName.includes('note');
+
+            if (isBoard || isMedia || isNote) {
+                entries.push({ entry, lowerName, isBoard, isMedia, isNote });
+            }
         }
     }
-    const CHUNK_SIZE = 50;
+    console.log(`[Local Sync] Found ${entries.length} valid .txt files for sync check.`);
+
+    const CHUNK_SIZE = 80;
+    const gdidMap = new Map(); // Track duplicates during sync
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         const chunk = entries.slice(i, i + CHUNK_SIZE);
-        // Update UI once per chunk
         loaderText.textContent = _('checkedFilesCount').replace('{count}', Math.min(i + CHUNK_SIZE, entries.length));
-        await Promise.all(chunk.map(async (entry) => {
+
+        await Promise.all(chunk.map(async (item) => {
             try {
-                const file = await entry.getFile();
+                const file = await item.entry.getFile();
                 if (file.lastModified >= minTimestamp) {
                     updatedCount++;
                     const content = await file.text();
                     const fileObject = JSON.parse(content);
                     if (fileObject.gdid) {
-                        const lowerCaseName = entry.name.toLowerCase();
-                        if (lowerCaseName.includes('board')) {
+                        if (gdidMap.has(fileObject.gdid)) {
+                            const error = `[Duplicate ID] GDID '${fileObject.gdid}' found in multiple files during sync: '${gdidMap.get(fileObject.gdid)}' and '${item.entry.name}'`;
+                            console.error(error);
+                            dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name, mode: 'sync' });
+                        } else {
+                            gdidMap.set(fileObject.gdid, item.entry.name);
+                        }
+
+                        if (item.isBoard) {
                             stores[BOARD_STORE_NAME].push(fileObject);
-                        } else if (lowerCaseName.includes('media')) {
+                        } else if (item.isMedia) {
                             stores[MEDIA_STORE_NAME].push(fileObject);
-                        } else if (lowerCaseName.includes('note')) {
+                        } else if (item.isNote) {
                             stores[NOTE_STORE_NAME].push(fileObject);
-                            // Попълваме масива с обновените бележки
                             updatedNoteGdims.push(fileObject.gdid);
                         }
+                    } else {
+                        const error = `[Missing ID] File '${item.entry.name}' skipped: missing 'gdid' property.`;
+                        console.warn(error);
+                        dataIntegrityIssues.push({ type: 'missing', file: item.entry.name, mode: 'sync' });
                     }
                 }
             } catch (error) {
-                console.log(`Error processing local file '${entry.name}':`, error);
+                console.log(`Error processing local file '${item.entry.name}':`, error);
             }
         }));
     }
@@ -3814,6 +3935,10 @@ async function processDirectoryContent(minModificationDate) {
             await bulkPutDB(storeName, stores[storeName], true); // Use incremental put
         }
     }
+    const endTime = performance.now();
+    console.log(`--- Local Folder sync sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
+    console.log(`[Summary] Updated items: ${updatedCount} (Boards: ${stores[BOARD_STORE_NAME].length}, Media: ${stores[MEDIA_STORE_NAME].length}, Notes: ${stores[NOTE_STORE_NAME].length})`);
+
     return updatedCount;
 }
 
@@ -4587,15 +4712,15 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         // Тази логика проверява дали бордът съществува и задава правилния
         // идентификатор за филтриране (`currentBoardFilter`).
         let boardToFilter = null;
-        // Търсим борда по gdid, който идва от клик на бутон
-        const board = boardsData.find(b => b.gdid === boardId);
+        // Търсим борда по gdid или id, който идва от клик на бутон
+        const board = boardsData.find(b => b.gdid == boardId || b.id == boardId);
         if (board) {
             // Ако сме в режим Архив, ще филтрираме по числовото `id`.
             // В противен случай - по `gdid`.
             boardToFilter = useArhDb ? board.id : board.gdid;
         }
-        // Проверяваме дали сме намерили борд. `boardId` е оригиналният gdid от бутона.
-        const boardExists = boardsData.some(b => b.gdid === boardId);
+        // Проверяваме дали сме намерили борд. `boardId` е оригиналният gdid/id от бутона.
+        const boardExists = boardsData.some(b => b.gdid == boardId || b.id == boardId);
         if (!boardExists) {
             console.warn(`Board with ID '${boardId}' not found. Defaulting to 'all'.`);
             boardId = 'all';
@@ -4632,7 +4757,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
     // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
     const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
-    currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid === boardId)?.id : boardId);
+    currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid == boardId || b.id == boardId)?.id : boardId);
     // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
     const modeButton = document.getElementById('mode_button');
     const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
@@ -5121,13 +5246,14 @@ async function createBoardsUI(boardsData, boardParseError) {
     })
 
     boardsData.forEach(board => {
-        if (!board.title || !board.gdid) return;
+        const boardId = board.gdid || board.id;
+        if (!board.title || boardId === undefined || boardId === null) return;
         const noteCount = board.noteCount || 0;
         const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
         const link = document.createElement('span');
         link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
         link.classList.add('board-filter-link');
-        link.dataset.boardid = board.gdid;
+        link.dataset.boardid = boardId;
         // Обработка на цвят на фона
         if (board.color !== undefined && !isNaN(board.color)) {
             if (board.color >= 0 && board.color <= 6) {
@@ -5151,10 +5277,7 @@ async function createBoardsUI(boardsData, boardParseError) {
             const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
             link.style.color = hexFontColor;
         }
-        // Custom цвят на шрифта (отрицателно число)
-        const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-        link.style.color = hexFontColor;
-        addBoardButtonEvents(link, board.gdid);
+        addBoardButtonEvents(link, boardId);
         allButtonLinks.push(link);
     });
     maxWidthForButtons = 0;
@@ -5904,8 +6027,9 @@ function populateStartBoardSelect() {
             <option value="reminder">${_('reminder')}</option>
         `;
     boardsData.forEach(board => {
-        if (board.gdid && board.title) {
-            startBoardSelect.add(new Option(board.title, board.gdid));
+        const boardId = board.gdid || board.id;
+        if (boardId && board.title) {
+            startBoardSelect.add(new Option(board.title, boardId));
         }
     });
     startBoardSelect.value = savedValue; // Задаваме правилната стойност
@@ -6344,8 +6468,8 @@ async function createNoteElement(noteContent) {
     let extraData = {};
     const fullNoteContent = noteContent; // Вече имаме целия обект
     try {
-        if (noteContent && typeof noteContent.notetxt !== 'undefined') {
-            fileContent = noteContent.notetxt;
+        if (noteContent && (noteContent.notetxt !== undefined || noteContent.text !== undefined)) {
+            fileContent = noteContent.notetxt !== undefined ? noteContent.notetxt : noteContent.text;
             noteGdid = noteContent.gdid;
             noteID = noteContent.id;
             // --- Mark as update if in updated list ---
@@ -6766,9 +6890,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         if (!rerenderOnlyMenu) {
             boardsData.forEach(board => {
                 const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-                const boardIdToMatch = isArh ? board.id : board.gdid;
+                const boardIdToMatch = String(isArh ? board.id : board.gdid);
                 // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
-                board.noteCount = allNotesData.filter(note => note.boardid == boardIdToMatch && note.status !== 1).length;
+                board.noteCount = allNotesData.filter(note => String(note.boardid) === boardIdToMatch && note.status !== 1).length;
             });
             // ВИНАГИ изчисляваме броячите за напомняния и календар.
             boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1).length;
@@ -6786,9 +6910,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         if (boardsNoteElement) {
             document.querySelector('header').appendChild(boardsNoteElement);
             // Възстановяваме селекцията на текущия борд
-            const buttonBoardId = typeof currentBoardFilter === 'number'
-                ? boardsData.find(b => b.id == currentBoardFilter)?.gdid
-                : currentBoardFilter;
+            const board = boardsData.find(b => b.id == currentBoardFilter || b.gdid == currentBoardFilter);
+            const buttonBoardId = board ? (board.gdid || board.id) : currentBoardFilter;
             const selectedButton = boardsNoteElement.querySelector(`.board-filter-link[data-boardid="${buttonBoardId}"]`);
             if (selectedButton) {
                 selectedButton.classList.add('selected-board');
@@ -6828,7 +6951,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Обработка на стартов борд 'Main'
     if (currentBoardFilter === 'Main') {
         const mainBoard = boardsData.find(b => b.title === 'Main');
-        currentBoardFilter = mainBoard ? mainBoard.gdid : 'all';
+        currentBoardFilter = mainBoard ? (mainBoard.gdid || mainBoard.id) : 'all';
     }
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     if (isInitialLoad) {
@@ -6884,35 +7007,66 @@ async function readArh(dirHandle) {
         showToast(_('errorNoArchiveFolderSelected'), 10000);
         return false;
     }
-    console.log(`Започва четене на архив от папка: ${dirHandle.name}`);
+    console.log("--- Archive fetch sequence started ---");
+    const startTime = performance.now();
     let success = true;
+    // Map usage removed here, now using local maps in validateFileData
+    // const gdidMap = new Map();
+
+    const validateFileData = (data, fileName) => {
+        const fileMap = new Map();
+        if (Array.isArray(data)) {
+            data.forEach(item => {
+                const itemId = item.id || item.gdid;
+                if (itemId === undefined || itemId === null) {
+                    const error = `[Archive] Item in '${fileName}' is missing ID property.`;
+                    console.warn(error);
+                    dataIntegrityIssues.push({ type: 'missing', file: fileName });
+                } else {
+                    if (fileMap.has(itemId)) {
+                        const error = `[Duplicate ID] ID '${itemId}' found multiple times in '${fileName}'. Conflict within file.`;
+                        console.error(error);
+                        dataIntegrityIssues.push({ type: 'duplicate', gdid: itemId, file1: fileName, file2: fileName, mode: 'archive' });
+                    } else {
+                        fileMap.set(itemId, true);
+                    }
+                }
+            });
+        }
+    };
+
     try {
         // 1. Четене на boards.bcp
         const boardsFileHandle = await dirHandle.getFileHandle('boards.bcp');
         const boardsFile = await boardsFileHandle.getFile();
         const boardsContent = await boardsFile.text();
         boardsData = JSON.parse(boardsContent);
+        validateFileData(boardsData, 'boards.bcp');
         console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
+
         // 2. Четене на notes.bcp
         const notesFileHandle = await dirHandle.getFileHandle('notes.bcp');
         const notesFile = await notesFileHandle.getFile();
         const notesContent = await notesFile.text();
         const notesArray = JSON.parse(notesContent);
-        allNotesData = notesArray; // Вече директно присвояваме масива с обекти
+        allNotesData = notesArray;
+        validateFileData(allNotesData, 'notes.bcp');
         console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
+
         // 3. Четене на medias.bcp (ако съществува)
         try {
             const mediaFileHandle = await dirHandle.getFileHandle('medias.bcp');
             const mediaFile = await mediaFileHandle.getFile();
             const mediaContent = await mediaFile.text();
             mediaData = JSON.parse(mediaContent);
+            validateFileData(mediaData, 'medias.bcp');
             console.log(`Успешно заредени ${mediaData.length} медийни файла от medias.bcp.`);
         } catch (mediaError) {
             if (mediaError.name === 'NotFoundError') {
                 console.log("Файл 'medias.bcp' не е намерен. Продължаваме без него.");
-                mediaData = []; // Нулираме mediaData, ако файлът липсва
+                mediaData = [];
             } else {
-                throw mediaError; // Хвърляме други грешки нагоре
+                throw mediaError;
             }
         }
     } catch (error) {
@@ -6928,8 +7082,11 @@ async function readArh(dirHandle) {
             showToast(_('errorReadingArchive'), 10000);
         }
     }
+
+    const endTime = performance.now();
     if (success) {
-        console.log("Четенето на архива приключи успешно.");
+        console.log(`--- Archive fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
+        console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
     }
     return success;
 }
