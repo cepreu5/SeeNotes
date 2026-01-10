@@ -111,9 +111,11 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             container.style.opacity = '0'; // Hide initially to prevent jump
             container.style.zIndex = '10000';
             container.style.pointerEvents = 'none'; // Pass clicks through container
+            container.style.transition = 'none'; // Ensure no transition initially
             document.body.appendChild(container);
         } else {
             // Reuse container but hide it until ready
+            container.style.transition = 'none'; // Disable transition for instant hide
             container.style.opacity = '0';
             container.style.left = '0px';
             container.style.top = '0px';

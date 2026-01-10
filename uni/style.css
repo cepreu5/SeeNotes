@@ -1157,8 +1157,10 @@ code {
         /* Вътрешна сянка отдолу */
         0 3px 6px rgba(0, 0, 0, 0.3);
     /* Външна сянка за дълбочина */
-    transition: all 0.2s ease-in-out;
-    /* Плавен преход при hover/active */
+    /* transition: all 0.2s ease-in-out;
+    Плавен преход при hover/active */
+    /* Вместо all, избройте само конкретните свойства
+    transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out; */
     transform: translateY(0);
     /* За да може active да се повдига */
     /* Центриране по хоризонтала */

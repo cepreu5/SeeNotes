@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = '0.23'; // App version
+const version = '0.24'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 
 // const msm = true;
@@ -127,7 +127,7 @@ let currentLang = localStorage.getItem('language') || 'en';
 
 let appTranslations = {};
 
-const appAssistantNames = {
+window.appAssistantNames = {
     bg: 'Лепчо',
     en: 'Noto'
 };
@@ -150,6 +150,309 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 // =================================================================================
 // MODULES
+// =================================================================================
+// IX. LOAD MODULE (Google Drive Data Fetching & Sync)
+// =================================================================================
+
+/**
+ * Parses the raw responses from Google Drive into JSON objects.
+ */
+async function parseFileResults(results, filenameForError) {
+    const data = [];
+    let parseError = false;
+    results.forEach(({ res }) => {
+        if (!res || !res.body || res.body.trim() === '') return;
+        try {
+            const content = JSON.parse(res.body);
+            if (filenameForError === 'note.txt') {
+                if (typeof content === 'object' && content !== null && !Array.isArray(content)) {
+                    data.push(content);
+                }
+            } else {
+                if (Array.isArray(content)) {
+                    data.push(...content);
+                } else if (typeof content === 'object' && content !== null) {
+                    data.push(content);
+                }
+            }
+        } catch (e) {
+            parseError = true;
+            console.log(`Error parsing content from a '${filenameForError}' file:`, e);
+        }
+    });
+    return { data, parseError };
+}
+
+async function loadAndParseFile(filename, folderId, modifiedSince = null, onProgress = null) {
+    const results = await fetchFiles(filename, folderId, onProgress, modifiedSince);
+    return await parseFileResults(results, filename);
+}
+
+async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
+    let folderId = folderIdFromPrompt || await getFolderID();
+    if (!folderId) {
+        if (useIndexedDb && useGoogleDb) {
+            try {
+                await fetchAllDataLocal();
+                if (allNotesData.length > 0) {
+                    showToast(_('loadedFromLocalNoDrive'), 5000);
+                    return { boardParseError: false };
+                }
+            } catch (e) { }
+        }
+        showMessagePopup(_('errorFolderNotFound'));
+        throw new Error("Main folder ID not found.");
+    }
+
+    loaderText.textContent = _('loadingFile') + " ...";
+    const onNoteProgress = (loaded, total) => {
+        loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
+    };
+
+    console.time("fetchAllData_TotalLoad");
+    const [boardRes, mediaRes, noteRes] = await Promise.all([
+        loadAndParseFile('board.txt', folderId, modifiedSince),
+        loadAndParseFile('media.txt', folderId, modifiedSince),
+        loadAndParseFile('note.txt', folderId, modifiedSince, onNoteProgress)
+    ]);
+    console.timeEnd("fetchAllData_TotalLoad");
+
+    boardsData = boardRes.data;
+    mediaData = mediaRes.data;
+    allNotesData = noteRes.data;
+
+    // Integrity checks for initial Google Drive load
+    const gdidMap = new Map();
+    const checkIntegrity = (data, filename) => {
+        data.forEach(item => {
+            if (!item.gdid) {
+                dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive' });
+            } else if (gdidMap.has(item.gdid)) {
+                dataIntegrityIssues.push({
+                    type: 'duplicate',
+                    gdid: item.gdid,
+                    file1: gdidMap.get(item.gdid),
+                    file2: filename,
+                    mode: 'gdrive'
+                });
+            } else {
+                gdidMap.set(item.gdid, filename);
+            }
+        });
+    };
+    checkIntegrity(boardsData, 'board.txt');
+    checkIntegrity(mediaData, 'media.txt');
+    checkIntegrity(allNotesData, 'note.txt');
+
+    if (boardsData.length === 0) {
+        showToast(_('errorNoBoardFilesFound'), 15000);
+        return { error: 'NO_BOARD_FILES' };
+    }
+    if (allNotesData.length === 0) {
+        showToast(_('errorNoNoteFilesFound'));
+        return { error: 'NO_NOTE_FILES' };
+    }
+    return { boardParseError: boardRes.parseError };
+}
+
+async function runGoogleDriveSync() {
+    const loaderTitle = document.getElementById('loader-title');
+    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+    if (!useIndexedDb) return 0;
+
+    const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
+    let lastSyncTimestamp = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
+    if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
+
+    const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
+    if (loaderTitle) {
+        loaderTitle.innerText = modifiedSince ?
+            _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang)) :
+            _('initialGDriveSync');
+    }
+
+    const folderId = await getFolderID();
+    if (!folderId) return 0;
+
+    let updatedFilesCount = 0;
+    const gdidMap = new Map(); // Track duplicates during GDrive sync
+    const syncFileWorker = async (filename, storeName, isNote = false) => {
+        const files = await fetchFiles(filename, folderId, null, modifiedSince);
+        if (files.length > 0) {
+            updatedFilesCount += files.length;
+            const { data } = await parseFileResults(files, filename);
+            if (data.length > 0) {
+                // Integrity check for the batch
+                data.forEach(item => {
+                    if (!item.gdid) {
+                        dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive' });
+                    } else if (gdidMap.has(item.gdid)) {
+                        dataIntegrityIssues.push({
+                            type: 'duplicate',
+                            gdid: item.gdid,
+                            file1: gdidMap.get(item.gdid),
+                            file2: filename,
+                            mode: 'gdrive'
+                        });
+                    } else {
+                        gdidMap.set(item.gdid, filename);
+                    }
+                });
+
+                await bulkPutDB(storeName, data, true);
+                if (filename === 'media.txt') {
+                    data.forEach(n => {
+                        const i = mediaData.findIndex(m => m.gdid === n.gdid);
+                        if (i !== -1) mediaData[i] = n; else mediaData.push(n);
+                    });
+                } else if (filename === 'board.txt') {
+                    data.forEach(n => {
+                        const i = boardsData.findIndex(b => b.gdid === n.gdid);
+                        if (i !== -1) boardsData[i] = n; else boardsData.push(n);
+                    });
+                }
+                if (isNote) data.forEach(note => updatedNoteGdims.push(note.gdid));
+            }
+        }
+    };
+
+    loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
+    console.time("runGoogleDriveSync_Parallel");
+    await Promise.all([
+        syncFileWorker('board.txt', BOARD_STORE_NAME, false),
+        syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
+        syncFileWorker('note.txt', NOTE_STORE_NAME, true)
+    ]);
+    console.timeEnd("runGoogleDriveSync_Parallel");
+
+    await saveConfig('lastGDTimestamp', Date.now());
+    loaderText.textContent = _('syncFinishedLoadingData');
+    return updatedFilesCount;
+}
+
+/**
+ * Downloads file contents with Concurrency Control & 'Kick' mechanism.
+ */
+async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) {
+    let query = `'${folderId}' in parents and name = '${filename}' and mimeType='text/plain' and trashed = false`;
+    if (modifiedSince) query += ` and modifiedTime > '${modifiedSince}'`;
+
+    let allFiles = [], pageToken = null;
+    console.time(`fetchFiles_${filename}_List`);
+    try {
+        do {
+            const resp = await gapi.client.drive.files.list({ q: query, fields: 'files(id, name), nextPageToken', pageSize: 1000, pageToken });
+            allFiles.push(...resp.result.files);
+            pageToken = resp.result.nextPageToken;
+        } while (pageToken);
+    } catch (e) { throw new Error("Drive API List failed."); }
+    console.timeEnd(`fetchFiles_${filename}_List`);
+
+    if (allFiles.length === 0) return [];
+
+    let loadedFiles = 0;
+    const totalFiles = allFiles.length;
+    const accessToken = gapi.auth.getToken().access_token;
+
+    // LIMIT CONCURRENCY: Don't overwhelm the browser socket pool
+    const CONCURRENCY_LIMIT = 100;
+    console.log(`[${filename}] Starting throttled fetch. Total: ${totalFiles}, Limit: ${CONCURRENCY_LIMIT}`);
+    console.time(`fetchFiles_${filename}_Total`);
+
+    const UI_STEP = totalFiles <= 50 ? 1 : Math.max(5, Math.floor(totalFiles / 50));
+
+    const downloadWithKick = async (file, attempt = 1) => {
+        const controller = new AbortController();
+        const kickId = setTimeout(() => { if (attempt === 1) controller.abort(); }, 1200);
+
+        try {
+            const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+                cache: 'no-store',
+                priority: 'high',
+                signal: controller.signal
+            });
+            clearTimeout(kickId);
+            if (!response.ok) throw new Error(response.status);
+            const body = await response.text();
+            loadedFiles++;
+            if (loadedFiles % 50 === 0 || loadedFiles === totalFiles) {
+                console.log(`[${filename}] Progress: ${loadedFiles}/${totalFiles}`);
+            }
+            // Adaptive UI update to keep it smooth but fast
+            if (onProgress && (loadedFiles % UI_STEP === 0 || loadedFiles === totalFiles)) {
+                onProgress(loadedFiles, totalFiles);
+            }
+            return { file, res: { body } };
+        } catch (err) {
+            clearTimeout(kickId);
+            if (attempt === 1) return downloadWithKick(file, 2);
+            console.error(`[${filename}] Error for ${file.name}:`, err.message);
+            return { file, res: { body: '' } };
+        }
+    };
+
+    // SLIDING WINDOW POOL
+    const results = [];
+    const pool = new Set();
+    for (const file of allFiles) {
+        if (pool.size >= CONCURRENCY_LIMIT) {
+            await Promise.race(pool);
+        }
+        const promise = downloadWithKick(file).then(res => {
+            pool.delete(promise);
+            return res;
+        });
+        results.push(promise);
+        pool.add(promise);
+    }
+
+    const finalResults = await Promise.all(results);
+    console.timeEnd(`fetchFiles_${filename}_Total`);
+    return finalResults;
+}
+
+async function getFileID(folderId, fileName) {
+    try {
+        const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${fileName}'`, fields: 'files(id, name)', pageSize: 1 });
+        return resp.result.files?.[0]?.id || null;
+    } catch (e) { return null; }
+}
+
+async function getFolderID() {
+    try {
+        const multinotesDataId = await getMultinotesDataFolderID();
+        if (!multinotesDataId) return null;
+        const folderNames = ["Other", "Sound", "Video", "Images"];
+        await Promise.all(folderNames.map(async (name) => {
+            const cachedId = localStorage.getItem(`gdrive_folder_id_${name}`);
+            if (cachedId) { folderIds[name] = cachedId; return; }
+            const resp = await gapi.client.drive.files.list({ q: `'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id)', pageSize: 1 });
+            const id = resp.result.files?.[0]?.id || "";
+            folderIds[name] = id;
+            if (id) localStorage.setItem(`gdrive_folder_id_${name}`, id);
+        }));
+        return multinotesDataId;
+    } catch (e) { return null; }
+}
+
+async function getMultinotesDataFolderID() {
+    const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
+    if (cachedId) return cachedId;
+    try {
+        const resp = await gapi.client.drive.files.list({ q: "name='multinotes_data' and mimeType='application/vnd.google-apps.folder' and trashed=false", fields: 'files(id)', pageSize: 1 });
+        const id = resp.result.files?.[0]?.id || null;
+        if (id) localStorage.setItem('gdrive_multinotes_data_id', id);
+        return id;
+    } catch (error) {
+        if (error.result?.error?.code === 401) {
+            showToast(_('errorSessionExpired'));
+            if (typeof handleLogout === 'function') handleLogout();
+        }
+        return null;
+    }
+}
+
 // =================================================================================
 
 function gisLoaded() {
@@ -1307,6 +1610,10 @@ async function startApp() {
         return;
     }
     authToken = authResult.tokenData;
+
+    // --- WHITELIST CHECK (Once per session) ---
+    checkWhitelist();
+
     // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
     updateGlobalStateFlags();
     await createBoardsUI([], false);
@@ -2115,7 +2422,22 @@ function initApp() {
             }
             console.log("Triggering Google Drive sync...");
             if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
-            updatedCount = await runGoogleDriveSync();
+            try {
+                updatedCount = await runGoogleDriveSync();
+            } catch (err) {
+                console.warn("GD Sync failed, attempting token refresh...", err);
+                const refreshResult = await refreshAuthToken();
+                if (refreshResult && refreshResult.pass) {
+                    authToken = refreshResult.tokenData;
+                    // Update gapi client with new token
+                    gapi.client.setToken({ access_token: authToken.access_token });
+                    updatedCount = await runGoogleDriveSync();
+                } else {
+                    showToast(_('errorSessionExpired'));
+                    loaderContainer.style.display = 'none';
+                    return;
+                }
+            }
             showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 5000);
         } else if (dbSource === 2) { // Базата е създадена от Локална папка
             console.log("Triggering Local Folder sync...");
@@ -2575,6 +2897,39 @@ function handleAuthClick() {
     }
 }
 
+function checkWhitelist() {
+    // Run only once per session
+    if (!sessionStorage.getItem('whitelistChecked')) {
+        const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
+        const action = isTrialStart ? 'log' : 'check';
+
+        // Изчакваме 2 секунди, за да не пречим на началната синхронизация
+        setTimeout(() => {
+            sessionStorage.setItem('whitelistChecked', 'true');
+            const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+            if (currentUserEmail) {
+                fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        email: currentUserEmail,
+                        action: 'log'
+                    })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Whitelist check:', data);
+                        if (action === 'log') {
+                            sessionStorage.removeItem('isTrialStart');
+                            console.log('Trial registered for:', currentUserEmail);
+                        }
+                    })
+                    .catch(err => console.log('Whitelist check delayed fail:', err));
+            }
+        }, 2000);
+    }
+}
+
 async function checkAuth() {
     console.log("checkAuth");
     // --- Проверяваме и в двата storage-а за токен ---
@@ -2622,94 +2977,74 @@ async function checkAuth() {
         return null; // Stop execution
     }
     // --- 🔐 Вградена декрипция ---
-    // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
-    const url = new URL(window.location.href);
-    const urlTokenParam = url.searchParams.get("token");
-    if (urlTokenParam) {
-        // Ако има токен в URL-а, той е с приоритет и презаписва стария, само ако е различен
-        const currentStoredToken = localStorage.getItem('urlToken');
-        if (urlTokenParam !== currentStoredToken) {
-            localStorage.setItem('urlToken', urlTokenParam);
-        }
-    }
-    let urlToken = localStorage.getItem('urlToken');
-    let isUrlTokenValidTime = false;
-    let decryptedEmailFromToken = null;
-    if (urlToken) {
-        // --- Извличаме валидността от самия токен ---
-        let validityInDays = 30; // 3. Стойност по подразбиране в дни
-        try {
-            const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-            const iv = raw.slice(0, 12), data = raw.slice(12);
-            const key = await crypto.subtle.importKey(
-                'raw',
-                new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-                { name: 'AES-GCM' },
-                false,
-                ['decrypt']
-            );
-            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-            // Декодираме токена, който вече съдържа и валидността
-            const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-            // 3. Изчисляваме възрастта в дни
-            const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-            if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-                validityInDays = parseInt(tokenValidity, 10);
+    // Check if we've already validated the license in this session
+    if (typeof window.licenseCheckPassed !== 'undefined') {
+        pass = window.licenseCheckPassed;
+    } else {
+        // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
+        const url = new URL(window.location.href);
+        const urlTokenParam = url.searchParams.get("token");
+        if (urlTokenParam) {
+            // Ако има токен в URL-а, той е с приоритет и презаписва стария, само ако е различен
+            const currentStoredToken = localStorage.getItem('urlToken');
+            if (urlTokenParam !== currentStoredToken) {
+                localStorage.setItem('urlToken', urlTokenParam);
             }
-            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
-            console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
-            // let tooltipText = _('signoutButtonTooltip');
-            // tooltipText += ` [${tokenRemainingDays}]`;
-            if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
-            console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
-            if (ageInDays < validityInDays) {
-                isUrlTokenValidTime = true;
-                pass = true;
-                // --- WHITELIST LOGIC ---
-                const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
-                const action = isTrialStart ? 'log' : 'check';
-
-                // Изчакваме 2 секунди, за да не пречим на началната синхронизация
-                setTimeout(() => {
-                    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-                    if (currentUserEmail) {
-                        fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'text/plain' },
-                            body: JSON.stringify({
-                                email: currentUserEmail,
-                                action: 'log'
-                            })
-                        })
-                            .then(response => response.json())
-                            .then(data => {
-                                console.log('Whitelist check:', data);
-                                if (action === 'log') {
-                                    sessionStorage.removeItem('isTrialStart');
-                                    console.log('Trial registered for:', currentUserEmail);
-                                }
-                            })
-                            .catch(err => console.log('Whitelist check delayed fail:', err));
-                    }
-                }, 2000);
-
-            } else {
-                console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
+        }
+        let urlToken = localStorage.getItem('urlToken');
+        let isUrlTokenValidTime = false;
+        let decryptedEmailFromToken = null;
+        if (urlToken) {
+            // --- Извличаме валидността от самия токен ---
+            let validityInDays = 30; // 3. Стойност по подразбиране в дни
+            try {
+                const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+                const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+                const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+                const iv = raw.slice(0, 12), data = raw.slice(12);
+                const key = await crypto.subtle.importKey(
+                    'raw',
+                    new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+                    { name: 'AES-GCM' },
+                    false,
+                    ['decrypt']
+                );
+                const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+                // Декодираме токена, който вече съдържа и валидността
+                const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+                // 3. Изчисляваме възрастта в дни
+                const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+                if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+                    validityInDays = parseInt(tokenValidity, 10);
+                }
+                tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
+                console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
+                // let tooltipText = _('signoutButtonTooltip');
+                // tooltipText += ` [${tokenRemainingDays}]`;
+                if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
+                console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
+                if (ageInDays < validityInDays) {
+                    isUrlTokenValidTime = true;
+                    pass = true;
+                    // --- WHITELIST LOGIC MOVED TO checkWhitelist() ---
+                } else {
+                    console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
+                    pass = false;
+                    sessionStorage.clear();
+                }
+            } catch (error) {
+                console.log("Грешка при декриптиране на токен:", error);
                 pass = false;
                 sessionStorage.clear();
             }
-        } catch (error) {
-            console.log("Грешка при декриптиране на токен:", error);
+        }
+        else {
+            console.log("Липсващ токен!");
             pass = false;
             sessionStorage.clear();
         }
-    }
-    else {
-        console.log("Липсващ токен!");
-        pass = false;
-        sessionStorage.clear();
+        // Cache the result
+        window.licenseCheckPassed = pass;
     }
     if (!pass) {
         document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
@@ -3256,10 +3591,19 @@ function reportDataIntegrityIssues() {
         });
     }
     console.groupEnd();
-
     // Show a small toast if there are many issues
     if (duplicates.length > 0) {
-        showToast(`Warning: ${duplicates.length} duplicate IDs found. Check console for details.`, 10000);
+        let previewText = '';
+        // Find the content of the first duplicate to show as a hint
+        const firstDupId = duplicates[0].gdid;
+        const dupNote = allNotesData.find(n => n.gdid === firstDupId);
+        if (dupNote) {
+            const content = dupNote.notetxt || dupNote.text || '';
+            previewText = content.substring(0, 50).replace(/\n/g, ' ');
+            if (content.length > 50) previewText += '...';
+        }
+        const msg = `${_('duplicateNotes')}: ${duplicates.length}. ${_('content')}: "${previewText}"`;
+        showToast(msg, 10000);
     }
 }
 
@@ -4115,17 +4459,23 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
                     await loadGoogleApis();
                 }
-                // Check if token is valid or expired (approximate check, assuming 1 hour validity)
-                const now = Date.now();
-                const tokenTimestamp = parseInt(localStorage.getItem('tokenTimestamp') || '0', 10);
-                const isTokenExpired = (now - tokenTimestamp) > (55 * 60 * 1000); // Refresh if older than 50 mins
+                // Check if token is valid or expired using the actual authToken object
+                let isTokenExpired = true;
+                if (authToken && authToken.issued_at) {
+                    const elapsedSeconds = (Date.now() - authToken.issued_at) / 1000;
+                    const expiresIn = authToken.expires_in || 3599;
+                    if (elapsedSeconds < (expiresIn - 300)) { // Refresh if less than 5 mins remaining
+                        isTokenExpired = false;
+                    }
+                }
 
                 if (!authToken || isTokenExpired) {
                     console.log("Token expired or missing in preview, refreshing...");
-                    const newToken = await checkAuth(true); // Force silent refresh
+                    const newToken = await checkAuth(); // checkAuth handles the actual refresh logic
                     if (newToken) {
                         authToken = newToken;
-                        // Update timestamp if checkAuth doesn't do it automatically (it usually does via handleAuthResult)
+                        // Update gapi client if needed
+                        if (gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
                     }
                 }
 
@@ -4150,8 +4500,12 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                     }
                 } else {
                     // Image high-res thumbnail
-                    const fileMetadata = await gapi.client.drive.files.get({ fileId: fileIdOrPath, fields: 'thumbnailLink' });
-                    const thumbnailUrl = fileMetadata.result.thumbnailLink;
+                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`, {
+                        headers: { 'Authorization': `Bearer ${tokenObj.access_token}` }
+                    });
+                    if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
+                    const fileMetadata = await response.json();
+                    const thumbnailUrl = fileMetadata.thumbnailLink;
                     if (!thumbnailUrl) throw new Error(_('noImgPreview'));
                     mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
                 }
@@ -5571,7 +5925,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             showToast(_('settingSaved'), 2000);
         });
         // One-tap links
-        oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') !== 'false'; // Default to true
+        oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
         oneTapLinkCheckbox.addEventListener('change', () => {
             const isChecked = oneTapLinkCheckbox.checked;
             localStorage.setItem('oneTapLink', isChecked);
@@ -6436,7 +6790,7 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
         linkElement.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (!checkAuth()) return;
+            // Authentication is handled inside showInNotePreview -> loadMedia, or locally for other files
 
             // --- IMPROVED ATTACHMENT OPENING (Avoid Account Prompt) ---
             if (fileId) {

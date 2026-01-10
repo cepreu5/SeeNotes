@@ -1,3 +1,4 @@
+console.log("msm.js loaded");
 let container;
 let stepTimer;
 let currentActiveStep = null;
@@ -65,6 +66,96 @@ window.removeGuide = function () {
   if (dbg) dbg.remove();
   if (stepTimer) clearTimeout(stepTimer);
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
+};
+
+// Global function to flip image
+window.msmFlipImage = function () {
+  if (!currentActiveStep || !container) {
+    console.warn('No active step to flip image for');
+    return;
+  }
+  const imgEl = container.querySelector('.guide-img');
+  const imgRect = imgEl ? imgEl.getBoundingClientRect() : { width: currentActiveStep.height || 100, height: currentActiveStep.height || 100 };
+  const oldWidth = imgRect.width;
+  const oldHeight = imgRect.height;
+  let src = currentActiveStep.image;
+  let newSrc = src;
+  // Cycle: r-up -> l-up -> l-down -> r-down -> r-up
+  let transition = ''; // 'rl' (Right to Left), 'lr', 'tb' (Top to Bottom), 'bt'
+  if (src.includes('r-up')) {
+    newSrc = src.replace('r-up', 'l-up');
+    transition = 'rl';
+  } else if (src.includes('l-up')) {
+    newSrc = src.replace('l-up', 'l-down');
+    transition = 'tb'; // Top to Bottom (Left stays Left)
+  } else if (src.includes('l-down')) {
+    newSrc = src.replace('l-down', 'r-down');
+    transition = 'lr';
+  } else if (src.includes('r-down')) {
+    newSrc = src.replace('r-down', 'r-up');
+    transition = 'bt'; // Bottom to Top (Right stays Right)
+  }
+  if (newSrc !== src) {
+    currentActiveStep.image = newSrc;
+    if (imgEl) {
+      const cleanSrc = newSrc.endsWith('!') ? newSrc.slice(0, -1) : newSrc;
+      // Load new image
+      imgEl.src = cleanSrc;
+      // Handle the coordinate shift AFTER the new image dimensions are known
+      imgEl.onload = () => {
+        const newRect = imgEl.getBoundingClientRect();
+        const newWidth = newRect.width;
+        const newHeight = newRect.height;
+        let xChange = 0;
+        let yChange = 0;
+        // Logic: Keep the pointer tip at the same screen location.
+        // We adjust the Top-Left (x, y) of the image to make this happen.
+        // Pointers:
+        // l-up: (0, 10)
+        // r-up: (W, 10)
+        // l-down: (0, H-10)
+        // r-down: (W, H-10)
+        if (transition === 'rl') {
+          // r-up (W, 10) -> l-up (0, 10)
+          // Old Pointer X = OldX + OldW
+          // New Pointer X = NewX + 0
+          // NewX = OldX + OldW
+          xChange = oldWidth;
+          // Y: 10 -> 10 (No change)
+        } else if (transition === 'tb') {
+          // l-up (0, 10) -> l-down (0, H-10)
+          // Old Pointer Y = OldY + 10
+          // New Pointer Y = NewY + NewH - 10
+          // OldY + 10 = NewY + NewH - 10  => NewY = OldY + 20 - NewH
+          yChange = 20 - newHeight;
+          // X: 0 -> 0 (No change)
+        } else if (transition === 'lr') {
+          // l-down (0, H-10) -> r-down (W, H-10)
+          // Old Pointer X = OldX + 0
+          // New Pointer X = NewX + NewW
+          // NewX = OldX - NewW
+          xChange = -newWidth;
+          // Y: H-10 -> H-10 (Roughly no change if height is same? but let's be technically precise)
+          // OldY + OldH - 10 = NewY + NewH - 10 => NewY = OldY + OldH - NewH
+          yChange = oldHeight - newHeight;
+        } else if (transition === 'bt') {
+          // r-down (W, H-10) -> r-up (W, 10)
+          // Old Pointer Y = OldY + OldH - 10
+          // New Pointer Y = NewY + 10
+          // NewY = OldY + OldH - 20
+          yChange = oldHeight - 20;
+          // X: W -> W. NewX = OldX + OldW - NewW
+          xChange = oldWidth - newWidth;
+        }
+        currentActiveStep.x = (currentActiveStep.x || 0) + xChange;
+        currentActiveStep.y = (currentActiveStep.y || 0) + yChange;
+        const debugOverlay = document.getElementById('msm-debug-overlay');
+        if (debugOverlay) {
+          debugOverlay.innerText = `Flipped: ${transition}\nNew x: ${Math.round(currentActiveStep.x)}\nNew y: ${Math.round(currentActiveStep.y)}`;
+        }
+      };
+    };
+  }
 };
 
 // Функция за обновяване на езика на текущия балон
@@ -966,92 +1057,4 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Global function to flip image
-window.msmFlipImage = function () {
-  if (!currentActiveStep || !container) {
-    console.warn('No active step to flip image for');
-    return;
-  }
-  const imgEl = container.querySelector('.guide-img');
-  const imgRect = imgEl ? imgEl.getBoundingClientRect() : { width: currentActiveStep.height || 100, height: currentActiveStep.height || 100 };
-  const oldWidth = imgRect.width;
-  const oldHeight = imgRect.height;
-  let src = currentActiveStep.image;
-  let newSrc = src;
-  // Cycle: r-up -> l-up -> l-down -> r-down -> r-up
-  let transition = ''; // 'rl' (Right to Left), 'lr', 'tb' (Top to Bottom), 'bt'
-  if (src.includes('r-up')) {
-    newSrc = src.replace('r-up', 'l-up');
-    transition = 'rl';
-  } else if (src.includes('l-up')) {
-    newSrc = src.replace('l-up', 'l-down');
-    transition = 'tb'; // Top to Bottom (Left stays Left)
-  } else if (src.includes('l-down')) {
-    newSrc = src.replace('l-down', 'r-down');
-    transition = 'lr';
-  } else if (src.includes('r-down')) {
-    newSrc = src.replace('r-down', 'r-up');
-    transition = 'bt'; // Bottom to Top (Right stays Right)
-  }
-  if (newSrc !== src) {
-    currentActiveStep.image = newSrc;
-    if (imgEl) {
-      const cleanSrc = newSrc.endsWith('!') ? newSrc.slice(0, -1) : newSrc;
-      // Load new image
-      imgEl.src = cleanSrc;
-      // Handle the coordinate shift AFTER the new image dimensions are known
-      imgEl.onload = () => {
-        const newRect = imgEl.getBoundingClientRect();
-        const newWidth = newRect.width;
-        const newHeight = newRect.height;
-        let xChange = 0;
-        let yChange = 0;
-        // Logic: Keep the pointer tip at the same screen location.
-        // We adjust the Top-Left (x, y) of the image to make this happen.
-        // Pointers:
-        // l-up: (0, 10)
-        // r-up: (W, 10)
-        // l-down: (0, H-10)
-        // r-down: (W, H-10)
-        if (transition === 'rl') {
-          // r-up (W, 10) -> l-up (0, 10)
-          // Old Pointer X = OldX + OldW
-          // New Pointer X = NewX + 0
-          // NewX = OldX + OldW
-          xChange = oldWidth;
-          // Y: 10 -> 10 (No change)
-        } else if (transition === 'tb') {
-          // l-up (0, 10) -> l-down (0, H-10)
-          // Old Pointer Y = OldY + 10
-          // New Pointer Y = NewY + NewH - 10
-          // OldY + 10 = NewY + NewH - 10  => NewY = OldY + 20 - NewH
-          yChange = 20 - newHeight;
-          // X: 0 -> 0 (No change)
-        } else if (transition === 'lr') {
-          // l-down (0, H-10) -> r-down (W, H-10)
-          // Old Pointer X = OldX + 0
-          // New Pointer X = NewX + NewW
-          // NewX = OldX - NewW
-          xChange = -newWidth;
-          // Y: H-10 -> H-10 (Roughly no change if height is same? but let's be technically precise)
-          // OldY + OldH - 10 = NewY + NewH - 10 => NewY = OldY + OldH - NewH
-          yChange = oldHeight - newHeight;
-        } else if (transition === 'bt') {
-          // r-down (W, H-10) -> r-up (W, 10)
-          // Old Pointer Y = OldY + OldH - 10
-          // New Pointer Y = NewY + 10
-          // NewY = OldY + OldH - 20
-          yChange = oldHeight - 20;
-          // X: W -> W. NewX = OldX + OldW - NewW
-          xChange = oldWidth - newWidth;
-        }
-        currentActiveStep.x = (currentActiveStep.x || 0) + xChange;
-        currentActiveStep.y = (currentActiveStep.y || 0) + yChange;
-        const debugOverlay = document.getElementById('msm-debug-overlay');
-        if (debugOverlay) {
-          debugOverlay.innerText = `Flipped: ${transition}\nNew x: ${Math.round(currentActiveStep.x)}\nNew y: ${Math.round(currentActiveStep.y)}`;
-        }
-      };
-    };
-  }
-};
+

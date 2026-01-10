@@ -777,26 +777,34 @@
                 "stopAfter": false, "action": "explain", "context": "",
                 1: {
                     "image": "msm/expl.png", "height": 70,
-                    x: 23, y: 18, bx: 69, by: 71, bWidth: 228, bHeight: 115, "target": "span.board-filter-link",
+                    x: 23, y: 18, bx: 69, by: 71, bWidth: 228, bHeight: 65, "target": "span.board-filter-link",
                     "text": {
-                        "bg": "Броят и размерът на бележките на екрана може да се променя от <b><i>Настройки</i></b> -> <b><i>Мащаб</i></b>. Клик върху бележката я отваря. Размерът на отворената бележка може да се променя като хванеш и дръпеш долния десен ъгъл.",
-                        "en": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> -> <b><i>Zoom</i></b>. Clicking on the note opens it. The size of the opened note can be changed by dragging the bottom right angle."
+                        "bg": "Броят и размерът на бележките на екрана може да се променя от <b><i>Настройки</i></b> -> <b><i>Мащаб</i></b>.",
+                        "en": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> -> <b><i>Zoom</i></b>."
                     }
                 },
                 2: {
                     "image": "msm/expl.png", "height": 70,
-                    x: 9, y: 15, bx: 133, by: 68, bWidth: 296, bHeight: 62, "target": "span.board-filter-link", 
+                    x: 23, y: 115, bx: 133, by: 68, bWidth: 296, bHeight: 102, "target": "span.board-filter-link", 
                     "text": {
-                        "bg": "Веднъж променен, размерът се запомня и се използва за всички бележки. Бележката се затваря с бутон X или клик извън нея.",
-                        "en": "Once changed, the size is saved and applied to all notes. Close the note by clicking the X button or anywhere outside it."
+                        "bg": "Клик върху бележката я отваря. Размерът на отворената бележка може да се променя като хванеш и дръпеш долния десен ъгъл. Веднъж променен, размерът се запомня и се използва за всички бележки. Бележката се затваря с бутон X или клик извън нея.",
+                        "en": "Once changed, the size is saved and applied to all notes. Close the note by clicking the X button or anywhere outside it. Clicking on the note opens it. The size of the opened note can be changed by dragging the bottom right angle."
                     }
                 },
                 3: {
                     "image": "msm/expl.png", "height": 70,
                     x: 3, y: 28, bx: 133, by: 68, bWidth: 284, bHeight: 80, "target": "#search-box",
                     "text": {
-                        "bg": "За търсене на информация се използва полето за търсене. За да научиш какви допълния възможности имаш при търсене отвори чат прозореца и напиши <b><i>търсене</i></b>.",
+                        "bg": "За търсене на информация се използва полето за търсене. За да научиш какви допълния възможности имаш при търсене, отвори чат прозореца и напиши <b><i>търсене</i></b>.",
                         "en": "For searching information, the search field is used. To learn more about the search options, open the chat window and type <b><i>search</i></b>."
+                    }
+                },
+                4: {
+                    "image": "msm/expl.png", "height": 70,
+                    x: -200, y: -3, bx: -10, by: -90, bWidth: 228, bHeight: 65, "target": "#kb-fab",
+                    "text": {
+                        "bg": "В долната част на екрана се появяват статус съобщения. Ако кликнеш съобщението, то ще се скрие веднага.",
+                        "en": "At the bottom of the screen, status messages appear. If you click the message, it will disappear immediately."
                     }
                 },
             }
@@ -821,15 +829,15 @@
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
                     "image": "msm/1.png", "height": 150, "time": 5000,
-                    x: 89, y: 28, bx: 115, by: -46, bWidth: 175, bHeight: 72, "target": "#search-box",
+                    x: 70, y: 28, bx: 130, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
                     "text": {
                         "bg": "Здравей!<br>👋 Аз съм твоят асистент и винаги съм готов да помогна.",
                         "en": "Hello!<br>👋 I'm your assistant, always ready to help."
                     }
                 },
                 2: {
-                    "image": "msm/1.png", "height": 150, "time": 5000,
-                    x: 89, y: 28, bx: 107, by: -33, bWidth: 156, bHeight: 50, "target": "#search-box",
+                    "image": "msm/expl.png", "height": 100,
+                    x: 30, y: 23, bx: 134, by: -28, bWidth: 155, bHeight: 50, "target": "#search-box",
                     "text": {
                         "bg": "Няколко бързи съвета, преди да започнем.",
                         "en": "A few quick tips before we start."
@@ -837,7 +845,7 @@
                 },
                 3: {
                     "image": "msm/1.png", "height": 150,
-                    x: 89, y: 28, bx: 118, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
+                    x: 70, y: 28, bx: 130, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
                     "text": {
                         "bg": "Ако кликнеш върху мен, ще премина към следващата стъпка. Ctrl-click прекратява обяснението.",
                         "en": "If you click on me, I’ll move to the next step. Ctrl‑click stops the explanation."
@@ -855,10 +863,18 @@
                     "image": "msm/r-down.png", "height": 100, "time": 8000,
                     x: -67, y: -66, bx: -119, by: -109, bWidth: 229, bHeight: 91, "target": "#kb-fab",
                     "text": {
-                        "bg": "Тази икона е плаваща и може да я поставиш на друго място. Ctrl-click я прави полупрозрачна, а в <strong>Настройки</strong> има възможност за изключване на асистента.",
-                        "en": "This icon is floating and can be placed in a convenient place. With Ctrl-click, it becomes semi-transparent. In <strong>Settings</strong>, you can disable the assistant."
+                        "bg": "Тази икона е плаваща и може да я поставиш на друго място. Ctrl-click я прави полупрозрачна.",
+                        "en": "This icon is floating and can be placed in a convenient place. With Ctrl-click, it becomes semi-transparent."
                     }
-                }
+                },
+                6: {
+                    "image": "msm/r-up-w.png", "height": 100,
+                    x: -1, y: 10, bx: 170, by: 18, bWidth: 224, bHeight: 84, "target": "#app-title",
+                    "text": {
+                        "bg": "Кликни заглавието за повторение на моето представяне. В <strong>Настройки</strong> има възможност за изключване на асистента.",
+                        "en": "Click the title to repeat my introduction. In <strong>Settings</strong>, you can disable the assistant."
+                    }
+                },
             }
         },
 {
@@ -879,7 +895,7 @@
             "guide": {
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
-                    "image": "msm/l-down-l.png", "height": 100,
+                    "image": "msm/l-down-w.png", "height": 100,
                     x: 54, y: -79, bx: 61, by: -85, bWidth: 281, bHeight: 65,
                     "target": "div.kb-input-container", 
                     "text": {
@@ -888,7 +904,7 @@
                     }
                 },
                 2: {
-                    "image": "msm/r-down-l.png", "height": 100,
+                    "image": "msm/r-down-w.png", "height": 100,
                     x: 33, y: -78, bx: 90, by: -94, bWidth: 281, bHeight: 65, "target": "#kb-input", 
                     "text": {
                         "bg": "Историята - последните въпроси, на които съм отговарял, може да извикаш и като изпратиш интнервал, вместо ?.",
@@ -1005,8 +1021,8 @@
                     "image": "msm/l-up-w.png", "height": 100,
                     x: 24, y: 37, bx: 43, by: 63, bWidth: 303, bHeight: 100, "target": "#mode_button", 
                     "text": {
-                        "bg": "<span align='left'><img src='Database.png' width='30px'> Ако избереш да работиш само с <i>База данни</i>, кликни тази икона за проверка за нови и променени бележки в <i>Google Drive</i></span>",
-                        "en": "<span align='left'><img src='Database.png' width='30px'> If you choose to operate in <i>Database</i>-only mode, click this icon to check for new or updated notes in <i>Google Drive</i>.</span>"
+                        "bg": "<span align='left'> <img src='Database.png' width='30px'> Най-бързият начин е да работиш в режим само <i>База данни</i>. Бележките се зареждат веднага, а с клик на иконата проверяваш за нови или променени бележки в <i>Google Drive</i> когато е необходимо. </span>",
+                        "en": "<span align='left'> <img src='Database.png' width='30px'> The fastest way is to use <i>Database</i>-only mode. Notes load instantly, and the icon lets you check for new or updated notes in <i>Google Drive</i> when needed. </span>"
                     }
                 },
             }
