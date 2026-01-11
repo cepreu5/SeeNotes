@@ -46,6 +46,7 @@ class KBMatcher {
                     console.warn('Skipping invalid KB setting item:', item, e);
                 }
             });
+
         }
 
         // Търсене в UI елементи
@@ -64,6 +65,7 @@ class KBMatcher {
                     console.warn('Skipping invalid KB UI item:', item, e);
                 }
             });
+
         }
 
         // Търсене в general въпроси
@@ -82,6 +84,7 @@ class KBMatcher {
                     console.warn('Skipping invalid KB general item:', item, e);
                 }
             });
+
         }
 
         // Сортираме по score (най-високи първи)
@@ -122,17 +125,14 @@ class KBMatcher {
             else if (normalizedKeywords.some(kw => kw.includes(queryWord) || queryWord.includes(kw))) {
                 score += 5;
             }
-
             // Съвпадение в въпроса = +3 точки
             if (normalizedQuestion.includes(queryWord)) {
                 score += 3;
             }
-
             // Съвпадение в label = +2 точки
             if (normalizedLabel.includes(queryWord)) {
                 score += 2;
             }
-
             // Fuzzy match = +1 точка
             if (this.fuzzyMatch(queryWord, normalizedKeywords)) {
                 score += 1;
@@ -184,6 +184,7 @@ class KBMatcher {
             // Levenshtein distance <= 2
             return this.levenshteinDistance(word, keyword) <= 2;
         });
+
     }
 
     /**
@@ -338,14 +339,7 @@ class KBAssistant {
             if (!response.ok) {
                 throw new Error('Failed to load KB data');
             }
-
             let text = await response.text();
-
-
-
-            text = text.replace(/{{assistantNameBG}}/g, appAssistantNames.bg)
-                .replace(/{{assistantNameEN}}/g, appAssistantNames.en);
-
             try {
                 this.kbData = JSON.parse(text);
             } catch (e) {
@@ -379,6 +373,13 @@ class KBAssistant {
 
             console.log('✅ KB Assistant initialized successfully');
             console.log('Current language:', this.getCurrentLanguage());
+
+            // Създаваме UI компонентите (FAB бутон и чат прозорец) само след успешна инициализация
+            if (!window.kbUI) {
+                window.kbUI = new KBUI();
+            }
+            this.ui = window.kbUI; // Референция за updateLanguage()
+
             return true;
         } catch (error) {
             console.error('❌ KB Assistant initialization failed:', error);
@@ -507,16 +508,13 @@ class KBAssistant {
             if (typeof window.setGuideSteps === 'function' && typeof showStep === 'function') {
                 console.log('Starting multi-step guide:', multiSteps);
                 window.setGuideSteps(multiSteps);
-
                 // Context management for multi-step guides
                 const settingsContexts = ['display', 'sorting', 'boards', 'data', 'behavior', 'startup', 'settings', 'calendar', 'search'];
-
                 let prevCtx = null;
                 multiSteps.forEach(step => {
                     const currentCtx = step.context || guideData.context;
                     const isPrevSettings = prevCtx && settingsContexts.includes(prevCtx);
                     const isCurrSettings = settingsContexts.includes(currentCtx);
-
                     // Handle context transitions (Settings open/close)
                     if (isPrevSettings && !isCurrSettings) {
                         const existingOnStart = step.onStart;
@@ -531,13 +529,11 @@ class KBAssistant {
                             this.openSettings();
                         };
                     }
-
                     // Handle action (click element to reveal target)
                     if (step.action && step.action !== 'highlight' && step.action !== 'explain' && step.action !== 'explain!') {
                         const existingOnStart = step.onStart;
                         step.onStart = () => {
                             if (existingOnStart) existingOnStart();
-
                             // Click the action element
                             const actionElement = document.querySelector(step.action);
                             if (actionElement) {
@@ -548,13 +544,10 @@ class KBAssistant {
                             }
                         };
                     }
-
                     prevCtx = currentCtx;
                 });
-
                 const firstStep = multiSteps[0];
                 const isFirstSettings = settingsContexts.includes(firstStep.context || guideData.context);
-
                 if (isFirstSettings) {
                     this.openSettings();
                     setTimeout(() => {
@@ -569,6 +562,7 @@ class KBAssistant {
                 console.warn('msm.js functions not found for multi-step guide');
                 return; // Cannot proceed without msm.js
             }
+
         }
 
         // Контексти, които се намират в Settings
@@ -588,7 +582,6 @@ class KBAssistant {
             setTimeout(() => {
                 targetElement = document.querySelector(guideData.target);
                 console.log('Retry targetElement search:', guideData.target, targetElement);
-
                 if (targetElement) {
                     this.ensureElementVisible(targetElement, guideData).then(() => {
                         this.highlightElement(targetElement, guideData);
@@ -605,6 +598,7 @@ class KBAssistant {
                     }
                 }
             }, 300);
+
             return;
         }
 
@@ -621,12 +615,12 @@ class KBAssistant {
             setTimeout(() => {
                 // Намираме елемента отново
                 const el = document.querySelector(guideData.target) || targetElement;
-
                 // Проверяваме дали елементът е видим и ако не е - опитваме да го покажем (акордеони)
                 this.ensureElementVisible(el, guideData).then(() => {
                     this.highlightElement(el, guideData);
                 });
             }, 300);
+
         } else {
             // За UI елементи директно highlight-ваме
             this.highlightElement(targetElement, guideData);
@@ -648,6 +642,7 @@ class KBAssistant {
             };
             window.showGuideStep(step);
         }
+
     }
 
     /**
@@ -715,19 +710,15 @@ class KBAssistant {
         // Функция за обновяване на позицията
         const updatePosition = () => {
             if (!pointer.parentNode || !document.body.contains(element)) return;
-
             const rect = element.getBoundingClientRect();
             // msm.js използва top-left координатна система
             const targetLeft = rect.left;
             const targetTop = rect.top;
-
             // Добавяме offset-ите от guideData (ако има такива)
             const offsetX = options.x || 0;
             const offsetY = options.y || 0;
-
             pointer.style.top = `${targetTop + offsetY}px`;
             pointer.style.left = `${targetLeft + offsetX}px`;
-
             // Премахваме CSS трансформациите, които пречат на точното позициониране (като translateX(-100%))
             pointer.style.transform = 'none';
             pointer.style.animation = 'none';
@@ -745,6 +736,7 @@ class KBAssistant {
                 requestAnimationFrame(animate);
             }
         };
+
         requestAnimationFrame(animate);
 
         // Слушаме за scroll и resize
@@ -762,7 +754,6 @@ class KBAssistant {
             if (scrollableParent) {
                 scrollableParent.removeEventListener('scroll', updatePosition);
             }
-
             if (immediate) {
                 pointer.remove();
             } else {
@@ -772,8 +763,6 @@ class KBAssistant {
                 }, 300);
             }
         };
-
-
 
         pointer.addEventListener('click', () => hidePointer(false));
         pointer.addEventListener('touchstart', () => hidePointer(false));
@@ -819,6 +808,7 @@ class KBAssistant {
             mutationObserver.disconnect();
             clearTimeout(timeoutId);
         });
+
     }
 
     /**
@@ -1078,17 +1068,9 @@ class KBAssistant {
     }
 }
 
-// Глобална инстанция
+// Глобална инстанция (без автоматична инициализация)
+// init() трябва да се извика ръчно след успешно логване от startApp() в main.js
 window.kbAssistant = new KBAssistant();
-
-// Auto-init при зареждане на страницата
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.kbAssistant.init();
-    });
-} else {
-    window.kbAssistant.init();
-}
 
 /**
  * KB UI - Потребителски интерфейс на асистента
@@ -1179,6 +1161,7 @@ class KBUI {
                     class="kb-input" 
                     placeholder="${(window.kbAssistant && typeof window.kbAssistant.getText === 'function') ? window.kbAssistant.getText('inputPlaceholder') : '...'}"
                     autocomplete="off"
+
                 />
                 <button class="kb-clear-btn" id="kb-clear-btn" title="Clear">×</button>
                 <button class="kb-send-btn" id="kb-send-btn">→</button>
@@ -1222,6 +1205,7 @@ class KBUI {
             allQuestionsBtn.addEventListener('click', () => {
                 this.showAllQuestions();
             });
+
         }
 
         // Reload бутон (only if it exists)
@@ -1229,7 +1213,6 @@ class KBUI {
         if (reloadBtn) {
             reloadBtn.addEventListener('click', async () => {
                 reloadBtn.classList.add('kb-spin'); // Add spinning animation class
-
                 if (window.kbAssistant) {
                     const success = await window.kbAssistant.init();
                     if (success) {
@@ -1239,11 +1222,11 @@ class KBUI {
                         this.addMessage('assistant', 'Failed to reload Knowledge Base. ❌', '', false);
                     }
                 }
-
                 setTimeout(() => {
                     reloadBtn.classList.remove('kb-spin');
                 }, 1000);
             });
+
         }
 
         // Hero бутон (only if it exists)
@@ -1261,6 +1244,7 @@ class KBUI {
                     this.addMessage('assistant', 'Error: msm.js functions not found', '', false);
                 }
             });
+
         }
 
         // Flip Img Button (only if it exists)
@@ -1273,6 +1257,7 @@ class KBUI {
                     console.warn('msmFlipImage function not found');
                 }
             });
+
         }
 
         // Language toggle button (only if it exists)
@@ -1282,7 +1267,6 @@ class KBUI {
                 const currentLang = localStorage.getItem('language') || 'en';
                 const newLang = currentLang === 'bg' ? 'en' : 'bg';
                 localStorage.setItem('language', newLang);
-
                 if (window.kbAssistant) {
                     window.kbAssistant.updateLanguage();
                     this.updateLanguage();
@@ -1290,6 +1274,7 @@ class KBUI {
                     this.showGreeting();
                 }
             });
+
         }
 
         // Send бутон
@@ -1310,13 +1295,13 @@ class KBUI {
                 this.inputField.focus();
                 this.inputField.dispatchEvent(new Event('input'));
             });
+
         }
 
         // Enter key в input полето
         this.inputField.addEventListener('keydown', (e) => {
             // Спираме прорагацията на събитието, за да не се задействат глобални shortcut-и (напр. Space за Next Step или Scroll)
             e.stopPropagation();
-
             if (e.key === 'Enter') {
                 e.preventDefault(); // Prevent default (like form submission or newline)
                 const val = this.inputField.value;
@@ -1331,7 +1316,6 @@ class KBUI {
         // Filter suggestions while typing in full mode
         this.inputField.addEventListener('input', () => {
             const query = this.inputField.value.trim().toLowerCase();
-
             if (this.container.classList.contains('kb-full-mode')) {
                 const items = this.suggestionsBox.querySelectorAll('.kb-suggestion-item');
                 items.forEach(item => {
@@ -1362,7 +1346,6 @@ class KBUI {
                 const guideData = JSON.parse(showMeBtn.dataset.guide);
                 this.showGuide(guideData);
             }
-
             // Event delegation за history items
             const historyItem = e.target.closest('.kb-history-item');
             if (historyItem) {
@@ -1370,7 +1353,6 @@ class KBUI {
                 this.inputField.value = question;
                 this.sendMessage();
             }
-
             // Event delegation за допълнителни резултати
             const additionalItem = e.target.closest('.kb-additional-item');
             if (additionalItem) {
@@ -1378,9 +1360,6 @@ class KBUI {
                 this.inputField.value = question;
                 this.sendMessage();
             }
-
-
-
             // Copy user question text to input on click
             const userMsgContent = e.target.closest('.kb-message-user .kb-message-content');
             if (userMsgContent) {
@@ -1417,22 +1396,20 @@ class KBUI {
             const contentHeight = element.scrollHeight;
             const visibleHeight = element.offsetHeight;
             const scrollTop = element.scrollTop;
-
             // Винаги спираме пропагацията към родителските елементи
             e.stopPropagation();
-
             // Ако няма скролбар, спираме стандартното поведение (скролиране)
             if (visibleHeight >= contentHeight) {
                 e.preventDefault();
                 return;
             }
-
             // Ако сме в краищата и се опитваме да скролираме извън тях
             if ((delta < 0 && scrollTop <= 0) ||
                 (delta > 0 && scrollTop + visibleHeight >= contentHeight - 1)) {
                 e.preventDefault();
             }
         }, { passive: false });
+
     }
 
     /**
@@ -1503,6 +1480,7 @@ class KBUI {
         // if (typeof window.removeGuide === 'function') {
         //     window.removeGuide();
         // }
+
     }
 
     /**
@@ -1609,6 +1587,7 @@ class KBUI {
                 response.history.forEach(q => {
                     historyHtml += `<div class="kb-additional-item">${q}</div>`;
                 });
+
             }
             historyHtml += '</div>';
 
@@ -1661,12 +1640,14 @@ class KBUI {
             setTimeout(() => {
                 messageDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 100);
+
         } else {
             // auto
             if (type === 'assistant') {
                 setTimeout(() => {
                     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }, 100);
+
             } else {
                 this.scrollToBottom();
             }
@@ -1750,6 +1731,7 @@ class KBUI {
         setTimeout(() => {
             this.chatBox.scrollTop = this.chatBox.scrollHeight;
         }, 100);
+
     }
 
     /**
@@ -1795,10 +1777,8 @@ class KBUI {
             items.forEach(item => {
                 // Пропускаме записи без въпроси
                 if (!item.q && !item.question) return;
-
                 let qVal = item.question || item.q;
                 const lang = window.kbAssistant.getCurrentLanguage();
-
                 if (typeof qVal === 'object' && qVal !== null) {
                     if (qVal[lang]) {
                         questions.push(qVal[lang]);
@@ -1848,7 +1828,9 @@ class KBUI {
         questionObjs.sort((a, b) => a.clean.localeCompare(b.clean));
 
         const lang = window.kbAssistant.getCurrentLanguage();
-        const titleText = lang === 'bg' ? 'Всички въпроси:' : 'All Questions:';
+        const titleText = (window.kbAssistant && typeof window.kbAssistant.getText === 'function')
+            ? window.kbAssistant.getText('allQuestionsTitle') + ':'
+            : '';
 
         let html = `<div class="kb-suggestions-title">${titleText}</div>`;
         html += `<div class="kb-suggestions-list">`;
@@ -1866,49 +1848,23 @@ class KBUI {
      * Обновява placeholder текста според езика
      */
     updateLanguage() {
-        const lang = window.kbAssistant.getCurrentLanguage();
-        if (window.kbAssistant && typeof window.kbAssistant.getText === 'function') {
-            this.inputField.placeholder = window.kbAssistant.getText('inputPlaceholder');
-        } else {
-            this.inputField.placeholder = placeholders[lang] || placeholders.en;
-        }
-
+        if (!window.kbAssistant || typeof window.kbAssistant.getText !== 'function') return;
+        this.inputField.placeholder = window.kbAssistant.getText('inputPlaceholder');
         // Обновяваме title на FAB
-        const titles = {
-            bg: 'Асистент',
-            en: 'Assistant'
-        };
-
-        this.fabButton.title = titles[lang] || titles.en;
-
+        this.fabButton.title = window.kbAssistant.getText('assistantTitle');
         // Обновяваме header title
         const headerTitle = this.container.querySelector('.kb-title');
         if (headerTitle) {
-            if (window.kbAssistant && typeof window.kbAssistant.getText === 'function') {
-                headerTitle.textContent = window.kbAssistant.getText('assistantName');
-            } else {
-                headerTitle.textContent = titles[lang] || titles.en;
-            }
+            headerTitle.textContent = window.kbAssistant.getText('assistantName');
         }
-
         // Обновяваме All Questions Button tooltip
         const allQuestionsBtn = document.getElementById('kb-all-questions-btn');
         if (allQuestionsBtn) {
-            allQuestionsBtn.title = lang === 'bg' ? 'Всички въпроси' : 'All Questions';
+            allQuestionsBtn.title = window.kbAssistant.getText('allQuestionsTitle');
         }
     }
 }
 
-// Глобална инстанция
+// Глобална инстанция (без автоматична инициализация)
+// KBUI ще се създаде от KBAssistant.init() след успешно логване
 window.kbUI = null;
-
-// Auto-init при зареждане на страницата
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.kbUI = new KBUI();
-        // Auto-open removed as per user request
-    });
-} else {
-    window.kbUI = new KBUI();
-    // Auto-open removed as per user request
-}

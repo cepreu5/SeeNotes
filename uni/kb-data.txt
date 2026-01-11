@@ -19,7 +19,9 @@
             "loading": "Зареждам...",
             "error": "Възникна грешка при зареждане на базата от знания.",
             "inputPlaceholder": "Задай въпрос, ? за история...",
-            "assistantName": "{{assistantNameBG}}"
+            "assistantName": "Лепчо",
+            "assistantTitle": "Асистент",
+            "allQuestionsTitle": "Всички въпроси"
         },
         "en": {
             "greeting": "Hello! 👋 I'm your assistant. How can I help?",
@@ -34,7 +36,9 @@
             "loading": "Loading...",
             "error": "An error occurred while loading the knowledge base.",
             "inputPlaceholder": "Ask a question, ? for history...",
-            "assistantName": "{{assistantNameEN}}"
+            "assistantName": "Noto",
+            "assistantTitle": "Assistant",
+            "allQuestionsTitle": "All Questions"
         }
     },
     "settings": [
@@ -836,7 +840,7 @@
                     }
                 },
                 2: {
-                    "image": "msm/expl.png", "height": 100,
+                    "image": "msm/expl.png", "height": 100, "time": 5000,
                     x: 30, y: 23, bx: 134, by: -28, bWidth: 155, bHeight: 50, "target": "#search-box",
                     "text": {
                         "bg": "Няколко бързи съвета, преди да започнем.",
@@ -1022,7 +1026,16 @@
                     x: 24, y: 37, bx: 43, by: 63, bWidth: 303, bHeight: 100, "target": "#mode_button", 
                     "text": {
                         "bg": "<span align='left'> <img src='Database.png' width='30px'> Най-бързият начин е да работиш в режим само <i>База данни</i>. Бележките се зареждат веднага, а с клик на иконата проверяваш за нови или променени бележки в <i>Google Drive</i> когато е необходимо. </span>",
-                        "en": "<span align='left'> <img src='Database.png' width='30px'> The fastest way is to use <i>Database</i>-only mode. Notes load instantly, and the icon lets you check for new or updated notes in <i>Google Drive</i> when needed. </span>"
+                        "en": "<span align='left'> <img src='Database.png' width='30px'> The fastest way is to use <i>Database</i>-only mode. Notes load instantly, and clicking the icon lets you check for new or updated notes in <i>Google Drive</i> when needed. </span>"
+                    }
+                },
+                6: {
+                    "stopAfter": false, "action": "explain!", "context": "",
+                    "image": "msm/expl.png", "height": 70,
+                    x: -46, y: -2, bx: 133, by: 68, bWidth: 293, bHeight: 81, "target": "#mode_button",
+                    "text": {
+                        "bg": "ВАЖНО!<br>Изтриването на бележка или дори на цялата база данни не засяга нищо в <b>Google Drive</b>. Базата и всички бележки винаги могат да се възстановят от записаното там.",
+                        "en": "IMPORTANT!<br>Deleting a note or even the entire database doesn’t affect anything in <b>Google Drive</b>. The database and all notes can always be restored from what’s stored there."
                     }
                 },
             }

@@ -33,10 +33,6 @@ let pass = false;
 let DEMO_MODE = false;
 const DEMO_NOTE_LIMIT = 5;
 
-// function showStep(stepIndex, nextStepIndex = null, single = false) {
-//     return false;
-// }
-
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
 // =================================================================================
@@ -44,8 +40,7 @@ const DEMO_NOTE_LIMIT = 5;
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const TRIAL_URL = "http://index.html?token=0bi64PmSapE-xPdzhr5dtAXBb95QYofCL1K1gSL_HuFeth8vZDAQfRewADufxs-PlQBylELKi7CWUTI1DipJGmmma6E";
-// 30 - PIFopa69pLotak82Tk7rqvBNekfordCqQmx6Kj0NgKNXE6h8zQAcvUYN-MBdCeSFANzfNautMiVY6CiRZBtwRHdefvpI
+const TRIAL_URL = "http://index.html?token=DtBhz0nmHgisBO7KMIaXaUBp2QFBph4fylvi_uHP-St3CLvu0V69txLgrDO2uJqMRyLI4PtzwKC0v7AbWMacbWrZXTVl"; // days token
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -127,10 +122,8 @@ let currentLang = localStorage.getItem('language') || 'en';
 
 let appTranslations = {};
 
-window.appAssistantNames = {
-    bg: 'Лепчо',
-    en: 'Noto'
-};
+
+
 const noteBackgrounds = [
     'wg1_1.png', // 0
     'wr1_1.png', // 1
@@ -149,11 +142,8 @@ const noteBackgrounds = [
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 // =================================================================================
-// MODULES
-// =================================================================================
 // IX. LOAD MODULE (Google Drive Data Fetching & Sync)
 // =================================================================================
-
 /**
  * Parses the raw responses from Google Drive into JSON objects.
  */
@@ -203,12 +193,10 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
         showMessagePopup(_('errorFolderNotFound'));
         throw new Error("Main folder ID not found.");
     }
-
     loaderText.textContent = _('loadingFile') + " ...";
     const onNoteProgress = (loaded, total) => {
         loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
     };
-
     console.time("fetchAllData_TotalLoad");
     const [boardRes, mediaRes, noteRes] = await Promise.all([
         loadAndParseFile('board.txt', folderId, modifiedSince),
@@ -216,11 +204,9 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
         loadAndParseFile('note.txt', folderId, modifiedSince, onNoteProgress)
     ]);
     console.timeEnd("fetchAllData_TotalLoad");
-
     boardsData = boardRes.data;
     mediaData = mediaRes.data;
     allNotesData = noteRes.data;
-
     // Integrity checks for initial Google Drive load
     const gdidMap = new Map();
     const checkIntegrity = (data, filename) => {
@@ -243,7 +229,6 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     checkIntegrity(boardsData, 'board.txt');
     checkIntegrity(mediaData, 'media.txt');
     checkIntegrity(allNotesData, 'note.txt');
-
     if (boardsData.length === 0) {
         showToast(_('errorNoBoardFilesFound'), 15000);
         return { error: 'NO_BOARD_FILES' };
@@ -298,7 +283,6 @@ async function runGoogleDriveSync() {
                         gdidMap.set(item.gdid, filename);
                     }
                 });
-
                 await bulkPutDB(storeName, data, true);
                 if (filename === 'media.txt') {
                     data.forEach(n => {
@@ -316,7 +300,7 @@ async function runGoogleDriveSync() {
         }
     };
 
-    loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
+    // loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
     console.time("runGoogleDriveSync_Parallel");
     await Promise.all([
         syncFileWorker('board.txt', BOARD_STORE_NAME, false),
@@ -336,7 +320,6 @@ async function runGoogleDriveSync() {
 async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) {
     let query = `'${folderId}' in parents and name = '${filename}' and mimeType='text/plain' and trashed = false`;
     if (modifiedSince) query += ` and modifiedTime > '${modifiedSince}'`;
-
     let allFiles = [], pageToken = null;
     console.time(`fetchFiles_${filename}_List`);
     try {
@@ -347,24 +330,18 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         } while (pageToken);
     } catch (e) { throw new Error("Drive API List failed."); }
     console.timeEnd(`fetchFiles_${filename}_List`);
-
     if (allFiles.length === 0) return [];
-
     let loadedFiles = 0;
     const totalFiles = allFiles.length;
     const accessToken = gapi.auth.getToken().access_token;
-
     // LIMIT CONCURRENCY: Don't overwhelm the browser socket pool
     const CONCURRENCY_LIMIT = 100;
     console.log(`[${filename}] Starting throttled fetch. Total: ${totalFiles}, Limit: ${CONCURRENCY_LIMIT}`);
     console.time(`fetchFiles_${filename}_Total`);
-
     const UI_STEP = totalFiles <= 50 ? 1 : Math.max(5, Math.floor(totalFiles / 50));
-
     const downloadWithKick = async (file, attempt = 1) => {
         const controller = new AbortController();
         const kickId = setTimeout(() => { if (attempt === 1) controller.abort(); }, 1200);
-
         try {
             const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
                 headers: { 'Authorization': `Bearer ${accessToken}` },
@@ -391,7 +368,6 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
             return { file, res: { body: '' } };
         }
     };
-
     // SLIDING WINDOW POOL
     const results = [];
     const pool = new Set();
@@ -406,7 +382,6 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         results.push(promise);
         pool.add(promise);
     }
-
     const finalResults = await Promise.all(results);
     console.timeEnd(`fetchFiles_${filename}_Total`);
     return finalResults;
@@ -449,6 +424,7 @@ async function getMultinotesDataFolderID() {
             showToast(_('errorSessionExpired'));
             if (typeof handleLogout === 'function') handleLogout();
         }
+
         return null;
     }
 }
@@ -461,15 +437,6 @@ function gisLoaded() {
     // Ако вече има токен
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
-    // Проверяваме дали login страницата е видима (т.е. сме в режим на "първо стартиране" или изход)
-    // Ако login страницата е СКРИТА (hidden=true), значи приложението работи и не трябва да инициализираме наново.
-    // Ако login страницата е ВИДИМА (hidden=false), трябва да инициализираме tokenClient, за да работят бутоните.
-    // const isAppRunning = document.getElementById('login-page').hidden;
-    // if ((sessionToken || localToken) && isAppRunning) {
-    //    console.log('User already authenticated and app running, skipping gisLoaded initialization');
-    //    return;
-    // }
-    // ПРЕМАХНАТО: Винаги инициализираме tokenClient, за да сме сигурни, че е наличен при нужда (напр. за trial бутона).
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
@@ -514,26 +481,12 @@ function gisLoaded() {
     // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
     loginBox.style.visibility = 'visible';
     document.getElementById('authorize_button').disabled = false;
-    /*if (guide) {
-        const startAssistantGuide = () => {
-            if (window.kbAssistant && window.kbAssistant.isInitialized) {
-                const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant');
-                if (entry && entry.guide) {
-                    window.kbAssistant.showGuide(entry.guide);
-                }
-            } else {
-                setTimeout(startAssistantGuide, 100);
-            }
-        };
-        startAssistantGuide();
-    }*/ // Интро
 }
 
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
 document.addEventListener('DOMContentLoaded', async () => {
     // Load translations immediately to ensure they're available
     await loadTranslations(currentLang);
-
     const rememberMeCheckbox = document.getElementById('rememberMe');
     if (rememberMeCheckbox) {
         rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
@@ -548,7 +501,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // Добави този код в началото или края на main.js
-// Динамично зареждане на Google Identity Services скрипта
 // Динамично зареждане на Google Identity Services скрипта с retry логика
 function loadGoogleIdentityServices(retries = 3) {
     // Check if script already exists to avoid duplicates
@@ -575,6 +527,7 @@ function loadGoogleIdentityServices(retries = 3) {
 // Стартирай зареждането
 loadGoogleIdentityServices();
 
+// ---------- Calendar ----------------------------
 function renderCalendarView() {
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
@@ -1079,8 +1032,6 @@ function renderWeeklyCalendarView(dateForWeek) {
                     const wrapper = document.createElement('div');
                     wrapper.className = 'mini-note-wrapper';
                     wrapper.appendChild(clone);
-                    // --- КОРЕКЦИЯ: Променяме начина на отваряне на бележката ---
-                    // Вместо да симулираме клик върху оригиналния елемент,
                     // директно извикваме showModal с данните на бележката,
                     // точно както го прави месечният календар.
                     clone.addEventListener('click', (e) => {
@@ -1155,7 +1106,6 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
             noteGdid = extraInfo.gdid;
         }
     }
-
     if (!noteGdid) return;
     // --- BOARD ID retrieval ---
     let boardIdOfDeletedNote = noteEl.dataset ? noteEl.dataset.b : null;
@@ -1232,8 +1182,6 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                     realNoteEl.remove();
                 }
             }
-
-
             if (typeof renderWeeklyCalendarView === 'function') {
                 // Check if weekly view is active?
                 // Usually checking if the container is visible or header state?
@@ -1286,9 +1234,9 @@ async function createColoredNoteBackground(color, src, width, height) {
             resolve(canvas);
         };
     });
-
 }
 
+// ------------------------ Database ----------------------------
 /**
  * Отваря IndexedDB базата данни.
  * @returns {Promise<IDBDatabase>}
@@ -1551,11 +1499,6 @@ async function deleteFromDB(storeName, key) {
 async function startApp() {
     // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
     document.body.style.display = 'block';
-    /*if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-            .then(reg => console.log('SW registered', reg))
-            .catch(err => console.log('SW registration failed', err));
-    }*/
     console.log('First start:', Date.now());
     ts = await getFirstStartEncoded();
     console.log('First start in cache:', ts);
@@ -1610,10 +1553,8 @@ async function startApp() {
         return;
     }
     authToken = authResult.tokenData;
-
     // --- WHITELIST CHECK (Once per session) ---
     checkWhitelist();
-
     // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
     updateGlobalStateFlags();
     await createBoardsUI([], false);
@@ -1621,6 +1562,10 @@ async function startApp() {
     // Проверката за потребител и основната логика се извикват директно.
     // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
     // само ако е необходимо.
+    // --- Инициализация на KB Assistant след успешно логване ---
+    if (window.kbAssistant && typeof window.kbAssistant.init === 'function') {
+        window.kbAssistant.init();
+    }
     // Инициализация на draggable бутони
     const initDraggableButtons = () => {
         // ScrollTop Button
@@ -1684,10 +1629,8 @@ function _(key) {
     // If translations aren't loaded yet, try to load them synchronously
     if (!appTranslations[currentLang]) {
         try {
-            const isUniContext = window.location.pathname.includes('/uni/');
-            const pathPrefix = isUniContext ? '' : 'uni/';
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', `${pathPrefix}i18n-${currentLang}.txt`, false); // false = synchronous
+            xhr.open('GET', `i18n-${currentLang}.txt`, false); // false = synchronous
             xhr.send();
             if (xhr.status === 200) {
                 const data = new Function('return {' + xhr.responseText + '}')();
@@ -1700,6 +1643,7 @@ function _(key) {
     }
     return appTranslations[currentLang][key] || key;
 }
+
 function hideToast() {
     const toast = document.getElementById('toastNotification');
     if (toast.classList.contains('show')) {
@@ -1722,6 +1666,7 @@ function showToast(message, duration = 10000) {
     toast.classList.add('show');
     toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
 }
+
 function showMessagePopup(message, showInput = false) {
     folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
     folderIdInput = document.getElementById('folderIdInput');
@@ -1744,6 +1689,7 @@ function hideFolderIdPrompt() {
         folderIdPromptPopup.classList.remove('show');
     }
 }
+
 function handleSubmitFolderId() {
     // If input is not visible, just close the popup
     if (folderIdInput.style.display === 'none') {
@@ -1768,7 +1714,6 @@ function showConfirmation(message, options = {}) {
             noButton.style.marginLeft = '10px';
             okButton.parentNode.appendChild(noButton);
         }
-        // --- CUSTOM STYLING ---
         // Save original inline styles to restore later
         const originalStyles = {
             backgroundColor: popupContent.style.backgroundColor,
@@ -1946,7 +1891,6 @@ function initApp() {
             }
         }
     });
-
     notesContainer.addEventListener('mouseout', (e) => {
         if (e.target.classList.contains('note-title-truncated')) {
             clearTimeout(titleTimeout);
@@ -1984,7 +1928,6 @@ function initApp() {
         loaderContainer.style.display = 'none';
         document.getElementById('settings-modal').classList.add('visible');
     });
-
     // Инициализираме KB Assistant
     if (window.kbAssistant && !window.kbAssistant.isInitialized) {
         window.kbAssistant.init();
@@ -2020,6 +1963,7 @@ function initApp() {
                 console.warn('KB Assistant not initialized');
             }
         });
+
     }
     reloadButton.addEventListener('click', () => mainLogic());
     settingsButton.addEventListener('click', () => {
@@ -2400,8 +2344,6 @@ function initApp() {
         }
     });
 
-    /**
-     */
     async function triggerSync() {
         loaderContainer.style.display = 'block'; // Показваме статус панела
         const dbSource = await getConfig('dbSource');
@@ -2528,24 +2470,6 @@ function initApp() {
 function updateSearchPlaceholder() {
     const searchInput = document.getElementById('search-box');
     if (!searchInput) return;
-    // Префиксът с името на борда е премахнат, тъй като търсенето е във всички бележки
-    // Simplified placeholder: always "Въведете текст..." (Type text...)
-    // Assuming 'searchPlaceholder' might be "Search" or "Type text" depending on translation
-    // But user explicitly asked for "Въведете текст".
-    // Let's use the translation key but ensure it matches the request or hardcode if needed.
-    // If _('searchPlaceholder') is generic, we might need a specific key or string.
-    // User request: "Въведете текст"
-    // I will set it to use a translation key if available, otherwise fallback.
-    // Given the context, I'll modify the logic to be simpler.
-    searchInput.placeholder = `${_('searchPlaceholder')}...`;
-    // If 'searchPlaceholder' is "Search", this becomes "Search...".
-    // If user specifically wants "Type text", I should check if there is a 'typeText' key or similar.
-    // Since I don't see the translation file, I will assume the previous 'searchPlaceholder' was "Търсене".
-    // The user wants "Въведете текст".
-    // Let's just hardcode the behavior to match the translation function structure:
-    // Ideally we update the dictionary, but here we can just set the placeholder.
-    // Wait, the user speaks Bulgarian ("Въведете текст"). 
-    // I should probably check if I can just change the string here.
     searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
 }
 
@@ -2565,11 +2489,11 @@ function saveSearchTerm(term) {
     }
     localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
 }
+
 function renderSavedSearchesPopup() {
     const popup = document.getElementById('saved-searches-popup');
     popup.style.display = 'block';
     popup.innerHTML = ''; // Clear everything
-
     // --- Close Button ---
     const closeBtn = document.createElement('div');
     closeBtn.className = 'saved-search-close-btn';
@@ -2580,9 +2504,6 @@ function renderSavedSearchesPopup() {
         popup.style.display = 'none';
     });
     popup.appendChild(closeBtn);
-
-    // Add corner dots for styling
-    // popup.insertAdjacentHTML('beforeend', `<div class="corner-dot top-left"></div><div class="corner-dot top-right"></div><div class="corner-dot bottom-left"></div><div class="corner-dot bottom-right"></div>`);
     // Create a dedicated container for the scrollable items
     const contentContainer = document.createElement('div');
     contentContainer.className = 'saved-searches-content';
@@ -2718,9 +2639,9 @@ function initLoginPage() {
                 localStorage.setItem('urlToken', trialToken);
                 sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
             }
-            // 3. Симулираме клик върху бутона за вход с Google
-            console.log("Clicking authorize button...");
-            document.getElementById('authorize_button').click();
+            // 3. Директно извикваме функцията за авторизация (вместо клик върху скрития бутон)
+            console.log("Starting Google authorization...");
+            handleAuthClick();
         });
     }
     // Запазваме състоянието на "Запомни ме" при промяна
@@ -2927,6 +2848,7 @@ function checkWhitelist() {
                     .catch(err => console.log('Whitelist check delayed fail:', err));
             }
         }, 2000);
+
     }
 }
 
@@ -2942,13 +2864,11 @@ async function checkAuth() {
         document.getElementById("trialBtn").addEventListener("click", () => {
             window.location.href = TRIAL_URL;
         });
-
         // Запазваме състоянието на "Запомни ме" при промяна
         const rememberMeCheckbox = document.getElementById('rememberMe');
         rememberMeCheckbox.addEventListener('change', () => {
             localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
         });
-
         document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
         // Показваме login страницата
         document.getElementById('login-page').hidden = false;
@@ -2970,7 +2890,6 @@ async function checkAuth() {
         console.log("Token expired. Refresh failed. Showing login page.");
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token');
-
         // Показваме login страницата вместо безкраен reload
         initLoginPage();
         alert(_('sessionExpired'));
@@ -3074,14 +2993,12 @@ async function checkAuth() {
                 window.location.reload();
             }
         };
-
         const startPress = (e) => {
             isLongPress = false;
             longPressTimer = setTimeout(() => {
                 isLongPress = true;
                 handleTokenRefresh();
             }, 500);
-
             if (e.type === 'touchstart') {
                 e.preventDefault();
             }
@@ -3089,7 +3006,6 @@ async function checkAuth() {
         const endPress = () => {
             clearTimeout(longPressTimer);
         };
-
         logoImg.addEventListener('mousedown', startPress);
         logoImg.addEventListener('mouseup', endPress);
         logoImg.addEventListener('mouseleave', endPress);
@@ -3099,7 +3015,6 @@ async function checkAuth() {
             if (isLongPress) return;
             if (e.ctrlKey) handleTokenRefresh();
         });
-
         document.body.appendChild(logoImg);
         const errorElement = document.createElement('h1');
         errorElement.innerHTML = _('invalidCertificate');
@@ -3112,6 +3027,7 @@ async function checkAuth() {
     }
     return { tokenData, pass }; // Връщаме обект с данните и резултата от проверката
 }
+
 /*/ --- 🔐 Вградена декрипция ---
 // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
 const url = new URL(window.location.href);
@@ -3230,6 +3146,7 @@ if (!pass) {
     errorElement.style.marginTop = '50px';
     document.body.appendChild(errorElement);
 }*/
+
 function loadScript(src) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -3252,19 +3169,18 @@ async function loadGoogleApis() {
         throw new Error(_('errorGoogleLibs'));
     }
 }
+
 function handleSignoutClick() {
     // Премахваме само ключовете, свързани с удостоверяването
     localStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_email_hint');
-
     // Премахваме кешираните ID-та на папки, за да не се ползват от друг потребител
     localStorage.removeItem('gdrive_multinotes_data_id');
     localStorage.removeItem('gdrive_folder_id_Other');
     localStorage.removeItem('gdrive_folder_id_Sound');
     localStorage.removeItem('gdrive_folder_id_Video');
     localStorage.removeItem('gdrive_folder_id_Images');
-
     // Премахваме google_login_hint САМО ако "Запомни ме" НЕ е активно
     const rememberMe = localStorage.getItem('rememberMe') === 'true';
     if (!rememberMe) {
@@ -3280,8 +3196,6 @@ function handleSignoutClick() {
 // IV. ЧЕТЕНЕ НА ДАННИ ОТ GOOGLE DRIVE
 // =================================================================================
 // --- GDrive Data Loading logic moved to load.js ---
-
-
 /**
  * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
  * Ако има несъответствие, превключва приложението в ограничен режим.
@@ -3413,11 +3327,9 @@ async function createDatabaseFromMemory() {
             }
             return item;
         });
-
         const preparedBoards = ensureGdid(boardsData);
         const preparedMedia = ensureGdid(mediaData);
         const preparedNotes = ensureGdid(allNotesData);
-
         await bulkPutDB(BOARD_STORE_NAME, preparedBoards);
         await bulkPutDB(MEDIA_STORE_NAME, preparedMedia);
         await bulkPutDB(NOTE_STORE_NAME, preparedNotes);
@@ -3438,12 +3350,10 @@ async function createDatabaseFromMemory() {
             await saveConfig('lastLocalTimestamp', now);
         }
         await saveConfig('dbSource', dbSource);
-
         // --- IMMEDIATELY UPDATE GLOBALS FOR CURRENT SESSION ---
         dbSourceGlobal = dbSource;
         dbNoteIdTypeGlobal = noteIdType;
         console.log(`[createDatabaseFromMemory] Session globals updated: Source=${dbSourceGlobal}, IdType=${dbNoteIdTypeGlobal}`);
-
         dbExists = true; // Маркираме, че базата вече съществува
         return true;
     } catch (error) {
@@ -3573,10 +3483,8 @@ function validateDataSourceSelection() {
  */
 function reportDataIntegrityIssues() {
     if (dataIntegrityIssues.length === 0) return;
-
     const duplicates = dataIntegrityIssues.filter(i => i.type === 'duplicate');
     const missing = dataIntegrityIssues.filter(i => i.type === 'missing');
-
     console.group('%c Data Integrity Report ', 'background: #f44336; color: white; font-weight: bold;');
     if (duplicates.length > 0) {
         console.warn(`Found ${duplicates.length} duplicate IDs. IndexedDB will only keep the LAST version of each.`);
@@ -3694,12 +3602,9 @@ async function mainLogic() {
             // Това е важно за режим "само база данни".
             const dbSource = await getConfig('dbSource');
             const dbNoteIdType = await getConfig('dbNoteIdType');
-
             dbSourceGlobal = dbSource;
             dbNoteIdTypeGlobal = dbNoteIdType;
-
             console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
-
             if (dbNoteIdType) { // Проверяваме само ако типът е записан
                 // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
                 const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
@@ -3931,9 +3836,9 @@ async function mainLogic() {
         document.querySelector('#search-wrapper').style.display = 'flex';
         notesContainer.style.visibility = 'visible';
     }
-
     // if (guide) showStep(1); // Първи стъпки
 }
+
 /**
  * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
  * Аналогична на fetchAllData, но за локален източник.
@@ -3961,14 +3866,12 @@ async function fetchAllDataFromLocalFolder() {
                 const isBoard = lowerName.includes('board');
                 const isMedia = lowerName.includes('media');
                 const isNote = lowerName.includes('note');
-
                 if (isBoard || isMedia || isNote) {
                     entries.push({ entry, lowerName, isBoard, isMedia, isNote });
                 }
             }
         }
         console.log(`[Local Folder] Found ${entries.length} valid .txt files for processing.`);
-
         const CHUNK_SIZE = 80; // Balanced parallelism
         for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
             const chunk = entries.slice(i, i + CHUNK_SIZE);
@@ -3979,7 +3882,6 @@ async function fetchAllDataFromLocalFolder() {
                     const file = await item.entry.getFile();
                     const content = await file.text();
                     const fileObject = JSON.parse(content);
-
                     if (!fileObject.gdid) {
                         const error = `[Missing ID] File '${item.entry.name}' is missing 'gdid' property.`;
                         console.warn(error);
@@ -3993,7 +3895,6 @@ async function fetchAllDataFromLocalFolder() {
                             gdidMap.set(fileObject.gdid, item.entry.name);
                         }
                     }
-
                     if (item.isBoard) {
                         localBoards.push(fileObject);
                     } else if (item.isMedia) {
@@ -4027,11 +3928,9 @@ async function fetchAllDataFromLocalFolder() {
     boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
     mediaData = localMedia.flat();
     allNotesData = localNotes;
-
     const endTime = performance.now();
     console.log(`--- Local Folder fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
     console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
-
     return { boardParseError };
 }
 
@@ -4047,11 +3946,9 @@ async function fetchAllDataLocal() {
     mediaData = await getAllFromDB(MEDIA_STORE_NAME);
     const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
     allNotesData = notesFromDB;
-
     // --- REFRESH GLOBAL FLAGS FROM DB CONFIG ---
     dbSourceGlobal = await getConfig('dbSource');
     dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
-
     console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
     console.log(`[fetchAllDataLocal] dbSourceGlobal: ${dbSourceGlobal}, dbNoteIdTypeGlobal: ${dbNoteIdTypeGlobal}`);
 }
@@ -4231,20 +4128,17 @@ async function processDirectoryContent(minModificationDate) {
             const isBoard = lowerName.includes('board');
             const isMedia = lowerName.includes('media');
             const isNote = lowerName.includes('note');
-
             if (isBoard || isMedia || isNote) {
                 entries.push({ entry, lowerName, isBoard, isMedia, isNote });
             }
         }
     }
     console.log(`[Local Sync] Found ${entries.length} valid .txt files for sync check.`);
-
     const CHUNK_SIZE = 80;
     const gdidMap = new Map(); // Track duplicates during sync
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         const chunk = entries.slice(i, i + CHUNK_SIZE);
         loaderText.textContent = _('checkedFilesCount').replace('{count}', Math.min(i + CHUNK_SIZE, entries.length));
-
         await Promise.all(chunk.map(async (item) => {
             try {
                 const file = await item.entry.getFile();
@@ -4260,7 +4154,6 @@ async function processDirectoryContent(minModificationDate) {
                         } else {
                             gdidMap.set(fileObject.gdid, item.entry.name);
                         }
-
                         if (item.isBoard) {
                             stores[BOARD_STORE_NAME].push(fileObject);
                         } else if (item.isMedia) {
@@ -4288,7 +4181,6 @@ async function processDirectoryContent(minModificationDate) {
     const endTime = performance.now();
     console.log(`--- Local Folder sync sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
     console.log(`[Summary] Updated items: ${updatedCount} (Boards: ${stores[BOARD_STORE_NAME].length}, Media: ${stores[MEDIA_STORE_NAME].length}, Notes: ${stores[NOTE_STORE_NAME].length})`);
-
     return updatedCount;
 }
 
@@ -4349,29 +4241,24 @@ async function showLocalPreview(folderName, fileName, mode) {
  */
 async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
     if (!noteElement) return;
-
     // Support legacy calls with single string fileId instead of attachments array
     if (typeof attachments === 'string') {
         const fileId = attachments;
         attachments = [{ path: fileId, pathGD: fileId, type: isVideo ? 4 : 1 }];
         startIndex = 0;
     }
-
     // Remove if already exists to replace it
     const existingOverlay = noteElement.querySelector('.image-preview-overlay');
     if (existingOverlay) existingOverlay.remove();
-
     let currentIndex = startIndex;
     // 1. Create overlay immediately
     const overlay = document.createElement('div');
     overlay.className = 'image-preview-overlay';
-
     // Ensure parent has position: relative or higher to contain the absolute overlay
     const parentPos = getComputedStyle(noteElement).position;
     if (parentPos === 'static') {
         noteElement.style.position = 'relative';
     }
-
     Object.assign(overlay.style, {
         position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
         backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -4446,14 +4333,12 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
         spinner.className = 'loader';
         Object.assign(spinner.style, { width: '40px', height: '40px', border: '4px solid #f3f3f3', borderTop: '4px solid #3498db', borderRadius: '50%', animation: 'spin 1s linear infinite' });
         mediaContainer.appendChild(spinner);
-
         const attachment = attachments[index];
         const isActuallyVideo = attachment.type === 4 || isVideo;
         const isActuallySound = attachment.type === 2;
         const folderName = isActuallyVideo ? 'Video' : (isActuallySound ? 'Sound' : 'Images');
         const fileIdOrPath = sourceMode === 'gdrive' ? attachment.pathGD : attachment.path;
         let mediaUrl;
-
         try {
             if (sourceMode === 'gdrive') {
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
@@ -4468,7 +4353,6 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                         isTokenExpired = false;
                     }
                 }
-
                 if (!authToken || isTokenExpired) {
                     console.log("Token expired or missing in preview, refreshing...");
                     const newToken = await checkAuth(); // checkAuth handles the actual refresh logic
@@ -4478,10 +4362,8 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                         if (gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
                     }
                 }
-
                 const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : gapi.auth.getToken();
                 if (!tokenObj) throw new Error(_('errorTokenMissing'));
-
                 if (isActuallyVideo || isActuallySound) {
                     try {
                         const mediaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
@@ -4542,7 +4424,6 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
             }
             // Remove spinner
             if (spinner.parentNode) spinner.remove();
-
             let mediaElement;
             if (isActuallyVideo) {
                 mediaElement = document.createElement('video');
@@ -4563,7 +4444,6 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
             } else {
                 mediaElement = document.createElement('img');
             }
-
             mediaElement.src = mediaUrl;
             if (mediaElement.load) mediaElement.load(); // Explicitly load for better media handling
             Object.assign(mediaElement.style, {
@@ -4578,7 +4458,6 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 margin: 'auto'
             });
             mediaContainer.appendChild(mediaElement);
-
         } catch (e) {
             console.log("Preview failed:", e);
             if (spinner.parentNode) spinner.remove();
@@ -4600,7 +4479,6 @@ function addInNotePreviewListener(element, attachments, indexOrSource, sourceMod
         e.stopPropagation();
         e.preventDefault();
         const noteElement = e.currentTarget.closest('.note') || e.currentTarget.closest('#modal-body') || document.getElementById('modal-body');
-
         // Handle both signatures:
         // 1. (element, attachmentsArray, startIndex, sourceMode, isVideo)
         // 2. (element, fileIdString, sourceMode, isVideo)
@@ -4611,6 +4489,7 @@ function addInNotePreviewListener(element, attachments, indexOrSource, sourceMod
             showInNotePreview(noteElement, attachments, indexOrSource, sourceMode, isVideo);
         }
     });
+
 }
 
 // =================================================================================
@@ -4628,7 +4507,6 @@ function makeElementDraggable(element, storageKey) {
         element.style.right = '10px';
         element.style.left = 'auto';
         element.style.top = ''; // Clear top to fallback to bottom
-
         if (element.id === 'kb-fab') {
             element.style.bottom = '10px';
         } else if (element.id === 'scrollTopBtn') {
@@ -4643,11 +4521,9 @@ function makeElementDraggable(element, storageKey) {
             element.style.bottom = '20px';
         }
     };
-
     // Restore position
     const savedPos = localStorage.getItem(storageKey);
     let positionRestored = false;
-
     if (savedPos) {
         try {
             const pos = JSON.parse(savedPos);
@@ -4658,16 +4534,13 @@ function makeElementDraggable(element, storageKey) {
                 // Use fallback dimensions if element is hidden (offset is 0)
                 const elHeight = element.offsetHeight || 60;
                 const elWidth = element.offsetWidth || 60;
-
                 let topVal = parseInt(pos.top, 10);
                 let rightVal = parseInt(pos.right, 10);
-
                 // Define "off-screen" tolerance
                 // If top is negative or way below viewport
                 // If right is negative or way to the left (right > viewportWidth)
                 const isVerticalOut = (topVal < 0) || (topVal > viewportHeight - 20); // At least 20px visible
                 const isHorizontalOut = (rightVal < 0) || (rightVal > viewportWidth - 20);
-
                 if (isVerticalOut || isHorizontalOut) {
                     console.log(`Element ${element.id} position reset (was off-screen):`, pos);
                     setDefaultPosition();
@@ -4675,7 +4548,6 @@ function makeElementDraggable(element, storageKey) {
                     // Clamp values to be within the viewport
                     topVal = Math.max(0, Math.min(topVal, viewportHeight - elHeight));
                     rightVal = Math.max(0, Math.min(rightVal, viewportWidth - elWidth));
-
                     element.style.top = `${topVal}px`;
                     element.style.right = `${rightVal}px`;
                     element.style.bottom = 'auto';
@@ -4687,7 +4559,6 @@ function makeElementDraggable(element, storageKey) {
             console.log("Error restoring position:", e);
         }
     }
-
     if (!positionRestored) {
         setDefaultPosition();
     }
@@ -4901,20 +4772,17 @@ function showModal(options, noteElement = null) {
         }
     }
     // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
-    // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
     // --- ДОБАВЕНА ЛОГИКА ЗА ФУТЪР В МОДАЛА ---
     // Първо премахваме стария футър, ако има такъв
     const oldFooter = modalContentBox.querySelector('.modal-note-footer');
     if (oldFooter) {
         oldFooter.remove();
     }
-
     // Ако не е подаден noteElement (напр. от календара), опитваме се да го намерим в DOM-а
     if (!noteElement && (options.gdid || noteGdid)) {
         const gdidToFind = options.gdid || noteGdid;
         noteElement = document.querySelector(`.note[data-g="${gdidToFind}"]`);
     }
-
     if (noteElement) {
         const noteHeaderInfo = noteElement.querySelector('.note-header-info');
         // Показваме футъра само ако има информация в хедъра на бележката
@@ -4926,7 +4794,6 @@ function showModal(options, noteElement = null) {
             modalContentBox.appendChild(footer); // Закачаме го за content box-a, не за body-то
         }
     }
-
 
     copyBtn.innerHTML = copyIconSvg;
     // --- Логика за навигация между бележките ---
@@ -4953,8 +4820,6 @@ function showModal(options, noteElement = null) {
                     },
                     remove: () => { } // No-op
                 };
-
-
                 await handleNoteDelete(mockEl, e, true);
             }
         });
@@ -4986,6 +4851,7 @@ function showModal(options, noteElement = null) {
         if (boardNameEl) boardNameEl.style.left = '15px';
     }
 }
+
 function showAllBoardsModal() {
     const modalContent = document.createElement('div');
     const boardsModal = document.getElementById('boards-menu-modal');
@@ -5057,6 +4923,7 @@ function formatDate(dateString) {
         return `${day}.${month}.${year}`;
     } catch (e) { return dateString; }
 }
+
 function formatDateTime(timestamp) {
     if (!timestamp) return '';
     try {
@@ -5243,27 +5110,6 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         currentBackground = newBackground;
     }
     updateSearchPlaceholder();
-    /*if (boardId === 'all') {
-        scrollTopBtn.innerHTML = arrowSvg;
-    } else if (boardId === 'reminder') {
-        scrollTopBtn.innerHTML = `${_('reminder')} ${arrowSvg}`;
-    } else if (boardId === 'new-updates') {
-        scrollTopBtn.innerHTML = `${_('newUpdates')} ${arrowSvg}`;
-    } else if (boardId === 'with-photos') {
-        scrollTopBtn.innerHTML = `${_('photosBoardTitle') || "With Photos"} ${arrowSvg}`;
-    } else if (boardId === 'with-videos') {
-        scrollTopBtn.innerHTML = `${_('videosBoardTitle') || "With Video"} ${arrowSvg}`;
-    } else if (boardId === 'with-sounds') {
-        scrollTopBtn.innerHTML = `${_('soundsBoardTitle') || "With Sounds"} ${arrowSvg}`;
-    } else if (boardId === 'with-other') {
-        scrollTopBtn.innerHTML = `${_('otherBoardTitle') || "Other Attachments"} ${arrowSvg}`;
-    } else {
-        // Търсим по gdid, за да вземем заглавието
-        const board = boardsData.find(b => b.gdid === boardId);
-        if (board) {
-            scrollTopBtn.innerHTML = board.title + " " + arrowSvg;
-        }
-    }*/
     window.dispatchEvent(new Event('scroll'));
     // --- КОРЕКЦИЯ: Възстановяване на UI след затваряне на календара ---
     // Тъй като renderCalendarView скрива хедъра и контейнера с бележки,
@@ -5282,17 +5128,6 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     notesContainer.classList.remove('calendar-view');
 }
 
-/**
- * Сортира и пренарежда видимите бележки в DOM.
- * @param {Array<Object>} visibleNotes - Масив от обекти, съдържащи {element, numord}.
- */
-/*function sortAndReorderNotes(visibleNotes) {
-    // Тази функция вече е празна, логиката е преместена в applyFilters
-}*/
-
-/*function applySearchFilter() {
-    applyFilters();
-}*/
 function applyFilters() {
     const searchTerm = searchBox.value.toLowerCase();
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
@@ -5423,8 +5258,6 @@ function applyFilters() {
 }
 
 // --- GDrive Fetch & ID logic moved to load.js ---
-
-
 /**
  * Initializes the loading process by resetting state and showing the loader.
  */
@@ -5468,6 +5301,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     }
     contentWrapper.appendChild(contentEl);
     boardsNote.appendChild(contentWrapper);
+
     /**
      * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
      * @param {HTMLElement} element The element to attach events to.
@@ -5733,10 +5567,6 @@ async function createBoardsUI(boardsData, boardParseError) {
     const boardsMenuContainer = document.getElementById('boards-menu-container');
     if (boardsMenuContainer) {
         // Клонираме бутона, за да го имаме и на двете места, или го местим.
-        // В случая, потребителят иска "да се добави също", което предполага копие или референция.
-        // Тъй като DOM елемент може да е само на едно място, ще го клонираме.
-        // Но трябва да закачим и event listener-ите наново.
-        // По-добрият вариант е да създадем нов бутон за контейнера.
         const allBoardsBtnForContainer = document.createElement('button');
         allBoardsBtnForContainer.className = 'popup-menu-btn-floating'; // Използваме floating стил, за да стои над страницата
         allBoardsBtnForContainer.innerHTML = boardIconSvg;
@@ -5766,8 +5596,6 @@ async function createBoardsUI(boardsData, boardParseError) {
     }
     scrollWrapper.appendChild(contentEl);
     contentWrapper.appendChild(scrollWrapper);
-    // Лявата стрелка вече е винаги видима чрез CSS или директно добавяне на клас.
-    // Няма нужда от динамична проверка при скрол.
     allBoardsBtn.classList.add('visible');
     return boardsNote;
 }
@@ -5837,7 +5665,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             updateZoom(zoomValue);
             localStorage.setItem('zoomLevel', zoomValue);
             showToast(_('settingSaved'), 2000);
-
             // Keep transparency for 5 seconds
             if (typeof startOpacityChange === 'function') {
                 startOpacityChange();
@@ -6466,6 +6293,7 @@ function escapeHtml(text) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+
 /**
  * Processes note content to handle links, code blocks, and newlines.
  * @param {string} text - The raw text content of the note.
@@ -6484,7 +6312,7 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
     // 2. Escape the rest of the text to prevent HTML injection
     const escapedText = escapeHtml(textWithoutCode);
     // 3. Decide whether to create links based on the setting and context (modal/card)
-    const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false'; // true by default
+    const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true'; // false by default
     let html;
     if (isForModal || oneTapLinksEnabled) {
         // В модала или ако е включено - показваме линковете
@@ -6524,12 +6352,7 @@ function renderNoteContent(text) {
 
     return html;
 }
-/**
- * Форматира текстов низ възоснова на JSON параметри.
- * @param {string} text - Текстовият низ за форматиране.
- * @param {string} formatString - Форматиращият низ, разделен с '\n'.
- * @returns {string} Форматираният HTML низ.
- */
+
 /**
  * Форматира текстов низ възоснова на JSON параметри.
  * @param {string} text - Текстовият низ за форматиране.
@@ -6791,27 +6614,22 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
             e.preventDefault();
             e.stopPropagation();
             // Authentication is handled inside showInNotePreview -> loadMedia, or locally for other files
-
             // --- IMPROVED ATTACHMENT OPENING (Avoid Account Prompt) ---
             if (fileId) {
                 // For media (Images, Sound, Video), use internal authenticated viewer
                 if (attachment.type === 1 || attachment.type === 2 || attachment.type === 4) {
                     let targetEl = linkElement.closest('.note') || document.getElementById('modal-body') || document.body;
-
                     const noteGdid = attachment.noteid || (isForModal && typeof isForModal === 'object' ? isForModal.gdid : null);
                     if (!noteGdid) {
                         // Fallback: just preview this single one if we can't find others
                         showInNotePreview(targetEl, [{ pathGD: fileId, type: attachment.type }], 0, 'gdrive', attachment.type === 4);
                         return;
                     }
-
                     const attachmentsOfType = mediaData.filter(m => m.noteid === noteGdid && m.type === attachment.type);
                     const currentIndex = attachmentsOfType.findIndex(m => (m.pathGD || m.path) === fileId);
-
                     showInNotePreview(targetEl, attachmentsOfType, currentIndex !== -1 ? currentIndex : 0, 'gdrive', attachment.type === 4);
                     return;
                 }
-
                 // For other files, try fetching with token and opening the blob to skip Google Auth prompt
                 showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
                 try {
@@ -7143,7 +6961,7 @@ async function createNoteElement(noteContent) {
             note.dataset.ho = '1';
         }
         // Проверка дали да показваме иконите за прикачени файлове в затворената бележка
-        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true';
         const shouldShowAttachments = isForModal || oneTapLinksEnabled;
         if (shouldShowAttachments) {
             const separator = document.createElement('hr');
@@ -7387,23 +7205,18 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         return; // КЛЮЧОВА СТЪПКА: Прекратяваме функцията тук
     }
     // --- Оттук надолу е логиката за ПЪЛНО презареждане ---
-
     // 1. Show spinner immediately
     if (!rerenderOnlyMenu && loaderContainer) {
         loaderContainer.style.display = 'block';
         if (loaderText) loaderText.textContent = _('loadingFile');
     }
-
     // Method 1: Clear immediately to save memory
     if (!rerenderOnlyMenu) {
         notesContainer.innerHTML = '';
     }
-
     // 2. Use setTimeout to allow browser to render the spinner
     await new Promise(resolve => setTimeout(resolve, 50));
-
     const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
-
     // Create fragment and populate it with new elements
     const fragment = document.createDocumentFragment();
     let notesCount = 0;
@@ -7413,12 +7226,10 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             notesCount++;
         }
     });
-
     // Update container
     if (!rerenderOnlyMenu) {
         notesContainer.appendChild(fragment);
     }
-
     // Hide spinner
     if (!rerenderOnlyMenu && loaderContainer) {
         loaderContainer.style.display = 'none';
@@ -7448,7 +7259,6 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 filterNotesByBoard(currentBoardFilter, true);
             }
         }, 300);
-
         // Start Assistant Guide if needed
         if (guide) {
             const startAssistantGuide = () => {
@@ -7496,7 +7306,6 @@ async function readArh(dirHandle) {
     let success = true;
     // Map usage removed here, now using local maps in validateFileData
     // const gdidMap = new Map();
-
     const validateFileData = (data, fileName) => {
         const fileMap = new Map();
         if (Array.isArray(data)) {
@@ -7518,7 +7327,6 @@ async function readArh(dirHandle) {
             });
         }
     };
-
     try {
         // 1. Четене на boards.bcp
         const boardsFileHandle = await dirHandle.getFileHandle('boards.bcp');
@@ -7527,7 +7335,6 @@ async function readArh(dirHandle) {
         boardsData = JSON.parse(boardsContent);
         validateFileData(boardsData, 'boards.bcp');
         console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
-
         // 2. Четене на notes.bcp
         const notesFileHandle = await dirHandle.getFileHandle('notes.bcp');
         const notesFile = await notesFileHandle.getFile();
@@ -7536,7 +7343,6 @@ async function readArh(dirHandle) {
         allNotesData = notesArray;
         validateFileData(allNotesData, 'notes.bcp');
         console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
-
         // 3. Четене на medias.bcp (ако съществува)
         try {
             const mediaFileHandle = await dirHandle.getFileHandle('medias.bcp');
@@ -7566,7 +7372,6 @@ async function readArh(dirHandle) {
             showToast(_('errorReadingArchive'), 10000);
         }
     }
-
     const endTime = performance.now();
     if (success) {
         console.log(`--- Archive fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
@@ -7578,11 +7383,7 @@ async function readArh(dirHandle) {
 async function loadTranslations(lang) {
     if (appTranslations[lang]) return;
     try {
-        // Determine path based on current location to avoid 404s
-        const isUniContext = window.location.pathname.includes('/uni/');
-        const pathPrefix = isUniContext ? '' : 'uni/';
-
-        const response = await fetch(`${pathPrefix}i18n-${lang}.txt`);
+        const response = await fetch(`i18n-${lang}.txt`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const text = await response.text();
@@ -7605,7 +7406,6 @@ async function setLanguage(lang) {
         const key = element.getAttribute('data-key');
         element.innerHTML = _(key);
     });
-
     document.querySelectorAll('[data-key-placeholder]').forEach(element => {
         const key = element.getAttribute('data-key-placeholder');
         element.placeholder = _(key);
@@ -7614,7 +7414,6 @@ async function setLanguage(lang) {
         const key = element.getAttribute('data-key-title');
         element.title = _(key);
     });
-
     // Update active button
     const langBg = document.getElementById('lang-bg');
     const langEn = document.getElementById('lang-en');
@@ -7624,12 +7423,12 @@ async function setLanguage(lang) {
     if (typeof updateSignoutTooltip === 'function') {
         updateSignoutTooltip();
     }
-
     // Update KB Assistant Language
     if (window.kbAssistant) {
         window.kbAssistant.updateLanguage();
     }
 }
+
 // --- Service Worker Registration ---
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', async () => {
@@ -7643,11 +7442,9 @@ if ('serviceWorker' in navigator) {
                     await registration.unregister();
                 }
             }
-
             // Регистрираме версията с флаг, за да принудим браузъра да я презареди
-            const registration = await navigator.serviceWorker.register('sw.js?v=0.2.0');
+            const registration = await navigator.serviceWorker.register('sw.js');
             if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
-
             // Ако има чакащ нов SW, казваме му веднага да поеме контрола
             if (registration.waiting) {
                 registration.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -7656,6 +7453,7 @@ if ('serviceWorker' in navigator) {
             console.log('ServiceWorker registration failed: ', err);
         }
     });
+
 }
 /*
  * Iterates through all visible notes and opens the preview for the first image attachment.

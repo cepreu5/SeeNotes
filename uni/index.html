@@ -95,7 +95,9 @@
                 <button id="lang-en-box" class="lang-btn">EN</button>
             </div-->
             <p data-key="loginPrompt">Please sign in with Google account you used to sync <i>MultiNotes</i>.</p>
-            <button id="authorize_button" data-key="authorizeButton" disabled>Authorize with Google</button>
+            <button id="authorize_button" data-key="authorizeButton" style="display:none" disabled>Authorize with
+                Google</button>
+            <button id="trialBtn" data-key="trialButton" style="display:none">Start 30-day trial period</button>
             <div style="margin-top: 15px;">
                 <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">
                     Remember me</label>
@@ -107,17 +109,19 @@
                 const cache = await caches.open('app-cache');
                 const cachedResponse = await cache.match('s');
                 if (cachedResponse) {
-                    // Има запис 's' - показваме login box и скриваме trial бутон
+                    // Има запис 's' - показваме login box с authorize бутон
                     document.querySelector('.login-box').style.display = 'block';
+                    document.getElementById("authorize_button").style.display = 'inline-block';
                     document.getElementById("trialBtn").style.display = 'none';
                 } else {
-                    // Няма запис 's' - показваме trial бутон и скриваме login box
-                    document.querySelector('.login-box').style.display = 'none';
-                    document.getElementById("trialBtn").style.display = 'block';
+                    // Няма запис 's' (първо стартиране) - показваме login box с trial бутон
+                    document.querySelector('.login-box').style.display = 'block';
+                    document.getElementById("authorize_button").style.display = 'none';
+                    document.getElementById("trialBtn").style.display = 'inline-block';
                 }
             })();
         </script>
-        <button id="trialBtn" data-key="trialButton">Start 30-day trial period</button>
+
         <section style="max-width: 800px; margin: 0 auto;">
             <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което
                 може да
