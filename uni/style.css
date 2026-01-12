@@ -1955,6 +1955,11 @@ code {
 .settings-close-btn {
     background-color: #6c757d;
     /* A neutral grey color */
+    min-height: 44px;
+    /* Apple's recommended touch target size */
+    min-width: 180px;
+    touch-action: manipulation;
+    /* Prevent zooming on double-tap */
 }
 
 .settings-close-btn:hover {
