@@ -150,7 +150,7 @@ en: {
         calculateTooltip: 'Calculate expression',
         invalidExpression: 'Invalid mathematical expression.',
         errorClipboardRead: 'Could not read from clipboard.',
-        confirmNoteDelete: 'Are you sure you want to delete this note from the database? This will not delete it from the data source (e.g. Google Drive).',
+        confirmNoteDelete: 'Are you sure you want to delete this note from the database (from the browser cache)? This will not delete it from the data source (e.g. Google Drive).',
         noteDeletedSuccess: 'Note successfully deleted from the database.',
         noteDeletedError: 'Error deleting note from the database.',
         showWeeklyCalendar: 'Weekly calendar view:',

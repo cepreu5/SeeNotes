@@ -7,8 +7,8 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = '0.24'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const version = '0.25'; // App version
+const debug = true; // Глобален флаг за дебъг режим
 
 // const msm = true;
 let guide = true;
@@ -84,6 +84,8 @@ let useArhDb = false;
 let useIndexedDb = false;
 let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
 let dataIntegrityIssues = []; // Track missing/duplicate IDs during load
+let initialLoadTime = null; // Time taken for initial Google Drive load in seconds
+let initialLoadTimestamp = null; // Timestamp when the load finished
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -198,11 +200,15 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
         loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
     };
     console.time("fetchAllData_TotalLoad");
+    const tStart = Date.now();
     const [boardRes, mediaRes, noteRes] = await Promise.all([
         loadAndParseFile('board.txt', folderId, modifiedSince),
         loadAndParseFile('media.txt', folderId, modifiedSince),
         loadAndParseFile('note.txt', folderId, modifiedSince, onNoteProgress)
     ]);
+    const tEnd = Date.now();
+    initialLoadTime = ((tEnd - tStart) / 1000).toFixed(2);
+    initialLoadTimestamp = tEnd;
     console.timeEnd("fetchAllData_TotalLoad");
     boardsData = boardRes.data;
     mediaData = mediaRes.data;
@@ -212,7 +218,8 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     const checkIntegrity = (data, filename) => {
         data.forEach(item => {
             if (!item.gdid) {
-                dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive' });
+                const textContent = item.notetxt || item.text || '';
+                dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive', text: textContent });
             } else if (gdidMap.has(item.gdid)) {
                 dataIntegrityIssues.push({
                     type: 'duplicate',
@@ -315,6 +322,67 @@ async function runGoogleDriveSync() {
 }
 
 /**
+ * Refreshes the Google Auth Token silently if possible.
+ */
+// Singleton promise to prevent multiple concurrent refresh attempts
+let refreshPromise = null;
+
+async function refreshAuthToken() {
+    if (refreshPromise) return refreshPromise;
+
+    refreshPromise = new Promise((resolve, reject) => {
+        console.log("Refreshing auth token...");
+        try {
+            const client = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+                        const rememberMe = document.getElementById('rememberMe')?.checked;
+                        const storage = rememberMe ? localStorage : sessionStorage;
+                        storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+
+                        // Update gapi client
+                        if (window.gapi && window.gapi.client) {
+                            window.gapi.client.setToken(tokenResponse);
+                        }
+                        console.log("Token refreshed successfully.");
+                        resolve(tokenResponse.access_token);
+                    } else {
+                        reject(new Error("Failed to refresh token"));
+                    }
+                },
+                error_callback: (err) => {
+                    console.error("Silent refresh error_callback:", err);
+                    reject(err);
+                }
+            });
+
+            // Try silent refresh using hint
+            const hint = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
+            if (hint) {
+                client.requestAccessToken({ prompt: 'none', login_hint: hint });
+            } else {
+                // Cannot do silent refresh without a hint.
+                // Do NOT try prompt='' here as it will be blocked by popup blockers
+                // when called from async context.
+                reject(new Error("No login hint available for silent refresh. User interaction required."));
+            }
+        } catch (e) {
+            reject(e);
+        }
+    });
+
+    try {
+        const token = await refreshPromise;
+        return token;
+    } finally {
+        refreshPromise = null; // Reset promise so next time we can try again
+    }
+}
+
+/**
  * Downloads file contents with Concurrency Control & 'Kick' mechanism.
  */
 async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) {
@@ -322,23 +390,51 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
     if (modifiedSince) query += ` and modifiedTime > '${modifiedSince}'`;
     let allFiles = [], pageToken = null;
     console.time(`fetchFiles_${filename}_List`);
-    try {
+
+    const listFiles = async () => {
+        let files = [];
+        let token = null;
         do {
-            const resp = await gapi.client.drive.files.list({ q: query, fields: 'files(id, name), nextPageToken', pageSize: 1000, pageToken });
-            allFiles.push(...resp.result.files);
-            pageToken = resp.result.nextPageToken;
-        } while (pageToken);
-    } catch (e) { throw new Error("Drive API List failed."); }
+            const resp = await gapi.client.drive.files.list({ q: query, fields: 'files(id, name), nextPageToken', pageSize: 1000, pageToken: token });
+            files.push(...resp.result.files);
+            token = resp.result.nextPageToken;
+        } while (token);
+        return files;
+    };
+
+    try {
+        allFiles = await listFiles();
+    } catch (e) {
+        // Build robust 401 check
+        const is401 = (e.result && e.result.error && e.result.error.code === 401) ||
+            (e.status === 401) ||
+            (e.result && e.result.error && e.result.error.status === 'UNAUTHENTICATED');
+
+        if (is401) {
+            console.warn("Got 401 during file list, attempting token refresh...");
+            try {
+                await refreshAuthToken();
+                allFiles = await listFiles();
+            } catch (refreshError) {
+                console.error("Token refresh failed:", refreshError);
+                throw new Error("Drive API List failed (Auth).");
+            }
+        } else {
+            throw new Error("Drive API List failed.");
+        }
+    }
+
     console.timeEnd(`fetchFiles_${filename}_List`);
     if (allFiles.length === 0) return [];
     let loadedFiles = 0;
     const totalFiles = allFiles.length;
-    const accessToken = gapi.auth.getToken().access_token;
+    let accessToken = gapi.auth.getToken().access_token;
     // LIMIT CONCURRENCY: Don't overwhelm the browser socket pool
     const CONCURRENCY_LIMIT = 100;
     console.log(`[${filename}] Starting throttled fetch. Total: ${totalFiles}, Limit: ${CONCURRENCY_LIMIT}`);
     console.time(`fetchFiles_${filename}_Total`);
     const UI_STEP = totalFiles <= 50 ? 1 : Math.max(5, Math.floor(totalFiles / 50));
+
     const downloadWithKick = async (file, attempt = 1) => {
         const controller = new AbortController();
         const kickId = setTimeout(() => { if (attempt === 1) controller.abort(); }, 1200);
@@ -350,22 +446,49 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
                 signal: controller.signal
             });
             clearTimeout(kickId);
-            if (!response.ok) throw new Error(response.status);
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    console.warn(`Got 401 fetching file ${file.id}, refreshing token...`);
+                    const newToken = await refreshAuthToken();
+                    accessToken = newToken;
+
+                    // Retry
+                    const retryResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        cache: 'no-store',
+                        priority: 'high'
+                    });
+
+                    if (!retryResponse.ok) throw new Error(`HTTP Error ${retryResponse.status}`);
+                    const body = await retryResponse.text();
+
+                    loadedFiles++;
+                    if (onProgress && (loadedFiles % UI_STEP === 0 || loadedFiles === totalFiles)) {
+                        onProgress(loadedFiles, totalFiles);
+                    }
+                    return { res: { body }, id: file.id };
+                }
+                throw new Error(`HTTP Error ${response.status}`);
+            }
+
             const body = await response.text();
             loadedFiles++;
-            if (loadedFiles % 50 === 0 || loadedFiles === totalFiles) {
-                console.log(`[${filename}] Progress: ${loadedFiles}/${totalFiles}`);
-            }
-            // Adaptive UI update to keep it smooth but fast
             if (onProgress && (loadedFiles % UI_STEP === 0 || loadedFiles === totalFiles)) {
                 onProgress(loadedFiles, totalFiles);
             }
-            return { file, res: { body } };
-        } catch (err) {
+            return { res: { body }, id: file.id };
+
+        } catch (error) {
             clearTimeout(kickId);
-            if (attempt === 1) return downloadWithKick(file, 2);
-            console.error(`[${filename}] Error for ${file.name}:`, err.message);
-            return { file, res: { body: '' } };
+            if ((error.name === 'AbortError' || error.message.includes('aborted')) && attempt === 1) {
+                return downloadWithKick(file, 2);
+            }
+            if (attempt < 3 && error.name !== 'AbortError') {
+                return new Promise(resolve => setTimeout(() => resolve(downloadWithKick(file, attempt + 1)), 500));
+            }
+            console.error(`[${filename}] Error for ${file.name}:`, error.message);
+            return { res: null, id: file.id };
         }
     };
     // SLIDING WINDOW POOL
@@ -1820,6 +1943,8 @@ async function handleCalculateClick() {
     try {
         // Премахваме всички интервали от израза
         expression = expression.replace(/\s/g, '');
+        // Заменяме запетаите с точки за поддръжка на европейски формат за десетични числа
+        expression = expression.replace(/,/g, '.');
         // Основна проверка за сигурност - позволяваме само определени символи
         const sanitizedExpression = expression.replace(/[^0-9+\-*/().]/g, '');
         if (sanitizedExpression !== expression) {
@@ -2444,16 +2569,21 @@ function initApp() {
             } else if (dbSourceValue === 3) {
                 dbSourceText = _('sourceArchive');
             }
+            const dbCreatedTimestamp = await getConfig('dbCreatedTimestamp');
             const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
             const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
+            const dbCreatedDate = dbCreatedTimestamp ? formatDateTime(dbCreatedTimestamp) : '';
+            const loadTimeDate = initialLoadTimestamp ? formatDateTime(initialLoadTimestamp) : '';
+
             // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
             const content = [
                 `${_('sysInfoUser')}: ${currentUserEmail}`,
-                `${_('sysInfoLastGDSync')}: ${gdDate}`,
+                `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
+                `${_('sysInfoLoadTime')}: ${initialLoadTime ? initialLoadTime + ' s' + (loadTimeDate ? ' (' + loadTimeDate + ')' : '') : _('noData')}`,
+                `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
                 `${_('sysInfoLastLocalSync')}: ${localDate}`,
+                `${_('sysInfoLastGDSync')}: ${gdDate}`,
                 `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
-                `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}`,
-                `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`
             ].join('\n');
             showModal({ raw: content, color: '#f0f0f0' });
         } catch (error) {
@@ -2680,73 +2810,7 @@ function updateSignoutTooltip() {
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
 
-async function refreshAuthToken() {
-    const loginHint = localStorage.getItem('google_login_hint');
-    if (!loginHint) return null;
-    // Изчакваме Google библиотеката да се зареди, ако не е готова (максимум 5 секунди)
-    if (typeof google === 'undefined' || !google.accounts) {
-        const startTime = Date.now();
-        while ((typeof google === 'undefined' || !google.accounts) && (Date.now() - startTime < 5000)) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-    }
-    if (typeof google === 'undefined' || !google.accounts) {
-        console.log("Google library not loaded or blocked (GSI).");
-        return null;
-    }
-    return new Promise((resolve) => {
-        // Създаваме скрит iframe за OAuth redirect
-        let hiddenIframe = document.getElementById('google-auth-iframe');
-        if (!hiddenIframe) {
-            hiddenIframe = document.createElement('iframe');
-            hiddenIframe.id = 'google-auth-iframe';
-            hiddenIframe.style.position = 'fixed';
-            hiddenIframe.style.top = '-10000px';
-            hiddenIframe.style.left = '-10000px';
-            hiddenIframe.style.width = '1px';
-            hiddenIframe.style.height = '1px';
-            hiddenIframe.style.opacity = '0';
-            hiddenIframe.style.visibility = 'hidden';
-            hiddenIframe.style.pointerEvents = 'none';
-            document.body.appendChild(hiddenIframe);
-        }
-        // Създаваме token client с redirect режим в iframe
-        const iframeTokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: (tokenResponse) => {
-                if (tokenResponse && tokenResponse.access_token) {
-                    const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                    // Update storage - prefer localStorage if it was there
-                    if (localStorage.getItem('google_auth_token')) {
-                        localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                    } else {
-                        sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                    }
-                    // Return success format matching checkAuth expectations
-                    resolve({ tokenData: tokenWithTimestamp, pass: true });
-                } else {
-                    resolve(null);
-                }
-            },
-            error_callback: (error) => {
-                console.log("Silent refresh failed:", error);
-                resolve(null);
-            }
-        });
-        // Request token silently - използваме iframe вместо popup
-        try {
-            iframeTokenClient.requestAccessToken({
-                prompt: 'none',
-                login_hint: loginHint,
-                state: 'silent_refresh'
-            });
-        } catch (error) {
-            console.log("Error requesting token:", error);
-            resolve(null);
-        }
-    });
-}
+
 
 async function silentLoginWithIframe(loginHint) {
     const REDIRECT_URI = window.location.origin + window.location.pathname;
@@ -2800,6 +2864,7 @@ async function silentLoginWithIframe(loginHint) {
     });
 
 }
+
 function handleAuthClick() {
     if (tokenClient) {
         const rememberMe = localStorage.getItem('rememberMe') === 'true';
@@ -3350,6 +3415,8 @@ async function createDatabaseFromMemory() {
             await saveConfig('lastLocalTimestamp', now);
         }
         await saveConfig('dbSource', dbSource);
+        // Записваме кога е създадена базата
+        await saveConfig('dbCreatedTimestamp', now);
         // --- IMMEDIATELY UPDATE GLOBALS FOR CURRENT SESSION ---
         dbSourceGlobal = dbSource;
         dbNoteIdTypeGlobal = noteIdType;
@@ -3495,7 +3562,7 @@ function reportDataIntegrityIssues() {
     if (missing.length > 0) {
         console.warn(`Found ${missing.length} items missing an ID property. These were likely skipped.`);
         missing.forEach(m => {
-            console.log(` - File: ${m.file} | Mode: ${m.mode || 'direct'}`);
+            console.log(` - File: ${m.file} | Mode: ${m.mode || 'direct'} | Content: "${(m.text || '').substring(0, 50)}..."`);
         });
     }
     console.groupEnd();
@@ -6304,7 +6371,7 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
     if (!text) return '';
     // 1. Handle code blocks first, just like in renderNoteContent
     const codeBlocks = [];
-    const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
+    const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
     const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
         codeBlocks.push(escapeHtml(code)); // escapeHtml is crucial here
         return '%%CODE_BLOCK%%';
@@ -6335,7 +6402,7 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
 function renderNoteContent(text) {
     if (!text) return '';
     const codeBlocks = [];
-    const codeTagRegex = /\[code\]([\s\S]*?)\[\/code\]/g;
+    const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
     const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
         codeBlocks.push(escapeHtml(code));
         return '%%CODE_BLOCK%%';
@@ -6843,11 +6910,21 @@ async function createNoteElement(noteContent) {
         if (dateText) {
             headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
         }
-    } else if (extraData.datemod) { // Always create the element
-        const dateText = formatDate(extraData.datemod);
+        // } else if (extraData.datemod) { // Always create the element
+        //     const dateText = formatDate(extraData.datemod);
+        //     if (dateText) {
+        //         headerDate.textContent = dateText; // No icon for datemod
+        //         headerDate.classList.add('datemod-header-date');
+        //         const timeText = formatTime(extraData.datemod);
+        //         if (timeText) headerTime.textContent = timeText;
+        //     }
+    } else if (extraData.date) { // Fallback to creation date
+        const dateText = formatDate(extraData.date);
         if (dateText) {
             headerDate.textContent = dateText; // No icon for datemod
-            headerDate.classList.add('datemod-header-date');
+            headerDate.classList.add('creation-header-date');
+            const timeText = formatTime(extraData.date);
+            if (timeText) headerTime.textContent = timeText;
         }
     }
     headerInfoContainer.appendChild(headerDate);
