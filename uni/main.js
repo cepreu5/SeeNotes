@@ -339,7 +339,9 @@ async function refreshAuthToken() {
                 callback: (tokenResponse) => {
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                        const rememberMe = document.getElementById('rememberMe')?.checked;
+                        // Determine storage based on existing token location or rememberMe
+                        const rememberMe = localStorage.getItem('google_auth_token') !== null ||
+                            document.getElementById('rememberMe')?.checked;
                         const storage = rememberMe ? localStorage : sessionStorage;
                         storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
 
@@ -348,7 +350,8 @@ async function refreshAuthToken() {
                             window.gapi.client.setToken(tokenResponse);
                         }
                         console.log("Token refreshed successfully.");
-                        resolve(tokenResponse.access_token);
+                        // Return format compatible with checkAuth expectations
+                        resolve({ tokenData: tokenWithTimestamp, pass: true });
                     } else {
                         reject(new Error("Failed to refresh token"));
                     }
@@ -375,8 +378,8 @@ async function refreshAuthToken() {
     });
 
     try {
-        const token = await refreshPromise;
-        return token;
+        const result = await refreshPromise;
+        return result;
     } finally {
         refreshPromise = null; // Reset promise so next time we can try again
     }
@@ -414,6 +417,8 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
             console.warn("Got 401 during file list, attempting token refresh...");
             try {
                 await refreshAuthToken();
+                // Small delay to let old connections close before making new requests
+                await new Promise(r => setTimeout(r, 300));
                 allFiles = await listFiles();
             } catch (refreshError) {
                 console.error("Token refresh failed:", refreshError);
@@ -450,8 +455,12 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
             if (!response.ok) {
                 if (response.status === 401) {
                     console.warn(`Got 401 fetching file ${file.id}, refreshing token...`);
-                    const newToken = await refreshAuthToken();
-                    accessToken = newToken;
+                    const refreshResult = await refreshAuthToken();
+                    if (refreshResult && refreshResult.tokenData) {
+                        accessToken = refreshResult.tokenData.access_token;
+                    } else {
+                        throw new Error("Token refresh failed");
+                    }
 
                     // Retry
                     const retryResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
