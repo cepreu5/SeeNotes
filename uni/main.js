@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = '0.25'; // App version
+const version = '0.27'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 // const msm = true;
@@ -86,6 +86,8 @@ let dbNoteIdTypeGlobal = null; // Запомня типа на връзката 
 let dataIntegrityIssues = []; // Track missing/duplicate IDs during load
 let initialLoadTime = null; // Time taken for initial Google Drive load in seconds
 let initialLoadTimestamp = null; // Timestamp when the load finished
+let isAppStarted = false; // Guard for startApp
+let isMainLogicRunning = false; // Guard for mainLogic concurrency
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -392,7 +394,7 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
     let query = `'${folderId}' in parents and name = '${filename}' and mimeType='text/plain' and trashed = false`;
     if (modifiedSince) query += ` and modifiedTime > '${modifiedSince}'`;
     let allFiles = [], pageToken = null;
-    console.time(`fetchFiles_${filename}_List`);
+    if (filename) console.time(`fetchFiles_${filename}_List`);
 
     const listFiles = async () => {
         let files = [];
@@ -429,15 +431,25 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         }
     }
 
-    console.timeEnd(`fetchFiles_${filename}_List`);
+    if (filename) {
+        try { console.timeEnd(`fetchFiles_${filename}_List`); } catch (e) { }
+    }
     if (allFiles.length === 0) return [];
     let loadedFiles = 0;
     const totalFiles = allFiles.length;
-    let accessToken = gapi.auth.getToken().access_token;
+    // --- robust token retrieval ---
+    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
+    let accessToken = tokenObj ? tokenObj.access_token : null;
+    if (!accessToken) {
+        console.error("No access token found for file download!");
+        throw new Error("Missing auth token.");
+    }
     // LIMIT CONCURRENCY: Don't overwhelm the browser socket pool
     const CONCURRENCY_LIMIT = 100;
     console.log(`[${filename}] Starting throttled fetch. Total: ${totalFiles}, Limit: ${CONCURRENCY_LIMIT}`);
-    console.time(`fetchFiles_${filename}_Total`);
+    if (filename) {
+        try { console.time(`fetchFiles_${filename}_Total`); } catch (e) { }
+    }
     const UI_STEP = totalFiles <= 50 ? 1 : Math.max(5, Math.floor(totalFiles / 50));
 
     const downloadWithKick = async (file, attempt = 1) => {
@@ -515,7 +527,9 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         pool.add(promise);
     }
     const finalResults = await Promise.all(results);
-    console.timeEnd(`fetchFiles_${filename}_Total`);
+    if (filename) {
+        try { console.timeEnd(`fetchFiles_${filename}_Total`); } catch (e) { }
+    }
     return finalResults;
 }
 
@@ -609,10 +623,22 @@ function gisLoaded() {
         }
     });
     const loginBox = document.querySelector('.login-box');
-    // Винаги показваме екрана за вход
-    // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
-    loginBox.style.visibility = 'visible';
-    document.getElementById('authorize_button').disabled = false;
+    // Проверяваме дали вече имаме токен и дали не сме излезли нарочно
+    const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+    const isLogout = sessionStorage.getItem('logout_flag') === 'true';
+
+    if (hasToken && !isLogout) {
+        // Ако имаме токен и не сме в процес на logout, се опитваме да стартираме директно
+        console.log("Existing token found, starting app silently...");
+        document.getElementById('login-page').hidden = true;
+        startApp();
+    } else {
+        // Винаги показваме екрана за вход
+        // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
+        if (loginBox) loginBox.style.visibility = 'visible';
+        const authBtn = document.getElementById('authorize_button');
+        if (authBtn) authBtn.disabled = false;
+    }
 }
 
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
@@ -1629,100 +1655,106 @@ async function deleteFromDB(storeName, key) {
 // =================================================================================
 // --- Основна стартова функция ---
 async function startApp() {
-    // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
-    document.body.style.display = 'block';
-    console.log('First start:', Date.now());
-    ts = await getFirstStartEncoded();
-    console.log('First start in cache:', ts);
-    // --- Предварително изчисляване на оставащите дни за UI ---
+    if (isAppStarted) return;
+    isAppStarted = true;
     try {
-        const url = new URL(window.location.href);
-        const urlTokenParam = url.searchParams.get("token");
-        if (urlTokenParam) localStorage.setItem('urlToken', urlTokenParam);
-        const urlToken = localStorage.getItem('urlToken');
-        if (urlToken) {
-            const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-            const iv = raw.slice(0, 12), data = raw.slice(12);
-            const key = await crypto.subtle.importKey(
-                'raw',
-                new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-                { name: 'AES-GCM' },
-                false,
-                ['decrypt']
-            );
-            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-            const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-            const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-            let validityInDays = 30;
-            if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-                validityInDays = parseInt(tokenValidity, 10);
+        // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
+        document.body.style.display = 'block';
+        console.log('First start:', Date.now());
+        ts = await getFirstStartEncoded();
+        console.log('First start in cache:', ts);
+        // --- Предварително изчисляване на оставащите дни за UI ---
+        try {
+            const url = new URL(window.location.href);
+            const urlTokenParam = url.searchParams.get("token");
+            if (urlTokenParam) localStorage.setItem('urlToken', urlTokenParam);
+            const urlToken = localStorage.getItem('urlToken');
+            if (urlToken) {
+                const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+                const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+                const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+                const iv = raw.slice(0, 12), data = raw.slice(12);
+                const key = await crypto.subtle.importKey(
+                    'raw',
+                    new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+                    { name: 'AES-GCM' },
+                    false,
+                    ['decrypt']
+                );
+                const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+                const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+                const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+                let validityInDays = 30;
+                if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+                    validityInDays = parseInt(tokenValidity, 10);
+                }
+                tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
+                if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
             }
-            tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
-            if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
+        } catch (e) {
+            console.log("Error pre-calculating token days:", e);
         }
-    } catch (e) {
-        console.log("Error pre-calculating token days:", e);
-    }
-    initApp(); // Инициализира UI елементите и event listeners
-    // --- Задаване на настройки по подразбиране при първо стартиране ---
-    // Ако никога не са задавани настройки за източник на данни,
-    // избираме Google Drive + База данни по подразбиране.
-    if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
-        localStorage.setItem('useGoogleDb', 'true');
-        localStorage.setItem('useIndexedDb', 'true');
-    }
-    // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
-    // Това е критично, за да може userCheck() да работи правилно.
-    dbExists = await checkDbExists(NOTES_DB_NAME);
-    // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-    const authResult = await checkAuth();
-    if (!authResult || !authResult.pass) {
-        if (isLoadCancelled) return; // Не прави нищо, ако е отказано
-        loaderContainer.style.display = 'none';
-        // checkAuth вече е показал грешка или е пренасочил
-        return;
-    }
-    authToken = authResult.tokenData;
-    // --- WHITELIST CHECK (Once per session) ---
-    checkWhitelist();
-    // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
-    updateGlobalStateFlags();
-    await createBoardsUI([], false);
-    await createSettingsUI([], false); // Предварително създава UI на настройките
-    // Проверката за потребител и основната логика се извикват директно.
-    // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
-    // само ако е необходимо.
-    // --- Инициализация на KB Assistant след успешно логване ---
-    if (window.kbAssistant && typeof window.kbAssistant.init === 'function') {
-        window.kbAssistant.init();
-    }
-    // Инициализация на draggable бутони
-    const initDraggableButtons = () => {
-        // ScrollTop Button
-        const scrollTopBtnElement = document.getElementById('scrollTopBtn');
-        if (scrollTopBtnElement) {
-            makeElementDraggable(scrollTopBtnElement, 'scrollTopBtnPosition');
+        initApp(); // Инициализира UI елементите и event listeners
+        // --- Задаване на настройки по подразбиране при първо стартиране ---
+        // Ако никога не са задавани настройки за източник на данни,
+        // избираме Google Drive + База данни по подразбиране.
+        if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
+            localStorage.setItem('useGoogleDb', 'true');
+            localStorage.setItem('useIndexedDb', 'true');
         }
-        // KB Assistant Button (wait for it if necessary)
-        // Since KBUI might initialize later, we attempt to find it
-        const initKbFab = () => {
-            const kbFab = document.getElementById('kb-fab');
-            if (kbFab) {
-                makeElementDraggable(kbFab, 'kbFabPosition');
-            } else {
-                // Retry once after a short delay in case of async rendering
-                setTimeout(() => {
-                    const kbFabRetry = document.getElementById('kb-fab');
-                    if (kbFabRetry) makeElementDraggable(kbFabRetry, 'kbFabPosition');
-                }, 1000);
+        // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
+        // Това е критично, за да може userCheck() да работи правилно.
+        dbExists = await checkDbExists(NOTES_DB_NAME);
+        // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
+        const authResult = await checkAuth();
+        if (!authResult || !authResult.pass) {
+            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
+            loaderContainer.style.display = 'none';
+            // checkAuth вече е показал грешка или е пренасочил
+            return;
+        }
+        authToken = authResult.tokenData;
+        // --- WHITELIST CHECK (Once per session) ---
+        checkWhitelist();
+        // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
+        updateGlobalStateFlags();
+        await createBoardsUI([], false);
+        await createSettingsUI([], false); // Предварително създава UI на настройките
+        // Проверката за потребител и основната логика се извикват директно.
+        // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
+        // само ако е необходимо.
+        // --- Инициализация на KB Assistant след успешно логване ---
+        if (window.kbAssistant && typeof window.kbAssistant.init === 'function') {
+            window.kbAssistant.init();
+        }
+        // Инициализация на draggable бутони
+        const initDraggableButtons = () => {
+            // ScrollTop Button
+            const scrollTopBtnElement = document.getElementById('scrollTopBtn');
+            if (scrollTopBtnElement) {
+                makeElementDraggable(scrollTopBtnElement, 'scrollTopBtnPosition');
             }
+            // KB Assistant Button (wait for it if necessary)
+            // Since KBUI might initialize later, we attempt to find it
+            const initKbFab = () => {
+                const kbFab = document.getElementById('kb-fab');
+                if (kbFab) {
+                    makeElementDraggable(kbFab, 'kbFabPosition');
+                } else {
+                    // Retry once after a short delay in case of async rendering
+                    setTimeout(() => {
+                        const kbFabRetry = document.getElementById('kb-fab');
+                        if (kbFabRetry) makeElementDraggable(kbFabRetry, 'kbFabPosition');
+                    }, 1000);
+                }
+            };
+            initKbFab();
         };
-        initKbFab();
-    };
-    initDraggableButtons();
-    await mainLogic();
+        initDraggableButtons();
+        await mainLogic();
+    } catch (err) {
+        console.error("Error in startApp:", err);
+    }
 }
 
 // Записва timestamp като кодиран низ (Base64), без да пази число в кеша
@@ -2039,29 +2071,35 @@ function initApp() {
     searchBox = document.getElementById('search-box');
     loaderContainer = document.getElementById('loader-container');
     loaderText = document.getElementById('loader-text');
-    // --- Add Title to Loader ---
-    const loaderTitle = document.createElement('h3');
-    loaderTitle.id = 'loader-title';
-    loaderTitle.style.marginTop = '0';
-    loaderTitle.style.marginBottom = '20px';
-    loaderContainer.prepend(loaderTitle);
-    // --- Add Cancel Button to Loader ---
-    const cancelButton = document.createElement('button');
-    cancelButton.id = 'cancel-load-btn';
-    cancelButton.className = 'zoom-btn settings-close-btn'; // Reuse existing styles
-    cancelButton.style.marginTop = '20px';
-    cancelButton.dataset.key = 'cancelButton'; // For i18n
-    loaderContainer.appendChild(cancelButton);
-    cancelButton.addEventListener('click', (e) => {
-        // --- КОРЕКЦИЯ: Предотвратяваме други event listeners да се задействат ---
-        e.preventDefault();
-        e.stopPropagation();
-        console.log("Load operation cancelled by user.");
-        isLoadCancelled = true;
-        // Hide loader and show settings
-        loaderContainer.style.display = 'none';
-        document.getElementById('settings-modal').classList.add('visible');
-    });
+    // --- Add Title to Loader (Idempotent) ---
+    let loaderTitle = document.getElementById('loader-title');
+    if (!loaderTitle) {
+        loaderTitle = document.createElement('h3');
+        loaderTitle.id = 'loader-title';
+        loaderTitle.style.marginTop = '0';
+        loaderTitle.style.marginBottom = '20px';
+        loaderContainer.prepend(loaderTitle);
+    }
+    // --- Add Cancel Button to Loader (Idempotent) ---
+    let cancelButton = document.getElementById('cancel-load-btn');
+    if (!cancelButton) {
+        cancelButton = document.createElement('button');
+        cancelButton.id = 'cancel-load-btn';
+        cancelButton.className = 'zoom-btn settings-close-btn'; // Reuse existing styles
+        cancelButton.style.marginTop = '20px';
+        cancelButton.dataset.key = 'cancelButton'; // For i18n
+        loaderContainer.appendChild(cancelButton);
+        cancelButton.addEventListener('click', (e) => {
+            // --- КОРЕКЦИЯ: Предотвратяваме други event listeners да се задействат ---
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("Load operation cancelled by user.");
+            isLoadCancelled = true;
+            // Hide loader and show settings
+            loaderContainer.style.display = 'none';
+            document.getElementById('settings-modal').classList.add('visible');
+        });
+    }
     // Инициализираме KB Assistant
     if (window.kbAssistant && !window.kbAssistant.isInitialized) {
         window.kbAssistant.init();
@@ -2949,6 +2987,10 @@ async function checkAuth() {
         return null; // Stop execution
     }
     const tokenData = JSON.parse(storedTokenString);
+    // Explicitly set the token in gapi.client if it's already loaded
+    if (window.gapi && window.gapi.client && tokenData.access_token) {
+        window.gapi.client.setToken(tokenData);
+    }
     // --- Винаги добавяме email_hint от sessionStorage ---
     // Това гарантира, че проверката на токена ще работи коректно,
     // дори когато основният токен се чете от localStorage.
@@ -3620,299 +3662,302 @@ function filterNotesForDemo() {
  * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
  */
 async function mainLogic() {
-    dbSourceGlobal = null; // Нулираме глобалните променливи
-    isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
-    updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
-    dataIntegrityIssues = []; // Reset integrity report
-    isInitialLoad = true; // --- КОРЕКЦИЯ: Нулираме флага, за да работи скролирането при презареждане ---
-    updateGlobalStateFlags();
-    enableSettingsControls();
-    // Извикваме новата функция за валидация
-    if (!validateDataSourceSelection()) return;
-    // --- ЗАДАВАНЕ НА ГЛОБАЛЕН ИЗТОЧНИК И ТИП ВРЪЗКА ЗА ТЕКУЩАТА СЕСИЯ ---
-    // Това е необходимо, за да работят коректно функции като createNoteElement,
-    // дори когато не се използва база данни.
-    if (useArhDb) {
-        dbSourceGlobal = 3; // 3: Архив
-        dbNoteIdTypeGlobal = 'id';
-    } else if (useLocalFolder) {
-        dbSourceGlobal = 2; // 2: Локална папка
-        dbNoteIdTypeGlobal = 'gdid';
-    } else if (useGoogleDb) {
-        dbSourceGlobal = 1; // 1: Google Drive
-        dbNoteIdTypeGlobal = 'gdid';
+    if (isMainLogicRunning) {
+        console.log("mainLogic is already running, skipping...");
+        return;
     }
-    initializeLoad(); // Resets state and shows the loader screen
-    /*
-            // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-            // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
-            const tokenData = checkAuth();
-            if (!tokenData) {
-            if (isLoadCancelled) return;
-                loaderContainer.style.display = 'none';
-                return; // Прекратяваме, checkAuth вече е пренасочил.
-            }
-            authToken = tokenData;
-            // Проверяваме за съвпадение на потребителя, ако има локална база.
-            // Тази функция може да промени настройките в localStorage.
-            await userCheck();
-            if (isLoadCancelled) return;
-            // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
-            updateGlobalStateFlags();
-    */
-    const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
-    updateModeButton(); // Актуализираме иконата за режим веднага
-    // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
-    let boardsInDb = [];
-    if (useIndexedDb) {
-        dbExists = await checkDbExists(NOTES_DB_NAME);
-        if (dbExists) {
-            boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-            if (isLoadCancelled) return;
+    isMainLogicRunning = true;
+    try {
+        dbSourceGlobal = null; // Нулираме глобалните променливи
+        isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
+        updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
+        dataIntegrityIssues = []; // Reset integrity report
+        isInitialLoad = true; // --- КОРЕКЦИЯ: Нулираме флага, за да работи скролирането при презареждане ---
+        updateGlobalStateFlags();
+        enableSettingsControls();
+        // Извикваме новата функция за валидация
+        if (!validateDataSourceSelection()) return;
+        // --- ЗАДАВАНЕ НА ГЛОБАЛЕН ИЗТОЧНИК И ТИП ВРЪЗКА ЗА ТЕКУЩАТА СЕСИЯ ---
+        // Това е необходимо, за да работят коректно функции като createNoteElement,
+        // дори когато не се използва база данни.
+        if (useArhDb) {
+            dbSourceGlobal = 3; // 3: Архив
+            dbNoteIdTypeGlobal = 'id';
+        } else if (useLocalFolder) {
+            dbSourceGlobal = 2; // 2: Локална папка
+            dbNoteIdTypeGlobal = 'gdid';
+        } else if (useGoogleDb) {
+            dbSourceGlobal = 1; // 1: Google Drive
+            dbNoteIdTypeGlobal = 'gdid';
         }
-        // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
-        // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
-        if (dbExists && boardsInDb.length > 0) {
-            // Извличаме конфигурацията на базата САМО ВЕДНЪЖ тук
-            // Взимаме стойностите от базата само ако не са зададени вече от активен източник (GD, Local, Arh).
-            // Това е важно за режим "само база данни".
-            const dbSource = await getConfig('dbSource');
-            const dbNoteIdType = await getConfig('dbNoteIdType');
-            dbSourceGlobal = dbSource;
-            dbNoteIdTypeGlobal = dbNoteIdType;
-            console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
-            if (dbNoteIdType) { // Проверяваме само ако типът е записан
-                // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
-                const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
-                if (isAnySourceActive) {
-                    if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
-                        console.warn(`[mainLogic] Data source mismatch! DB expects ${dbNoteIdType}, but current mode is different.`);
-                        showToast(_('errorDbSourceMismatch'), 15000);
+        initializeLoad(); // Resets state and shows the loader screen
+        // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
+        // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
+        // Използваме authResult, тъй като checkAuth е асинхронна и връща обект.
+        const authResult = await checkAuth();
+        if (!authResult || !authResult.pass) {
+            if (isLoadCancelled) return;
+            if (loaderContainer) loaderContainer.style.display = 'none';
+            return; // Прекратяваме, checkAuth вече е пренасочил или показал грешка.
+        }
+        authToken = authResult.tokenData;
+        // Проверяваме за съвпадение на потребителя, ако има локална база.
+        await userCheck();
+        if (isLoadCancelled) return;
+        // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
+        updateGlobalStateFlags();
+        const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
+        updateModeButton(); // Актуализираме иконата за режим веднага
+        // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
+        let boardsInDb = [];
+        if (useIndexedDb) {
+            dbExists = await checkDbExists(NOTES_DB_NAME);
+            if (dbExists) {
+                boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (isLoadCancelled) return;
+            }
+            // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
+            // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
+            if (dbExists && boardsInDb.length > 0) {
+                // Извличаме конфигурацията на базата САМО ВЕДНЪЖ тук
+                // Взимаме стойностите от базата само ако не са зададени вече от активен източник (GD, Local, Arh).
+                // Това е важно за режим "само база данни".
+                const dbSource = await getConfig('dbSource');
+                const dbNoteIdType = await getConfig('dbNoteIdType');
+                dbSourceGlobal = dbSource;
+                dbNoteIdTypeGlobal = dbNoteIdType;
+                console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
+                if (dbNoteIdType) { // Проверяваме само ако типът е записан
+                    // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
+                    const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
+                    if (isAnySourceActive) {
+                        if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
+                            console.warn(`[mainLogic] Data source mismatch! DB expects ${dbNoteIdType}, but current mode is different.`);
+                            showToast(_('errorDbSourceMismatch'), 15000);
+                        }
+                    }
+                }
+            }
+            // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
+            // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
+            // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
+            if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
+                const dbSource = await getConfig('dbSource');
+                let handleKey = null;
+                if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
+                else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
+                if (handleKey) {
+                    const handle = await getConfig(handleKey);
+                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                    if (verifiedHandle) {
+                        dirHandle = verifiedHandle; // Задаваме глобалния handle
+                    } else {
+                        showToast(_('noUpdateMode'), 10000);
                     }
                 }
             }
         }
-        // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
-        // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
-        // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
-        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
-            const dbSource = await getConfig('dbSource');
-            let handleKey = null;
-            if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
-            else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
-            if (handleKey) {
-                const handle = await getConfig(handleKey);
-                const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                if (verifiedHandle) {
-                    dirHandle = verifiedHandle; // Задаваме глобалния handle
-                } else {
-                    showToast(_('noUpdateMode'), 10000);
-                }
-            }
-        }
-    }
-    // --- КОРЕКЦИЯ: Извикваме проверката за потребител тук, след като UI е готов ---
-    await userCheck();
-    if (isLoadCancelled) return;
-    // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
-    if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
-        showToast(_('errorDbOnlyAndEmpty'), 15000);
+        // --- КОРЕКЦИЯ: Извикваме проверката за потребител тук, след като UI е готов ---
+        await userCheck();
         if (isLoadCancelled) return;
-        document.getElementById('settings-modal').classList.add('visible');
-        loaderContainer.style.display = 'none'; // Скриваме лоудъра
-        return; // Прекратяваме изпълнението
-    }
-    try {
-        // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
-        // Зареждаме API-то само ако ще работим с Google Drive.
-        if (useGoogleDb) {
-            await loadGoogleApis();
-            gapi.client.setToken({ access_token: authToken.access_token });
-        }
-        if (useArhDb) {
-            // --- РЕЖИМ 0: Зареждане от Архив ---
-            console.log("Mode: Archive");
-            if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
-            // --- КОРЕКЦИЯ: Задаваме правилното заглавие на лоудъра ---
-            // Преди: Показваше "Избери архивна папка", дори когато такава вече е избрана.
-            // Сега: Показва "Зареждане директно от архив", което е по-коректно.
-            if (loaderTitle) {
-                loaderTitle.textContent = useIndexedDb ? _('dbManagementTitle') : _('loadedFromArhNoDb');
-            }
-            const arhHandle = await getConfig('arhHandle');
-            if (!arhHandle) {
-                showToast(_('errorArhFolderNotSelected'), 10000);
-                if (isLoadCancelled) return;
-                document.getElementById('settings-modal').classList.add('visible');
-                return; // Stop execution if no archive handle
-            }
-            const verifiedHandle = await verifyPermission(arhHandle);
+        // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
+        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
+            showToast(_('errorDbOnlyAndEmpty'), 15000);
             if (isLoadCancelled) return;
-            if (!verifiedHandle) {
-                showToast(_('permissionDenied'), 10000);
-                return; // Stop execution if no permission
+            document.getElementById('settings-modal').classList.add('visible');
+            loaderContainer.style.display = 'none'; // Скриваме лоудъра
+            return; // Прекратяваме изпълнението
+        }
+        try {
+            // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
+            // Зареждаме API-то само ако ще работим с Google Drive.
+            if (useGoogleDb) {
+                await loadGoogleApis();
+                gapi.client.setToken({ access_token: authToken.access_token });
             }
-            dirHandle = verifiedHandle; // <-- ДОБАВЕН РЕД
-            if (useIndexedDb) {
-                // Archive + IndexedDB mode
-                console.log("Mode: Archive + IndexedDB");
-                if (!dbExists || boardsInDb.length === 0) {
-                    // DB is empty or does not exist, prompt for creation from archive
-                    const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
-                    if (confirmed) {
-                        loaderText.textContent = _('creatingDbFromArh');
-                        if (isLoadCancelled) return;
-                        const success = await readArh(verifiedHandle); // Read archive into memory
-                        if (success) {
+            if (useArhDb) {
+                // --- РЕЖИМ 0: Зареждане от Архив ---
+                console.log("Mode: Archive");
+                if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
+                // --- КОРЕКЦИЯ: Задаваме правилното заглавие на лоудъра ---
+                // Преди: Показваше "Избери архивна папка", дори когато такава вече е избрана.
+                // Сега: Показва "Зареждане директно от архив", което е по-коректно.
+                if (loaderTitle) {
+                    loaderTitle.textContent = useIndexedDb ? _('dbManagementTitle') : _('loadedFromArhNoDb');
+                }
+                const arhHandle = await getConfig('arhHandle');
+                if (!arhHandle) {
+                    showToast(_('errorArhFolderNotSelected'), 10000);
+                    if (isLoadCancelled) return;
+                    document.getElementById('settings-modal').classList.add('visible');
+                    return; // Stop execution if no archive handle
+                }
+                const verifiedHandle = await verifyPermission(arhHandle);
+                if (isLoadCancelled) return;
+                if (!verifiedHandle) {
+                    showToast(_('permissionDenied'), 10000);
+                    return; // Stop execution if no permission
+                }
+                dirHandle = verifiedHandle; // <-- ДОБАВЕН РЕД
+                if (useIndexedDb) {
+                    // Archive + IndexedDB mode
+                    console.log("Mode: Archive + IndexedDB");
+                    if (!dbExists || boardsInDb.length === 0) {
+                        // DB is empty or does not exist, prompt for creation from archive
+                        const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
+                        if (confirmed) {
+                            loaderText.textContent = _('creatingDbFromArh');
                             if (isLoadCancelled) return;
-                            const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
-                            if (dbCreatedSuccessfully) {
-                                showToast(_('dbCreated'), 10000);
+                            const success = await readArh(verifiedHandle); // Read archive into memory
+                            if (success) {
                                 if (isLoadCancelled) return;
-                                await fetchAllDataLocal(); // Load from the newly created DB
-                                await renderUI({ boardParseError: false });
+                                const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
+                                if (dbCreatedSuccessfully) {
+                                    showToast(_('dbCreated'), 10000);
+                                    if (isLoadCancelled) return;
+                                    await fetchAllDataLocal(); // Load from the newly created DB
+                                    await renderUI({ boardParseError: false });
+                                } else {
+                                    showToast(_('dbCreateFailedNoData'), 10000);
+                                    // Fallback to direct archive load if DB creation fails
+                                    await readArh(verifiedHandle); // Re-read archive into memory for direct display
+                                    await renderUI({ boardParseError: false });
+                                }
                             } else {
-                                showToast(_('dbCreateFailedNoData'), 10000);
-                                // Fallback to direct archive load if DB creation fails
-                                await readArh(verifiedHandle); // Re-read archive into memory for direct display
-                                await renderUI({ boardParseError: false });
+                                // If reading archive failed, cannot create DB.
+                                showToast(_('errorReadArh'), 10000);
+                                // What to do here? Maybe just show an empty UI or an error.
                             }
                         } else {
-                            // If reading archive failed, cannot create DB.
-                            showToast(_('errorReadArh'), 10000);
-                            // What to do here? Maybe just show an empty UI or an error.
+                            // User declined to create DB, load directly from archive for this session
+                            showToast(_('loadedFromArhNoDb'), 10000);
+                            if (isLoadCancelled) return;
+                            const success = await readArh(verifiedHandle);
+                            if (success) {
+                                await renderUI({ boardParseError: false });
+                            }
                         }
                     } else {
-                        // User declined to create DB, load directly from archive for this session
-                        showToast(_('loadedFromArhNoDb'), 10000);
+                        // DB exists and has data, load from DB
+                        loaderText.textContent = _('loadingFromDb');
                         if (isLoadCancelled) return;
-                        const success = await readArh(verifiedHandle);
-                        if (success) {
-                            await renderUI({ boardParseError: false });
-                        }
+                        await fetchAllDataLocal();
+                        await renderUI({ boardParseError: false });
                     }
                 } else {
-                    // DB exists and has data, load from DB
-                    loaderText.textContent = _('loadingFromDb');
+                    // Archive mode without IndexedDB
+                    console.log("Mode: Archive (no IndexedDB)");
+                    // КЛЮЧОВА СТЪПКА: Задаваме dirHandle и при директно четене
+                    dirHandle = verifiedHandle;
                     if (isLoadCancelled) return;
-                    await fetchAllDataLocal();
-                    await renderUI({ boardParseError: false });
-                }
-            } else {
-                // Archive mode without IndexedDB
-                console.log("Mode: Archive (no IndexedDB)");
-                // КЛЮЧОВА СТЪПКА: Задаваме dirHandle и при директно четене
-                dirHandle = verifiedHandle;
-                if (isLoadCancelled) return;
-                const success = await readArh(verifiedHandle);
-                if (success) {
-                    await renderUI({ boardParseError: false });
-                }
-            }
-        } else if (!useIndexedDb) {
-            // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
-            console.log("Mode: Direct from source (IndexedDB is OFF)");
-            if (useGoogleDb) {
-                // Нулираме dirHandle тук, за да сме сигурни, че няма да се използват стари handles от локален/архивен режим
-                dirHandle = null;
-                console.log("Source: Google Drive");
-                if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
-                if (isLoadCancelled) return;
-                const result = await fetchAllData(null, false); // false -> не записвай в DB
-                if (result.error) { // Проверяваме за грешка при зареждането
-                    return; // Прекратяваме, ако няма файлове
-                }
-                // Прилагаме филтъра за демо версията ПРЕДИ рендиране
-                filterNotesForDemo();
-                await renderUI({ boardParseError: result.boardParseError });
-            } else if (useLocalFolder) {
-                console.log("Source: Local Folder");
-                if (loaderTitle) loaderTitle.textContent = "Локална папка";
-                console.log("Source: Local Folder");
-                if (loaderTitle) loaderTitle.textContent = _('sourceLocalFolder');
-                const { boardParseError } = await fetchAllDataFromLocalFolder();
-                // Прилагаме филтъра за демо версията ПРЕДИ рендиране
-                filterNotesForDemo();
-                await renderUI({ boardParseError });
-            }
-        } else {
-            // --- РЕЖИМ 2: С IndexedDB
-            console.log("Mode: Using IndexedDB");
-            if (!dbExists || boardsInDb.length === 0) {
-                // Първоначално създаване на базата данни
-                console.log("DB is empty or does not exist. Performing initial data load.");
-                if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
-                loaderText.textContent = _('initialDataLoad');
-                if (useGoogleDb) {
-                    console.log("Source for initial load: Google Drive");
-                    if (isLoadCancelled) return;
-                    const result = await fetchAllData(null);
-                    if (result.error) { // Проверяваме за грешка при зареждането
-                        return; // Прекратяваме, ако няма файлове
+                    const success = await readArh(verifiedHandle);
+                    if (success) {
+                        await renderUI({ boardParseError: false });
                     }
-                    // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
+                }
+            } else if (!useIndexedDb) {
+                // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
+                console.log("Mode: Direct from source (IndexedDB is OFF)");
+                if (useGoogleDb) {
+                    // Нулираме dirHandle тук, за да сме сигурни, че няма да се използват стари handles от локален/архивен режим
+                    dirHandle = null;
+                    console.log("Source: Google Drive");
+                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
+                    if (isLoadCancelled) return;
+                    const result = await fetchAllData(null, false); // false -> не записвай в DB
+                    if (result.error) return;
+                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
                     filterNotesForDemo();
-                    await createDatabaseFromMemory();
                     await renderUI({ boardParseError: result.boardParseError });
                 } else if (useLocalFolder) {
-                    console.log("Source for initial load: Local Folder");
+                    console.log("Source: Local Folder");
+                    if (loaderTitle) loaderTitle.textContent = _('sourceLocalFolder');
                     const { boardParseError } = await fetchAllDataFromLocalFolder();
-                    // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
+                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
                     filterNotesForDemo();
-                    await createDatabaseFromMemory();
                     await renderUI({ boardParseError });
                 }
-                showToast(_('dbCreated'), 10000);
             } else {
-                // DB exists and has data, sync from source then load from DB
-                const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
-                // Синхронизираме от източника, след което зареждаме от базата
-                console.log("Syncing from source (sync is enabled).");
-                if (useGoogleDb) {
-                    if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
+                // --- РЕЖИМ 2: С IndexedDB
+                console.log("Mode: Using IndexedDB");
+                if (!dbExists || boardsInDb.length === 0) {
+                    // Първоначално създаване на базата данни
+                    console.log("DB is empty or does not exist. Performing initial data load.");
+                    if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
+                    loaderText.textContent = _('initialDataLoad');
+                    if (useGoogleDb) {
+                        console.log("Source for initial load: Google Drive");
+                        if (isLoadCancelled) return;
+                        const result = await fetchAllData(null);
+                        if (result.error) { // Проверяваме за грешка при зареждането
+                            return; // Прекратяваме, ако няма файлове
+                        }
+                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
+                        filterNotesForDemo();
+                        await createDatabaseFromMemory();
+                        await renderUI({ boardParseError: result.boardParseError });
+                    } else if (useLocalFolder) {
+                        console.log("Source for initial load: Local Folder");
+                        const { boardParseError } = await fetchAllDataFromLocalFolder();
+                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
+                        filterNotesForDemo();
+                        await createDatabaseFromMemory();
+                        await renderUI({ boardParseError });
+                    }
+                    showToast(_('dbCreated'), 10000);
+                } else {
+                    // DB exists and has data, sync from source then load from DB
+                    const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
+                    // Синхронизираме от източника, след което зареждаме от базата
+                    console.log("Syncing from source (sync is enabled).");
+                    if (useGoogleDb) {
+                        if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
+                        if (isLoadCancelled) return;
+                        const updatedCount = await runGoogleDriveSync();
+                        showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 10000);
+                    } else if (useLocalFolder) {
+                        if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
+                        if (isLoadCancelled) return;
+                        const updatedCount = await runLocalSync();
+                        showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 10000);
+                    }
+                    // След синхронизация, винаги зареждаме ВСИЧКИ данни от базата
+                    loaderText.textContent = _('fetchingFromDb');
                     if (isLoadCancelled) return;
-                    const updatedCount = await runGoogleDriveSync();
-                    showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 10000);
-                } else if (useLocalFolder) {
-                    if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
-                    if (isLoadCancelled) return;
-                    const updatedCount = await runLocalSync();
-                    showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 10000);
-                }
-                // След синхронизация, винаги зареждаме ВСИЧКИ данни от базата
-                loaderText.textContent = _('fetchingFromDb');
-                if (isLoadCancelled) return;
-                await fetchAllDataLocal();
-                // Създаваме UI с всички данни
-                await renderUI({ boardParseError: false });
-                // Ако има обновени бележки, автоматично филтрираме по тях
-                if (updatedNoteGdims.length > 0) {
-                    filterNotesByBoard('new-updates', false);
+                    await fetchAllDataLocal();
+                    // Създаваме UI с всички данни
+                    await renderUI({ boardParseError: false });
+                    // Ако има обновени бележки, автоматично филтрираме по тях
+                    if (updatedNoteGdims.length > 0) {
+                        filterNotesByBoard('new-updates', false);
+                    }
                 }
             }
+            reportDataIntegrityIssues(); // Generate report before finishing loading
+        } catch (err) {
+            console.log("Error in mainLogic:", err);
+            showToast(_('errorProcessingFiles'));
+            loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
+        } finally {
+            if (isLoadCancelled) return; // Не скриваме лоудъра, ако е отказано, за да не "премигне"
+            // Изчистваме текстовете в лоудъра, преди да го скрием
+            const loaderTitle = document.getElementById('loader-title');
+            if (loaderTitle) loaderTitle.textContent = '';
+            loaderText.textContent = ''; // Изчистваме текста за прогреса
+            updateSearchPlaceholder();
+            document.body.style.backgroundImage = `url('Board.png')`; // Reset background
+            notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
+            // Скриваме лоудъра
+            loaderContainer.style.display = 'none';
+            // Показваме основните елементи, след като всичко е заредено
+            document.querySelector('header').style.visibility = 'visible';
+            document.querySelector('#search-wrapper').style.display = 'flex';
+            notesContainer.style.visibility = 'visible';
+            isMainLogicRunning = false;
         }
-        reportDataIntegrityIssues(); // Generate report before finishing loading
-    } catch (err) {
-        console.log("Error in mainLogic:", err);
-        showToast(_('errorProcessingFiles'));
-        loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
     } finally {
-        if (isLoadCancelled) return; // Не скриваме лоудъра, ако е отказано, за да не "премигне"
-        // Изчистваме текстовете в лоудъра, преди да го скрием
-        const loaderTitle = document.getElementById('loader-title');
-        if (loaderTitle) loaderTitle.textContent = '';
-        loaderText.textContent = ''; // Изчистваме текста за прогреса
-        updateSearchPlaceholder();
-        document.body.style.backgroundImage = `url('Board.png')`; // Reset background
-        notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
-        // Скриваме лоудъра
-        loaderContainer.style.display = 'none';
-        // Показваме основните елементи, след като всичко е заредено
-        document.querySelector('header').style.visibility = 'visible';
-        document.querySelector('#search-wrapper').style.display = 'flex';
-        notesContainer.style.visibility = 'visible';
+        isMainLogicRunning = false;
     }
-    // if (guide) showStep(1); // Първи стъпки
 }
 
 /**
@@ -5155,9 +5200,12 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     } else {
         runFilter(); // За всички други бутони, изпълняваме веднага
     }
-    // Маркираме избрания бутон. `boardId` тук е оригиналният `gdid` от бутона.
+    // Маркираме избрания бутон и задаваме визуалното състояние (active + height).
     document.querySelectorAll('.board-filter-link').forEach(link => {
-        link.classList.toggle('selected-board', link.dataset.boardid === boardId);
+        const isSelected = link.dataset.boardid === String(boardId);
+        link.classList.toggle('selected-board', isSelected);
+        link.classList.toggle('active', isSelected);
+        link.style.height = isSelected ? '39px' : '35px';
     });
     // Placeholder-ът вече не включва името на борда, тъй като търсенето е във всички бележки
     // updateSearchPlaceholder() ще зададе общ placeholder
@@ -5415,17 +5463,9 @@ async function createBoardsUI(boardsData, boardParseError) {
         });
     };
 
-    let lastActive = null;
     const allButtonLinks = [];
     const boardClick = (e, boardId, forcePreview = false) => {
-        const link = e.currentTarget || e.target;
-        if (lastActive) {
-            lastActive.classList.remove('active');
-            lastActive.style.height = '35px';
-        }
-        link.classList.add('active');
-        link.style.height = '39px';
-        lastActive = link;
+        const link = e.currentTarget;
         if (e.preventDefault) e.preventDefault();
         // 1. Logic for Debug JSON (Ctrl+Click in Debug Mode)
         if (debug && e.ctrlKey && !e.shiftKey && !forcePreview) {
@@ -5433,15 +5473,15 @@ async function createBoardsUI(boardsData, boardParseError) {
             showModal(JSON.stringify(board, null, 2));
             return;
         }
-        // 2. Logic for Preview Toggle (Ctrl+Click or Long Press)
+        // 2. Standard Navigation & Scroll
+        if (link && link.scrollIntoView) {
+            link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+        filterNotesByBoard(boardId, false);
+
+        // 3. Logic for Preview Toggle (Ctrl+Click or Long Press)
         if (e.ctrlKey || forcePreview) {
-            if (link.scrollIntoView) link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            filterNotesByBoard(boardId, false);
             setTimeout(() => showBoardPreviews(), 100);
-        } else {
-            // 3. Standard Navigation
-            if (link.scrollIntoView) link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            filterNotesByBoard(boardId, false);
         }
     };
 
@@ -6709,9 +6749,9 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
                 // For other files, try fetching with token and opening the blob to skip Google Auth prompt
                 showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
                 try {
-                    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : gapi.auth.getToken();
+                    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
                     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-                        headers: { 'Authorization': `Bearer ${tokenObj.access_token}` }
+                        headers: { 'Authorization': `Bearer ${tokenObj ? tokenObj.access_token : ''}` }
                     });
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     const blob = await response.blob();
@@ -7268,25 +7308,24 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     if (rerenderOnlyMenu) {
         if (boardsNoteElement) {
             document.querySelector('header').appendChild(boardsNoteElement);
-            // Възстановяваме селекцията на текущия борд
-            const board = boardsData.find(b => b.id == currentBoardFilter || b.gdid == currentBoardFilter);
-            const buttonBoardId = board ? (board.gdid || board.id) : currentBoardFilter;
-            const selectedButton = boardsNoteElement.querySelector(`.board-filter-link[data-boardid="${buttonBoardId}"]`);
-            if (selectedButton) {
-                selectedButton.classList.add('selected-board');
-                // Restore visual active state ("lifted" effect)
-                selectedButton.classList.add('active');
-                selectedButton.style.height = '39px';
-            }
-            // --- КОРЕКЦИЯ: Добавяме скролиране до активния бутон ---
-            const selectedButtonInMenu = boardsNoteElement.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
-            if (selectedButtonInMenu) {
-                selectedButtonInMenu.scrollIntoView({
-                    behavior: 'smooth',
-                    inline: 'center',
-                    block: 'nearest'
+            // Синхронизираме визуалното състояние на менюто и скролираме до активния бутон
+            // Използваме setTimeout, за да сме сигурни, че DOM-ът е обновен
+            setTimeout(() => {
+                // Използваме съществуващата функция за маркуване
+                document.querySelectorAll('.board-filter-link').forEach(link => {
+                    const isSelected = link.dataset.boardid === String(currentBoardFilter);
+                    link.classList.toggle('selected-board', isSelected);
+                    link.classList.toggle('active', isSelected);
+                    link.style.height = isSelected ? '39px' : '35px';
+                    if (isSelected) {
+                        link.scrollIntoView({
+                            behavior: 'smooth',
+                            inline: 'center',
+                            block: 'nearest'
+                        });
+                    }
                 });
-            }
+            }, 50);
         }
         return; // КЛЮЧОВА СТЪПКА: Прекратяваме функцията тук
     }
