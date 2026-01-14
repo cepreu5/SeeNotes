@@ -7,10 +7,9 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = '0.27'; // App version
-const debug = true; // Глобален флаг за дебъг режим
+const version = 'Beta 1.0'; // App version
+const debug = false; // Глобален флаг за дебъг режим
 
-// const msm = true;
 let guide = true;
 guide = localStorage.getItem('guide');
 if (guide === 'false') {
@@ -2100,10 +2099,10 @@ function initApp() {
             document.getElementById('settings-modal').classList.add('visible');
         });
     }
-    // Инициализираме KB Assistant
-    if (window.kbAssistant && !window.kbAssistant.isInitialized) {
-        window.kbAssistant.init();
-    }
+    // Инициализираме KB Assistant - ще се инициализира от startApp след логване
+    // if (window.kbAssistant && !window.kbAssistant.isInitialized) {
+    //     window.kbAssistant.init();
+    // }
     // Настройване на UI и езикови настройки
     const toast = document.getElementById('toastNotification');
     toast.addEventListener('click', hideToast);

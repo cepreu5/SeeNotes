@@ -36,8 +36,8 @@ body {
 
 header {
     padding: 5px 1em 0px 5px;
-    /*border-bottom: 1px solid #eee;*/
-    /*box-shadow: 0 5px 8px rgba(0,0,0,0.16), 0 5px 8px rgba(0,0,0,0.23);*/
+    border-bottom: 3px solid #6c6c6c;
+    box-shadow: 0 5px 8px rgba(0, 0, 0, 0.16), 0 5px 8px rgba(0, 0, 0, 0.23);
     /* margin-bottom: 1em; */
     /* Removed to stick the boards note to the header */
     display: flex;
@@ -59,6 +59,7 @@ header h1 {
     margin: 0;
     text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
     color: darkorange;
+    font-size: 2.2rem;
 }
 
 #search-container {
@@ -84,48 +85,96 @@ header h1 {
 
 #search-box {
     width: 100%;
-    /* max-width and min-width are now on the wrapper */
-    padding: 8px 35px 8px 35px;
-    /* Increased right padding for icons */
+    /* increased height for buttons */
+    height: 40px;
+    /* padding: left for icon, right for 2 large buttons */
+    padding: 4px 90px 4px 45px;
     border-radius: 20px;
     border: 1px solid #aaa;
     font-size: 1em;
     background-color: #d6d4d5;
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    transition: box-shadow 0.2s;
 }
 
-/* Change cursor to pointer on the search input's clear button (X) */
+#search-box:focus {
+    outline: none;
+    box-shadow: 3px 6px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* Hide native clear button */
 #search-box::-webkit-search-cancel-button {
-    position: relative;
-    right: 0px;
-    /* Position it right next to the save icon */
-    cursor: pointer !important;
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
 }
 
-/* Icon for saving the search term */
-.search-icon {
+/* Static Search Icon (Left) */
+.search-icon-static {
     position: absolute;
+    left: 12px;
     top: 50%;
-    right: 15px;
-    /* Position from the right edge of the wrapper */
     transform: translateY(-50%);
-    /* Center it vertically */
-    cursor: pointer;
-    /* Ensure cursor changes on hover */
-    color: #555;
-    display: none;
-    /* Hidden by default */
-    /* We need to give it a higher z-index to be clickable over the input's padding */
+    color: #666;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     z-index: 2;
 }
 
-.search-icon svg {
-    width: 18px;
-    height: 18px;
+.search-icon-static svg {
+    width: 24px;
+    height: 24px;
+    opacity: 0.6;
 }
 
-.search-icon:hover {
-    color: #000;
+/* Base style for Action Buttons (Clear & Save) */
+/* Base style for Action Buttons (Clear & Save) */
+.search-action-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    /* Flex is set via JS display property, but good to have base */
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background-color: rgba(87, 84, 84, 0.259);
+    transition: background-color 0.2s, transform 0.1s;
+    z-index: 5;
+    color: #444;
+    /*box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);*/
+}
+
+.search-action-btn:hover {
+    background-color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.search-action-btn:active {
+    background-color: rgba(255, 255, 255, 0.8);
+    transform: translateY(-50%) scale(0.95);
+}
+
+.search-action-btn svg {
+    width: 20px;
+    /* Slightly smaller icon too? 20px is fine for 32px btn */
+    height: 20px;
+}
+
+/* Specific Positions */
+.search-btn-save {
+    right: 45px;
+    /* Inner position: 6px + 33px + 6px */
+}
+
+.search-btn-clear {
+    right: 6px;
+    /* Outer edge position */
 }
 
 /* Animation for the save icon */
@@ -221,6 +270,29 @@ header h1 {
     display: none;
     /* Hidden by default */
     padding: 15px;
+}
+
+.saved-search-close-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    cursor: pointer;
+    font-size: 20px;
+    font-weight: bold;
+    color: #555;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    z-index: 10;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.saved-search-close-btn:hover {
+    color: #000;
+    background-color: rgba(0, 0, 0, 0.1);
 }
 
 .saved-search-item {
@@ -370,6 +442,11 @@ main {
     /* Добавяме padding отдолу, за да направим място за футъра */
     box-sizing: border-box;
     /* Гарантираме, че padding-ът е включен в общата височина */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    content-visibility: auto;
+    contain-intrinsic-size: 250px 250px;
 }
 
 .note-item {
@@ -411,19 +488,29 @@ main {
     margin: 0 10% 10% 8%;
 }
 
+.note:not(.note-item) .note-content-wrapper>.note-content {
+    margin: 0;
+}
+
 .note-content {
     flex-grow: 1;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-x: hidden;
     word-wrap: break-word;
     /* Font size is now inherited from .note */
     white-space: pre-wrap;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+    cursor: pointer;
 }
 
 pre,
 code {
     font-size: 100%;
     /* Match the surrounding text size */
+    -webkit-user-select: text;
+    user-select: contain;
 }
 
 .note-content::-webkit-scrollbar {
@@ -439,8 +526,10 @@ code {
     border-radius: 4px;
 }
 
-.note-content::-webkit-scrollbar-thumb:hover {
-    background: #555;
+@media (hover: hover) {
+    .note-content::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
 }
 
 .note-content a,
@@ -552,6 +641,11 @@ code {
     /* Премахва стандартния долен марджин на h3 */
 }
 
+.note:not(.note-item) .note-title-truncated {
+    margin-left: 0;
+    margin-right: 0;
+}
+
 .note-header-info {
     position: absolute;
     top: 25px;
@@ -655,7 +749,7 @@ code {
     padding-bottom: 10px;
     padding-left: 10px;
     border-radius: 8px;
-    width: 90%;
+    width: 95%;
     /* Задаваме ширината да е 90% от екрана */
     max-width: 90%;
     min-height: 10%;
@@ -754,9 +848,7 @@ code {
     text-overflow: ellipsis;
 }
 
-.modal-header-btn:hover {
-    background-color: #ddd;
-}
+/* .modal-header-btn:hover { background-color: #ddd; } -- Removed to fix mobile sticky hover */
 
 .modal-close {
     right: 15px;
@@ -788,6 +880,14 @@ code {
     right: 193px;
 }
 
+@media (hover: hover) {
+
+    .modal-nav-btn:hover,
+    .modal-header-btn:hover {
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+}
+
 #delete-modal-btn {
     right: 151px;
     /* 193px + 32px + 10px */
@@ -816,7 +916,7 @@ code {
 }
 
 /* Hide logo on small screens */
-@media (max-width: 600px) {
+@media (max-width: 480px) {
     .header-logo {
         display: none;
     }
@@ -849,7 +949,7 @@ code {
     font-size: 16px;
     justify-content: center;
     align-items: center;
-    opacity: 0.7;
+    opacity: 0.2;
     white-space: nowrap;
 }
 
@@ -869,7 +969,7 @@ code {
     outline: none;
     background-color: yellow;
     color: black;
-    cursor: grab;
+    cursor: pointer;
     padding: 11px;
     border-radius: 50%;
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
@@ -880,9 +980,11 @@ code {
     justify-content: center;
 }
 
-.popup-menu-btn-floating:hover {
-    background-color: #c0c0c0;
-    opacity: 1;
+@media (hover: hover) {
+    .popup-menu-btn-floating:hover {
+        background-color: #c0c0c0;
+        opacity: 1;
+    }
 }
 
 .popup-menu-btn-floating svg {
@@ -897,7 +999,7 @@ code {
 }
 
 /* Show floating button on narrow screens */
-@media (max-width: 1160px) {
+@media (max-width: 1220px) {
     .popup-menu-btn-floating {
         display: flex;
     }
@@ -966,7 +1068,14 @@ code {
     scroll-behavior: smooth;
     /* Smooth scrolling on button click */
     gap: 5px;
-    padding: 5px 0 0 0px;
+    padding: 10px 0 0 0px;
+    align-items: flex-end;
+    /* Align items to bottom to allow growth upwards */
+    /* Remove padding-bottom to keep height consistent? */
+    height: 45px;
+    /* Ensure sufficient total height for the container */
+    overflow-y: hidden;
+    /* Prevent vertical scroll bar if height slightly exceeds */
     /* Намалява разстоянието отдолу до 3px */
     /* Премахваме правилата, които скриват скролбара */
     scrollbar-color: #aaa #555;
@@ -1026,7 +1135,7 @@ code {
 
 .board-filter-link {
     position: relative;
-    padding: 1px 2px;
+    padding: 1px 8px;
     /* Вътрешен отстъп за текста */
     border-top-left-radius: 8px;
     /* Заоблен горен ляв ъгъл */
@@ -1048,25 +1157,28 @@ code {
         /* Вътрешна сянка отдолу */
         0 3px 6px rgba(0, 0, 0, 0.3);
     /* Външна сянка за дълбочина */
-    transition: all 0.2s ease-in-out;
-    /* Плавен преход при hover/active */
+    /* transition: all 0.2s ease-in-out;
+    Плавен преход при hover/active */
+    /* Вместо all, избройте само конкретните свойства
+    transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out; */
     transform: translateY(0);
     /* За да може active да се повдига */
     /* Центриране по хоризонтала */
-    min-width: 90px;
+    min-width: 70px;
     /* Минимална ширина на таба */
     height: 35px;
     /* Височина на таба */
-
     /* Добавено за съкращаване на текста */
     display: inline-block;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* Prevent shrinking in flex container */
+    flex-shrink: 0;
     text-align: center;
     line-height: 33px;
     /* Центриране по вертикала (35px височина - 2px padding) */
     vertical-align: middle;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 /* Общи стилове за пластмасов ефект */
@@ -1086,15 +1198,29 @@ code {
 }
 
 /* Стил за активен таб */
-.board-filter-link.active {
-    transform: translateY(-5px);
-    /* Активният таб излиза малко по-нагоре */
+.board-filter-link.active,
+.selected-board {
+    z-index: 11;
+    font-weight: bold;
     box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
         inset 0 -1px 3px rgba(0, 0, 0, 0.3),
-        0 6px 12px rgba(0, 0, 0, 0.4);
-    /* По-изразена сянка */
-    z-index: 11;
-    /* Да е над другите табове */
+        0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Prevent text selection in board menu items */
+.board-filter-link,
+.popup-menu {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Restore lift effect for active items in dropdown menu */
+.popup-menu .board-filter-link.active {
+    transform: translateY(-5px);
+    /* Re-apply strong bottom shadow to create "floating" look, otherwise it looks sunken/pressed */
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4),
+        inset 0 2px 5px rgba(255, 255, 255, 0.3);
+    z-index: 20;
 }
 
 .modal-body .board-filter-link {
@@ -1113,6 +1239,8 @@ code {
     /* Allow wrapping to the next column */
     gap: 10px;
     /* Space between buttons */
+    align-items: flex-end;
+    /* Lift active buttons up by aligning to bottom */
 }
 
 /* Remove the large top padding from the modal body when showing the board list */
@@ -1124,6 +1252,19 @@ code {
 #boards-menu-modal .modal-content-box {
     background-image: url('Frame.jpg');
     max-width: 95%;
+    max-height: 80vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding-top: 60px;
+}
+
+#boards-menu-modal-body {
+    overflow-y: auto !important;
+    flex-grow: 1;
+    min-height: 0;
+    padding-bottom: 20px;
+    width: 100%;
 }
 
 /* Apply background to the parent modal box when it contains the board list */
@@ -1131,6 +1272,10 @@ code {
     background-image: url('Frame.jpg');
     max-width: 95%;
     margin-left: 5px;
+    max-height: 80vh;
+    /* Limit height on small screens */
+    overflow-y: auto;
+    /* Enable vertical scrolling */
 }
 
 /* Make the close button visible on the textured background */
@@ -1151,26 +1296,27 @@ code {
 }
 
 .selected-board {
-    font-weight: bold;
     background-color: #007bff;
+    color: #fff;
     text-decoration: underline;
     /* border: 3px solid #f70202 !important; Add a thick border to the selected board */
-    color: #fff;
 }
 
 .selected-board:hover {
     background-color: #0056b3;
-    color: #fff;
 }
 
 /* Special style for the 'All' button when it's selected */
 .all-boards-filter-btn.selected-board {
     background-color: #ffc107;
     /* Keep it orange even when selected */
+    /* Keep it orange even when selected */
     color: #000;
-    /* Default non-selected text color */
-    font-weight: bold;
-    /* Keep it bold to indicate selection */
+}
+
+/* Ensure new updates button is white like others when inactive */
+.new-updates-filter-btn {
+    color: #fff;
 }
 
 /* Style for the 'All' button to accommodate the icon */
@@ -1251,7 +1397,7 @@ code {
     opacity: 1;
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 1220px) {
     header {
         flex-direction: column;
         align-items: center;
@@ -1309,7 +1455,7 @@ code {
 }
 
 /* Responsive layout for settings modal on small screens */
-@media (max-width: 370px) {
+@media (max-width: 480px) {
     .zoom-control-wrapper {
         flex-direction: column;
         align-items: flex-start;
@@ -1322,22 +1468,25 @@ code {
     }
 
     .zoom-control-wrapper label {
-        flex-basis: auto !important;
-        /* Reset basis to prevent extra height */
+        /* flex-basis removed to allow inline styles to persist */
         text-align: left !important;
         /* Ensure labels are left-aligned */
     }
 
     #settings-modal .modal-content-box {
-        height: auto;
-        /* Let content define height */
-        max-height: 90vh;
-        /* Still prevent it from being too tall */
+        height: 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        border-radius: 0 !important;
+        margin: 10px 0 0px 0 !important;
     }
 
     /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
     #google-db-wrapper,
     #max-searches,
+    #notes-bgrd,
+    #img-bgrd,
     #order-notes,
     #show-date,
     #modal-font-size,
@@ -1345,6 +1494,7 @@ code {
     #max-searches,
     #note-count,
     #one-tap-link,
+    #hide-assistant,
     #show-photos-board,
     #show-videos-board,
     #show-sounds-board,
@@ -1617,17 +1767,23 @@ code {
 /* Renamed from #zoom-modal to #settings-modal */
 #settings-modal .modal-content-box {
     background-color: #cfe6f8;
-    width: 90%;
-    max-width: 600px;
-    padding: 20px;
+    width: 70%;
+    max-width: 480px;
+    padding: 10px;
     height: auto;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
+    -webkit-user-select: none;
+    /* Safari */
+    -moz-user-select: none;
+    /* Firefox */
+    user-select: none;
+    /* Prevent text selection */
 }
 
 #settings-modal .modal-content-box h2 {
-    margin: 0 0 15px 0;
+    margin: 5px 0 8px 0;
     text-align: center;
     color: #1f3b52;
 }
@@ -1635,6 +1791,7 @@ code {
 /* Close button for settings modal */
 #settings-modal .modal-close {
     right: 15px;
+    margin-top: 0px;
 }
 
 #settings-modal-body {
@@ -1657,7 +1814,7 @@ code {
 }
 
 .zoom-input-number {
-    width: 60px;
+    width: 40px;
     margin: 0 2px 0 10px;
     /* top, right, bottom, left */
     text-align: center;
@@ -1697,7 +1854,7 @@ code {
     font-size: 1em;
     color: #555;
     margin-top: 0px;
-    margin-bottom: 20px;
+    margin-bottom: 5px;
     padding-bottom: 0px;
     align-self: center;
 }
@@ -1705,7 +1862,7 @@ code {
 .set-modal {
     background: linear-gradient(135deg, #858585, #E4E4E4);
     border-radius: 3px;
-    padding: 20px;
+    padding: 10px;
     position: relative;
     height: 300px;
 }
@@ -1772,9 +1929,10 @@ code {
 
 .settings-close-btn-wrapper {
     display: flex;
-    justify-content: flex-end;
-    margin-top: 10px;
-    /* Increased margin for better separation */
+    justify-content: center;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    /* Increased margin `for better separation */
     width: 100%;
     /* Ensure the wrapper takes full width to allow alignment */
 }
@@ -1797,6 +1955,11 @@ code {
 .settings-close-btn {
     background-color: #6c757d;
     /* A neutral grey color */
+    min-height: 44px;
+    /* Apple's recommended touch target size */
+    min-width: 180px;
+    touch-action: manipulation;
+    /* Prevent zooming on double-tap */
 }
 
 .settings-close-btn:hover {
@@ -1806,7 +1969,7 @@ code {
 /* --- Calendar View Styles --- */
 #calendar-container {
     padding: 5px;
-    background-color: #fdf6e3;
+    /* background-color: #fdf6e3; - Премахнато по желание на потребителя */
     box-sizing: border-box;
     /* Crucial for correct scaling with padding */
 }
@@ -1818,14 +1981,16 @@ code {
 
 .calendar-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     gap: 10px;
     /* Добавяме разстояние между заглавието и бутоните */
+    flex-direction: row-reverse;
     padding: 10px;
     background-image: url('Frame.jpg');
     border-bottom: 2px solid #d4c8a8;
     margin-bottom: 0px;
+    position: relative;
 }
 
 .calendar-nav-controls {
@@ -1837,12 +2002,15 @@ code {
 
 .calendar-header h2 {
     margin: 0;
-    flex-grow: 1;
-    text-align: center;
+    position: static;
+    transform: none;
+    text-align: left;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
     cursor: pointer;
     color: darkorange;
     /* Подсказва, че може да се кликне */
+    pointer-events: none;
+    flex-grow: 1;
 }
 
 .calendar-header button {
@@ -1953,8 +2121,23 @@ code {
     background-color: rgb(194, 194, 194);
 }
 
+.today-cell {
+    border: 2px solid gold;
+    background-color: rgba(255, 255, 0, 0.2);
+    /* Make sure it sits on top of the texture if needed, though the texture is on ::before */
+}
+
+.today-cell .calendar-date-number {
+    background-color: yellow !important;
+    color: black !important;
+    font-weight: 900;
+    border: 1px solid goldenrod;
+}
+
+/* Fallback/Legacy styling */
 .today-date {
-    background-color: yellow;
+    background-color: yellow !important;
+    color: black !important;
 }
 
 .calendar-notes-container {
@@ -1983,8 +2166,10 @@ code {
     border-radius: 3px;
 }
 
-.calendar-notes-container::-webkit-scrollbar-thumb:hover {
-    background: #888;
+@media (hover: hover) {
+    .calendar-notes-container::-webkit-scrollbar-thumb:hover {
+        background: #888;
+    }
 }
 
 .calendar-mini-note {
@@ -2012,9 +2197,11 @@ code {
     word-break: break-word;
 }
 
-.calendar-mini-note:hover {
-    filter: brightness(95%);
-    border-color: rgba(0, 0, 0, 0.3);
+@media (hover: hover) {
+    .calendar-mini-note:hover {
+        filter: brightness(95%);
+        border-color: rgba(0, 0, 0, 0.3);
+    }
 }
 
 @media (max-width: 768px) {
@@ -2027,13 +2214,6 @@ code {
         display: inline;
         /* Show short names on small screens */
     }
-
-    /* --- КОРЕКЦИЯ: Преместваме бутоните на календара вдясно --- */
-    .calendar-header {
-        flex-direction: row-reverse;
-        /* Обръщаме реда на елементите */
-    }
-
 }
 
 /* Accordion Styles */
@@ -2099,7 +2279,7 @@ code {
 
 .weekly-date-info {
     flex-shrink: 0;
-    width: 120px;
+    width: 160px;
     /* Увеличаваме ширината, за да се побере пълното име на деня */
     text-align: center;
     margin-right: 20px;
@@ -2180,8 +2360,8 @@ code {
     gap: 10px;
     /* Добавяме разстояние между бележките */
     /* --- КОРЕКЦИЯ: Намаляваме разстоянията около скролбара --- */
-    max-height: 165px;
-    /* КОРЕКЦИЯ: 150px за бележката + 8px за скролбара */
+    max-height: 280px;
+    /* КОРЕКЦИЯ: 260px за бележката + разстояние за скролбара */
     /* --- СТИЛОВЕ ЗА СКРОЛБАР (копирани от .board-menu-container) --- */
     scrollbar-color: #aaa #555;
     /* thumb track - за Firefox */
@@ -2204,19 +2384,19 @@ code {
 }
 
 .mini-note {
-    transform: scale(0.6);
+    transform: scale(0.85);
     transform-origin: top left;
-    /* Премахваме отрицателните маржони */
+    /* Предотвратява преминаването на нов ред */
     position: relative;
     z-index: 1;
 }
 
 /* --- КОРЕКЦИЯ: Опаковката, която решава проблема с презастъпването --- */
 .mini-note-wrapper {
-    width: 150px;
-    /* 250px * 0.6 */
-    height: 150px;
-    /* 250px * 0.6 */
+    width: 220px;
+    /* 250px * 0.85 approx 212.5px */
+    height: 220px;
+    /* 250px * 0.85 approx 212.5px */
     flex-shrink: 0;
     /* Предотвратява свиването на опаковката */
 }
@@ -2354,15 +2534,17 @@ code {
     /* Yellow background */
 }
 
-.popup-menu-btn:hover {
-    background-color: #E6E600 !important;
-    /* Darker yellow on hover */
+@media (hover: hover) {
+    .popup-menu-btn:hover {
+        background-color: #E6E600 !important;
+        /* Darker yellow on hover */
+    }
 }
 
 /* --- Login Page Styles --- */
 .login-box {
     text-align: center;
-    background: #FBCB39;
+    background: #afbac6;
     padding: 10px;
     border-radius: 8px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -2485,4 +2667,101 @@ code {
     Slight rounding for better appearance */
     /* padding: 0px 4px;
     Small padding to make the background visible */
+}
+
+/* --- Selection Locking Logic --- */
+body.selection-locked .note .note-content {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+}
+
+body.selection-locked .note.active-selection-note .note-content {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+}
+
+/* Note Header Info & Board Links */
+/* Note Header Info & Board Links */
+.note-header-info {
+    display: flex;
+    align-items: center;
+    font-size: 0.8em;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+.note-header-board-link {
+    display: none;
+    /* Hidden by default */
+    margin-right: 8px;
+    font-weight: bold;
+    text-decoration: underline;
+    cursor: pointer;
+    color: #333;
+}
+
+/* Show only when in global view mode */
+.global-view-mode .note-header-board-link {
+    display: block;
+}
+
+.note-header-board-link:hover {
+    color: #000;
+}
+
+/* Modal Note Footer */
+.modal-note-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    margin-top: 10px;
+    padding-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #555;
+    font-size: 0.9em;
+}
+
+#modal-body {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.modal-note-footer .header-icon svg {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+    vertical-align: text-bottom;
+}
+
+/* Boards Menu Modal Container - Center Align Container, Right Align Items */
+.all-boards-modal-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    /* Items align right relative to container set by fit-content */
+    gap: 10px;
+    width: fit-content;
+    /* Container shrinks to fit columns exactly */
+    margin: 0 auto;
+    /* Center the container horizontally */
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+/* Remove potential margins from clones to let gap handle spacing */
+/* Remove potential margins from clones to let gap handle spacing */
+.all-boards-modal-container .board-filter-link {
+    margin: 0 !important;
+    box-sizing: border-box;
+    /* Ensure width calculation matches reality */
+}
+
+/* Override default fixed width for boards modal to allow dynamic calculation */
+#boards-menu-modal .modal-content-box {
+    width: auto;
+    max-width: 95vw;
+    display: block;
+    /* Override flex display if needed to allow fit-content behavior on children properly? No, flex column is fine */
 }
