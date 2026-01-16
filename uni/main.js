@@ -430,7 +430,7 @@ async function refreshAuthToken() {
                     return;
                 }
                 let attempts = 0;
-                const maxAttempts = 50; // 5 seconds total (50 * 100ms)
+                const maxAttempts = 150; // 15 seconds total (150 * 100ms)
                 const checkInterval = setInterval(() => {
                     attempts++;
                     if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
@@ -438,7 +438,7 @@ async function refreshAuthToken() {
                         res(true);
                     } else if (attempts >= maxAttempts) {
                         clearInterval(checkInterval);
-                        rej(new Error("Google Identity Services not loaded after 5 seconds."));
+                        rej(new Error("Google Identity Services not loaded after 15 seconds."));
                     }
                 }, 100);
             });
@@ -454,44 +454,54 @@ async function refreshAuthToken() {
                 client_id: CLIENT_ID,
                 scope: SCOPES,
                 callback: (tokenResponse) => {
+                    clearTimeout(requestTimeout); // Спираме таймера при отговор
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
                         // Determine storage based on existing token location or rememberMe
                         const rememberMe = localStorage.getItem('google_auth_token') !== null ||
-                            document.getElementById('rememberMe')?.checked;
-                        const storage = rememberMe ? localStorage : sessionStorage;
-                        storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                            localStorage.getItem('rememberMe') === 'true';
 
-                        // Update gapi client
-                        if (window.gapi && window.gapi.client) {
-                            window.gapi.client.setToken(tokenResponse);
+                        if (rememberMe) {
+                            localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                        } else {
+                            sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         }
+
                         console.log("Token refreshed successfully.");
-                        // Return format compatible with checkAuth expectations
-                        resolve({ tokenData: tokenWithTimestamp, pass: true });
+                        resolve({ pass: true, tokenData: tokenWithTimestamp });
                     } else {
-                        reject(new Error("Failed to refresh token"));
+                        console.warn("Token refresh failed:", tokenResponse);
+                        // Вместо да reject-ваме веднага, връщаме pass: false, за да може
+                        // checkAuth да обработи това като "нужен е логин"
+                        resolve({ pass: false, error: tokenResponse });
                     }
                 },
-                error_callback: (err) => {
-                    console.error("Silent refresh error_callback:", err);
-                    reject(err);
-                }
             });
 
-            // Try silent refresh using hint
-            const hint = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
-            if (hint) {
-                client.requestAccessToken({ prompt: 'none', login_hint: hint });
+            // Таймер за безопасност: ако Google не отговори до 30 секунди
+            const requestTimeout = setTimeout(() => {
+                reject(new Error("Token refresh request timed out after 30s."));
+            }, 30000);
+
+            // Request the token (silent refresh using login_hint)
+            // Важно: Ако няма login_hint, това ще покаже прозорец (което не искаме при silent refresh),
+            // но prompt: 'none' предотвратява това и връща грешка, ако е нужна интеракция.
+            const loginHint = localStorage.getItem('google_login_hint') ||
+                (cachedLicenseData && cachedLicenseData.email_hint);
+
+            if (loginHint) {
+                client.requestAccessToken({ hint: loginHint, prompt: 'none' });
             } else {
-                // Cannot do silent refresh without a hint.
-                // Do NOT try prompt='' here as it will be blocked by popup blockers
-                // when called from async context.
-                reject(new Error("No login hint available for silent refresh. User interaction required."));
+                clearTimeout(requestTimeout);
+                console.warn("No login hint available for silent refresh.");
+                resolve({ pass: false, reason: "no_hint" });
             }
-        } catch (e) {
-            reject(e);
+
+        } catch (error) {
+            reject(error);
         }
+    }).finally(() => {
+        refreshPromise = null; // Винаги зачистваме promise-а
     });
 
     try {
@@ -1419,20 +1429,28 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
             // В режим Архив, boardid е число. В другите режими е gdid.
             const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
             if (boardGdidToUpdate) {
-                // Както е поискано: използваме стойността от note-counter
-                const newBoardCount = newTotalCount;
-                // Обновяваме данните за борда
                 const boardData = boardsData.find(b => b.gdid == boardGdidToUpdate);
+                let realBoardCount = 0;
+
                 if (boardData) {
-                    boardData.noteCount = newBoardCount;
+                    // Намаляваме вътрешния брояч на борда
+                    if (typeof boardData.noteCount === 'number') {
+                        boardData.noteCount = Math.max(0, boardData.noteCount - 1);
+                    }
+                    realBoardCount = boardData.noteCount || 0;
                 }
+
+                // Проверяваме настройката за показване на бройки
+                const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+
                 const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardGdidToUpdate}"]`);
                 if (boardButton) {
                     // Взимаме само името на борда (ако вече има скоби, ги махаме) или използваме title от boardData
                     let boardName = boardData ? boardData.title : boardButton.textContent.replace(/\s\(\d+\)$/, '');
-                    // Ако потребителят иска да използва стойността от брояча (ако е в същия борд) - това е newBoardCount
-                    if (newBoardCount > 0) {
-                        boardButton.textContent = `${boardName} (${newBoardCount})`;
+
+                    // Обновяваме текста само ако настройката е включена и има бележки, ИЛИ ако трябва да махнем стара бройка
+                    if (showCount && realBoardCount > 0) {
+                        boardButton.textContent = `${boardName} (${realBoardCount})`;
                     } else {
                         boardButton.textContent = boardName;
                     }
@@ -3008,6 +3026,20 @@ async function silentLoginWithIframe(loginHint) {
 }
 
 function handleAuthClick() {
+    // Опит за инициализация, ако липсва tokenClient, но Google lib е налична
+    if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: async (resp) => { // Reusing logic from gisLoaded callback partly
+                if (resp.error) {
+                    throw (resp);
+                }
+                await authCallback(resp);
+            },
+        });
+    }
+
     if (tokenClient) {
         const rememberMe = localStorage.getItem('rememberMe') === 'true';
         const loginHint = localStorage.getItem('google_login_hint');
@@ -3020,8 +3052,8 @@ function handleAuthClick() {
             tokenClient.requestAccessToken({ prompt: 'select_account' });
         }
     } else {
-        console.log('Token client not initialized');
-        alert(_('gapiNotReady'));
+        console.error("Google Identity Services not loaded.");
+        alert("Google services are not loaded yet. Please check your connection and reload via F5.");
     }
 }
 
@@ -3093,11 +3125,17 @@ async function checkAuth() {
     const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
     if (isExpired) {
         console.log("Token expired. Attempting silent refresh...");
-        const refreshResult = await refreshAuthToken();
-        if (refreshResult && refreshResult.pass) {
-            console.log("Silent refresh successful.");
-            return refreshResult;
+        try {
+            const refreshResult = await refreshAuthToken();
+            if (refreshResult && refreshResult.pass) {
+                console.log("Silent refresh successful.");
+                return refreshResult;
+            }
+        } catch (refreshErr) {
+            console.warn("Silent refresh threw an error (GIS likely not loaded):", refreshErr);
+            // Продължаваме надолу към логиката за неуспешен refresh
         }
+
         console.log("Token expired. Refresh failed. Showing login page.");
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token');
@@ -4878,19 +4916,25 @@ function showModal(options, noteElement = null) {
         // Ако графичният фон е изключен, премахваме background-image
         if (!imgBgrdEnabled) {
             modalContentBox.style.backgroundImage = 'none';
+            modalContentBox.classList.add('no-bg-image');
         } else {
             // Ако е включен, възстановяваме фона (ако има зададен в CSS)
             modalContentBox.style.backgroundImage = '';
+            modalContentBox.classList.remove('no-bg-image');
         }
     } else {
         modalContentBox.style.backgroundColor = '#eef603'; // Reset to default color
         if (!imgBgrdEnabled) {
             modalContentBox.style.backgroundImage = 'none';
-        } else {
-            modalContentBox.style.backgroundImage = '';
+            modalContentBox.classList.add('no-bg-image');
         }
     }
-    contentModal.classList.add('visible');
+    // Използваме requestAnimationFrame, за да гарантираме, че браузърът е приложил началните стилове (scale 0.7)
+    // преди да добавим класа visible, за да се възпроизведе анимацията.
+    requestAnimationFrame(() => {
+        contentModal.classList.add('visible');
+    });
+
     // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
     // Проверяваме дали имаме ID-та, за да търсим прикачени файлове
     if (noteId || noteGdid) {
