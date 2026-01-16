@@ -717,6 +717,7 @@ code {
     cursor: pointer;
 }
 
+/* Анимация на Overlay */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -726,14 +727,38 @@ code {
     background: rgba(0, 0, 0, 0.4);
     -webkit-backdrop-filter: blur(5px);
     backdrop-filter: blur(5px);
-    display: none;
+
+    /* Animation base state */
+    display: flex;
+    /* Always flex, handled by visibility */
     justify-content: center;
     align-items: center;
     z-index: 1000;
+
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
+/* Анимация при активен клас visible */
 .modal-overlay.visible {
-    display: flex;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* Анимация на самата бележка (Pop effect) */
+.modal-content-box {
+    transform: scale(0.7) translateY(20px);
+    opacity: 0;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s ease;
+    will-change: transform, opacity;
+}
+
+.modal-overlay.visible .modal-content-box {
+    transform: scale(1) translateY(0);
+    opacity: 1;
 }
 
 /* New style for when the modal acts as a popup */
@@ -828,6 +853,10 @@ code {
     white-space: pre-wrap;
     text-align: left;
     flex-grow: 1;
+}
+
+#modal-body.no-bg-image {
+    padding: 0 0;
 }
 
 /* Custom scrollbar for modal content */
@@ -1580,8 +1609,10 @@ code {
     /* Add a z-index if needed */
     left: 50%;
     /* Center the snackbar */
-    bottom: 30px;
-    /* 30px from the bottom */
+    bottom: 0;
+    /* 0px from the bottom as requested */
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
     font-size: 1.1em;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.16), 0 5px 8px rgba(0, 0, 0, 0.23);
     cursor: pointer;
@@ -1598,48 +1629,48 @@ code {
 /* Animations to fade the toast in and out */
 @-webkit-keyframes fadein {
     from {
-        bottom: 0;
+        bottom: -60px;
         opacity: 0;
     }
 
     to {
-        bottom: 30px;
+        bottom: 0;
         opacity: 1;
     }
 }
 
 @keyframes fadein {
     from {
-        bottom: 0;
+        bottom: -60px;
         opacity: 0;
     }
 
     to {
-        bottom: 30px;
+        bottom: 0;
         opacity: 1;
     }
 }
 
 @-webkit-keyframes fadeout {
     from {
-        bottom: 30px;
+        bottom: 0;
         opacity: 1;
     }
 
     to {
-        bottom: 0;
+        bottom: -60px;
         opacity: 0;
     }
 }
 
 @keyframes fadeout {
     from {
-        bottom: 30px;
+        bottom: 0;
         opacity: 1;
     }
 
     to {
-        bottom: 0;
+        bottom: -60px;
         opacity: 0;
     }
 }
@@ -2815,4 +2846,43 @@ body.selection-locked .note.active-selection-note .note-content {
     max-width: 95vw;
     display: block;
     /* Override flex display if needed to allow fit-content behavior on children properly? No, flex column is fine */
+}
+
+/* --- Promo Note Styles --- */
+.promo-note {
+    background-color: #fdfd96 !important;
+    padding: 10px !important;
+    padding-bottom: 25px !important;
+    /* Leave some space for feel */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+
+.promo-note:hover {
+    transform: scale(1.02);
+}
+
+.promo-note .note-content {
+    padding: 0;
+    overflow: hidden;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+}
+
+.promo-note img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.promo-close:hover {
+    background: rgba(255, 255, 255, 0.9) !important;
+    transform: scale(1.1);
 }

@@ -1,4 +1,6 @@
-/**
+/** terser kb-assistant.js -c 'pure_funcs=["console.log"]' --output kb-assistantt.js
+ * 
+ * 
  * KB Matcher - Интелигентен алгоритъм за съпоставяне на въпроси с KB записи
  * Използва keyword matching, fuzzy search и scoring система
  */
@@ -1104,6 +1106,10 @@ class KBUI {
         this.fabButton = document.createElement('button');
         this.fabButton.id = 'kb-fab';
         this.fabButton.className = 'kb-fab';
+        // Проверка при стартиране - ако е скрит в паметта, скриваме го веднага
+        if (localStorage.getItem('hideAssistant') === 'true') {
+            this.fabButton.style.display = 'none';
+        }
         this.fabButton.innerHTML = '<img src="msm/msm-assist.png" alt="Assistant" style="width: 40px; height: 40px; object-fit: contain;">';
         this.fabButton.title = 'Assistant';
 

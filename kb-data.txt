@@ -816,7 +816,7 @@
                 "stopAfter": false, "action": "explain!", "context": "",
                 1: {
                     "image": "msm/1.png", "height": 150, "time": 5000,
-                    x: 70, y: 28, bx: 130, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
+                    x: 62, y: 29, bx: 130, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
                     "text": {
                         "bg": "Здравей!<br>👋 Аз съм твоят асистент и винаги съм готов да помогна.",
                         "en": "Hello!<br>👋 I'm your assistant, always ready to help."
@@ -824,7 +824,7 @@
                 },
                 2: {
                     "image": "msm/expl.png", "height": 100, "time": 5000,
-                    x: 30, y: 23, bx: 134, by: -28, bWidth: 155, bHeight: 50, "target": "#search-box",
+                    x: 50, y: 10, bx: 134, by: -28, bWidth: 155, bHeight: 50, "target": "#search-box",
                     "text": {
                         "bg": "Няколко бързи съвета, преди да започнем.",
                         "en": "A few quick tips before we start."
@@ -832,7 +832,7 @@
                 },
                 3: {
                     "image": "msm/1.png", "height": 150,
-                    x: 70, y: 28, bx: 130, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
+                    x: 62, y: 29, bx: 130, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
                     "text": {
                         "bg": "Ако кликнеш върху мен, ще премина към следващата стъпка. Ctrl-click прекратява обяснението.",
                         "en": "If you click on me, I’ll move to the next step. Ctrl‑click stops the explanation."
@@ -840,7 +840,7 @@
                 },
                 4: {
                     "image": "msm/expl.png", "height": 100,
-                    x: -1, y: 23, bx: 174, by: -28, bWidth: 224, bHeight: 84, "target": "#search-box",
+                    x: 49, y: 13, bx: 166, by: -17, bWidth: 224, bHeight: 84, "target": "#search-box",
                     "text": {
                         "bg": "Кликни балончето с текст, за да имаш време да го прочетеш. От бутончето в горния ъгъл може да продължиш, когато си готов.",
                         "en": "Tap the speech bubble to pause it. A corner button will appear so you can continue when you're ready."
@@ -855,11 +855,19 @@
                     }
                 },
                 6: {
-                    "image": "msm/r-up-w.png", "height": 100,
-                    x: -1, y: 10, bx: 170, by: 18, bWidth: 224, bHeight: 84, "target": "#app-title",
+                    "image": "msm/expl.png", "height": 100,
+                    x: 45, y: 11, bx: 174, by: -28, bWidth: 238, bHeight: 148, "target": "#search-box",
                     "text": {
-                        "bg": "Кликни заглавието за повторение на моето представяне. В <strong>Настройки</strong> има възможност за изключване на асистента.",
-                        "en": "Click the title to repeat my introduction. In <strong>Settings</strong>, you can disable the assistant."
+                        "bg": "Все още нямам Instagram, затова ще ти пускам мои снимки отвреме‑навреме. Ако щракнеш Х върху някоя, без да я отвориш, в този борд повече няма да се появяват мои снимки. В <strong>Настройки</strong> можеш да ме скриеш изцяло — заедно с всички мои снимки.",
+                        "en": "Since I don’t have Instagram yet, I’ll show you my photos from time to time. If you close a photo with the X without opening it, photos won’t appear in this board anymore. In <strong>Settings</strong>, you can hide me completely — and that hides all my photos too."
+                    }
+                },
+                7: {
+                    "image": "msm/r-up-w.png", "height": 100,
+                    x: -35, y: 19, bx: 98, by: 53, bWidth: 148, bHeight: 59, "target": "#app-title",
+                    "text": {
+                        "bg": "Кликни заглавието за повторение на моето представяне.",
+                        "en": "Click the title to repeat my introduction."
                     }
                 },
             }

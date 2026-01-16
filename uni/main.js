@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.0'; // App version
+const version = 'Beta 1.1'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -1457,39 +1457,22 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                 }
             }
             // --- REFRESH CALENDARS ---
-            // If in calendar view, re-render to remove the note visually
+            // Monthly calendar view
             const calendarContainer = document.getElementById('calendar-container');
             if (calendarContainer && calendarContainer.style.display !== 'none') {
                 renderCalendarView();
             }
+            // Weekly calendar view
+            const weeklyContainer = document.getElementById('weekly-calendar-container');
+            if (weeklyContainer && weeklyContainer.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
+                renderWeeklyCalendarView(currentWeeklyViewDate);
+            }
             // --- REFRESH BOARD ---
-            // If we are on the board that contained the note, we must remove it from the DOM or refresh
-            // Case 1: Deleting from modal when board is in background (e.g. opened from calendar, then closed calendar)
-            // The noteEl.remove() handles the specific element if passed. 
-            // But if we deleted a note that exists on the current board by passing a MOCK element (from calendar),
-            // the board's DOM element for that note still exists.
-            if (!noteEl.remove || noteEl.remove.name === '') { // Mock element check (it has a no-op remove)
-                // --- CORRECT FIXED LOGIC ---
-                // We trust the DOM selector. If it fails, we simply do nothing.
-                // Reloading the board (filterNotesByBoard) caused state corruption (showing wrong notes in Main board)
-                // because it likely reset the filter state while the calendar was closing or confusing the app state.
+            // If we deleted a note from the calendar modal, we should also remove its element from the notes container if it exists there
+            if (!noteEl.remove || noteEl.remove.name === '') {
                 const realNoteEl = document.querySelector(`.note[data-g="${noteGdid}"]`);
                 if (realNoteEl) {
                     realNoteEl.remove();
-                }
-            }
-            if (typeof renderWeeklyCalendarView === 'function') {
-                // Check if weekly view is active?
-                // Usually checking if the container is visible or header state?
-                // But simply calling it (if active logic handles it) is tricky.
-                // Better: Check if weekly view elements are visible.
-                const weeklyContainer = document.querySelector('.weekly-calendar-container');
-                if (weeklyContainer && weeklyContainer.style.display !== 'none') {
-                    // Need current date. Assuming generic refresh or passing new Date() might reset view.
-                    // renderWeeklyCalendarView currently doesn't persist state well in params?
-                    // Actually, inside renderWeeklyCalendarView it uses `currentWeekStart`.
-                    // So we might need to expose it or reload current week.
-                    // For now, let's assume monthly view is primary user of this global fn.
                 }
             }
             showToast(_('noteDeletedSuccess'), 3000);
@@ -4859,7 +4842,21 @@ function showModal(options, noteElement = null) {
         modalContentBox.style.maxHeight = 'none';
     }
     const modalBoardNameEl = document.getElementById('modal-board-name');
-    if (options && options.boardId) {
+    const isPromo = options.id === 'promo';
+
+    // Скриваме бутоните в хедъра за промо бележката (освен Close)
+    const headerBtns = contentModal.querySelectorAll('.modal-header-btn:not(.modal-close)');
+    headerBtns.forEach(btn => btn.style.display = isPromo ? 'none' : '');
+
+    if (isPromo) {
+        modalBoardNameEl.textContent = (window.kbAssistant && typeof window.kbAssistant.getText === 'function') ? window.kbAssistant.getText('assistantName') : 'Assistant';
+        modalBoardNameEl.style.display = 'block';
+        modalBoardNameEl.style.color = 'white';
+        modalBoardNameEl.style.cursor = 'default';
+        modalBoardNameEl.style.textDecoration = 'none';
+        modalBoardNameEl.style.fontWeight = 'bold';
+    } else if (options && options.boardId) {
+        modalBoardNameEl.style.color = ''; // Reset color
         // Показваме името на борда само ако текущият филтър е различен от борда на бележката
         // или ако изрично е поискано (напр. от календара)
         if (options.forceShowBoardName || currentBoardFilter != options.boardId) {
@@ -4903,7 +4900,9 @@ function showModal(options, noteElement = null) {
     if (rawContent.includes('|')) {
         rawContent = rawContent.replace('|', '\n');
     }
-    if (formatString && formatString.trim() !== '') {
+    if (options.isHtml && options.id === 'promo' && !rawContent.includes('{{')) {
+        displayContent = rawContent;
+    } else if (formatString && formatString.trim() !== '') {
         displayContent = formatText(rawContent, formatString, true); // isForModal = true
     } else {
         displayContent = processNoteContent(rawContent, true); // isForModal = true
@@ -4911,22 +4910,32 @@ function showModal(options, noteElement = null) {
     modalBody.innerHTML = displayContent;
     // Set modal background color
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
-    if (noteColor) {
+    if (isPromo) {
+        modalContentBox.style.backgroundColor = '#222';
+        modalContentBox.style.backgroundImage = 'none';
+        modalContentBox.classList.add('no-bg-image');
+        modalBody.classList.add('no-bg-image');
+    } else if (noteColor) {
         modalContentBox.style.backgroundColor = noteColor;
         // Ако графичният фон е изключен, премахваме background-image
         if (!imgBgrdEnabled) {
             modalContentBox.style.backgroundImage = 'none';
             modalContentBox.classList.add('no-bg-image');
+            modalBody.classList.add('no-bg-image');
         } else {
             // Ако е включен, възстановяваме фона (ако има зададен в CSS)
             modalContentBox.style.backgroundImage = '';
             modalContentBox.classList.remove('no-bg-image');
+            modalBody.classList.remove('no-bg-image');
         }
     } else {
         modalContentBox.style.backgroundColor = '#eef603'; // Reset to default color
         if (!imgBgrdEnabled) {
             modalContentBox.style.backgroundImage = 'none';
             modalContentBox.classList.add('no-bg-image');
+            modalBody.classList.add('no-bg-image');
+        } else {
+            modalBody.classList.remove('no-bg-image');
         }
     }
     // Използваме requestAnimationFrame, за да гарантираме, че браузърът е приложил началните стилове (scale 0.7)
@@ -5006,7 +5015,7 @@ function showModal(options, noteElement = null) {
     const nextBtn = document.getElementById('next-note-btn');
     const deleteBtn = document.getElementById('delete-modal-btn');
     // Показваме/скриваме бутона за изтриване
-    if (useIndexedDb && (noteElement || noteGdid)) {
+    if (useIndexedDb && (noteElement || noteGdid) && !isPromo) {
         deleteBtn.style.display = 'flex';
         // Премахваме стари event listeners и добавяме нов
         const newDeleteBtn = deleteBtn.cloneNode(true);
@@ -5336,8 +5345,89 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     notesContainer.classList.remove('calendar-view');
 }
 
+/* --- PROMO NOTE LOGIC START --- */
+let promoNoteElement = null;
+let isFetchingPromo = false;
+let lastPromoBoardFilter = null;
+let promoImageIndex = parseInt(localStorage.getItem('promoImageIndex') || '0');
+
+const promoImagesList = [
+    "1764551652828.jpg", "1764551676242.jpg", "1764551691209.jpg", "1764551755697.jpg",
+    "1764553894822.jpg", "1764553917946.jpg", "1764553933512.jpg", "1764553941918.jpg",
+    "1764553952897.jpg", "1764553963870.jpg", "1764553974033.jpg", "1764553984943.jpg",
+    "1764553993077.jpg", "1764554001197.jpg", "1764554007494.jpg", "1764554013461.jpg",
+    "1764554019417.jpg", "1764554055674.jpg", "1764554064490.jpg", "1764554083159.jpg",
+    "1764554091671.jpg", "1764554098238.jpg", "1764554106965.jpg", "1764554137382.jpg",
+    "1764554248286.jpg", "1764554317449.jpg", "1764554407319.jpg", "1764554540104.jpg"
+];
+
+function updatePromoImage() {
+    if (!promoNoteElement) return;
+    const img = promoNoteElement.querySelector('img');
+    if (img) {
+        const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
+        img.src = `msm-ex/${imageFile}`;
+        promoImageIndex++;
+        localStorage.setItem('promoImageIndex', promoImageIndex);
+    }
+}
+
+async function initPromoNote() {
+    if (promoNoteElement || isFetchingPromo) return;
+    isFetchingPromo = true;
+
+    const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
+    const imgUrl = `msm-ex/${imageFile}`;
+    promoImageIndex++;
+    localStorage.setItem('promoImageIndex', promoImageIndex);
+
+    if (imgUrl) {
+        promoNoteElement = document.createElement('div');
+        promoNoteElement.className = 'note promo-note';
+        promoNoteElement.dataset.isPromo = 'true';
+
+        // Note with image style - refined to use CSS for most parts
+        promoNoteElement.innerHTML = `
+            <div class="note-content">
+                <img src="${imgUrl}" loading="lazy" alt="Assistant">
+            </div>
+            <div class="promo-close" style="position:absolute; top:4px; right:4px; cursor:pointer; background:rgba(255,255,255,0.7); border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:16px; z-index:10; transition: all 0.2s;">&times;</div>
+        `;
+
+        // Click handler to open the image in the large modal
+        promoNoteElement.addEventListener('click', (e) => {
+            if (e.target.classList.contains('promo-close')) {
+                promoNoteElement.style.display = 'none';
+                // Записваме, че в ТОЗИ борд снимката е затворена
+                if (currentBoardFilter) {
+                    localStorage.setItem(`dismissedPromo_${currentBoardFilter}`, 'true');
+                }
+                return;
+            }
+            const img = promoNoteElement.querySelector('img');
+            const currentSrc = img ? img.src : imgUrl;
+            showModal({
+                raw: `<img src="${currentSrc}" style="width:100%; height:100%; max-height:100%; object-fit:contain; display:block;">`,
+                format: '',
+                isHtml: true,
+                color: '#222',
+                id: 'promo',
+                gdid: 'promo',
+                boardId: 'promo'
+            });
+        });
+
+        const cont = document.getElementById('notes-container');
+        if (cont) cont.appendChild(promoNoteElement);
+        applyFilters();
+    }
+    isFetchingPromo = false;
+}
+/* --- PROMO NOTE LOGIC END --- */
+
 function applyFilters() {
-    const searchTerm = searchBox.value.toLowerCase();
+    const searchBox = document.getElementById('search-box');
+    const searchTerm = searchBox ? searchBox.value.toLowerCase() : '';
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
     let visibleCount = 0;
     // --- PRE-CALCULATE FILTER MODES ---
@@ -5361,7 +5451,7 @@ function applyFilters() {
         }
     }
     for (const note of notes) {
-        if (note.classList.contains('boards-note')) {
+        if (note.classList.contains('boards-note') || note.classList.contains('promo-note')) {
             continue;
         }
         let isVisibleByBoard = false;
@@ -5407,7 +5497,7 @@ function applyFilters() {
         const sortReverse = localStorage.getItem('sortInReverse') === 'true';
         const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
         const sortOrder = sortReverse ? -1 : 1;
-        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not([style*="display: none"])'));
+        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not([style*="display: none"]):not(.promo-note)'));
         visibleNotes.sort((a, b) => {
             if (a.classList.contains('boards-note')) return -1;
             if (b.classList.contains('boards-note')) return 1;
@@ -5459,6 +5549,45 @@ function applyFilters() {
         });
         visibleNotes.forEach(note => notesContainer.appendChild(note));
     }
+
+    // --- PROMO NOTE LOGIC: INSERT AT RANDOM PLACE ---
+    if (localStorage.getItem('hideAssistant') !== 'true') {
+        const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
+
+        if (!isDismissedInBoard) {
+            if (!promoNoteElement && !isFetchingPromo) {
+                initPromoNote(); // Start loading
+            }
+        }
+        if (promoNoteElement) {
+            // Only show if no active search AND not dismissed in this board
+            if (searchTerm === '' && !isDismissedInBoard) {
+                promoNoteElement.style.display = 'flex';
+                // If board changed or promo not in valid place
+                if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
+                    const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
+                        .filter(n => n.style.display !== 'none');
+
+                    if (visibleNotes.length > 0) {
+                        // Insert at random position
+                        const rnd = Math.floor(Math.random() * visibleNotes.length);
+                        // Use insertBefore to create randomness
+                        notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
+                    } else {
+                        notesContainer.appendChild(promoNoteElement);
+                    }
+                    // Обновяваме изображението при всяка смяна на борда
+                    updatePromoImage();
+                    lastPromoBoardFilter = currentBoardFilter;
+                }
+            } else {
+                promoNoteElement.style.display = 'none';
+            }
+        }
+    } else {
+        if (promoNoteElement) promoNoteElement.style.display = 'none';
+    }
+
     const noteCounter = document.getElementById('note-counter');
     if (noteCounter) {
         noteCounter.textContent = visibleCount;
@@ -5839,6 +5968,18 @@ async function createSettingsUI(boardsData, boardParseError) {
                 const fabButton = document.getElementById('kb-fab');
                 if (fabButton) {
                     fabButton.style.display = isChecked ? 'none' : 'block';
+                }
+                // Ако скрием асистента, скриваме и промо бележката веднага
+                if (isChecked) {
+                    if (promoNoteElement) {
+                        promoNoteElement.style.display = 'none';
+                    }
+                    // Изчистваме флаговете за затворени промо бележки, за да се покажат отново при включване
+                    Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('dismissedPromo_')) {
+                            localStorage.removeItem(key);
+                        }
+                    });
                 }
                 showToast(_('settingSaved'), 2000);
             });
