@@ -38,7 +38,7 @@ const DEMO_NOTE_LIMIT = 5;
 
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email';
 const TRIAL_URL = "http://index.html?token=DtBhz0nmHgisBO7KMIaXaUBp2QFBph4fylvi_uHP-St3CLvu0V69txLgrDO2uJqMRyLI4PtzwKC0v7AbWMacbWrZXTVl"; // days token
 
 // --- Глобално състояние на приложението ---
@@ -323,6 +323,95 @@ async function runGoogleDriveSync() {
 }
 
 /**
+ * Cached license data from URL token decryption.
+ * Prevents multiple expensive crypto operations.
+ */
+let cachedLicenseData = null;
+
+/**
+ * Decrypts the URL license token and caches the result.
+ * Returns cached data on subsequent calls.
+ * @returns {Promise<{email: string|null, validityDays: number, ageInDays: number, remainingDays: number, pass: boolean}>}
+ */
+async function decryptLicenseToken() {
+    // Return cached result if already decrypted
+    if (cachedLicenseData !== null) {
+        return cachedLicenseData;
+    }
+
+    // Initialize with default (no license)
+    cachedLicenseData = {
+        email: null,
+        validityDays: 30,
+        ageInDays: 0,
+        remainingDays: 0,
+        pass: false
+    };
+
+    // Check for URL token parameter and save to localStorage
+    const url = new URL(window.location.href);
+    const urlTokenParam = url.searchParams.get("token");
+    if (urlTokenParam) {
+        const currentStoredToken = localStorage.getItem('urlToken');
+        if (urlTokenParam !== currentStoredToken) {
+            localStorage.setItem('urlToken', urlTokenParam);
+        }
+    }
+
+    const urlToken = localStorage.getItem('urlToken');
+    if (!urlToken) {
+        console.log("No license token found.");
+        return cachedLicenseData;
+    }
+
+    try {
+        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+        const iv = raw.slice(0, 12), data = raw.slice(12);
+        const key = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+            { name: 'AES-GCM' },
+            false,
+            ['decrypt']
+        );
+        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+
+        // Ensure ts is available (first start timestamp)
+        if (!ts) {
+            ts = await getFirstStartEncoded();
+        }
+
+        const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+        let validityInDays = 30;
+        if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+            validityInDays = parseInt(tokenValidity, 10);
+        }
+
+        const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
+        const isValid = ageInDays < validityInDays;
+
+        cachedLicenseData = {
+            email: decryptedEmail,
+            validityDays: validityInDays,
+            ageInDays: ageInDays,
+            remainingDays: remainingDays,
+            pass: isValid
+        };
+
+        console.log(`License token: Age: ${ageInDays.toFixed(2)} days, Validity: ${validityInDays} days, Remaining: ${remainingDays} days`);
+
+    } catch (error) {
+        console.log("Error decrypting license token:", error);
+        cachedLicenseData.pass = false;
+    }
+
+    return cachedLicenseData;
+}
+
+/**
  * Refreshes the Google Auth Token silently if possible.
  */
 // Singleton promise to prevent multiple concurrent refresh attempts
@@ -331,9 +420,36 @@ let refreshPromise = null;
 async function refreshAuthToken() {
     if (refreshPromise) return refreshPromise;
 
-    refreshPromise = new Promise((resolve, reject) => {
+    refreshPromise = new Promise(async (resolve, reject) => {
         console.log("Refreshing auth token...");
         try {
+            // Wait for Google Identity Services to load (with timeout)
+            const waitForGis = () => new Promise((res, rej) => {
+                if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                    res(true);
+                    return;
+                }
+                let attempts = 0;
+                const maxAttempts = 50; // 5 seconds total (50 * 100ms)
+                const checkInterval = setInterval(() => {
+                    attempts++;
+                    if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                        clearInterval(checkInterval);
+                        res(true);
+                    } else if (attempts >= maxAttempts) {
+                        clearInterval(checkInterval);
+                        rej(new Error("Google Identity Services not loaded after 5 seconds."));
+                    }
+                }, 100);
+            });
+
+            try {
+                await waitForGis();
+            } catch (gisError) {
+                console.warn("GIS not available, cannot refresh token silently:", gisError.message);
+                reject(new Error("Google Identity Services not loaded. User interaction required."));
+                return;
+            }
             const client = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
@@ -593,15 +709,20 @@ function gisLoaded() {
                 const storage = rememberMe ? localStorage : sessionStorage;
                 storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                 try {
+                    console.log('Fetching user info...');
                     const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                         headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
                     });
+                    console.log('User info response status:', userInfoResponse.status);
                     if (userInfoResponse.ok) {
                         const userInfo = await userInfoResponse.json();
+                        console.log('User info received:', userInfo.email);
                         // Имейлът за текущата сесия се записва ВИНАГИ в sessionStorage
                         sessionStorage.setItem('google_auth_email_hint', userInfo.email);
                         // Запазваме имейла за следващо "тихо" влизане
                         localStorage.setItem('google_login_hint', userInfo.email);
+                    } else {
+                        console.warn('User info response not OK:', await userInfoResponse.text());
                     }
                 } catch (error) {
                     console.log('Failed to fetch user info:', error);
@@ -1662,36 +1783,11 @@ async function startApp() {
         console.log('First start:', Date.now());
         ts = await getFirstStartEncoded();
         console.log('First start in cache:', ts);
-        // --- Предварително изчисляване на оставащите дни за UI ---
-        try {
-            const url = new URL(window.location.href);
-            const urlTokenParam = url.searchParams.get("token");
-            if (urlTokenParam) localStorage.setItem('urlToken', urlTokenParam);
-            const urlToken = localStorage.getItem('urlToken');
-            if (urlToken) {
-                const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-                const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-                const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-                const iv = raw.slice(0, 12), data = raw.slice(12);
-                const key = await crypto.subtle.importKey(
-                    'raw',
-                    new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-                    { name: 'AES-GCM' },
-                    false,
-                    ['decrypt']
-                );
-                const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-                const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-                const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-                let validityInDays = 30;
-                if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-                    validityInDays = parseInt(tokenValidity, 10);
-                }
-                tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
-                if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
-            }
-        } catch (e) {
-            console.log("Error pre-calculating token days:", e);
+        // --- Предварително изчисляване на оставащите дни за UI (използва кеширана функция) ---
+        const licenseData = await decryptLicenseToken();
+        if (licenseData.remainingDays > 0) {
+            tokenRemainingDays = licenseData.remainingDays;
+            if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
         }
         initApp(); // Инициализира UI елементите и event listeners
         // --- Задаване на настройки по подразбиране при първо стартиране ---
@@ -2937,8 +3033,10 @@ function checkWhitelist() {
 
         // Изчакваме 2 секунди, за да не пречим на началната синхронизация
         setTimeout(() => {
+            console.log('Executing delayed whitelist check...');
             sessionStorage.setItem('whitelistChecked', 'true');
             const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+            console.log('Email for whitelist:', currentUserEmail);
             if (currentUserEmail) {
                 fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
                     method: 'POST',
@@ -2971,18 +3069,16 @@ async function checkAuth() {
     const localToken = localStorage.getItem('google_auth_token');
     const storedTokenString = sessionToken || localToken;
     if (!storedTokenString) {
-        // Добавяне на действие при натискане
-        document.getElementById("trialBtn").addEventListener("click", () => {
-            window.location.href = TRIAL_URL;
-        });
-        // Запазваме състоянието на "Запомни ме" при промяна
-        const rememberMeCheckbox = document.getElementById('rememberMe');
-        rememberMeCheckbox.addEventListener('change', () => {
-            localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
-        });
-        document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
-        // Показваме login страницата
-        document.getElementById('login-page').hidden = false;
+        // Инициализираме login страницата само веднъж, за да избегнем дублиране на listeners
+        if (!window.authListenersAdded) {
+            initLoginPage();
+            window.authListenersAdded = true;
+        } else {
+            // Ако вече е инициализирана, само я показваме
+            document.getElementById('login-page').hidden = false;
+            const loader = document.getElementById('loader-container');
+            if (loader) loader.style.display = 'none';
+        }
         return null; // Stop execution
     }
     const tokenData = JSON.parse(storedTokenString);
@@ -3010,75 +3106,20 @@ async function checkAuth() {
         alert(_('sessionExpired'));
         return null; // Stop execution
     }
-    // --- 🔐 Вградена декрипция ---
-    // Check if we've already validated the license in this session
-    if (typeof window.licenseCheckPassed !== 'undefined') {
-        pass = window.licenseCheckPassed;
+    // --- 🔐 Проверка на лиценз (използва кеширана функция) ---
+    const licenseData = await decryptLicenseToken();
+    tokenRemainingDays = licenseData.remainingDays;
+    pass = licenseData.pass;
+
+    if (licenseData.pass) {
+        console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
+        if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
+    } else if (!localStorage.getItem('urlToken')) {
+        console.log("Липсващ токен!");
+        sessionStorage.clear();
     } else {
-        // Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
-        const url = new URL(window.location.href);
-        const urlTokenParam = url.searchParams.get("token");
-        if (urlTokenParam) {
-            // Ако има токен в URL-а, той е с приоритет и презаписва стария, само ако е различен
-            const currentStoredToken = localStorage.getItem('urlToken');
-            if (urlTokenParam !== currentStoredToken) {
-                localStorage.setItem('urlToken', urlTokenParam);
-            }
-        }
-        let urlToken = localStorage.getItem('urlToken');
-        let isUrlTokenValidTime = false;
-        let decryptedEmailFromToken = null;
-        if (urlToken) {
-            // --- Извличаме валидността от самия токен ---
-            let validityInDays = 30; // 3. Стойност по подразбиране в дни
-            try {
-                const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-                const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-                const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-                const iv = raw.slice(0, 12), data = raw.slice(12);
-                const key = await crypto.subtle.importKey(
-                    'raw',
-                    new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-                    { name: 'AES-GCM' },
-                    false,
-                    ['decrypt']
-                );
-                const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-                // Декодираме токена, който вече съдържа и валидността
-                const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-                // 3. Изчисляваме възрастта в дни
-                const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-                if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-                    validityInDays = parseInt(tokenValidity, 10);
-                }
-                tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
-                console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
-                // let tooltipText = _('signoutButtonTooltip');
-                // tooltipText += ` [${tokenRemainingDays}]`;
-                if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
-                console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
-                if (ageInDays < validityInDays) {
-                    isUrlTokenValidTime = true;
-                    pass = true;
-                    // --- WHITELIST LOGIC MOVED TO checkWhitelist() ---
-                } else {
-                    console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
-                    pass = false;
-                    sessionStorage.clear();
-                }
-            } catch (error) {
-                console.log("Грешка при декриптиране на токен:", error);
-                pass = false;
-                sessionStorage.clear();
-            }
-        }
-        else {
-            console.log("Липсващ токен!");
-            pass = false;
-            sessionStorage.clear();
-        }
-        // Cache the result
-        window.licenseCheckPassed = pass;
+        console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
+        sessionStorage.clear();
     }
     if (!pass) {
         document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
