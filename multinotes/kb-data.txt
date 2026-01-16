@@ -746,22 +746,6 @@
         },
     ],
     "general": [
-        /*{
-            "id": "how-to-start",
-            "category": "getting-started",
-            "keywords": {
-                "bg": ["начало", "старт", "започна", "работи", "първи стъпки"],
-                "en": ["start", "begin", "work", "getting started", "first steps"]
-            },
-            "question": {
-                "bg": "Как да започна работа с <b><i>CX MultiNotes Viewer</i></b>?",
-                "en": "How do I get started with the application?"
-            },
-            "answer": {
-                "bg": "Първо влез в <b><i>CX MultiNotes Viewer</i></b> със същия Google акаунт, който използваш в <b><i>MultiNotes</i></b> на телефона си. Приложението автоматично ще изтегли бележките от <b><i>Google Drive</i></b> и ще създаде локална <b><i>база данни</i></b> за бърз достъп. След това можеш да разглеждаш, търсиш и организираш бележките си.",
-                "en": "First, sign in with the same Google account you use in the <b><i>MultiNotes</i></b> app. The application will automatically download notes from <b><i>Google Drive</i></b> and create a local <b><i>database</i></b> for fast access. Then you can view, search, and organize your notes."
-            }
-        },*/
 {
             "id": "guide-1",
             "category": "workflow",
@@ -796,6 +780,15 @@
                     }
                 },
                 3: {
+                    "image": "msm/l-up.png", "height": 100,
+                    x: 285, y: 13, bx: -202, by: -139, bWidth: 250, bHeight: 100, "target": "#img-bgrd",
+                    "text": {
+                        "bg": "По подразбиране бележката се отваря за преглед с графичен фон наподобяващ стара хартия. Ако държите да виждате цвета на бележката, може да изключите фона.",
+                        "en": "By default, the note is opened for preview with a graphic background resembling old paper. If you want to see the color of the note, you can disable the background."
+                    },
+                    "stopAfter": false, "action": "highlight", "context": "settings"
+                },
+                4: {
                     "image": "msm/expl.png", "height": 70,
                     x: 3, y: 28, bx: 133, by: 68, bWidth: 284, bHeight: 80, "target": "#search-box",
                     "text": {
@@ -803,7 +796,7 @@
                         "en": "For searching information, the search field is used. To learn more about the search options, open the chat window and type <b><i>search</i></b>."
                     }
                 },
-                4: {
+                5: {
                     "image": "msm/expl.png", "height": 70,
                     x: -200, y: -3, bx: -10, by: -90, bWidth: 228, bHeight: 65, "target": "#kb-fab",
                     "text": {
@@ -811,16 +804,6 @@
                         "en": "At the bottom of the screen, status messages appear. If you click the message, it will disappear immediately."
                     }
                 },
-            }
-        },
-{
-            "id": "assistant",
-            "category": "features",
-            "keywords": {},
-            "question": {},
-            "answer": {},
-            "guide": {
-                "stopAfter": false, "action": "explain!", "context": "",
             }
         },
 {
