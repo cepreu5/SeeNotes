@@ -856,7 +856,7 @@
                 },
                 6: {
                     "image": "msm/expl.png", "height": 100,
-                    x: 45, y: 11, bx: 174, by: -28, bWidth: 238, bHeight: 148, "target": "#search-box",
+                    x: 5, y: 11, bx: 174, by: -28, bWidth: 238, bHeight: 148, "target": "#search-box",
                     "text": {
                         "bg": "Все още нямам Instagram, затова ще ти пускам мои снимки отвреме‑навреме. Ако щракнеш Х върху някоя, без да я отвориш, в този борд повече няма да се появяват мои снимки. В <strong>Настройки</strong> можеш да ме скриеш изцяло — заедно с всички мои снимки.",
                         "en": "Since I don’t have Instagram yet, I’ll show you my photos from time to time. If you close a photo with the X without opening it, photos won’t appear in this board anymore. In <strong>Settings</strong>, you can hide me completely — and that hides all my photos too."
@@ -927,10 +927,10 @@
                 5: {
                     "stopAfter": false, "action": "explain!", "context": "",
                     "image": "msm/r-up-w.png", "height": 100,
-                    x: -71, y: 15, bx: -136, by: -14, bWidth: 163, bHeight: 50, "target": "#kb-all-questions-btn",
+                    x: -71, y: 15, bx: -136, by: -14, bWidth: 163, bHeight: 100, "target": "#kb-all-questions-btn",
                     "text": {
-                        "bg": "От тук може да отвориш всички въпроси, на които имам отговор.",
-                        "en": "From here you can open all the questions I can answer."
+                        "bg": "От тук може да отвориш всички въпроси, на които имам отговор. Може да търсиш бързо в този списък като напишеш нещо в полето отдолу.",
+                        "en": "From here you can open all the questions I can answer. You can also search fast in this list by typing something in the field below."
                     }
                 },
             }

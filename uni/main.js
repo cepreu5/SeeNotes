@@ -2416,9 +2416,12 @@ function initApp() {
         btn.addEventListener('click', (e) => {
             const modal = e.currentTarget.closest('.modal-overlay');
             modal.classList.remove('visible');
-            if (modal.id === 'settings-modal' && notesBgrdChanged) {
-                mainLogic();
-                notesBgrdChanged = false;
+            if (modal.id === 'settings-modal') {
+                if (window.kbAssistant) window.kbAssistant.terminateGuide();
+                if (notesBgrdChanged) {
+                    mainLogic();
+                    notesBgrdChanged = false;
+                }
             }
         });
 
@@ -2426,6 +2429,7 @@ function initApp() {
     // Specific listener for the settings close button (not class 'modal-close')
     document.getElementById('settings-close-btn').addEventListener('click', () => {
         document.getElementById('settings-modal').classList.remove('visible');
+        if (window.kbAssistant) window.kbAssistant.terminateGuide();
         if (notesBgrdChanged) {
             mainLogic();
             notesBgrdChanged = false;
@@ -2436,9 +2440,12 @@ function initApp() {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 modal.classList.remove('visible');
-                if (modal.id === 'settings-modal' && notesBgrdChanged) {
-                    mainLogic();
-                    notesBgrdChanged = false;
+                if (modal.id === 'settings-modal') {
+                    if (window.kbAssistant) window.kbAssistant.terminateGuide();
+                    if (notesBgrdChanged) {
+                        mainLogic();
+                        notesBgrdChanged = false;
+                    }
                 }
             }
         });
@@ -6543,6 +6550,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
             };
             document.getElementById('settings-modal').classList.remove('visible');
+            if (window.kbAssistant) window.kbAssistant.terminateGuide();
             // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
             updateModeButton();
             const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);

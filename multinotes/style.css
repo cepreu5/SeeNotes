@@ -1539,10 +1539,10 @@ code {
         /* Ensure labels are left-aligned */
     }
 
-    /* Ensure settings modal is above Ko-fi widget on mobile */
+    /* Ensure settings modal is above Ko-fi widget on mobile
     #settings-modal {
         z-index: 100000000 !important;
-    }
+    } */
 
     #settings-modal .modal-content-box {
         height: 100% !important;
@@ -2885,4 +2885,15 @@ body.selection-locked .note.active-selection-note .note-content {
 .promo-close:hover {
     background: rgba(255, 255, 255, 0.9) !important;
     transform: scale(1.1);
+}
+
+.floatingchat-container-mobi {
+    width: 60px !important;
+}
+
+.floatingchat-container-wrap-mobi {
+    width: 60px !important;
+    bottom: -8px !important;
+    left: -15px !important;
+    right: auto !important;
 }

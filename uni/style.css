@@ -1539,10 +1539,10 @@ code {
         /* Ensure labels are left-aligned */
     }
 
-    /* Ensure settings modal is above Ko-fi widget on mobile */
+    /* Ensure settings modal is above Ko-fi widget on mobile
     #settings-modal {
         z-index: 100000000 !important;
-    }
+    } */
 
     #settings-modal .modal-content-box {
         height: 100% !important;
@@ -2851,9 +2851,14 @@ body.selection-locked .note.active-selection-note .note-content {
 /* --- Promo Note Styles --- */
 .promo-note {
     background-color: #fdfd96 !important;
-    padding: 10px !important;
-    padding-bottom: 25px !important;
-    /* Leave some space for feel */
+    padding: 5px !important;
+    width: 230px !important;
+    height: 230px !important;
+    margin: 15px;
+    /* margin-top: 15px !important;
+    padding-bottom: 5px !important;
+    margin-left: 20px;
+    Центрира я спрямо останалите (250px + 5px margin) */
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -2878,11 +2883,22 @@ body.selection-locked .note.active-selection-note .note-content {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-    border-radius: 4px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    /*border-radius: 4px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;*/
 }
 
 .promo-close:hover {
     background: rgba(255, 255, 255, 0.9) !important;
     transform: scale(1.1);
+}
+
+.floatingchat-container-mobi {
+    width: 60px !important;
+}
+
+.floatingchat-container-wrap-mobi {
+    width: 60px !important;
+    bottom: -8px !important;
+    left: -15px !important;
+    right: auto !important;
 }

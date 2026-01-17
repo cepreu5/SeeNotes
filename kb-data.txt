@@ -927,10 +927,10 @@
                 5: {
                     "stopAfter": false, "action": "explain!", "context": "",
                     "image": "msm/r-up-w.png", "height": 100,
-                    x: -71, y: 15, bx: -136, by: -14, bWidth: 163, bHeight: 50, "target": "#kb-all-questions-btn",
+                    x: -71, y: 15, bx: -136, by: -14, bWidth: 163, bHeight: 100, "target": "#kb-all-questions-btn",
                     "text": {
-                        "bg": "От тук може да отвориш всички въпроси, на които имам отговор.",
-                        "en": "From here you can open all the questions I can answer."
+                        "bg": "От тук може да отвориш всички въпроси, на които имам отговор. Може да търсиш бързо в този списък като напишеш нещо в полето отдолу.",
+                        "en": "From here you can open all the questions I can answer. You can also search fast in this list by typing something in the field below."
                     }
                 },
             }

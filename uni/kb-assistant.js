@@ -948,13 +948,7 @@ class KBAssistant {
      */
     openSettings() {
         const settingsModal = document.getElementById('settings-modal');
-        // Проверяваме дали модалът вече е отворен
-        // Той е отворен, ако има клас 'visible' (според style.css) или ако style.display е изрично зададен
-        const isVisible = settingsModal && (
-            settingsModal.classList.contains('visible') ||
-            settingsModal.style.display === 'block' ||
-            settingsModal.style.display === 'flex'
-        );
+        const isVisible = settingsModal && settingsModal.classList.contains('visible');
 
         if (!isVisible) {
             const settingsButton = document.getElementById('settings_button');
@@ -969,17 +963,25 @@ class KBAssistant {
      */
     closeSettings() {
         const settingsModal = document.getElementById('settings-modal');
-        const isVisible = settingsModal && (
-            settingsModal.classList.contains('visible') ||
-            settingsModal.style.display === 'block' ||
-            settingsModal.style.display === 'flex' ||
-            (!settingsModal.hasAttribute('hidden') && window.getComputedStyle(settingsModal).display !== 'none')
-        );
+        const isVisible = settingsModal && settingsModal.classList.contains('visible');
 
         if (isVisible) {
             const closeBtn = document.getElementById('settings-close-btn');
             if (closeBtn) closeBtn.click();
         }
+    }
+
+    /**
+     * Прекратява текущия guide и премахва всички визуални елементи (pointer, hero)
+     */
+    terminateGuide() {
+        // Премахваме hero guide (от msmrt.js)
+        if (typeof window.removeGuide === 'function') {
+            window.removeGuide();
+        }
+        // Премахваме червения pointer
+        const pointer = document.getElementById('kb-pointer-img');
+        if (pointer) pointer.remove();
     }
 
     /**
