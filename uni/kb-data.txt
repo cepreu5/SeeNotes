@@ -840,7 +840,7 @@
                 },
                 4: {
                     "image": "msm/expl.png", "height": 100,
-                    x: 49, y: 13, bx: 166, by: -17, bWidth: 224, bHeight: 84, "target": "#search-box",
+                    x: 0, y: 13, bx: 166, by: -17, bWidth: 224, bHeight: 84, "target": "#search-box",
                     "text": {
                         "bg": "Кликни балончето с текст, за да имаш време да го прочетеш. От бутончето в горния ъгъл може да продължиш, когато си готов.",
                         "en": "Tap the speech bubble to pause it. A corner button will appear so you can continue when you're ready."
@@ -856,7 +856,7 @@
                 },
                 6: {
                     "image": "msm/expl.png", "height": 100,
-                    x: 5, y: 11, bx: 174, by: -28, bWidth: 238, bHeight: 148, "target": "#search-box",
+                    x: 0, y: 11, bx: 174, by: -28, bWidth: 238, bHeight: 148, "target": "#search-box",
                     "text": {
                         "bg": "Все още нямам Instagram, затова ще ти пускам мои снимки отвреме‑навреме. Ако щракнеш Х върху някоя, без да я отвориш, в този борд повече няма да се появяват мои снимки. В <strong>Настройки</strong> можеш да ме скриеш изцяло — заедно с всички мои снимки.",
                         "en": "Since I don’t have Instagram yet, I’ll show you my photos from time to time. If you close a photo with the X without opening it, photos won’t appear in this board anymore. In <strong>Settings</strong>, you can hide me completely — and that hides all my photos too."
@@ -864,7 +864,7 @@
                 },
                 7: {
                     "image": "msm/r-up-w.png", "height": 100,
-                    x: -35, y: 19, bx: 98, by: 53, bWidth: 148, bHeight: 59, "target": "#app-title",
+                    x: 0, y: 19, bx: 98, by: 53, bWidth: 148, bHeight: 59, "target": "#app-title",
                     "text": {
                         "bg": "Кликни заглавието за повторение на моето представяне.",
                         "en": "Click the title to repeat my introduction."

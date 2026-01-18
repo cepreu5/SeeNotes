@@ -216,5 +216,6 @@ en: {
         modeDb: 'Mode: Database',
         duplicateNotes: 'Duplicate notes',
         content: 'Content',
+        remainingDays: 'Remaining Days',
         supportMessage: 'If you like this app and find it useful, support the developer with a small amount.'
     }

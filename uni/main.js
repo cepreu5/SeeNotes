@@ -2457,18 +2457,18 @@ function initApp() {
     });
 
     // Apply initial font size settings from localStorage
-    const initialNoteFontSize = localStorage.getItem('noteFontSize') || 12;
+    const initialNoteFontSize = localStorage.getItem('noteFontSize') || 16;
     document.documentElement.style.setProperty('--note-font-size', `${initialNoteFontSize}px`);
     // Apply initial state for datemod visibility
     const shouldHideDatemod = localStorage.getItem('showDatemod') === 'false';
     document.body.classList.toggle('hide-datemod', shouldHideDatemod);
-    const initialModalFontSize = localStorage.getItem('modalFontSize') || 12;
+    const initialModalFontSize = localStorage.getItem('modalFontSize') || 16;
     modalBody.style.fontSize = `${initialModalFontSize}px`;
     // Add a listener to reset the modal font size when it's closed,
     // as it might be changed by other parts of the app (like formatText).
     contentModal.addEventListener('transitionend', () => {
         if (!contentModal.classList.contains('visible')) {
-            modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 12}px`;
+            modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
         }
     });
 
@@ -2734,6 +2734,7 @@ function initApp() {
                 `${_('sysInfoLastLocalSync')}: ${localDate}`,
                 `${_('sysInfoLastGDSync')}: ${gdDate}`,
                 `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
+                ...(tokenRemainingDays !== null ? [`${_('remainingDays')}: ${tokenRemainingDays}`] : []),
             ].join('\n');
             showModal({ raw: content, color: '#f0f0f0' });
         } catch (error) {
