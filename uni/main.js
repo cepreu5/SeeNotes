@@ -2046,6 +2046,54 @@ function addLongPressOrCtrlClick(element, callback) {
     element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
 }
 
+function extractAndFormat(text) {
+    let lines = text.split('\n');
+    let results = []
+    lines.forEach(line => {
+        let trimmedLine = line.trim();
+        if (!trimmedLine) return;
+
+        // 1. Първична нормализация на символите
+        let normalized = trimmedLine
+            .replace(/(\d),(\d)/g, '$1.$2') // запетая -> точка
+            .replace(/[xх*]/gi, '*')        // х -> *
+            .replace(/[:\/]/g, '/');        // : -> /
+
+        // 2. УСЪВЪРШЕНСТВАНО ЧИСТЕНЕ НА НОМЕРАЦИЯ (Защита за 1733.90)
+        // Тук казваме: Премахни число+точка в началото, САМО АКО след него има поне два интервала 
+        // или ако след него има букви (текст), преди да започне математическия израз.
+        // \p{L} хваща всякаква буква (латиница, кирилица, гръцки, арабски и т.н.)
+        // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.
+        let cleanLine = normalized.replace(/^\d+[\.\)]\s+(?=\p{L})/gu, '');
+        
+        // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
+        // НЕ го пипаме, защото това е част от сумата.
+
+        // 3. Залепяме операторите (чистим интервалите около тях)
+        cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
+
+        // 4. Екстракция на математическия блок
+        // Търсим най-дългата поредица от цифри и оператори
+        let mathMatch = cleanLine.match(/[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g);
+
+        if (mathMatch) {
+            // Вземаме последното съвпадение (обикновено сумата е в края на реда)
+            let expression = mathMatch[mathMatch.length - 1];
+
+            // 5. Финална проверка за знака в самото начало на целия низ
+            if (/^\d/.test(expression)) {
+                expression = '+' + expression;
+            }
+            results.push(expression);
+        }
+    });
+    // 5. Генерираме финалния стринг
+    let finalSequence = results.join('');
+    console.log(text);
+    console.log("Готов низ за вашата функция:", finalSequence);
+    return (finalSequence);
+}
+
 /**
  * Обработва клик върху бутона за калкулатор в модалния прозорец.
  * Взима маркирания текст, изчислява го като математически израз и замества селекцията с резултата.
@@ -2078,15 +2126,17 @@ async function handleCalculateClick() {
     }
     if (expression === '') return;
     try {
-        // Премахваме всички интервали от израза
+
+        /*/ Премахваме всички интервали от израза
         expression = expression.replace(/\s/g, '');
         // Заменяме запетаите с точки за поддръжка на европейски формат за десетични числа
         expression = expression.replace(/,/g, '.');
         // Основна проверка за сигурност - позволяваме само определени символи
-        const sanitizedExpression = expression.replace(/[^0-9+\-*/().]/g, '');
+        const sanitizedExpression = expression.replace(/[^0-9+\-*__/().]/g, ''); // __ дабавени заради коментарането на блока - махни ги, ако решиш да използваш
         if (sanitizedExpression !== expression) {
             throw new Error("Invalid characters in expression.");
-        }
+        }*/
+        const sanitizedExpression = extractAndFormat(expression);
         // Използваме Function конструктор, който е малко по-сигурен от директен eval()
         const result = new Function('return ' + sanitizedExpression)();
         // Форматираме резултата с 2 десетични знака
