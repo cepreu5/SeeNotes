@@ -2046,40 +2046,40 @@ function addLongPressOrCtrlClick(element, callback) {
     element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
 }
 
-function extractAndFormat(text) {
+function extractAndFormat(text, onlyChecked = false) {
     let lines = text.split('\n');
     let results = []
     lines.forEach(line => {
         let trimmedLine = line.trim();
         if (!trimmedLine) return;
-
-        // 1. Първична нормализация на символите
+        // Първична нормализация на символите
+        // ПРОВЕРКА ЗА ФЛАГ: Ако 'onlyChecked' е вдигнат, пропускаме редове без ☑
+        if (onlyChecked && !trimmedLine.startsWith('☑')) {
+            return;
+        }        
         let normalized = trimmedLine
             .replace(/(\d),(\d)/g, '$1.$2') // запетая -> точка
             .replace(/[xх*]/gi, '*')        // х -> *
             .replace(/[:\/]/g, '/');        // : -> /
-
-        // 2. УСЪВЪРШЕНСТВАНО ЧИСТЕНЕ НА НОМЕРАЦИЯ (Защита за 1733.90)
+        // Универсално чистене на номерация и чекбоксове/символи в началото
+        // Премахваме ☑, ☒, ☐ и номерация, ако след тях има текст и после числа
+        // УСЪВЪРШЕНСТВАНО ЧИСТЕНЕ НА НОМЕРАЦИЯ (Защита за 1733.90)
         // Тук казваме: Премахни число+точка в началото, САМО АКО след него има поне два интервала 
         // или ако след него има букви (текст), преди да започне математическия израз.
         // \p{L} хваща всякаква буква (латиница, кирилица, гръцки, арабски и т.н.)
-        // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.
-        let cleanLine = normalized.replace(/^\d+[\.\)]\s+(?=\p{L})/gu, '');
-        
-        // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
+        // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.☑☒☐
+        // let cleanLine = normalized.replace(/^\d+[☑☒☐|\d\.\)]+\s*(?=\p{L})/gu, '');
+        let cleanLine =  normalized.replace(/^\d+(?:[.\d☑☒☐\)|]+)\s*(?=\p{L})/gu, '');
+                // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
         // НЕ го пипаме, защото това е част от сумата.
-
-        // 3. Залепяме операторите (чистим интервалите около тях)
+        // Залепяме операторите (чистим интервалите около тях)
         cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
-
         // 4. Екстракция на математическия блок
         // Търсим най-дългата поредица от цифри и оператори
         let mathMatch = cleanLine.match(/[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g);
-
         if (mathMatch) {
             // Вземаме последното съвпадение (обикновено сумата е в края на реда)
             let expression = mathMatch[mathMatch.length - 1];
-
             // 5. Финална проверка за знака в самото начало на целия низ
             if (/^\d/.test(expression)) {
                 expression = '+' + expression;
@@ -2090,7 +2090,7 @@ function extractAndFormat(text) {
     // 5. Генерираме финалния стринг
     let finalSequence = results.join('');
     console.log(text);
-    console.log("Готов низ за вашата функция:", finalSequence);
+    console.log(finalSequence);
     return (finalSequence);
 }
 
@@ -2098,7 +2098,7 @@ function extractAndFormat(text) {
  * Обработва клик върху бутона за калкулатор в модалния прозорец.
  * Взима маркирания текст, изчислява го като математически израз и замества селекцията с резултата.
  */
-async function handleCalculateClick() {
+async function handleCalculateClick(checkList) {
     const selection = window.getSelection();
     const modalBody = document.getElementById('modal-body');
     let expression = '';
@@ -2136,11 +2136,11 @@ async function handleCalculateClick() {
         if (sanitizedExpression !== expression) {
             throw new Error("Invalid characters in expression.");
         }*/
-        const sanitizedExpression = extractAndFormat(expression);
+        const sanitizedExpression = extractAndFormat(expression, checkList);
         // Използваме Function конструктор, който е малко по-сигурен от директен eval()
         const result = new Function('return ' + sanitizedExpression)();
         // Форматираме резултата с 2 десетични знака
-        const formattedResult = Number(result.toFixed(2));
+        const formattedResult = result.toFixed(2);
         const resultText = ` = ${formattedResult}`;
         // Ако имаме селекция и не е от клипборда, вмъкваме резултата
         if (range && !isFromClipboard) {
@@ -2157,7 +2157,7 @@ async function handleCalculateClick() {
             selection.addRange(newRange); // Добавяме новата селекция
         } else {
             // Ако е от клипборда, просто показваме резултата в toast
-            showToast(`${expression} = ${formattedResult}`, 5000);
+            showToast(`${sanitizedExpression} = ${formattedResult}`, 10000);
         }
     } catch (error) {
         showToast(_('invalidExpression'), 3000);
@@ -2214,6 +2214,13 @@ function initApp() {
     scrollTopBtn = document.getElementById("scrollTopBtn");
     // --- КОРЕКЦИЯ: Предотвратяваме контекстното меню в модала ---
     modalBody.addEventListener('contextmenu', e => e.preventDefault());
+    // --- Предотвратяваме Edge минименюто при маркиране на текст ---
+    modalBody.addEventListener('pointerup', e => {
+        if (window.getSelection().toString().length > 0) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
     searchBox = document.getElementById('search-box');
     loaderContainer = document.getElementById('loader-container');
     loaderText = document.getElementById('loader-text');
@@ -2417,7 +2424,42 @@ function initApp() {
 
     // --- Calculator Button ---
     const calculateBtn = document.getElementById('calculate-modal-btn');
-    calculateBtn.addEventListener('click', handleCalculateClick);
+    let longPressTimer;
+    let isLongPress = false;
+    
+    // Обработка на click събитие
+    calculateBtn.addEventListener('click', (e) => {
+        if (isLongPress) {
+            isLongPress = false;
+            return;
+        }
+        if (e.ctrlKey) {
+            // Ctrl+клик - извикваме с true
+            handleCalculateClick(true);
+        } else {
+            // Обикновен клик
+            handleCalculateClick(false);
+        }
+    });
+    
+    // Обработка на long press
+    const startPress = (e) => {
+        isLongPress = false;
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            handleCalculateClick(true);
+        }, 500); // 500ms за long press
+    };
+    
+    const endPress = () => {
+        clearTimeout(longPressTimer);
+    };
+    
+    calculateBtn.addEventListener('mousedown', startPress);
+    calculateBtn.addEventListener('mouseup', endPress);
+    calculateBtn.addEventListener('mouseleave', endPress);
+    calculateBtn.addEventListener('touchstart', startPress, { passive: true });
+    calculateBtn.addEventListener('touchend', endPress);
     // --- КОРЕКЦИЯ: Преместваме бутоните в хедъра на модала ---
     const modalHeader = contentModal.querySelector('.modal-header-controls');
     const modalCloseBtn = contentModal.querySelector('.modal-close');
@@ -2605,8 +2647,8 @@ function initApp() {
         });
 
     }
-    let longPressTimer;
-    let isLongPress = false;
+    let modeButtonLongPressTimer;
+    let modeButtonIsLongPress = false;
     const showAdvancedSettings = () => {
         const advancedSettingsSpan = document.getElementById('advanced-settings-span');
         if (advancedSettingsSpan) {
@@ -2628,29 +2670,29 @@ function initApp() {
         }, 100); // Малко забавяне, за да се отвори модалът първо
     };
 
-    const startPress = (e) => {
-        isLongPress = false;
-        longPressTimer = setTimeout(() => {
-            isLongPress = true;
+    const modeStartPress = (e) => {
+        modeButtonIsLongPress = false;
+        modeButtonLongPressTimer = setTimeout(() => {
+            modeButtonIsLongPress = true;
             showAdvancedSettings();
         }, 500); // 500ms за long press
 
     };
-    const endPress = () => {
-        clearTimeout(longPressTimer);
+    const modeEndPress = () => {
+        clearTimeout(modeButtonLongPressTimer);
     };
 
     // Добавяме listeners за long-press
-    modeButton.addEventListener('mousedown', startPress);
-    modeButton.addEventListener('mouseup', endPress);
-    modeButton.addEventListener('mouseleave', endPress);
-    modeButton.addEventListener('touchstart', startPress, { passive: true });
-    modeButton.addEventListener('touchend', endPress);
+    modeButton.addEventListener('mousedown', modeStartPress);
+    modeButton.addEventListener('mouseup', modeEndPress);
+    modeButton.addEventListener('mouseleave', modeEndPress);
+    modeButton.addEventListener('touchstart', modeStartPress, { passive: true });
+    modeButton.addEventListener('touchend', modeEndPress);
     // Click handler
     modeButton.addEventListener('click', (e) => {
         // Ако е long press, не правим нищо (вече е обработено)
-        if (isLongPress) {
-            isLongPress = false;
+        if (modeButtonIsLongPress) {
+            modeButtonIsLongPress = false;
             return;
         }
         if (e.ctrlKey) {
