@@ -2054,10 +2054,12 @@ function extractAndFormat(text, onlyChecked = false) {
         if (!trimmedLine) return;
         // Първична нормализация на символите
         // ПРОВЕРКА ЗА ФЛАГ: Ако 'onlyChecked' е вдигнат, пропускаме редове без ☑
-        if (onlyChecked && !trimmedLine.startsWith('☑')) {
+        if (onlyChecked && !trimmedLine.includes('☑')) {
             return;
         }        
         let normalized = trimmedLine
+            // Премахваме чекбоксовете в началото на реда
+            .replace(/^[☑☒☐]\s*/, '')
             .replace(/(\d),(\d)/g, '$1.$2') // запетая -> точка
             .replace(/[xх*]/gi, '*')        // х -> *
             .replace(/[:\/]/g, '/');        // : -> /
@@ -2067,12 +2069,12 @@ function extractAndFormat(text, onlyChecked = false) {
         // Тук казваме: Премахни число+точка в началото, САМО АКО след него има поне два интервала 
         // или ако след него има букви (текст), преди да започне математическия израз.
         // \p{L} хваща всякаква буква (латиница, кирилица, гръцки, арабски и т.н.)
-        // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.☑☒☐
+        // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.
         // let cleanLine = normalized.replace(/^\d+[☑☒☐|\d\.\)]+\s*(?=\p{L})/gu, '');
-        let cleanLine =  normalized.replace(/^\d+(?:[.\d☑☒☐\)|]+)\s*(?=\p{L})/gu, '');
+        let cleanLine = normalized.replace(/^\d+(?:[.\d\)|]+)\s*(?=\p{L})/gu, '');
                 // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
         // НЕ го пипаме, защото това е част от сумата.
-        // Залепяме операторите (чистим интервалите около тях)
+        // Залепяме операторите (чистим интервалите omkring тях)
         cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
         // 4. Екстракция на математическия блок
         // Търсим най-дългата поредица от цифри и оператори
@@ -2089,6 +2091,10 @@ function extractAndFormat(text, onlyChecked = false) {
     });
     // 5. Генерираме финалния стринг
     let finalSequence = results.join('');
+    // Премахваме водещия '+' ако има такъв
+    if (finalSequence.startsWith('+')) {
+        finalSequence = finalSequence.slice(1);
+    }
     console.log(text);
     console.log(finalSequence);
     return (finalSequence);
@@ -2120,7 +2126,10 @@ async function handleCalculateClick(checkList) {
             isFromClipboard = true;
         } catch (err) {
             console.log('Failed to read clipboard contents: ', err);
-            showToast(_('errorClipboardRead'));
+            // Добавяме грешката в края на бележката вместо toast
+            const errorText = `\n${_('errorClipboardRead')}`;
+            const errorNode = document.createTextNode(errorText);
+            modalBody.appendChild(errorNode);
             return;
         }
     }
@@ -2142,7 +2151,8 @@ async function handleCalculateClick(checkList) {
         // Форматираме резултата с 2 десетични знака
         const formattedResult = result.toFixed(2);
         const resultText = ` = ${formattedResult}`;
-        // Ако имаме селекция и не е от клипборда, вмъкваме резултата
+        
+        // Ако имаме селекция и не е от клипборда, вмъкваме резултата след маркирания текст
         if (range && !isFromClipboard) {
             // Създаваме текстов възел с резултата
             const resultNode = document.createTextNode(resultText);
@@ -2156,11 +2166,16 @@ async function handleCalculateClick(checkList) {
             selection.removeAllRanges(); // Изчистваме старата селекция
             selection.addRange(newRange); // Добавяме новата селекция
         } else {
-            // Ако е от клипборда, просто показваме резултата в toast
-            showToast(`${sanitizedExpression} = ${formattedResult}`, 10000);
+            // Ако е от клипборда, добавяме цялото изчисление в края на бележката
+            const fullResultText = `\n${sanitizedExpression} = ${formattedResult}`;
+            const resultNode = document.createTextNode(fullResultText);
+            modalBody.appendChild(resultNode);
         }
     } catch (error) {
-        showToast(_('invalidExpression'), 3000);
+        // Добавяме грешката в края на бележката вместо toast
+        const errorText = `\n${_('invalidExpression')}`;
+        const errorNode = document.createTextNode(errorText);
+        modalBody.appendChild(errorNode);
         console.log("Calculation error:", error);
     }
 }
