@@ -19,7 +19,7 @@ bg: {
         errorSessionExpired: 'Вашата сесия е изтекла. Моля, влезте отново.',
         errorCopyFailed: 'Неуспешно копиране на съдържанието.',
         errorNoteParse: "Грешка при парсване на JSON съдържание.",
-        errorFolderNotFound: "Основната папка multinotes_data не е намерена. Моля, проверете в Google Drive.",
+        errorFolderNotFound: "Тази програма чете данни, синхронизирани от Multinotes за Android в Google Drive. Не откривам нужната папка — вероятно синхронизирането в приложението не е включено.",
         errorInvalidFolderIdSession: 'Невалиден Folder ID. Моля, излезте и влезте отново.',
         errorNoteFieldMissing: "Грешка: липсва поле \'notetxt\'.",
         warningInvalidBoard: 'Внимание: Един или повече файлове за дефиниция на бордове са невалидни и бяха пропуснати.',

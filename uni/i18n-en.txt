@@ -21,7 +21,7 @@ en: {
         errorNoteParse: "Error parsing JSON content.",
         errorNoteFieldMissing: "Error: 'notetxt' field not found.",
         errorInvalidFolderIdSession: 'Invalid Folder ID. Please sign out and sign in again.',
-        errorFolderNotFound: "The main folder multinotes_data was not found. Please check Google Drive.",
+        errorFolderNotFound: "This app reads data synchronized from the Multinotes Android app to Google Drive. I can’t find the required folder — sync is probably not enabled in the app.",
         warningInvalidBoard: 'Warning: One or more board files are invalid and have been skipped.',
         confirmCreateDbYes: 'Yes',
         confirmCreateDbNo: 'No',

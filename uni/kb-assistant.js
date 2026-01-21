@@ -532,7 +532,7 @@ class KBAssistant {
                         };
                     }
                     // Handle action (click element to reveal target)
-                    if (step.action && step.action !== 'highlight' && step.action !== 'explain' && step.action !== 'explain!') {
+                    if (step.action && !['highlight', 'explain', 'explain!', 'note'].includes(step.action)) {
                         const existingOnStart = step.onStart;
                         step.onStart = () => {
                             if (existingOnStart) existingOnStart();

@@ -9,6 +9,7 @@ let currentActiveStep = null;
 let stepTime = 10000;
 let animationFrameId;
 let activeSteps = typeof steps !== 'undefined' ? steps : [];
+let isTempNoteOpen = false;
 
 window.setGuideSteps = function (newSteps) {
     activeSteps = newSteps;
@@ -28,6 +29,11 @@ window.removeGuide = function () {
     if (container && document.body.contains(container)) {
         container.remove();
         container = null;
+    }
+    if (isTempNoteOpen) {
+        const modal = document.getElementById('content-modal');
+        if (modal) modal.classList.remove('visible');
+        isTempNoteOpen = false;
     }
 };
 
@@ -89,6 +95,21 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         return;
     }
     currentActiveStep = step;
+
+    // Handle action: note (Create/Open temporary note)
+    if (step.action === 'note') {
+        if (typeof window.showModal === 'function') {
+            const content = step.noteContent || step.note || "";
+            window.showModal({ 
+                raw: content, 
+                id: 'guide-temp-note', 
+                color: step.noteColor,
+                width: step.noteWidth,
+                height: step.noteHeight
+            });
+            isTempNoteOpen = true;
+        }
+    }
 
     // Execute onStart callback if exists and wait for animations
     const continueShowStep = () => {
@@ -385,4 +406,3 @@ window.toggleHero = function () {
     showStep(0);
     return true;
 };
-

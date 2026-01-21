@@ -7,8 +7,8 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.1'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const version = 'Beta 1.2'; // App version
+const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
 guide = localStorage.getItem('guide');
@@ -458,12 +458,17 @@ async function refreshAuthToken() {
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
                         // Determine storage based on existing token location or rememberMe
+                        // --- FIX: Prioritize updating sessionStorage if it exists, to match checkAuth priority ---
+                        if (sessionStorage.getItem('google_auth_token')) {
+                            sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                        }
+
                         const rememberMe = localStorage.getItem('google_auth_token') !== null ||
                             localStorage.getItem('rememberMe') === 'true';
 
                         if (rememberMe) {
                             localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        } else {
+                        } else if (!sessionStorage.getItem('google_auth_token')) {
                             sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         }
 
@@ -4941,20 +4946,29 @@ function showModal(options, noteElement = null) {
     }
     // --- Board Name Display in Modal ---
     const modalContentBox = contentModal.querySelector('.modal-content-box');
-    // Прилагаме запазените размери, ако съществуват
-    const savedWidth = localStorage.getItem('modalWidth');
-    const savedHeight = localStorage.getItem('modalHeight');
-    if (savedWidth && savedHeight) {
-        modalContentBox.style.width = savedWidth;
-        modalContentBox.style.height = savedHeight;
+    
+    // Check for explicit dimensions in options (e.g. from guide temp note)
+    if (options && options.width && options.height) {
+        modalContentBox.style.width = typeof options.width === 'number' ? options.width + 'px' : options.width;
+        modalContentBox.style.height = typeof options.height === 'number' ? options.height + 'px' : options.height;
         modalContentBox.style.maxWidth = 'none';
         modalContentBox.style.maxHeight = 'none';
     } else {
-        // Задаваме размер по подразбиране 250x150px, ако няма запазен размер
-        modalContentBox.style.width = '400px';
-        modalContentBox.style.height = '300px';
-        modalContentBox.style.maxWidth = 'none';
-        modalContentBox.style.maxHeight = 'none';
+        // Прилагаме запазените размери, ако съществуват
+        const savedWidth = localStorage.getItem('modalWidth');
+        const savedHeight = localStorage.getItem('modalHeight');
+        if (savedWidth && savedHeight) {
+            modalContentBox.style.width = savedWidth;
+            modalContentBox.style.height = savedHeight;
+            modalContentBox.style.maxWidth = 'none';
+            modalContentBox.style.maxHeight = 'none';
+        } else {
+            // Задаваме размер по подразбиране 250x150px, ако няма запазен размер
+            modalContentBox.style.width = '400px';
+            modalContentBox.style.height = '300px';
+            modalContentBox.style.maxWidth = 'none';
+            modalContentBox.style.maxHeight = 'none';
+        }
     }
     const modalBoardNameEl = document.getElementById('modal-board-name');
     const isPromo = options.id === 'promo';

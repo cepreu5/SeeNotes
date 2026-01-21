@@ -373,11 +373,6 @@
                     x: 13, y: 7, bx: -19, by: 175, bWidth: 93, bHeight: 50,
                     "target": "#show-board-note-count-checkbox", "stopAfter": true, "action": "highlight", "context": "boards"
                 },
-                2:{
-                    "image": "msm/r-up-w.png", "height": 100,
-                    x: -76, y: 31, bx: -19, by: 175, bWidth: 93, bHeight: 50, "target": "#header-buttons",
-                    "stopAfter": true, "action": "highlight", "context": "header"
-                }
             }
         },
 {
@@ -758,7 +753,7 @@
                 "en": "What do you see on the main screen and why is it important?"
             },
             "answer": {
-                "bg": "Когато броят на бордовете е голям и не се събират на екрана, с този бутон <img src='msm/menuBtn.png' alt='Menu' /> може да извикаш изкачащ прозорец с всички бордовете. На екрана на таблет или телефон бутонът е плаващ и може да го поставиш на удобно за теб място.",
+                "bg": "Основен елемент за работа е менюто с имане на бордове с бележки. Когато те са много и менюто не се събира на екрана, с този бутон <img src='msm/menuBtn.png' alt='Menu' /> може да извикаш изкачащ прозорец с всички бордовете. На екрана на таблет или телефон бутонът е плаващ и може да го поставиш на удобно за теб място.",
                 "en": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place."
             },
             "guide": {
@@ -935,6 +930,129 @@
                 },
             }
         },
+{
+            "id": "temp-note-example",
+            "category": "features",
+            "keywords": {
+                "bg": ["бележка", "преглед", "отвори", "клик", "натискане"],
+                "en": ["note", "preview", "open", "click", "press"]
+            },
+            "question": {
+                "bg": "Какво е полезно да знам за преглед на бележка?",
+                "en": "What is useful to know about note preview?"
+            },
+            "answer": {
+                "bg": "Можеш да отвориш бележка за преглед като кликнеш с мишката върху нея. Да я разгледаме по-подробно:",
+                "en": "You can open a note for preview by clicking on it. Let's look at it more closely:"
+            },
+            "guide": {
+                "stopAfter": false, "action": "explain", "context": "",
+                1: {
+                    "action": "note",
+                    "noteContent": "Примерна бележка. Това е съдържание, което се показва. Може да съдържа ",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/1.png", "height": 100,
+                    x: 113, y: 169, bx: -16, by: -98, bWidth: 198, bHeight: 70, "target": "#modal-body",
+                    "text": {
+                        "bg": "Бележките могат да имат графичен фон, наподобяващ стара хартия или обикновен фон, отговарящ на цвета им. Това се задава в <strong>Настройки</strong>.",
+                        "en": "Notes can"
+                    }
+                },
+                2: {
+                    "image": "msm/r-up.png", "height": 100,
+                    x: -68, y: 19, bx: -5, by: 117, bWidth: 230, bHeight: 94, "target": "#copy-modal-btn",
+                    "text": {
+                        "bg": "Този бутон копира цялото съдържание на бележката, без да е необходимо да маркираш текста. Ако има избран текст, тогава той копира само него.",
+                        "en": "This button ..."
+                    }
+                },
+                3: {
+                    "image": "msm/r-up.png", "height": 100,
+                    x: -67, y: 18, bx: 45, by: 107, bWidth: 230, bHeight: 94, "target": "#calculate-modal-btn",
+                    "text": {
+                        "bg": "Калкулаторът се използва за бързи сметки, в зависимост от това, какво има в бележката. Ще разгледаме няколко типични случая за неговата употреба.",
+                        "en": "calculator "
+                    }
+                },
+                4: {
+                    "action": "note",
+                    "noteContent": "xxxxxxxxxxxx:\n\n1. aaaaaaaaa     2 х 1.10\n2. bbbbbbbbb     2.30\n3. ddddddddd     6.34",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/l-up-w.png", "height": 100, "time": 3000,
+                    x: 11, y: 18, bx: -87, by: 124, bWidth: 232, bHeight: 50, "target": "#copy-modal-btn",
+                    "text": {
+                        "bg": "Натисни бутона <strong>Копиране</strong> ...", 
+                        "en": "Press the <strong>Copy</strong> button ..."
+                    }
+                },
+                5: {
+                    "image": "msm/l-up.png", "height": 100, "time": 3000,
+                    x: 14, y: 18, bx: -45, by: 120, bWidth: 226, bHeight: 50, "target": "#calculate-modal-btn",
+                    "text": {
+                        "bg": "и след това бутона <strong>Калкулатор.</strong>",
+                        "en": "and the <strong>Calculator</strong> button"
+                    }
+                },
+                6: {
+                    "action": "note",
+                    "noteContent": "xxxxxxxxxxxx:\n\n1. aaaaaaaaa     2 х 1.10\n2. bbbbbbbbb     2.30\n3. ddddddddd     6.34\n2*1.10+2.30+6.34 = 10.84",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/l-up.png", "height": 100,
+                    x: 159, y: 100, bx: -70, by: 108, bWidth: 223, bHeight: 50, "target": "#modal-body",
+                    "text": {
+                        "bg": "Под текста ще се появи резултатът от пресметната сума от цените в списъка.", 
+                        "en": "Under there will be the result of the calculation of the prices in the list."
+                    }
+                },
+                7: {
+                    "action": "note",
+                    "noteContent": "xxxxxxxxxxxx:\n\n☐ aaaaaaaaa     2 х 1.10\n☐ bbbbbbbbb     2.30\n☑ ddddddddd     6.34\n2*1.10+6.34 = 8.54",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/l-up.png", "height": 100,
+                    x: 125, y: 110, bx: -26, by: 104, bWidth: 274, bHeight: 69, "target": "#modal-body",
+                    "text": {
+                        "bg": "Ако обаче натиснеш и задържиш клавиша <strong>Ctrl</strong> и след това натиснеш <strong>Калкулатор</strong>, в сметката ще се включат само отметнатите покупки.", 
+                        "en": "But if you press and hold <strong>Ctrl</strong> and then press <strong>Calculator</strong>, the calculation will include only the checkedbutton and then press the Calc button only checked items will be calculated"
+                    }
+                },
+                8: {
+                    "action": "note",
+                    "noteContent": "12 + 3.14 - 4 + 3/2",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/1.png", "height": 100, "time": 20000,
+                    x: 122, y: 39, bx: -10, by: 104, bWidth: 254, bHeight: 86, "target": "#modal-body",
+                    "text": {
+                        "bg": "Калкулаторът може да пресмята и математически изрази като този. Маркирай го и натисни <strong>Калкулатор</strong> и ще видиш резултата.", 
+                        "en": "Calc ... Try it and you will see the result."
+                    }
+                },
+                8: {
+                    "action": "note",
+                    "noteContent": "",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/r-down.png", "height": 100, "time": 20000,
+                    x: -67, y: -88, bx: -112, by: -127, bWidth: 230, bHeight: 94, "target": "div.modal-resize-handle",
+                    "text": {
+                        "bg": "Хвани този ъгъл и го издърпай, за да промениш размера на бележката. Веднъж променен, новият размер се запомня и използва за всички бележки.", 
+                        "en": "grab this ..."
+                    }
+                },
+
+            }
+        },
+        
 {
             "id": "note",
             "category": "features",

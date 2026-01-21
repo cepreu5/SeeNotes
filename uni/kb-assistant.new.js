@@ -1,4 +1,6 @@
-/**
+/** terser kb-assistant.js -c 'pure_funcs=["console.log"]' --output kb-assistantt.js
+ * 
+ * 
  * KB Matcher - Интелигентен алгоритъм за съпоставяне на въпроси с KB записи
  * Използва keyword matching, fuzzy search и scoring система
  */
@@ -529,8 +531,8 @@ class KBAssistant {
                             this.openSettings();
                         };
                     }
-                    // Handle action (click element to reveal target)
-                    if (step.action && step.action !== 'highlight' && step.action !== 'explain' && step.action !== 'explain!') {
+                    // Handle action (click element to reveal target), but ignore special actions handled by msm.js
+                    if (step.action && !['highlight', 'explain', 'explain!', 'note'].includes(step.action)) {
                         const existingOnStart = step.onStart;
                         step.onStart = () => {
                             if (existingOnStart) existingOnStart();
@@ -565,82 +567,62 @@ class KBAssistant {
 
         }
 
-        // Контексти, които се намират в Settings
+        // --- SINGLE-STEP GUIDE LOGIC ---
+        // This logic handles guides that are not multi-step sequences.
+
         const settingsContexts = ['display', 'sorting', 'boards', 'data', 'behavior', 'startup', 'settings', 'calendar'];
         const isSettingsContext = settingsContexts.includes(guideData.context);
 
-        // Проверяваме дали има target елемент
-        let targetElement = document.querySelector(guideData.target);
-        console.log('Initial targetElement search:', guideData.target, targetElement);
+        // This function calls the msm.js system to display the hero.
+        // It passes the guideData object directly, which now contains all necessary properties
+        // (image, x, y, bx, by, bWidth, bHeight, and the 'text' from the answer).
+        const showTheGuide = () => {
+            if (typeof window.showGuideStep === 'function') {
+                // --- FIX: Explicitly create the step object ---
+                // This restores the original, stable logic and prevents properties
+                // in guideData from causing unexpected side effects in msm.js.
+                const step = {
+                    image: guideData.image,
+                    height: guideData.height,
+                    target: guideData.target,
+                    text: guideData.text, // This now correctly contains the answer
+                    x: guideData.x,
+                    y: guideData.y,
+                    bx: guideData.bx,
+                    by: guideData.by,
+                    bWidth: guideData.bWidth,
+                    bHeight: guideData.bHeight,
+                    stopAfter: guideData.stopAfter
+                };
+                window.showGuideStep(step);
+            } else {
+                console.warn('window.showGuideStep is not defined. Cannot show guide hero.');
+            }
+        };
 
-        // Ако елементът не е намерен, но е в Settings контекст, опитваме да отворим Settings
-        if (!targetElement && isSettingsContext) {
-            console.log('Target not found, opening settings...');
+        // If the target element is inside the Settings modal, we need to open it first.
+        if (isSettingsContext) {
             this.openSettings();
-
-            // Даваме малко време на DOM-а да се обнови
+            // Wait for the modal to open and render.
             setTimeout(() => {
-                targetElement = document.querySelector(guideData.target);
-                console.log('Retry targetElement search:', guideData.target, targetElement);
-                if (targetElement) {
-                    this.ensureElementVisible(targetElement, guideData).then(() => {
-                        this.highlightElement(targetElement, guideData);
-                    });
+                const el = document.querySelector(guideData.target);
+                if (el) {
+                    // Ensure accordions are open, etc.
+                    this.ensureElementVisible(el, guideData).then(showTheGuide);
                 } else {
-                    // Fallback: ако все още не го намираме, highlight-ваме целия модал
-                    const settingsModal = document.getElementById('settings-modal');
-                    if (settingsModal) {
-                        this.highlightElement(settingsModal, guideData); // Pass guideData here too
-                        const msg = this.currentLang === 'bg'
-                            ? `Настройката се намира в Settings. Моля, потърсете я ръчно.`
-                            : `The setting is in Settings. Please search for it manually.`;
-                        console.info(msg);
+                    // FIX: Ensure element is found before showing the guide for non-settings contexts
+                    const el = document.querySelector(guideData.target);
+                    if (el) {
+                        this.ensureElementVisible(el, guideData).then(showTheGuide);
+                    } else {
+                        console.warn(`Target element not found outside settings: ${guideData.target}`);
+                        showTheGuide();
                     }
                 }
             }, 300);
-
-            return;
-        }
-
-        if (!targetElement) {
-            console.warn(`Target element not found: ${guideData.target}`);
-            return;
-        }
-
-        // Ако елементът е намерен и е в Settings контекст
-        if (isSettingsContext) {
-            this.openSettings();
-
-            // Изчакваме Settings да се отвори
-            setTimeout(() => {
-                // Намираме елемента отново
-                const el = document.querySelector(guideData.target) || targetElement;
-                // Проверяваме дали елементът е видим и ако не е - опитваме да го покажем (акордеони)
-                this.ensureElementVisible(el, guideData).then(() => {
-                    this.highlightElement(el, guideData);
-                });
-            }, 300);
-
         } else {
-            // За UI елементи директно highlight-ваме
-            this.highlightElement(targetElement, guideData);
-        }
-
-        // Ако има глобална guide система (от msmguide.js), използваме я
-        if (typeof window.showGuideStep === 'function') {
-            const step = {
-                image: guideData.image,
-                height: guideData.height,
-                target: guideData.target,
-                text: guideData.text, // Pass object directly
-                x: guideData.x,
-                y: guideData.y,
-                bx: guideData.bx,
-                by: guideData.by,
-                bWidth: guideData.bWidth,
-                bHeight: guideData.bHeight
-            };
-            window.showGuideStep(step);
+            // For elements outside settings, show the guide immediately.
+            showTheGuide();
         }
 
     }
@@ -946,13 +928,7 @@ class KBAssistant {
      */
     openSettings() {
         const settingsModal = document.getElementById('settings-modal');
-        // Проверяваме дали модалът вече е отворен
-        // Той е отворен, ако има клас 'visible' (според style.css) или ако style.display е изрично зададен
-        const isVisible = settingsModal && (
-            settingsModal.classList.contains('visible') ||
-            settingsModal.style.display === 'block' ||
-            settingsModal.style.display === 'flex'
-        );
+        const isVisible = settingsModal && settingsModal.classList.contains('visible');
 
         if (!isVisible) {
             const settingsButton = document.getElementById('settings_button');
@@ -967,17 +943,25 @@ class KBAssistant {
      */
     closeSettings() {
         const settingsModal = document.getElementById('settings-modal');
-        const isVisible = settingsModal && (
-            settingsModal.classList.contains('visible') ||
-            settingsModal.style.display === 'block' ||
-            settingsModal.style.display === 'flex' ||
-            (!settingsModal.hasAttribute('hidden') && window.getComputedStyle(settingsModal).display !== 'none')
-        );
+        const isVisible = settingsModal && settingsModal.classList.contains('visible');
 
         if (isVisible) {
             const closeBtn = document.getElementById('settings-close-btn');
             if (closeBtn) closeBtn.click();
         }
+    }
+
+    /**
+     * Прекратява текущия guide и премахва всички визуални елементи (pointer, hero)
+     */
+    terminateGuide() {
+        // Премахваме hero guide (от msmrt.js)
+        if (typeof window.removeGuide === 'function') {
+            window.removeGuide();
+        }
+        // Премахваме червения pointer
+        const pointer = document.getElementById('kb-pointer-img');
+        if (pointer) pointer.remove();
     }
 
     /**
@@ -1009,8 +993,11 @@ class KBAssistant {
             }
 
             if (result.guide) {
-                const guideJson = JSON.stringify(result.guide).replace(/'/g, "&#39;");
-                html += `<button class="kb-show-me-btn" data-guide='${guideJson}'>`;
+                // --- FIX: Merge the answer text into the guide data payload ---
+                // This ensures the guide system receives the text for the speech bubble. The 'answer' property from the KB entry is used as the 'text' for the guide step.
+                const guidePayloadWithText = { ...result.guide, text: result.answer };
+                const guidePayloadJson = JSON.stringify(guidePayloadWithText).replace(/'/g, "&#39;");
+                html += `<button class="kb-show-me-btn" data-guide='${guidePayloadJson}'>`;
                 html += `${this.getText('showMe')} →</button>`;
             }
 
@@ -1104,6 +1091,10 @@ class KBUI {
         this.fabButton = document.createElement('button');
         this.fabButton.id = 'kb-fab';
         this.fabButton.className = 'kb-fab';
+        // Проверка при стартиране - ако е скрит в паметта, скриваме го веднага
+        if (localStorage.getItem('hideAssistant') === 'true') {
+            this.fabButton.style.display = 'none';
+        }
         this.fabButton.innerHTML = '<img src="msm/msm-assist.png" alt="Assistant" style="width: 40px; height: 40px; object-fit: contain;">';
         this.fabButton.title = 'Assistant';
 

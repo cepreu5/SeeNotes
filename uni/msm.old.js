@@ -5,7 +5,6 @@ let currentActiveStep = null;
 let stepTime = 10000;
 let animationFrameId; // defined in msmguide.js but let's be safe
 let activeSteps = typeof steps !== 'undefined' ? steps : [];
-let isTempNoteOpen = false;
 
 window.setGuideSteps = function (newSteps) {
   activeSteps = newSteps;
@@ -67,11 +66,6 @@ window.removeGuide = function () {
   if (dbg) dbg.remove();
   if (stepTimer) clearTimeout(stepTimer);
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
-  if (isTempNoteOpen) {
-    const modal = document.getElementById('content-modal');
-    if (modal) modal.classList.remove('visible');
-    isTempNoteOpen = false;
-  }
 };
 
 // Global function to flip image
@@ -217,10 +211,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     stepIndex = stepOrIndex;
     step = activeSteps[stepIndex];
   }
-  if (!step) {
-    window.removeGuide();
-    return;
-  }
+  if (!step) return;
   // Execute onStart hook
   if (step.onStart && typeof step.onStart === 'function') {
     try {
@@ -230,21 +221,6 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     }
   }
   currentActiveStep = step;
-
-  // Handle action: note (Create/Open temporary note)
-  if (step.action === 'note') {
-    if (typeof window.showModal === 'function') {
-      const content = step.noteContent || step.note || "";
-      window.showModal({ 
-        raw: content, 
-        id: 'guide-temp-note', 
-        color: step.noteColor,
-        width: step.noteWidth,
-        height: step.noteHeight
-      });
-      isTempNoteOpen = true;
-    }
-  }
   let imagePath = step.image;
   let stopAfter = false;
   if (imagePath && imagePath.endsWith('!')) {
@@ -258,11 +234,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     container.style.opacity = '0'; // Hide initially
     container.style.zIndex = '10000';
     container.style.pointerEvents = 'none'; // Pass clicks through
-    container.style.transition = 'none';
     document.body.appendChild(container);
   } else {
     // Reuse
-    container.style.transition = 'none';
     container.style.opacity = '0';
     container.style.left = '0px';
     container.style.top = '0px';
@@ -333,9 +307,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   }
   // Append innerHTML for bubble
   bubble.innerHTML = `<span>${initialText}</span>`;
-  if (!initialText) {
-    bubble.style.display = 'none';
-  }
+  // if (!initialText) {
+  //   bubble.style.display = 'none';
+  // }
   container.appendChild(bubble);
 
   // --- PLAY/RESUME BUTTON (New) ---
@@ -608,7 +582,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     // Ако е single режим или stopAfter, просто затваряме
     if (single || stopAfter) {
-      window.removeGuide();
+      if (container) container.remove();
+      container = null;
+      if (debugOverlay) debugOverlay.remove();
       return;
     }
     // Определяме следващата стъпка
@@ -616,7 +592,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     if (nextIndex !== -1 && nextIndex < activeSteps.length) {
       showStep(nextIndex);
     } else {
-      window.removeGuide();
+      if (container) container.remove();
+      container = null;
+      if (debugOverlay) debugOverlay.remove(); // Remove debug overlay when guide ends
     }
   };
   img.onclick = nextStep;
@@ -1078,3 +1056,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 });
+
+
