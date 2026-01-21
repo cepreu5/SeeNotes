@@ -3,6 +3,7 @@ en: {
         searchPlaceholder: 'Type text',
         reloadButtonTooltip: 'Reload',
         signoutButtonTooltip: 'Sign Out',
+        modeButtonTooltip: 'Mode',
         copyTooltip: 'Copy content',
         topTooltip: 'Go to top',
         boardsTitle: 'Boards',

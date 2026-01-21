@@ -832,40 +832,40 @@
                     "image": "msm/1.png", "height": 150,
                     x: 62, y: 29, bx: 123, by: -75, bWidth: 183, bHeight: 98, "target": "#search-box",
                     "text": {
-                        "bg": "Ако кликнеш върху мен, натиснеш <b>Enter</b> или <b>интервал</b>, ще премина към следващата стъпка. <b>Ctrl-click</b> прекратява обяснението.",
-                        "en": "If you click on me, press Enter or space I’ll move to the next step. <b>Ctrl-click</b> stops the explanation."
+                        "bg": "Ако кликнеш върху мен или натиснеш <b>Enter</b> или <b>интервал</b>, ще премина към следващата стъпка. С <b>Ctrl‑click</b> прекратяваш обяснението.",
+                        "en": "Click on me, or press <b>Enter</b> or <b>Space</b>, and I’ll hop to the next step. Use <b>Ctrl‑click</b> to stop the explanation."
                     }
                 },
                 4: {
                     "image": "msm/expl.png", "height": 100,
                     x: 0, y: 13, bx: 166, by: -17, bWidth: 224, bHeight: 84, "target": "#search-box",
                     "text": {
-                        "bg": "Кликни балончето с текст, за да имаш време да го прочетеш. От бутончето в горния ъгъл може да продължиш, когато си готов.",
-                        "en": "Tap the speech bubble to pause it. A corner button will appear so you can continue when you're ready."
+                        "bg": "Кликни балончето с текста, за да си дадеш време да го прочетеш. Когато си готов, продължи от бутончето в горния ъгъл.",
+                        "en": "Click the speech bubble to give yourself time to read it. When you're ready, continue using the button in the top corner."
                     }
                 },
                 5: {
                     "image": "msm/r-down.png", "height": 100, "time": 8000,
                     x: -67, y: -66, bx: -119, by: -109, bWidth: 229, bHeight: 91, "target": "#kb-fab",
                     "text": {
-                        "bg": "Тази икона е плаваща и може да я поставиш на друго място. <b>Ctrl-click</b> я прави полупрозрачна.",
-                        "en": "This icon is floating and can be placed in a convenient place. With <b>Ctrl-click</b> it becomes semi-transparent."
+                        "bg": "Тази икона е плаваща и можеш да я преместиш където ти е удобно. С <b>Ctrl‑click</b> я правиш полупрозрачна.",
+                        "en": "This icon floats, and you can move it wherever you like. Use <b>Ctrl‑click</b> to make it semi‑transparent."
                     }
                 },
                 6: {
                     "image": "msm/expl.png", "height": 100,
-                    x: 0, y: 11, bx: 174, by: -28, bWidth: 238, bHeight: 148, "target": "#search-box",
+                    x: 0, y: 11, bx: 196, by: -25, bWidth: 282, bHeight: 120, "target": "#search-box",
                     "text": {
                         "bg": "Все още нямам Instagram, затова ще ти пускам мои снимки отвреме‑навреме. Ако щракнеш <b>Х</b> върху някоя, без да я отвориш, в този борд повече няма да се появяват мои снимки. В <b>Настройки</b> можеш да ме скриеш изцяло — заедно с всички мои снимки.",
-                        "en": "Since I don’t have Instagram yet, I’ll show you my photos from time to time. If you close a photo with the <b>X</b> without opening it, photos won’t appear in this board anymore. In <b>Settings</b>, you can hide me completely — and that hides all my photos too."
+                        "en": "I don’t have Instagram yet, so I’ll drop in some of my photos from time to time. If you click the <b>X</b> on a photo without opening it, you won’t see my photos on this board anymore. In <b>Settings</b>, you can hide me completely — and that hides all my photos too."
                     }
                 },
                 7: {
                     "image": "msm/r-up-w.png", "height": 100,
                     x: 0, y: 19, bx: 98, by: 53, bWidth: 148, bHeight: 59, "target": "#app-title",
                     "text": {
-                        "bg": "Кликни заглавието за повторение на моето представяне.",
-                        "en": "Click the title to repeat my introduction."
+                        "bg": "Кликни заглавието, за да повторя моето представяне.",
+                        "en": "Click the title and I’ll replay my introduction."
                     }
                 },
             }
@@ -878,12 +878,12 @@
                 "en": ["assistant", "AI", "AI assistant", "chat", "window", "help", "how to"]
             },
             "question": {
-                "bg": "Какво ще е полезно да знаеш за използване на чат прозореца?",
-                "en": "What might be helpful while using the chat window?"
+                "bg": "Какво би било полезно да знаеш, когато използваш чат прозореца?",
+                "en": "What’s good to know while using the chat window?"
             },
             "answer": {
-                "bg": "Чат прозорецът ти позволява да търсиш информация с помощта на асистента. Той може да отговаря на въпросите ти, да помага със задачи и да обяснява елементите на интерфейса. Винаги поглеждай точния въпрос, на който отговаря асистентът (намира се в началото на отговора му), защото въпросът се формира на базата на написаното от теб, но не е задължително и много често не съвпада точно с твоята формулировка. Ако отговорът не съдържа търсената от теб информаця, опитай да перефразираш въпроса си.<br>Освен стандартните функции, чат прозорецът има и някои полезни допълния, за удобство на потребителя. За да се запознаеш с тях натисни бутона:",
-                "en": "The chat window allows you to search for information with the help of the assistant. It can answer your questions, help with tasks, and explain interface elements. Always look at the exact question the assistant is answering (it is located at the beginning of its answer), because the question is formed based on what you wrote, but it is not necessarily and very often does not match exactly your wording. If the answer does not contain the information you are looking for, try to rephrase your question.<br>Besides standard functions, the chat window also has some useful additions for user convenience. To get acquainted with them, press the button:"
+                "bg": "Чат прозорецът ти позволява да търсиш информация с помощта на асистента. Той може да отговаря на въпросите ти, да помага със задачи и да обяснява елементите на интерфейса. Винаги поглеждай точния въпрос, на който отговаря асистентът (намира се в началото на отговора му), защото въпросът се формира на базата на написаното от теб, но често не съвпада напълно с твоята формулировка. Ако отговорът не съдържа търсената от теб информация, опитай да преформулираш въпроса си.<br>Освен стандартните функции, чат прозорецът има и някои полезни допълнения за удобство на потребителя. За да се запознаеш с тях, натисни бутона:",
+                "en": "The chat window lets you search for information with the help of the assistant. It can answer your questions, help with tasks, and explain interface elements. Always check the exact question the assistant is responding to (shown at the beginning of its answer), because it’s generated from what you wrote but often doesn’t match your wording exactly. If the answer doesn’t contain what you need, try rephrasing your question.<br>Alongside the standard features, the chat window also includes some handy extras for your convenience. To explore them, press the button:"
             },
             "guide": {
                 "stopAfter": false, "action": "explain!", "context": "",
@@ -892,16 +892,16 @@
                     x: 54, y: -79, bx: 61, by: -85, bWidth: 281, bHeight: 65,
                     "target": "div.kb-input-container", 
                     "text": {
-                        "bg": "Не е необходимо да пишеш подробни въпроси, разбирам и от една дума, пробвай да напишеш само <i>търсене</i>.",
-                        "en": "It is not necessary to write detailed questions, I understand even from one word, you can write only <i>search</i>."
+                        "bg": "Не е необходимо да пишеш подробни въпроси — разбирам и от една дума. Пробвай да напишеш само <i>търсене</i>.",
+                        "en": "No need to write long questions — I understand even a single word. Try typing just <i>search</i>."
                     }
                 },
                 2: {
                     "image": "msm/r-down-w.png", "height": 100,
                     x: 33, y: -78, bx: 90, by: -94, bWidth: 281, bHeight: 65, "target": "#kb-input", 
                     "text": {
-                        "bg": "Историята - последните въпроси, на които съм отговарял, може да извикаш и като изпратиш интнервал, вместо ?.",
-                        "en": "History - the last questions I answered, you can also call by sending a space instead of ?."
+                        "bg": "Историята — последните въпроси, на които съм отговарял, можеш да извикаш и като изпратиш интервал вместо ?.",
+                        "en": "History — the last questions I answered can also be shown by sending a space instead of ?."
                     }
                 },
                 3: {
@@ -909,8 +909,8 @@
                     x: -55, y: -88, bx: -101, by: -88, bWidth: 281, bHeight: 65,
                     "target": "#kb-send-btn", 
                     "text": {
-                        "bg": "Ако натиснеш този бутон без да си написал нищо, чат прозорецът ще се затвори.",
-                        "en": "If you press this button without writing anything, the chat window will close."
+                        "bg": "Ако натиснеш този бутон, без да си написал нещо, чат прозорецът ще се затвори.",
+                        "en": "If you press this button without typing anything, the chat window will close."
                     }
                 },
                 4: {
@@ -918,17 +918,17 @@
                     "image": "msm/expl.png", "height": 100,
                     x: 57, y: 7, bx: 8, by: -89, bWidth: 225, bHeight: 65, "target": "div.kb-additional-results",
                     "text": {
-                        "bg": "Ако кликнеш на текста на последния твой въпрос, той ще се попълни в полето за редактиране.",
-                        "en": "If you click on the text of your last question, it will be filled in the editing field."
+                        "bg": "Ако кликнеш върху текста на последния си въпрос, той ще се попълни в полето за редактиране.",
+                        "en": "If you click the text of your last question, it will be placed in the editing field."
                     }
                 },
                 5: {
                     "stopAfter": false, "action": "explain!", "context": "",
                     "image": "msm/r-up-w.png", "height": 100,
-                    x: -71, y: 15, bx: -136, by: -14, bWidth: 163, bHeight: 100, "target": "#kb-all-questions-btn",
+                    x: -71, y: 15, bx: -144, by: -10, bWidth: 181, bHeight: 109, "target": "#kb-all-questions-btn",
                     "text": {
-                        "bg": "От тук може да отвориш всички въпроси, на които имам отговор. Може да търсиш бързо в този списък като напишеш нещо в полето отдолу.",
-                        "en": "From here you can open all the questions I can answer. You can also search fast in this list by typing something in the field below."
+                        "bg": "Оттук можеш да отвориш всички въпроси, на които имам отговор. Можеш и бързо да търсиш в списъка, като напишеш нещо в полето отдолу.",
+                        "en": "From here you can open all the questions I can answer. You can also quickly search through the list by typing something in the field below."
                     }
                 },
             }
@@ -941,42 +941,42 @@
                 "en": ["note", "preview", "open", "click", "press"]
             },
             "question": {
-                "bg": "Какво е полезно да знам за преглед на бележка?",
-                "en": "What is useful to know about note preview?"
+                "bg": "Какво е полезно да знам, когато преглеждам бележка?",
+                "en": "What’s good to know when previewing a note?"
             },
             "answer": {
-                "bg": "Можеш да отвориш бележка за преглед като кликнеш с мишката върху нея. Да я разгледаме по-подробно:",
-                "en": "You can open a note for preview by clicking on it. Let's look at it more closely:"
+                "bg": "Можеш да отвориш бележка за преглед, като кликнеш с мишката върху нея. Хайде да я разгледаме по‑подробно:",
+                "en": "You can open a note for preview by clicking on it. Let’s take a closer look:"
             },
             "guide": {
                 "stopAfter": false, "action": "explain", "context": "",
                 1: {
                     "action": "note",
-                    "noteContent": "Примерна бележка. Това е съдържание, което се показва. Може да съдържа ",
+                    "noteContent": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor...",
                     "noteColor": "#d4edda",
                     "noteWidth": 300,
                     "noteHeight": 300,
                     "image": "msm/1.png", "height": 100,
-                    x: 113, y: 169, bx: -1, by: -115, bWidth: 207, bHeight: 89, "target": "#modal-body",
+                    x: 113, y: 169, bx: -1, by: -115, bWidth: 257, bHeight: 92, "target": "#modal-body",
                     "text": {
-                        "bg": "Бележките могат да имат графичен фон, наподобяващ стара хартия или обикновен фон, отговарящ на цвета им. Това се задава в <b>Настройки</b> -> <b>Графичен фон (бележка)</b>.",
-                        "en": "Notes can"
+                        "bg": "Бележките могат да имат графичен фон, наподобяващ стара хартия, или обикновен фон, който съответства на цвета им. Това се задава в <b>Настройки</b> -> <b>Графичен фон (бележка)</b>.",
+                        "en": "Notes can have a graphic background that looks like old paper, or a simple background matching their color. You can set this in <b>Settings</b> → <b>Graphic background (note)</b>."
                     }
                 },
                 2: {
                     "image": "msm/r-up.png", "height": 100,
                     x: -68, y: 19, bx: -5, by: 117, bWidth: 230, bHeight: 94, "target": "#copy-modal-btn",
                     "text": {
-                        "bg": "Този бутон копира цялото съдържание на бележката, без да е необходимо да маркираш текста. Ако има избран текст, тогава той копира само него.",
-                        "en": "This button ..."
+                        "bg": "Този бутон копира цялото съдържание на бележката, без да е необходимо да маркираш текста. Ако има избран текст, тогава копира само него.",
+                        "en": "This button copies the entire content of the note without needing to select anything. If some text is selected, it copies only that part."
                     }
                 },
                 3: {
                     "image": "msm/r-up.png", "height": 100,
                     x: -67, y: 18, bx: 45, by: 107, bWidth: 230, bHeight: 94, "target": "#calculate-modal-btn",
                     "text": {
-                        "bg": "Калкулаторът се използва за бързи сметки, в зависимост от това, какво има в бележката. Ще разгледаме няколко типични случая за неговата употреба.",
-                        "en": "calculator "
+                        "bg": "Калкулаторът се използва за бързи сметки, в зависимост от това какво има в бележката. Ще разгледаме няколко типични случая за неговата употреба.",
+                        "en": "The calculator is used for quick calculations, depending on what’s inside the note. We’ll go through a few typical examples of how it works."
                     }
                 },
                 4: {
@@ -996,8 +996,8 @@
                     "image": "msm/l-up.png", "height": 100, "time": 3000,
                     x: 14, y: 18, bx: -45, by: 120, bWidth: 226, bHeight: 50, "target": "#calculate-modal-btn",
                     "text": {
-                        "bg": "и след това бутона <b>Калкулатор.</b>",
-                        "en": "and the <b>Calculator</b> button"
+                        "bg": "... и след това бутона <b>Калкулатор.</b>",
+                        "en": "... and then <b>Calculator</b> button"
                     }
                 },
                 6: {
@@ -1009,8 +1009,8 @@
                     "image": "msm/l-up.png", "height": 100,
                     x: 159, y: 100, bx: -70, by: 108, bWidth: 223, bHeight: 50, "target": "#modal-body",
                     "text": {
-                        "bg": "Под текста ще се появи резултатът от пресметната сума от цените в списъка.", 
-                        "en": "Under there will be the result of the calculation of the prices in the list."
+                        "bg": "Под текста ще се появи резултатът от изчислената сума на цените в списъка.",
+                        "en": "Below the text, you’ll see the result of the calculated total of the prices in the list."
                     }
                 },
                 7: {
@@ -1022,8 +1022,8 @@
                     "image": "msm/l-up.png", "height": 100,
                     x: 125, y: 110, bx: -26, by: 104, bWidth: 274, bHeight: 69, "target": "#modal-body",
                     "text": {
-                        "bg": "Ако обаче натиснеш и задържиш клавиша <b>Ctrl</b> и след това натиснеш <b>Калкулатор</b>, в сметката ще се включат само отметнатите покупки.", 
-                        "en": "But if you press and hold <b>Ctrl</b> and then press <b>Calculator</b>, the calculation will include only the checkedbutton and then press the Calc button only checked items will be calculated"
+                        "bg": "Ако обаче натиснеш и задържиш клавиша <b>Ctrl</b>, а след това натиснеш <b>Калкулатор</b>, в сметката ще се включат само отметнатите покупки.",
+                        "en": "But if you press and hold <b>Ctrl</b> and then press <b>Calculator</b>, the calculation will include only the checked items."
                     }
                 },
                 8: {
@@ -1035,8 +1035,8 @@
                     "image": "msm/1.png", "height": 100, "time": 20000,
                     x: 122, y: 39, bx: -10, by: 104, bWidth: 254, bHeight: 86, "target": "#modal-body",
                     "text": {
-                        "bg": "Калкулаторът може да пресмята и математически изрази като този. Маркирай го и натисни <b>Калкулатор</b> и ще видиш резултата.", 
-                        "en": "Calc ... Try it and you will see the result."
+                        "bg": "Калкулаторът може да пресмята и математически изрази като този. Маркирай го и натисни <b>Калкулатор</b>, за да видиш резултата.",
+                        "en": "The calculator can also evaluate math expressions like this one. Select it and press <b>Calculator</b> to see the result."
                     }
                 },
                 9: {
@@ -1046,10 +1046,10 @@
                     "noteWidth": 300,
                     "noteHeight": 300,
                     "image": "msm/1.png", "height": 100,
-                    x: 113, y: 169, bx: -12, by: -106, bWidth: 205, bHeight: 77, "target": "#modal-body",
+                    x: 113, y: 169, bx: -12, by: -106, bWidth: 227, bHeight: 77, "target": "#modal-body",
                     "text": {
-                        "bg": "Имай предвид, че резултатите от пресмятанията са информативни и не се добавят в бележката, когато я затвориш, те се изтриват.",
-                        "en": "Have in mind "
+                        "bg": "Имай предвид, че резултатите от пресмятанията са информативни и не се добавят в бележката — когато я затвориш, те се изтриват.",
+                        "en": "Keep in mind that the calculation results are informational only and aren’t added to the note — they disappear when you close it."
                     }
                 },
                 10: {
@@ -1061,8 +1061,8 @@
                     "image": "msm/r-down.png", "height": 100, "time": 20000,
                     x: -67, y: -88, bx: -112, by: -127, bWidth: 230, bHeight: 94, "target": "div.modal-resize-handle",
                     "text": {
-                        "bg": "Хвани този ъгъл и го издърпай, за да промениш размера на бележката. Веднъж променен, новият размер се запомня и използва за всички бележки.", 
-                        "en": "grab this ..."
+                        "bg": "Хвани този ъгъл и го издърпай, за да промениш размера на бележката. Веднъж променен, новият размер се запомня и използва за всички бележки.",
+                        "en": "Grab this corner and drag it to resize the note. Once changed, the new size is saved and used for all notes."
                     }
                 },
 
@@ -1078,11 +1078,11 @@
             },
             "question": {
                 "bg": "Какви допълнителни функции имат бележките в борда?",
-                "en": "What additional functions do notes have in the board?"
+                "en": "What additional functions do notes have on the board?"
             },
             "answer": {
-                "bg": "Ако бележката съдържа снимка или видео като приложение, то може да се отвори за предварителен преглед от иконката в долната част на бележката.<br><img src='msm/attach.png' ID='attach' alt='Attachment'><br>Изображението може да остане отворено, а с Ctrl-click на името на борда можеш да отвориш/затвориш всички изображения в даден борд.",
-                "en": "If the note contains an image or video as an attachment, it can be opened by clicking on the icon at the bottom.<br><img src='msm/attach.png' ID='attach' alt='Attachment'><br>The image can stay open, and with Ctrl-click on the board name you can open/close all images in the board."
+                "bg": "Ако бележката съдържа снимка или видео като приложение, можеш да го отвориш за предварителен преглед от иконката в долната част на бележката.<br><img src='msm/attach.png' ID='attach' alt='Attachment'><br>Изображението може да остане отворено, а с <b>Ctrl‑клик</b> върху името на борда можеш да отвориш или затвориш всички изображения в този борд.",
+                "en": "If the note contains an image or video as an attachment, you can open it for preview by clicking the icon at the bottom of the note.<br><img src='msm/attach.png' ID='attach' alt='Attachment'><br>The image can stay open, and with a <b>Ctrl‑click</b> on the board name you can open or close all images in that board."
             },
             "guide": {
                 "stopAfter": true, "action": "#boards-arrow", "context": "boards",
@@ -1090,8 +1090,8 @@
                     "image": "msm/l-up-w.png", "height": 100,
                     x: 291, y: 14, bx: -141, by: -111, bWidth: 305, bHeight: 70, "target": "#show-photos-board",
                     "text": {
-                        "bg": "Има два специални борда - <b><i>Със снимки</i></b> и <b><i>С видео</i></b>, които показват на едно място всички бележки, съдържащи изображение/видео. Можеш да ги включиш от <b><i>Настройки</i></b>.",
-                        "en": "There are two special boards - <b><i>With photos</i></b> and <b><i>With video</i></b>, which show at once all notes containing an image/video. You can enable them from <b><i>Settings</i></b>."
+                        "bg": "Има два специални борда — <b><i>Със снимки</i></b> и <b><i>С видео</i></b>, които показват на едно място всички бележки, съдържащи изображение или видео. Можеш да ги включиш от <b><i>Настройки</i></b>.",
+                        "en": "There are two special boards — <b><i>With photos</i></b> and <b><i>With video</i></b>, which display all notes containing an image or video in one place. You can enable them from <b><i>Settings</i></b>."
                     },
                 }
             }
@@ -1105,11 +1105,11 @@
             },
             "question": {
                 "bg": "Какви режими на работа има?",
-                "en": "What are the different modes of operation?"
+                "en": "What modes of operation are available?"
             },
             "answer": {
-                "bg": "Натисни <b>Покажи ми</b> за да ти ги обясня. Можеш да използваш <b><i>Настройки</i></b> > <b><i>Четене на данни</i></b>, за да ги промениш.",
-                "en": "Press <b>Show me</b> to explain it to you. You can use <b><i>Settings</i></b> > <b><i>Data loading</i></b> to change them."
+                "bg": "Натисни <b>Покажи ми</b>, за да ти ги обясня. Можеш да ги промениш от <b><i>Настройки</i></b> > <b><i>Четене на данни</i></b>.",
+                "en": "Press <b>Show me</b> to have them explained. You can change them in <b><i>Settings</i></b> > <b><i>Data loading</i></b>."
             },
             "guide": {
                 "stopAfter": false, "action": "explain", "context": "",
@@ -1117,7 +1117,7 @@
                     "image": "msm/l-up-w.png", "height": 100,
                     x: 24, y: 37, bx: 43, by: 63, bWidth: 303, bHeight: 200, "target": "#mode_button", 
                     "text": {
-                        "bg": "<span align='left'>Тук ще виждаш откъде се зареждат бележките ти. Има следните възможности:<br><br><span align='left'><img src='msm/gddb.png'>от База данни и <i>Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'>само от <i>Google Drive</i></span><br><span align='left'><img src='Database.png' width='30px'>само от <i>База данни</i></span>",
+                        "bg": "<span align='left'>Тук ще виждаш откъде се зареждат бележките ти. Налични са следните възможности:<br><br><span align='left'><img src='msm/gddb.png'> от <i>База данни и Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'> само от <i>Google Drive</i></span><br><span align='left'><img src='Database.png' width='30px'> само от <i>База данни</i></span>",
                         "en": "<span align='left'>Here you will see where your notes are loaded from. The following options are available:<br><br><span align='left'><img src='msm/gddb.png'> <i>Database and Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'> <i>Google Drive</i> only</span><br><span align='left'><img src='Database.png' width='30px'> <i>Database</i> only</span>"
                     }
                 },
@@ -1126,7 +1126,7 @@
                     x: -46, y: -2, bx: 133, by: 68, bWidth: 294, bHeight: 111, "target": "#mode_button",
                     "text": {
                         "bg": "<span align='left'><img src='msm/gddb.png'>Основният режим на работа използва локална база данни в браузъра, която се <b>обновява</b> с новите и редактирани бележки от <i>Google Drive</i>. По този начин се осигурява оптимална производителност.</span>",
-                        "en": "<span align='left'><img src='msm/gddb.png'>The main mode of operation uses a local database in the browser, which is <b>updated</b> with new and edited notes from the <i>Google Drive</i>. This way ensures optimal performance.</span>"
+                        "en": "<span align='left'><img src='msm/gddb.png'>The main mode of operation uses a local database in the browser, which is <b>updated</b> with new and edited notes from <i>Google Drive</i>. This approach ensures optimal performance.</span>"
                     }
                 },
                 3: {
@@ -1134,7 +1134,7 @@
                     x: -46, y: -2, bx: 133, by: 68, bWidth: 296, bHeight: 62, "target": "#mode_button", 
                     "text": {
                         "bg": "При първо стартиране всички бележки се изтеглят от <i>Google Drive</i> и се записват в локална база данни (кеш) на браузъра.",
-                        "en": "On first launch, all notes are downloaded from <i>Google Drive</i> and saved in a local browser database (cache)."
+                        "en": "On first launch, all notes are downloaded from <i>Google Drive</i> and stored in a local browser database (cache)."
                     }
                 },
                 4: {
@@ -1143,15 +1143,15 @@
                     x: -46, y: -2, bx: 133, by: 68, bWidth: 293, bHeight: 81, "target": "#mode_button",
                     "text": {
                         "bg": "Всяко следващо зареждане на бележките става директно от тази база, като се прави проверка и се изтеглят само новите и променените. Това съществено ускорява процеса.",
-                        "en": "Every subsequent load is done directly from this database, with a check to download only new and modified notes. This significantly speeds up the process."
+                        "en": "Every subsequent load is done directly from this database, with a check to download only the new and modified notes. This greatly speeds up the process."
                     }
                 },
                 5: {
                     "image": "msm/l-up-w.png", "height": 100,
                     x: 24, y: 37, bx: 43, by: 63, bWidth: 303, bHeight: 100, "target": "#mode_button", 
                     "text": {
-                        "bg": "<span align='left'> <img src='Database.png' width='30px'> Най-бързият начин е да работиш в режим само <i>База данни</i>. Бележките се зареждат веднага, а с клик на иконата проверяваш за нови или променени бележки в <i>Google Drive</i> когато е необходимо. </span>",
-                        "en": "<span align='left'> <img src='Database.png' width='30px'> The fastest way is to use <i>Database</i>-only mode. Notes load instantly, and clicking the icon lets you check for new or updated notes in <i>Google Drive</i> when needed. </span>"
+                        "bg": "<span align='left'> <img src='Database.png' width='30px'> Най‑бързият начин е да работиш в режим само <i>База данни</i>. Бележките се зареждат мигновено, а с клик на иконата можеш да провериш за нови или променени бележки в <i>Google Drive</i>, когато е необходимо. </span>",
+                        "en": "<span align='left'> <img src='Database.png' width='30px'> The fastest way is to use <i>Database</i>-only mode. Notes load instantly, and clicking the icon allows you to check for new or updated notes in <i>Google Drive</i> whenever needed. </span>"
                     }
                 },
                 6: {
@@ -1159,8 +1159,8 @@
                     "image": "msm/expl.png", "height": 70,
                     x: -46, y: -2, bx: 133, by: 68, bWidth: 293, bHeight: 81, "target": "#mode_button",
                     "text": {
-                        "bg": "ВАЖНО!<br>Изтриването на бележка или дори на цялата база данни не засяга нищо в <b>Google Drive</b>. Базата и всички бележки винаги могат да се възстановят от записаното там.",
-                        "en": "IMPORTANT!<br>Deleting a note or even the entire database doesn’t affect anything in <b>Google Drive</b>. The database and all notes can always be restored from what’s stored there."
+                        "bg": "<b>ВАЖНО!</b><br>Изтриването на бележка или дори на цялата база данни не засяга нищо в <b>Google Drive</b>. Базата и всички бележки винаги могат да бъдат възстановени от записаното там.",
+                        "en": "<b>IMPORTANT!</b><br>Deleting a note or even the entire database doesn’t affect anything in <b>Google Drive</b>. The database and all notes can always be restored from what’s stored there."
                     }
                 },
             }
@@ -1174,7 +1174,7 @@
             },
             "question": {
                 "bg": "Как да търся в бележките?",
-                "en": "How to search in notes?"
+                "en": "How do I search within the notes?"
             },
             "answer": {
                 "bg": "Използвай полето за търсене в горната част на страницата:<br><img src='msm/search.png' ID='sbox' alt='Search box'>",
@@ -1186,24 +1186,24 @@
                     "image": "msm/r-up.png", "height": 100,
                     x: 133, y: 19, bx: -83, by: -102, bWidth: 229, bHeight: 70, "target": "#sbox",
                     "text": {
-                        "bg": "Търсенията могат да се запазват за бърз достъп (броят на запомнените търсения 1-20 се задава в настройките).",
-                        "en": "Searches can be saved for quick access (the number of saved searches 1-20 is set in the settings)."
+                        "bg": "Търсенията могат да се запазват за бърз достъп (броят на запомнените търсения — от 1 до 20 — се задава в настройките).",
+                        "en": "Searches can be saved for quick access (the number of saved searches — from 1 to 20 — is set in the settings)."
                     }
                 },
                 2: {
                     "image": "msm/l-down-w.png", "height": 100,
                     x: 35, y: -36, bx: 77, by: 121, bWidth: 220, bHeight: 50, "target": "#sbox",
                     "text": {
-                        "bg": "На първия ред е текстът на последното търсене, той се променя при всяко ново търсене.",
-                        "en": "On the first line is the text of the last search, it changes with every new search."
+                        "bg": "На първия ред е текстът на последното търсене — той се променя при всяко ново търсене.",
+                        "en": "The first line shows the text of your most recent search — it updates with every new search."
                     }
                 },
                 3: {
                     "image": "msm/l-down-w.png", "height": 100,
                     x: 28, y: -1, bx: 73, by: -63, bWidth: 185, bHeight: 50, "target": "#sbox",
                     "text": {
-                        "bg": "На следващите редове са запазените търсенения, те не се променят.",
-                        "en": "On the next lines are the saved searches, they do not change."
+                        "bg": "На следващите редове са запазените търсения — те не се променят.",
+                        "en": "The next lines show the saved searches — they remain unchanged."
                     }
                 }
             }
@@ -1217,11 +1217,11 @@
             },
             "question": {
                 "bg": "Как да организирам бележките си?",
-                "en": "How to organize my notes?"
+                "en": "How can I organize my notes?"
             },
             "answer": {
-                "bg": "Можеш да използваш  <b><i>Настройки</i></b> > <b><i>Подреждане на бележките</i></b>, за да ги подредиш по дата, цвят, азбучен ред и др.",
-                "en": "You can use <b><i>Settings</i></b> > <b><i>Order notes</i></b> to arrange them by date, color, alphabetical order etc."
+                "bg": "Можеш да използваш <b><i>Настройки</i></b> > <b><i>Подреждане на бележките</i></b>, за да ги подредиш по дата, цвят, азбучен ред и други критерии.",
+                "en": "You can use <b><i>Settings</i></b> > <b><i>Order notes</i></b> to arrange them by date, color, alphabetical order, and other criteria."
             },
             "guide": {
                 "image": "msm/l-up.png", "height": 100,
@@ -1238,11 +1238,11 @@
             },
             "question": {
                 "bg": "Как да използвам календара?",
-                "en": "How to use the calendar?"
+                "en": "How do I use the calendar?"
             },
             "answer": {
-                "bg": "Кликни на бутона <b><i>Календар</i></b> в менюто с имена на бордовете. Календарът показва бележки, за които си задал дата в календара. Можеш да превключваш между месечен и седмичен изглед. Ако в месечния календа кликнеш върху избрана дата ще се отвори седмичния календар, показващ седмицата, съдържаща избраната дата.",
-                "en": "Click the <b><i>Calendar</i></b> button in the board names menu. The calendar shows notes for which you have set a date in the calendar. You can switch between monthly and weekly view. If in the monthly calendar you click on a selected date, the weekly calendar will open, showing the week containing the selected date."
+                "bg": "Кликни бутона <b><i>Календар</i></b> в менюто с имената на бордовете. Календарът показва всички бележки, за които си задал дата. Можеш да превключваш между месечен и седмичен изглед. Ако в месечния календар кликнеш върху дадена дата, ще се отвори седмичният изглед, показващ седмицата, в която попада избраната дата.",
+                "en": "Click the <b><i>Calendar</i></b> button in the board names menu. The calendar displays all notes for which you have set a date. You can switch between monthly and weekly view. If you click a date in the monthly view, the weekly calendar will open, showing the week that contains the selected date."
             }
         },
 {
@@ -1257,8 +1257,8 @@
                 "en": "Can I work offline?"
             },
             "answer": {
-                "bg": "Да! След първоначално зареждане можеш да изключиш <b><i>Google Drive</i></b> в <b><i>Настройки</i></b> и да работиш само с локалната база данни. Това позволява пълен офлайн достъп до бележките. За да обновиш данните, кликни бутон <b><i>Режим</i></b>.",
-                "en": "Yes! After initial loading you can disable <b><i>Google Drive</i></b> in <b><i>Settings</i></b> and work only with the local database. This allows full offline access to the notes. To update the data, click the <b><i>Mode</i></b> button."
+                "bg": "Да! След първоначалното зареждане можеш да изключиш <b><i>Google Drive</i></b> от <b><i>Настройки</i></b> и да работиш само с локалната база данни. Това осигурява пълен офлайн достъп до бележките. За да обновиш данните, кликни бутона <b><i>Режим</i></b>.",
+                "en": "Yes! After the initial loading, you can disable <b><i>Google Drive</i></b> in <b><i>Settings</i></b> and work solely with the local database. This gives you full offline access to your notes. To refresh the data, click the <b><i>Mode</i></b> button."
             }
         },
     ]

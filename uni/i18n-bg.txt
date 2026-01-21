@@ -3,6 +3,7 @@ bg: {
         searchPlaceholder: 'Въведете текст',
         reloadButtonTooltip: 'Презареди',
         signoutButtonTooltip: 'Изход',
+        modeButtonTooltip: 'Режим',
         copyTooltip: 'Копирай съдържанието',
         topTooltip: 'Към началото',
         boardsTitle: 'Бордове',
