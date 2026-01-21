@@ -449,7 +449,7 @@
                 "en": "How to change the zoom level of the application?"
             },
             "answer": {
-                "bg": "Отиди в <b><i>Настройки</i></b> и използвай плъзгача <b><i>Мащаб</i></b> (25%-175%). Прозорецът <b><i>Настройки</i></b> става полупрозрачен, така че да може да следиш резултата. Ако борда, който е активен в момента има много бележки, това може да предизвика забавяне на процеса, затова за предпочитане е да избираш борд с по-малко бележки, когато правиш настройката. Можеш да въведеш и точна стойност за фина настройка, след което натисни <b><i>Потвърди</i></b> за да приложиш промяната.",
+                "bg": "Отиди в <b><i>Настройки</i></b> и използвай плъзгача <b><i>Мащаб</i></b> (25%-175%). Прозорецът <b><i>Настройки</i></b> става полупрозрачен, така че да може да следиш резултата. Ако бордът, който е активен в момента, има много бележки, това може да предизвика забавяне на процеса, затова, за предпочитане е да избираш борд с по-малко бележки, когато правиш настройката. Можеш да въведеш и точна стойност за фина настройка, след което натисни <b><i>Потвърди</i></b> за да приложиш промяната.",
                 "en": "Go to <b><i>Settings</i></b> and use the <b><i>Zoom</i></b> slider (25%-175%). The Settings window becomes semi-transparent so you can monitor the result. If the currently active board has many notes, this may cause a delay in the process, so it is preferable to choose a board with fewer notes when making the setting. You can also enter an exact value for fine tuning, then press <b><i>Confirm</i></b> to apply the change."
             },
             
@@ -753,7 +753,7 @@
                 "en": "What do you see on the main screen and why is it important?"
             },
             "answer": {
-                "bg": "Основен елемент за работа е менюто с имане на бордове с бележки. Когато те са много и менюто не се събира на екрана, с този бутон <img src='msm/menuBtn.png' alt='Menu' /> може да извикаш изкачащ прозорец с всички бордовете. На екрана на таблет или телефон бутонът е плаващ и може да го поставиш на удобно за теб място.",
+                "bg": "Много често ще използваш менюто с имената на бордовете. Когато те са много и менюто не се събира на екрана, с този бутон <img src='msm/menuBtn.png' alt='Menu' /> може да извикаш изкачащ прозорец с всички бордовете. На екрана на таблет или телефон бутонът е плаващ и може да го поставиш на удобно за теб място.",
                 "en": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place."
             },
             "guide": {
@@ -776,7 +776,7 @@
                 },
                 3: {
                     "image": "msm/l-up.png", "height": 100,
-                    x: 285, y: 13, bx: -202, by: -139, bWidth: 250, bHeight: 100, "target": "#img-bgrd",
+                    x: 285, y: 13, bx: -173, by: -120, bWidth: 299, bHeight: 74, "target": "#img-bgrd",
                     "text": {
                         "bg": "По подразбиране бележката се отваря за преглед с графичен фон наподобяващ стара хартия. Ако държите да виждате цвета на бележката, може да изключите фона.",
                         "en": "By default, the note is opened for preview with a graphic background resembling old paper. If you want to see the color of the note, you can disable the background."
@@ -804,11 +804,14 @@
 {
             "id": "assistant-1",
             "category": "features",
-            "keywords": {},
+            "keywords": {
+                "bg": ["асистент", "AI", "помощник", "помощ", "help", "{{assistantNameBG}}", "{{assistantNameEN}}"],
+                "en": ["assistant", "AI", "AI assistant", "{{assistantNameEN}}"]
+            },
             "question": {},
             "answer": {},
             "guide": {
-                "stopAfter": false, "action": "explain!", "context": "",
+                "stopAfter": true, "action": "explain!", "context": "",
                 1: {
                     "image": "msm/1.png", "height": 150, "time": 5000,
                     x: 62, y: 29, bx: 130, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
@@ -827,10 +830,10 @@
                 },
                 3: {
                     "image": "msm/1.png", "height": 150,
-                    x: 62, y: 29, bx: 130, by: -51, bWidth: 173, bHeight: 74, "target": "#search-box",
+                    x: 62, y: 29, bx: 123, by: -75, bWidth: 183, bHeight: 98, "target": "#search-box",
                     "text": {
-                        "bg": "Ако кликнеш върху мен, ще премина към следващата стъпка. Ctrl-click прекратява обяснението.",
-                        "en": "If you click on me, I’ll move to the next step. Ctrl‑click stops the explanation."
+                        "bg": "Ако кликнеш върху мен, натиснеш <b>Enter</b> или <b>интервал</b>, ще премина към следващата стъпка. <b>Ctrl-click</b> прекратява обяснението.",
+                        "en": "If you click on me, press Enter or space I’ll move to the next step. <b>Ctrl-click</b> stops the explanation."
                     }
                 },
                 4: {
@@ -845,16 +848,16 @@
                     "image": "msm/r-down.png", "height": 100, "time": 8000,
                     x: -67, y: -66, bx: -119, by: -109, bWidth: 229, bHeight: 91, "target": "#kb-fab",
                     "text": {
-                        "bg": "Тази икона е плаваща и може да я поставиш на друго място. Ctrl-click я прави полупрозрачна.",
-                        "en": "This icon is floating and can be placed in a convenient place. With Ctrl-click, it becomes semi-transparent."
+                        "bg": "Тази икона е плаваща и може да я поставиш на друго място. <b>Ctrl-click</b> я прави полупрозрачна.",
+                        "en": "This icon is floating and can be placed in a convenient place. With <b>Ctrl-click</b> it becomes semi-transparent."
                     }
                 },
                 6: {
                     "image": "msm/expl.png", "height": 100,
                     x: 0, y: 11, bx: 174, by: -28, bWidth: 238, bHeight: 148, "target": "#search-box",
                     "text": {
-                        "bg": "Все още нямам Instagram, затова ще ти пускам мои снимки отвреме‑навреме. Ако щракнеш Х върху някоя, без да я отвориш, в този борд повече няма да се появяват мои снимки. В <strong>Настройки</strong> можеш да ме скриеш изцяло — заедно с всички мои снимки.",
-                        "en": "Since I don’t have Instagram yet, I’ll show you my photos from time to time. If you close a photo with the X without opening it, photos won’t appear in this board anymore. In <strong>Settings</strong>, you can hide me completely — and that hides all my photos too."
+                        "bg": "Все още нямам Instagram, затова ще ти пускам мои снимки отвреме‑навреме. Ако щракнеш <b>Х</b> върху някоя, без да я отвориш, в този борд повече няма да се появяват мои снимки. В <b>Настройки</b> можеш да ме скриеш изцяло — заедно с всички мои снимки.",
+                        "en": "Since I don’t have Instagram yet, I’ll show you my photos from time to time. If you close a photo with the <b>X</b> without opening it, photos won’t appear in this board anymore. In <b>Settings</b>, you can hide me completely — and that hides all my photos too."
                     }
                 },
                 7: {
@@ -871,8 +874,8 @@
             "id": "assistant-2",
             "category": "features",
             "keywords": {
-                "bg": ["асистент", "AI", "помощник", "помощ", "help", "{{assistantNameBG}}", "{{assistantNameEN}}"],
-                "en": ["assistant", "AI", "AI assistant", "{{assistantNameEN}}"]
+                "bg": ["чат", "прозорец", "помощник", "помощ", "help", "AI", "ИИ"],
+                "en": ["assistant", "AI", "AI assistant", "chat", "window", "help", "how to"]
             },
             "question": {
                 "bg": "Какво ще е полезно да знаеш за използване на чат прозореца?",
@@ -954,9 +957,9 @@
                     "noteWidth": 300,
                     "noteHeight": 300,
                     "image": "msm/1.png", "height": 100,
-                    x: 113, y: 169, bx: -16, by: -98, bWidth: 198, bHeight: 70, "target": "#modal-body",
+                    x: 113, y: 169, bx: -1, by: -115, bWidth: 207, bHeight: 89, "target": "#modal-body",
                     "text": {
-                        "bg": "Бележките могат да имат графичен фон, наподобяващ стара хартия или обикновен фон, отговарящ на цвета им. Това се задава в <strong>Настройки</strong>.",
+                        "bg": "Бележките могат да имат графичен фон, наподобяващ стара хартия или обикновен фон, отговарящ на цвета им. Това се задава в <b>Настройки</b> -> <b>Графичен фон (бележка)</b>.",
                         "en": "Notes can"
                     }
                 },
@@ -985,16 +988,16 @@
                     "image": "msm/l-up-w.png", "height": 100, "time": 3000,
                     x: 11, y: 18, bx: -87, by: 124, bWidth: 232, bHeight: 50, "target": "#copy-modal-btn",
                     "text": {
-                        "bg": "Натисни бутона <strong>Копиране</strong> ...", 
-                        "en": "Press the <strong>Copy</strong> button ..."
+                        "bg": "Натисни бутона <b>Копиране</b> ...", 
+                        "en": "Press the <b>Copy</b> button ..."
                     }
                 },
                 5: {
                     "image": "msm/l-up.png", "height": 100, "time": 3000,
                     x: 14, y: 18, bx: -45, by: 120, bWidth: 226, bHeight: 50, "target": "#calculate-modal-btn",
                     "text": {
-                        "bg": "и след това бутона <strong>Калкулатор.</strong>",
-                        "en": "and the <strong>Calculator</strong> button"
+                        "bg": "и след това бутона <b>Калкулатор.</b>",
+                        "en": "and the <b>Calculator</b> button"
                     }
                 },
                 6: {
@@ -1012,15 +1015,15 @@
                 },
                 7: {
                     "action": "note",
-                    "noteContent": "xxxxxxxxxxxx:\n\n☐ aaaaaaaaa     2 х 1.10\n☐ bbbbbbbbb     2.30\n☑ ddddddddd     6.34\n2*1.10+6.34 = 8.54",
+                    "noteContent": "xxxxxxxxxxxx:\n\n☑ aaaaaaaaa     2 х 1.10\n☐ bbbbbbbbb     2.30\n☑ ddddddddd     6.34\n2*1.10+6.34 = 8.54",
                     "noteColor": "#d4edda",
                     "noteWidth": 300,
                     "noteHeight": 300,
                     "image": "msm/l-up.png", "height": 100,
                     x: 125, y: 110, bx: -26, by: 104, bWidth: 274, bHeight: 69, "target": "#modal-body",
                     "text": {
-                        "bg": "Ако обаче натиснеш и задържиш клавиша <strong>Ctrl</strong> и след това натиснеш <strong>Калкулатор</strong>, в сметката ще се включат само отметнатите покупки.", 
-                        "en": "But if you press and hold <strong>Ctrl</strong> and then press <strong>Calculator</strong>, the calculation will include only the checkedbutton and then press the Calc button only checked items will be calculated"
+                        "bg": "Ако обаче натиснеш и задържиш клавиша <b>Ctrl</b> и след това натиснеш <b>Калкулатор</b>, в сметката ще се включат само отметнатите покупки.", 
+                        "en": "But if you press and hold <b>Ctrl</b> and then press <b>Calculator</b>, the calculation will include only the checkedbutton and then press the Calc button only checked items will be calculated"
                     }
                 },
                 8: {
@@ -1032,11 +1035,24 @@
                     "image": "msm/1.png", "height": 100, "time": 20000,
                     x: 122, y: 39, bx: -10, by: 104, bWidth: 254, bHeight: 86, "target": "#modal-body",
                     "text": {
-                        "bg": "Калкулаторът може да пресмята и математически изрази като този. Маркирай го и натисни <strong>Калкулатор</strong> и ще видиш резултата.", 
+                        "bg": "Калкулаторът може да пресмята и математически изрази като този. Маркирай го и натисни <b>Калкулатор</b> и ще видиш резултата.", 
                         "en": "Calc ... Try it and you will see the result."
                     }
                 },
-                8: {
+                9: {
+                    "action": "note",
+                    "noteContent": "Примерна бележка. Това е съдържание, което се показва. Може да съдържа ",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/1.png", "height": 100,
+                    x: 113, y: 169, bx: -12, by: -106, bWidth: 205, bHeight: 77, "target": "#modal-body",
+                    "text": {
+                        "bg": "Имай предвид, че резултатите от пресмятанията са информативни и не се добавят в бележката, когато я затвориш, те се изтриват.",
+                        "en": "Have in mind "
+                    }
+                },
+                10: {
                     "action": "note",
                     "noteContent": "",
                     "noteColor": "#d4edda",
