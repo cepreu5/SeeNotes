@@ -108,9 +108,13 @@ class KBMatcher {
         const lang = this.currentLang;
 
         // Вземаме keywords за текущия език
-        const keywords = item.keywords?.[lang] || [];
-        const question = item.question?.[lang] || '';
-        const label = item.label?.[lang] || '';
+        // Handle both object (legacy) and string (flat merge) formats
+        const getVal = (val) => (typeof val === 'object' && val !== null) ? (val[lang] || val['en'] || '') : (val || '');
+        const getArr = (val) => (typeof val === 'object' && val !== null && !Array.isArray(val)) ? (val[lang] || val['en'] || []) : (val || []);
+
+        const keywords = getArr(item.keywords);
+        const question = getVal(item.question);
+        const label = getVal(item.label);
 
         // Нормализираме всички текстове
         const normalizedKeywords = keywords.map(k => this.normalizeText(k));
@@ -142,7 +146,7 @@ class KBMatcher {
         });
 
         // Бонус за general въпроси (те са по-общи и често търсени)
-        if (type === 'general') {
+        if (score > 0 && type === 'general') {
             score += 2;
         }
 
@@ -237,10 +241,13 @@ class KBMatcher {
             for (const item of this.kbData.general) {
                 if (suggestions.length >= count) break;
 
-                if (item.question && item.question[lang]) {
+                // The merge process flattens the 'question' property to a string
+                // for the current language. We just need to check for its existence.
+                // The old check `item.question[lang]` was incorrect for the merged data.
+                if (item.question && typeof item.question === 'string') {
                     suggestions.push({
                         type: 'general',
-                        question: item.question[lang],
+                        question: item.question,
                         item: item
                     });
                 }
@@ -258,6 +265,8 @@ class KBMatcher {
     formatResult(result) {
         const lang = this.currentLang;
         const item = result.item;
+        // Helper to safely get text whether it's an object (multilang) or string (flat)
+        const getText = (field) => (typeof field === 'object' && field !== null) ? (field[lang] || field['en']) : field;
 
         let formattedResult = {
             type: result.type,
@@ -266,18 +275,18 @@ class KBMatcher {
         };
 
         if (result.type === 'setting') {
-            formattedResult.question = item.question[lang] || item.question['en'];
-            formattedResult.answer = item.answer[lang] || item.answer['en'];
+            formattedResult.question = getText(item.question);
+            formattedResult.answer = getText(item.answer);
             formattedResult.location = item.location;
             formattedResult.guide = item.guide;
             formattedResult.relatedSettings = item.relatedSettings;
         } else if (result.type === 'ui') {
-            formattedResult.label = item.label[lang] || item.label['en'];
-            formattedResult.description = item.description[lang] || item.description['en'];
+            formattedResult.label = getText(item.label);
+            formattedResult.description = getText(item.description);
             formattedResult.guide = item.guide;
         } else if (result.type === 'general') {
-            formattedResult.question = item.question[lang] || item.question['en'];
-            formattedResult.answer = item.answer[lang] || item.answer['en'];
+            formattedResult.question = getText(item.question);
+            formattedResult.answer = getText(item.answer);
             formattedResult.category = item.category;
             formattedResult.guide = item.guide;
         }
@@ -336,47 +345,85 @@ class KBAssistant {
      */
     async init() {
         try {
-            // Зареждаме KB данните от JSON файла
-            const response = await fetch('kb-data.txt');
-            if (!response.ok) {
-                throw new Error('Failed to load KB data');
-            }
-            let text = await response.text();
-            try {
-                this.kbData = JSON.parse(text);
-            } catch (e) {
-                // Try relaxed parsing (allows unquoted keys like x: 1)
-                try {
-                    this.kbData = new Function('return ' + text)();
-                } catch (relaxedError) {
-                    console.warn('KB Data has syntax errors, attempting auto-repair...', e);
-                    // This regex finds alphanumeric keys preceded by { or , and wraps them in quotes
-                    const fixedText = text.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
-                    try {
-                        this.kbData = JSON.parse(fixedText);
-                        console.log('✅ KB Data auto-repaired successfully');
-                    } catch (repairError) {
-                        console.error('❌ KB Data repair failed:', repairError);
-                        throw e; // Throw original error
+            const corePath = 'kb-core.json';
+            const langPath = `kb-${this.currentLang}.json`;
+            const enPath = 'kb-en.json';
+
+            // Fetch core and language-specific files in parallel
+            const [coreResponse, langResponse, enResponse] = await Promise.all([
+                fetch(corePath),
+                fetch(langPath),
+                this.currentLang !== 'en' ? fetch(enPath) : Promise.resolve(null)
+            ]);
+
+            if (!coreResponse.ok) throw new Error(`Failed to load knowledge base core: ${corePath}`);
+            if (!langResponse.ok) throw new Error(`Failed to load language file: ${langPath}`);
+
+            const coreData = await coreResponse.json();
+            const langData = await langResponse.json();
+            const enData = (enResponse && enResponse.ok) ? await enResponse.json() : null;
+
+            const mergedData = coreData;
+
+            // Helper function to merge language-specific texts into core data structure
+            const mergeLanguageData = (coreItems, langItems) => {
+                if (!coreItems || !langItems) return;
+
+                coreItems.forEach(coreItem => {
+                    const langItem = langItems[coreItem.id];
+                    if (langItem) {
+                        // Extract guide to avoid overwriting core guide structure
+                        const { guide: langGuide, ...restLangItem } = langItem;
+
+                        // Merge simple properties like question, answer, keywords
+                        Object.assign(coreItem, restLangItem);
+
+                        // Deep merge the 'guide' object to combine structure and text
+                        if (coreItem.guide && langGuide) {
+                            for (const key in langGuide) {
+                                if (coreItem.guide[key] && typeof coreItem.guide[key] === 'object') {
+                                    // Merge text into existing step (e.g., guide.1.text)
+                                    Object.assign(coreItem.guide[key], langGuide[key]);
+                                } else {
+                                    // Add properties that don't exist in core guide (e.g., root 'text')
+                                    coreItem.guide[key] = langGuide[key];
+                                }
+                            }
+                        }
                     }
-                }
+                });
+            };
+
+            // Merge data for both 'settings' and 'general' sections
+            mergeLanguageData(mergedData.settings, langData.settings);
+            mergeLanguageData(mergedData.general, langData.general);
+
+            // Prepare the 'ui_texts' object for the assistant's UI
+            mergedData.ui_texts = {};
+            if (langData.ui_texts) {
+                mergedData.ui_texts[this.currentLang] = langData.ui_texts;
+            }
+            if (enData && enData.ui_texts) {
+                mergedData.ui_texts['en'] = enData.ui_texts;
+            } else if (this.currentLang === 'en' && langData.ui_texts) {
+                mergedData.ui_texts['en'] = langData.ui_texts;
             }
 
-            // Зареждаме UI текстовете от JSON-а
-            if (this.kbData.ui_texts) {
-                this.texts = this.kbData.ui_texts;
-            }
-
+            this.kbData = mergedData;
+            this.texts = this.kbData.ui_texts || {};
             this.matcher = new KBMatcher(this.kbData);
             this.isInitialized = true;
 
-            // Обновяваме езика
+            // Force matcher language update
+            if (this.matcher) {
+                this.matcher.currentLang = this.currentLang;
+            }
+
             this.updateLanguage();
 
-            console.log('✅ KB Assistant initialized successfully');
+            console.log('✅ KB Assistant initialized successfully with split data files.');
             console.log('Current language:', this.getCurrentLanguage());
 
-            // Създаваме UI компонентите (FAB бутон и чат прозорец) само след успешна инициализация
             if (!window.kbUI) {
                 window.kbUI = new KBUI();
             }
@@ -497,6 +544,9 @@ class KBAssistant {
             Object.keys(defaults).forEach(key => {
                 if (/^\d+$/.test(key)) delete defaults[key];
             });
+
+            // Remove stopAfter from defaults for multi-step guides to prevent premature stopping
+            delete defaults.stopAfter;
 
             const mergedStep = { ...defaults, ...stepConfig };
             // Note: we pass the whole object including 'text' object, so msm.js handles lang switch.

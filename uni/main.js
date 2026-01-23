@@ -1783,6 +1783,20 @@ async function deleteFromDB(storeName, key) {
 async function startApp() {
     if (isAppStarted) return;
     isAppStarted = true;
+
+    // --- NEW: Graceful fallback for KB Assistant ---
+    // If the assistant script failed to load or has errors, create a dummy object
+    // to prevent runtime errors in the main application.
+    if (typeof window.kbAssistant === 'undefined') {
+        console.warn("Knowledge Base Assistant not found. Creating a dummy object to ensure application stability.");
+        window.kbAssistant = {
+            init: () => Promise.resolve(false), // init is async, return false on failure
+            showGuide: () => { console.warn("KB Assistant not loaded."); },
+            terminateGuide: () => {},
+            updateLanguage: () => {},
+            isInitialized: false // This is important for conditional UI features
+        };
+    }
     try {
         // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
         document.body.style.display = 'block';
@@ -1825,9 +1839,7 @@ async function startApp() {
         // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
         // само ако е необходимо.
         // --- Инициализация на KB Assistant след успешно логване ---
-        if (window.kbAssistant && typeof window.kbAssistant.init === 'function') {
-            window.kbAssistant.init();
-        }
+        window.kbAssistant.init();
         // Инициализация на draggable бутони
         const initDraggableButtons = () => {
             // ScrollTop Button
@@ -2286,17 +2298,11 @@ function initApp() {
         appTitle.style.cursor = 'pointer';
         appTitle.addEventListener('click', async () => {
             console.log('Title clicked');
-            // Trigger the assistant-1 guide from kb-data.txt
+            // Trigger the assistant-1 guide
             if (window.kbAssistant && window.kbAssistant.isInitialized) {
                 console.log('KB Assistant is initialized');
-                // Search in all possible arrays
-                const allItems = [
-                    ...(window.kbAssistant.kbData?.settings || []),
-                    ...(window.kbAssistant.kbData?.general || []),
-                    ...(window.kbAssistant.kbData?.features || []),
-                    ...(window.kbAssistant.kbData?.workflow || [])
-                ];
-                const assistantGuide = allItems.find(item => item.id === 'assistant-1');
+                // Search in general section where assistant-1 is located
+                const assistantGuide = window.kbAssistant.kbData?.general?.find(item => item.id === 'assistant-1')
                 console.log('Found guide:', assistantGuide);
                 if (assistantGuide && assistantGuide.guide) {
                     console.log('Showing guide');
@@ -2529,7 +2535,7 @@ function initApp() {
             const modal = e.currentTarget.closest('.modal-overlay');
             modal.classList.remove('visible');
             if (modal.id === 'settings-modal') {
-                if (window.kbAssistant) window.kbAssistant.terminateGuide();
+                window.kbAssistant.terminateGuide(); // Safe to call due to dummy object
                 if (notesBgrdChanged) {
                     mainLogic();
                     notesBgrdChanged = false;
@@ -2541,7 +2547,7 @@ function initApp() {
     // Specific listener for the settings close button (not class 'modal-close')
     document.getElementById('settings-close-btn').addEventListener('click', () => {
         document.getElementById('settings-modal').classList.remove('visible');
-        if (window.kbAssistant) window.kbAssistant.terminateGuide();
+        window.kbAssistant.terminateGuide(); // Safe to call
         if (notesBgrdChanged) {
             mainLogic();
             notesBgrdChanged = false;
@@ -2554,6 +2560,7 @@ function initApp() {
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
+                    window.kbAssistant.terminateGuide(); // Safe to call
                     if (notesBgrdChanged) {
                         mainLogic();
                         notesBgrdChanged = false;
@@ -6672,7 +6679,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
             };
             document.getElementById('settings-modal').classList.remove('visible');
-            if (window.kbAssistant) window.kbAssistant.terminateGuide();
+            window.kbAssistant.terminateGuide();
             // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
             updateModeButton();
             const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
@@ -7904,9 +7911,7 @@ async function setLanguage(lang) {
         updateSignoutTooltip();
     }
     // Update KB Assistant Language
-    if (window.kbAssistant) {
-        window.kbAssistant.updateLanguage();
-    }
+    window.kbAssistant.updateLanguage();
 }
 
 // --- Service Worker Registration ---

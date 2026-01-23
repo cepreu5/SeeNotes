@@ -1058,7 +1058,7 @@
                     "noteColor": "#d4edda",
                     "noteWidth": 300,
                     "noteHeight": 300,
-                    "image": "msm/r-down.png", "height": 100, "time": 20000,
+                    "image": "msm/r-down.png", "height": 100,
                     x: -67, y: -88, bx: -112, by: -127, bWidth: 230, bHeight: 94, "target": "div.modal-resize-handle",
                     "text": {
                         "bg": "Хвани този ъгъл и го издърпай, за да промениш размера на бележката. Веднъж променен, новият размер се запомня и използва за всички бележки.",

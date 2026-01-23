@@ -1,0 +1,1052 @@
+{
+    "metadata": {
+        "generated": "2025-12-04T15:21:00.000Z",
+        "version": "2.0.0",
+        "description": "Knowledge Base for CX MultiNotes Viewer Assistant",
+        "updated": "2025-12-04T21:07:02.667Z"
+    },
+    "settings": [
+        {
+            "id": "one-tap-link-checkbox",
+            "type": "checkbox",
+            "category": "behavior",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 8,
+                "y": 9,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#one-tap-link-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "behavior"
+            }
+        },
+        {
+            "id": "remind-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 9,
+                "y": 10,
+                "bx": -101,
+                "by": -86,
+                "bWidth": 93,
+                "bHeight": 50,
+                "target": "#remind-board-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "boards"
+            }
+        },
+        {
+            "id": "all-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 10,
+                "y": 8,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#all-board-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "boards"
+            }
+        },
+        {
+            "id": "show-photos-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": -150,
+                "y": 10,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#show-photos-board-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "boards"
+            }
+        },
+        {
+            "id": "show-videos-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": -50,
+                "y": 10,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#show-videos-board-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "boards"
+            }
+        },
+        {
+            "id": "show-sounds-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": -50,
+                "y": 10,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#show-sounds-board-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "boards"
+            }
+        },
+        {
+            "id": "show-other-board-checkbox",
+            "type": "checkbox",
+            "category": "boards",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": -50,
+                "y": 10,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#show-other-board-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "boards"
+            }
+        },
+        {
+            "id": "weekly-calendar-checkbox",
+            "type": "checkbox",
+            "category": "calendar",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 1,
+                "y": 4,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#weekly-calendar-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "calendar"
+            }
+        },
+        {
+            "id": "show-datemod-checkbox",
+            "type": "checkbox",
+            "category": "display",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/r-up.png",
+                "height": 100,
+                "x": -78,
+                "y": 7,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#show-datemod-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "display"
+            }
+        },
+        {
+            "id": "show-time-checkbox",
+            "type": "checkbox",
+            "category": "display",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": -78,
+                "y": 7,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#show-datemod-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "display"
+            }
+        },
+        {
+            "id": "img-bgrd-checkbox",
+            "type": "checkbox",
+            "category": "display",
+            "location": "Settings"
+        },
+        {
+            "id": "show-board-note-count-checkbox",
+            "type": "checkbox",
+            "category": "display",
+            "location": "Settings",
+            "guide": {
+                "1": {
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "x": 13,
+                    "y": 7,
+                    "bx": -19,
+                    "by": 175,
+                    "bWidth": 93,
+                    "bHeight": 50,
+                    "target": "#show-board-note-count-checkbox",
+                    "stopAfter": true,
+                    "action": "highlight",
+                    "context": "boards"
+                }
+            }
+        },
+        {
+            "id": "note-font-size-input",
+            "type": "select",
+            "category": "display",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 59,
+                "y": 9,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#note-font-size-input",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "display"
+            }
+        },
+        {
+            "id": "modal-font-size-input",
+            "type": "select",
+            "category": "display",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 57,
+                "y": 10,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#modal-font-size-input",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "display"
+            }
+        },
+        {
+            "id": "scaleSlider",
+            "type": "range",
+            "category": "display",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/r-up.png",
+                "height": 100,
+                "x": 43,
+                "y": 0,
+                "bx": 199,
+                "by": 166,
+                "bWidth": 275,
+                "bHeight": 118,
+                "target": "#scaleSlider",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "display"
+            }
+        },
+        {
+            "id": "order-checkbox",
+            "type": "checkbox",
+            "category": "sorting",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 77,
+                "y": 13,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#order-notes",
+                "stopAfter": true,
+                "action": "#sorting-arrow",
+                "context": "sorting"
+            }
+        },
+        {
+            "id": "sort-criteria-numord",
+            "type": "radio",
+            "category": "sorting",
+            "location": "Settings > Order notes",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 16,
+                "y": 7,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#sort-criteria-numord",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "sorting"
+            }
+        },
+        {
+            "id": "sort-criteria-color",
+            "type": "radio",
+            "category": "sorting",
+            "location": "Settings > Order notes",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 6,
+                "y": 6,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#sort-criteria-color",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "sorting"
+            }
+        },
+        {
+            "id": "sort-criteria-date",
+            "type": "radio",
+            "category": "sorting",
+            "location": "Settings > Order notes",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 8,
+                "y": 7,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#sort-criteria-date",
+                "stopAfter": true,
+                "action": "#sorting-arrow",
+                "context": "sorting"
+            }
+        },
+        {
+            "id": "sort-criteria-datemod",
+            "type": "radio",
+            "category": "sorting",
+            "location": "Settings > Order notes",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 10,
+                "y": 8,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#sort-criteria-datemod",
+                "stopAfter": true,
+                "action": "#sorting-arrow",
+                "context": "sorting"
+            }
+        },
+        {
+            "id": "sort-criteria-calendarDate",
+            "type": "radio",
+            "category": "sorting",
+            "location": "Settings > Order notes",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 14,
+                "y": 125,
+                "bx": -170,
+                "by": 77,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "div.sort-options-container",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "sorting"
+            }
+        },
+        {
+            "id": "sort-criteria-alpha",
+            "type": "radio",
+            "category": "sorting",
+            "location": "Settings > Order notes",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 6,
+                "y": 7,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#sort-criteria-alpha",
+                "stopAfter": true,
+                "action": "#sorting-arrow",
+                "context": "sorting"
+            }
+        },
+        {
+            "id": "start-board-select",
+            "type": "select",
+            "category": "startup",
+            "location": "Settings",
+            "guide": {
+                "image": "msm/l-down.png",
+                "height": 100,
+                "x": 139,
+                "y": -89,
+                "bx": -15,
+                "by": 172,
+                "bWidth": 93,
+                "bHeight": 50,
+                "target": "#start-board-select",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "startup"
+            }
+        },
+        {
+            "id": "use-google-db-checkbox",
+            "type": "checkbox",
+            "category": "data-management",
+            "location": "Settings > Data Loading",
+            "guide": {
+                "image": "msm/r-up.png",
+                "height": 100,
+                "x": -73,
+                "y": 8,
+                "bx": -164,
+                "by": 78,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#use-google-db-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "data"
+            }
+        },
+        {
+            "id": "use-indexeddb-checkbox",
+            "type": "checkbox",
+            "category": "data-management",
+            "location": "Settings > Data Loading",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": -50,
+                "y": 10,
+                "bx": -200,
+                "by": 80,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "#use-indexeddb-checkbox",
+                "stopAfter": true,
+                "action": "highlight",
+                "context": "data"
+            }
+        }
+    ],
+    "general": [
+        {
+            "id": "guide-1",
+            "category": "workflow",
+            "guide": {
+                "1": {
+                    "image": "msm/expl.png",
+                    "height": 70,
+                    "x": 23,
+                    "y": 18,
+                    "bx": 69,
+                    "by": 71,
+                    "bWidth": 228,
+                    "bHeight": 65,
+                    "target": "span.board-filter-link"
+                },
+                "2": {
+                    "image": "msm/expl.png",
+                    "height": 70,
+                    "x": 23,
+                    "y": 115,
+                    "bx": 133,
+                    "by": 68,
+                    "bWidth": 296,
+                    "bHeight": 102,
+                    "target": "span.board-filter-link"
+                },
+                "3": {
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "x": 285,
+                    "y": 13,
+                    "bx": -173,
+                    "by": -120,
+                    "bWidth": 299,
+                    "bHeight": 74,
+                    "target": "#img-bgrd",
+                    "stopAfter": false,
+                    "action": "highlight",
+                    "context": "settings"
+                },
+                "4": {
+                    "image": "msm/expl.png",
+                    "height": 70,
+                    "x": 3,
+                    "y": 28,
+                    "bx": 133,
+                    "by": 68,
+                    "bWidth": 284,
+                    "bHeight": 80,
+                    "target": "#search-box"
+                },
+                "5": {
+                    "image": "msm/expl.png",
+                    "height": 70,
+                    "x": -200,
+                    "y": -3,
+                    "bx": -10,
+                    "by": -90,
+                    "bWidth": 228,
+                    "bHeight": 65,
+                    "target": "#kb-fab"
+                },
+                "stopAfter": false,
+                "action": "explain",
+                "context": ""
+            }
+        },
+        {
+            "id": "assistant-1",
+            "category": "features",
+            "guide": {
+                "1": {
+                    "image": "msm/1.png",
+                    "height": 150,
+                    "time": 5000,
+                    "x": 62,
+                    "y": 29,
+                    "bx": 130,
+                    "by": -51,
+                    "bWidth": 173,
+                    "bHeight": 74,
+                    "target": "#search-box"
+                },
+                "2": {
+                    "image": "msm/expl.png",
+                    "height": 100,
+                    "time": 5000,
+                    "x": 50,
+                    "y": 10,
+                    "bx": 134,
+                    "by": -28,
+                    "bWidth": 155,
+                    "bHeight": 50,
+                    "target": "#search-box"
+                },
+                "3": {
+                    "image": "msm/1.png",
+                    "height": 150,
+                    "x": 62,
+                    "y": 29,
+                    "bx": 123,
+                    "by": -75,
+                    "bWidth": 183,
+                    "bHeight": 98,
+                    "target": "#search-box"
+                },
+                "4": {
+                    "image": "msm/expl.png",
+                    "height": 100,
+                    "x": 0,
+                    "y": 13,
+                    "bx": 166,
+                    "by": -17,
+                    "bWidth": 224,
+                    "bHeight": 84,
+                    "target": "#search-box"
+                },
+                "5": {
+                    "image": "msm/r-down.png",
+                    "height": 100,
+                    "time": 8000,
+                    "x": -67,
+                    "y": -66,
+                    "bx": -119,
+                    "by": -109,
+                    "bWidth": 229,
+                    "bHeight": 91,
+                    "target": "#kb-fab"
+                },
+                "6": {
+                    "image": "msm/expl.png",
+                    "height": 100,
+                    "x": 0,
+                    "y": 11,
+                    "bx": 196,
+                    "by": -25,
+                    "bWidth": 282,
+                    "bHeight": 120,
+                    "target": "#search-box"
+                },
+                "7": {
+                    "image": "msm/r-up-w.png",
+                    "height": 100,
+                    "x": 0,
+                    "y": 19,
+                    "bx": 98,
+                    "by": 53,
+                    "bWidth": 148,
+                    "bHeight": 59,
+                    "target": "#app-title"
+                },
+                "stopAfter": true,
+                "action": "explain!",
+                "context": ""
+            }
+        },
+        {
+            "id": "assistant-2",
+            "category": "features",
+            "guide": {
+                "1": {
+                    "image": "msm/l-down-w.png",
+                    "height": 100,
+                    "x": 54,
+                    "y": -79,
+                    "bx": 61,
+                    "by": -85,
+                    "bWidth": 281,
+                    "bHeight": 65,
+                    "target": "div.kb-input-container"
+                },
+                "2": {
+                    "image": "msm/r-down-w.png",
+                    "height": 100,
+                    "x": 33,
+                    "y": -78,
+                    "bx": 90,
+                    "by": -94,
+                    "bWidth": 281,
+                    "bHeight": 65,
+                    "target": "#kb-input"
+                },
+                "3": {
+                    "image": "msm/r-down-w.png",
+                    "height": 100,
+                    "x": -55,
+                    "y": -88,
+                    "bx": -101,
+                    "by": -88,
+                    "bWidth": 281,
+                    "bHeight": 65,
+                    "target": "#kb-send-btn"
+                },
+                "4": {
+                    "stopAfter": false,
+                    "action": "explain!",
+                    "context": "",
+                    "image": "msm/expl.png",
+                    "height": 100,
+                    "x": 57,
+                    "y": 7,
+                    "bx": 8,
+                    "by": -89,
+                    "bWidth": 225,
+                    "bHeight": 65,
+                    "target": "div.kb-additional-results"
+                },
+                "5": {
+                    "stopAfter": false,
+                    "action": "explain!",
+                    "context": "",
+                    "image": "msm/r-up-w.png",
+                    "height": 100,
+                    "x": -71,
+                    "y": 15,
+                    "bx": -144,
+                    "by": -10,
+                    "bWidth": 181,
+                    "bHeight": 109,
+                    "target": "#kb-all-questions-btn"
+                },
+                "stopAfter": false,
+                "action": "explain!",
+                "context": ""
+            }
+        },
+        {
+            "id": "temp-note-example",
+            "category": "features",
+            "guide": {
+                "1": {
+                    "action": "note",
+                    "noteContent": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor...",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/1.png",
+                    "height": 100,
+                    "x": 113,
+                    "y": 169,
+                    "bx": -1,
+                    "by": -115,
+                    "bWidth": 257,
+                    "bHeight": 92,
+                    "target": "#modal-body"
+                },
+                "2": {
+                    "image": "msm/r-up.png",
+                    "height": 100,
+                    "x": -68,
+                    "y": 19,
+                    "bx": -5,
+                    "by": 117,
+                    "bWidth": 230,
+                    "bHeight": 94,
+                    "target": "#copy-modal-btn"
+                },
+                "3": {
+                    "image": "msm/r-up.png",
+                    "height": 100,
+                    "x": -67,
+                    "y": 18,
+                    "bx": 45,
+                    "by": 107,
+                    "bWidth": 230,
+                    "bHeight": 94,
+                    "target": "#calculate-modal-btn"
+                },
+                "4": {
+                    "action": "note",
+                    "noteContent": "xxxxxxxxxxxx:\n\n1. aaaaaaaaa     2 х 1.10\n2. bbbbbbbbb     2.30\n3. ddddddddd     6.34",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/l-up-w.png",
+                    "height": 100,
+                    "time": 3000,
+                    "x": 11,
+                    "y": 18,
+                    "bx": -87,
+                    "by": 124,
+                    "bWidth": 232,
+                    "bHeight": 50,
+                    "target": "#copy-modal-btn"
+                },
+                "5": {
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "time": 3000,
+                    "x": 14,
+                    "y": 18,
+                    "bx": -45,
+                    "by": 120,
+                    "bWidth": 226,
+                    "bHeight": 50,
+                    "target": "#calculate-modal-btn"
+                },
+                "6": {
+                    "action": "note",
+                    "noteContent": "xxxxxxxxxxxx:\n\n1. aaaaaaaaa     2 х 1.10\n2. bbbbbbbbb     2.30\n3. ddddddddd     6.34\n2*1.10+2.30+6.34 = 10.84",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "x": 159,
+                    "y": 100,
+                    "bx": -70,
+                    "by": 108,
+                    "bWidth": 223,
+                    "bHeight": 50,
+                    "target": "#modal-body"
+                },
+                "7": {
+                    "action": "note",
+                    "noteContent": "xxxxxxxxxxxx:\n\n☑ aaaaaaaaa     2 х 1.10\n☐ bbbbbbbbb     2.30\n☑ ddddddddd     6.34\n2*1.10+6.34 = 8.54",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "x": 125,
+                    "y": 110,
+                    "bx": -26,
+                    "by": 104,
+                    "bWidth": 274,
+                    "bHeight": 69,
+                    "target": "#modal-body"
+                },
+                "8": {
+                    "action": "note",
+                    "noteContent": "12 + 3.14 - 4 + 3/2",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/1.png",
+                    "height": 100,
+                    "time": 20000,
+                    "x": 122,
+                    "y": 39,
+                    "bx": -10,
+                    "by": 104,
+                    "bWidth": 254,
+                    "bHeight": 86,
+                    "target": "#modal-body"
+                },
+                "9": {
+                    "action": "note",
+                    "noteContent": "Примерна бележка. Това е съдържание, което се показва. Може да съдържа ",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/1.png",
+                    "height": 100,
+                    "x": 113,
+                    "y": 169,
+                    "bx": -12,
+                    "by": -106,
+                    "bWidth": 227,
+                    "bHeight": 77,
+                    "target": "#modal-body"
+                },
+                "10": {
+                    "action": "note",
+                    "noteContent": "",
+                    "noteColor": "#d4edda",
+                    "noteWidth": 300,
+                    "noteHeight": 300,
+                    "image": "msm/r-down.png",
+                    "height": 100,
+                    "x": -67,
+                    "y": -88,
+                    "bx": -112,
+                    "by": -127,
+                    "bWidth": 230,
+                    "bHeight": 94,
+                    "target": "div.modal-resize-handle"
+                },
+                "stopAfter": false,
+                "action": "explain",
+                "context": ""
+            }
+        },
+        {
+            "id": "note",
+            "category": "features",
+            "guide": {
+                "1": {
+                    "image": "msm/l-up-w.png",
+                    "height": 100,
+                    "x": 291,
+                    "y": 14,
+                    "bx": -141,
+                    "by": -111,
+                    "bWidth": 305,
+                    "bHeight": 70,
+                    "target": "#show-photos-board"
+                },
+                "stopAfter": true,
+                "action": "#boards-arrow",
+                "context": "boards"
+            }
+        },
+        {
+            "id": "modes",
+            "category": "interface",
+            "guide": {
+                "1": {
+                    "image": "msm/l-up-w.png",
+                    "height": 100,
+                    "x": 24,
+                    "y": 37,
+                    "bx": 43,
+                    "by": 63,
+                    "bWidth": 303,
+                    "bHeight": 200,
+                    "target": "#mode_button"
+                },
+                "2": {
+                    "image": "msm/expl.png",
+                    "height": 70,
+                    "x": -46,
+                    "y": -2,
+                    "bx": 133,
+                    "by": 68,
+                    "bWidth": 294,
+                    "bHeight": 111,
+                    "target": "#mode_button"
+                },
+                "3": {
+                    "image": "msm/expl.png",
+                    "height": 70,
+                    "x": -46,
+                    "y": -2,
+                    "bx": 133,
+                    "by": 68,
+                    "bWidth": 296,
+                    "bHeight": 62,
+                    "target": "#mode_button"
+                },
+                "4": {
+                    "stopAfter": false,
+                    "action": "explain!",
+                    "context": "",
+                    "image": "msm/expl.png",
+                    "height": 70,
+                    "x": -46,
+                    "y": -2,
+                    "bx": 133,
+                    "by": 68,
+                    "bWidth": 293,
+                    "bHeight": 81,
+                    "target": "#mode_button"
+                },
+                "5": {
+                    "image": "msm/l-up-w.png",
+                    "height": 100,
+                    "x": 24,
+                    "y": 37,
+                    "bx": 43,
+                    "by": 63,
+                    "bWidth": 303,
+                    "bHeight": 100,
+                    "target": "#mode_button"
+                },
+                "6": {
+                    "stopAfter": false,
+                    "action": "explain!",
+                    "context": "",
+                    "image": "msm/expl.png",
+                    "height": 70,
+                    "x": -46,
+                    "y": -2,
+                    "bx": 133,
+                    "by": 68,
+                    "bWidth": 293,
+                    "bHeight": 81,
+                    "target": "#mode_button"
+                },
+                "stopAfter": false,
+                "action": "explain",
+                "context": ""
+            }
+        },
+        {
+            "id": "search-notes",
+            "category": "workflow",
+            "guide": {
+                "1": {
+                    "image": "msm/r-up.png",
+                    "height": 100,
+                    "x": 133,
+                    "y": 19,
+                    "bx": -83,
+                    "by": -102,
+                    "bWidth": 229,
+                    "bHeight": 70,
+                    "target": "#sbox"
+                },
+                "2": {
+                    "image": "msm/l-down-w.png",
+                    "height": 100,
+                    "x": 35,
+                    "y": -36,
+                    "bx": 77,
+                    "by": 121,
+                    "bWidth": 220,
+                    "bHeight": 50,
+                    "target": "#sbox"
+                },
+                "3": {
+                    "image": "msm/l-down-w.png",
+                    "height": 100,
+                    "x": 28,
+                    "y": -1,
+                    "bx": 73,
+                    "by": -63,
+                    "bWidth": 185,
+                    "bHeight": 50,
+                    "target": "#sbox"
+                },
+                "stopAfter": false,
+                "action": "explain!",
+                "context": ""
+            }
+        },
+        {
+            "id": "organize-notes",
+            "category": "workflow",
+            "guide": {
+                "image": "msm/l-up.png",
+                "height": 100,
+                "x": 73,
+                "y": 92,
+                "bx": 143,
+                "by": -91,
+                "bWidth": 250,
+                "bHeight": 100,
+                "target": "label.sort-option-label",
+                "stopAfter": true,
+                "action": "#sorting-arrow",
+                "context": "sorting"
+            }
+        },
+        {
+            "id": "calendar-view",
+            "category": "features"
+        },
+        {
+            "id": "offline-mode",
+            "category": "data-management"
+        }
+    ]
+}
