@@ -674,33 +674,72 @@ async function getFolderID() {
     try {
         const multinotesDataId = await getMultinotesDataFolderID();
         if (!multinotesDataId) return null;
-        const folderNames = ["Other", "Sound", "Video", "Images"];
-        await Promise.all(folderNames.map(async (name) => {
-            const cachedId = localStorage.getItem(`gdrive_folder_id_${name}`);
-            if (cachedId) { folderIds[name] = cachedId; return; }
-            const resp = await gapi.client.drive.files.list({ q: `'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id)', pageSize: 1 });
-            const id = resp.result.files?.[0]?.id || "";
-            folderIds[name] = id;
-            if (id) localStorage.setItem(`gdrive_folder_id_${name}`, id);
-        }));
+
+        const listFolders = async () => {
+            const folderNames = ["Other", "Sound", "Video", "Images"];
+            await Promise.all(folderNames.map(async (name) => {
+                const cachedId = localStorage.getItem(`gdrive_folder_id_${name}`);
+                if (cachedId) { folderIds[name] = cachedId; return; }
+                const resp = await gapi.client.drive.files.list({ q: `'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id)', pageSize: 1 });
+                const id = resp.result.files?.[0]?.id || "";
+                folderIds[name] = id;
+                if (id) localStorage.setItem(`gdrive_folder_id_${name}`, id);
+            }));
+        };
+
+        try {
+            await listFolders();
+        } catch (error) {
+            const is401 = (error.result?.error?.code === 401) || (error.status === 401) || (error.result?.error?.status === 'UNAUTHENTICATED');
+            if (is401) {
+                console.warn("Got 401 in getFolderID, attempting refresh...");
+                await refreshAuthToken();
+                await listFolders();
+            } else {
+                throw error;
+            }
+        }
         return multinotesDataId;
-    } catch (e) { return null; }
+    } catch (e) {
+        console.error("Error in getFolderID:", e);
+        throw e;
+    }
 }
 
 async function getMultinotesDataFolderID() {
     const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
     if (cachedId) return cachedId;
+
+    const listRequest = () => gapi.client.drive.files.list({
+        q: "name='multinotes_data' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields: 'files(id)',
+        pageSize: 1
+    });
+
     try {
-        const resp = await gapi.client.drive.files.list({ q: "name='multinotes_data' and mimeType='application/vnd.google-apps.folder' and trashed=false", fields: 'files(id)', pageSize: 1 });
+        const resp = await listRequest();
         const id = resp.result.files?.[0]?.id || null;
         if (id) localStorage.setItem('gdrive_multinotes_data_id', id);
         return id;
     } catch (error) {
-        if (error.result?.error?.code === 401) {
+        const is401 = (error.result?.error?.code === 401) || (error.status === 401) || (error.result?.error?.status === 'UNAUTHENTICATED');
+        if (is401) {
+            console.warn("Got 401 in getMultinotesDataFolderID, attempting refresh...");
+            try {
+                const refreshResult = await refreshAuthToken();
+                if (refreshResult && refreshResult.pass) {
+                    const resp = await listRequest();
+                    const id = resp.result.files?.[0]?.id || null;
+                    if (id) localStorage.setItem('gdrive_multinotes_data_id', id);
+                    return id;
+                }
+            } catch (refreshError) {
+                console.error("Token refresh failed in getMultinotesDataFolderID:", refreshError);
+            }
             showToast(_('errorSessionExpired'));
-            if (typeof handleLogout === 'function') handleLogout();
+            handleSignoutClick();
+            throw new Error("Google Drive Unauthorized");
         }
-
         return null;
     }
 }
@@ -1792,8 +1831,8 @@ async function startApp() {
         window.kbAssistant = {
             init: () => Promise.resolve(false), // init is async, return false on failure
             showGuide: () => { console.warn("KB Assistant not loaded."); },
-            terminateGuide: () => {},
-            updateLanguage: () => {},
+            terminateGuide: () => { },
+            updateLanguage: () => { },
             isInitialized: false // This is important for conditional UI features
         };
     }
@@ -2073,7 +2112,7 @@ function extractAndFormat(text, onlyChecked = false) {
         // ПРОВЕРКА ЗА ФЛАГ: Ако 'onlyChecked' е вдигнат, пропускаме редове без ☑
         if (onlyChecked && !trimmedLine.includes('☑')) {
             return;
-        }        
+        }
         let normalized = trimmedLine
             // Премахваме чекбоксовете в началото на реда
             .replace(/^[☑☒☐]\s*/, '')
@@ -2089,7 +2128,7 @@ function extractAndFormat(text, onlyChecked = false) {
         // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.
         // let cleanLine = normalized.replace(/^\d+[☑☒☐|\d\.\)]+\s*(?=\p{L})/gu, '');
         let cleanLine = normalized.replace(/^\d+(?:[.\d\)|]+)\s*(?=\p{L})/gu, '');
-                // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
+        // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
         // НЕ го пипаме, защото това е част от сумата.
         // Залепяме операторите (чистим интервалите omkring тях)
         cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
@@ -2168,7 +2207,7 @@ async function handleCalculateClick(checkList) {
         // Форматираме резултата с 2 десетични знака
         const formattedResult = result.toFixed(2);
         const resultText = ` = ${formattedResult}`;
-        
+
         // Ако имаме селекция и не е от клипборда, вмъкваме резултата след маркирания текст
         if (range && !isFromClipboard) {
             // Създаваме текстов възел с резултата
@@ -2452,7 +2491,7 @@ function initApp() {
     const calculateBtn = document.getElementById('calculate-modal-btn');
     let longPressTimer;
     let isLongPress = false;
-    
+
     // Обработка на click събитие
     calculateBtn.addEventListener('click', (e) => {
         if (isLongPress) {
@@ -2467,7 +2506,7 @@ function initApp() {
             handleCalculateClick(false);
         }
     });
-    
+
     // Обработка на long press
     const startPress = (e) => {
         isLongPress = false;
@@ -2476,11 +2515,11 @@ function initApp() {
             handleCalculateClick(true);
         }, 500); // 500ms за long press
     };
-    
+
     const endPress = () => {
         clearTimeout(longPressTimer);
     };
-    
+
     calculateBtn.addEventListener('mousedown', startPress);
     calculateBtn.addEventListener('mouseup', endPress);
     calculateBtn.addEventListener('mouseleave', endPress);
@@ -4953,7 +4992,7 @@ function showModal(options, noteElement = null) {
     }
     // --- Board Name Display in Modal ---
     const modalContentBox = contentModal.querySelector('.modal-content-box');
-    
+
     // Check for explicit dimensions in options (e.g. from guide temp note)
     if (options && options.width && options.height) {
         modalContentBox.style.width = typeof options.width === 'number' ? options.width + 'px' : options.width;
