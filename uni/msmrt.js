@@ -1,4 +1,4 @@
-/**
+/** terser msmrt.js -c 'pure_funcs=["console.log"]' --output msmrtt.js
  * MSM Runtime (Lean) - Guide Execution Only
  * Stripped of debug/editing tools.
  */
