@@ -230,14 +230,15 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     }
   }
   currentActiveStep = step;
+  let isDragging = false; // Moved here to be accessible by startLongPress
 
   // Handle action: note (Create/Open temporary note)
   if (step.action === 'note') {
     if (typeof window.showModal === 'function') {
       const content = step.noteContent || step.note || "";
-      window.showModal({ 
-        raw: content, 
-        id: 'guide-temp-note', 
+      window.showModal({
+        raw: content,
+        id: 'guide-temp-note',
         color: step.noteColor,
         width: step.noteWidth,
         height: step.noteHeight
@@ -678,6 +679,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   img.addEventListener('touchstart', startLongPress, { passive: true });
   img.addEventListener('touchend', endLongPress);
   img.addEventListener('touchcancel', endLongPress);
+  img.addEventListener('touchmove', endLongPress, { passive: true });
 
   // Автоматично преминаване след 10 секунди (само ако не е single режим)
   if (!single) {
@@ -705,7 +707,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     targetEl = document.body;
   }
   if (targetEl) {
-    let isDragging = false;
+    // let isDragging = false; // Moved to top of function
     // Функция за непрекъснато обновяване на позицията
     const updatePosition = () => {
       // Update Loop

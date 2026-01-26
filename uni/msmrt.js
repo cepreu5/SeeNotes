@@ -100,9 +100,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     if (step.action === 'note') {
         if (typeof window.showModal === 'function') {
             const content = step.noteContent || step.note || "";
-            window.showModal({ 
-                raw: content, 
-                id: 'guide-temp-note', 
+            window.showModal({
+                raw: content,
+                id: 'guide-temp-note',
                 color: step.noteColor,
                 width: step.noteWidth,
                 height: step.noteHeight
@@ -247,6 +247,34 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         };
         img.onclick = imgClickHandler;
         bubble.onclick = bubbleClickHandler;
+
+        // Long press logic
+        let longPressTimer;
+        const longPressDuration = 800; // 800ms
+
+        const startLongPress = (e) => {
+            longPressTimer = setTimeout(() => {
+                window.removeGuide();
+                if (navigator.vibrate) navigator.vibrate(50);
+            }, longPressDuration);
+        };
+
+        const endLongPress = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
+        img.addEventListener('mousedown', startLongPress);
+        img.addEventListener('mouseup', endLongPress);
+        img.addEventListener('mouseleave', endLongPress);
+
+        img.addEventListener('touchstart', startLongPress, { passive: true });
+        img.addEventListener('touchend', endLongPress);
+        img.addEventListener('touchcancel', endLongPress);
+        img.addEventListener('touchmove', endLongPress, { passive: true });
+
         // Keyboard Navigation
         const handleKeyPress = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
