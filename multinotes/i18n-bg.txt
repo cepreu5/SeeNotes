@@ -211,7 +211,7 @@ bg: {
         modeArchivePoint2: 'Този режим се използва, когато прехвърлите zip-архив с бележки, създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на данни</strong> -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Архив</strong>.',
         modeArchivePoint3: 'Ако изберете този режим и поставите отметка в <strong>База данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.',
         modeArchivePoint4: 'Ако, след първоначално зареждане, махнете отметката на <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може да зареждате бележките си без забавяне.',
-        invalidCertificate: 'Невалиден или изтекъл сертификат!<br><br>Invalid or expired certificate!',
+        invalidCertificate: 'Invalid or expired certificate!<br><br>If you wish to continue using the program after the trial period ends, please send an email to the author at multinotes.web@gmail.com<br><br>Невалиден или изтекъл сертификат!<br><br>Ако желаете да продължите да използвате програмата след изтичане на пробния период, изпратете имейл на автора на multinotes.web@gmail.com',
         modeDbAndDrive: 'Режим: База данни + Google Drive',
         modeDbAndLocal: 'Режим: База данни + Локална папка',
         modeDbAndArchive: 'Режим: База данни + Архив',
@@ -220,5 +220,5 @@ bg: {
         duplicateNotes: 'Дублирани бележки',
         content: 'Съдържание',
         remainingDays: 'Оставащи дни',
-        supportMessage: 'Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.'
+        supportMessage: 'Ако харесвате това приложение и го намирате за полезно, подкрепете автора с малка сума.'
     }

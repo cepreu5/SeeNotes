@@ -3365,8 +3365,9 @@ async function checkAuth() {
         errorElement.style.textAlign = 'center';
         errorElement.style.margin = '0';
         document.body.appendChild(errorElement);
-        pass = false;
         sessionStorage.clear();
+        // Early return to prevent any further initialization (including assistant)
+        return null;
     }
     return { tokenData, pass }; // Връщаме обект с данните и резултата от проверката
 }

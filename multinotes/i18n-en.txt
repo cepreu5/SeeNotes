@@ -209,7 +209,7 @@ en: {
         modeArchivePoint2: 'This mode is used when you transfer a zip archive of notes created by the <strong>Multinotes</strong> application with the <strong>Data Storage</strong> -> <strong>Backup Data</strong> option. Unzip it into a folder on your computer and specify it in <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Archive</strong>.',
         modeArchivePoint3: 'If you select this mode and check <strong>Database</strong>, all notes will be saved to a local database on the first launch.',
         modeArchivePoint4: 'If, after the initial load, you uncheck <strong>Archive</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay.',
-        invalidCertificate: 'Invalid or expired certificate!<br><br>Невалиден или изтекъл сертификат!',
+        invalidCertificate: 'Invalid or expired certificate!<br><br>If you wish to continue using the program after the trial period ends, please send an email to the author at multinotes.web@gmail.com<br><br>Невалиден или изтекъл сертификат!<br><br>Ако желаете да продължите да използвате програмата след изтичане на пробния период, изпратете имейл на автора на multinotes.web@gmail.com',
         modeDbAndDrive: 'Mode: Database + Google Drive',
         modeDbAndLocal: 'Mode: Database + Local Folder',
         modeDbAndArchive: 'Mode: Database + Archive',
