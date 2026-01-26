@@ -275,6 +275,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         img.addEventListener('touchcancel', endLongPress);
         img.addEventListener('touchmove', endLongPress, { passive: true });
 
+        // Prevent context menu on long press (mobile)
+        img.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        });
+
         // Keyboard Navigation
         const handleKeyPress = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {

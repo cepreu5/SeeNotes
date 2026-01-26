@@ -323,10 +323,10 @@
                 "how it works"
             ],
             "question": "What do you see on the main screen and why is it important?",
-            "answer": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place.",
+            "answer": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place. On a mobile device, you can switch to the next or previous board by swiping right or left. Tap the button for more information:",
             "guide": {
                 "1": {
-                    "text": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> -> <b><i>Zoom</i></b>."
+                    "text": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> → <b><i>Zoom</i></b>."
                 },
                 "2": {
                     "text": "Once changed, the size is saved and applied to all notes. Close the note by clicking the X button or anywhere outside it. Clicking on the note opens it. The size of the opened note can be changed by dragging the bottom right angle."
