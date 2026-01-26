@@ -7,8 +7,8 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.2'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const version = 'Beta 1.3'; // App version
+const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
 guide = localStorage.getItem('guide');
@@ -5376,7 +5376,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     // --- Проверка за съществуващ борд ---
     // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
     // и не съществува в boardsData, превключваме към 'all'.
-    const specialBoards = ['all', 'calendar', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
     if (!specialBoards.includes(boardId)) {
         // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
         // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
@@ -5416,12 +5416,19 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
             }
         });
     }
-    if (boardId === 'calendar') {
+    if (boardId === 'calendar' || boardId === 'calendar_monthly' || boardId === 'calendar_weekly') {
         // Проверяваме коя версия на календара да покажем
-        if (localStorage.getItem('showWeeklyCalendar') === 'true') {
+        if (boardId === 'calendar_weekly') {
             renderWeeklyCalendarView();
-        } else {
+        } else if (boardId === 'calendar_monthly') {
             renderCalendarView();
+        } else {
+            // Standard 'calendar' behavior (respects last view)
+            if (localStorage.getItem('showWeeklyCalendar') === 'true') {
+                renderWeeklyCalendarView();
+            } else {
+                renderCalendarView();
+            }
         }
         return;
     }
@@ -6792,6 +6799,8 @@ function populateStartBoardSelect() {
     startBoardSelect.innerHTML = `
             <option value="all">${_('allBoards')}</option>
             <option value="reminder">${_('reminder')}</option>
+            <option value="calendar_monthly">${_('calendar')}</option>
+            <option value="calendar_weekly">${_('showWeeklyCalendar')}</option>
         `;
     boardsData.forEach(board => {
         const boardId = board.gdid || board.id;
@@ -7969,10 +7978,24 @@ if ('serviceWorker' in navigator) {
             // Регистрираме версията с флаг, за да принудим браузъра да я презареди
             const registration = await navigator.serviceWorker.register('sw.js');
             if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
+
+            // Force an update check to bypass HTTP cache for sw.js
+            await registration.update();
+
             // Ако има чакащ нов SW, казваме му веднага да поеме контрола
             if (registration.waiting) {
                 registration.waiting.postMessage({ type: 'SKIP_WAITING' });
             }
+
+            // Reload automatically when the new Service Worker takes control
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) {
+                    window.location.reload();
+                    refreshing = true;
+                }
+            });
+
         } catch (err) {
             console.log('ServiceWorker registration failed: ', err);
         }
