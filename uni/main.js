@@ -4614,7 +4614,16 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
         flexDirection: 'column'
     });
     // Prevent bubbling
-    overlay.addEventListener('click', (e) => e.stopPropagation());
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+        // Prevent closing if clicking on buttons or their children, but allow if clicking on img/video or background
+        // Wait, arrow buttons stop propagation themselves. Close button stops propagation.
+        // So any click reaching here is either on the container/background OR on the media itself (if media doesn't stop prop)
+        // Check if the click target is a button or inside a button (just in case)
+        if (e.target.closest('button')) return;
+        e.stopPropagation();
+        cleanup();
+    });
     // Create container for media to easily clear/replace it
     const mediaContainer = document.createElement('div');
     Object.assign(mediaContainer.style, {
@@ -8042,5 +8051,79 @@ async function showBoardPreviews() {
                 }
             }
         }
+    }
+}
+
+// --- Swipe Navigation for Boards ---
+let touchStartX = 0;
+let touchStartY = 0;
+
+document.addEventListener('touchstart', e => {
+    // Ignore if multi-touch
+    if (e.touches.length > 1) return;
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+}, { passive: true });
+
+document.addEventListener('touchend', e => {
+    // Ignore if multi-touch
+    if (e.changedTouches.length > 1) return;
+
+    // Check if any modal is open
+    if (document.querySelector('.modal-overlay.visible')) return;
+
+    // Check if target is scrollable horizontally
+    let target = e.target;
+    while (target && target !== document.body) {
+        // Simple check for potentially scrollable elements
+        if (['PRE', 'CODE', 'TABLE', 'TH', 'TD'].includes(target.tagName)) return;
+        // Check if element has horizontal scroll
+        if (target.scrollWidth > target.clientWidth) {
+            return;
+        }
+        target = target.parentElement;
+    }
+
+    const touchEndX = e.changedTouches[0].screenX;
+    const touchEndY = e.changedTouches[0].screenY;
+    handleSwipe(touchStartX, touchStartY, touchEndX, touchEndY);
+}, { passive: true });
+
+function handleSwipe(startX, startY, endX, endY) {
+    const minSwipeDistance = 100;
+    const maxVerticalDistance = 60;
+
+    const diffX = endX - startX;
+    const diffY = endY - startY;
+
+    if (Math.abs(diffX) > minSwipeDistance && Math.abs(diffY) < maxVerticalDistance) {
+        if (diffX > 0) {
+            // Right Swipe -> Previous (Left)
+            navigateBoard(-1);
+        } else {
+            // Left Swipe -> Next (Right)
+            navigateBoard(1);
+        }
+    }
+}
+
+function navigateBoard(direction) {
+    const buttons = Array.from(document.querySelectorAll('.board-menu-container .board-filter-link'));
+    if (!buttons.length) return;
+
+    let currentIndex = buttons.findIndex(btn => btn.classList.contains('selected-board'));
+
+    // If no board is selected (e.g. initial state or cleared), assume 0
+    if (currentIndex === -1) currentIndex = 0;
+
+    let nextIndex = currentIndex + direction;
+
+    // Cyclic navigation
+    if (nextIndex < 0) nextIndex = buttons.length - 1;
+    if (nextIndex >= buttons.length) nextIndex = 0;
+
+    const targetBtn = buttons[nextIndex];
+    if (targetBtn) {
+        targetBtn.click();
     }
 }
