@@ -1142,11 +1142,16 @@ function renderCalendarView() {
                     boardToClick = localStorage.getItem('startBoard') || 'all';
                 }
                 // Търсим бутона в хедъра
-                const activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
+                let activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
+                // Ако няма активен борд, опитваме да активираме първия от масива с бордовете
+                if (!activeBoardBtn && boardsData && boardsData.length > 0) {
+                    const firstBoardGdid = boardsData[0].gdid;
+                    activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${firstBoardGdid}"]`);
+                }
                 if (activeBoardBtn) {
                     activeBoardBtn.click();
                 } else {
-                    // Fallback
+                    // Fallback - показваме основния изглед без активен борд
                     calendarContainer.style.display = 'none';
                     document.querySelector('header').style.display = 'flex';
                     notesContainer.style.display = 'flex';
@@ -1248,13 +1253,18 @@ function renderWeeklyCalendarView(dateForWeek) {
                 if (boardToClick === 'calendar') {
                     boardToClick = localStorage.getItem('startBoard') || 'all';
                 }
-                const activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
+                let activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${boardToClick}"]`);
+                // Ако няма активен борд, опитваме да активираме първия от масива с бордовете
+                if (!activeBoardBtn && boardsData && boardsData.length > 0) {
+                    const firstBoardGdid = boardsData[0].gdid;
+                    activeBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${firstBoardGdid}"]`);
+                }
                 if (activeBoardBtn) {
                     // ВАЖНО: Скриваме седмичния календар ПРЕДИ програмния клик
                     weeklyContainer.style.display = 'none';
                     activeBoardBtn.click();
                 } else {
-                    // Fallback
+                    // Fallback - показваме основния изглед без активен борд
                     weeklyContainer.style.display = 'none';
                     document.querySelector('header').style.display = 'flex';
                     notesContainer.style.display = 'flex';
@@ -6583,6 +6593,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             if (dbExists && boardsInDb.length > 0) {
                 // Показваме диалог за потвърждение само ако базата съществува и има данни.
                 document.getElementById('settings-modal').classList.remove('visible');
+                updateModeButton();
                 await new Promise(resolve => setTimeout(resolve, 150));
                 confirmed = await showConfirmation(_('confirmDbRecreate'));
             } else {
