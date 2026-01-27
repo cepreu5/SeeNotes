@@ -141,6 +141,41 @@ const noteBackgrounds = [
     'stl2_1.png', // 10
     'stl3_1.png'  // 11
 ];
+
+const noteColorMap = [
+    '#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF',
+    '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'
+];
+
+const noteBgCache = new Map();
+
+// --- Optimization: Preload unique backgrounds to avoid 'checkered' loading and reduce memory ---
+async function preloadNoteBackgrounds(notesData) {
+    const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
+    if (!notesBgrdEnabled) return;
+
+    const needed = new Set();
+    notesData.forEach(note => {
+        if (note.status === 1) return;
+        const noteColor = note.color;
+        const color = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : '#FBFF86';
+        const img = (note.sellist && note.sellist > 0) ? note.sellist : 0;
+        needed.add(`${color}_${img}`);
+    });
+
+    const promises = [];
+    needed.forEach(key => {
+        if (!noteBgCache.has(key)) {
+            const parts = key.split('_'); // key is "color_img"
+            const color = parts[0];
+            const img = parseInt(parts[1]);
+            promises.push(createColoredNoteBackground(color, img, 250, 250).then(canvas => {
+                noteBgCache.set(key, `url(${canvas.toDataURL()})`);
+            }).catch(e => console.warn("Failed to preload bg:", key, e)));
+        }
+    });
+    await Promise.all(promises);
+}
 // Времено решение за проблем със скролирането до последната бележка при презареждане от иконата на браузъра
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
@@ -993,8 +1028,8 @@ function renderCalendarView() {
                         contentToShow = firstNonEmptyLineIndex !== -1 ? lines.slice(firstNonEmptyLineIndex).join('\n') : '...';
                     }
                     miniNote.textContent = contentToShow;
-                    if (noteData.color) {
-                        miniNote.style.backgroundColor = `var(--note-bg-${noteData.color})`;
+                    if (noteData.color !== null && noteData.color !== undefined) {
+                        miniNote.style.backgroundColor = noteColorMap[noteData.color] || noteColorMap[0];
                     }
                     miniNote.addEventListener('click', (e) => {
                         e.stopPropagation();
@@ -1857,6 +1892,16 @@ async function startApp() {
         if (licenseData.remainingDays > 0) {
             tokenRemainingDays = licenseData.remainingDays;
             if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
+        }
+
+        // --- КОРЕКЦИЯ: Осигуряваме наличност на имейла при безшумен старт ---
+        // Използваме САМО записания от логина hint (ако е избрано 'Запомни ме'),
+        // за да избегнем несъответствие с лицензния имейл.
+        if (!sessionStorage.getItem('google_auth_email_hint')) {
+            const emailHint = localStorage.getItem('google_login_hint');
+            if (emailHint) {
+                sessionStorage.setItem('google_auth_email_hint', emailHint);
+            }
         }
         initApp(); // Инициализира UI елементите и event listeners
         // --- Задаване на настройки по подразбиране при първо стартиране ---
@@ -7412,25 +7457,38 @@ async function createNoteElement(noteContent) {
     // Add the new container before the title
     titleWrapper.appendChild(headerInfoContainer);
     titleWrapper.appendChild(titleEl);
-    // Asynchronously create and apply the colored background
-    const noteBgColor = noteColor !== null ? getComputedStyle(document.documentElement).getPropertyValue(`--note-bg-${noteColor}`).trim() : '#FBFF86';
-    if (notesBgrdEnabled) {
-        try {
-            // Apply margin to prevent notes from sticking together (same as in else block)
-            note.style.margin = '5px';
-            // Pass the note's dimensions (from CSS) to the canvas function
-            const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
+    // Use the color map for reliability and define a clear fallback color
+    const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9)
+        ? noteColorMap[noteColor]
+        : '#FBFF86';
 
-            const backgroundCanvas = await createColoredNoteBackground(noteBgColor, imageName, 250, 250);
-            backgroundCanvas.className = 'note-background-canvas';
-            // Prepend the canvas so it's the first child and sits behind the content wrapper
-            note.prepend(backgroundCanvas);
-        } catch (error) {
-            console.log("Failed to create colored note background:", error);
+    note.style.margin = '5px';
+
+    if (notesBgrdEnabled) {
+        const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
+        const cacheKey = `${noteBgColor}_${imageName}`;
+
+        if (noteBgCache.has(cacheKey)) {
+            // Apply preloaded background instantly
+            note.style.backgroundImage = noteBgCache.get(cacheKey);
+            note.style.backgroundSize = '100% 100%';
+            note.style.backgroundRepeat = 'no-repeat';
+        } else {
+            // Fallback for cases where it wasn't preloaded (e.g. newly created note)
+            note.style.backgroundColor = noteBgColor;
+            createColoredNoteBackground(noteBgColor, imageName, 250, 250).then(canvas => {
+                const dataUrl = `url(${canvas.toDataURL()})`;
+                noteBgCache.set(cacheKey, dataUrl);
+                note.style.backgroundImage = dataUrl;
+                note.style.backgroundColor = 'transparent';
+                note.style.backgroundSize = '100% 100%';
+                note.style.backgroundRepeat = 'no-repeat';
+            }).catch(() => {
+                note.style.backgroundColor = noteBgColor;
+            });
         }
     } else {
         note.style.backgroundColor = noteBgColor;
-        note.style.margin = '5px';
     }
     const contentWrapper = document.createElement('div');
     contentWrapper.className = 'note-content-wrapper';
@@ -7622,7 +7680,7 @@ async function createNoteElement(noteContent) {
         }
         // Отваряме модала, само ако не е long press и кликът не е върху футъра
         if (!isLongPress && !e.target.closest('.note-footer')) {
-            const noteBgColor = noteColor !== null ? `var(--note-bg-${noteColor})` : 'var(--note-bg-0)';
+            const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
             showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
         }
     };
@@ -7772,6 +7830,10 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     // 2. Use setTimeout to allow browser to render the spinner
     await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 2.1 Optimization: Preload backgrounds before creating elements to avoid staggered loading
+    await preloadNoteBackgrounds(allNotesData);
+
     const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
     // Create fragment and populate it with new elements
     const fragment = document.createDocumentFragment();
