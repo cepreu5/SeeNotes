@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.3'; // App version
+const version = 'Beta 1.4'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -820,7 +820,7 @@ function gisLoaded() {
                 // Вместо redirect, скриваме login страницата и продължаваме
                 document.getElementById('login-page').hidden = true;
                 // Извикваме startApp за да заредим приложението
-                startApp();
+                startApp(true);
             } else {
                 console.log('Failed to get access token');
                 alert(_('authFailed'));
@@ -1864,7 +1864,7 @@ async function deleteFromDB(storeName, key) {
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
 // --- Основна стартова функция ---
-async function startApp() {
+async function startApp(isExplicitLogin = false) {
     if (isAppStarted) return;
     isAppStarted = true;
 
@@ -1923,8 +1923,10 @@ async function startApp() {
             return;
         }
         authToken = authResult.tokenData;
-        // --- WHITELIST CHECK (Once per session) ---
-        checkWhitelist();
+        // --- WHITELIST CHECK (Only on explicit login) ---
+        if (isExplicitLogin) {
+            checkWhitelist();
+        }
         // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
         updateGlobalStateFlags();
         await createBoardsUI([], false);
@@ -3262,39 +3264,34 @@ function handleAuthClick() {
 }
 
 function checkWhitelist() {
-    // Run only once per session
-    if (!sessionStorage.getItem('whitelistChecked')) {
-        const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
-        const action = isTrialStart ? 'log' : 'check';
+    const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
+    const action = isTrialStart ? 'log' : 'check';
 
-        // Изчакваме 2 секунди, за да не пречим на началната синхронизация 
-        setTimeout(() => {
-            console.log('Executing delayed whitelist check...');
-            sessionStorage.setItem('whitelistChecked', 'true');
-            const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-            console.log('Email for whitelist:', currentUserEmail);
-            if (currentUserEmail) {
-                fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({
-                        email: currentUserEmail,
-                        action: 'log'
-                    })
+    // Изчакваме 2 секунди, за да не пречим на началната синхронизация 
+    setTimeout(() => {
+        console.log('Executing delayed whitelist check...');
+        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+        console.log('Email for whitelist:', currentUserEmail);
+        if (currentUserEmail) {
+            fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    email: currentUserEmail,
+                    action: 'log'
                 })
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('Whitelist check:', data);
-                        if (action === 'log') {
-                            sessionStorage.removeItem('isTrialStart');
-                            console.log('Trial registered for:', currentUserEmail);
-                        }
-                    })
-                    .catch(err => console.log('Whitelist check delayed fail:', err));
-            }
-        }, 2000);
-
-    }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Whitelist log response:', data);
+                    if (isTrialStart) {
+                        sessionStorage.removeItem('isTrialStart');
+                        console.log('Trial registered for:', currentUserEmail);
+                    }
+                })
+                .catch(err => console.log('Whitelist check delayed fail:', err));
+        }
+    }, 2000);
 }
 
 async function checkAuth() {
