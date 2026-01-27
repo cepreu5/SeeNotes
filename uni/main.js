@@ -8090,7 +8090,7 @@ if ('serviceWorker' in navigator) {
                 `;
 
                 const textSpan = document.createElement('span');
-                textSpan.textContent = `${_('newVersionAvailable')} (${version})`;
+                textSpan.textContent = _('newVersionAvailable');
 
                 const refreshBtn = document.createElement('button');
                 refreshBtn.textContent = _('refreshNow');
