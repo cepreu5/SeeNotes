@@ -3267,7 +3267,7 @@ function checkWhitelist() {
         const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
         const action = isTrialStart ? 'log' : 'check';
 
-        // Изчакваме 2 секунди, за да не пречим на началната синхронизация
+        // Изчакваме 2 секунди, за да не пречим на началната синхронизация 
         setTimeout(() => {
             console.log('Executing delayed whitelist check...');
             sessionStorage.setItem('whitelistChecked', 'true');
