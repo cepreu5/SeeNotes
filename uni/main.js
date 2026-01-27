@@ -7992,12 +7992,91 @@ if ('serviceWorker' in navigator) {
             // Force an update check to bypass HTTP cache for sw.js
             await registration.update();
 
-            // Ако има чакащ нов SW, казваме му веднага да поеме контрола
+            // Function to show update notification as a persistent floating bar
+            const showUpdateNotification = (waitingSW) => {
+                // Don't show if already showing
+                if (document.getElementById('sw-update-bar')) return;
+
+                // Create update notification bar
+                const updateBar = document.createElement('div');
+                updateBar.id = 'sw-update-bar';
+                updateBar.style.cssText = `
+                    position: fixed;
+                    bottom: 10px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 12px 10px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                    z-index: 100000;
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    white-space: nowrap;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    animation: swSlideUp 0.3s ease;
+                `;
+
+                const textSpan = document.createElement('span');
+                textSpan.textContent = `${_('newVersionAvailable')} (${version})`;
+
+                const refreshBtn = document.createElement('button');
+                refreshBtn.textContent = _('refreshNow');
+                refreshBtn.style.cssText = `
+                    background: white;
+                    color: #667eea;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    transition: transform 0.2s;
+                `;
+                refreshBtn.onmouseover = () => refreshBtn.style.transform = 'scale(1.05)';
+                refreshBtn.onmouseout = () => refreshBtn.style.transform = 'scale(1)';
+                refreshBtn.onclick = () => {
+                    waitingSW.postMessage({ type: 'SKIP_WAITING' });
+                };
+
+                updateBar.appendChild(textSpan);
+                updateBar.appendChild(refreshBtn);
+                document.body.appendChild(updateBar);
+
+                // Add animation style if not exists
+                if (!document.getElementById('sw-update-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'sw-update-style';
+                    style.textContent = `
+                        @keyframes swSlideUp {
+                            from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+                            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            };
+
+            // Check if there's already a waiting SW
             if (registration.waiting) {
-                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                showUpdateNotification(registration.waiting);
             }
 
-            // Reload automatically when the new Service Worker takes control
+            // Listen for new SW installing
+            registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                if (newWorker) {
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            // New SW is installed and waiting
+                            showUpdateNotification(newWorker);
+                        }
+                    });
+                }
+            });
+
+            // Reload when the new Service Worker takes control
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (!refreshing) {

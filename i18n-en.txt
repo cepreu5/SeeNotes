@@ -218,5 +218,7 @@ en: {
         duplicateNotes: 'Duplicate notes',
         content: 'Content',
         remainingDays: 'Remaining Days',
-        supportMessage: 'If you like this app and find it useful, support the developer with a small amount.'
+        supportMessage: 'If you like this app and find it useful, support the developer with a small amount.',
+        newVersionAvailable: 'New version available!',
+        refreshNow: 'Refresh'
     }

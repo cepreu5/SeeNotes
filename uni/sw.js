@@ -1,4 +1,4 @@
-const CACHE_NAME = 'multinotes-b1.3';
+const CACHE_NAME = 'multinotes-b1.31';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -54,7 +54,7 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  // Don't call skipWaiting() here - wait for user confirmation via SKIP_WAITING message
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // Cache assets individually for better error reporting and resilience
