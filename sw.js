@@ -6,7 +6,7 @@ const ASSETS_TO_CACHE = [
   './msmstyle.css',
   './kb-assistant.css',
   './kb-assistantt.js',
-  './msmrt.js',
+  './msmrtt.js',
   './mainn.js',
   './kb-core.json',
   './kb-bg.json',
