@@ -8,7 +8,7 @@
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 const version = 'Beta 1.4'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
 guide = localStorage.getItem('guide');
@@ -3887,13 +3887,13 @@ function reportDataIntegrityIssues() {
     if (duplicates.length > 0) {
         console.warn(`Found ${duplicates.length} duplicate IDs. IndexedDB will only keep the LAST version of each.`);
         duplicates.forEach(d => {
-            console.log(` - ID: ${d.gdid} | Mode: ${d.mode || 'direct'} | Files: [${d.file1}] and [${d.file2}]`);
+            console.info(` - ID: ${d.gdid} | Mode: ${d.mode || 'direct'} | Files: [${d.file1}] and [${d.file2}]`);
         });
     }
     if (missing.length > 0) {
         console.warn(`Found ${missing.length} items missing an ID property. These were likely skipped.`);
         missing.forEach(m => {
-            console.log(` - File: ${m.file} | Mode: ${m.mode || 'direct'} | Content: "${(m.text || '').substring(0, 50)}..."`);
+            console.info(` - File: ${m.file} | Mode: ${m.mode || 'direct'} | Content: "${(m.text || '').substring(0, 50)}..."`);
         });
     }
     console.groupEnd();
