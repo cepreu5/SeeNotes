@@ -169,9 +169,16 @@ async function preloadNoteBackgrounds(notesData) {
             const parts = key.split('_'); // key is "color_img"
             const color = parts[0];
             const img = parseInt(parts[1]);
-            promises.push(createColoredNoteBackground(color, img, 250, 250).then(canvas => {
-                noteBgCache.set(key, `url(${canvas.toDataURL()})`);
-            }).catch(e => console.warn("Failed to preload bg:", key, e)));
+            const p = createColoredNoteBackground(color, img, 250, 250).then(canvas => {
+                return new Promise(resolveBlob => {
+                    canvas.toBlob(blob => {
+                        const url = URL.createObjectURL(blob);
+                        noteBgCache.set(key, `url("${url}")`);
+                        resolveBlob();
+                    }, 'image/png');
+                });
+            }).catch(e => console.warn("Failed to preload bg:", key, e));
+            promises.push(p);
         }
     });
     await Promise.all(promises);
@@ -5255,6 +5262,40 @@ function showModal(options, noteElement = null) {
         const boardNameEl = document.getElementById('modal-board-name');
         if (boardNameEl) boardNameEl.style.left = '15px';
     }
+
+    // --- Edit Icon for Modal (DB Mode) ---
+    const oldEditBtn = document.getElementById('note-edit-btn');
+    if (oldEditBtn) oldEditBtn.remove();
+    const oldSaveBtn = document.getElementById('note-save-btn');
+    if (oldSaveBtn) oldSaveBtn.remove();
+
+    if (useIndexedDb && !isPromo) {
+        const editBtn = document.createElement('div');
+        editBtn.id = 'note-edit-btn';
+        editBtn.innerHTML = pencilIconSvg;
+        editBtn.title = "Edit note";
+        Object.assign(editBtn.style, {
+            position: 'absolute',
+            bottom: '15px',
+            right: '50px',
+            width: '40px',
+            height: '40px',
+            backgroundColor: '#ffffff',
+            borderRadius: '50%',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+            zIndex: '10000',
+            border: '1px solid #ccc'
+        });
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            enableNoteEditing(modalBody);
+        });
+        modalContentBox.appendChild(editBtn);
+    }
 }
 
 function showAllBoardsModal() {
@@ -6502,6 +6543,20 @@ async function createSettingsUI(boardsData, boardParseError) {
                 return;
             }
             if (changedCheckbox.checked) {
+                // Преди да запишем в localStorage, проверяваме дали имаме избрана папка
+                if (changedKey === 'useLocalDb' || changedKey === 'useArhDb') {
+                    const display = (changedKey === 'useLocalDb') ?
+                        document.getElementById('local-sync-folder-name') :
+                        document.getElementById('arh-folder-name');
+
+                    if (!display || display.textContent === _('folderNotSelected')) {
+                        // Не записваме в localStorage, махаме отметката и отваряме избора на папка
+                        changedCheckbox.checked = false;
+                        const btnId = (changedKey === 'useLocalDb') ? 'select-folder-btn' : 'select-arh-btn';
+                        document.getElementById(btnId).click();
+                        return;
+                    }
+                }
                 // Uncheck all other data sources
                 dataSources.forEach(({ checkbox, key }) => {
                     if (key !== changedKey) {
@@ -6509,25 +6564,14 @@ async function createSettingsUI(boardsData, boardParseError) {
                         localStorage.setItem(key, 'false');
                     }
                 });
-                // Автоматично отваряне на диалога за избор на папка, ако не е избрана
-                if (changedKey === 'useLocalDb') {
-                    const folderNameDisplay = document.getElementById('local-sync-folder-name');
-                    if (folderNameDisplay.textContent === _('folderNotSelected')) {
-                        document.getElementById('select-folder-btn').click();
-                    }
-                } else if (changedKey === 'useArhDb') {
-                    const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-                    if (arhFolderNameDisplay.textContent === _('folderNotSelected')) {
-                        document.getElementById('select-arh-btn').click();
-                    }
-                }
             }
             // Save the state of the changed checkbox
             localStorage.setItem(changedKey, changedCheckbox.checked);
             showToast(_('settingSaved'), 2000);
+            updateModeButton();
         };
         dataSources.forEach(({ checkbox, key }) => {
-            checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key)); // Вече е async
+            checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key));
         });
         // indexedDB
         const dbSectionWrapper = document.getElementById('db-section-wrapper');
@@ -6687,7 +6731,26 @@ async function createSettingsUI(boardsData, boardParseError) {
                     folderNameDisplay.textContent = handle.name;
                     folderNameDisplay.title = handle.name;
                     showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-                    document.getElementById('settings-modal').classList.remove('visible');
+
+                    // Актуализираме отметката и localStorage
+                    const localCheckbox = document.getElementById('use-local-db-checkbox');
+                    if (localCheckbox) localCheckbox.checked = true;
+                    localStorage.setItem('useLocalDb', 'true');
+
+                    // Изключваме другите източници
+                    localStorage.setItem('useGoogleDb', 'false');
+                    localStorage.setItem('useArhDb', 'false');
+                    const googleCheckbox = document.getElementById('use-google-db-checkbox');
+                    const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                    if (googleCheckbox) googleCheckbox.checked = false;
+                    if (arhCheckbox) arhCheckbox.checked = false;
+
+                    const settingsModal = document.getElementById('settings-modal');
+                    const settings2Modal = document.getElementById('settings2-modal');
+                    if (settingsModal) settingsModal.classList.remove('visible');
+                    if (settings2Modal) settings2Modal.classList.remove('visible');
+
+                    updateModeButton();
                     mainLogic();
                 }
             } catch (error) {
@@ -6716,10 +6779,30 @@ async function createSettingsUI(boardsData, boardParseError) {
                     arhFolderNameDisplay.title = handle.name;
                     dirHandle = handle; // <--- ДОБАВЕН РЕД
                     await saveConfig('arhHandle', handle); // Запазваме избраната папка
-                    document.getElementById('settings-modal').classList.remove('visible');
+
+                    // Актуализираме отметката и localStorage
+                    const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                    if (arhCheckbox) arhCheckbox.checked = true;
+                    localStorage.setItem('useArhDb', 'true');
+
+                    // Изключваме другите източници
+                    localStorage.setItem('useGoogleDb', 'false');
+                    localStorage.setItem('useLocalDb', 'false');
+                    const googleCheckbox = document.getElementById('use-google-db-checkbox');
+                    const localCheckbox = document.getElementById('use-local-db-checkbox');
+                    if (googleCheckbox) googleCheckbox.checked = false;
+                    if (localCheckbox) localCheckbox.checked = false;
+
+                    const settingsModal = document.getElementById('settings-modal');
+                    const settings2Modal = document.getElementById('settings2-modal');
+                    if (settingsModal) settingsModal.classList.remove('visible');
+                    if (settings2Modal) settings2Modal.classList.remove('visible');
+
                     showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
                     // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
                     updateGlobalStateFlags();
+
+                    updateModeButton();
                     // След избор, просто презареждаме основната логика,
                     // която вече ще види, че е избран режим "Архив".
                     mainLogic();
@@ -7429,12 +7512,15 @@ async function createNoteElement(noteContent) {
             // Fallback for cases where it wasn't preloaded (e.g. newly created note)
             note.style.backgroundColor = noteBgColor;
             createColoredNoteBackground(noteBgColor, imageName, 250, 250).then(canvas => {
-                const dataUrl = `url(${canvas.toDataURL()})`;
-                noteBgCache.set(cacheKey, dataUrl);
-                note.style.backgroundImage = dataUrl;
-                note.style.backgroundColor = 'transparent';
-                note.style.backgroundSize = '100% 100%';
-                note.style.backgroundRepeat = 'no-repeat';
+                canvas.toBlob(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const bgUrl = `url("${url}")`;
+                    noteBgCache.set(cacheKey, bgUrl);
+                    note.style.backgroundImage = bgUrl;
+                    note.style.backgroundColor = 'transparent';
+                    note.style.backgroundSize = '100% 100%';
+                    note.style.backgroundRepeat = 'no-repeat';
+                }, 'image/png');
             }).catch(() => {
                 note.style.backgroundColor = noteBgColor;
             });
@@ -8261,11 +8347,45 @@ function navigateBoard(direction) {
                 settings2Modal.classList.add('visible');
             }
         }, true); // Capture phase to intercept early
+
+        // --- Long Press Logic for Mobile ---
+        let longPressTimer;
+        let longPressTriggered = false;
+        const startLongPress = (e) => {
+            longPressTriggered = false;
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                // Ensure standard modal is closed
+                const settingsModal = document.getElementById('settings-modal');
+                if (settingsModal) settingsModal.classList.remove('visible');
+
+                settings2Modal.classList.add('visible');
+                if (navigator.vibrate) navigator.vibrate(50);
+                longPressTimer = null;
+            }, 800);
+        };
+        const cancelLongPress = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
+        settingsButton.addEventListener('touchstart', startLongPress, { passive: true });
+        settingsButton.addEventListener('touchend', cancelLongPress);
+        settingsButton.addEventListener('touchmove', cancelLongPress);
+        settingsButton.addEventListener('contextmenu', (e) => {
+            if (longPressTriggered) {
+                e.preventDefault();
+                longPressTriggered = false;
+            }
+        });
     }
 
     if (settings2CloseBtn && settings2Modal) {
         settings2CloseBtn.addEventListener('click', () => {
             settings2Modal.classList.remove('visible');
+            updateModeButton();
         });
     }
 
@@ -8274,6 +8394,7 @@ function navigateBoard(direction) {
         settings2Modal.addEventListener('click', (e) => {
             if (e.target === settings2Modal) {
                 settings2Modal.classList.remove('visible');
+                updateModeButton();
             }
         });
     }
@@ -8305,6 +8426,7 @@ function navigateBoard(direction) {
 
 // --- Edit Note on Ctrl+Click (DB Mode) ---
 const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>`;
 
 function enableNoteEditing(modalBodyElem) {
     if (!modalBodyElem) return;
@@ -8349,12 +8471,11 @@ function enableNoteEditing(modalBodyElem) {
         saveBtn.innerHTML = diskIconSvg;
         saveBtn.title = "Save changes";
 
-        // Absolute positioning in the middle of the modal bottom
+        // Positioning on the right side, 50px from edge
         Object.assign(saveBtn.style, {
             position: 'absolute',
             bottom: '15px',
-            left: '50%',
-            transform: 'translateX(-50%)',
+            right: '50px',
             width: '40px',
             height: '40px',
             backgroundColor: '#ffffff',
@@ -8374,7 +8495,12 @@ function enableNoteEditing(modalBodyElem) {
         });
 
         const modalContentBox = document.querySelector('.modal-content-box');
-        if (modalContentBox) modalContentBox.appendChild(saveBtn);
+        if (modalContentBox) {
+            modalContentBox.appendChild(saveBtn);
+            // Hide edit button when in edit mode
+            const editBtn = document.getElementById('note-edit-btn');
+            if (editBtn) editBtn.style.display = 'none';
+        }
     }
 }
 
@@ -8413,6 +8539,53 @@ document.addEventListener('click', (e) => {
     enableNoteEditing(modalBodyElem);
 }, true);
 
+// --- Long Press for Editing (Mobile) ---
+let editLongPressTimer;
+let editLongPressTriggered = false;
+document.addEventListener('touchstart', (e) => {
+    if (typeof useIndexedDb === 'undefined' || !useIndexedDb) return;
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
+    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
+
+    editLongPressTriggered = false;
+    editLongPressTimer = setTimeout(() => {
+        editLongPressTriggered = true;
+        enableNoteEditing(modalBodyElem);
+        if (navigator.vibrate) navigator.vibrate(50);
+        editLongPressTimer = null;
+    }, 800);
+}, { passive: true });
+
+document.addEventListener('touchend', () => {
+    if (editLongPressTimer) {
+        clearTimeout(editLongPressTimer);
+        editLongPressTimer = null;
+    }
+});
+
+document.addEventListener('touchmove', () => {
+    if (editLongPressTimer) {
+        clearTimeout(editLongPressTimer);
+        editLongPressTimer = null;
+    }
+});
+
+document.addEventListener('contextmenu', (e) => {
+    if (editLongPressTriggered) {
+        e.preventDefault();
+        editLongPressTriggered = false;
+        return;
+    }
+    const modalBodyElem = document.getElementById('modal-body');
+    if (modalBodyElem && modalBodyElem.contains(e.target) && !e.target.closest('.note-footer') && !e.target.closest('.modal-note-footer')) {
+        // If textarea exists, it means we are editing or just started
+        if (modalBodyElem.querySelector('textarea')) {
+            e.preventDefault();
+        }
+    }
+});
+
 // Unified Save Logic
 async function saveEditedNote() {
     const modalBodyElem = document.getElementById('modal-body');
@@ -8432,6 +8605,7 @@ async function saveEditedNote() {
         if (noteToUpdate.notetxt !== undefined) noteToUpdate.notetxt = newText;
         else noteToUpdate.text = newText;
         noteToUpdate.modifiedTime = new Date().toISOString();
+        noteToUpdate.datemod = Date.now();
         try {
             if (typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
                 await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
