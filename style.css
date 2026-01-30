@@ -688,8 +688,8 @@ code {
     font-style: italic;
 }
 
-/* Hide datemod in header when the body has this class */
-.hide-datemod .datemod-header-date {
+/* Hide all header info (date and time) when the body has this class */
+.hide-datemod .note-header-info {
     display: none;
 }
 

@@ -38,7 +38,7 @@ const DEMO_NOTE_LIMIT = 5;
 
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email';
+const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email';
 const TRIAL_URL = "http://index.html?token=DtBhz0nmHgisBO7KMIaXaUBp2QFBph4fylvi_uHP-St3CLvu0V69txLgrDO2uJqMRyLI4PtzwKC0v7AbWMacbWrZXTVl"; // days token
 
 // --- Глобално състояние на приложението ---
@@ -195,8 +195,10 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 async function parseFileResults(results, filenameForError) {
     const data = [];
     let parseError = false;
-    results.forEach(({ res }) => {
-        if (!res || !res.body || res.body.trim() === '') return;
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+
+    for (const { res, id } of results) {
+        if (!res || !res.body || res.body.trim() === '') continue;
         try {
             const content = JSON.parse(res.body);
             if (filenameForError === 'note.txt') {
@@ -213,8 +215,29 @@ async function parseFileResults(results, filenameForError) {
         } catch (e) {
             parseError = true;
             console.log(`Error parsing content from a '${filenameForError}' file:`, e);
+
+            if (updateGDrive && id && filenameForError === 'note.txt') {
+                const snippet = res.body.substring(0, 50) + (res.body.length > 50 ? '...' : '');
+                // Use setTimeout to avoid blocking immediate UI rendering if possible, but here we need to await user input which blocks loading anyway.
+                // Ideally we should process these after loading, but user asked for "during load" basically.
+                // We will block.
+                const confirmMsg = _('confirmDeleteCorruptedNote')
+                    .replace('{error}', e.message)
+                    .replace('{content}', snippet);
+
+                const confirmed = await showConfirmation(confirmMsg);
+                if (confirmed) {
+                    try {
+                        await deleteGDriveFile(id);
+                        if (typeof showToast === 'function') showToast(_('fileDeletedSuccess'), 3000);
+                    } catch (delErr) {
+                        console.error("Failed to delete corrupted file", delErr);
+                        if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', delErr.message), 5000);
+                    }
+                }
+            }
         }
-    });
+    }
     return { data, parseError };
 }
 
@@ -710,6 +733,44 @@ async function getFileID(folderId, fileName) {
         const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${fileName}'`, fields: 'files(id, name)', pageSize: 1 });
         return resp.result.files?.[0]?.id || null;
     } catch (e) { return null; }
+}
+async function updateGDriveFile(fileId, content) {
+    if (!fileId) return false;
+    try {
+        const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        const tokenData = JSON.parse(storedTokenString);
+        const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${tokenData.access_token}`,
+                'Content-Type': 'text/plain'
+            },
+            body: content
+        });
+        if (response.status === 401) throw new Error("401 Unauthorized - " + _('errorTokenMissing'));
+        return response.ok;
+    } catch (error) {
+        console.error("GDrive update failed:", error);
+        throw error;
+    }
+}
+async function deleteGDriveFile(fileId) {
+    if (!fileId) return false;
+    try {
+        const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        const tokenData = JSON.parse(storedTokenString);
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+        });
+        if (response.status === 401) throw new Error("401 Unauthorized - " + _('errorTokenMissing'));
+        return response.ok || response.status === 204;
+    } catch (error) {
+        console.error("GDrive delete failed:", error);
+        throw error;
+    }
 }
 
 async function getFolderID() {
@@ -1578,6 +1639,95 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
         }
     }
 }
+/**
+ * Премахва бележки с идентично съдържание (notetxt).
+ */
+async function removeDuplicates() {
+    if (typeof allNotesData === 'undefined' || allNotesData.length === 0) {
+        showToast(_('noData'), 3000);
+        return;
+    }
+    if (!confirmed) return;
+    const toDelete = [];
+    const groupedNotes = new Map();
+    // Групиране на бележките по съдържание
+    allNotesData.forEach(note => {
+        const content = note.notetxt;
+        if (!content || content.trim() === "") return;
+        if (!groupedNotes.has(content)) {
+            groupedNotes.set(content, []);
+        }
+        groupedNotes.get(content).push(note);
+    });
+    // Determine which notes to delete
+    groupedNotes.forEach((notes, content) => {
+        if (notes.length > 1) {
+            // Sort: Valid board notes first, then orphans.
+            // This ensures we keep a valid one if available.
+            notes.sort((a, b) => {
+                const isAReal = boardsData.some(bd => (bd.gdid || bd.id) == a.boardid);
+                const isBReal = boardsData.some(bd => (bd.gdid || bd.id) == b.boardid);
+                if (isAReal && !isBReal) return -1; // a comes first (keep a)
+                if (!isAReal && isBReal) return 1;  // b comes first (keep b)
+                return 0; // Equal priority
+            });
+            // Keep the first one (index 0), delete the rest (index 1 to end)
+            for (let i = 1; i < notes.length; i++) {
+                toDelete.push(notes[i]);
+            }
+        }
+    });
+    if (toDelete.length === 0) {
+        showToast(_('noDuplicatesFound'), 3000);
+        return;
+    }
+    showToast(`${_('duplicateNotes')}: ${toDelete.length}. ${_('loadingFile')}`, 3000);
+    // Show spinner in mode button
+    const modeButton = document.getElementById('mode_button');
+    const loadingIcon = document.getElementById('mode-button-loading-icon');
+    if (modeButton) modeButton.classList.add('mode-button-loading');
+    if (loadingIcon) loadingIcon.classList.add('button-loading');
+    let deletedCount = 0;
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    for (const note of toDelete) {
+        try {
+            const gdid = note.gdid;
+            const id = note.id;
+            // Изтриване от базата данни, ако е приложимо
+            if (useIndexedDb && typeof deleteFromDB === 'function') {
+                await deleteFromDB(NOTE_STORE_NAME, gdid || id);
+            }
+            // Изтриване от Google Drive, ако е разрешено
+            if (updateGDrive && gdid) {
+                await deleteGDriveFile(gdid);
+            }
+            // Премахване от паметта
+            allNotesData = allNotesData.filter(n => n.gdid !== gdid || (id && n.id !== id));
+            // Премахване от DOM
+            const selector = gdid ? `.note[data-g="${gdid}"]` : `.note[data-i="${id}"]`;
+            const noteEl = document.querySelector(selector);
+            if (noteEl) noteEl.remove();
+            deletedCount++;
+        } catch (error) {
+            console.error("Грешка при изтриване на дубликат:", error);
+            if (typeof showToast === 'function') {
+                showToast(_('gdriveDeleteError').replace('{error}', error.message), 5000);
+            }
+        }
+    }
+    // Stop spinner
+    if (modeButton) modeButton.classList.remove('mode-button-loading');
+    if (loadingIcon) loadingIcon.classList.remove('button-loading');
+    // Актуализиране на брояча
+    // Актуализиране на брояча
+    const noteCounter = document.getElementById('note-counter');
+    if (noteCounter) noteCounter.textContent = allNotesData.length;
+    // Обновяване на UI за бордовете
+    if (typeof renderUI === 'function') {
+        await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+    }
+    showToast(_('duplicatesDeleted').replace('{count}', deletedCount), 5000);
+}
 
 async function createColoredNoteBackground(color, src, width, height) {
     return new Promise((resolve, reject) => {
@@ -2090,9 +2240,18 @@ function showConfirmation(message, options = {}) {
         if (!noButton) {
             noButton = document.createElement('button');
             noButton.id = 'prompt-no-btn';
-            noButton.className = 'zoom-btn settings-close-btn'; // Use classes from other buttons
+            noButton.className = 'zoom-btn settings-close-btn';
             noButton.style.marginLeft = '10px';
             okButton.parentNode.appendChild(noButton);
+        }
+        // Cancel button (optional)
+        let cancelButton = document.getElementById('prompt-cancel-btn');
+        if (!cancelButton) {
+            cancelButton = document.createElement('button');
+            cancelButton.id = 'prompt-cancel-btn';
+            cancelButton.className = 'zoom-btn settings-close-btn';
+            cancelButton.style.marginLeft = '10px';
+            okButton.parentNode.appendChild(cancelButton);
         }
         // Save original inline styles to restore later
         const originalStyles = {
@@ -2103,20 +2262,29 @@ function showConfirmation(message, options = {}) {
         if (options.backgroundColor) popupContent.style.backgroundColor = options.backgroundColor;
         if (options.width) {
             popupContent.style.width = options.width;
-            popupContent.style.maxWidth = '90vw'; // Override constraint if specific width requested
+            popupContent.style.maxWidth = '90vw';
         }
         messagePara.textContent = message;
         folderIdInput.style.display = 'none';
         okButton.textContent = _('confirmCreateDbYes');
         noButton.textContent = _('confirmCreateDbNo');
         noButton.style.display = 'inline-block';
+        // Show/hide cancel button
+        if (options.showCancel) {
+            cancelButton.textContent = options.cancelText || _('cancel') || 'Cancel';
+            cancelButton.style.display = 'inline-block';
+        } else {
+            cancelButton.style.display = 'none';
+        }
         // Remove existing listener to avoid conflicts
         okButton.removeEventListener('click', handleSubmitFolderId);
         const cleanup = () => {
             popup.classList.remove('show');
             okButton.removeEventListener('click', onOk);
             noButton.removeEventListener('click', onNo);
+            cancelButton.removeEventListener('click', onCancel);
             noButton.style.display = 'none';
+            cancelButton.style.display = 'none';
             // Restore original listener
             okButton.addEventListener('click', handleSubmitFolderId);
             // Restore Styles
@@ -2132,11 +2300,15 @@ function showConfirmation(message, options = {}) {
             cleanup();
             resolve(false);
         };
+        const onCancel = () => {
+            cleanup();
+            resolve('cancel');
+        };
         okButton.addEventListener('click', onOk);
         noButton.addEventListener('click', onNo);
+        cancelButton.addEventListener('click', onCancel);
         popup.classList.add('show');
     });
-
 }
 
 /**
@@ -5280,7 +5452,7 @@ function showModal(options, noteElement = null) {
             right: '50px',
             width: '40px',
             height: '40px',
-            backgroundColor: '#ffffff',
+            backgroundColor: 'darkorange',
             borderRadius: '50%',
             display: 'flex',
             justifyContent: 'center',
@@ -7459,7 +7631,6 @@ async function createNoteElement(noteContent) {
             showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
         }
     });
-
     if (extraData.timer) {
         const dateText = formatDate(extraData.timer);
         if (dateText) headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
@@ -7470,14 +7641,14 @@ async function createNoteElement(noteContent) {
         if (dateText) {
             headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
         }
-        // } else if (extraData.datemod) { // Always create the element
-        //     const dateText = formatDate(extraData.datemod);
-        //     if (dateText) {
-        //         headerDate.textContent = dateText; // No icon for datemod
-        //         headerDate.classList.add('datemod-header-date');
-        //         const timeText = formatTime(extraData.datemod);
-        //         if (timeText) headerTime.textContent = timeText;
-        //     }
+    } else if (extraData.datemod) { // Always create the element
+        const dateText = formatDate(extraData.datemod);
+        if (dateText) {
+            headerDate.textContent = dateText; // No icon for datemod
+            headerDate.classList.add('datemod-header-date');
+            const timeText = formatTime(extraData.datemod);
+            if (timeText) headerTime.textContent = timeText;
+        }
     } else if (extraData.date) { // Fallback to creation date
         const dateText = formatDate(extraData.date);
         if (dateText) {
@@ -7496,13 +7667,10 @@ async function createNoteElement(noteContent) {
     const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9)
         ? noteColorMap[noteColor]
         : '#FBFF86';
-
     note.style.margin = '5px';
-
     if (notesBgrdEnabled) {
         const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
         const cacheKey = `${noteBgColor}_${imageName}`;
-
         if (noteBgCache.has(cacheKey)) {
             // Apply preloaded background instantly
             note.style.backgroundImage = noteBgCache.get(cacheKey);
@@ -7665,7 +7833,11 @@ async function createNoteElement(noteContent) {
         e.preventDefault();
         isLongPress = false;
         clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
-        if (!useIndexedDb) return; // Изтриването работи само с база данни
+
+        const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+        // Allow delete if using DB OR if updating GDrive is enabled and we have a GDrive ID
+        if (!useIndexedDb && (!updateGDrive || !noteGdid)) return;
+
         // Ако е извикано от модала, първо го затваряме.
         if (fromModal) {
             document.getElementById('content-modal').classList.remove('visible');
@@ -7677,6 +7849,14 @@ async function createNoteElement(noteContent) {
             try {
                 let totalNotes;
                 await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+                // Delete from Google Drive is enabled
+                const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+                if (updateGDrive && noteGdid) {
+                    deleteGDriveFile(noteGdid).catch(err => {
+                        console.error("GDrive delete failed:", err);
+                        if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+                    });
+                }
                 // Стъпка 1: Премахване от DOM и allNotesData
                 noteEl.remove();
                 allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
@@ -7721,11 +7901,16 @@ async function createNoteElement(noteContent) {
             const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
             showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
 
-            // Ако е натиснат Ctrl и сме в DB режим, веднага активираме редактиране
-            if (e.ctrlKey && typeof useIndexedDb !== 'undefined' && useIndexedDb) {
-                const modalBodyElem = document.getElementById('modal-body');
-                if (modalBodyElem) {
-                    enableNoteEditing(modalBodyElem);
+            // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
+            const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+            if (e.ctrlKey) {
+                if ((typeof useIndexedDb !== 'undefined' && useIndexedDb) || (updateGDrive && noteGdid)) {
+                    const modalBodyElem = document.getElementById('modal-body');
+                    if (modalBodyElem) {
+                        enableNoteEditing(modalBodyElem);
+                    }
+                } else if (!useIndexedDb && !updateGDrive) {
+                    showToast("Editing requires Database Mode or 'Update Google Drive' enabled.", 3000);
                 }
             }
         }
@@ -7899,7 +8084,16 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         loaderContainer.style.display = 'none';
         if (loaderText) loaderText.textContent = '';
     }
-    if (boardsNoteElement) {
+    // Check if we need to delay showing the menu due to empty board cleanup
+    let delayMenuRender = false;
+    if (isInitialLoad) {
+        const potentialEmptyBoards = boardsData.filter(b => b.noteCount === 0);
+        if (potentialEmptyBoards.length > 0) {
+            delayMenuRender = true;
+        }
+    }
+
+    if (boardsNoteElement && !delayMenuRender) {
         document.querySelector('header').appendChild(boardsNoteElement);
     }
     // --- OWNER CHECK ---
@@ -7914,6 +8108,63 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     if (isInitialLoad) {
+        // Check for empty boards and offer deletion individually
+        const emptyBoards = boardsData.filter(b => b.noteCount === 0);
+        if (emptyBoards.length > 0) {
+            setTimeout(async () => {
+                let boardsModified = false;
+                let currentEmptyCount = emptyBoards.length;
+                for (const board of emptyBoards) {
+                    // Safety check: Don't delete the last remaining board
+                    if (boardsData.length <= 1) {
+                        showToast(_('cannotDeleteLastBoard'), 3000);
+                        break;
+                    }
+                    const confirmed = await showConfirmation(
+                        _('confirmDeleteEmptyBoard').replace('{boardName}', board.title).replace('{count}', currentEmptyCount),
+                        { showCancel: true, cancelText: _('cancel') || 'Cancel' }
+                    );
+                    // User clicked Cancel - stop the entire process
+                    if (confirmed === 'cancel') {
+                        break;
+                    }
+                    if (confirmed === true) {
+                        currentEmptyCount--;
+                        boardsModified = true;
+                        boardsData = boardsData.filter(b => (b.gdid || b.id) !== (board.gdid || board.id));
+                        // Update DB if used
+                        if (useIndexedDb && typeof deleteFromDB === 'function') {
+                            await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
+                        }
+                        // Delete the board file from Google Drive if it has a gdid
+                        const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+                        if (updateGDriveNow && board.gdid && typeof deleteGDriveFile === 'function') {
+                            try {
+                                await deleteGDriveFile(board.gdid);
+                                console.log(`Deleted board file from GDrive: ${board.gdid}`);
+                            } catch (gdErr) {
+                                console.error(`Failed to delete board ${board.title} from GDrive:`, gdErr);
+                            }
+                        }
+                        // Confirmation toast
+                        showToast(_('boardDeletedSuccess').replace('{boardName}', board.title), 2000);
+                    }
+                }
+                // Individual board files were already deleted via deleteGDriveFile(board.gdid) above
+                // No need to update a centralized board.txt as boards are stored individually
+                // Finally render the menu (it was hidden initially)
+                renderUI({ rerenderOnlyMenu: true });
+                // Re-apply active state to the board button as it was just rendered
+                setTimeout(() => {
+                    const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
+                    if (startBoardBtn) {
+                        startBoardBtn.classList.add('active-board');
+                        startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                    }
+                }, 100);
+            }, 1000);
+        }
+
         // --- КОРЕКЦИЯ: Програмен клик на стартовия борд ---
         setTimeout(() => {
             const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
@@ -8408,6 +8659,14 @@ function navigateBoard(direction) {
             if (typeof showToast === 'function') showToast(_('settingSaved'), 2000);
         });
     }
+    const updateGDriveCheckbox = document.getElementById('update-gdrive-checkbox');
+    if (updateGDriveCheckbox) {
+        updateGDriveCheckbox.checked = localStorage.getItem('updateGDrive') === 'true';
+        updateGDriveCheckbox.addEventListener('change', () => {
+            localStorage.setItem('updateGDrive', updateGDriveCheckbox.checked);
+            if (typeof showToast === 'function') showToast(_('settingSaved'), 2000);
+        });
+    }
 })();
 
 // --- Save Button Listener ---
@@ -8415,11 +8674,17 @@ function navigateBoard(direction) {
     const saveBtn = document.getElementById('save-btn');
     if (saveBtn) {
         saveBtn.addEventListener('click', () => {
-            if (typeof exportNotes === 'function') {
-                exportNotes();
-            } else {
-                console.error('exportNotes function not found');
-            }
+            if (typeof exportNotes === 'function') exportNotes();
+            else console.error('exportNotes function not found');
+        });
+    }
+    const dupBtn = document.getElementById('dup-btn');
+    if (dupBtn) {
+        dupBtn.addEventListener('click', () => {
+            const settings2Modal = document.getElementById('settings2-modal');
+            if (settings2Modal) settings2Modal.classList.remove('visible');
+            if (typeof removeDuplicates === 'function') removeDuplicates();
+            else console.error('removeDuplicates function not found');
         });
     }
 })();
@@ -8478,7 +8743,7 @@ function enableNoteEditing(modalBodyElem) {
             right: '50px',
             width: '40px',
             height: '40px',
-            backgroundColor: '#ffffff',
+            backgroundColor: 'darkorange',
             borderRadius: '50%',
             display: 'flex',
             justifyContent: 'center',
@@ -8520,10 +8785,7 @@ function placeCaretAtEnd(el) {
 }
 
 document.addEventListener('click', (e) => {
-    // Check if Database mode is active
-    if (typeof useIndexedDb === 'undefined' || !useIndexedDb) return;
-
-    // Check for Ctrl key
+    // Check for Ctrl key - Only then proceed with edit checks
     if (!e.ctrlKey) return;
 
     // Check for target is inside modal-body and NOT inside footer/header
@@ -8532,6 +8794,16 @@ document.addEventListener('click', (e) => {
 
     // Explicitly ignore clicks on footer or any other elements appended to modalBody
     if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
+
+    // Check if Database mode is active OR if GDrive update is enabled
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const noteGdid = modalBodyElem.dataset.gdid;
+
+    if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) {
+        // Warn if trying to edit but can't save anywhere
+        showToast("Editing requires Database Mode or 'Update Google Drive' enabled.", 3000);
+        return;
+    }
 
     e.preventDefault();
     e.stopPropagation();
@@ -8543,10 +8815,15 @@ document.addEventListener('click', (e) => {
 let editLongPressTimer;
 let editLongPressTriggered = false;
 document.addEventListener('touchstart', (e) => {
-    if (typeof useIndexedDb === 'undefined' || !useIndexedDb) return;
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
     if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
+
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const noteGdid = modalBodyElem.dataset.gdid;
+
+    // If not editable, just return, don't start timer
+    if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) return;
 
     editLongPressTriggered = false;
     editLongPressTimer = setTimeout(() => {
@@ -8607,55 +8884,58 @@ async function saveEditedNote() {
         noteToUpdate.modifiedTime = new Date().toISOString();
         noteToUpdate.datemod = Date.now();
         try {
-            if (typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+            if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
                 await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
-                // Update global raw content for consecutive edits
-                currentModalContent = newText;
-                // --- Update the board element ---
-                // Find existing element by data-g or data-i
-                const selector = noteGdid ? `.note[data-g="${noteGdid}"]` : `.note[data-i="${noteId}"]`;
-                const oldNoteEl = document.querySelector(selector);
-                let updatedNoteEl = null;
-                if (oldNoteEl) {
-                    // Create a fresh element with updated content and closure
-                    updatedNoteEl = await createNoteElement(noteToUpdate);
-                    if (updatedNoteEl) {
-                        // Inherit current visibility/display style
-                        updatedNoteEl.style.display = oldNoteEl.style.display;
-                        oldNoteEl.replaceWith(updatedNoteEl);
-                    }
-                }
-                // Check if we should close the modal or refresh it
-                const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
-
-                if (closeAfterSave) {
-                    const contentModal = document.getElementById('content-modal');
-                    if (contentModal) contentModal.classList.remove('visible');
-                } else {
-                    // Refresh modal view with full rendering only if it stays open
-                    if (typeof showModal === 'function') {
-                        showModal({
-                            raw: newText,
-                            format: modalBodyElem.dataset.format,
-                            color: modalBodyElem.dataset.color,
-                            boardId: modalBodyElem.dataset.boardId,
-                            id: noteId,
-                            gdid: noteGdid
-                        }, updatedNoteEl);
-                    }
-                }
-
-                if (typeof showToast === 'function') {
-                    showToast(typeof _ === 'function' ? _('noteSavedSuccess') : "Note saved to Database.", 3000);
-                }
-
-                // Remove save button
-                const saveBtn = document.getElementById('note-save-btn');
-                if (saveBtn) saveBtn.remove();
-            } else {
-                console.error("DB functions not available.");
-                if (typeof showToast === 'function') showToast("Error: DB functions not available.", 3000);
             }
+            // Update global raw content for consecutive edits
+            currentModalContent = newText;
+            // --- Update the board element ---
+            // Find existing element by data-g or data-i
+            const selector = noteGdid ? `.note[data-g="${noteGdid}"]` : `.note[data-i="${noteId}"]`;
+            const oldNoteEl = document.querySelector(selector);
+            let updatedNoteEl = null;
+            if (oldNoteEl) {
+                // Create a fresh element with updated content and closure
+                updatedNoteEl = await createNoteElement(noteToUpdate);
+                if (updatedNoteEl) {
+                    // Inherit current visibility/display style
+                    updatedNoteEl.style.display = oldNoteEl.style.display;
+                    oldNoteEl.replaceWith(updatedNoteEl);
+                }
+            }
+            // Check if we should close the modal or refresh it
+            const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
+            if (closeAfterSave) {
+                const contentModal = document.getElementById('content-modal');
+                if (contentModal) contentModal.classList.remove('visible');
+            } else {
+                // Refresh modal view with full rendering only if it stays open
+                if (typeof showModal === 'function') {
+                    showModal({
+                        raw: newText,
+                        format: modalBodyElem.dataset.format,
+                        color: modalBodyElem.dataset.color,
+                        boardId: modalBodyElem.dataset.boardId,
+                        id: noteId,
+                        gdid: noteGdid
+                    }, updatedNoteEl);
+                }
+            }
+            if (typeof showToast === 'function') {
+                showToast(typeof _ === 'function' ? _('noteSavedSuccess') : "Note saved.", 3000);
+            }
+            const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+            if (updateGDrive && noteGdid) {
+                if (typeof showToast === 'function') showToast(_('updatingGDrive'), 2000);
+                updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate)).then(() => {
+                    if (typeof showToast === 'function') showToast(_('gdriveUpdateSuccess'), 3000);
+                }).catch(err => {
+                    if (typeof showToast === 'function') showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
+                });
+            }
+            // Remove save button
+            const saveBtn = document.getElementById('note-save-btn');
+            if (saveBtn) saveBtn.remove();
         } catch (err) {
             console.error("Save failed:", err);
             if (typeof showToast === 'function') showToast("Failed to save: " + err.message, 5000);

@@ -227,6 +227,21 @@ bg: {
 
 
         "saveLabel": "Запис на архив",
-        "save2Label": "Запис-2 на архив",
+        "dupLabel": "Изтриване на дубликати",
         "closeAfterSaveLabel": "Затваряне след запис",
+        "updateGDriveLabel": "Актуализирай Google Drive",
+        "confirmRemoveDuplicates": "Сигурни ли сте, че искате да премахнете бележки с дублиращо се съдържание?",
+        "noDuplicatesFound": "Няма открити дубликати.",
+        "duplicatesDeleted": "Успешно изтрити {count} дубликата.",
+        "gdriveUpdateSuccess": "Бележката е актуализирана успешно в Google Drive.",
+        "gdriveUpdateError": "Грешка при актуализиране в Google Drive: {error}",
+        "gdriveDeleteError": "Грешка при изтриване от Google Drive: {error}",
+        "updatingGDrive": "Актуализиране в Google Drive...",
+        "confirmDeleteEmptyBoards": "Открити са {count} празни борда. Искате ли да ги изтриете?",
+        "confirmDeleteEmptyBoard": "Бордът '{boardName}' е празен. Искате ли да го изтриете (общо {count} празни)?",
+        "cannotDeleteLastBoard": "Не може да изтриете последния борд!",
+        "confirmDeleteCorruptedNote": "Грешка при четене на файл: {error}\nСъдържание: {content}\n\nИскате ли да изтриете този повреден файл от Google Drive?",
+        "fileDeletedSuccess": "Файлът е изтрит успешно.",
+        "cancel": "Отказ",
+        "boardDeletedSuccess": "Бордът '{boardName}' е изтрит."
     }
