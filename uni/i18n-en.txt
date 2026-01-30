@@ -239,5 +239,7 @@ en: {
         "confirmDeleteCorruptedNote": "Error reading file: {error}\nContent: {content}\n\nDo you want to delete this corrupted file from Google Drive?",
         "fileDeletedSuccess": "File deleted successfully.",
         "cancel": "Cancel",
-        "boardDeletedSuccess": "Board '{boardName}' deleted."
+        "boardDeletedSuccess": "Board '{boardName}' deleted.",
+        "moveNote": "Move to board",
+        "noteMovedSuccess": "Note moved to '{boardName}'."
     }

@@ -243,5 +243,7 @@ bg: {
         "confirmDeleteCorruptedNote": "Грешка при четене на файл: {error}\nСъдържание: {content}\n\nИскате ли да изтриете този повреден файл от Google Drive?",
         "fileDeletedSuccess": "Файлът е изтрит успешно.",
         "cancel": "Отказ",
-        "boardDeletedSuccess": "Бордът '{boardName}' е изтрит."
+        "boardDeletedSuccess": "Бордът '{boardName}' е изтрит.",
+        "moveNote": "Премести в борд",
+        "noteMovedSuccess": "Бележката е преместена в '{boardName}'."
     }

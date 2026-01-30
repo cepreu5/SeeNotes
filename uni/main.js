@@ -5440,8 +5440,137 @@ function showModal(options, noteElement = null) {
     if (oldEditBtn) oldEditBtn.remove();
     const oldSaveBtn = document.getElementById('note-save-btn');
     if (oldSaveBtn) oldSaveBtn.remove();
+    const oldMoveBtn = document.getElementById('note-move-btn');
+    if (oldMoveBtn) oldMoveBtn.remove();
+    const oldMoveMenu = document.getElementById('note-move-menu');
+    if (oldMoveMenu) oldMoveMenu.remove();
 
-    if (useIndexedDb && !isPromo) {
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const canEdit = (useIndexedDb || (updateGDrive && options.gdid)) && !isPromo;
+
+    if (canEdit) {
+        // --- Move Button ---
+        const moveBtn = document.createElement('div');
+        moveBtn.id = 'note-move-btn';
+        // Folder with arrow icon
+        moveBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 12l-4-4h3V10h2v4h3l-4 4z"/></svg>`;
+        moveBtn.title = _('moveNote') || 'Move to board';
+        Object.assign(moveBtn.style, {
+            position: 'absolute',
+            bottom: '15px',
+            right: '100px',
+            width: '40px',
+            height: '40px',
+            backgroundColor: '#5c6bc0',
+            borderRadius: '50%',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+            zIndex: '10000',
+            border: '1px solid #ccc'
+        });
+        // Create dropdown menu for boards
+        const moveMenu = document.createElement('div');
+        moveMenu.id = 'note-move-menu';
+        Object.assign(moveMenu.style, {
+            position: 'absolute',
+            bottom: '65px',
+            right: '50px',
+            width: '200px',
+            maxHeight: '300px',
+            overflowY: 'auto',
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            zIndex: '10001',
+            display: 'none',
+            padding: '5px 0'
+        });
+        // Populate with boards
+        if (typeof boardsData !== 'undefined') {
+            boardsData.forEach(board => {
+                const boardItem = document.createElement('div');
+                boardItem.textContent = board.title;
+                boardItem.dataset.gdid = board.gdid || board.id;
+                Object.assign(boardItem.style, {
+                    padding: '10px 15px',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #eee'
+                });
+                boardItem.addEventListener('mouseenter', () => boardItem.style.backgroundColor = '#f0f0f0');
+                boardItem.addEventListener('mouseleave', () => boardItem.style.backgroundColor = '#fff');
+                boardItem.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const newBoardId = boardItem.dataset.gdid;
+                    const noteGdid = modalBody.dataset.gdid;
+                    const noteId = modalBody.dataset.id;
+                    // Find note in allNotesData
+                    let noteToMove = null;
+                    if (noteGdid && typeof allNotesData !== 'undefined') {
+                        noteToMove = allNotesData.find(n => String(n.gdid) === String(noteGdid));
+                    }
+                    if (!noteToMove && noteId && typeof allNotesData !== 'undefined') {
+                        noteToMove = allNotesData.find(n => String(n.id) === String(noteId));
+                    }
+                    if (noteToMove) {
+                        const oldBoardId = noteToMove.boardid;
+                        noteToMove.boardid = newBoardId;
+                        noteToMove.modifiedTime = new Date().toISOString();
+                        noteToMove.datemod = Date.now();
+                        // Save to DB if used
+                        if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+                            await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
+                        }
+                        // Update GDrive if enabled
+                        if (updateGDrive && noteGdid) {
+                            try {
+                                await updateGDriveFile(noteGdid, JSON.stringify(noteToMove));
+                                showToast(_('noteMovedSuccess').replace('{boardName}', board.title), 3000);
+                            } catch (err) {
+                                showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
+                            }
+                        } else {
+                            showToast(_('noteMovedSuccess').replace('{boardName}', board.title), 3000);
+                        }
+                        // Update board note counts
+                        const oldBoard = boardsData.find(b => (b.gdid || b.id) == oldBoardId);
+                        const newBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
+                        if (oldBoard && typeof oldBoard.noteCount === 'number') oldBoard.noteCount--;
+                        if (newBoard && typeof newBoard.noteCount === 'number') newBoard.noteCount++;
+                        // Update the DOM element's data-b attribute for filtering to work
+                        const noteElementInDom = document.querySelector(`.note[data-g="${noteGdid}"]`) ||
+                            document.querySelector(`.note[data-i="${noteId}"]`);
+                        if (noteElementInDom) {
+                            noteElementInDom.dataset.b = newBoardId;
+                        }
+                        // Hide menu
+                        moveMenu.style.display = 'none';
+                        // Close modal
+                        modal.classList.remove('visible');
+                        // Refresh UI - reapply filters to show/hide notes properly
+                        filterNotesByBoard(currentBoardFilter, false);
+                    } else {
+                        showToast(_('errorCouldNotIdentifyNote') || 'Could not identify note.', 3000);
+                    }
+                });
+                moveMenu.appendChild(boardItem);
+            });
+        }
+        moveBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveMenu.style.display = moveMenu.style.display === 'none' ? 'block' : 'none';
+        });
+        // Close menu when clicking outside
+        document.addEventListener('click', function closeMoveMenu(ev) {
+            if (!moveMenu.contains(ev.target) && ev.target !== moveBtn) {
+                moveMenu.style.display = 'none';
+            }
+        }, { once: true });
+        modalContentBox.appendChild(moveMenu);
+        modalContentBox.appendChild(moveBtn);
+        // --- Edit Button ---
         const editBtn = document.createElement('div');
         editBtn.id = 'note-edit-btn';
         editBtn.innerHTML = pencilIconSvg;
