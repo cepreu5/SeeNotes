@@ -527,18 +527,19 @@
                         <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
                         <img src="GDrive.png" alt="Google Drive" style="width:24px; height:24px; margin-right: 10px;">
                         <label for="use-google-db-checkbox" class="settings-icon-label" data-key="useGoogleDbLabel"
-                            id="use-google-db-label" style="flex-basis: 100px; flex-shrink: 0;">
+                            id="use-google-db-label" style="flex-basis: 110px; flex-shrink: 0;">
                             Google Drive:
                         </label>
                         <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
                     </div>
 
-                    <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 10px;">
+                    <div class="zoom-control-wrapper" id="use-indexeddb-wrapper"
+                        style="margin-top: 10px; flex-wrap: wrap;">
                         <img src="Rabbit.png" alt="Rabbit" style="width:20px; height:20px; margin-right: 2px;">
                         <img src="Database.png" alt="Database" style="width:24px; height:24px; margin-right: 10px;">
 
                         <label for="use-indexeddb-checkbox" class="settings-icon-label" data-key="useIndexedDbLabel"
-                            style="flex-basis: 100px; flex-shrink: 0;">
+                            style="flex-basis: 110px; flex-shrink: 0;">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round">
@@ -549,6 +550,51 @@
                             База данни:
                         </label>
                         <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
+                    </div>
+
+                    <div class="accordion-content" id="data-folders" style="flex-basis: 100%;">
+                        <div class="zoom-control-wrapper" style="margin-top: 10px;" id="local-db-wrapper">
+                            <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
+                            <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel"
+                                id="use-local-db-label" style="flex-basis: 122px; flex-shrink: 0;">
+                                Локална папка:
+                            </label>
+                            <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox"
+                                style="flex-shrink: 0;" />
+                            <span id="local-sync-folder-name"
+                                style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            </span>
+                        </div>
+
+                        <div class="zoom-control-wrapper" style="margin-top: 10px; padding-bottom: 10px;"
+                            id="arh-db-wrapper">
+                            <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
+                            <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel"
+                                id="use-arh-db-label" style="flex-basis: 122px; flex-shrink: 0;">
+                                Архив:
+                            </label>
+                            <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox"
+                                style="flex-shrink: 0;" />
+                            <span id="arh-folder-name"
+                                style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            </span>
+                        </div>
+
+                        <div class="settings-section" style="margin-top: 0px; ">
+                            <div style="display: flex; justify-content: center; gap: 10px;">
+                                <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
+                                    <button id="select-folder-btn" class="zoom-btn"
+                                        data-key="localSyncFolderLabel">Избери
+                                        локална папка</button>
+                                </div>
+                                <div class="zoom-control-wrapper" id="arh-wrapper"
+                                    style="margin-top: 0; margin-bottom: 0;">
+                                    <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Избери
+                                        архивна папка</button>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                     <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;"
                         data-key="dbManagementTitle">
@@ -561,8 +607,92 @@
                     </div>
                 </div>
 
-                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
-                <!-- <div style="position: relative; z-index: 200; text-align: center; margin-top: -5px; line-height: 0;">
+                <span id="advanced-settings-span" hidden>
+                    <!-- Accordion  -->
+                    <div class="accordion" style="margin-top: 15px;">
+                        <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
+                            <span data-key="advancedSettings">Разширени настройки</span>
+                            <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
+                            <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
+                        </div>
+                        <div class="accordion-content">
+                            <div class="zoom-control-wrapper" id="close-after-save"
+                                style="margin-top: 10px; justify-content: center;">
+                                <label for="close-after-save-checkbox"
+                                    style="margin-right: 10px; flex-shrink: 0; text-align: left;"
+                                    data-key="closeAfterSaveLabel">
+                                    Затваряне след запис:</label>
+                                <input type="checkbox" id="close-after-save-checkbox" class="settings-checkbox">
+                            </div>
+                            <div class="zoom-control-wrapper" id="update-gdrive"
+                                style="margin-top: 10px; justify-content: center;">
+                                <label for="update-gdrive-checkbox"
+                                    style="margin-right: 10px; flex-shrink: 0; text-align: left;"
+                                    data-key="updateGDriveLabel">
+                                    Актуализирай Google Drive:</label>
+                                <input type="checkbox" id="update-gdrive-checkbox" class="settings-checkbox">
+                            </div>
+                            <div
+                                style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 20px; margin-bottom: 20px;">
+                                <div style="display: flex; justify-content: center; gap: 10px; width: 100%;">
+                                    <div class="zoom-control-wrapper" id="save-wrapper"
+                                        style="margin-top: 0; margin-bottom: 0;">
+                                        <button id="save-btn" class="zoom-btn" data-key="saveLabel">Запис на архив от
+                                            паметта</button>
+                                    </div>
+                                    <div class="zoom-control-wrapper" id="save-db-wrapper"
+                                        style="margin-top: 0; margin-bottom: 0;">
+                                        <button id="save-db-btn" class="zoom-btn" data-key="saveDbLabel">Запис на архив
+                                            от БД</button>
+                                    </div>
+                                </div>
+                                <div class="zoom-control-wrapper" id="dup-wrapper"
+                                    style="margin-top: 0; margin-bottom: 0;">
+                                    <button id="dup-btn" class="zoom-btn" data-key="dupLabel">Изтриване на
+                                        дубликати</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </span>
+            </div>
+            <hr style="width: 100%;" color="#000" size="1">
+            <div class="settings-close-btn-wrapper">
+                <button id="settings-close-btn" class="zoom-btn settings-close-btn"
+                    data-key="closeButton">Затвори</button>
+            </div>
+
+        </div>
+    </div>
+    <div id="guide-root"></div>
+
+    <!-- KB Assistant -->
+    <link rel="stylesheet" href="msmstyle.css">
+    <link rel="stylesheet" href="kb-assistant.css">
+    <script src="kb-assistant.js"></script>
+    <script src="msmrt.js"></script>
+
+    <script src="main.js"></script>
+    <script src="fs.js"></script>
+</body>
+
+</html>
+
+<!--script src="calendar.js"></script>
+    <script src="db.js"></script>
+    <script src="fs.js"></script>
+    <script src="config.js"></script-->
+<!--script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script-->
+
+<!--link rel="stylesheet" href="msmstyle1.css">
+    <script src="msmguide.js"></script>
+    <script src="load.js"></script>
+    <script src="msmguide.js"></script>
+    <script src="kb-ui.js"></script>
+    <script src="kb-matcher.js"></script>
+    <script src="msm1.js"></script-->
+
+<!-- <div style="position: relative; z-index: 200; text-align: center; margin-top: -5px; line-height: 0;">
                     <script type='text/javascript' src='https://storage.ko-fi.com/cdn/widget/Widget_2.js'></script>
                     <script
                         type='text/javascript'>kofiwidget2.init('Подкрепете автора • Споделете: ', 'transparent', 'O5O81RA2VZ'); kofiwidget2.draw();</script>
@@ -597,8 +727,8 @@
                     </style>
                 </div> -->
 
-                <!--div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;"-->
-                <!--script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+<!--div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;"-->
+<!--script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
                         data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
                         data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
                         data-font-color="#000000" data-coffee-color="#ffffff"></script>
@@ -609,7 +739,7 @@
                         src='https://ko-fi.com/multinotes/?hidefeed=true&widget=true&embed=true&preview=true'
                         style='border:none;width:100%;padding:4px;background:#f9f9f9;' height='52'
                         title='multinotes'></iframe -->
-                <!-- script src='https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'></script>
+<!-- script src='https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'></script>
                     <script>
                         kofiWidgetOverlay.draw('multinotes', {
                             'type': 'floating-chat',
@@ -618,8 +748,8 @@
                             'floating-chat.donateButton.text-color': '#323842'
                         });
                     </script-->
-                <!--/div-->
-                <!--div>
+<!--/div-->
+<!--div>
                     <script async src="https://js.stripe.com/v3/buy-button.js">
                     </script>
                     <stripe-buy-button buy-button-id="buy_btn_1SZVZdEgnSjbu4vOL2kPcVPj"
@@ -629,119 +759,3 @@
                         Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
                     </p>
                 </div-->
-            </div>
-            <div class="settings-close-btn-wrapper">
-                <button id="settings-close-btn" class="zoom-btn settings-close-btn"
-                    data-key="closeButton">Затвори</button>
-            </div>
-        </div>
-    </div>
-    <div id="guide-root"></div>
-
-    <!-- === --- === В Т О Р А   В Е Р С И Я === --- === -->
-
-    <div id="settings2-modal" class="modal-overlay">
-        <div class="modal-content-box set-modal">
-            <h2 data-key="settingsTitle">Настройки</h2>
-            <h3 class="modal-version">CX MultiNotes Viewer ver. </h3>
-
-            <div class="corner-dot top-left"></div>
-            <div class="corner-dot top-right"></div>
-            <div class="corner-dot bottom-left"></div>
-            <div class="corner-dot bottom-right"></div>
-
-            <div class="settings-section" style="margin-top: 0px; ">
-                <div class="zoom-control-wrapper" id="close-after-save"
-                    style="margin-top: 10px; justify-content: center;">
-                    <label for="close-after-save-checkbox" style="margin-right: 10px; flex-shrink: 0; text-align: left;"
-                        data-key="closeAfterSaveLabel">
-                        Затваряне след запис:</label>
-                    <input type="checkbox" id="close-after-save-checkbox" class="settings-checkbox">
-                </div>
-                <div class="zoom-control-wrapper" id="update-gdrive" style="margin-top: 10px; justify-content: center;">
-                    <label for="update-gdrive-checkbox" style="margin-right: 10px; flex-shrink: 0; text-align: left;"
-                        data-key="updateGDriveLabel">
-                        Актуализирай Google Drive:</label>
-                    <input type="checkbox" id="update-gdrive-checkbox" class="settings-checkbox">
-                </div>
-                <div id="advanced-settings" style="margin-top: 15px;">
-                    <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
-                        <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
-                        <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel"
-                            id="use-local-db-label" style="flex-basis: 120px; flex-shrink: 0;">
-                            Локална папка:
-                        </label>
-                        <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox"
-                            style="flex-shrink: 0;" />
-                        <span id="local-sync-folder-name"
-                            style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                    </div>
-
-                    <div class="zoom-control-wrapper" style="margin-top: 10px; padding-bottom: 10px;"
-                        id="arh-db-wrapper">
-                        <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
-                        <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel"
-                            id="use-arh-db-label" style="flex-basis: 120px; flex-shrink: 0;">
-                            Архив:
-                        </label>
-                        <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox"
-                            style="flex-shrink: 0;" />
-                        <span id="arh-folder-name"
-                            style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                    </div>
-
-                    <div class="settings-section" style="margin-top: 0px; ">
-                        <div style="display: flex; justify-content: center; gap: 10px;">
-                            <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
-                                <button id="select-folder-btn" class="zoom-btn" data-key="localSyncFolderLabel">Избери
-                                    локална папка</button>
-                            </div>
-                            <div class="zoom-control-wrapper" id="arh-wrapper" style="margin-top: 0; margin-bottom: 0;">
-                                <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Избери
-                                    архивна папка</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div style="display: flex; justify-content: center; gap: 10px;">
-                    <div class="zoom-control-wrapper" id="save-wrapper" style="margin-top: 40px; margin-bottom: 40px;">
-                        <button id="save-btn" class="zoom-btn" data-key="saveLabel">Запис на архив</button>
-                    </div>
-                    <div class="zoom-control-wrapper" id="dup-wrapper" style="margin-top: 40px; margin-bottom: 40px;">
-                        <button id="dup-btn" class="zoom-btn" data-key="dupLabel">Изтриване на дубликати</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="settings-close-btn-wrapper">
-                <button id="settings2-close-btn" class="zoom-btn settings-close-btn"
-                    data-key="closeButton">Затвори</button>
-            </div>
-        </div>
-    </div>
-
-    <!--script src="calendar.js"></script>
-    <script src="db.js"></script>
-    <script src="fs.js"></script>
-    <script src="config.js"></script-->
-    <!--script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script-->
-
-    <!--link rel="stylesheet" href="msmstyle1.css">
-    <script src="msmguide.js"></script>
-    <script src="load.js"></script>
-    <script src="msmguide.js"></script>
-    <script src="kb-ui.js"></script>
-    <script src="kb-matcher.js"></script>
-    <script src="msm1.js"></script-->
-
-    <!-- KB Assistant -->
-    <link rel="stylesheet" href="msmstyle.css">
-    <link rel="stylesheet" href="kb-assistant.css">
-    <script src="kb-assistant.js"></script>
-    <script src="msmrt.js"></script>
-
-    <script src="main.js"></script>
-    <script src="fs.js"></script>
-</body>
-
-</html>

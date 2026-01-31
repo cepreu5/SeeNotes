@@ -88,6 +88,7 @@ en: {
         gdriveUpdatesFound: '{count} file(s) updated from Google Drive.',
         gdriveNoUpdates: 'No new updates from Google Drive.',
         localUpdatesFound: '{count} file(s) updated from local disk.',
+        confirmFileOverwrite: 'Some archive files already exist in the selected folder. Do you want to overwrite them?',
         localNoUpdates: 'No new updates from local disk.',
         confirmDbRecreate: 'The local database already exists. Do you want to delete it and create a new one from the current data?',
         confirmDbDelete: 'Are you sure you want to delete the local database?',
@@ -96,6 +97,7 @@ en: {
         dbCreateFailedNoData: 'Cannot create database. No data loaded in memory.',
         errorDbSourceMismatch: 'Mismatch between the database and the data source. Attachment links will not be available.',
         dbDeleted: 'Database deleted successfully.',
+        errorDbDataMismatch: 'Data mismatch! The current data in memory differs from the data in the database. To enable Database Mode, you must either overwrite the database or delete it first.',
         confirmCreateDbFromArh: 'The local database is empty or does not exist. Do you want to create a new one from the current archive data?',
         loadedFromArhNoDb: 'Loading directly from archive.',
         errorDbOnlyAndEmpty: 'You have selected Database only, but it is empty. Please select another data source.',
@@ -153,6 +155,7 @@ en: {
         errorClipboardRead: 'Could not read from clipboard.',
         confirmNoteDelete: 'Are you sure you want to delete this note from the database (from the browser cache)? This will not delete it from the data source (e.g. Google Drive).',
         noteDeletedSuccess: 'Note successfully deleted from the database.',
+        archiveSavedSuccess: 'Archive saved successfully!',
         noteSavedSuccess: 'Note saved successfully to the database.',
         noteDeletedError: 'Error deleting note from the database.',
         showWeeklyCalendar: 'Weekly calendar',
@@ -224,7 +227,8 @@ en: {
         refreshNow: 'Refresh',
         "closeAfterSaveLabel": "Close after save",
         "updateGDriveLabel": "Update Google Drive",
-        "saveLabel": "Save archive",
+        "saveLabel": "Save archive from memory",
+        "saveDbLabel": "Save archive from DB",
         "dupLabel": "Remove duplicates",
         "confirmRemoveDuplicates": "Are you sure you want to remove notes with duplicate content?",
         "noDuplicatesFound": "No duplicates found.",
@@ -241,5 +245,6 @@ en: {
         "cancel": "Cancel",
         "boardDeletedSuccess": "Board '{boardName}' deleted.",
         "moveNote": "Move to board",
-        "noteMovedSuccess": "Note moved to '{boardName}'."
+        "noteMovedSuccess": "Note moved to '{boardName}'.",
+        "noteAlreadyInBoard": "Note is already in this board."
     }

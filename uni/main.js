@@ -193,7 +193,7 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
  * Parses the raw responses from Google Drive into JSON objects.
  */
 async function parseFileResults(results, filenameForError) {
-    const data = [];
+    const tempMap = new Map();
     let parseError = false;
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
 
@@ -201,15 +201,46 @@ async function parseFileResults(results, filenameForError) {
         if (!res || !res.body || res.body.trim() === '') continue;
         try {
             const content = JSON.parse(res.body);
+            let items = [];
             if (filenameForError === 'note.txt') {
                 if (typeof content === 'object' && content !== null && !Array.isArray(content)) {
-                    data.push(content);
+                    items.push(content);
                 }
             } else {
                 if (Array.isArray(content)) {
-                    data.push(...content);
+                    items = content;
                 } else if (typeof content === 'object' && content !== null) {
-                    data.push(content);
+                    items.push(content);
+                }
+            }
+
+            for (let item of items) {
+                if (id) item.driveFileId = id;
+                const key = (item.gdid || item.id);
+                if (key) {
+                    if (tempMap.has(key)) {
+                        const existing = tempMap.get(key);
+                        if (id) {
+                            if (!existing.allDriveFileIds) {
+                                existing.allDriveFileIds = existing.driveFileId ? [existing.driveFileId] : [];
+                            }
+                            if (!existing.allDriveFileIds.includes(id)) {
+                                existing.allDriveFileIds.push(id);
+                            }
+                        }
+                        // Report duplicate
+                        dataIntegrityIssues.push({
+                            type: 'duplicate',
+                            gdid: key,
+                            file1: existing.driveFileName || 'Direct Source',
+                            file2: id || filenameForError,
+                            mode: 'gdrive'
+                        });
+                    } else {
+                        if (id) item.allDriveFileIds = [id];
+                        item.driveFileName = id; // Store ID for reporting
+                        tempMap.set(key, item);
+                    }
                 }
             }
         } catch (e) {
@@ -218,9 +249,6 @@ async function parseFileResults(results, filenameForError) {
 
             if (updateGDrive && id && filenameForError === 'note.txt') {
                 const snippet = res.body.substring(0, 50) + (res.body.length > 50 ? '...' : '');
-                // Use setTimeout to avoid blocking immediate UI rendering if possible, but here we need to await user input which blocks loading anyway.
-                // Ideally we should process these after loading, but user asked for "during load" basically.
-                // We will block.
                 const confirmMsg = _('confirmDeleteCorruptedNote')
                     .replace('{error}', e.message)
                     .replace('{content}', snippet);
@@ -228,8 +256,9 @@ async function parseFileResults(results, filenameForError) {
                 const confirmed = await showConfirmation(confirmMsg);
                 if (confirmed) {
                     try {
-                        await deleteGDriveFile(id);
-                        if (typeof showToast === 'function') showToast(_('fileDeletedSuccess'), 3000);
+                        if (await deleteGDriveFile(id)) {
+                            if (typeof showToast === 'function') showToast(_('fileDeletedSuccess'), 3000);
+                        }
                     } catch (delErr) {
                         console.error("Failed to delete corrupted file", delErr);
                         if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', delErr.message), 5000);
@@ -238,7 +267,12 @@ async function parseFileResults(results, filenameForError) {
             }
         }
     }
-    return { data, parseError };
+    const finalData = Array.from(tempMap.values());
+    if (filenameForError === 'note.txt' || filenameForError === 'board.txt') {
+        const rawItemCount = results.length; // Approximate if 1 item per file
+        console.log(`[parseFileResults] ${filenameForError}: Found ${finalData.length} unique items from ${results.length} files.`);
+    }
+    return { data: finalData, parseError };
 }
 
 async function loadAndParseFile(filename, folderId, modifiedSince = null, onProgress = null) {
@@ -334,8 +368,9 @@ async function runGoogleDriveSync() {
 
     let updatedFilesCount = 0;
     const gdidMap = new Map(); // Track duplicates during GDrive sync
-    const syncFileWorker = async (filename, storeName, isNote = false) => {
-        const files = await fetchFiles(filename, folderId, null, modifiedSince);
+    const syncFileWorker = async (filename, storeName, isNote = false, forceFull = false) => {
+        const since = forceFull ? null : modifiedSince;
+        const files = await fetchFiles(filename, folderId, null, since);
         if (files.length > 0) {
             updatedFilesCount += files.length;
             const { data } = await parseFileResults(files, filename);
@@ -356,18 +391,31 @@ async function runGoogleDriveSync() {
                         gdidMap.set(item.gdid, filename);
                     }
                 });
-                await bulkPutDB(storeName, data, true);
                 if (filename === 'media.txt') {
                     data.forEach(n => {
                         const i = mediaData.findIndex(m => m.gdid === n.gdid);
                         if (i !== -1) mediaData[i] = n; else mediaData.push(n);
                     });
                 } else if (filename === 'board.txt') {
-                    data.forEach(n => {
+                    for (let n of data) {
                         const i = boardsData.findIndex(b => b.gdid === n.gdid);
-                        if (i !== -1) boardsData[i] = n; else boardsData.push(n);
-                    });
+                        if (i !== -1) {
+                            const existing = boardsData[i];
+                            if (existing.allDriveFileIds || n.allDriveFileIds) {
+                                const merged = Array.from(new Set([
+                                    ...(existing.allDriveFileIds || (existing.driveFileId ? [existing.driveFileId] : [])),
+                                    ...(n.allDriveFileIds || (n.driveFileId ? [n.driveFileId] : []))
+                                ]));
+                                n.allDriveFileIds = merged;
+                                existing.allDriveFileIds = merged;
+                            }
+                            boardsData[i] = n;
+                        } else {
+                            boardsData.push(n);
+                        }
+                    }
                 }
+                await bulkPutDB(storeName, data, true);
                 if (isNote) data.forEach(note => updatedNoteGdims.push(note.gdid));
             }
         }
@@ -376,7 +424,7 @@ async function runGoogleDriveSync() {
     // loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
     console.time("runGoogleDriveSync_Parallel");
     await Promise.all([
-        syncFileWorker('board.txt', BOARD_STORE_NAME, false),
+        syncFileWorker('board.txt', BOARD_STORE_NAME, false, true), // Force full scan for boards to find all duplicates
         syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
         syncFileWorker('note.txt', NOTE_STORE_NAME, true)
     ]);
@@ -766,7 +814,9 @@ async function deleteGDriveFile(fileId) {
             headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
         });
         if (response.status === 401) throw new Error("401 Unauthorized - " + _('errorTokenMissing'));
-        return response.ok || response.status === 204;
+        if (response.status === 404) return false;
+        if (!response.ok && response.status !== 204) throw new Error(`HTTP Error ${response.status}`);
+        return true;
     } catch (error) {
         console.error("GDrive delete failed:", error);
         throw error;
@@ -1583,35 +1633,13 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                 noteCounter.textContent = Math.max(0, newTotalCount);
             }
             // Актуализираме брояча на борда
-            // В режим Архив, boardid е число. В другите режими е gdid.
             const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
             if (boardGdidToUpdate) {
                 const boardData = boardsData.find(b => b.gdid == boardGdidToUpdate);
-                let realBoardCount = 0;
-
-                if (boardData) {
-                    // Намаляваме вътрешния брояч на борда
-                    if (typeof boardData.noteCount === 'number') {
-                        boardData.noteCount = Math.max(0, boardData.noteCount - 1);
-                    }
-                    realBoardCount = boardData.noteCount || 0;
+                if (boardData && typeof boardData.noteCount === 'number') {
+                    boardData.noteCount = Math.max(0, boardData.noteCount - 1);
                 }
-
-                // Проверяваме настройката за показване на бройки
-                const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-
-                const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardGdidToUpdate}"]`);
-                if (boardButton) {
-                    // Взимаме само името на борда (ако вече има скоби, ги махаме) или използваме title от boardData
-                    let boardName = boardData ? boardData.title : boardButton.textContent.replace(/\s\(\d+\)$/, '');
-
-                    // Обновяваме текста само ако настройката е включена и има бележки, ИЛИ ако трябва да махнем стара бройка
-                    if (showCount && realBoardCount > 0) {
-                        boardButton.textContent = `${boardName} (${realBoardCount})`;
-                    } else {
-                        boardButton.textContent = boardName;
-                    }
-                }
+                updateBoardCounterUI(boardGdidToUpdate);
             }
             // --- REFRESH CALENDARS ---
             // Monthly calendar view
@@ -1640,6 +1668,77 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     }
 }
 /**
+ * Актуализира брояча на бележките в заглавието на борда в менюто.
+ */
+function updateBoardCounterUI(boardIdOrGdid) {
+    if (boardIdOrGdid === undefined || boardIdOrGdid === null) return;
+    const boardData = boardsData.find(b => b.gdid == boardIdOrGdid || b.id == boardIdOrGdid);
+    if (!boardData) return;
+    const key = boardData.gdid || boardData.id;
+    const boardButton = document.querySelector(`.board-filter-link[data-boardid="${key}"]`);
+    if (boardButton) {
+        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+        const noteCount = boardData.noteCount || 0;
+        const title = boardData.title;
+        boardButton.textContent = (showCount && noteCount > 0) ? `${title} (${noteCount})` : title;
+    }
+}
+/**
+ * Премества бележка в избран борд.
+ */
+async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
+    let noteToMove = null;
+    if (noteGdid && typeof allNotesData !== 'undefined') {
+        noteToMove = allNotesData.find(n => String(n.gdid) === String(noteGdid));
+    }
+    if (!noteToMove && noteId && typeof allNotesData !== 'undefined') {
+        noteToMove = allNotesData.find(n => String(n.id) === String(noteId));
+    }
+    if (noteToMove) {
+        const oldBoardId = noteToMove.boardid;
+        if (String(oldBoardId) === String(newBoardId)) {
+            showToast(_('noteAlreadyInBoard'), 3000);
+            return false;
+        }
+        const targetBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
+        if (!targetBoard) return;
+        const targetBoardTitle = targetBoard.title;
+        noteToMove.boardid = newBoardId;
+        noteToMove.modifiedTime = new Date().toISOString();
+        noteToMove.datemod = Date.now();
+        if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+            await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
+        }
+        if (localStorage.getItem('updateGDrive') === 'true' && noteGdid) {
+            try {
+                await updateGDriveFile(noteGdid, JSON.stringify(noteToMove));
+                showToast(_('noteMovedSuccess').replace('{boardName}', targetBoardTitle), 3000);
+            } catch (err) {
+                showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
+            }
+        } else {
+            showToast(_('noteMovedSuccess').replace('{boardName}', targetBoardTitle), 3000);
+        }
+        const oldBoard = boardsData.find(b => (b.gdid || b.id) == oldBoardId);
+        const newBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
+        if (oldBoard && typeof oldBoard.noteCount === 'number') {
+            oldBoard.noteCount = Math.max(0, oldBoard.noteCount - 1);
+            updateBoardCounterUI(oldBoardId);
+        }
+        if (newBoard && typeof newBoard.noteCount === 'number') {
+            newBoard.noteCount++;
+            updateBoardCounterUI(newBoardId);
+        }
+        const noteElementInDom = document.querySelector(`.note[data-g="${noteGdid}"]`) || document.querySelector(`.note[data-i="${noteId}"]`);
+        if (noteElementInDom) {
+            noteElementInDom.dataset.b = newBoardId;
+        }
+        filterNotesByBoard(currentBoardFilter, false);
+        return true;
+    }
+    return false;
+}
+/**
  * Премахва бележки с идентично съдържание (notetxt).
  */
 async function removeDuplicates() {
@@ -1647,6 +1746,7 @@ async function removeDuplicates() {
         showToast(_('noData'), 3000);
         return;
     }
+    const confirmed = await showConfirmation(_('confirmRemoveDuplicates'));
     if (!confirmed) return;
     const toDelete = [];
     const groupedNotes = new Map();
@@ -1725,6 +1825,10 @@ async function removeDuplicates() {
     // Обновяване на UI за бордовете
     if (typeof renderUI === 'function') {
         await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        // Активираме борда, който е бил активен преди операцията
+        if (typeof filterNotesByBoard === 'function') {
+            filterNotesByBoard(currentBoardFilter, true);
+        }
     }
     showToast(_('duplicatesDeleted').replace('{count}', deletedCount), 5000);
 }
@@ -2592,20 +2696,67 @@ function initApp() {
 
     }
     reloadButton.addEventListener('click', () => mainLogic());
-    settingsButton.addEventListener('click', () => {
+    settingsButton.addEventListener('click', (e) => {
+        // Toggle Advanced Settings based on Ctrl Key or if force-opened
+        // Logic adapted for Accordion + hidden span structure
+        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+        const accordionHeader = document.querySelector('.accordion-header');
+
+        // Check if we need to show advanced settings (Ctrl click or validation flow which might trigger this)
+        if (e.ctrlKey) {
+            if (advancedSettingsSpan) {
+                const isHidden = advancedSettingsSpan.hasAttribute('hidden');
+                if (isHidden) {
+                    advancedSettingsSpan.removeAttribute('hidden');
+                    localStorage.setItem('showAdvancedSettings', 'true');
+                }
+            }
+            // Expand accordion if not already expanded (check for active class if you used it, or just click if content is hidden)
+            // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
+            // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
+            setTimeout(() => {
+                // Check state via class on accordion wrapper
+                const accordionHeader = document.querySelector('.accordion-header');
+                if (accordionHeader) {
+                    const accordion = accordionHeader.parentElement;
+                    const isActive = accordion.classList.contains('active');
+
+                    if (!isActive) {
+                        // Closed -> Open it (this triggers scroll in listener)
+                        accordionHeader.click();
+                    } else {
+                        // Already Open -> Just scroll to it/bottom
+                        const settingsModalBody = document.getElementById('settings-modal-body');
+                        if (settingsModalBody) {
+                            settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
+                        } else {
+                            accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }
+                }
+            }, 100);
+        }
+
         // Запомняме началното състояние на чекбоксовете при отваряне на настройките
         // Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
-        document.getElementById('use-google-db-checkbox').checked = localStorage.getItem('useGoogleDb') !== 'false';
-        document.getElementById('use-local-db-checkbox').checked = localStorage.getItem('useLocalDb') === 'true';
-        document.getElementById('use-arh-db-checkbox').checked = localStorage.getItem('useArhDb') === 'true';
-        document.getElementById('use-indexeddb-checkbox').checked = localStorage.getItem('useIndexedDb') === 'true';
+        const useGDCheckbox = document.getElementById('use-google-db-checkbox');
+        const useLocCheckbox = document.getElementById('use-local-db-checkbox');
+        const useArhCheckbox = document.getElementById('use-arh-db-checkbox');
+        const useIdbCheckbox = document.getElementById('use-indexeddb-checkbox');
+
+        if (useGDCheckbox) useGDCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
+        if (useLocCheckbox) useLocCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
+        if (useArhCheckbox) useArhCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
+        if (useIdbCheckbox) useIdbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+
         settingsInitialState = {
-            useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
-            useLocalDb: document.getElementById('use-local-db-checkbox').checked,
-            useArhDb: document.getElementById('use-arh-db-checkbox').checked,
-            useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
+            useGoogleDb: useGDCheckbox ? useGDCheckbox.checked : true,
+            useLocalDb: useLocCheckbox ? useLocCheckbox.checked : false,
+            useArhDb: useArhCheckbox ? useArhCheckbox.checked : false,
+            useIndexedDb: useIdbCheckbox ? useIdbCheckbox.checked : false
         };
         document.getElementById('settings-modal').classList.add('visible');
+        if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
         // if (guide) showStep(4); // Настройки
     });
 
@@ -3841,9 +3992,9 @@ async function createDatabaseFromMemory() {
         const ensureGdid = (data) => data.map(item => {
             // АКО СМЕ В РЕЖИМ АРХИВ: Винаги използваме цифровия 'id' като основен ключ 'gdid' за базата.
             // Това гарантира, че връзките в архива ще работят правилно в IndexedDB.
-            if (useArhDb && item.id !== undefined) {
-                return { ...item, gdid: String(item.id) };
-            }
+            // if (useArhDb && item.id !== undefined) {
+            //    return { ...item, gdid: String(item.id) };
+            // }
             // ЗА ДРУГИ РЕЖИМИ: Само ако gdid липсва, ползваме id като резервен вариант.
             if ((!item.gdid || item.gdid === "") && item.id !== undefined) {
                 return { ...item, gdid: String(item.id) };
@@ -3899,6 +4050,32 @@ async function finalizeDbCreation() {
     if (currentUserEmail) {
         await saveConfig('userEmail', currentUserEmail);
     }
+}
+
+/**
+ * Сравнява бордовете в паметта с тези в базата данни за значими несъответствия.
+ * Връща true, ако структурата на бордовете изглежда идентична.
+ */
+function areBoardsIdentical(memBoards, dbBoards) {
+    if (!memBoards || !dbBoards) return false;
+    if (memBoards.length !== dbBoards.length) return false;
+
+    // В базата ключовете винаги са в полето gdid (благодарение на ensureGdid при запис)
+    const dbGdidSet = new Set(dbBoards.map(b => String(b.gdid)));
+    const dbTitleSet = new Set(dbBoards.map(b => String(b.title).trim().toLowerCase()));
+
+    for (const mb of memBoards) {
+        // Проверяваме дали поне един от възможните идентификатори съществува в базата
+        // При архиви в паметта gdid често е празен, затова пробваме и с id
+        const memGdid = mb.gdid ? String(mb.gdid) : String(mb.id);
+        const memTitle = String(mb.title).trim().toLowerCase();
+
+        if (!dbGdidSet.has(memGdid) && !dbTitleSet.has(memTitle)) {
+            console.warn(`Mismatch found: Board "${mb.title}" (ID: ${memGdid}) not in DB.`);
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
@@ -3997,6 +4174,21 @@ function validateDataSourceSelection() {
     if (!useGoogleDb && !useLocalFolder && !useArhDb && !useIndexedDb) {
         showToast(_('errorNoDataSourceSelected'), 15000);
         document.getElementById('settings-modal').classList.add('visible');
+        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+        if (advancedSettingsSpan) {
+            advancedSettingsSpan.removeAttribute('hidden');
+            localStorage.setItem('showAdvancedSettings', 'true');
+        }
+        setTimeout(() => {
+            const accordionHeader = document.querySelector('.accordion-header');
+            const advancedSettingsContent = document.getElementById('advanced-settings');
+            if (advancedSettingsContent && advancedSettingsContent.style.display === 'none' && accordionHeader) {
+                accordionHeader.click();
+            }
+        }, 100);
+
+        if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
+
         loaderContainer.style.display = 'none'; // Скриваме лоудъра
         return false; // Сигнализираме, че проверката е неуспешна
     }
@@ -5471,104 +5663,18 @@ function showModal(options, noteElement = null) {
             zIndex: '10000',
             border: '1px solid #ccc'
         });
-        // Create dropdown menu for boards
-        const moveMenu = document.createElement('div');
-        moveMenu.id = 'note-move-menu';
-        Object.assign(moveMenu.style, {
-            position: 'absolute',
-            bottom: '65px',
-            right: '50px',
-            width: '200px',
-            maxHeight: '300px',
-            overflowY: 'auto',
-            backgroundColor: '#fff',
-            borderRadius: '8px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-            zIndex: '10001',
-            display: 'none',
-            padding: '5px 0'
-        });
-        // Populate with boards
-        if (typeof boardsData !== 'undefined') {
-            boardsData.forEach(board => {
-                const boardItem = document.createElement('div');
-                boardItem.textContent = board.title;
-                boardItem.dataset.gdid = board.gdid || board.id;
-                Object.assign(boardItem.style, {
-                    padding: '10px 15px',
-                    cursor: 'pointer',
-                    borderBottom: '1px solid #eee'
-                });
-                boardItem.addEventListener('mouseenter', () => boardItem.style.backgroundColor = '#f0f0f0');
-                boardItem.addEventListener('mouseleave', () => boardItem.style.backgroundColor = '#fff');
-                boardItem.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    const newBoardId = boardItem.dataset.gdid;
-                    const noteGdid = modalBody.dataset.gdid;
-                    const noteId = modalBody.dataset.id;
-                    // Find note in allNotesData
-                    let noteToMove = null;
-                    if (noteGdid && typeof allNotesData !== 'undefined') {
-                        noteToMove = allNotesData.find(n => String(n.gdid) === String(noteGdid));
-                    }
-                    if (!noteToMove && noteId && typeof allNotesData !== 'undefined') {
-                        noteToMove = allNotesData.find(n => String(n.id) === String(noteId));
-                    }
-                    if (noteToMove) {
-                        const oldBoardId = noteToMove.boardid;
-                        noteToMove.boardid = newBoardId;
-                        noteToMove.modifiedTime = new Date().toISOString();
-                        noteToMove.datemod = Date.now();
-                        // Save to DB if used
-                        if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
-                            await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
-                        }
-                        // Update GDrive if enabled
-                        if (updateGDrive && noteGdid) {
-                            try {
-                                await updateGDriveFile(noteGdid, JSON.stringify(noteToMove));
-                                showToast(_('noteMovedSuccess').replace('{boardName}', board.title), 3000);
-                            } catch (err) {
-                                showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
-                            }
-                        } else {
-                            showToast(_('noteMovedSuccess').replace('{boardName}', board.title), 3000);
-                        }
-                        // Update board note counts
-                        const oldBoard = boardsData.find(b => (b.gdid || b.id) == oldBoardId);
-                        const newBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
-                        if (oldBoard && typeof oldBoard.noteCount === 'number') oldBoard.noteCount--;
-                        if (newBoard && typeof newBoard.noteCount === 'number') newBoard.noteCount++;
-                        // Update the DOM element's data-b attribute for filtering to work
-                        const noteElementInDom = document.querySelector(`.note[data-g="${noteGdid}"]`) ||
-                            document.querySelector(`.note[data-i="${noteId}"]`);
-                        if (noteElementInDom) {
-                            noteElementInDom.dataset.b = newBoardId;
-                        }
-                        // Hide menu
-                        moveMenu.style.display = 'none';
-                        // Close modal
-                        modal.classList.remove('visible');
-                        // Refresh UI - reapply filters to show/hide notes properly
-                        filterNotesByBoard(currentBoardFilter, false);
-                    } else {
-                        showToast(_('errorCouldNotIdentifyNote') || 'Could not identify note.', 3000);
-                    }
-                });
-                moveMenu.appendChild(boardItem);
-            });
-        }
         moveBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            moveMenu.style.display = moveMenu.style.display === 'none' ? 'block' : 'none';
+            const noteGdid = modalBody.dataset.gdid;
+            const noteId = modalBody.dataset.id;
+            // Използваме модала за всички бордове, за да изберем новия борд
+            showAllBoardsModal(async (newBoardId) => {
+                const moved = await moveNoteToBoard(noteGdid, noteId, newBoardId);
+                if (moved) {
+                    contentModal.classList.remove('visible');
+                }
+            });
         });
-        // Close menu when clicking outside
-        document.addEventListener('click', function closeMoveMenu(ev) {
-            if (!moveMenu.contains(ev.target) && ev.target !== moveBtn) {
-                moveMenu.style.display = 'none';
-            }
-        }, { once: true });
-        modalContentBox.appendChild(moveMenu);
         modalContentBox.appendChild(moveBtn);
         // --- Edit Button ---
         const editBtn = document.createElement('div');
@@ -5599,7 +5705,7 @@ function showModal(options, noteElement = null) {
     }
 }
 
-function showAllBoardsModal() {
+function showAllBoardsModal(onSelectCallback = null) {
     const modalContent = document.createElement('div');
     const boardsModal = document.getElementById('boards-menu-modal');
     modalContent.className = 'all-boards-modal-container';
@@ -5619,6 +5725,13 @@ function showAllBoardsModal() {
         if (targetButton) {
             e.preventDefault();
             const boardId = targetButton.dataset.boardid;
+
+            if (onSelectCallback) {
+                onSelectCallback(boardId);
+                boardsModal.classList.remove('visible');
+                return;
+            }
+
             // Намираме съответния бутон в хедъра
             const headerButton = headerMenuContainer.querySelector(`.board-filter-link[data-boardid="${boardId}"]`);
             if (headerButton) {
@@ -5728,13 +5841,12 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const firstAvailableBoard = boardsData.find(b => b.gdid);
         boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
     }
-    // --- КОРЕКЦИЯ: Дефинираме buttonBoardId тук ---
-    // Независимо дали boardId е число (id) или текст (gdid), за бутона ни трябва gdid.
-    const buttonBoardId = typeof boardId === 'number' ? boardsData.find(b => b.id == boardId)?.gdid : boardId;
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+    const targetBoard = specialBoards.includes(boardId) ? null : boardsData.find(b => b.gdid == boardId || b.id == boardId);
+    const buttonBoardId = targetBoard ? (targetBoard.gdid || targetBoard.id) : boardId;
     // --- Проверка за съществуващ борд ---
     // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
     // и не съществува в boardsData, превключваме към 'all'.
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
     if (!specialBoards.includes(boardId)) {
         // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
         // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
@@ -5835,7 +5947,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     }
     // Маркираме избрания бутон и задаваме визуалното състояние (active + height).
     document.querySelectorAll('.board-filter-link').forEach(link => {
-        const isSelected = link.dataset.boardid === String(boardId);
+        const isSelected = link.dataset.boardid === String(buttonBoardId);
         link.classList.toggle('selected-board', isSelected);
         link.classList.toggle('active', isSelected);
         link.style.height = isSelected ? '39px' : '35px';
@@ -6541,6 +6653,25 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
         let opacityTimeout;
         const applyBtn = document.getElementById('applyZoomBtn');
+
+        // Listeners for migrated settings
+        const closeAfterSaveCheckbox = document.getElementById('close-after-save-checkbox');
+        if (closeAfterSaveCheckbox) {
+            closeAfterSaveCheckbox.checked = localStorage.getItem('closeAfterSave') === 'true';
+            closeAfterSaveCheckbox.addEventListener('change', () => {
+                localStorage.setItem('closeAfterSave', closeAfterSaveCheckbox.checked);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
+        const updateGDriveCheckbox = document.getElementById('update-gdrive-checkbox');
+        if (updateGDriveCheckbox) {
+            updateGDriveCheckbox.checked = localStorage.getItem('updateGDrive') === 'true';
+            updateGDriveCheckbox.addEventListener('change', () => {
+                localStorage.setItem('updateGDrive', updateGDriveCheckbox.checked);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
+
         applyBtn.addEventListener('click', () => {
             const zoomValue = scaleInput.value;
             updateZoom(zoomValue);
@@ -6897,14 +7028,28 @@ async function createSettingsUI(boardsData, boardParseError) {
                 const accordion = accordionHeader.parentElement;
                 accordion.classList.toggle('active');
                 const content = accordion.querySelector('.accordion-content');
+                const advancedSettingsDiv = document.getElementById('advanced-settings');
+                const dataFoldersDiv = document.getElementById('data-folders');
                 const settingsModalBody = document.getElementById('settings-modal-body');
+
                 if (content.style.maxHeight) {
                     content.style.maxHeight = null;
+                    if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'none'; // Hide content when collapsed
+                    if (dataFoldersDiv) {
+                        dataFoldersDiv.style.maxHeight = null;
+                        dataFoldersDiv.style.display = 'none';
+                    }
                     if (settingsModalBody) {
                         settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара, ако е бил скрит
                     }
                 } else {
+                    if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'block'; // Show content before calculating height
+                    if (dataFoldersDiv) {
+                        dataFoldersDiv.style.display = 'block';
+                        dataFoldersDiv.style.maxHeight = dataFoldersDiv.scrollHeight + "px";
+                    }
                     content.style.maxHeight = content.scrollHeight + "px";
+
                     // Скролираме модала надолу, за да видим отворената секция
                     if (settingsModalBody) {
                         // Временно скриваме скролбара, докато се скролира
@@ -6937,6 +7082,28 @@ async function createSettingsUI(boardsData, boardParseError) {
                 updateModeButton();
                 await new Promise(resolve => setTimeout(resolve, 150));
                 confirmed = await showConfirmation(_('confirmDbRecreate'));
+
+                if (!confirmed) {
+                    // Ако потребителят откаже презапис, проверяваме дали данните съвпадат
+                    const memBoards = (typeof boardsData !== 'undefined') ? boardsData : [];
+                    if (!areBoardsIdentical(memBoards, boardsInDb)) {
+                        // Несъответствие! Блокираме включването на БД.
+                        showToast(_('errorDbDataMismatch'), 10000);
+                        const cb = document.getElementById('use-indexeddb-checkbox');
+                        if (cb) {
+                            cb.checked = false;
+                            localStorage.setItem('useIndexedDb', 'false');
+                            updateGlobalStateFlags();
+                        }
+                        updateModeButton();
+                        return; // Спираме процеса тук
+                    }
+                    // Ако са идентични, позволяваме включването без презапис
+                    dbExists = true;
+                    updateGlobalStateFlags();
+                    updateModeButton();
+                    return;
+                }
             } else {
                 // Ако базата не съществува или е празна, продължаваме директно със създаването.
                 confirmed = true;
@@ -7125,15 +7292,22 @@ async function createSettingsUI(boardsData, boardParseError) {
                 useArhDb: document.getElementById('use-arh-db-checkbox').checked,
                 useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
             };
+
+            // --- STRICT VALIDATION FIRST ---
+            updateGlobalStateFlags();
+            if (!validateDataSourceSelection()) {
+                // If validation fails, DO NOT close the modal.
+                // toast is shown by validateDataSourceSelection
+                return;
+            }
+
             document.getElementById('settings-modal').classList.remove('visible');
             window.kbAssistant.terminateGuide();
             // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
             updateModeButton();
             const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
-            // Ако прозорецът е бил отворен принудително, презареждаме данните.
             if (window.wasOpenedForMissingFolder) {
                 window.wasOpenedForMissingFolder = false; // Нулираме флага
-                updateGlobalStateFlags(); // Обновяваме флаговете преди да извикаме mainLogic
                 mainLogic(); // Извикваме основната логика отново
             } else if (hasChanged) {
                 mainLogic(); // Извикваме основната логика отново
@@ -8134,18 +8308,15 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     } */
     let boardsNoteElement = null;
     if (boardsData.length > 0 || boardParseError) {
-        // Изчисляваме броячите само при пълно презареждане, не и когато се сменя само менюто.
-        if (!rerenderOnlyMenu) {
-            boardsData.forEach(board => {
-                const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-                const boardIdToMatch = String(isArh ? board.id : board.gdid);
-                // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
-                board.noteCount = allNotesData.filter(note => String(note.boardid) === boardIdToMatch && note.status !== 1).length;
-            });
-            // ВИНАГИ изчисляваме броячите за напомняния и календар.
-            boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1).length;
-            boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate && note.status !== 1).length;
-        }
+        boardsData.forEach(board => {
+            const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
+            const boardIdToMatch = String(isArh ? board.id : board.gdid);
+            // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
+            board.noteCount = allNotesData.filter(note => String(note.boardid) === boardIdToMatch && note.status !== 1).length;
+        });
+        // ВИНАГИ изчисляваме броячите за напомняния и календар.
+        boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1).length;
+        boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate && note.status !== 1).length;
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
     // Винаги премахваме старото меню, за да го заменим с новото
@@ -8160,9 +8331,13 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             // Синхронизираме визуалното състояние на менюто и скролираме до активния бутон
             // Използваме setTimeout, за да сме сигурни, че DOM-ът е обновен
             setTimeout(() => {
-                // Използваме съществуващата функция за маркуване
+                // Използваме същата логика за маркуване като във filterNotesByBoard
+                const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+                const targetBoard = specialBoards.includes(currentBoardFilter) ? null : boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
+                const activeIdForUI = targetBoard ? (targetBoard.gdid || targetBoard.id) : currentBoardFilter;
+
                 document.querySelectorAll('.board-filter-link').forEach(link => {
-                    const isSelected = link.dataset.boardid === String(currentBoardFilter);
+                    const isSelected = link.dataset.boardid === String(activeIdForUI);
                     link.classList.toggle('selected-board', isSelected);
                     link.classList.toggle('active', isSelected);
                     link.style.height = isSelected ? '39px' : '35px';
@@ -8194,16 +8369,23 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // 2.1 Optimization: Preload backgrounds before creating elements to avoid staggered loading
     await preloadNoteBackgrounds(allNotesData);
 
-    const noteElements = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
+    const noteElementsResults = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
     // Create fragment and populate it with new elements
     const fragment = document.createDocumentFragment();
     let notesCount = 0;
-    noteElements.forEach(noteEl => {
+    let skippedNotesCount = 0;
+    noteElementsResults.forEach(noteEl => {
         if (noteEl) {
             fragment.appendChild(noteEl);
             notesCount++;
+        } else {
+            skippedNotesCount++;
         }
     });
+
+    if (skippedNotesCount > 0) {
+        console.log(`[renderUI] Skipped ${skippedNotesCount} notes (likely status=1/deleted).`);
+    }
     // Update container
     if (!rerenderOnlyMenu) {
         notesContainer.appendChild(fragment);
@@ -8246,7 +8428,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 for (const board of emptyBoards) {
                     // Safety check: Don't delete the last remaining board
                     if (boardsData.length <= 1) {
-                        showToast(_('cannotDeleteLastBoard'), 3000);
+                        if (boardsModified) showToast(_('cannotDeleteLastBoard'), 3000);
                         break;
                     }
                     const confirmed = await showConfirmation(
@@ -8265,14 +8447,20 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                         if (useIndexedDb && typeof deleteFromDB === 'function') {
                             await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
                         }
-                        // Delete the board file from Google Drive if it has a gdid
+                        // Delete the board file from Google Drive if it has a gdid or driveFileId
                         const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
-                        if (updateGDriveNow && board.gdid && typeof deleteGDriveFile === 'function') {
-                            try {
-                                await deleteGDriveFile(board.gdid);
-                                console.log(`Deleted board file from GDrive: ${board.gdid}`);
-                            } catch (gdErr) {
-                                console.error(`Failed to delete board ${board.title} from GDrive:`, gdErr);
+                        if (updateGDriveNow && typeof deleteGDriveFile === 'function') {
+                            const idsToDelete = board.allDriveFileIds || (board.driveFileId ? [board.driveFileId] : (board.gdid ? [board.gdid] : []));
+                            for (const fileId of idsToDelete) {
+                                try {
+                                    if (await deleteGDriveFile(fileId)) {
+                                        console.log(`Deleted board file from GDrive: ${fileId}`);
+                                    } else {
+                                        console.log(`Board file ${fileId} not found on GDrive (already deleted).`);
+                                    }
+                                } catch (gdErr) {
+                                    console.error(`Failed to delete board file ${fileId} from GDrive:`, gdErr);
+                                }
                             }
                         }
                         // Confirmation toast
@@ -8709,114 +8897,90 @@ function navigateBoard(direction) {
 
 //     <!-- === --- === В Т О Р А   В Е Р С И Я === --- === -->
 
-(function () {
-    const settingsButton = document.getElementById('settings_button');
-    const settings2Modal = document.getElementById('settings2-modal');
-    const settings2CloseBtn = document.getElementById('settings2-close-btn');
+// Settings 2 IIFE removed
 
-    if (settingsButton && settings2Modal) {
-        settingsButton.addEventListener('click', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                e.stopImmediatePropagation(); // More aggressive than stopPropagation
-
-                // Ensure standard modal is closed if it somehow opened
-                const settingsModal = document.getElementById('settings-modal');
-                if (settingsModal) settingsModal.classList.remove('visible');
-
-                settings2Modal.classList.add('visible');
-            }
-        }, true); // Capture phase to intercept early
-
-        // --- Long Press Logic for Mobile ---
-        let longPressTimer;
-        let longPressTriggered = false;
-        const startLongPress = (e) => {
-            longPressTriggered = false;
-            longPressTimer = setTimeout(() => {
-                longPressTriggered = true;
-                // Ensure standard modal is closed
-                const settingsModal = document.getElementById('settings-modal');
-                if (settingsModal) settingsModal.classList.remove('visible');
-
-                settings2Modal.classList.add('visible');
-                if (navigator.vibrate) navigator.vibrate(50);
-                longPressTimer = null;
-            }, 800);
-        };
-        const cancelLongPress = () => {
-            if (longPressTimer) {
-                clearTimeout(longPressTimer);
-                longPressTimer = null;
-            }
-        };
-
-        settingsButton.addEventListener('touchstart', startLongPress, { passive: true });
-        settingsButton.addEventListener('touchend', cancelLongPress);
-        settingsButton.addEventListener('touchmove', cancelLongPress);
-        settingsButton.addEventListener('contextmenu', (e) => {
-            if (longPressTriggered) {
-                e.preventDefault();
-                longPressTriggered = false;
-            }
-        });
-    }
-
-    if (settings2CloseBtn && settings2Modal) {
-        settings2CloseBtn.addEventListener('click', () => {
-            settings2Modal.classList.remove('visible');
-            updateModeButton();
-        });
-    }
-
-    // Close on overlay click
-    if (settings2Modal) {
-        settings2Modal.addEventListener('click', (e) => {
-            if (e.target === settings2Modal) {
-                settings2Modal.classList.remove('visible');
-                updateModeButton();
-            }
-        });
-    }
-
-    // Close after save setting
-    const closeAfterSaveCheckbox = document.getElementById('close-after-save-checkbox');
-    if (closeAfterSaveCheckbox) {
-        closeAfterSaveCheckbox.checked = localStorage.getItem('closeAfterSave') === 'true';
-        closeAfterSaveCheckbox.addEventListener('change', () => {
-            localStorage.setItem('closeAfterSave', closeAfterSaveCheckbox.checked);
-            if (typeof showToast === 'function') showToast(_('settingSaved'), 2000);
-        });
-    }
-    const updateGDriveCheckbox = document.getElementById('update-gdrive-checkbox');
-    if (updateGDriveCheckbox) {
-        updateGDriveCheckbox.checked = localStorage.getItem('updateGDrive') === 'true';
-        updateGDriveCheckbox.addEventListener('change', () => {
-            localStorage.setItem('updateGDrive', updateGDriveCheckbox.checked);
-            if (typeof showToast === 'function') showToast(_('settingSaved'), 2000);
-        });
-    }
-})();
-
+// --- Save Button Listener ---
 // --- Save Button Listener ---
 (function () {
     const saveBtn = document.getElementById('save-btn');
     if (saveBtn) {
         saveBtn.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.remove('visible');
             if (typeof exportNotes === 'function') exportNotes();
             else console.error('exportNotes function not found');
+        });
+    }
+    const saveDbBtn = document.getElementById('save-db-btn');
+    if (saveDbBtn) {
+        saveDbBtn.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+            if (typeof exportNotesFromDB === 'function') exportNotesFromDB();
+            else console.error('exportNotesFromDB function not found');
         });
     }
     const dupBtn = document.getElementById('dup-btn');
     if (dupBtn) {
         dupBtn.addEventListener('click', () => {
-            const settings2Modal = document.getElementById('settings2-modal');
-            if (settings2Modal) settings2Modal.classList.remove('visible');
+            document.getElementById('settings-modal').classList.remove('visible');
             if (typeof removeDuplicates === 'function') removeDuplicates();
             else console.error('removeDuplicates function not found');
         });
     }
 })();
+
+/**
+ * Updates the visibility of elements in Advanced Settings based on application state.
+ */
+async function updateAdvancedSettingsVisibility() {
+    const saveDbWrapper = document.getElementById('save-db-wrapper');
+
+    // Sync checkboxes
+    const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
+    const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
+    const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
+    const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+
+    if (useArhDbCheckbox) useArhDbCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
+    if (useLocalDbCheckbox) useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
+    if (useGoogleDbCheckbox) useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
+    if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+
+    if (!saveDbWrapper) return;
+
+    const useIndexedDbLive = localStorage.getItem('useIndexedDb') === 'true';
+
+    // The button "Save from DB" makes sense ONLY if DB is OFF and DB is NOT empty.
+    if (useIndexedDbLive) {
+        saveDbWrapper.style.display = 'none';
+        return;
+    }
+
+    try {
+        const dbExistsLive = await checkDbExists(NOTES_DB_NAME);
+        if (!dbExistsLive) {
+            saveDbWrapper.style.display = 'none';
+            return;
+        }
+
+        const db = await openNotesDB();
+        const transaction = db.transaction([BOARD_STORE_NAME], 'readonly');
+        const store = transaction.objectStore(BOARD_STORE_NAME);
+        const countRequest = store.count();
+
+        countRequest.onsuccess = () => {
+            const count = countRequest.result;
+            saveDbWrapper.style.display = (count > 0) ? 'block' : 'none';
+            db.close();
+        };
+        countRequest.onerror = () => {
+            saveDbWrapper.style.display = 'none';
+            db.close();
+        };
+    } catch (e) {
+        console.warn("Failed to check DB count for Settings2 visibility:", e);
+        saveDbWrapper.style.display = 'none';
+    }
+}
 
 // --- Edit Note on Ctrl+Click (DB Mode) ---
 const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
