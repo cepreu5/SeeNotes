@@ -632,6 +632,52 @@
                                     Актуализирай Google Drive:</label>
                                 <input type="checkbox" id="update-gdrive-checkbox" class="settings-checkbox">
                             </div>
+                            <div class="zoom-control-wrapper" id="check-empty-boards"
+                                style="margin-top: 10px; justify-content: center;">
+                                <label for="check-empty-boards-checkbox"
+                                    style="margin-right: 10px; flex-shrink: 0; text-align: left;"
+                                    data-key="checkEmptyBoardsLabel">
+                                    Проверка за празни бордове:</label>
+                                <input type="checkbox" id="check-empty-boards-checkbox" class="settings-checkbox">
+                            </div>
+
+                            <div class="zoom-control-wrapper"
+                                style="margin-top: 15px; flex-direction: column; align-items: stretch; gap: 5px;">
+                                <label style="font-weight: bold; font-size: 0.9em; text-align: center; color: #1f3b52;"
+                                    data-key="mdSettingsTitle">Markdown символи:</label>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div
+                                        style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                                        <label for="md-bold-input" style="font-size: 0.85em; font-weight: bold;"
+                                            data-key="mdBoldLabel">Bold</label>
+                                        <input type="text" id="md-bold-input" class="zoom-input-number"
+                                            style="width: 50px; margin: 0;">
+                                    </div>
+                                    <div
+                                        style="display: flex; align-items: center; justify-content: flex-start; gap: 5px;">
+                                        <label for="md-italic-input" style="font-size: 0.85em; font-style: italic;"
+                                            data-key="mdItalicLabel">Italic</label>
+                                        <input type="text" id="md-italic-input" class="zoom-input-number"
+                                            style="width: 50px; margin: 0;">
+                                    </div>
+                                    <div
+                                        style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                                        <label for="md-strike-input"
+                                            style="font-size: 0.85em; text-decoration: line-through;"
+                                            data-key="mdStrikeLabel">Strike</label>
+                                        <input type="text" id="md-strike-input" class="zoom-input-number"
+                                            style="width: 50px; margin: 0;">
+                                    </div>
+                                    <div
+                                        style="display: flex; align-items: center; justify-content: flex-start; gap: 5px;">
+                                        <label for="md-underline-input"
+                                            style="font-size: 0.85em; text-decoration: underline;"
+                                            data-key="mdUnderlineLabel">Underline</label>
+                                        <input type="text" id="md-underline-input" class="zoom-input-number"
+                                            style="width: 50px; margin: 0;">
+                                    </div>
+                                </div>
+                            </div>
                             <div
                                 style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 20px; margin-bottom: 20px;">
                                 <div style="display: flex; justify-content: center; gap: 10px; width: 100%;">
@@ -645,11 +691,6 @@
                                         <button id="save-db-btn" class="zoom-btn" data-key="saveDbLabel">Запис на архив
                                             от БД</button>
                                     </div>
-                                </div>
-                                <div class="zoom-control-wrapper" id="dup-wrapper"
-                                    style="margin-top: 0; margin-bottom: 0;">
-                                    <button id="dup-btn" class="zoom-btn" data-key="dupLabel">Изтриване на
-                                        дубликати</button>
                                 </div>
                             </div>
                         </div>

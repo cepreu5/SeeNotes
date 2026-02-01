@@ -215,32 +215,9 @@ async function parseFileResults(results, filenameForError) {
             }
 
             for (let item of items) {
-                if (id) item.driveFileId = id;
                 const key = (item.gdid || item.id);
-                if (key) {
-                    if (tempMap.has(key)) {
-                        const existing = tempMap.get(key);
-                        if (id) {
-                            if (!existing.allDriveFileIds) {
-                                existing.allDriveFileIds = existing.driveFileId ? [existing.driveFileId] : [];
-                            }
-                            if (!existing.allDriveFileIds.includes(id)) {
-                                existing.allDriveFileIds.push(id);
-                            }
-                        }
-                        // Report duplicate
-                        dataIntegrityIssues.push({
-                            type: 'duplicate',
-                            gdid: key,
-                            file1: existing.driveFileName || 'Direct Source',
-                            file2: id || filenameForError,
-                            mode: 'gdrive'
-                        });
-                    } else {
-                        if (id) item.allDriveFileIds = [id];
-                        item.driveFileName = id; // Store ID for reporting
-                        tempMap.set(key, item);
-                    }
+                if (key && !tempMap.has(key)) {
+                    tempMap.set(key, item);
                 }
             }
         } catch (e) {
@@ -400,15 +377,6 @@ async function runGoogleDriveSync() {
                     for (let n of data) {
                         const i = boardsData.findIndex(b => b.gdid === n.gdid);
                         if (i !== -1) {
-                            const existing = boardsData[i];
-                            if (existing.allDriveFileIds || n.allDriveFileIds) {
-                                const merged = Array.from(new Set([
-                                    ...(existing.allDriveFileIds || (existing.driveFileId ? [existing.driveFileId] : [])),
-                                    ...(n.allDriveFileIds || (n.driveFileId ? [n.driveFileId] : []))
-                                ]));
-                                n.allDriveFileIds = merged;
-                                existing.allDriveFileIds = merged;
-                            }
                             boardsData[i] = n;
                         } else {
                             boardsData.push(n);
@@ -417,6 +385,7 @@ async function runGoogleDriveSync() {
                 }
                 await bulkPutDB(storeName, data, true);
                 if (isNote) data.forEach(note => updatedNoteGdims.push(note.gdid));
+                console.log(`[Sync] Updated ${filename}:`, data);
             }
         }
     };
@@ -424,7 +393,7 @@ async function runGoogleDriveSync() {
     // loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
     console.time("runGoogleDriveSync_Parallel");
     await Promise.all([
-        syncFileWorker('board.txt', BOARD_STORE_NAME, false, true), // Force full scan for boards to find all duplicates
+        syncFileWorker('board.txt', BOARD_STORE_NAME, false),
         syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
         syncFileWorker('note.txt', NOTE_STORE_NAME, true)
     ]);
@@ -1588,7 +1557,8 @@ function renderWeeklyCalendarView(dateForWeek) {
 async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     if (e) e.stopPropagation();
     if (e) e.preventDefault();
-    if (!useIndexedDb) return; // Изтриването работи само с база данни
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    if (!useIndexedDb && !updateGDrive) return; // Изтриването работи с база данни или GDrive update
     // --- SUPPORT FOR NEW DATASET ATTRIBUTES (g/b) ---
     // Try to get gdid from dataset.g, fallback to extraInfo (legacy)
     let noteGdid = noteEl.dataset ? noteEl.dataset.g : null;
@@ -1621,7 +1591,15 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     const confirmed = await showConfirmation(_('confirmNoteDelete'));
     if (confirmed) {
         try {
-            await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+            if (useIndexedDb) {
+                await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+            }
+            if (updateGDrive && noteGdid) {
+                deleteGDriveFile(noteGdid).catch(err => {
+                    console.error("GDrive delete failed:", err);
+                    if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+                });
+            }
             // Remove from DOM if method exists (it might be a mock object)
             if (noteEl.remove) noteEl.remove();
             allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
@@ -1635,10 +1613,6 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
             // Актуализираме брояча на борда
             const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
             if (boardGdidToUpdate) {
-                const boardData = boardsData.find(b => b.gdid == boardGdidToUpdate);
-                if (boardData && typeof boardData.noteCount === 'number') {
-                    boardData.noteCount = Math.max(0, boardData.noteCount - 1);
-                }
                 updateBoardCounterUI(boardGdidToUpdate);
             }
             // --- REFRESH CALENDARS ---
@@ -1678,7 +1652,8 @@ function updateBoardCounterUI(boardIdOrGdid) {
     const boardButton = document.querySelector(`.board-filter-link[data-boardid="${key}"]`);
     if (boardButton) {
         const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-        const noteCount = boardData.noteCount || 0;
+        // Calculate dynamic note count
+        const noteCount = allNotesData.filter(n => String(n.boardid) === String(key) && n.status !== 1).length;
         const title = boardData.title;
         boardButton.textContent = (showCount && noteCount > 0) ? `${title} (${noteCount})` : title;
     }
@@ -1704,7 +1679,6 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
         if (!targetBoard) return;
         const targetBoardTitle = targetBoard.title;
         noteToMove.boardid = newBoardId;
-        noteToMove.modifiedTime = new Date().toISOString();
         noteToMove.datemod = Date.now();
         if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
             await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
@@ -1721,12 +1695,10 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
         }
         const oldBoard = boardsData.find(b => (b.gdid || b.id) == oldBoardId);
         const newBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
-        if (oldBoard && typeof oldBoard.noteCount === 'number') {
-            oldBoard.noteCount = Math.max(0, oldBoard.noteCount - 1);
+        if (oldBoard) {
             updateBoardCounterUI(oldBoardId);
         }
-        if (newBoard && typeof newBoard.noteCount === 'number') {
-            newBoard.noteCount++;
+        if (newBoard) {
             updateBoardCounterUI(newBoardId);
         }
         const noteElementInDom = document.querySelector(`.note[data-g="${noteGdid}"]`) || document.querySelector(`.note[data-i="${noteId}"]`);
@@ -1737,100 +1709,6 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
         return true;
     }
     return false;
-}
-/**
- * Премахва бележки с идентично съдържание (notetxt).
- */
-async function removeDuplicates() {
-    if (typeof allNotesData === 'undefined' || allNotesData.length === 0) {
-        showToast(_('noData'), 3000);
-        return;
-    }
-    const confirmed = await showConfirmation(_('confirmRemoveDuplicates'));
-    if (!confirmed) return;
-    const toDelete = [];
-    const groupedNotes = new Map();
-    // Групиране на бележките по съдържание
-    allNotesData.forEach(note => {
-        const content = note.notetxt;
-        if (!content || content.trim() === "") return;
-        if (!groupedNotes.has(content)) {
-            groupedNotes.set(content, []);
-        }
-        groupedNotes.get(content).push(note);
-    });
-    // Determine which notes to delete
-    groupedNotes.forEach((notes, content) => {
-        if (notes.length > 1) {
-            // Sort: Valid board notes first, then orphans.
-            // This ensures we keep a valid one if available.
-            notes.sort((a, b) => {
-                const isAReal = boardsData.some(bd => (bd.gdid || bd.id) == a.boardid);
-                const isBReal = boardsData.some(bd => (bd.gdid || bd.id) == b.boardid);
-                if (isAReal && !isBReal) return -1; // a comes first (keep a)
-                if (!isAReal && isBReal) return 1;  // b comes first (keep b)
-                return 0; // Equal priority
-            });
-            // Keep the first one (index 0), delete the rest (index 1 to end)
-            for (let i = 1; i < notes.length; i++) {
-                toDelete.push(notes[i]);
-            }
-        }
-    });
-    if (toDelete.length === 0) {
-        showToast(_('noDuplicatesFound'), 3000);
-        return;
-    }
-    showToast(`${_('duplicateNotes')}: ${toDelete.length}. ${_('loadingFile')}`, 3000);
-    // Show spinner in mode button
-    const modeButton = document.getElementById('mode_button');
-    const loadingIcon = document.getElementById('mode-button-loading-icon');
-    if (modeButton) modeButton.classList.add('mode-button-loading');
-    if (loadingIcon) loadingIcon.classList.add('button-loading');
-    let deletedCount = 0;
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-    for (const note of toDelete) {
-        try {
-            const gdid = note.gdid;
-            const id = note.id;
-            // Изтриване от базата данни, ако е приложимо
-            if (useIndexedDb && typeof deleteFromDB === 'function') {
-                await deleteFromDB(NOTE_STORE_NAME, gdid || id);
-            }
-            // Изтриване от Google Drive, ако е разрешено
-            if (updateGDrive && gdid) {
-                await deleteGDriveFile(gdid);
-            }
-            // Премахване от паметта
-            allNotesData = allNotesData.filter(n => n.gdid !== gdid || (id && n.id !== id));
-            // Премахване от DOM
-            const selector = gdid ? `.note[data-g="${gdid}"]` : `.note[data-i="${id}"]`;
-            const noteEl = document.querySelector(selector);
-            if (noteEl) noteEl.remove();
-            deletedCount++;
-        } catch (error) {
-            console.error("Грешка при изтриване на дубликат:", error);
-            if (typeof showToast === 'function') {
-                showToast(_('gdriveDeleteError').replace('{error}', error.message), 5000);
-            }
-        }
-    }
-    // Stop spinner
-    if (modeButton) modeButton.classList.remove('mode-button-loading');
-    if (loadingIcon) loadingIcon.classList.remove('button-loading');
-    // Актуализиране на брояча
-    // Актуализиране на брояча
-    const noteCounter = document.getElementById('note-counter');
-    if (noteCounter) noteCounter.textContent = allNotesData.length;
-    // Обновяване на UI за бордовете
-    if (typeof renderUI === 'function') {
-        await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-        // Активираме борда, който е бил активен преди операцията
-        if (typeof filterNotesByBoard === 'function') {
-            filterNotesByBoard(currentBoardFilter, true);
-        }
-    }
-    showToast(_('duplicatesDeleted').replace('{count}', deletedCount), 5000);
 }
 
 async function createColoredNoteBackground(color, src, width, height) {
@@ -4001,7 +3879,15 @@ async function createDatabaseFromMemory() {
             }
             return item;
         });
-        const preparedBoards = ensureGdid(boardsData);
+        // Почистване на временни полета преди запис
+        const cleanItem = (item) => {
+            const cleaned = { ...item };
+            delete cleaned.noteCount;
+            delete cleaned.reminderNoteCount;
+            delete cleaned.calendarNoteCount;
+            return cleaned;
+        };
+        const preparedBoards = ensureGdid(boardsData).map(cleanItem);
         const preparedMedia = ensureGdid(mediaData);
         const preparedNotes = ensureGdid(allNotesData);
         await bulkPutDB(BOARD_STORE_NAME, preparedBoards);
@@ -4901,6 +4787,7 @@ async function processDirectoryContent(minModificationDate) {
     const endTime = performance.now();
     console.log(`--- Local Folder sync sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
     console.log(`[Summary] Updated items: ${updatedCount} (Boards: ${stores[BOARD_STORE_NAME].length}, Media: ${stores[MEDIA_STORE_NAME].length}, Notes: ${stores[NOTE_STORE_NAME].length})`);
+    console.log("[Local Sync] Updated objects:", stores);
     return updatedCount;
 }
 
@@ -5358,6 +5245,7 @@ function makeElementDraggable(element, storageKey) {
 
 function showModal(options, noteElement = null) {
     let rawContent, formatString, displayContent, noteColor, noteId, noteGdid;
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
     if (typeof options === 'string') {
         rawContent = options;
         options = {}; // Ensure options is an object
@@ -5577,7 +5465,7 @@ function showModal(options, noteElement = null) {
     const nextBtn = document.getElementById('next-note-btn');
     const deleteBtn = document.getElementById('delete-modal-btn');
     // Показваме/скриваме бутона за изтриване
-    if (useIndexedDb && (noteElement || noteGdid) && !isPromo) {
+    if ((useIndexedDb || updateGDrive) && (noteElement || noteGdid) && !isPromo) {
         deleteBtn.style.display = 'flex';
         // Премахваме стари event listeners и добавяме нов
         const newDeleteBtn = deleteBtn.cloneNode(true);
@@ -5637,7 +5525,6 @@ function showModal(options, noteElement = null) {
     const oldMoveMenu = document.getElementById('note-move-menu');
     if (oldMoveMenu) oldMoveMenu.remove();
 
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
     const canEdit = (useIndexedDb || (updateGDrive && options.gdid)) && !isPromo;
 
     if (canEdit) {
@@ -6273,7 +6160,8 @@ function initializeLoad() {
     }
 }
 
-async function createBoardsUI(boardsData, boardParseError) {
+async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
+    const { boardCounts = new Map(), reminderCount = 0, calendarCount = 0 } = extraCounts;
     const boardsNote = document.createElement('div');
     boardsNote.className = 'boards-note';
     const contentWrapper = document.createElement('div');
@@ -6431,7 +6319,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     }
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
     if (localStorage.getItem('showBoardRemind') !== 'false') {
-        const reminderNoteCount = boardsData.reminderNoteCount || 0;
+        const reminderNoteCount = reminderCount;
         const reminderLink = document.createElement('span');
         reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
         reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
@@ -6486,10 +6374,10 @@ async function createBoardsUI(boardsData, boardParseError) {
     boardsData.forEach(board => {
         const boardId = board.gdid || board.id;
         if (!board.title || boardId === undefined || boardId === null) return;
-        const noteCount = board.noteCount || 0;
+        const count = boardCounts.get(String(boardId)) || 0;
         const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
         const link = document.createElement('span');
-        link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
+        link.textContent = (showCount && count > 0) ? `${board.title} (${count})` : board.title;
         link.classList.add('board-filter-link');
         link.dataset.boardid = boardId;
         // Обработка на цвят на фона
@@ -6671,6 +6559,35 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         }
+        const checkEmptyBoardsCheckbox = document.getElementById('check-empty-boards-checkbox');
+        if (checkEmptyBoardsCheckbox) {
+            checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
+            checkEmptyBoardsCheckbox.addEventListener('change', () => {
+                localStorage.setItem('checkEmptyBoards', checkEmptyBoardsCheckbox.checked);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
+
+        // --- Markdown Symbols Settings ---
+        const mdBoldInput = document.getElementById('md-bold-input');
+        const mdItalicInput = document.getElementById('md-italic-input');
+        const mdStrikeInput = document.getElementById('md-strike-input');
+        const mdUnderlineInput = document.getElementById('md-underline-input');
+
+        const setupMdInput = (input, storageKey, defaultValue) => {
+            if (input) {
+                input.value = localStorage.getItem(storageKey) || defaultValue;
+                input.addEventListener('change', () => {
+                    localStorage.setItem(storageKey, input.value);
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+        };
+
+        setupMdInput(mdBoldInput, 'mdBold', '**');
+        setupMdInput(mdItalicInput, 'mdItalic', '*');
+        setupMdInput(mdStrikeInput, 'mdStrike', '~~');
+        setupMdInput(mdUnderlineInput, 'mdUnderline', '_');
 
         applyBtn.addEventListener('click', () => {
             const zoomValue = scaleInput.value;
@@ -7467,7 +7384,7 @@ function formatText(text, formatString, isForModal = false) {
     if (formatString.endsWith('|')) {
         formatString = formatString.slice(0, -1);
     }
-    const formats = formatString.split('|').map(f => {
+    const formats = formatString.split(/[|\n]/).map(f => {
         try {
             return JSON.parse(f);
         } catch (e) {
@@ -7531,9 +7448,13 @@ function formatText(text, formatString, isForModal = false) {
                         break;
                     }
                 case 6: // font size
-                    const fontSize = 100 * paramfloat;
-                    formattedSegment = `<span style="font-size: ${fontSize}%;">${formattedSegment}</span>`;
-                    break;
+                    {
+                        if (paramfloat && paramfloat > 0) {
+                            const fontSizeInPercent = (paramfloat * 100).toFixed(1);
+                            formattedSegment = `<span style="font-size: ${fontSizeInPercent}%; display: inline-block; line-height: normal;">${formattedSegment}</span>`;
+                        }
+                        break;
+                    }
                 case 7: // strike-through
                     formattedSegment = `<s>${formattedSegment}</s>`;
                     break;
@@ -8174,13 +8095,12 @@ async function createNoteElement(noteContent) {
                     totalNotes = parseInt(noteCounter.textContent, 10);
                 }
                 if (boardToUpdate) {
-                    // Стъпка 4: Актуализация на boardsData
-                    boardToUpdate.noteCount = totalNotes;
-                    // Стъпка 5: Актуализация на UI (винаги използваме новата стойност от noteCounter)
+                    // Стъпка 4: Актуализация на UI
                     const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardToUpdate.gdid}"]`);
                     if (boardButton) {
                         const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-                        const newText = (showCount && boardToUpdate.noteCount > 0) ? `${boardToUpdate.title} (${totalNotes})` : boardToUpdate.title;
+                        const boardNoteCount = allNotesData.filter(n => String(n.boardid) === String(boardToUpdate.gdid || boardToUpdate.id) && n.status !== 1).length;
+                        const newText = (showCount && boardNoteCount > 0) ? `${boardToUpdate.title} (${boardNoteCount})` : boardToUpdate.title;
                         boardButton.textContent = newText;
                     }
                 }
@@ -8307,17 +8227,21 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         notesContainer.innerHTML = '';
     } */
     let boardsNoteElement = null;
+    let extraCounts = {
+        boardCounts: new Map(),
+        reminderCount: 0,
+        calendarCount: 0
+    };
     if (boardsData.length > 0 || boardParseError) {
-        boardsData.forEach(board => {
-            const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-            const boardIdToMatch = String(isArh ? board.id : board.gdid);
-            // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
-            board.noteCount = allNotesData.filter(note => String(note.boardid) === boardIdToMatch && note.status !== 1).length;
+        const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
+        allNotesData.forEach(note => {
+            if (note.status === 1) return;
+            const boardId = String(note.boardid);
+            extraCounts.boardCounts.set(boardId, (extraCounts.boardCounts.get(boardId) || 0) + 1);
+            if (note.timer && note.timer > 0) extraCounts.reminderCount++;
+            if (note.calendarDate) extraCounts.calendarCount++;
         });
-        // ВИНАГИ изчисляваме броячите за напомняния и календар.
-        boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1).length;
-        boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate && note.status !== 1).length;
-        boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
+        boardsNoteElement = await createBoardsUI(boardsData, boardParseError, extraCounts);
     }
     // Винаги премахваме старото меню, за да го заменим с новото
     const oldBoardsNote = document.querySelector('header .boards-note');
@@ -8397,8 +8321,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     // Check if we need to delay showing the menu due to empty board cleanup
     let delayMenuRender = false;
-    if (isInitialLoad) {
-        const potentialEmptyBoards = boardsData.filter(b => b.noteCount === 0);
+    if (isInitialLoad && localStorage.getItem('checkEmptyBoards') === 'true') {
+        const potentialEmptyBoards = boardsData.filter(b => (extraCounts.boardCounts.get(String(b.gdid || b.id)) || 0) === 0);
         if (potentialEmptyBoards.length > 0) {
             delayMenuRender = true;
         }
@@ -8418,9 +8342,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         currentBoardFilter = mainBoard ? (mainBoard.gdid || mainBoard.id) : 'all';
     }
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
-    if (isInitialLoad) {
+    if (isInitialLoad && localStorage.getItem('checkEmptyBoards') === 'true') {
         // Check for empty boards and offer deletion individually
-        const emptyBoards = boardsData.filter(b => b.noteCount === 0);
+        const emptyBoards = boardsData.filter(b => (extraCounts.boardCounts.get(String(b.gdid || b.id)) || 0) === 0);
         if (emptyBoards.length > 0) {
             setTimeout(async () => {
                 let boardsModified = false;
@@ -8447,20 +8371,17 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                         if (useIndexedDb && typeof deleteFromDB === 'function') {
                             await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
                         }
-                        // Delete the board file from Google Drive if it has a gdid or driveFileId
+                        // Delete the board file from Google Drive if it has a gdid
                         const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
-                        if (updateGDriveNow && typeof deleteGDriveFile === 'function') {
-                            const idsToDelete = board.allDriveFileIds || (board.driveFileId ? [board.driveFileId] : (board.gdid ? [board.gdid] : []));
-                            for (const fileId of idsToDelete) {
-                                try {
-                                    if (await deleteGDriveFile(fileId)) {
-                                        console.log(`Deleted board file from GDrive: ${fileId}`);
-                                    } else {
-                                        console.log(`Board file ${fileId} not found on GDrive (already deleted).`);
-                                    }
-                                } catch (gdErr) {
-                                    console.error(`Failed to delete board file ${fileId} from GDrive:`, gdErr);
+                        if (updateGDriveNow && board.gdid && typeof deleteGDriveFile === 'function') {
+                            try {
+                                if (await deleteGDriveFile(board.gdid)) {
+                                    console.log(`Deleted board file from GDrive: ${board.gdid}`);
+                                } else {
+                                    console.log(`Board file ${board.gdid} not found on GDrive (already deleted).`);
                                 }
+                            } catch (gdErr) {
+                                console.error(`Failed to delete board file ${board.gdid} from GDrive:`, gdErr);
                             }
                         }
                         // Confirmation toast
@@ -8918,14 +8839,6 @@ function navigateBoard(direction) {
             else console.error('exportNotesFromDB function not found');
         });
     }
-    const dupBtn = document.getElementById('dup-btn');
-    if (dupBtn) {
-        dupBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (typeof removeDuplicates === 'function') removeDuplicates();
-            else console.error('removeDuplicates function not found');
-        });
-    }
 })();
 
 /**
@@ -9015,10 +8928,120 @@ function enableNoteEditing(modalBodyElem) {
     });
 
     modalBodyElem.innerHTML = '';
-    modalBodyElem.appendChild(textarea);
-    modalBodyElem.contentEditable = 'false'; // Ensure parent isn't editable
 
+    // --- Създаване на обвивка и огледален слой (backdrop) ---
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'note-edit-backdrop';
+    const textareaStyle = getComputedStyle(modalBodyElem);
+
+    // Стилизираме backdrop слоя да съвпада точно с textarea
+    Object.assign(backdrop.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        padding: '10px',
+        boxSizing: 'border-box',
+        fontFamily: textareaStyle.fontFamily,
+        fontSize: textareaStyle.fontSize,
+        lineHeight: 'normal',
+        whiteSpace: 'pre-wrap',
+        wordWrap: 'break-word',
+        color: 'transparent', // Текстът е прозрачен, вижда се само подчертаването
+        pointerEvents: 'none',
+        zIndex: '1',
+        overflow: 'hidden'
+    });
+
+    textarea.style.position = 'relative';
+    textarea.style.zIndex = '2';
+    textarea.style.background = 'transparent';
+    textarea.style.lineHeight = 'normal';
+
+    wrapper.appendChild(backdrop);
+    wrapper.appendChild(textarea);
+    modalBodyElem.appendChild(wrapper);
+
+    modalBodyElem.contentEditable = 'false';
     placeCaretAtEnd(textarea);
+
+    // Синхронизация на скрола
+    textarea.addEventListener('scroll', () => {
+        backdrop.scrollTop = textarea.scrollTop;
+    });
+
+    // --- Логика за запазване на форматирането при редакция ---
+    let currentFormats = [];
+    const fmtStr = modalBodyElem.dataset.format;
+    if (fmtStr && fmtStr.trim() !== '') {
+        const parts = fmtStr.split('|');
+        currentFormats = parts.map(p => {
+            try { return JSON.parse(p); } catch (e) { return null; }
+        }).filter(f => f);
+    }
+    const renderBackdrop = () => {
+        const text = textarea.value;
+        if (!currentFormats.length) {
+            backdrop.innerText = text;
+            return;
+        }
+        const points = new Set([0, text.length]);
+        currentFormats.forEach(f => {
+            points.add(Math.max(0, Math.min(text.length, f.start)));
+            points.add(Math.max(0, Math.min(text.length, f.end)));
+        });
+        const sortedPoints = Array.from(points).sort((a, b) => a - b);
+        let html = '';
+        for (let i = 0; i < sortedPoints.length - 1; i++) {
+            const start = sortedPoints[i];
+            const end = sortedPoints[i + 1];
+            let segment = text.substring(start, end);
+            const isFormatted = currentFormats.some(f => start >= f.start && end <= f.end);
+
+            // Ескейпваме HTML символи
+            segment = segment.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+            if (isFormatted) {
+                html += `<span style="border-bottom: 2px dashed black; background-color: rgba(128, 128, 128, 0.3);">${segment}</span>`;
+            } else {
+                html += segment;
+            }
+        }
+        backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
+    };
+
+    let lastVal = textarea.value;
+    textarea.addEventListener('input', () => {
+        const newVal = textarea.value;
+        const diff = newVal.length - lastVal.length;
+        const pos = textarea.selectionStart; // Позиция на курсора след промяната
+        if (diff > 0) {
+            const P = pos - diff;
+            const L = diff;
+            currentFormats.forEach(f => {
+                if (P <= f.start) { f.start += L; f.end += L; }
+                else if (P < f.end) { f.end += L; }
+            });
+        } else if (diff < 0) {
+            const L = Math.abs(diff);
+            const P = pos;
+            currentFormats.forEach(f => {
+                if (f.start > P + L) f.start -= L; else if (f.start > P) f.start = P;
+                if (f.end > P + L) f.end -= L; else if (f.end > P) f.end = P;
+            });
+        }
+        if (diff !== 0) {
+            modalBodyElem.dataset.format = currentFormats.map(f => JSON.stringify(f)).join('|');
+            renderBackdrop();
+        }
+        lastVal = newVal;
+    });
+
+    renderBackdrop(); // Първоначално изчертаване
 
     if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
 
@@ -9158,10 +9181,80 @@ document.addEventListener('contextmenu', (e) => {
 
 // Unified Save Logic
 async function saveEditedNote() {
+    /**
+     * Превръща MD символи във форматирани области и изчиства текста.
+     */
+    function postEdit(text, formats) {
+        let currentText = text;
+        let currentFormats = [...formats];
+
+        // Помощна функция за изместване на индекси (същата логика като при писане)
+        const shift = (pos, diff) => {
+            const L = Math.abs(diff);
+            currentFormats.forEach(f => {
+                if (f.start > pos + L) f.start -= L; else if (f.start > pos) f.start = pos;
+                if (f.end > pos + L) f.end -= L; else if (f.end > pos) f.end = pos;
+            });
+        };
+
+        const rules = [
+            { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 }, // Bold
+            { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 }, // Strike
+            { s: localStorage.getItem('mdItalic') || '*', e: localStorage.getItem('mdItalic') || '*', t: 2 },   // Italic
+            { s: localStorage.getItem('mdUnderline') || '_', e: localStorage.getItem('mdUnderline') || '_', t: 3 }    // Underline
+        ];
+
+        rules.forEach(rule => {
+            let searchIdx = 0;
+            while (true) {
+                let start = currentText.indexOf(rule.s, searchIdx);
+                if (start === -1) break;
+                let end = currentText.indexOf(rule.e, start + rule.s.length);
+                if (end === -1) break;
+
+                const contentLen = end - start - rule.s.length;
+
+                // 1. Премахваме крайния маркер и изместваме
+                currentText = currentText.substring(0, end) + currentText.substring(end + rule.e.length);
+                shift(end, -rule.e.length);
+
+                // 2. Премахваме началния маркер и изместваме
+                currentText = currentText.substring(0, start) + currentText.substring(start + rule.s.length);
+                shift(start, -rule.s.length);
+
+                // 3. Добавяме новия формат за съдържанието
+                currentFormats.push({
+                    start: start,
+                    end: start + contentLen,
+                    type: rule.t,
+                    paramint: 0,
+                    paramfloat: 0
+                });
+
+                searchIdx = start + contentLen;
+            }
+        });
+        return { text: currentText, formats: currentFormats };
+    }
+
     const modalBodyElem = document.getElementById('modal-body');
     const textarea = document.getElementById('note-edit-textarea');
     if (!textarea || !modalBodyElem) return;
-    const newText = textarea.value;
+
+    // Извличаме текущите формати от DOM-а (те вече са били преизчислявани при всяко писане)
+    let currentFormats = [];
+    const fmtStr = modalBodyElem.dataset.format;
+    if (fmtStr && fmtStr.trim() !== '') {
+        currentFormats = fmtStr.split('|').map(p => {
+            try { return JSON.parse(p); } catch (e) { return null; }
+        }).filter(f => f);
+    }
+
+    // Извикваме MD трансформацията
+    const processed = postEdit(textarea.value, currentFormats);
+    const newText = processed.text;
+    const finalFormats = processed.formats.filter(f => f.end > f.start); // Махаме празни сегменти
+
     const noteId = modalBodyElem.dataset.id;
     const noteGdid = modalBodyElem.dataset.gdid;
     let noteToUpdate = null;
@@ -9174,7 +9267,9 @@ async function saveEditedNote() {
     if (noteToUpdate) {
         if (noteToUpdate.notetxt !== undefined) noteToUpdate.notetxt = newText;
         else noteToUpdate.text = newText;
-        noteToUpdate.modifiedTime = new Date().toISOString();
+
+        // Запазваме обновеното форматиране след MD трансформацията
+        noteToUpdate.text_span = finalFormats.map(f => JSON.stringify(f)).join('|');
         noteToUpdate.datemod = Date.now();
         try {
             if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
@@ -9206,7 +9301,7 @@ async function saveEditedNote() {
                 if (typeof showModal === 'function') {
                     showModal({
                         raw: newText,
-                        format: modalBodyElem.dataset.format,
+                        format: noteToUpdate.text_span,
                         color: modalBodyElem.dataset.color,
                         boardId: modalBodyElem.dataset.boardId,
                         id: noteId,
@@ -9220,7 +9315,14 @@ async function saveEditedNote() {
             const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
             if (updateGDrive && noteGdid) {
                 if (typeof showToast === 'function') showToast(_('updatingGDrive'), 2000);
-                updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate)).then(() => {
+                // Clean temporary/internal fields before saving to GDrive
+                const cleanNote = { ...noteToUpdate };
+                delete cleanNote.driveFileId;
+                delete cleanNote.driveFileName;
+                delete cleanNote.allDriveFileIds;
+                delete cleanNote.noteCount;
+                console.log(cleanNote);
+                updateGDriveFile(noteGdid, JSON.stringify(cleanNote)).then(() => {
                     if (typeof showToast === 'function') showToast(_('gdriveUpdateSuccess'), 3000);
                 }).catch(err => {
                     if (typeof showToast === 'function') showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);

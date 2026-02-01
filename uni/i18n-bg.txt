@@ -234,6 +234,7 @@ bg: {
         "dupLabel": "Изтриване на дубликати",
         "closeAfterSaveLabel": "Затваряне след запис",
         "updateGDriveLabel": "Актуализирай Google Drive",
+        "checkEmptyBoardsLabel": "Проверка за празни бордове",
         "confirmRemoveDuplicates": "Сигурни ли сте, че искате да премахнете бележки с дублиращо се съдържание?",
         "noDuplicatesFound": "Няма открити дубликати.",
         "duplicatesDeleted": "Успешно изтрити {count} дубликата.",
@@ -250,5 +251,10 @@ bg: {
         "boardDeletedSuccess": "Бордът '{boardName}' е изтрит.",
         "moveNote": "Премести в борд",
         "noteMovedSuccess": "Бележката е преместена в '{boardName}'.",
-        "noteAlreadyInBoard": "Бележката вече е в този борд."
+        "noteAlreadyInBoard": "Бележката вече е в този борд.",
+        "mdSettingsTitle": "Markdown символи:",
+        "mdBoldLabel": "Bold",
+        "mdItalicLabel": "Italic",
+        "mdStrikeLabel": "Strike",
+        "mdUnderlineLabel": "Underline"
     }

@@ -227,6 +227,7 @@ en: {
         refreshNow: 'Refresh',
         "closeAfterSaveLabel": "Close after save",
         "updateGDriveLabel": "Update Google Drive",
+        "checkEmptyBoardsLabel": "Check for empty boards",
         "saveLabel": "Save archive from memory",
         "saveDbLabel": "Save archive from DB",
         "dupLabel": "Remove duplicates",
@@ -246,5 +247,10 @@ en: {
         "boardDeletedSuccess": "Board '{boardName}' deleted.",
         "moveNote": "Move to board",
         "noteMovedSuccess": "Note moved to '{boardName}'.",
-        "noteAlreadyInBoard": "Note is already in this board."
+        "noteAlreadyInBoard": "Note is already in this board.",
+        "mdSettingsTitle": "Markdown Symbols:",
+        "mdBoldLabel": "Bold",
+        "mdItalicLabel": "Italic",
+        "mdStrikeLabel": "Strike",
+        "mdUnderlineLabel": "Underline"
     }
