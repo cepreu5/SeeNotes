@@ -1737,18 +1737,18 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     if (confirmed) {
         try {
             if (useIndexedDb) {
-                // Изтриваме по GDID ако има, иначе по ID (зависи от схемата, но обикновено primary key е GDID или комбиниран)
-                // Ако базата ползва 'id' като ключ при локални бележки:
-                if (noteGdid) await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-                else if (noteId) {
-                    // Тук може да е сложно ако IndexedDB очаква GDID като ключ. 
-                    // Но ако новата бележка е записана с празен GDID, може би е записана с ID?
-                    // Нека опитаме да намерим бележката и да я изтрием.
-                    // Засега приемаме, че ако няма GDID, е само в паметта или ще се изчисти при рестарт, 
-                    // но ще се опитаме да я махнем от allNotesData.
-                    // Ако е записана в IndexedDB с празен ключ, това е проблем.
-                    // IMPORTANT: bulkPutDB likely uses 'gdid' or 'id' as keyPath.
-                    // Ако noteGdid липсва, не правим deleteFromDB заявка към 'undefined'.
+                // Determine the correct key to delete from IndexedDB
+                if (noteGdid) {
+                    await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+                } else {
+                    // Fallback logic for notes with missing/empty GDID (e.g., local or bugged notes)
+                    // 1. Try deleting using the local ID as the key (standard fallback for local notes)
+                    if (noteId) {
+                        try { await deleteFromDB(NOTE_STORE_NAME, String(noteId)); } catch (e) { }
+                    }
+                    // 2. CRITICAL FIX: Explicitly try to delete the record with an empty string key ("")
+                    // This creates a "clean sweep" for any notes that were incorrectly saved with an empty key.
+                    try { await deleteFromDB(NOTE_STORE_NAME, ""); } catch (e) { }
                 }
             }
             if (updateGDrive && noteGdid) {
@@ -5441,16 +5441,18 @@ function makeElementDraggable(element, storageKey) {
 }
 
 function showModal(options, noteElement = null) {
-    let rawContent, formatString, displayContent, noteColor, noteId, noteGdid;
+    let rawContent, formatString, titleFormatString, displayContent, noteColor, noteId, noteGdid;
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
     if (typeof options === 'string') {
         rawContent = options;
         options = {}; // Ensure options is an object
         formatString = null;
+        titleFormatString = null;
         noteColor = null; // Default color for simple string content
     } else {
         rawContent = options.raw;
         formatString = options.format;
+        titleFormatString = options.titleFormat;
         noteColor = options.color;
         // Извличаме ID-тата на бележката, ако са подадени
         noteId = options.id;
@@ -5542,21 +5544,39 @@ function showModal(options, noteElement = null) {
     // For notes with a preview (pass: true), the '|' is a separator.
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
-    if (rawContent.includes('|')) {
-        rawContent = rawContent.replace('|', '\n');
-    }
-    if (options.isHtml && options.id === 'promo' && !rawContent.includes('{{')) {
-        displayContent = rawContent;
-    } else if (formatString && formatString.trim() !== '') {
-        displayContent = formatText(rawContent, formatString, true); // isForModal = true
+    // Special case: if titleFormatString is provided, format the title part separately.
+    const pipeIndex = rawContent.indexOf('|');
+    if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
+        // Hidden note with title formatting: split, format each part, then combine
+        const titlePart = rawContent.substring(0, pipeIndex);
+        const bodyPart = rawContent.substring(pipeIndex + 1);
+        const formattedTitle = formatText(titlePart, titleFormatString, true);
+        let formattedBody = '';
+        if (formatString && formatString.trim() !== '') {
+            formattedBody = formatText(bodyPart, formatString, true);
+        } else {
+            formattedBody = processNoteContent(bodyPart, true);
+        }
+        displayContent = formattedTitle + '<br>' + formattedBody;
     } else {
-        displayContent = processNoteContent(rawContent, true); // isForModal = true
+        // Standard logic: replace separator with newline for hidden notes
+        if (rawContent.includes('|')) {
+            rawContent = rawContent.replace('|', '\n');
+        }
+        if (options.isHtml && options.id === 'promo' && !rawContent.includes('{{')) {
+            displayContent = rawContent;
+        } else if (formatString && formatString.trim() !== '') {
+            displayContent = formatText(rawContent, formatString, true); // isForModal = true
+        } else {
+            displayContent = processNoteContent(rawContent, true); // isForModal = true
+        }
     }
     modalBody.innerHTML = displayContent;
     // Store metadata for editing and rendering identification
     modalBody.dataset.id = noteId || '';
     modalBody.dataset.gdid = noteGdid || '';
     modalBody.dataset.format = formatString || '';
+    modalBody.dataset.titleFormat = titleFormatString || '';
     modalBody.dataset.boardId = (options && options.boardId) ? options.boardId : '';
     modalBody.dataset.color = noteColor || '';
     // Set modal background color
@@ -6776,6 +6796,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         const mdItalicInput = document.getElementById('md-italic-input');
         const mdStrikeInput = document.getElementById('md-strike-input');
         const mdUnderlineInput = document.getElementById('md-underline-input');
+        const mdClearInput = document.getElementById('md-clear-input');
 
         const setupMdInput = (input, storageKey, defaultValue) => {
             if (input) {
@@ -6791,6 +6812,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         setupMdInput(mdItalicInput, 'mdItalic', '*');
         setupMdInput(mdStrikeInput, 'mdStrike', '~~');
         setupMdInput(mdUnderlineInput, 'mdUnderline', '_');
+        setupMdInput(mdClearInput, 'mdClear', '--');
 
         applyBtn.addEventListener('click', () => {
             const zoomValue = scaleInput.value;
@@ -7587,7 +7609,7 @@ function formatText(text, formatString, isForModal = false) {
     if (formatString.endsWith('|')) {
         formatString = formatString.slice(0, -1);
     }
-    const formats = formatString.split(/[|\n]/).map(f => {
+    let formats = formatString.split(/[|\n]/).map(f => {
         try {
             return JSON.parse(f);
         } catch (e) {
@@ -7595,10 +7617,52 @@ function formatText(text, formatString, isForModal = false) {
             return null;
         }
     }).filter(f => f !== null);
-    if (formats.length === 0) {
-        return processNoteContent(text, isForModal);
+
+    // --- mdClear Logic ---
+    let localText = text;
+    const mdClear = localStorage.getItem('mdClear') || '--';
+    if (localText.includes(mdClear)) {
+        let searchIdx = 0;
+        const shiftHelper = (pos, diff) => {
+            const L = Math.abs(diff);
+            formats.forEach(f => {
+                if (f.start > pos + L) f.start -= L; else if (f.start > pos) f.start = pos;
+                if (f.end > pos + L) f.end -= L; else if (f.end > pos) f.end = pos;
+            });
+        };
+
+        while (true) {
+            let start = localText.indexOf(mdClear, searchIdx);
+            if (start === -1) break;
+            let end = localText.indexOf(mdClear, start + mdClear.length);
+            if (end === -1) break;
+
+            const clearRangeStart = start;
+            const clearRangeEnd = end + mdClear.length;
+
+            // Remove any formats that overlap with this range
+            formats = formats.filter(f => {
+                // Overlap check: f.start < rangeEnd && f.end > rangeStart
+                return !(f.start < clearRangeEnd && f.end > clearRangeStart);
+            });
+
+            // Remove markers and shift indices
+            // Remove end marker first
+            localText = localText.substring(0, end) + localText.substring(end + mdClear.length);
+            shiftHelper(end, -mdClear.length);
+            // Remove start marker
+            localText = localText.substring(0, start) + localText.substring(start + mdClear.length);
+            shiftHelper(start, -mdClear.length);
+
+            searchIdx = start + (end - start - mdClear.length);
+        }
     }
-    const points = new Set([0, text.length]);
+
+    if (formats.length === 0) {
+        return processNoteContent(localText, isForModal);
+    }
+    // Continue with localText instead of text
+    const points = new Set([0, localText.length]);
     formats.forEach(f => {
         points.add(f.start);
         points.add(f.end);
@@ -7608,7 +7672,7 @@ function formatText(text, formatString, isForModal = false) {
     for (let i = 0; i < sortedPoints.length - 1; i++) {
         const start = sortedPoints[i];
         const end = sortedPoints[i + 1];
-        const segmentText = text.substring(start, end);
+        const segmentText = localText.substring(start, end);
         if (segmentText.length === 0) continue;
         const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
         // Use processNoteContent instead of renderNoteContent
@@ -7964,6 +8028,7 @@ async function createNoteElement(noteContent) {
     let noteID = null;
     let noteColor = null;
     let textSpan = null;
+    let titleSpan = null;
     let extraData = {};
     const fullNoteContent = noteContent; // Вече имаме целия обект
     try {
@@ -7978,6 +8043,9 @@ async function createNoteElement(noteContent) {
             noteColor = noteContent.color;
             if (noteContent.text_span) {
                 textSpan = noteContent.text_span;
+            }
+            if (noteContent.title_span) {
+                titleSpan = noteContent.title_span;
             }
             extraData = { ...noteContent };
             delete extraData.notetxt;
@@ -8042,7 +8110,12 @@ async function createNoteElement(noteContent) {
     if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
     const titleWrapper = document.createElement('div');
     const titleEl = document.createElement('h3');
-    titleEl.textContent = noteTitle;
+    // For hidden notes with title_span, apply formatting to the title
+    if (isHiddenNote && titleSpan && titleSpan.trim() !== '') {
+        titleEl.innerHTML = formatText(noteTitle, titleSpan, false);
+    } else {
+        titleEl.textContent = noteTitle;
+    }
     titleEl.className = 'note-title-truncated';
     // Create header info container for date and time
     const headerInfoContainer = document.createElement('div');
@@ -8325,7 +8398,7 @@ async function createNoteElement(noteContent) {
         // Отваряме модала, само ако не е long press и кликът не е върху футъра
         if (!isLongPress && !e.target.closest('.note-footer')) {
             const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
-            showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
+            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
 
             // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
             const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
@@ -9397,16 +9470,62 @@ async function saveEditedNote() {
     // 1. Get content and format
     const newText = textarea.value;
     const formatStr = modalBodyElem.dataset.format || "";
+    const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
+
+    // Helper to parse format string into array of objects
+    const parseFormats = (str) => {
+        if (!str || str.trim() === "") return [];
+        return str.split(/[|\n]/).filter(f => f.trim() !== "").map(f => {
+            try { return JSON.parse(f); } catch (e) { return null; }
+        }).filter(f => f !== null);
+    };
+
+    // Helper to stringify array of objects back to format string
+    const stringifyFormats = (arr) => {
+        return arr.map(f => JSON.stringify(f)).join('\n');
+    };
 
     // Check if it's a new note (deferred creation)
     let noteGdid = modalBodyElem.dataset.gdid;
     let noteId = parseInt(modalBodyElem.dataset.id, 10);
-    const isNewNote = !noteGdid && !document.querySelector(`.note[data-id="${noteId}"]`) && !document.querySelector(`.note[data-g="${noteGdid}"]`);
+    const modalNoteObj = allNotesData.find(n => (n.gdid && n.gdid === noteGdid) || (n.id && n.id === noteId));
+    const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
 
-    // Or strictly check if we passed a flag (but dataset stores strings)
-    // We can confidently assume if there is no matching DOM element, it is new.
+    // --- Process Markdown Formatting ---
+    let processedText = newText;
+    let finalFormat = formatStr;
+    let finalTitleFormat = titleFormatStr;
+
+    const pipeIdx = newText.indexOf('|');
+    if (isHiddenNote && pipeIdx !== -1) {
+        // Handle hidden note: separate title and body
+        const titlePart = newText.substring(0, pipeIdx);
+        const bodyPart = newText.substring(pipeIdx + 1);
+
+        // Process title formatting
+        const titleRes = postEdit(titlePart, parseFormats(titleFormatStr));
+        finalTitleFormat = stringifyFormats(titleRes.formats);
+
+        // Process body formatting
+        const bodyRes = postEdit(bodyPart, parseFormats(formatStr));
+        finalFormat = stringifyFormats(bodyRes.formats);
+
+        processedText = titleRes.text + '|' + bodyRes.text;
+    } else {
+        // Standard note
+        const res = postEdit(newText, parseFormats(formatStr));
+        processedText = res.text;
+        finalFormat = stringifyFormats(res.formats);
+    }
 
     const dateMod = Date.now();
+
+    if (modalNoteObj === undefined) {
+        // ... (This part handles isNewNote, but we already have isNewNote logic below)
+    }
+
+    // Re-check isNewNote because we might have changed processedText
+    const isNewNote = !noteGdid && !document.querySelector(`.note[data-id="${noteId}"]`) && !document.querySelector(`.note[data-g="${noteGdid}"]`);
 
     if (isNewNote) {
         // --- Handle Creation of New Note ---
@@ -9426,27 +9545,24 @@ async function saveEditedNote() {
             "date": dateMod,
             "datemod": dateMod,
             "eventId": 0,
-            "gdid": "", // Will be filled by save logic or left empty for local
+            "gdid": String(noteId), // Use ID as temporary key to prevent empty key errors
             "id": noteId,
-            "notetxt": newText,
+            "notetxt": processedText,
             "numord": window.noteNumord,
-            "pass": false,
+            "pass": isHiddenNote, // Use the state from modalNoteObj if available, or false
             "sellist": 0,
             "status": 0,
-            "text_span": formatStr,
+            "text_span": finalFormat,
+            "title_span": finalTitleFormat,
             "timer": 0,
             "timer_type": -1,
             "timer_val": 1,
-            "title_span": "",
             "type": 0,
             "version": 243
         };
 
         // Add to Global Data
         allNotesData.push(newNote);
-        if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
-            await bulkPutDB(NOTE_STORE_NAME, [newNote], true);
-        }
 
         // Create DOM Element
         const newEl = await createNoteElement(newNote);
@@ -9454,42 +9570,33 @@ async function saveEditedNote() {
             notesContainer.prepend(newEl);
             // Update dataset for subsequent saves
             modalBodyElem.dataset.id = newNote.id;
-            // Note: gdid will be updated after Google Drive sync if applicable
+            modalBodyElem.dataset.gdid = newNote.gdid;
         }
 
         // Update Board Counter
         if (typeof updateBoardCounterUI === 'function') updateBoardCounterUI(boardId);
-
-        // --- Continue with specific saving logic (Drive/Local) ---
-        // We set the context variables so the rest of the function works as if it's an update
-        // We use ID as temporary GDID to ensure DB Key is not empty
-        newNote.gdid = String(newNote.id);
-        modalBodyElem.dataset.gdid = newNote.gdid;
     }
 
     // 2. Update local data model (for existing notes)
-    // ... existing logic will handle this via existing find logic, but we need to ensure it finds the NEW note we just pushed if it was new.
-
-    // Let's refactor the finding logic to be robust
     let noteObj = allNotesData.find(n => (n.gdid && n.gdid === noteGdid) || (n.id && n.id === noteId));
 
     if (!noteObj) {
-        // Should not happen if we just added it, but safety check
         console.error("Note object not found for saving.");
         return;
     }
 
     const originalContent = noteObj.notetxt || "";
-    // Check for changes
-    if (newText === originalContent && formatStr === (noteObj.text_span || "")) {
+    // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
+    if (processedText === originalContent && finalFormat === (noteObj.text_span || "") && finalTitleFormat === (noteObj.title_span || "")) {
         // No changes
-        disableNoteEditing(modalBodyElem); // Helper to exit edit mode
+        disableNoteEditing(modalBodyElem);
         return;
     }
 
     // --- Apply Changes ---
-    noteObj.notetxt = newText;
-    noteObj.text_span = formatStr;
+    noteObj.notetxt = processedText;
+    noteObj.text_span = finalFormat;
+    noteObj.title_span = finalTitleFormat;
     noteObj.datemod = dateMod;
 
     // --- Update UI (DOM Note) ---
@@ -9498,16 +9605,10 @@ async function saveEditedNote() {
 
     const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-id="${noteObj.id}"]`);
     if (noteEl) {
-        const contentEl = noteEl.querySelector('.note-content');
-        if (contentEl) {
-            contentEl.innerHTML = processNoteContent(newText);
-            // Update formatting if we had a way to render it in preview (function formatText)
+        const updatedEl = await createNoteElement(noteObj);
+        if (updatedEl) {
+            noteEl.replaceWith(updatedEl);
         }
-        // Update date in header
-        const dateEl = noteEl.querySelector('.note-header-date');
-        if (dateEl) dateEl.innerText = formatDate(dateMod);
-        const timeEl = noteEl.querySelector('.note-header-time');
-        if (timeEl) timeEl.innerText = formatTime(dateMod);
     }
 
     // --- Save to Source (GDrive / Local / DB) ---
@@ -9585,7 +9686,48 @@ async function saveEditedNote() {
 
     // Exit edit mode
     disableNoteEditing(modalBodyElem);
+
+    // Check if we should close the modal or refresh it
+    const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
+
+    if (closeAfterSave) {
+        const contentModal = document.getElementById('content-modal');
+        if (contentModal) contentModal.classList.remove('visible');
+    } else {
+        // Refresh modal view with full rendering only if it stays open
+        if (typeof showModal === 'function') {
+            // Re-open/Refresh modal with updated content
+            // We need to pass updated note object or fetch fresh data?
+            // ShowModal handles rendering.
+            // We pass current Note Object state.
+            showModal({
+                raw: noteObj.notetxt,
+                format: noteObj.text_span,
+                titleFormat: noteObj.title_span,
+                color: (typeof noteColorMap !== 'undefined' && noteObj.color !== null && noteObj.color >= 0 && noteObj.color <= 9) ? noteColorMap[noteObj.color] : noteObj.color,
+                boardId: noteObj.boardid,
+                id: noteObj.id,
+                gdid: noteObj.gdid
+            }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-id="${noteObj.id}"]`));
+        }
+    }
+
     showToast(_('noteSaved') || "Note saved");
+}
+
+function disableNoteEditing(modalBodyElem) {
+    if (!modalBodyElem) return;
+
+    // 1. Hide Save Button
+    const saveBtn = document.getElementById('note-save-btn');
+    if (saveBtn) saveBtn.style.display = 'none';
+
+    // 2. Show Edit Button (if it exists)
+    const editBtn = document.getElementById('note-edit-btn');
+    if (editBtn) editBtn.style.display = 'flex';
+
+    // Note: The actual content replacement (removing textarea) is handled by showModal (called after)
+    // or by modal closing. We don't need to manually revert innerHTML here unless we cancel.
 }
 /**
  * Превръща MD символи във форматирани области и изчиства текста.
@@ -9602,6 +9744,31 @@ function postEdit(text, formats) {
             if (f.end > pos + L) f.end -= L; else if (f.end > pos) f.end = pos;
         });
     };
+
+    const mdClear = localStorage.getItem('mdClear') || '--';
+    let cIdx = 0;
+    while (true) {
+        let start = currentText.indexOf(mdClear, cIdx);
+        if (start === -1) break;
+        let end = currentText.indexOf(mdClear, start + mdClear.length);
+        if (end === -1) break;
+
+        const clearRangeStart = start;
+        const clearRangeEnd = end + mdClear.length;
+
+        // Remove any formats that overlap with this range
+        currentFormats = currentFormats.filter(f => {
+            return !(f.start < clearRangeEnd && f.end > clearRangeStart);
+        });
+
+        // Remove markers and shift indices
+        currentText = currentText.substring(0, end) + currentText.substring(end + mdClear.length);
+        shift(end, -mdClear.length);
+        currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
+        shift(start, -mdClear.length);
+
+        cIdx = start + (end - start - mdClear.length);
+    }
 
     const rules = [
         { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 }, // Bold
