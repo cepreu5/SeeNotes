@@ -256,5 +256,6 @@ bg: {
         "mdBoldLabel": "Bold",
         "mdItalicLabel": "Italic",
         "mdStrikeLabel": "Strike",
-        "mdUnderlineLabel": "Underline"
+        "mdUnderlineLabel": "Underline",
+        "addNoteTooltip": "Нова бележка"
     }

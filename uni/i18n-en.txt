@@ -252,5 +252,6 @@ en: {
         "mdBoldLabel": "Bold",
         "mdItalicLabel": "Italic",
         "mdStrikeLabel": "Strike",
-        "mdUnderlineLabel": "Underline"
+        "mdUnderlineLabel": "Underline",
+        "addNoteTooltip": "New note"
     }

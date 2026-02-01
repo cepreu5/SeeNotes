@@ -43,6 +43,7 @@ const TRIAL_URL = "http://index.html?token=DtBhz0nmHgisBO7KMIaXaUBp2QFBph4fylvi_
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
+let noteNumord = noteId = 1000000;
 let boardsData = []; // Съхранява данните за бордовете
 let mediaData = []; // Съхранява данните за медия
 let folderIds = {}; // Съхранява ID-тата на папките за медия
@@ -290,6 +291,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     boardsData = boardRes.data;
     mediaData = mediaRes.data;
     allNotesData = noteRes.data;
+    trackMaxIds(allNotesData);
     // Integrity checks for initial Google Drive load
     const gdidMap = new Map();
     const checkIntegrity = (data, filename) => {
@@ -789,6 +791,144 @@ async function deleteGDriveFile(fileId) {
     } catch (error) {
         console.error("GDrive delete failed:", error);
         throw error;
+    }
+}
+
+/**
+ * Търси максималните стойности на id и numord сред бележките и ги запазва в глобални променливи,
+ * ако са по-големи от текущите им стойности (1 000 000).
+ */
+function trackMaxIds(notes) {
+    if (!Array.isArray(notes)) return;
+    notes.forEach(note => {
+        const id = parseInt(note.id, 10);
+        const numord = parseInt(note.numord, 10);
+        if (!isNaN(id) && id > noteId) noteId = id;
+        if (!isNaN(numord) && numord > noteNumord) noteNumord = numord;
+    });
+}
+
+/**
+ * Създава нов файл в Google Drive в указаната папка.
+ */
+async function createGDriveFile(folderId, filename, content) {
+    try {
+        const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        const tokenData = JSON.parse(storedTokenString);
+
+        const metadata = {
+            name: filename,
+            parents: [folderId],
+            mimeType: 'text/plain'
+        };
+
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        form.append('file', new Blob([content], { type: 'text/plain' }));
+
+        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${tokenData.access_token}`
+            },
+            body: form
+        });
+
+        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+        const result = await response.json();
+        return result.id;
+    } catch (e) {
+        console.error("Error creating GDrive file:", e);
+        throw e;
+    }
+}
+
+/**
+ * Създава нова бележка в текущия борд.
+ */
+async function createNewNote() {
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    if (!updateGDrive) {
+        // Проверяваме за етикета и ако го няма, ползваме стандартно съобщение
+        const label = _('updateGDriveLabel') || "Update Google Drive";
+        showToast(label + " " + (_('required') || "required"), 5000);
+        return;
+    }
+
+    let boardId = currentBoardFilter;
+    const systemBoards = ['all', 'calendar', 'reminders', 'photos', 'videos', 'sounds', 'other', 'new-updates'];
+    if (systemBoards.includes(boardId)) {
+        showToast(_('cannotCreateInSystemBoard') || "Моля, изберете конкретен борд.", 3000);
+        return;
+    }
+
+    // Увеличаваме броячите
+    noteId++;
+    noteNumord++;
+    const now = Date.now();
+
+    const newNote = {
+        "alarm_type": -1,
+        "boardid": boardId,
+        "calendarDate": 0,
+        "color": 0,
+        "date": now,
+        "datemod": now,
+        "eventId": 0,
+        "gdid": "",
+        "id": noteId,
+        "notetxt": "\n\n",
+        "numord": noteNumord,
+        "pass": false,
+        "sellist": 0,
+        "status": 0,
+        "text_span": "",
+        "timer": 0,
+        "timer_type": -1,
+        "timer_val": 1,
+        "title_span": "",
+        "type": 0,
+        "version": 243
+    };
+
+    try {
+        // Create local Note only
+        allNotesData.push(newNote);
+        if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+            await bulkPutDB(NOTE_STORE_NAME, [newNote], true);
+        }
+
+        // Add to UI
+        const newEl = await createNoteElement(newNote);
+        if (newEl) {
+            notesContainer.prepend(newEl);
+            // Open for editing
+            if (typeof showModal === 'function') {
+                showModal({
+                    raw: newNote.notetxt,
+                    format: newNote.text_span,
+                    color: newNote.color,
+                    boardId: newNote.boardid,
+                    id: newNote.id,
+                    gdid: newNote.gdid
+                }, newEl);
+            }
+        }
+
+        // Force save button to appear immediately because it's a new unsaved note
+        const saveBtn = document.getElementById('note-save-btn');
+        if (!saveBtn) {
+            // Trigger an input event to show the save button
+            const textarea = document.getElementById('note-edit-textarea');
+            if (textarea) textarea.dispatchEvent(new Event('input'));
+        }
+
+        if (typeof updateBoardCounterUI === 'function') updateBoardCounterUI(boardId);
+
+    } catch (error) {
+        console.error("Create note failed:", error);
+        if (typeof showToast === 'function') showToast("Error creating note: " + error.message, 5000);
     }
 }
 
@@ -2476,6 +2616,10 @@ function initApp() {
         signoutButton.addEventListener('click', handleSignoutClick);
     }
     reloadButton = document.getElementById('reload_button');
+    const addNoteFab = document.getElementById('add-note-fab');
+    if (addNoteFab) {
+        addNoteFab.addEventListener('click', createNewNote);
+    }
     settingsButton = document.getElementById('settings_button');
     notesContainer = document.getElementById('notes-container');
     // --- Global Event Delegation for Note Tooltips ---
@@ -3064,6 +3208,7 @@ function initApp() {
                     notesContainer.prepend(newEl);
                 }
             }
+            trackMaxIds(validNewNotes);
             // 4. Обновяваме броячите и менюто с бордове
             await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             applyFilters(); // Прилагаме филтрите отново
@@ -4534,6 +4679,7 @@ async function fetchAllDataFromLocalFolder() {
     boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
     mediaData = localMedia.flat();
     allNotesData = localNotes;
+    trackMaxIds(allNotesData);
     const endTime = performance.now();
     console.log(`--- Local Folder fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
     console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
@@ -4552,6 +4698,7 @@ async function fetchAllDataLocal() {
     mediaData = await getAllFromDB(MEDIA_STORE_NAME);
     const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
     allNotesData = notesFromDB;
+    trackMaxIds(allNotesData);
     // --- REFRESH GLOBAL FLAGS FROM DB CONFIG ---
     dbSourceGlobal = await getConfig('dbSource');
     dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
@@ -8494,6 +8641,7 @@ async function readArh(dirHandle) {
         const notesContent = await notesFile.text();
         const notesArray = JSON.parse(notesContent);
         allNotesData = notesArray;
+        trackMaxIds(allNotesData);
         validateFileData(allNotesData, 'notes.bcp');
         console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
         // 3. Четене на medias.bcp (ако съществува)
@@ -9313,7 +9461,7 @@ async function saveEditedNote() {
                 showToast(typeof _ === 'function' ? _('noteSavedSuccess') : "Note saved.", 3000);
             }
             const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-            if (updateGDrive && noteGdid) {
+            if (updateGDrive) {
                 if (typeof showToast === 'function') showToast(_('updatingGDrive'), 2000);
                 // Clean temporary/internal fields before saving to GDrive
                 const cleanNote = { ...noteToUpdate };
@@ -9321,12 +9469,58 @@ async function saveEditedNote() {
                 delete cleanNote.driveFileName;
                 delete cleanNote.allDriveFileIds;
                 delete cleanNote.noteCount;
-                console.log(cleanNote);
-                updateGDriveFile(noteGdid, JSON.stringify(cleanNote)).then(() => {
-                    if (typeof showToast === 'function') showToast(_('gdriveUpdateSuccess'), 3000);
-                }).catch(err => {
-                    if (typeof showToast === 'function') showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
-                });
+
+                if (noteGdid) {
+                    // Existing note update
+                    updateGDriveFile(noteGdid, JSON.stringify(cleanNote)).then(() => {
+                        if (typeof showToast === 'function') showToast(_('gdriveUpdateSuccess'), 3000);
+                    }).catch(err => {
+                        if (typeof showToast === 'function') showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
+                    });
+                } else {
+                    // NEW NOTE CREATION FLOW
+                    // 1. Get folder ID
+                    // 2. Create file without gdid (or with empty gdid)
+                    // 3. Get new ID, update note object
+                    // 4. Overwrite file with note containing the new gdid
+                    getFolderID().then(folderId => {
+                        if (!folderId) throw new Error("Main folder ID not found.");
+                        return createGDriveFile(folderId, 'note.txt', JSON.stringify(cleanNote));
+                    }).then(newFileId => {
+                        if (!newFileId) throw new Error("Failed to create file on GDrive");
+
+                        // Phase 2: Update content with the new GDID and save locally on success
+                        cleanNote.gdid = newFileId;
+
+                        return updateGDriveFile(newFileId, JSON.stringify(cleanNote))
+                            .then(() => {
+                                // SUCCESS: Update local state only after successful overwite in GDrive
+                                noteToUpdate.gdid = newFileId;
+
+                                // Update UI
+                                modalBodyElem.dataset.gdid = newFileId;
+                                if (updatedNoteEl) updatedNoteEl.dataset.g = newFileId;
+
+                                // Save to local DB with the new ID
+                                if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+                                    // Use cleanup object to ensure consistency
+                                    const localNoteToSave = { ...noteToUpdate };
+                                    bulkPutDB(NOTE_STORE_NAME, [localNoteToSave], true);
+                                }
+
+                                if (typeof showToast === 'function') showToast(_('noteSavedSuccess') + " (GDrive Synced)", 3000);
+                            })
+                            .catch(updateErr => {
+                                // ROLLBACK: If data update fails, delete the empty/partial file
+                                console.error("Phase 2 failed, rolling back...", updateErr);
+                                deleteNoteFromGDrive(newFileId).catch(delErr => console.error("Rollback failed:", delErr));
+                                throw new Error("Failed to update note content in GDrive. Creation rolled back.");
+                            });
+                    }).catch(err => {
+                        console.error("New note GDrive flow failed:", err);
+                        if (typeof showToast === 'function') showToast("GDrive creation failed: " + err.message, 5000);
+                    });
+                }
             }
             // Remove save button
             const saveBtn = document.getElementById('note-save-btn');
