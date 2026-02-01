@@ -257,5 +257,6 @@ bg: {
         "mdItalicLabel": "Italic",
         "mdStrikeLabel": "Strike",
         "mdUnderlineLabel": "Underline",
-        "addNoteTooltip": "Нова бележка"
+        "addNoteTooltip": "Нова бележка",
+        "cannotCreateInSystemBoard": "Моля, изберете конкретен борд, за да създадете бележка."
     }

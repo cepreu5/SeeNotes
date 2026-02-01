@@ -717,8 +717,8 @@
         position: fixed;
         bottom: 10px;
         right: 80px;
-        width: 60px;
-        height: 60px;
+        width: 50px;
+        height: 50px;
         border-radius: 50%;
         background: linear-gradient(135deg, #48b7a2 0%, #3a9688 100%);
         color: white;
@@ -729,15 +729,99 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: transform 0.2s, box-shadow 0.2s;
-    " onmouseover="this.style.transform='scale(1.1)'; this.style.boxShadow='0 6px 20px rgba(58, 150, 136, 0.4)'"
-        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)'">
+        transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s;
+        opacity: 0.4;
+    " onmouseover="this.style.transform='scale(1.1)'; this.style.boxShadow='0 6px 20px rgba(58, 150, 136, 0.4)'; this.style.opacity='1'"
+        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)'; this.style.opacity='0.4'">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
     </button>
+    <script>
+        (function () {
+            const fab = document.getElementById('add-note-fab');
+            let isDragging = false;
+            let startX, startY, initialLeft, initialTop;
+            const dragThreshold = 5;
+
+            function onDown(e) {
+                isDragging = false;
+                const clientX = e.clientX || e.touches[0].clientX;
+                const clientY = e.clientY || e.touches[0].clientY;
+                startX = clientX;
+                startY = clientY;
+
+                const rect = fab.getBoundingClientRect();
+                // We use right/bottom in CSS, but for dragging we'll switch to fixed left/top
+                // so we can move it freely.
+                // First, lock current position
+                fab.style.right = 'auto';
+                fab.style.bottom = 'auto';
+                fab.style.left = rect.left + 'px';
+                fab.style.top = rect.top + 'px';
+
+                initialLeft = rect.left;
+                initialTop = rect.top;
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('touchmove', onMove, { passive: false });
+                document.addEventListener('mouseup', onUp);
+                document.addEventListener('touchend', onUp);
+            }
+
+            function onMove(e) {
+                const clientX = e.clientX || e.touches[0].clientX;
+                const clientY = e.clientY || e.touches[0].clientY;
+                const dx = clientX - startX;
+                const dy = clientY - startY;
+
+                if (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold) {
+                    isDragging = true;
+                }
+
+                if (isDragging) {
+                    e.preventDefault(); // Prevent scrolling on mobile
+                    fab.style.transform = 'none'; // Disable hover scale while dragging
+                    fab.style.left = (initialLeft + dx) + 'px';
+                    fab.style.top = (initialTop + dy) + 'px';
+                }
+            }
+
+            function onUp(e) {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                document.removeEventListener('touchend', onUp);
+
+                // If it was just a click (not a drag), trigger the click action manually
+                // because we might have interfered with standard click processing
+                if (!isDragging) {
+                    // Reset transform
+                    fab.style.transform = '';
+                    fab.click();
+                } else {
+                    // Snap to edges? Or leave floating? Leaving floating for now.
+                    // Reset transition
+                    fab.style.transition = 'transform 0.2s, box-shadow 0.2s, opacity 0.3s';
+                }
+            }
+
+            fab.addEventListener('mousedown', onDown);
+            fab.addEventListener('touchstart', onDown, { passive: false });
+
+            // Prevent default click if we dragged
+            fab.addEventListener('click', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                } else {
+                    createNewNote();
+                }
+            });
+        })();
+    </script>
     <script src="main.js"></script>
     <script src="fs.js"></script>
 </body>

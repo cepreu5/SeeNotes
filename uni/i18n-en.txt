@@ -253,5 +253,6 @@ en: {
         "mdItalicLabel": "Italic",
         "mdStrikeLabel": "Strike",
         "mdUnderlineLabel": "Underline",
-        "addNoteTooltip": "New note"
+        "addNoteTooltip": "New note",
+        "cannotCreateInSystemBoard": "Please select a specific board to create a note."
     }
