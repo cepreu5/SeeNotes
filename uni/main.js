@@ -7605,22 +7605,19 @@ function renderNoteContent(text) {
  * @returns {string} Форматираният HTML низ.
  */
 function formatText(text, formatString, isForModal = false) {
-    if (!formatString) return processNoteContent(text, isForModal);
-    if (formatString.endsWith('|')) {
-        formatString = formatString.slice(0, -1);
-    }
-    let formats = formatString.split(/[|\n]/).map(f => {
-        try {
-            return JSON.parse(f);
-        } catch (e) {
-            console.log('Invalid JSON in format string:', f);
-            return null;
-        }
-    }).filter(f => f !== null);
-
-    // --- mdClear Logic ---
     let localText = text;
     const mdClear = localStorage.getItem('mdClear') || '--';
+
+    // --- mdClear Logic (Markers removal) ---
+    // If no formatString, we still process the text to remove markers
+    let formats = [];
+    if (formatString) {
+        if (formatString.endsWith('|')) formatString = formatString.slice(0, -1);
+        formats = formatString.split(/[|\n]/).map(f => {
+            try { return JSON.parse(f); } catch (e) { return null; }
+        }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
+    }
+
     if (localText.includes(mdClear)) {
         let searchIdx = 0;
         const shiftHelper = (pos, diff) => {
@@ -7640,17 +7637,12 @@ function formatText(text, formatString, isForModal = false) {
             const clearRangeStart = start;
             const clearRangeEnd = end + mdClear.length;
 
-            // Remove any formats that overlap with this range
-            formats = formats.filter(f => {
-                // Overlap check: f.start < rangeEnd && f.end > rangeStart
-                return !(f.start < clearRangeEnd && f.end > clearRangeStart);
-            });
+            // Remove formats that overlap with this range
+            formats = formats.filter(f => !(f.start < clearRangeEnd && f.end > clearRangeStart));
 
-            // Remove markers and shift indices
-            // Remove end marker first
+            // Remove markers
             localText = localText.substring(0, end) + localText.substring(end + mdClear.length);
             shiftHelper(end, -mdClear.length);
-            // Remove start marker
             localText = localText.substring(0, start) + localText.substring(start + mdClear.length);
             shiftHelper(start, -mdClear.length);
 
@@ -7677,7 +7669,7 @@ function formatText(text, formatString, isForModal = false) {
         const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
         // Use processNoteContent instead of renderNoteContent
         let formattedSegment = processNoteContent(segmentText, isForModal);
-        activeFormats.sort((a, b) => b.type - a.type);
+        activeFormats.sort((a, b) => a.type - b.type); // Sort ascending to apply inline styles (bold/italic/etc) first
         activeFormats.forEach(format => {
             const {
                 type,
@@ -7718,7 +7710,7 @@ function formatText(text, formatString, isForModal = false) {
                     {
                         if (paramfloat && paramfloat > 0) {
                             const fontSizeInPercent = (paramfloat * 100).toFixed(1);
-                            formattedSegment = `<span style="font-size: ${fontSizeInPercent}%; display: inline-block; line-height: normal;">${formattedSegment}</span>`;
+                            formattedSegment = `<span style="font-size: ${fontSizeInPercent}%; display: inline; line-height: normal;">${formattedSegment}</span>`;
                         }
                         break;
                     }
@@ -9176,6 +9168,19 @@ async function updateAdvancedSettingsVisibility() {
 const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
 const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>`;
 
+// Helper to parse format string into array of objects
+const parseFormatsString = (str) => {
+    if (!str || str.trim() === "") return [];
+    return str.split(/[|\n]/).filter(f => f.trim() !== "").map(f => {
+        try { return JSON.parse(f); } catch (e) { return null; }
+    }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
+};
+
+// Helper to stringify array of objects back to format string
+const stringifyFormatsArray = (arr) => {
+    return arr.map(f => JSON.stringify(f)).join('|');
+};
+
 function enableNoteEditing(modalBodyElem) {
     if (!modalBodyElem) return;
 
@@ -9186,93 +9191,236 @@ function enableNoteEditing(modalBodyElem) {
     // If already editing, don't re-init
     if (modalBodyElem.querySelector('textarea')) return;
 
-    // Enable editing via Textarea
-    const textarea = document.createElement('textarea');
-    textarea.id = 'note-edit-textarea';
-    // Use currentModalContent which holds raw text, fallback to innerText
-    textarea.value = currentModalContent || modalBodyElem.innerText;
+    const noteGdid = modalBodyElem.dataset.gdid;
+    const noteId = modalBodyElem.dataset.id;
+    const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+    const isHiddenNote = noteObj && noteObj.pass === true;
 
-    // Style to fill modal body
-    Object.assign(textarea.style, {
-        width: '100%',
-        height: '100%',
-        border: 'none',
-        outline: 'none',
-        background: 'transparent',
-        fontFamily: getComputedStyle(modalBodyElem).fontFamily,
-        fontSize: getComputedStyle(modalBodyElem).fontSize,
-        color: 'inherit',
-        resize: 'none',
-        padding: '0px',
-        boxSizing: 'border-box',
-        overflowY: 'auto',
-        whiteSpace: 'pre-wrap'
-    });
+    // --- Pre-process content with Markdown symbols ---
+    let titleText = "";
+    let bodyText = currentModalContent || "";
+    let currentBodyFormats = parseFormatsString(modalBodyElem.dataset.format);
+    let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
+
+    if (isHiddenNote && bodyText.includes('|')) {
+        const pipeIdx = bodyText.indexOf('|');
+        titleText = bodyText.substring(0, pipeIdx);
+        bodyText = bodyText.substring(pipeIdx + 1);
+
+        const titleResult = preEdit(titleText, currentTitleFormats);
+        const bodyResult = preEdit(bodyText, currentBodyFormats);
+
+        titleText = titleResult.text;
+        bodyText = bodyResult.text;
+
+        // Update datasets with REMAINING formats (those not converted to MD)
+        modalBodyElem.dataset.titleFormat = stringifyFormatsArray(titleResult.formats);
+        modalBodyElem.dataset.format = stringifyFormatsArray(bodyResult.formats);
+    } else {
+        const result = preEdit(bodyText, currentBodyFormats);
+        bodyText = result.text;
+        modalBodyElem.dataset.format = stringifyFormatsArray(result.formats);
+    }
 
     modalBodyElem.innerHTML = '';
-
-    // --- Създаване на обвивка и огледален слой (backdrop) ---
     const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
+    wrapper.style.cssText = 'position:relative; width:100%; height:100%; display: flex; flex-direction: column;';
 
-    const backdrop = document.createElement('div');
-    backdrop.id = 'note-edit-backdrop';
-    const textareaStyle = getComputedStyle(modalBodyElem);
+    const createEditor = (id, value, height = '100%', isTitle = false) => {
+        const container = document.createElement('div');
+        container.style.cssText = `position:relative; width:100%; height:${height}; overflow:hidden; border-bottom: ${isTitle ? '1px solid #ccc' : 'none'};`;
 
-    // Стилизираме backdrop слоя да съвпада точно с textarea
-    Object.assign(backdrop.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        padding: '0px',
-        boxSizing: 'border-box',
-        fontFamily: textareaStyle.fontFamily,
-        fontSize: textareaStyle.fontSize,
-        lineHeight: 'normal',
-        whiteSpace: 'pre-wrap',
-        wordWrap: 'break-word',
-        color: 'transparent', // Текстът е прозрачен, вижда се само подчертаването
-        pointerEvents: 'none',
-        zIndex: '1',
-        overflow: 'hidden'
-    });
+        const textarea = document.createElement('textarea');
+        textarea.id = id;
+        textarea.value = value;
+        Object.assign(textarea.style, {
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            outline: 'none',
+            background: 'transparent',
+            fontFamily: getComputedStyle(modalBodyElem).fontFamily,
+            fontSize: isTitle ? '1.2em' : getComputedStyle(modalBodyElem).fontSize,
+            fontWeight: isTitle ? 'bold' : 'normal',
+            color: 'inherit',
+            resize: 'none',
+            padding: '10px',
+            boxSizing: 'border-box',
+            overflowY: 'auto',
+            whiteSpace: 'pre-wrap',
+            position: 'relative',
+            zIndex: '2',
+            lineHeight: 'normal'
+        });
 
-    textarea.style.position = 'relative';
-    textarea.style.zIndex = '2';
-    textarea.style.background = 'transparent';
-    textarea.style.lineHeight = 'normal';
+        const backdrop = document.createElement('div');
+        backdrop.id = id + '-backdrop';
+        Object.assign(backdrop.style, {
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            padding: '10px',
+            boxSizing: 'border-box',
+            fontFamily: textarea.style.fontFamily,
+            fontSize: textarea.style.fontSize,
+            fontWeight: textarea.style.fontWeight,
+            lineHeight: 'normal',
+            whiteSpace: 'pre-wrap',
+            wordWrap: 'break-word',
+            color: 'transparent',
+            pointerEvents: 'none',
+            zIndex: '1',
+            overflow: 'hidden'
+        });
 
-    wrapper.appendChild(backdrop);
-    wrapper.appendChild(textarea);
+        container.appendChild(backdrop);
+        container.appendChild(textarea);
+        return { container, textarea, backdrop };
+    };
+
+    if (isHiddenNote && bodyText !== "") { // We already split it above
+        const titleEditor = createEditor('note-edit-title-textarea', titleText, '60px', true);
+        const bodyEditor = createEditor('note-edit-textarea', bodyText, 'calc(100% - 60px)');
+
+        wrapper.appendChild(titleEditor.container);
+        wrapper.appendChild(bodyEditor.container);
+    } else {
+        const editor = createEditor('note-edit-textarea', bodyText);
+        wrapper.appendChild(editor.container);
+    }
+
     modalBodyElem.appendChild(wrapper);
 
-    modalBodyElem.contentEditable = 'false';
-    placeCaretAtEnd(textarea);
-
-    // Синхронизация на скрола
-    textarea.addEventListener('scroll', () => {
-        backdrop.scrollTop = textarea.scrollTop;
-    });
-
-    // --- Логика за запазване на форматирането при редакция ---
-    let currentFormats = [];
-    const fmtStr = modalBodyElem.dataset.format;
-    if (fmtStr && fmtStr.trim() !== '') {
-        const parts = fmtStr.split('|');
-        currentFormats = parts.map(p => {
-            try { return JSON.parse(p); } catch (e) { return null; }
-        }).filter(f => f);
+    // Sync scrolling for both if applicable (mostly body)
+    const bodyTextarea = document.getElementById('note-edit-textarea');
+    const bodyBackdrop = document.getElementById('note-edit-textarea-backdrop');
+    if (bodyTextarea && bodyBackdrop) {
+        bodyTextarea.addEventListener('scroll', () => { bodyBackdrop.scrollTop = bodyTextarea.scrollTop; });
+        bodyTextarea.addEventListener('input', () => { handleEditInput(bodyTextarea, bodyBackdrop); });
+        bodyTextarea.addEventListener('keydown', (e) => { formatKeyboardHotkeys(e, bodyTextarea, bodyBackdrop); });
+        handleEditInput(bodyTextarea, bodyBackdrop);
     }
-    const renderBackdrop = () => {
-        const text = textarea.value;
-        if (!currentFormats.length) {
-            backdrop.innerText = text;
-            return;
+    const titleTextarea = document.getElementById('note-edit-title-textarea');
+    const titleBackdrop = document.getElementById('note-edit-title-textarea-backdrop');
+    if (titleTextarea && titleBackdrop) {
+        titleTextarea.addEventListener('scroll', () => { titleBackdrop.scrollTop = titleTextarea.scrollTop; });
+        titleTextarea.addEventListener('input', () => { handleEditInput(titleTextarea, titleBackdrop); });
+        titleTextarea.addEventListener('keydown', (e) => { formatKeyboardHotkeys(e, titleTextarea, titleBackdrop); });
+        handleEditInput(titleTextarea, titleBackdrop);
+        placeCaretAtEnd(titleTextarea);
+    } else if (bodyTextarea) {
+        placeCaretAtEnd(bodyTextarea);
+    }
+
+    initNoteEditUI();
+    if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
+}
+
+/**
+ * Глобален слушател за прихващане на системни преки пътища (Ctrl+N, Ctrl+U и др.)
+ */
+document.addEventListener('keydown', (e) => {
+    const activeTextarea = document.activeElement;
+    if (!activeTextarea || (activeTextarea.id !== 'note-edit-textarea' && activeTextarea.id !== 'note-edit-title-textarea')) return;
+
+    if (e.ctrlKey || e.metaKey) {
+        const key = e.key.toLowerCase();
+        const code = e.code;
+        const isB = (code === 'KeyB' || key === 'b');
+        const isI = (code === 'KeyI' || key === 'i');
+        const isU = (code === 'KeyU' || key === 'u');
+        const isD = (code === 'KeyD' || key === 'd');
+        const isN = (code === 'KeyN' || key === 'n');
+
+        if (isB || isI || isU || isD || isN) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            const backdropId = (activeTextarea.id === 'note-edit-textarea') ? 'note-edit-textarea-backdrop' : 'note-edit-title-textarea-backdrop';
+            const backdrop = document.getElementById(backdropId);
+
+            formatKeyboardHotkeys(activeTextarea, backdrop, isB, isI, isU, isD, isN);
         }
+    }
+}, true); // Capture phase is crucial for overriding browser defaults
+
+function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD, isN) {
+    let symbol = '';
+    if (isB) symbol = localStorage.getItem('mdBold') || '**';
+    else if (isI) symbol = localStorage.getItem('mdItalic') || '*';
+    else if (isU) symbol = localStorage.getItem('mdUnderline') || '_';
+    else if (isD) symbol = localStorage.getItem('mdStrike') || '~~';
+    else if (isN) symbol = localStorage.getItem('mdClear') || '--';
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = textarea.value.substring(start, end);
+    const replacement = symbol + selectedText + symbol;
+
+    textarea.setRangeText(replacement, start, end, 'select');
+
+    if (start === end) {
+        textarea.selectionStart = start + symbol.length;
+        textarea.selectionEnd = textarea.selectionStart;
+    } else {
+        textarea.selectionStart = start + symbol.length;
+        textarea.selectionEnd = start + symbol.length + selectedText.length;
+    }
+
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// --- Logic for preserving formatting during editing ---
+function handleEditInput(textarea, backdrop) {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return;
+
+    const isTitle = textarea.id === 'note-edit-title-textarea';
+    const storageKey = isTitle ? 'titleFormat' : 'format';
+    let formats = [];
+    const fmtStr = modalBodyElem.dataset[storageKey];
+
+    if (fmtStr && fmtStr.trim() !== '') {
+        formats = fmtStr.split('|').map(p => {
+            try { return JSON.parse(p); } catch (e) { return null; }
+        }).filter(f => f && f.start !== undefined);
+    }
+
+    const text = textarea.value;
+    const lastVal = textarea.dataset.lastVal || text;
+    const diff = text.length - lastVal.length;
+    const pos = textarea.selectionStart;
+
+    if (diff > 0) {
+        const P = pos - diff;
+        const L = diff;
+        formats.forEach(f => {
+            if (P <= f.start) { f.start += L; f.end += L; }
+            else if (P < f.end) { f.end += L; }
+        });
+    } else if (diff < 0) {
+        const L = Math.abs(diff);
+        const P = pos;
+        formats.forEach(f => {
+            if (f.start > P + L) f.start -= L; else if (f.start > P) f.start = P;
+            if (f.end > P + L) f.end -= L; else if (f.end > P) f.end = P;
+        });
+    }
+
+    textarea.dataset.lastVal = text;
+    if (diff !== 0) {
+        modalBodyElem.dataset[storageKey] = formats.map(f => JSON.stringify(f)).join('|');
+    }
+
+    // Render Backdrop
+    if (!formats.length) {
+        backdrop.innerText = text;
+    } else {
         const points = new Set([0, text.length]);
-        currentFormats.forEach(f => {
+        formats.forEach(f => {
             points.add(Math.max(0, Math.min(text.length, f.start)));
             points.add(Math.max(0, Math.min(text.length, f.end)));
         });
@@ -9282,11 +9430,8 @@ function enableNoteEditing(modalBodyElem) {
             const start = sortedPoints[i];
             const end = sortedPoints[i + 1];
             let segment = text.substring(start, end);
-            const isFormatted = currentFormats.some(f => start >= f.start && end <= f.end);
-
-            // Ескейпваме HTML символи
+            const isFormatted = formats.some(f => start >= f.start && end <= f.end);
             segment = segment.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
             if (isFormatted) {
                 html += `<span style="border-bottom: 2px dashed black; background-color: rgba(128, 128, 128, 0.3);">${segment}</span>`;
             } else {
@@ -9294,73 +9439,29 @@ function enableNoteEditing(modalBodyElem) {
             }
         }
         backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
-    };
+    }
+}
 
-    let lastVal = textarea.value;
-    textarea.addEventListener('input', () => {
-        const newVal = textarea.value;
-        const diff = newVal.length - lastVal.length;
-        const pos = textarea.selectionStart; // Позиция на курсора след промяната
-        if (diff > 0) {
-            const P = pos - diff;
-            const L = diff;
-            currentFormats.forEach(f => {
-                if (P <= f.start) { f.start += L; f.end += L; }
-                else if (P < f.end) { f.end += L; }
-            });
-        } else if (diff < 0) {
-            const L = Math.abs(diff);
-            const P = pos;
-            currentFormats.forEach(f => {
-                if (f.start > P + L) f.start -= L; else if (f.start > P) f.start = P;
-                if (f.end > P + L) f.end -= L; else if (f.end > P) f.end = P;
-            });
-        }
-        if (diff !== 0) {
-            modalBodyElem.dataset.format = currentFormats.map(f => JSON.stringify(f)).join('|');
-            renderBackdrop();
-        }
-        lastVal = newVal;
-    });
-
-    renderBackdrop(); // Първоначално изчертаване
-
-    if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
-
+function initNoteEditUI() {
     // Add save button if not exists
     if (!document.getElementById('note-save-btn')) {
         const saveBtn = document.createElement('div');
         saveBtn.id = 'note-save-btn';
         saveBtn.innerHTML = diskIconSvg;
         saveBtn.title = "Save changes";
-
-        // Positioning on the right side, 50px from edge
         Object.assign(saveBtn.style, {
-            position: 'absolute',
-            bottom: '15px',
-            right: '50px',
-            width: '40px',
-            height: '40px',
-            backgroundColor: 'darkorange',
-            borderRadius: '50%',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-            cursor: 'pointer',
-            zIndex: '10000', // Very high z-index
-            border: '1px solid #ccc'
+            position: 'absolute', bottom: '15px', right: '50px', width: '40px', height: '40px',
+            backgroundColor: 'darkorange', borderRadius: '50%', display: 'flex', justifyContent: 'center',
+            alignItems: 'center', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer',
+            zIndex: '10000', border: '1px solid #ccc'
         });
-
         saveBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (typeof saveEditedNote === 'function') saveEditedNote();
         });
-
         const modalContentBox = document.querySelector('.modal-content-box');
         if (modalContentBox) {
             modalContentBox.appendChild(saveBtn);
-            // Hide edit button when in edit mode
             const editBtn = document.getElementById('note-edit-btn');
             if (editBtn) editBtn.style.display = 'none';
         }
@@ -9465,30 +9566,19 @@ document.addEventListener('contextmenu', (e) => {
 async function saveEditedNote() {
     const modalBodyElem = document.getElementById('modal-body');
     const textarea = document.getElementById('note-edit-textarea');
+    const titleTextarea = document.getElementById('note-edit-title-textarea');
     if (!modalBodyElem || !textarea) return;
 
     // 1. Get content and format
     const newText = textarea.value;
+    const titleText = titleTextarea ? titleTextarea.value : "";
     const formatStr = modalBodyElem.dataset.format || "";
     const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
-
-    // Helper to parse format string into array of objects
-    const parseFormats = (str) => {
-        if (!str || str.trim() === "") return [];
-        return str.split(/[|\n]/).filter(f => f.trim() !== "").map(f => {
-            try { return JSON.parse(f); } catch (e) { return null; }
-        }).filter(f => f !== null);
-    };
-
-    // Helper to stringify array of objects back to format string
-    const stringifyFormats = (arr) => {
-        return arr.map(f => JSON.stringify(f)).join('\n');
-    };
 
     // Check if it's a new note (deferred creation)
     let noteGdid = modalBodyElem.dataset.gdid;
     let noteId = parseInt(modalBodyElem.dataset.id, 10);
-    const modalNoteObj = allNotesData.find(n => (n.gdid && n.gdid === noteGdid) || (n.id && n.id === noteId));
+    const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
 
     // --- Process Markdown Formatting ---
@@ -9496,26 +9586,20 @@ async function saveEditedNote() {
     let finalFormat = formatStr;
     let finalTitleFormat = titleFormatStr;
 
-    const pipeIdx = newText.indexOf('|');
-    if (isHiddenNote && pipeIdx !== -1) {
-        // Handle hidden note: separate title and body
-        const titlePart = newText.substring(0, pipeIdx);
-        const bodyPart = newText.substring(pipeIdx + 1);
+    if (isHiddenNote && titleTextarea) {
+        // Handle hidden note: separate processing
+        const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr));
+        finalTitleFormat = stringifyFormatsArray(titleRes.formats);
 
-        // Process title formatting
-        const titleRes = postEdit(titlePart, parseFormats(titleFormatStr));
-        finalTitleFormat = stringifyFormats(titleRes.formats);
-
-        // Process body formatting
-        const bodyRes = postEdit(bodyPart, parseFormats(formatStr));
-        finalFormat = stringifyFormats(bodyRes.formats);
+        const bodyRes = postEdit(newText, parseFormatsString(formatStr));
+        finalFormat = stringifyFormatsArray(bodyRes.formats);
 
         processedText = titleRes.text + '|' + bodyRes.text;
     } else {
-        // Standard note
-        const res = postEdit(newText, parseFormats(formatStr));
+        // Standard note (or hidden note that was somehow single-textarea)
+        const res = postEdit(newText, parseFormatsString(formatStr));
         processedText = res.text;
-        finalFormat = stringifyFormats(res.formats);
+        finalFormat = stringifyFormatsArray(res.formats);
     }
 
     const dateMod = Date.now();
@@ -9578,8 +9662,7 @@ async function saveEditedNote() {
     }
 
     // 2. Update local data model (for existing notes)
-    let noteObj = allNotesData.find(n => (n.gdid && n.gdid === noteGdid) || (n.id && n.id === noteId));
-
+    let noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     if (!noteObj) {
         console.error("Note object not found for saving.");
         return;
@@ -9587,124 +9670,69 @@ async function saveEditedNote() {
 
     const originalContent = noteObj.notetxt || "";
     // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
-    if (processedText === originalContent && finalFormat === (noteObj.text_span || "") && finalTitleFormat === (noteObj.title_span || "")) {
-        // No changes
-        disableNoteEditing(modalBodyElem);
-        return;
-    }
+    const hasChanges = (processedText !== originalContent || finalFormat !== (noteObj.text_span || "") || finalTitleFormat !== (noteObj.title_span || ""));
 
-    // --- Apply Changes ---
-    noteObj.notetxt = processedText;
-    noteObj.text_span = finalFormat;
-    noteObj.title_span = finalTitleFormat;
-    noteObj.datemod = dateMod;
+    if (hasChanges) {
+        // --- Apply Changes ---
+        noteObj.notetxt = processedText;
+        noteObj.text_span = finalFormat;
+        noteObj.title_span = finalTitleFormat;
+        noteObj.datemod = dateMod;
 
-    // --- Update UI (DOM Note) ---
-    // Note: The logic below in original code updates the DOM. 
-    // We need to ensure we don't duplicate it or break it.
-
-    const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-id="${noteObj.id}"]`);
-    if (noteEl) {
-        const updatedEl = await createNoteElement(noteObj);
-        if (updatedEl) {
-            noteEl.replaceWith(updatedEl);
+        // --- Update UI (DOM Note) ---
+        const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-id="${noteObj.id}"]`);
+        if (noteEl) {
+            const updatedEl = await createNoteElement(noteObj);
+            if (updatedEl) noteEl.replaceWith(updatedEl);
         }
-    }
 
-    // --- Save to Source (GDrive / Local / DB) ---
-    // ... (Use existing logic or call existing functions if they were separated)
-
-    // reuse logic from original function if possible, but I am replacing the whole function...
-    // I need to paste the REST of the original function here.
-
-    // --- ORIGINAL LOGIC INTEGRATION ---
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-
-    // 1. Google Drive Update
-    if (useGoogleDb && updateGDrive) {
-        // If it's a new note without gdid (or with a local temp ID), we MUST create it
-        // We check if gdid is empty OR it matches the local ID (which means it's a temporary local key)
-        const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-
-        if (isTempGdid) {
-            const folderId = await getFolderID();
-            if (folderId) {
-                // Format content for file
-                const fileContent = JSON.stringify([noteObj]);
-                const fileName = `note_${dateMod}.txt`; // Generate filename
-                try {
-                    const tempGdid = noteObj.gdid; // Capture potentially temp ID
-                    const newGdid = await createGDriveFile(folderId, fileName, fileContent);
-                    noteObj.gdid = newGdid;
-                    modalBodyElem.dataset.gdid = newGdid;
-                    if (noteEl) noteEl.dataset.g = newGdid;
-
-                    // Save gdid to DB
-                    if (useIndexedDb) {
-                        await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
-                        // Clean up the temporary record if it existed
-                        if (tempGdid && tempGdid !== newGdid) {
-                            if (typeof deleteFromDB === 'function') {
-                                await deleteFromDB(NOTE_STORE_NAME, tempGdid);
-                            }
+        // --- Save to Source (GDrive / Local / DB) ---
+        const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+        if (useGoogleDb && updateGDrive) {
+            const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
+            if (isTempGdid) {
+                const folderId = await getFolderID();
+                if (folderId) {
+                    const fileContent = JSON.stringify([noteObj]);
+                    const fileName = `note_${dateMod}.txt`;
+                    try {
+                        const tempGdid = noteObj.gdid;
+                        const newGdid = await createGDriveFile(folderId, fileName, fileContent);
+                        noteObj.gdid = newGdid;
+                        modalBodyElem.dataset.gdid = newGdid;
+                        if (useIndexedDb) {
+                            await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+                            if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                         }
+                    } catch (e) {
+                        console.error("Failed to create GDrive file", e);
+                        showToast(_('errorSaveGDrive'));
                     }
-                } catch (e) {
-                    console.error("Failed to create GDrive file", e);
-                    showToast(_('errorSaveGDrive'));
                 }
-            }
-        } else {
-            // Update existing file
-            try {
-                const fileId = noteObj.gdid;
-                // We need to fetch the file to see if it has other notes (unlikely for single note files but consistent with parser)
-                // For simplicity, we overwrite with current note object
-                const fileContent = JSON.stringify([noteObj]);
-                await updateGDriveFile(fileId, fileContent);
-            } catch (e) {
-                console.error("Failed to update GDrive file", e);
+            } else {
+                try {
+                    await updateGDriveFile(noteObj.gdid, JSON.stringify([noteObj]));
+                } catch (e) { console.error("Failed to update GDrive file", e); }
             }
         }
+        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+        showToast(_('noteSaved') || "Note saved");
     }
 
-    // 2. Local Folder Update
-    if (useLocalFolder) {
-        // Similar logic for Local Folder (using file handles)
-        // Assuming we have a helper or need to implement it. 
-        // Original code didn't have explicit save-to-local logic in saveEditedNote? 
-        // Let's check the original code I am replacing... 
-        // WAIT. I need to be careful not to delete logic I didn't read fully.
-        // Step 125 showed saveEditedNote. I haven't read its body fully!
-        // I should NOT Replace the whole function without reading it.
-    }
-
-    // --- IndexedDB Save ---
-    if (useIndexedDb) {
-        await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
-    }
-
-    // Exit edit mode
+    // Exit edit mode and refresh view
     disableNoteEditing(modalBodyElem);
-
-    // Check if we should close the modal or refresh it
     const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
-
     if (closeAfterSave) {
         const contentModal = document.getElementById('content-modal');
         if (contentModal) contentModal.classList.remove('visible');
     } else {
-        // Refresh modal view with full rendering only if it stays open
         if (typeof showModal === 'function') {
-            // Re-open/Refresh modal with updated content
-            // We need to pass updated note object or fetch fresh data?
-            // ShowModal handles rendering.
-            // We pass current Note Object state.
+            const noteColorStr = (typeof noteColorMap !== 'undefined' && noteObj.color !== null && noteObj.color >= 0 && noteObj.color <= 9) ? noteColorMap[noteObj.color] : noteObj.color;
             showModal({
                 raw: noteObj.notetxt,
                 format: noteObj.text_span,
                 titleFormat: noteObj.title_span,
-                color: (typeof noteColorMap !== 'undefined' && noteObj.color !== null && noteObj.color >= 0 && noteObj.color <= 9) ? noteColorMap[noteObj.color] : noteObj.color,
+                color: noteColorStr,
                 boardId: noteObj.boardid,
                 id: noteObj.id,
                 gdid: noteObj.gdid
@@ -9736,7 +9764,6 @@ function postEdit(text, formats) {
     let currentText = text;
     let currentFormats = [...formats];
 
-    // Помощна функция за изместване на индекси (същата логика като при писане)
     const shift = (pos, diff) => {
         const L = Math.abs(diff);
         currentFormats.forEach(f => {
@@ -9745,36 +9772,40 @@ function postEdit(text, formats) {
         });
     };
 
-    const mdClear = localStorage.getItem('mdClear') || '--';
-    let cIdx = 0;
-    while (true) {
-        let start = currentText.indexOf(mdClear, cIdx);
-        if (start === -1) break;
-        let end = currentText.indexOf(mdClear, start + mdClear.length);
-        if (end === -1) break;
+    // 1. Първоначално премахваме всички формати, които попадат в обхвата на mdClear (ръчно въведени --)
+    const handleClear = () => {
+        const mdClear = localStorage.getItem('mdClear') || '--';
+        let cIdx = 0;
+        while (true) {
+            let start = currentText.indexOf(mdClear, cIdx);
+            if (start === -1) break;
+            let end = currentText.indexOf(mdClear, start + mdClear.length);
+            if (end === -1) break;
 
-        const clearRangeStart = start;
-        const clearRangeEnd = end + mdClear.length;
+            const clearRangeStart = start;
+            const clearRangeEnd = end + mdClear.length;
 
-        // Remove any formats that overlap with this range
-        currentFormats = currentFormats.filter(f => {
-            return !(f.start < clearRangeEnd && f.end > clearRangeStart);
-        });
+            // Изтриваме форматите
+            currentFormats = currentFormats.filter(f => !(f.start < clearRangeEnd && f.end > clearRangeStart));
 
-        // Remove markers and shift indices
-        currentText = currentText.substring(0, end) + currentText.substring(end + mdClear.length);
-        shift(end, -mdClear.length);
-        currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
-        shift(start, -mdClear.length);
+            // Премахваме самите символи "--"
+            currentText = currentText.substring(0, end) + currentText.substring(end + mdClear.length);
+            shift(end, -mdClear.length);
+            currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
+            shift(start, -mdClear.length);
 
-        cIdx = start + (end - start - mdClear.length);
-    }
+            cIdx = start; // Продължаваме търсенето от позицията на първия премахнат маркер
+        }
+    };
 
+    handleClear(); // Пръв пас за изчистване на JSON формати (нпр. цвят)
+
+    // 2. Стандартни Markdown правила
     const rules = [
-        { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 }, // Bold
-        { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 }, // Strike
-        { s: localStorage.getItem('mdItalic') || '*', e: localStorage.getItem('mdItalic') || '*', t: 2 },   // Italic
-        { s: localStorage.getItem('mdUnderline') || '_', e: localStorage.getItem('mdUnderline') || '_', t: 3 }    // Underline
+        { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 },
+        { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 },
+        { s: localStorage.getItem('mdItalic') || '*', e: localStorage.getItem('mdItalic') || '*', t: 2 },
+        { s: localStorage.getItem('mdUnderline') || '_', e: localStorage.getItem('mdUnderline') || '_', t: 3 }
     ];
 
     rules.forEach(rule => {
@@ -9786,27 +9817,146 @@ function postEdit(text, formats) {
             if (end === -1) break;
 
             const contentLen = end - start - rule.s.length;
-
-            // 1. Премахваме крайния маркер и изместваме
             currentText = currentText.substring(0, end) + currentText.substring(end + rule.e.length);
             shift(end, -rule.e.length);
-
-            // 2. Премахваме началния маркер и изместваме
             currentText = currentText.substring(0, start) + currentText.substring(start + rule.s.length);
             shift(start, -rule.s.length);
 
-            // 3. Добавяме новия формат за съдържанието
-            currentFormats.push({
-                start: start,
-                end: start + contentLen,
-                type: rule.t,
-                paramint: 0,
-                paramfloat: 0
-            });
-
+            currentFormats.push({ start, end: start + contentLen, type: rule.t, paramint: 0, paramfloat: 0 });
             searchIdx = start + contentLen;
         }
     });
+
+    // 3. Чекбоксове
+    const checkRules = [{ md: '[ ]', sym: '☐' }, { md: '[x]', sym: '☑' }, { md: '[X]', sym: '☑' }];
+    checkRules.forEach(rule => {
+        let cIdx = 0;
+        while (true) {
+            let start = currentText.indexOf(rule.md, cIdx);
+            if (start === -1) break;
+            currentText = currentText.substring(0, start) + rule.sym + currentText.substring(start + rule.md.length);
+            shift(start, -(rule.md.length - rule.sym.length));
+            cIdx = start + rule.sym.length;
+        }
+    });
+
+    // 4. Заглавия
+    const headerRules = [
+        { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
+        { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
+    ];
+    headerRules.forEach(rule => {
+        let hIdx = 0;
+        while (true) {
+            let found = -1;
+            if (currentText.startsWith(rule.md, hIdx)) found = hIdx;
+            else {
+                let next = currentText.indexOf('\n' + rule.md, hIdx);
+                if (next !== -1) found = next + 1;
+            }
+            if (found === -1) break;
+            let lineEnd = currentText.indexOf('\n', found);
+            if (lineEnd === -1) lineEnd = currentText.length;
+            currentText = currentText.substring(0, found) + currentText.substring(found + rule.md.length);
+            shift(found, -rule.md.length);
+            lineEnd -= rule.md.length;
+            currentFormats.push({ start: found, end: lineEnd, type: 6, paramint: 0, paramfloat: rule.scale });
+            hIdx = lineEnd;
+        }
+    });
+
+    // 5. Втори пас на изчистване - за да премахнем току-що създадените MD формати (ако са вътре в тирета)
+    // Но това не е нужно, ако handleClear се изпълни СЛЕД Markdown правилата.
+    // Затова ще преместя handleClear в самото начало И в самия край.
+    handleClear();
+
     return { text: currentText, formats: currentFormats };
+}
+
+/**
+ * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
+ */
+function preEdit(text, formats) {
+    if (!formats || formats.length === 0) return { text, formats: [] };
+
+    let currentText = text;
+    let currentFormats = formats.map(f => ({ ...f }));
+
+    // --- 1. Header Support (font size -> # levels) ---
+    // Headers must be added first as the outermost layer
+    const headerMap = [
+        { md: '###### ', scale: 0.7 },
+        { md: '##### ', scale: 0.8 },
+        { md: '#### ', scale: 0.9 },
+        { md: '### ', scale: 1.1 },
+        { md: '## ', scale: 1.2 },
+        { md: '# ', scale: 1.3 }
+    ];
+
+    headerMap.forEach(rule => {
+        const hFormats = currentFormats.filter(f => f.type === 6 && f.paramfloat === rule.scale);
+        let hIns = [];
+        hFormats.forEach(f => hIns.push({ pos: f.start, str: rule.md }));
+        hIns.sort((a, b) => b.pos - a.pos);
+        hIns.forEach(ins => {
+            currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
+            currentFormats.forEach(f => {
+                if (f.start >= ins.pos) f.start += ins.str.length;
+                if (f.end >= ins.pos) f.end += ins.str.length;
+            });
+        });
+    });
+
+    // --- 2. Checkbox Support (Unicode to MD) ---
+    const checkRules = [
+        { md: '[ ]', sym: '☐' },
+        { md: '[x]', sym: '☑' }
+    ];
+
+    checkRules.forEach(rule => {
+        let cIdx = 0;
+        while (true) {
+            let start = currentText.indexOf(rule.sym, cIdx);
+            if (start === -1) break;
+            currentText = currentText.substring(0, start) + rule.md + currentText.substring(start + rule.sym.length);
+            const shiftLen = rule.md.length - rule.sym.length;
+            currentFormats.forEach(f => {
+                if (f.start >= start) f.start += shiftLen;
+                if (f.end >= start) f.end += shiftLen;
+            });
+            cIdx = start + rule.md.length;
+        }
+    });
+
+    // --- 3. Inline Formatting Rules (Bold, Italic, Underline, Strike) ---
+    const rules = [
+        { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 },
+        { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 },
+        { s: localStorage.getItem('mdItalic') || '*', e: localStorage.getItem('mdItalic') || '*', t: 2 },
+        { s: localStorage.getItem('mdUnderline') || '_', e: localStorage.getItem('mdUnderline') || '_', t: 3 }
+    ];
+
+    const mdTypes = [1, 2, 3, 7];
+    let insertions = [];
+    currentFormats.forEach(f => {
+        const rule = rules.find(r => r.t === f.type);
+        if (rule) {
+            insertions.push({ pos: f.end, str: rule.e });
+            insertions.push({ pos: f.start, str: rule.s });
+        }
+    });
+
+    insertions.sort((a, b) => b.pos - a.pos);
+    insertions.forEach(ins => {
+        currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
+        currentFormats.forEach(f => {
+            if (f.start >= ins.pos) f.start += ins.str.length;
+            if (f.end >= ins.pos) f.end += ins.str.length;
+        });
+    });
+
+    const headerScales = [0.7, 0.8, 0.9, 1.1, 1.2, 1.3];
+    const remainingFormats = currentFormats.filter(f => !mdTypes.includes(f.type) && !(f.type === 6 && headerScales.includes(f.paramfloat)));
+    return { text: currentText, formats: remainingFormats };
 }
 
