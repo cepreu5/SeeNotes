@@ -58,6 +58,7 @@ let tokenRemainingDays = null; // Остават дни валидност на 
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
+let noteToAssignDate = null; // Запомня бележката, на която ще се зададе дата
 let isDbOwner = true; // Флаг, който показва дали потребителят е собственик на базата
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 let tokenClient = null; // Client for silent auth refresh
@@ -104,9 +105,8 @@ const NOTES_DB_VERSION = 3;
 // --- SVG икони ---
 // const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M3 3l18 18"></path></svg>`;
-const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><circle cx="12" cy="16" r="1.5" /></svg>`;
+const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
 const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
-const weeklyViewIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>`;
 const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
 const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
 const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
@@ -147,6 +147,8 @@ const noteColorMap = [
     '#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF',
     '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'
 ];
+
+const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 
 const noteBgCache = new Map();
 
@@ -1151,7 +1153,7 @@ function renderCalendarView() {
             <div class="calendar-nav-controls">
                 <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
                 <button id="today-month-btn">${calendarIconSvg}</button>
-                <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${weeklyViewIconSvg}</button>
+                <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${calendarIconSvg}</button>
                 <button id="close-month-calendar-btn" class="close-calendar-btn">
                     <span class="close-symbol">&times;</span>
                     <img src="Refresh.png" class="close-loading-icon" style="display: none;">
@@ -1218,12 +1220,10 @@ function renderCalendarView() {
             dateNum.classList.add('today-date');
             cell.classList.add('today-cell');
         }
-        // Клик на клетката отваря седмичния изглед за съответната дата
+        cell.dataset.day = day;
+        cell.dataset.month = month;
+        cell.dataset.year = year;
         cell.style.cursor = 'pointer';
-        cell.addEventListener('click', () => {
-            calendarContainer.style.display = 'none';
-            renderWeeklyCalendarView(new Date(year, month, day));
-        });
         cell.appendChild(dateNum);
         const notesForDayContainer = document.createElement('div');
         notesForDayContainer.className = 'calendar-notes-container';
@@ -1272,6 +1272,22 @@ function renderCalendarView() {
         cell.appendChild(notesForDayContainer);
         calendarGrid.appendChild(cell);
     }
+    calendarGrid.addEventListener('click', (e) => {
+        const cell = e.target.closest('.calendar-cell');
+        if (!cell || e.target.closest('.calendar-mini-note')) return;
+        const d = parseInt(cell.dataset.day);
+        const m = parseInt(cell.dataset.month);
+        const y = parseInt(cell.dataset.year);
+        const selectedDate = new Date(y, m, d);
+        if (noteToAssignDate) {
+            updateNoteCalendarDate(noteToAssignDate, selectedDate);
+            noteToAssignDate = null;
+            document.getElementById('close-month-calendar-btn').click();
+        } else {
+            calendarContainer.style.display = 'none';
+            renderWeeklyCalendarView(selectedDate);
+        }
+    });
     calendarContainer.appendChild(calendarGrid);
     // Make mini-notes square by setting their height equal to their calculated width
     // Use setTimeout to ensure the browser has rendered the elements before we measure them.
@@ -1483,7 +1499,7 @@ function renderWeeklyCalendarView(dateForWeek) {
         <button id="prev-week-btn">&laquo;</button>
         <button id="today-week-btn">${calendarIconSvg}</button>
         <button id="next-week-btn">&raquo;</button>
-        <button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${weeklyViewIconSvg}</button>
+        <button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${calendarIconSvg}</button>
         <button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span>
         <img src="Refresh.png" class="close-loading-icon" style="display: none;"></button>
         </div><h2 style="cursor: default;">${titleText}</h2>`;
@@ -5579,6 +5595,11 @@ function showModal(options, noteElement = null) {
     modalBody.dataset.titleFormat = titleFormatString || '';
     modalBody.dataset.boardId = (options && options.boardId) ? options.boardId : '';
     modalBody.dataset.color = noteColor || '';
+    if (options.maskedLinks) {
+        modalBody.dataset.maskedLinks = JSON.stringify(options.maskedLinks);
+    }
+    const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+    modalBody.dataset.calendarDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? noteObjForCalendar.calendarDate : '0';
     // Set modal background color
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
     if (isPromo) {
@@ -5745,6 +5766,8 @@ function showModal(options, noteElement = null) {
     if (oldMoveBtn) oldMoveBtn.remove();
     const oldMoveMenu = document.getElementById('note-move-menu');
     if (oldMoveMenu) oldMoveMenu.remove();
+    const oldPreviewBtn = document.getElementById('note-preview-btn');
+    if (oldPreviewBtn) oldPreviewBtn.remove();
 
     const canEdit = (useIndexedDb || (updateGDrive && options.gdid)) && !isPromo;
 
@@ -5753,7 +5776,7 @@ function showModal(options, noteElement = null) {
         const moveBtn = document.createElement('div');
         moveBtn.id = 'note-move-btn';
         // Folder with arrow icon
-        moveBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 12l-4-4h3V10h2v4h3l-4 4z"/></svg>`;
+        moveBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z" fill="yellow"/><path d="M10 12h4m2 0l-3-3m3 3l-3 3" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
         moveBtn.title = _('moveNote') || 'Move to board';
         Object.assign(moveBtn.style, {
             position: 'absolute',
@@ -5784,6 +5807,68 @@ function showModal(options, noteElement = null) {
             });
         });
         modalContentBox.appendChild(moveBtn);
+        // --- Calendar (Assign/Remove Date) Button ---
+        const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+        const hasCalendarDate = noteObjForCalendar && noteObjForCalendar.calendarDate && noteObjForCalendar.calendarDate !== 0;
+
+        const calendarBtn = document.createElement('div');
+        calendarBtn.id = 'note-calendar-btn';
+        calendarBtn.innerHTML = hasCalendarDate ? noCalendarIconSvg : calendarIconSvg;
+        calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
+        Object.assign(calendarBtn.style, {
+            position: 'absolute',
+            bottom: '15px',
+            right: '150px',
+            width: '40px',
+            height: '40px',
+            backgroundColor: 'darkorange',
+            borderRadius: '50%',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+            zIndex: '10000',
+            border: '1px solid #ccc'
+        });
+        calendarBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const currentCalendarDateVal = modalBody.dataset.calendarDate;
+            const isAssigned = currentCalendarDateVal && currentCalendarDateVal !== '0';
+
+            if (isAssigned) {
+                const calendarContainer = document.getElementById('calendar-container');
+                const weeklyContainer = document.getElementById('weekly-calendar-container');
+                const isCalendarView = (calendarContainer && calendarContainer.style.display === 'block') || (weeklyContainer && weeklyContainer.style.display === 'flex');
+
+                if (isCalendarView) {
+                    updateNoteCalendarDate({ id: noteId, gdid: noteGdid }, { getTime: () => 0 });
+                    showToast("Бележката е премахната от календара");
+                    contentModal.classList.remove('visible');
+                    // Опресняваме активния календарен изглед
+                    if (calendarContainer && calendarContainer.style.display === 'block') {
+                        renderCalendarView();
+                    } else if (weeklyContainer && weeklyContainer.style.display === 'flex') {
+                        renderWeeklyCalendarView(currentWeeklyViewDate);
+                    }
+                } else {
+                    // Board view: Stage the removal
+                    modalBody.dataset.calendarDate = "0";
+                    calendarBtn.innerHTML = calendarIconSvg;
+                    calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
+                    showToast("Бележката ще бъде изключена от календара, когато се запише");
+                }
+            } else {
+                noteToAssignDate = {
+                    id: modalBody.dataset.id,
+                    gdid: modalBody.dataset.gdid
+                };
+                contentModal.classList.remove('visible');
+                renderCalendarView();
+            }
+        });
+        modalContentBox.appendChild(calendarBtn);
+
         // --- Edit Button ---
         const editBtn = document.createElement('div');
         editBtn.id = 'note-edit-btn';
@@ -9165,8 +9250,9 @@ async function updateAdvancedSettingsVisibility() {
 }
 
 // --- Edit Note on Ctrl+Click (DB Mode) ---
-const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
-const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>`;
+const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>`;
+const noCalendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><line x1="3" y1="3" x2="21" y2="21" /></svg>`;
 
 // Helper to parse format string into array of objects
 const parseFormatsString = (str) => {
@@ -9213,12 +9299,16 @@ function enableNoteEditing(modalBodyElem) {
         titleText = titleResult.text;
         bodyText = bodyResult.text;
 
-        // Update datasets with REMAINING formats (those not converted to MD)
+        // Store BOTH masked links lists
+        const allMasked = [...(titleResult.maskedLinks || []), ...(bodyResult.maskedLinks || [])];
+        modalBodyElem.dataset.maskedLinks = JSON.stringify(allMasked);
+
         modalBodyElem.dataset.titleFormat = stringifyFormatsArray(titleResult.formats);
         modalBodyElem.dataset.format = stringifyFormatsArray(bodyResult.formats);
     } else {
         const result = preEdit(bodyText, currentBodyFormats);
         bodyText = result.text;
+        modalBodyElem.dataset.maskedLinks = JSON.stringify(result.maskedLinks || []);
         modalBodyElem.dataset.format = stringifyFormatsArray(result.formats);
     }
 
@@ -9459,13 +9549,40 @@ function initNoteEditUI() {
             e.stopPropagation();
             if (typeof saveEditedNote === 'function') saveEditedNote();
         });
+
+        // Add preview button
+        const previewBtn = document.createElement('div');
+        previewBtn.id = 'note-preview-btn';
+        previewBtn.innerHTML = eyeIconSvg;
+        previewBtn.title = "Preview changes";
+        Object.assign(previewBtn.style, {
+            position: 'absolute', bottom: '15px', right: '100px', width: '40px', height: '40px',
+            backgroundColor: '#4a90e2', borderRadius: '50%', display: 'flex', justifyContent: 'center',
+            alignItems: 'center', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer',
+            zIndex: '10000', border: '1px solid #ccc'
+        });
+        previewBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof previewEditedNote === 'function') previewEditedNote();
+        });
+
         const modalContentBox = document.querySelector('.modal-content-box');
         if (modalContentBox) {
             modalContentBox.appendChild(saveBtn);
-            const editBtn = document.getElementById('note-edit-btn');
-            if (editBtn) editBtn.style.display = 'none';
+            modalContentBox.appendChild(previewBtn);
         }
     }
+
+    // Ensure state-specific visibility
+    const saveBtn = document.getElementById('note-save-btn');
+    const previewBtn = document.getElementById('note-preview-btn');
+    const editBtn = document.getElementById('note-edit-btn');
+    const moveBtn = document.getElementById('note-move-btn');
+
+    if (saveBtn) { saveBtn.style.display = 'flex'; saveBtn.style.right = '50px'; }
+    if (previewBtn) { previewBtn.style.display = 'flex'; previewBtn.style.right = '100px'; }
+    if (editBtn) editBtn.style.display = 'none';
+    if (moveBtn) moveBtn.style.display = 'none';
 }
 
 function placeCaretAtEnd(el) {
@@ -9567,13 +9684,16 @@ async function saveEditedNote() {
     const modalBodyElem = document.getElementById('modal-body');
     const textarea = document.getElementById('note-edit-textarea');
     const titleTextarea = document.getElementById('note-edit-title-textarea');
-    if (!modalBodyElem || !textarea) return;
+    if (!modalBodyElem) return;
+    if (!textarea && !modalBodyElem.dataset.draftText) return; // Need at least one source
 
     // 1. Get content and format
-    const newText = textarea.value;
-    const titleText = titleTextarea ? titleTextarea.value : "";
+    let newText = textarea ? textarea.value : modalBodyElem.dataset.draftText;
+    let titleText = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
     const formatStr = modalBodyElem.dataset.format || "";
     const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
+
+    if (newText === undefined) return; // Nothing to save
 
     // Check if it's a new note (deferred creation)
     let noteGdid = modalBodyElem.dataset.gdid;
@@ -9586,18 +9706,21 @@ async function saveEditedNote() {
     let finalFormat = formatStr;
     let finalTitleFormat = titleFormatStr;
 
+    // Retrieve masked links from dataset if they exist
+    const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
+
     if (isHiddenNote && titleTextarea) {
         // Handle hidden note: separate processing
-        const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr));
+        const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
         finalTitleFormat = stringifyFormatsArray(titleRes.formats);
 
-        const bodyRes = postEdit(newText, parseFormatsString(formatStr));
+        const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
         finalFormat = stringifyFormatsArray(bodyRes.formats);
 
         processedText = titleRes.text + '|' + bodyRes.text;
     } else {
-        // Standard note (or hidden note that was somehow single-textarea)
-        const res = postEdit(newText, parseFormatsString(formatStr));
+        // Standard note
+        const res = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
         processedText = res.text;
         finalFormat = stringifyFormatsArray(res.formats);
     }
@@ -9669,14 +9792,17 @@ async function saveEditedNote() {
     }
 
     const originalContent = noteObj.notetxt || "";
+    const newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj.calendarDate || 0);
+
     // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
-    const hasChanges = (processedText !== originalContent || finalFormat !== (noteObj.text_span || "") || finalTitleFormat !== (noteObj.title_span || ""));
+    const hasChanges = (processedText !== originalContent || finalFormat !== (noteObj.text_span || "") || finalTitleFormat !== (noteObj.title_span || "") || newCalendarDate !== noteObj.calendarDate);
 
     if (hasChanges) {
         // --- Apply Changes ---
         noteObj.notetxt = processedText;
         noteObj.text_span = finalFormat;
         noteObj.title_span = finalTitleFormat;
+        noteObj.calendarDate = newCalendarDate;
         noteObj.datemod = dateMod;
 
         // --- Update UI (DOM Note) ---
@@ -9743,12 +9869,108 @@ async function saveEditedNote() {
     showToast(_('noteSaved') || "Note saved");
 }
 
+async function updateNoteCalendarDate(noteRef, selectedDate) {
+    const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteRef.gdid)) || (n.id && String(n.id) === String(noteRef.id)));
+    if (!noteObj) return;
+    noteObj.calendarDate = selectedDate.getTime();
+    noteObj.datemod = Date.now();
+    // Update UI (DOM Note)
+    const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-id="${noteObj.id}"]`);
+    if (noteEl) {
+        const updatedEl = await createNoteElement(noteObj);
+        if (updatedEl) noteEl.replaceWith(updatedEl);
+    }
+    // Save to Source
+    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    if (useGoogleDb && updateGDrive && noteObj.gdid && String(noteObj.gdid) !== String(noteObj.id)) {
+        try {
+            await updateGDriveFile(noteObj.gdid, JSON.stringify([noteObj]));
+        } catch (e) {
+            console.error("Failed to update GDrive file", e);
+        }
+    }
+    if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+    showToast(_('noteSaved') || "Note saved");
+}
+
+// Unified Preview Logic
+function previewEditedNote() {
+    const modalBodyElem = document.getElementById('modal-body');
+    const textarea = document.getElementById('note-edit-textarea');
+    const titleTextarea = document.getElementById('note-edit-title-textarea');
+    if (!modalBodyElem || !textarea) return;
+
+    const newText = textarea.value;
+    const titleText = titleTextarea ? titleTextarea.value : "";
+    const formatStr = modalBodyElem.dataset.format || "";
+    const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
+
+    let noteGdid = modalBodyElem.dataset.gdid;
+    let noteId = parseInt(modalBodyElem.dataset.id, 10);
+    const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+    const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
+
+    let processedText = newText;
+    let finalFormat = formatStr;
+    let finalTitleFormat = titleFormatStr;
+
+    // Store drafts for saveEditedNote to work without textarea
+    modalBodyElem.dataset.draftText = newText;
+    modalBodyElem.dataset.draftTitle = titleText;
+
+    // Retrieve masked links
+    const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
+
+    if (isHiddenNote && titleTextarea) {
+        const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
+        finalTitleFormat = stringifyFormatsArray(titleRes.formats);
+        const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
+        finalFormat = stringifyFormatsArray(bodyRes.formats);
+        processedText = titleRes.text + '|' + bodyRes.text;
+    } else {
+        const res = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
+        processedText = res.text;
+        finalFormat = stringifyFormatsArray(res.formats);
+    }
+
+    if (typeof showModal === 'function' && modalNoteObj) {
+        const noteColorStr = (typeof noteColorMap !== 'undefined' && modalNoteObj.color !== null && modalNoteObj.color >= 0 && modalNoteObj.color <= 9) ? noteColorMap[modalNoteObj.color] : modalNoteObj.color;
+        showModal({
+            raw: processedText,
+            format: finalFormat,
+            titleFormat: finalTitleFormat,
+            color: noteColorStr,
+            boardId: modalNoteObj.boardid,
+            id: modalNoteObj.id,
+            gdid: modalNoteObj.gdid,
+            maskedLinks: maskedLinks
+        }, document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-id="${modalNoteObj.id}"]`));
+
+        // --- Custom preview state: Show Save, Preview AND Edit buttons ---
+        // 1. Re-initialize edit buttons (showModal cleaned them up)
+        initNoteEditUI();
+
+        // 2. Adjust visibility and positions for the 4-button preview layout
+        const saveBtn = document.getElementById('note-save-btn');
+        const previewBtn = document.getElementById('note-preview-btn');
+        const editBtn = document.getElementById('note-edit-btn');
+        const moveBtn = document.getElementById('note-move-btn');
+
+        if (saveBtn) { saveBtn.style.display = 'flex'; saveBtn.style.right = '50px'; }
+        if (editBtn) { editBtn.style.display = 'flex'; editBtn.style.right = '100px'; }
+        if (previewBtn) { previewBtn.style.display = 'none'; }
+        if (moveBtn) { moveBtn.style.display = 'flex'; moveBtn.style.right = '150px'; }
+    }
+}
+
 function disableNoteEditing(modalBodyElem) {
     if (!modalBodyElem) return;
 
-    // 1. Hide Save Button
+    // 1. Hide Save and Preview Buttons
     const saveBtn = document.getElementById('note-save-btn');
     if (saveBtn) saveBtn.style.display = 'none';
+    const previewBtn = document.getElementById('note-preview-btn');
+    if (previewBtn) previewBtn.style.display = 'none';
 
     // 2. Show Edit Button (if it exists)
     const editBtn = document.getElementById('note-edit-btn');
@@ -9760,7 +9982,7 @@ function disableNoteEditing(modalBodyElem) {
 /**
  * Превръща MD символи във форматирани области и изчиства текста.
  */
-function postEdit(text, formats) {
+function postEdit(text, formats, maskedLinks = []) {
     let currentText = text;
     let currentFormats = [...formats];
 
@@ -9773,61 +9995,69 @@ function postEdit(text, formats) {
     };
 
     // 1. Първоначално премахваме всички формати, които попадат в обхвата на mdClear (ръчно въведени --)
-    const handleClear = () => {
-        const mdClear = localStorage.getItem('mdClear') || '--';
-        let cIdx = 0;
+    const handleClear = (removeMarkers = true) => {
+        const mdClear = (localStorage.getItem('mdClear') || '--').trim();
+        if (!mdClear) return;
+        let sIdx = 0;
         while (true) {
-            let start = currentText.indexOf(mdClear, cIdx);
+            let start = currentText.indexOf(mdClear, sIdx);
             if (start === -1) break;
             let end = currentText.indexOf(mdClear, start + mdClear.length);
-            if (end === -1) break;
-
-            const clearRangeStart = start;
-            const clearRangeEnd = end + mdClear.length;
-
-            // Изтриваме форматите
-            currentFormats = currentFormats.filter(f => !(f.start < clearRangeEnd && f.end > clearRangeStart));
-
-            // Премахваме самите символи "--"
-            currentText = currentText.substring(0, end) + currentText.substring(end + mdClear.length);
-            shift(end, -mdClear.length);
-            currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
-            shift(start, -mdClear.length);
-
-            cIdx = start; // Продължаваме търсенето от позицията на първия премахнат маркер
+            if (end === -1) {
+                if (removeMarkers) {
+                    currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
+                    shift(start, -mdClear.length);
+                } else {
+                    sIdx = start + mdClear.length;
+                }
+                continue;
+            }
+            const rangeStart = start;
+            const rangeEnd = end + mdClear.length;
+            currentFormats = currentFormats.filter(f => !(f.start < rangeEnd && f.end > rangeStart));
+            if (removeMarkers) {
+                currentText = currentText.substring(0, end) + currentText.substring(end + mdClear.length);
+                shift(end, -mdClear.length);
+                currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
+                shift(start, -mdClear.length);
+                sIdx = start;
+            } else {
+                sIdx = end + mdClear.length;
+            }
         }
     };
 
-    handleClear(); // Пръв пас за изчистване на JSON формати (нпр. цвят)
+    handleClear(false); // Phase 1: Keep markers, clean existing formats
 
-    // 2. Стандартни Markdown правила
     const rules = [
-        { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 },
-        { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 },
-        { s: localStorage.getItem('mdItalic') || '*', e: localStorage.getItem('mdItalic') || '*', t: 2 },
-        { s: localStorage.getItem('mdUnderline') || '_', e: localStorage.getItem('mdUnderline') || '_', t: 3 }
+        { s: (localStorage.getItem('mdBold') || '**').trim(), e: (localStorage.getItem('mdBold') || '**').trim(), t: 1 },
+        { s: (localStorage.getItem('mdStrike') || '~~').trim(), e: (localStorage.getItem('mdStrike') || '~~').trim(), t: 7 },
+        { s: (localStorage.getItem('mdItalic') || '*').trim(), e: (localStorage.getItem('mdItalic') || '*').trim(), t: 2 },
+        { s: (localStorage.getItem('mdUnderline') || '_').trim(), e: (localStorage.getItem('mdUnderline') || '_').trim(), t: 3 }
     ];
 
     rules.forEach(rule => {
         let searchIdx = 0;
+        // Clean existing formats of this type to avoid duplicates
+        currentFormats = currentFormats.filter(f => f.type !== rule.t);
         while (true) {
             let start = currentText.indexOf(rule.s, searchIdx);
             if (start === -1) break;
             let end = currentText.indexOf(rule.e, start + rule.s.length);
-            if (end === -1) break;
-
+            if (end === -1) {
+                searchIdx = start + rule.s.length;
+                continue;
+            }
             const contentLen = end - start - rule.s.length;
             currentText = currentText.substring(0, end) + currentText.substring(end + rule.e.length);
             shift(end, -rule.e.length);
             currentText = currentText.substring(0, start) + currentText.substring(start + rule.s.length);
             shift(start, -rule.s.length);
-
             currentFormats.push({ start, end: start + contentLen, type: rule.t, paramint: 0, paramfloat: 0 });
             searchIdx = start + contentLen;
         }
     });
 
-    // 3. Чекбоксове
     const checkRules = [{ md: '[ ]', sym: '☐' }, { md: '[x]', sym: '☑' }, { md: '[X]', sym: '☑' }];
     checkRules.forEach(rule => {
         let cIdx = 0;
@@ -9840,11 +10070,12 @@ function postEdit(text, formats) {
         }
     });
 
-    // 4. Заглавия
     const headerRules = [
         { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
         { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
     ];
+    // Clean header formats
+    currentFormats = currentFormats.filter(f => f.type !== 6);
     headerRules.forEach(rule => {
         let hIdx = 0;
         while (true) {
@@ -9865,10 +10096,25 @@ function postEdit(text, formats) {
         }
     });
 
-    // 5. Втори пас на изчистване - за да премахнем току-що създадените MD формати (ако са вътре в тирета)
-    // Но това не е нужно, ако handleClear се изпълни СЛЕД Markdown правилата.
-    // Затова ще преместя handleClear в самото начало И в самия край.
-    handleClear();
+    handleClear(true); // Phase 2: Final sweep and marker removal
+
+    // --- Restore Masked Links with proper shifting ---
+    maskedLinks.forEach((link, idx) => {
+        const placeholder = `{#L${idx}#}`;
+        let pIdx = currentText.indexOf(placeholder);
+        while (pIdx !== -1) {
+            currentText = currentText.substring(0, pIdx) + link + currentText.substring(pIdx + placeholder.length);
+            const diff = link.length - placeholder.length;
+            const startPos = pIdx;
+            const markerLen = placeholder.length;
+
+            currentFormats.forEach(f => {
+                if (f.start >= startPos + markerLen) f.start += diff;
+                if (f.end >= startPos + markerLen) f.end += diff;
+            });
+            pIdx = currentText.indexOf(placeholder, startPos + link.length);
+        }
+    });
 
     return { text: currentText, formats: currentFormats };
 }
@@ -9876,21 +10122,47 @@ function postEdit(text, formats) {
 /**
  * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
  */
+/**
+ * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
+ */
 function preEdit(text, formats) {
-    if (!formats || formats.length === 0) return { text, formats: [] };
+    if (!text) return { text: "", formats: [] };
 
     let currentText = text;
-    let currentFormats = formats.map(f => ({ ...f }));
+    let currentFormats = formats ? formats.map(f => ({ ...f })) : [];
 
-    // --- 1. Header Support (font size -> # levels) ---
-    // Headers must be added first as the outermost layer
+    // --- 1. Link Masking (Extract URLs to placeholders) ---
+    const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+    const maskedLinks = [];
+    let match;
+    while ((match = urlRegex.exec(currentText)) !== null) {
+        const url = match[0];
+        const start = match.index;
+        const placeholder = `{#L${maskedLinks.length}#}`;
+        maskedLinks.push(url);
+
+        currentText = currentText.substring(0, start) + placeholder + currentText.substring(start + url.length);
+        const diff = placeholder.length - url.length;
+
+        // Shift format coordinates to match masked text
+        currentFormats.forEach(f => {
+            if (f.start >= start + url.length) f.start += diff;
+            else if (f.start > start) f.start = start; // Clip if it was inside URL
+            if (f.end >= start + url.length) f.end += diff;
+            else if (f.end > start) f.end = start; // Clip if it was inside URL
+        });
+
+        urlRegex.lastIndex = start + placeholder.length; // Adjust for new text length
+    }
+
+    // Re-calculate format positions relative to masked text
+    // (Simplistic approach: if a format was on a link, it might get slightly offset, but links shouldn't be formatted anyway)
+    // For now, let's just use the currentText for further MD insertion
+
+    // --- 2. Header Support (font size -> # levels) ---
     const headerMap = [
-        { md: '###### ', scale: 0.7 },
-        { md: '##### ', scale: 0.8 },
-        { md: '#### ', scale: 0.9 },
-        { md: '### ', scale: 1.1 },
-        { md: '## ', scale: 1.2 },
-        { md: '# ', scale: 1.3 }
+        { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
+        { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
     ];
 
     headerMap.forEach(rule => {
@@ -9907,12 +10179,8 @@ function preEdit(text, formats) {
         });
     });
 
-    // --- 2. Checkbox Support (Unicode to MD) ---
-    const checkRules = [
-        { md: '[ ]', sym: '☐' },
-        { md: '[x]', sym: '☑' }
-    ];
-
+    // --- 3. Checkbox Support (Unicode to MD) ---
+    const checkRules = [{ md: '[ ]', sym: '☐' }, { md: '[x]', sym: '☑' }];
     checkRules.forEach(rule => {
         let cIdx = 0;
         while (true) {
@@ -9928,7 +10196,7 @@ function preEdit(text, formats) {
         }
     });
 
-    // --- 3. Inline Formatting Rules (Bold, Italic, Underline, Strike) ---
+    // --- 4. Inline Formatting Rules ---
     const rules = [
         { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 },
         { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 },
@@ -9957,6 +10225,7 @@ function preEdit(text, formats) {
 
     const headerScales = [0.7, 0.8, 0.9, 1.1, 1.2, 1.3];
     const remainingFormats = currentFormats.filter(f => !mdTypes.includes(f.type) && !(f.type === 6 && headerScales.includes(f.paramfloat)));
-    return { text: currentText, formats: remainingFormats };
+
+    return { text: currentText, formats: remainingFormats, maskedLinks };
 }
 
