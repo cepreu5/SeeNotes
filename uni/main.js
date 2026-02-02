@@ -5776,7 +5776,8 @@ function showModal(options, noteElement = null) {
         const moveBtn = document.createElement('div');
         moveBtn.id = 'note-move-btn';
         // Folder with arrow icon
-        moveBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z" fill="yellow"/><path d="M10 12h4m2 0l-3-3m3 3l-3 3" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
+        moveBtn.innerHTML = `<svg viewBox="0 0 20 20" width="22" height="22"> <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z" fill="gray"/>
+        <path d="M7 12h4m2 0l-3-3m3 3l-3 3" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/> </svg>`;
         moveBtn.title = _('moveNote') || 'Move to board';
         Object.assign(moveBtn.style, {
             position: 'absolute',
@@ -5789,7 +5790,7 @@ function showModal(options, noteElement = null) {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            boxShadow: '3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23)',
             cursor: 'pointer',
             zIndex: '10000',
             border: '1px solid #ccc'
@@ -5826,7 +5827,7 @@ function showModal(options, noteElement = null) {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            boxShadow: '3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23)',
             cursor: 'pointer',
             zIndex: '10000',
             border: '1px solid #ccc'
@@ -5856,7 +5857,7 @@ function showModal(options, noteElement = null) {
                     modalBody.dataset.calendarDate = "0";
                     calendarBtn.innerHTML = calendarIconSvg;
                     calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
-                    showToast("Бележката ще бъде изключена от календара, когато се запише");
+                    showToast(_('inCalender'));
                 }
             } else {
                 noteToAssignDate = {
@@ -5885,7 +5886,7 @@ function showModal(options, noteElement = null) {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            boxShadow: '3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23)',
             cursor: 'pointer',
             zIndex: '10000',
             border: '1px solid #ccc'
@@ -9251,7 +9252,7 @@ async function updateAdvancedSettingsVisibility() {
 
 // --- Edit Note on Ctrl+Click (DB Mode) ---
 const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
-const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>`;
+const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
 const noCalendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><line x1="3" y1="3" x2="21" y2="21" /></svg>`;
 
 // Helper to parse format string into array of objects
@@ -9542,7 +9543,7 @@ function initNoteEditUI() {
         Object.assign(saveBtn.style, {
             position: 'absolute', bottom: '15px', right: '50px', width: '40px', height: '40px',
             backgroundColor: 'darkorange', borderRadius: '50%', display: 'flex', justifyContent: 'center',
-            alignItems: 'center', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer',
+            alignItems: 'center', boxShadow: '3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23)', cursor: 'pointer',
             zIndex: '10000', border: '1px solid #ccc'
         });
         saveBtn.addEventListener('click', (e) => {
@@ -9558,7 +9559,7 @@ function initNoteEditUI() {
         Object.assign(previewBtn.style, {
             position: 'absolute', bottom: '15px', right: '100px', width: '40px', height: '40px',
             backgroundColor: '#4a90e2', borderRadius: '50%', display: 'flex', justifyContent: 'center',
-            alignItems: 'center', boxShadow: '0 4px 8px rgba(0,0,0,0.3)', cursor: 'pointer',
+            alignItems: 'center', boxShadow: '3px 5px 8px rgba(0,0,0,0.16), 3px 5px 8px rgba(0,0,0,0.23)', cursor: 'pointer',
             zIndex: '10000', border: '1px solid #ccc'
         });
         previewBtn.addEventListener('click', (e) => {
@@ -9933,18 +9934,21 @@ function previewEditedNote() {
         finalFormat = stringifyFormatsArray(res.formats);
     }
 
-    if (typeof showModal === 'function' && modalNoteObj) {
-        const noteColorStr = (typeof noteColorMap !== 'undefined' && modalNoteObj.color !== null && modalNoteObj.color >= 0 && modalNoteObj.color <= 9) ? noteColorMap[modalNoteObj.color] : modalNoteObj.color;
+    if (typeof showModal === 'function') {
+        const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
+        const color = (modalNoteObj && modalNoteObj.color !== undefined) ? modalNoteObj.color : (modalBodyElem.dataset.color || 0);
+        const noteColorStr = (typeof noteColorMap !== 'undefined' && color !== null && color >= 0 && color <= 9) ? noteColorMap[color] : color;
+
         showModal({
             raw: processedText,
             format: finalFormat,
             titleFormat: finalTitleFormat,
             color: noteColorStr,
-            boardId: modalNoteObj.boardid,
-            id: modalNoteObj.id,
-            gdid: modalNoteObj.gdid,
+            boardId: boardId,
+            id: noteId,
+            gdid: noteGdid,
             maskedLinks: maskedLinks
-        }, document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-id="${modalNoteObj.id}"]`));
+        }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-id="${modalNoteObj.id}"]`)) : null);
 
         // --- Custom preview state: Show Save, Preview AND Edit buttons ---
         // 1. Re-initialize edit buttons (showModal cleaned them up)
@@ -10058,17 +10062,17 @@ function postEdit(text, formats, maskedLinks = []) {
         }
     });
 
-    const checkRules = [{ md: '[ ]', sym: '☐' }, { md: '[x]', sym: '☑' }, { md: '[X]', sym: '☑' }];
-    checkRules.forEach(rule => {
-        let cIdx = 0;
-        while (true) {
-            let start = currentText.indexOf(rule.md, cIdx);
-            if (start === -1) break;
-            currentText = currentText.substring(0, start) + rule.sym + currentText.substring(start + rule.md.length);
-            shift(start, -(rule.md.length - rule.sym.length));
-            cIdx = start + rule.sym.length;
-        }
-    });
+    const checkRegex = /\[\s*[xXхХ]?\s*\]/g;
+    let chMatch;
+    while ((chMatch = checkRegex.exec(currentText)) !== null) {
+        const fullMatch = chMatch[0];
+        const start = chMatch.index;
+        const isChecked = /[xXхХ]/.test(fullMatch);
+        const sym = isChecked ? '☑' : '☐';
+        currentText = currentText.substring(0, start) + sym + currentText.substring(start + fullMatch.length);
+        shift(start, -(fullMatch.length - sym.length));
+        checkRegex.lastIndex = start + sym.length;
+    }
 
     const headerRules = [
         { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },

@@ -255,5 +255,6 @@ en: {
         "mdUnderlineLabel": "Underline",
         "mdClearLabel": "Clear",
         "addNoteTooltip": "New note",
+        "inCalendar": "The note will be removed from the calendar when saved.",
         "cannotCreateInSystemBoard": "Please select a specific board to create a note."
     }

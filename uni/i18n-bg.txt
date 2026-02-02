@@ -259,5 +259,6 @@ bg: {
         "mdUnderlineLabel": "Underline",
         "mdClearLabel": "Изчисти",
         "addNoteTooltip": "Нова бележка",
+        "inCalendar": "Бележката ще бъде изключена от календара, когато се запише.",
         "cannotCreateInSystemBoard": "Моля, изберете конкретен борд, за да създадете бележка."
     }
