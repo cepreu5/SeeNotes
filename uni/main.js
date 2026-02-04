@@ -83,6 +83,7 @@ let useGoogleDb = true;
 let useLocalFolder = false;
 let useArhDb = false;
 let useIndexedDb = false;
+let automatedTimer = true; // true по подразбиране
 let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
 let dataIntegrityIssues = []; // Track missing/duplicate IDs during load
 let initialLoadTime = null; // Time taken for initial Google Drive load in seconds
@@ -1272,7 +1273,7 @@ function renderCalendarView() {
         cell.appendChild(notesForDayContainer);
         calendarGrid.appendChild(cell);
     }
-    calendarGrid.addEventListener('click', (e) => {
+    calendarGrid.addEventListener('click', async (e) => {
         const cell = e.target.closest('.calendar-cell');
         if (!cell || e.target.closest('.calendar-mini-note')) return;
         const d = parseInt(cell.dataset.day);
@@ -1280,9 +1281,27 @@ function renderCalendarView() {
         const y = parseInt(cell.dataset.year);
         const selectedDate = new Date(y, m, d);
         if (noteToAssignDate) {
-            updateNoteCalendarDate(noteToAssignDate, selectedDate);
-            noteToAssignDate = null;
+            const targetNote = { ...noteToAssignDate };
+            // Start sync (updates memory immediately)
+            const syncPromise = updateNoteCalendarDate(targetNote, selectedDate);
+            // Close calendar immediately to return to note modal
             document.getElementById('close-month-calendar-btn').click();
+            // Background handler for the spinner in the re-opened modal
+            (async () => {
+                await new Promise(r => setTimeout(r, 80)); // Wait for modal to re-open
+                const calendarBtn = document.getElementById('note-calendar-btn');
+                if (calendarBtn) {
+                    const originalHtml = calendarBtn.innerHTML;
+                    calendarBtn.style.pointerEvents = 'none';
+                    calendarBtn.innerHTML = `<img src="Refresh.png" class="button-loading" style="width:24px; height:24px; position:absolute; top:50%; left:50%;">`;
+                    await syncPromise;
+                    if (document.getElementById('note-calendar-btn') === calendarBtn) {
+                        calendarBtn.style.pointerEvents = 'auto';
+                        calendarBtn.innerHTML = noCalendarIconSvg;
+                        calendarBtn.title = _('removeFromCalendar') || "Remove from calendar";
+                    }
+                }
+            })();
         } else {
             calendarContainer.style.display = 'none';
             renderWeeklyCalendarView(selectedDate);
@@ -1435,6 +1454,24 @@ function renderCalendarView() {
                     notesContainer.style.display = 'flex';
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
+                }
+
+                // --- Re-open note modal if we were assigning a date ---
+                if (noteToAssignDate) {
+                    const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteToAssignDate.gdid)) || (n.id && String(n.id) === String(noteToAssignDate.id)));
+                    noteToAssignDate = null;
+                    if (noteObj) {
+                        const noteColorStr = (typeof noteColorMap !== 'undefined' && noteObj.color !== null && noteObj.color >= 0 && noteObj.color <= 9) ? noteColorMap[noteObj.color] : noteObj.color;
+                        showModal({
+                            raw: noteObj.notetxt,
+                            format: noteObj.text_span,
+                            titleFormat: noteObj.title_span,
+                            color: noteColorStr,
+                            boardId: noteObj.boardid,
+                            id: noteObj.id,
+                            gdid: noteObj.gdid
+                        }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`));
+                    }
                 }
                 // Спираме анимацията (ако все още е видима)
                 if (closeSymbol && loadingIcon) {
@@ -1826,13 +1863,20 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
  */
 function updateBoardCounterUI(boardIdOrGdid) {
     if (boardIdOrGdid === undefined || boardIdOrGdid === null) return;
+    const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+    if (boardIdOrGdid === 'reminder') {
+        const reminderLink = document.querySelector('.board-filter-link[data-boardid="reminder"]');
+        if (reminderLink) {
+            const reminderNoteCount = allNotesData.filter(n => n.timer && n.timer > 0 && n.status !== 1).length;
+            reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
+        }
+        return;
+    }
     const boardData = boardsData.find(b => b.gdid == boardIdOrGdid || b.id == boardIdOrGdid);
     if (!boardData) return;
     const key = boardData.gdid || boardData.id;
     const boardButton = document.querySelector(`.board-filter-link[data-boardid="${key}"]`);
     if (boardButton) {
-        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-        // Calculate dynamic note count
         const noteCount = allNotesData.filter(n => String(n.boardid) === String(key) && n.status !== 1).length;
         const title = boardData.title;
         boardButton.textContent = (showCount && noteCount > 0) ? `${title} (${noteCount})` : title;
@@ -4260,6 +4304,7 @@ function updateGlobalStateFlags() {
     useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
     useArhDb = localStorage.getItem('useArhDb') === 'true';
     useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+    automatedTimer = localStorage.getItem('automatedTimer') !== 'false'; // true по подразбиране
 }
 
 /**
@@ -5775,9 +5820,11 @@ function showModal(options, noteElement = null) {
         // --- Move Button ---
         const moveBtn = document.createElement('div');
         moveBtn.id = 'note-move-btn';
-        // Folder with arrow icon
-        moveBtn.innerHTML = `<svg viewBox="0 0 20 20" width="22" height="22"> <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z" fill="gray"/>
-        <path d="M7 12h4m2 0l-3-3m3 3l-3 3" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/> </svg>`;
+        moveBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path>
+            <path d="M9 13h6"></path>
+            <path d="M12 10l3 3-3 3"></path>
+        </svg>`;
         moveBtn.title = _('moveNote') || 'Move to board';
         Object.assign(moveBtn.style, {
             position: 'absolute',
@@ -5827,12 +5874,12 @@ function showModal(options, noteElement = null) {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            boxShadow: '3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23)',
+            // boxShadow: '3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23)',
             cursor: 'pointer',
             zIndex: '10000',
             border: '1px solid #ccc'
         });
-        calendarBtn.addEventListener('click', (e) => {
+        calendarBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const currentCalendarDateVal = modalBody.dataset.calendarDate;
             const isAssigned = currentCalendarDateVal && currentCalendarDateVal !== '0';
@@ -5842,22 +5889,26 @@ function showModal(options, noteElement = null) {
                 const weeklyContainer = document.getElementById('weekly-calendar-container');
                 const isCalendarView = (calendarContainer && calendarContainer.style.display === 'block') || (weeklyContainer && weeklyContainer.style.display === 'flex');
 
+                // Show spinner
+                const originalHtml = calendarBtn.innerHTML;
+                calendarBtn.style.pointerEvents = 'none';
+                calendarBtn.innerHTML = `<img src="Refresh.png" class="button-loading" style="width:24px; height:24px; position:absolute; top:50%; left:50%;">`;
+
+                await updateNoteCalendarDate({ id: noteId, gdid: noteGdid }, { getTime: () => 0 });
+
+                calendarBtn.style.pointerEvents = 'auto';
+                calendarBtn.innerHTML = calendarIconSvg;
+                calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
+                modalBody.dataset.calendarDate = "0";
+
                 if (isCalendarView) {
-                    updateNoteCalendarDate({ id: noteId, gdid: noteGdid }, { getTime: () => 0 });
                     showToast("Бележката е премахната от календара");
-                    contentModal.classList.remove('visible');
-                    // Опресняваме активния календарен изглед
+                    // Refresh active calendar view
                     if (calendarContainer && calendarContainer.style.display === 'block') {
                         renderCalendarView();
                     } else if (weeklyContainer && weeklyContainer.style.display === 'flex') {
                         renderWeeklyCalendarView(currentWeeklyViewDate);
                     }
-                } else {
-                    // Board view: Stage the removal
-                    modalBody.dataset.calendarDate = "0";
-                    calendarBtn.innerHTML = calendarIconSvg;
-                    calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
-                    showToast(_('inCalender'));
                 }
             } else {
                 noteToAssignDate = {
@@ -6440,6 +6491,12 @@ function applyFilters() {
     if (noteCounter) {
         noteCounter.textContent = visibleCount;
     }
+
+    // --- Sync Menu Counters ---
+    if (typeof updateBoardCounterUI === 'function') {
+        updateBoardCounterUI(currentBoardFilter);
+        updateBoardCounterUI('reminder');
+    }
 }
 
 // --- GDrive Fetch & ID logic moved to load.js ---
@@ -6873,6 +6930,15 @@ async function createSettingsUI(boardsData, boardParseError) {
             checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
             checkEmptyBoardsCheckbox.addEventListener('change', () => {
                 localStorage.setItem('checkEmptyBoards', checkEmptyBoardsCheckbox.checked);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
+        const automatedTimerCheckbox = document.getElementById('automated-timer-checkbox');
+        if (automatedTimerCheckbox) {
+            automatedTimerCheckbox.checked = localStorage.getItem('automatedTimer') !== 'false';
+            automatedTimerCheckbox.addEventListener('change', () => {
+                localStorage.setItem('automatedTimer', automatedTimerCheckbox.checked);
+                automatedTimer = automatedTimerCheckbox.checked;
                 showToast(_('settingSaved'), 2000);
             });
         }
@@ -8437,27 +8503,9 @@ async function createNoteElement(noteContent) {
                 }
                 // Стъпка 1: Премахване от DOM и allNotesData
                 noteEl.remove();
-                allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
-                // Стъпка 2: Намиране на борда
-                const deletedNoteBoardId = extraData.boardid;
-                const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-                const boardToUpdate = boardsData.find(b => (isArh ? b.id : b.gdid) == deletedNoteBoardId);
-                // Стъпка 3: Намаляване на брояча в хедъра
-                const noteCounter = document.getElementById('note-counter');
-                if (noteCounter) {
-                    noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
-                    totalNotes = parseInt(noteCounter.textContent, 10);
-                }
-                if (boardToUpdate) {
-                    // Стъпка 4: Актуализация на UI
-                    const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardToUpdate.gdid}"]`);
-                    if (boardButton) {
-                        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-                        const boardNoteCount = allNotesData.filter(n => String(n.boardid) === String(boardToUpdate.gdid || boardToUpdate.id) && n.status !== 1).length;
-                        const newText = (showCount && boardNoteCount > 0) ? `${boardToUpdate.title} (${boardNoteCount})` : boardToUpdate.title;
-                        boardButton.textContent = newText;
-                    }
-                }
+                allNotesData = allNotesData.filter(n => (n.gdid && n.gdid !== noteGdid) || (n.id && n.id !== noteID));
+                // Стъпка 2: Актуализация на всички броячи чрез applyFilters
+                applyFilters();
                 showToast(_('noteDeletedSuccess'), 3000);
             } catch (error) {
                 console.log("Failed to delete note:", error);
@@ -9390,7 +9438,6 @@ function enableNoteEditing(modalBodyElem) {
     if (bodyTextarea && bodyBackdrop) {
         bodyTextarea.addEventListener('scroll', () => { bodyBackdrop.scrollTop = bodyTextarea.scrollTop; });
         bodyTextarea.addEventListener('input', () => { handleEditInput(bodyTextarea, bodyBackdrop); });
-        bodyTextarea.addEventListener('keydown', (e) => { formatKeyboardHotkeys(e, bodyTextarea, bodyBackdrop); });
         handleEditInput(bodyTextarea, bodyBackdrop);
     }
     const titleTextarea = document.getElementById('note-edit-title-textarea');
@@ -9398,7 +9445,6 @@ function enableNoteEditing(modalBodyElem) {
     if (titleTextarea && titleBackdrop) {
         titleTextarea.addEventListener('scroll', () => { titleBackdrop.scrollTop = titleTextarea.scrollTop; });
         titleTextarea.addEventListener('input', () => { handleEditInput(titleTextarea, titleBackdrop); });
-        titleTextarea.addEventListener('keydown', (e) => { formatKeyboardHotkeys(e, titleTextarea, titleBackdrop); });
         handleEditInput(titleTextarea, titleBackdrop);
         placeCaretAtEnd(titleTextarea);
     } else if (bodyTextarea) {
@@ -9423,9 +9469,8 @@ document.addEventListener('keydown', (e) => {
         const isI = (code === 'KeyI' || key === 'i');
         const isU = (code === 'KeyU' || key === 'u');
         const isD = (code === 'KeyD' || key === 'd');
-        const isN = (code === 'KeyN' || key === 'n');
 
-        if (isB || isI || isU || isD || isN) {
+        if (isB || isI || isU || isD) {
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
@@ -9433,18 +9478,41 @@ document.addEventListener('keydown', (e) => {
             const backdropId = (activeTextarea.id === 'note-edit-textarea') ? 'note-edit-textarea-backdrop' : 'note-edit-title-textarea-backdrop';
             const backdrop = document.getElementById(backdropId);
 
-            formatKeyboardHotkeys(activeTextarea, backdrop, isB, isI, isU, isD, isN);
+            formatKeyboardHotkeys(activeTextarea, backdrop, isB, isI, isU, isD);
         }
     }
 }, true); // Capture phase is crucial for overriding browser defaults
 
-function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD, isN) {
+// --- Escape key to close modals ---
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const visibleModal = document.querySelector('.modal-overlay.visible');
+        if (visibleModal) {
+            const closeBtn = visibleModal.querySelector('.modal-close');
+            if (closeBtn) {
+                closeBtn.click();
+            } else {
+                // Fallback for settings or other specific close buttons
+                const settingsClose = document.getElementById('settings-close-btn');
+                if (settingsClose && visibleModal.contains(settingsClose)) {
+                    settingsClose.click();
+                } else {
+                    visibleModal.classList.remove('visible');
+                }
+            }
+        }
+    }
+});
+
+
+
+
+function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD) {
     let symbol = '';
     if (isB) symbol = localStorage.getItem('mdBold') || '**';
     else if (isI) symbol = localStorage.getItem('mdItalic') || '*';
     else if (isU) symbol = localStorage.getItem('mdUnderline') || '_';
     else if (isD) symbol = localStorage.getItem('mdStrike') || '~~';
-    else if (isN) symbol = localStorage.getItem('mdClear') || '--';
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
@@ -9696,6 +9764,14 @@ async function saveEditedNote() {
 
     if (newText === undefined) return; // Nothing to save
 
+    // Show spinner on save button
+    const saveBtnElem = document.getElementById('note-save-btn');
+    const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
+    if (saveBtnElem) {
+        saveBtnElem.style.pointerEvents = 'none';
+        saveBtnElem.innerHTML = `<img src="Refresh.png" class="button-loading" style="width:24px; height:24px; position:absolute; top:50%; left:50%;">`;
+    }
+
     // Check if it's a new note (deferred creation)
     let noteGdid = modalBodyElem.dataset.gdid;
     let noteId = parseInt(modalBodyElem.dataset.id, 10);
@@ -9733,14 +9809,13 @@ async function saveEditedNote() {
     }
 
     // Re-check isNewNote because we might have changed processedText
-    const isNewNote = !noteGdid && !document.querySelector(`.note[data-id="${noteId}"]`) && !document.querySelector(`.note[data-g="${noteGdid}"]`);
-
+    const isNewNote = !modalNoteObj && !noteGdid;
     if (isNewNote) {
         // --- Handle Creation of New Note ---
         const boardId = modalBodyElem.dataset.boardId || currentBoardFilter;
         // Generate new ID/GDID if missing
         if (!noteId || isNaN(noteId)) {
-            noteId = ++noteId; // Ensure we increment global counter
+            noteId = ++window.noteId;
             noteNumord++;
         }
 
@@ -9782,7 +9857,10 @@ async function saveEditedNote() {
         }
 
         // Update Board Counter
-        if (typeof updateBoardCounterUI === 'function') updateBoardCounterUI(boardId);
+        if (typeof updateBoardCounterUI === 'function') {
+            updateBoardCounterUI(boardId);
+            updateBoardCounterUI('reminder');
+        }
     }
 
     // 2. Update local data model (for existing notes)
@@ -9796,37 +9874,57 @@ async function saveEditedNote() {
     const newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj.calendarDate || 0);
 
     // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
-    const hasChanges = (processedText !== originalContent || finalFormat !== (noteObj.text_span || "") || finalTitleFormat !== (noteObj.title_span || "") || newCalendarDate !== noteObj.calendarDate);
+    const hasChanges = isNewNote || (processedText !== originalContent || finalFormat !== (noteObj.text_span || "") || finalTitleFormat !== (noteObj.title_span || "") || newCalendarDate !== noteObj.calendarDate);
 
     if (hasChanges) {
         // --- Apply Changes ---
         noteObj.notetxt = processedText;
         noteObj.text_span = finalFormat;
         noteObj.title_span = finalTitleFormat;
+        const oldCalendarDate = noteObj.calendarDate || 0;
         noteObj.calendarDate = newCalendarDate;
+
+        // --- Sync with timer ---
+        if (automatedTimer) {
+            if (newCalendarDate > 0) {
+                noteObj.timer = newCalendarDate; // добавяне на служебен таймер
+            } else if (newCalendarDate === 0 && oldCalendarDate > 0) {
+                if (noteObj.timer === oldCalendarDate) {
+                    noteObj.timer = 0; // изтриване на служебен таймер
+                }
+            }
+        }
+
         noteObj.datemod = dateMod;
 
         // --- Update UI (DOM Note) ---
-        const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-id="${noteObj.id}"]`);
+        const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
         if (noteEl) {
             const updatedEl = await createNoteElement(noteObj);
             if (updatedEl) noteEl.replaceWith(updatedEl);
         }
 
+        // --- Update Board Counter ---
+        if (typeof updateBoardCounterUI === 'function') {
+            updateBoardCounterUI(noteObj.boardid);
+            updateBoardCounterUI('reminder');
+        }
+
         // --- Save to Source (GDrive / Local / DB) ---
         const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-        if (useGoogleDb && updateGDrive) {
+        if (updateGDrive) {
             const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
             if (isTempGdid) {
                 const folderId = await getFolderID();
                 if (folderId) {
                     const fileContent = JSON.stringify([noteObj]);
-                    const fileName = `note_${dateMod}.txt`;
+                    const fileName = `note.txt`; // @@ 
                     try {
                         const tempGdid = noteObj.gdid;
                         const newGdid = await createGDriveFile(folderId, fileName, fileContent);
                         noteObj.gdid = newGdid;
                         modalBodyElem.dataset.gdid = newGdid;
+                        await updateGDriveFile(newGdid, JSON.stringify([noteObj]));
                         if (useIndexedDb) {
                             await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
                             if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
@@ -9846,6 +9944,12 @@ async function saveEditedNote() {
         showToast(_('noteSaved') || "Note saved");
     }
 
+    // Remove spinner
+    if (saveBtnElem) {
+        saveBtnElem.style.pointerEvents = 'auto';
+        saveBtnElem.innerHTML = originalSaveBtnHtml;
+    }
+
     // Exit edit mode and refresh view
     disableNoteEditing(modalBodyElem);
     const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
@@ -9863,7 +9967,7 @@ async function saveEditedNote() {
                 boardId: noteObj.boardid,
                 id: noteObj.id,
                 gdid: noteObj.gdid
-            }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-id="${noteObj.id}"]`));
+            }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`));
         }
     }
 
@@ -9873,24 +9977,64 @@ async function saveEditedNote() {
 async function updateNoteCalendarDate(noteRef, selectedDate) {
     const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteRef.gdid)) || (n.id && String(n.id) === String(noteRef.id)));
     if (!noteObj) return;
-    noteObj.calendarDate = selectedDate.getTime();
+    const oldCalendarDate = noteObj.calendarDate || 0;
+    const newCalendarDate = selectedDate.getTime();
+    noteObj.calendarDate = newCalendarDate;
+
+    // --- Sync with timer ---
+    if (automatedTimer) {
+        if (newCalendarDate > 0) {
+            noteObj.timer = newCalendarDate; // добавяне на служебен таймер
+        } else if (newCalendarDate === 0 && oldCalendarDate > 0) {
+            if (noteObj.timer === oldCalendarDate) {
+                noteObj.timer = 0; // изтриване на служебен таймер
+            }
+        }
+    }
+
     noteObj.datemod = Date.now();
     // Update UI (DOM Note)
-    const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-id="${noteObj.id}"]`);
+    const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
     if (noteEl) {
         const updatedEl = await createNoteElement(noteObj);
         if (updatedEl) noteEl.replaceWith(updatedEl);
     }
     // Save to Source
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-    if (useGoogleDb && updateGDrive && noteObj.gdid && String(noteObj.gdid) !== String(noteObj.id)) {
-        try {
-            await updateGDriveFile(noteObj.gdid, JSON.stringify([noteObj]));
-        } catch (e) {
-            console.error("Failed to update GDrive file", e);
+    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+    if (updateGDriveNow) {
+        const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
+        if (isTempGdid) {
+            const folderId = await getFolderID();
+            if (folderId) {
+                const fileContent = JSON.stringify([noteObj]);
+                const fileName = `note_${noteObj.datemod}.txt`;
+                try {
+                    const newGdid = await createGDriveFile(fileName, fileContent, folderId);
+                    if (newGdid) {
+                        const oldGdid = noteObj.gdid;
+                        noteObj.gdid = newGdid;
+                        if (useIndexedDb) {
+                            await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+                            if (oldGdid && oldGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, oldGdid);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to create GDrive file in calendar update", e);
+                }
+            }
+        } else {
+            try {
+                await updateGDriveFile(noteObj.gdid, JSON.stringify([noteObj]));
+            } catch (e) {
+                console.error("Failed to update GDrive file in calendar update", e);
+            }
         }
     }
     if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+    if (typeof updateBoardCounterUI === 'function') {
+        updateBoardCounterUI(noteObj.boardid);
+        updateBoardCounterUI('reminder');
+    }
     showToast(_('noteSaved') || "Note saved");
 }
 
@@ -9948,7 +10092,7 @@ function previewEditedNote() {
             id: noteId,
             gdid: noteGdid,
             maskedLinks: maskedLinks
-        }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-id="${modalNoteObj.id}"]`)) : null);
+        }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
 
         // --- Custom preview state: Show Save, Preview AND Edit buttons ---
         // 1. Re-initialize edit buttons (showModal cleaned them up)

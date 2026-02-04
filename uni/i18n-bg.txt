@@ -235,6 +235,7 @@ bg: {
         "closeAfterSaveLabel": "Затваряне след запис",
         "updateGDriveLabel": "Актуализирай Google Drive",
         "checkEmptyBoardsLabel": "Проверка за празни бордове",
+        "automatedTimerLabel": "Автоматичен таймер",
         "confirmRemoveDuplicates": "Сигурни ли сте, че искате да премахнете бележки с дублиращо се съдържание?",
         "noDuplicatesFound": "Няма открити дубликати.",
         "duplicatesDeleted": "Успешно изтрити {count} дубликата.",
