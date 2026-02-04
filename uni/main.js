@@ -560,6 +560,13 @@ async function refreshAuthToken() {
                         }
 
                         console.log("Token refreshed successfully.");
+
+                        // Update global state immediately
+                        authToken = tokenWithTimestamp;
+                        if (typeof gapi !== 'undefined' && gapi.client) {
+                            gapi.client.setToken({ access_token: authToken.access_token });
+                        }
+
                         resolve({ pass: true, tokenData: tokenWithTimestamp });
                     } else {
                         console.warn("Token refresh failed:", tokenResponse);
@@ -624,27 +631,45 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         return files;
     };
 
-    try {
-        allFiles = await listFiles();
-    } catch (e) {
-        // Build robust 401 check
-        const is401 = (e.result && e.result.error && e.result.error.code === 401) ||
-            (e.status === 401) ||
-            (e.result && e.result.error && e.result.error.status === 'UNAUTHENTICATED');
+    // Retry logic with counter to prevent infinite loops
+    let attempts = 0;
+    const maxAttempts = 3; // Allow retries after token refresh
 
-        if (is401) {
-            console.warn("Got 401 during file list, attempting token refresh...");
-            try {
-                await refreshAuthToken();
-                // Small delay to let old connections close before making new requests
-                await new Promise(r => setTimeout(r, 300));
-                allFiles = await listFiles();
-            } catch (refreshError) {
-                console.error("Token refresh failed:", refreshError);
-                throw new Error("Drive API List failed (Auth).");
+    while (attempts < maxAttempts) {
+        attempts++;
+        try {
+            allFiles = await listFiles();
+            break; // Success, exit loop
+        } catch (e) {
+            // Build robust 401 check
+            const is401 = (e.result && e.result.error && e.result.error.code === 401) ||
+                (e.status === 401) ||
+                (e.result && e.result.error && e.result.error.status === 'UNAUTHENTICATED');
+
+            if (is401) {
+                if (attempts >= maxAttempts) {
+                    console.error("Max retry attempts reached for fetchFiles. Authentication failed.");
+                    throw new Error("Drive API List failed (Auth) after retries.");
+                }
+                console.warn(`Got 401 during file list (Attempt ${attempts}), attempting token refresh...`);
+                try {
+                    const refreshed = await refreshAuthToken();
+                    if (!refreshed || (refreshed.pass === false)) {
+                        throw new Error("Token refresh failed or user interaction required.");
+                    }
+                    // Small delay to let old connections close
+                    await new Promise(r => setTimeout(r, 500));
+                    // Check if token applied correctly to client
+                    if (gapi.client.getToken() === null && authToken) {
+                        gapi.client.setToken({ access_token: authToken.access_token });
+                    }
+                } catch (refreshError) {
+                    console.error("Token refresh failed during retry:", refreshError);
+                    throw new Error("Drive API List failed (Auth Refresh Failed).");
+                }
+            } else {
+                throw new Error("Drive API List failed: " + (e.message || "Unknown error"));
             }
-        } else {
-            throw new Error("Drive API List failed.");
         }
     }
 
@@ -9337,10 +9362,13 @@ function enableNoteEditing(modalBodyElem) {
     let currentBodyFormats = parseFormatsString(modalBodyElem.dataset.format);
     let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
 
-    if (isHiddenNote && bodyText.includes('|')) {
-        const pipeIdx = bodyText.indexOf('|');
-        titleText = bodyText.substring(0, pipeIdx);
-        bodyText = bodyText.substring(pipeIdx + 1);
+    if ((isHiddenNote || bodyText.includes('|')) && !modalBodyElem.querySelector('textarea')) {
+        let splitParts = [];
+        if (bodyText.includes('|')) {
+            const pipeIdx = bodyText.indexOf('|');
+            titleText = bodyText.substring(0, pipeIdx);
+            bodyText = bodyText.substring(pipeIdx + 1);
+        }
 
         const titleResult = preEdit(titleText, currentTitleFormats);
         const bodyResult = preEdit(bodyText, currentBodyFormats);
@@ -9419,7 +9447,7 @@ function enableNoteEditing(modalBodyElem) {
         return { container, textarea, backdrop };
     };
 
-    if (isHiddenNote && bodyText !== "") { // We already split it above
+    if ((isHiddenNote || titleText !== "") && bodyText !== null) {
         const titleEditor = createEditor('note-edit-title-textarea', titleText, '60px', true);
         const bodyEditor = createEditor('note-edit-textarea', bodyText, 'calc(100% - 60px)');
 
@@ -9696,7 +9724,7 @@ document.addEventListener('click', (e) => {
     enableNoteEditing(modalBodyElem);
 }, true);
 
-// --- Long Press for Editing (Mobile) ---
+/* / --- Long Press for Editing (Mobile) ---
 let editLongPressTimer;
 let editLongPressTriggered = false;
 document.addEventListener('touchstart', (e) => {
@@ -9731,14 +9759,14 @@ document.addEventListener('touchmove', () => {
         clearTimeout(editLongPressTimer);
         editLongPressTimer = null;
     }
-});
+});*/
 
 document.addEventListener('contextmenu', (e) => {
-    if (editLongPressTriggered) {
+    /* if (editLongPressTriggered) {
         e.preventDefault();
         editLongPressTriggered = false;
         return;
-    }
+    } */
     const modalBodyElem = document.getElementById('modal-body');
     if (modalBodyElem && modalBodyElem.contains(e.target) && !e.target.closest('.note-footer') && !e.target.closest('.modal-note-footer')) {
         // If textarea exists, it means we are editing or just started
@@ -9786,8 +9814,8 @@ async function saveEditedNote() {
     // Retrieve masked links from dataset if they exist
     const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
 
-    if (isHiddenNote && titleTextarea) {
-        // Handle hidden note: separate processing
+    if ((isHiddenNote || (titleTextarea && titleText !== "")) && titleTextarea) {
+        // Handle hidden note OR normal note with split content
         const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
         finalTitleFormat = stringifyFormatsArray(titleRes.formats);
 
@@ -10066,7 +10094,7 @@ function previewEditedNote() {
     // Retrieve masked links
     const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
 
-    if (isHiddenNote && titleTextarea) {
+    if ((isHiddenNote || (titleTextarea && titleText !== "")) && titleTextarea) {
         const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
         finalTitleFormat = stringifyFormatsArray(titleRes.formats);
         const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
