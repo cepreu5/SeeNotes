@@ -5670,6 +5670,20 @@ function showModal(options, noteElement = null) {
     }
     const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     modalBody.dataset.calendarDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? noteObjForCalendar.calendarDate : '0';
+    // Determine color index
+    let colorIndex = 0; // Default
+    if (noteColor !== undefined && noteColor !== null && typeof noteColorMap !== 'undefined') {
+        if (typeof noteColor === 'number' && noteColor >= 0 && noteColor <= 9) {
+            colorIndex = noteColor;
+        } else if (typeof noteColor === 'string') {
+            const foundIndex = noteColorMap.indexOf(noteColor);
+            if (foundIndex !== -1) colorIndex = foundIndex;
+        }
+    } else if (noteObjForCalendar && noteObjForCalendar.color !== undefined) {
+        colorIndex = noteObjForCalendar.color;
+    }
+    modalBody.dataset.colorIndex = colorIndex;
+
     // Set modal background color
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
     if (isPromo) {
@@ -5677,27 +5691,106 @@ function showModal(options, noteElement = null) {
         modalContentBox.style.backgroundImage = 'none';
         modalContentBox.classList.add('no-bg-image');
         modalBody.classList.add('no-bg-image');
-    } else if (noteColor) {
-        modalContentBox.style.backgroundColor = noteColor;
-        // Ако графичният фон е изключен, премахваме background-image
+    } else {
+        const bgColor = (typeof noteColorMap !== 'undefined') ? noteColorMap[colorIndex] : (noteColor || '#eef603');
+        modalContentBox.style.backgroundColor = bgColor;
         if (!imgBgrdEnabled) {
             modalContentBox.style.backgroundImage = 'none';
             modalContentBox.classList.add('no-bg-image');
             modalBody.classList.add('no-bg-image');
         } else {
-            // Ако е включен, възстановяваме фона (ако има зададен в CSS)
             modalContentBox.style.backgroundImage = '';
             modalContentBox.classList.remove('no-bg-image');
             modalBody.classList.remove('no-bg-image');
         }
-    } else {
-        modalContentBox.style.backgroundColor = '#eef603'; // Reset to default color
-        if (!imgBgrdEnabled) {
-            modalContentBox.style.backgroundImage = 'none';
-            modalContentBox.classList.add('no-bg-image');
-            modalBody.classList.add('no-bg-image');
-        } else {
-            modalBody.classList.remove('no-bg-image');
+    }
+
+    // --- Color Picker UI in Header ---
+    const oldColorBtn = document.getElementById('modal-color-btn');
+    if (oldColorBtn) oldColorBtn.remove();
+    const oldPalette = document.getElementById('color-palette-dropdown');
+    if (oldPalette) oldPalette.remove();
+
+    if (!isPromo) {
+        const closeBtn = modalContentBox.querySelector('.modal-close');
+        if (closeBtn) {
+            const colorBtn = document.createElement('div');
+            colorBtn.id = 'modal-color-btn';
+            colorBtn.className = 'modal-header-btn';
+            colorBtn.title = _('changeColor') || 'Change Color';
+            colorBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="gray" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>`;
+            Object.assign(colorBtn.style, {
+                cursor: 'pointer',
+                right: '277px',
+                display: 'none',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: '0.7'
+            });
+            colorBtn.onmouseover = () => colorBtn.style.opacity = '1';
+            colorBtn.onmouseout = () => colorBtn.style.opacity = '0.7';
+            closeBtn.parentNode.insertBefore(colorBtn, closeBtn);
+
+            // Palette
+            const palette = document.createElement('div');
+            palette.id = 'color-palette-dropdown';
+            Object.assign(palette.style, {
+                position: 'absolute',
+                top: '40px',
+                right: '40px',
+                backgroundColor: 'white',
+                border: '1px solid #ccc',
+                padding: '8px',
+                display: 'none',
+                flexWrap: 'wrap',
+                width: '120px',
+                gap: '8px',
+                zIndex: '10001',
+                borderRadius: '8px',
+                boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
+            });
+
+            if (typeof noteColorMap !== 'undefined') {
+                noteColorMap.forEach((c, idx) => {
+                    const swatch = document.createElement('div');
+                    Object.assign(swatch.style, {
+                        width: '22px',
+                        height: '22px',
+                        backgroundColor: c,
+                        cursor: 'pointer',
+                        borderRadius: '50%',
+                        border: '1px solid #ccc',
+                        boxShadow: 'inset 0 0 2px rgba(0,0,0,0.2)'
+                    });
+                    if (idx === colorIndex) {
+                        swatch.style.border = '2px solid #555';
+                        swatch.style.transform = 'scale(1.1)';
+                    }
+                    swatch.onclick = (e) => {
+                        e.stopPropagation();
+                        // Update UI
+                        modalContentBox.style.backgroundColor = c;
+                        modalBody.dataset.color = c;
+                        modalBody.dataset.colorIndex = idx;
+                        palette.style.display = 'none';
+                    };
+                    palette.appendChild(swatch);
+                });
+            }
+            modalContentBox.appendChild(palette);
+
+            colorBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                palette.style.display = palette.style.display === 'none' ? 'flex' : 'none';
+            });
+            // Click outside to close (simple handler)
+            const closePalette = (e) => {
+                if (palette.style.display === 'flex' && !palette.contains(e.target) && e.target !== colorBtn) {
+                    palette.style.display = 'none';
+                }
+            };
+            document.addEventListener('click', closePalette);
+            // Cleanup listener on modal close logic (or just let it persist, it's lightweight)
         }
     }
     // Използваме requestAnimationFrame, за да гарантираме, че браузърът е приложил началните стилове (scale 0.7)
@@ -5754,21 +5847,67 @@ function showModal(options, noteElement = null) {
     if (oldFooter) {
         oldFooter.remove();
     }
-    // Ако не е подаден noteElement (напр. от календара), опитваме се да го намерим в DOM-а
-    if (!noteElement && (options.gdid || noteGdid)) {
-        const gdidToFind = options.gdid || noteGdid;
-        noteElement = document.querySelector(`.note[data-g="${gdidToFind}"]`);
+    // --- FOOTER GENERATION LOGIC ---
+    // First, try to find the note object in memory for the most up-to-date data
+    const gdidForLookup = options.gdid || noteGdid;
+    const idForLookup = options.id || noteId;
+    const currentNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(gdidForLookup)) || (n.id && String(n.id) === String(idForLookup)));
+
+    // If not passed noteElement, try to find it
+    if (!noteElement && gdidForLookup) {
+        noteElement = document.querySelector(`.note[data-g="${gdidForLookup}"]`);
     }
-    if (noteElement) {
-        const noteHeaderInfo = noteElement.querySelector('.note-header-info');
-        // Показваме футъра само ако има информация в хедъра на бележката
-        // И само ако сме в режим "преглед" (не при редакция, въпреки че тук е само showModal)
-        if (noteHeaderInfo && noteHeaderInfo.innerText.trim() !== '') {
-            const footer = document.createElement('div');
-            footer.className = 'modal-note-footer';
-            footer.innerHTML = noteHeaderInfo.innerHTML;
-            modalContentBox.appendChild(footer); // Закачаме го за content box-a, не за body-то
+
+    // Determine footer content
+    let footerHtml = '';
+    if (currentNoteObj) {
+        // Generate from data directly (fresh)
+        const dateSpan = document.createElement('span');
+        dateSpan.className = 'note-header-date';
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'note-header-time';
+
+        if (currentNoteObj.timer) {
+            const dateText = formatDate(currentNoteObj.timer);
+            const showCalIcon = currentNoteObj.calendarDate && parseInt(currentNoteObj.calendarDate, 10) > 0;
+            if (dateText) {
+                if (showCalIcon) dateSpan.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+                else dateSpan.textContent = dateText;
+            }
+            const timeText = formatTime(currentNoteObj.timer);
+            if (timeText) timeSpan.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
+        } else if (currentNoteObj.calendarDate) {
+            const dateText = formatDate(currentNoteObj.calendarDate);
+            if (dateText) dateSpan.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+        } else if (currentNoteObj.datemod) {
+            const dateText = formatDate(currentNoteObj.datemod);
+            if (dateText) {
+                dateSpan.textContent = dateText;
+                // dateSpan.classList.add('datemod-header-date'); // Optional styling match
+                const timeText = formatTime(currentNoteObj.datemod);
+                if (timeText) timeSpan.textContent = timeText;
+            }
         }
+
+        if (dateSpan.innerHTML || dateSpan.textContent) {
+            const tempContainer = document.createElement('div');
+            tempContainer.appendChild(dateSpan);
+            tempContainer.appendChild(timeSpan);
+            footerHtml = tempContainer.innerHTML;
+        }
+    } else if (noteElement) {
+        // Fallback to DOM if object not found (rare)
+        const noteHeaderInfo = noteElement.querySelector('.note-header-info');
+        if (noteHeaderInfo && noteHeaderInfo.innerText.trim() !== '') {
+            footerHtml = noteHeaderInfo.innerHTML;
+        }
+    }
+
+    if (footerHtml) {
+        const footer = document.createElement('div');
+        footer.className = 'modal-note-footer';
+        footer.innerHTML = footerHtml;
+        modalContentBox.appendChild(footer);
     }
 
     copyBtn.innerHTML = copyIconSvg;
@@ -5777,27 +5916,19 @@ function showModal(options, noteElement = null) {
     const nextBtn = document.getElementById('next-note-btn');
     const deleteBtn = document.getElementById('delete-modal-btn');
     // Показваме/скриваме бутона за изтриване
-    if ((useIndexedDb || updateGDrive) && (noteElement || noteGdid) && !isPromo) {
+    if ((useIndexedDb || updateGDrive) && (currentNoteObj || noteElement) && !isPromo) {
         deleteBtn.style.display = 'flex';
         // Премахваме стари event listeners и добавяме нов
         const newDeleteBtn = deleteBtn.cloneNode(true);
         deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
         newDeleteBtn.addEventListener('click', async (e) => {
-            // Use Global handleNoteDelete for both cases
-            if (noteElement) {
-                await handleNoteDelete(noteElement, e, true);
-            } else {
-                // Calendar/System case: Pass mock element with dataset
-                const mockEl = {
-                    gdid: options.gdid || noteGdid, // Direct property for fallback logic
-                    dataset: {
-                        g: options.gdid || noteGdid, // Ensure we get it from options if variable is not in scope
-                        b: (options && options.boardId) ? options.boardId : null
-                    },
-                    remove: () => { } // No-op
-                };
-                await handleNoteDelete(mockEl, e, true);
-            }
+            // Use Global handleNoteDelete via element or mock
+            const elementToDelete = noteElement || {
+                gdid: gdidForLookup,
+                dataset: { g: gdidForLookup, b: (options && options.boardId) ? options.boardId : null },
+                remove: () => { }
+            };
+            await handleNoteDelete(elementToDelete, e, true);
         });
 
     } else {
@@ -5881,8 +6012,9 @@ function showModal(options, noteElement = null) {
         });
         modalContentBox.appendChild(moveBtn);
         // --- Calendar (Assign/Remove Date) Button ---
-        const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-        const hasCalendarDate = noteObjForCalendar && noteObjForCalendar.calendarDate && noteObjForCalendar.calendarDate !== 0;
+        const noteObjForCalendar = currentNoteObj; // Reuse found object
+        const cDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? parseInt(noteObjForCalendar.calendarDate, 10) : 0;
+        const hasCalendarDate = cDate !== 0 && !isNaN(cDate);
 
         const calendarBtn = document.createElement('div');
         calendarBtn.id = 'note-calendar-btn';
@@ -5899,7 +6031,7 @@ function showModal(options, noteElement = null) {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            // boxShadow: '3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23)',
+            boxShadow: '3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23)',
             cursor: 'pointer',
             zIndex: '10000',
             border: '1px solid #ccc'
@@ -5920,6 +6052,45 @@ function showModal(options, noteElement = null) {
                 calendarBtn.innerHTML = `<img src="Refresh.png" class="button-loading" style="width:24px; height:24px; position:absolute; top:50%; left:50%;">`;
 
                 await updateNoteCalendarDate({ id: noteId, gdid: noteGdid }, { getTime: () => 0 });
+
+                // Update Footer Immediately
+                const footer = modalContentBox.querySelector('.modal-note-footer');
+                if (footer) {
+                    const dateSpan = footer.querySelector('.note-header-date');
+                    const timeSpan = footer.querySelector('.note-header-time');
+                    if (dateSpan) {
+                        // Fallback to datemod or creation date logic similar to footer generation
+                        const noteObjForFooter = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+                        if (noteObjForFooter) {
+                            // Temporarily use the updated state (already updated in updateNoteCalendarDate -> memory)
+                            // Re-evaluate what should be shown
+                            dateSpan.innerHTML = '';
+                            if (noteObjForFooter.datemod) {
+                                const dText = formatDate(noteObjForFooter.datemod);
+                                if (dText) dateSpan.textContent = dText;
+                            } else if (noteObjForFooter.date) {
+                                const dText = formatDate(noteObjForFooter.date);
+                                if (dText) dateSpan.textContent = dText;
+                            }
+                            // Clear icon if it was calendar
+                            if (dateSpan.innerHTML.includes(calendarIconSvg)) {
+                                dateSpan.innerHTML = dateSpan.textContent;
+                            }
+                        }
+                    }
+                }
+
+                if (typeof updateBoardCounterUI === 'function') {
+                    updateBoardCounterUI('reminder');
+                }
+
+                // If we are in the 'reminder' board, remove the note from the view immediately
+                if (currentBoardFilter === 'reminder') {
+                    const noteElToRemove = document.querySelector(`.note[data-g="${noteGdid}"]`) || document.querySelector(`.note[data-i="${noteId}"]`);
+                    if (noteElToRemove) {
+                        noteElToRemove.remove();
+                    }
+                }
 
                 calendarBtn.style.pointerEvents = 'auto';
                 calendarBtn.innerHTML = calendarIconSvg;
@@ -8302,10 +8473,14 @@ async function createNoteElement(noteContent) {
     });
     if (extraData.timer) {
         const dateText = formatDate(extraData.timer);
-        if (dateText) headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+        const showCalIcon = extraData.calendarDate && parseInt(extraData.calendarDate, 10) > 0;
+        if (dateText) {
+            if (showCalIcon) headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+            else headerDate.textContent = dateText;
+        }
         const timeText = formatTime(extraData.timer);
         if (timeText) headerTime.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
-    } else if (extraData.calendarDate) {
+    } else if (extraData.calendarDate && extraData.calendarDate > 0) {
         const dateText = formatDate(extraData.calendarDate);
         if (dateText) {
             headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
@@ -9680,6 +9855,16 @@ function initNoteEditUI() {
     if (previewBtn) { previewBtn.style.display = 'flex'; previewBtn.style.right = '100px'; }
     if (editBtn) editBtn.style.display = 'none';
     if (moveBtn) moveBtn.style.display = 'none';
+    const colorBtn = document.getElementById('modal-color-btn');
+    if (colorBtn) colorBtn.style.display = 'flex';
+    // Remove graphical background for edit mode
+    const modalContentBox = document.querySelector('#content-modal .modal-content-box');
+    const modalBodyEl = document.getElementById('modal-body');
+    if (modalContentBox) {
+        modalContentBox.style.backgroundImage = 'none';
+        modalContentBox.classList.add('no-bg-image');
+    }
+    if (modalBodyEl) modalBodyEl.classList.add('no-bg-image');
 }
 
 function placeCaretAtEnd(el) {
@@ -9852,7 +10037,7 @@ async function saveEditedNote() {
             "alarm_type": -1,
             "boardid": boardId,
             "calendarDate": 0,
-            "color": 0, // Default color or from modal dataset
+            "color": modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : 0,
             "date": dateMod,
             "datemod": dateMod,
             "eventId": 0,
@@ -9901,12 +10086,15 @@ async function saveEditedNote() {
     const originalContent = noteObj.notetxt || "";
     const newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj.calendarDate || 0);
 
+    const newColor = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (noteObj.color || 0);
+
     // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
-    const hasChanges = isNewNote || (processedText !== originalContent || finalFormat !== (noteObj.text_span || "") || finalTitleFormat !== (noteObj.title_span || "") || newCalendarDate !== noteObj.calendarDate);
+    const hasChanges = isNewNote || (processedText !== originalContent || finalFormat !== (noteObj.text_span || "") || finalTitleFormat !== (noteObj.title_span || "") || newCalendarDate !== noteObj.calendarDate || newColor !== noteObj.color);
 
     if (hasChanges) {
         // --- Apply Changes ---
         noteObj.notetxt = processedText;
+        noteObj.color = newColor;
         noteObj.text_span = finalFormat;
         noteObj.title_span = finalTitleFormat;
         const oldCalendarDate = noteObj.calendarDate || 0;
@@ -10151,7 +10339,19 @@ function disableNoteEditing(modalBodyElem) {
     // 2. Show Edit Button (if it exists)
     const editBtn = document.getElementById('note-edit-btn');
     if (editBtn) editBtn.style.display = 'flex';
-
+    // 3. Hide Color Button
+    const colorBtn = document.getElementById('modal-color-btn');
+    if (colorBtn) colorBtn.style.display = 'none';
+    // 4. Restore graphical background if setting allows
+    const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false';
+    const modalContentBox = document.querySelector('#content-modal .modal-content-box');
+    if (modalContentBox) {
+        if (imgBgrdEnabled) {
+            modalContentBox.style.backgroundImage = '';
+            modalContentBox.classList.remove('no-bg-image');
+            modalBodyElem.classList.remove('no-bg-image');
+        }
+    }
     // Note: The actual content replacement (removing textarea) is handled by showModal (called after)
     // or by modal closing. We don't need to manually revert innerHTML here unless we cancel.
 }

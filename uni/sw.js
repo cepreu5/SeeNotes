@@ -1,4 +1,4 @@
-const CACHE_NAME = 'multinotes-b2.0';
+const CACHE_NAME = 'cxeditor-b1.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
