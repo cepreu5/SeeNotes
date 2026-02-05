@@ -7,8 +7,8 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.4'; // App version
-const debug = true; // Глобален флаг за дебъг режим
+const version = 'Beta 1.0'; // App version
+const debug = false; // Глобален флаг за дебъг режим
 
 let guide = true;
 guide = localStorage.getItem('guide');
@@ -4691,12 +4691,12 @@ async function mainLogic() {
                     loaderText.textContent = _('fetchingFromDb');
                     if (isLoadCancelled) return;
                     await fetchAllDataLocal();
+                    // Ако има обновени бележки, автоматично превключваме на тях
+                    if (updatedNoteGdims.length > 0) {
+                        currentBoardFilter = 'new-updates';
+                    }
                     // Създаваме UI с всички данни
                     await renderUI({ boardParseError: false });
-                    // Ако има обновени бележки, автоматично филтрираме по тях
-                    if (updatedNoteGdims.length > 0) {
-                        filterNotesByBoard('new-updates', false);
-                    }
                 }
             }
             reportDataIntegrityIssues(); // Generate report before finishing loading
@@ -5969,6 +5969,8 @@ function showModal(options, noteElement = null) {
     if (oldMoveMenu) oldMoveMenu.remove();
     const oldPreviewBtn = document.getElementById('note-preview-btn');
     if (oldPreviewBtn) oldPreviewBtn.remove();
+    const oldCalendarBtn = document.getElementById('note-calendar-btn');
+    if (oldCalendarBtn) oldCalendarBtn.remove();
 
     const canEdit = (useIndexedDb || (updateGDrive && options.gdid)) && !isPromo;
 
@@ -6788,12 +6790,18 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
             showModal(JSON.stringify(board, null, 2));
             return;
         }
+        // --- NEW LOGIC: Ctrl+Click when debug is false ---
+        if (!debug && e.ctrlKey && !forcePreview) {
+            if (boardId !== 'with-photos') {
+                showAllBoardsModal();
+                return;
+            }
+        }
         // 2. Standard Navigation & Scroll
         if (link && link.scrollIntoView) {
             link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
         }
         filterNotesByBoard(boardId, false);
-
         // 3. Logic for Preview Toggle (Ctrl+Click or Long Press)
         if (e.ctrlKey || forcePreview) {
             setTimeout(() => showBoardPreviews(), 100);
@@ -8901,6 +8909,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     let notesCount = 0;
     let skippedNotesCount = 0;
     noteElementsResults.forEach(noteEl => {
+        // console.log(noteEl);
         if (noteEl) {
             fragment.appendChild(noteEl);
             notesCount++;
@@ -9032,7 +9041,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             setTimeout(startAssistantGuide, 1500);
         }
     } else {
-        filterNotesByBoard(currentBoardFilter, false);
+        filterNotesByBoard(currentBoardFilter, true);
     }
     // След първото зареждане, флагът става false.
     isInitialLoad = false;
@@ -10133,16 +10142,16 @@ async function saveEditedNote() {
             if (isTempGdid) {
                 const folderId = await getFolderID();
                 if (folderId) {
-                    const fileContent = JSON.stringify([noteObj]);
-                    const fileName = `note.txt`; // @@ 
+                    const fileContent = JSON.stringify(noteObj);
+                    const fileName = 'note.txt'; // @@ 
                     try {
                         const tempGdid = noteObj.gdid;
                         const newGdid = await createGDriveFile(folderId, fileName, fileContent);
                         noteObj.gdid = newGdid;
                         modalBodyElem.dataset.gdid = newGdid;
-                        await updateGDriveFile(newGdid, JSON.stringify([noteObj]));
+                        await updateGDriveFile(newGdid, JSON.stringify(noteObj));
                         if (useIndexedDb) {
-                            await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+                            await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
                             if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                         }
                     } catch (e) {
@@ -10152,11 +10161,11 @@ async function saveEditedNote() {
                 }
             } else {
                 try {
-                    await updateGDriveFile(noteObj.gdid, JSON.stringify([noteObj]));
+                    await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
                 } catch (e) { console.error("Failed to update GDrive file", e); }
             }
         }
-        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
         showToast(_('noteSaved') || "Note saved");
     }
 
@@ -10222,10 +10231,10 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
         if (isTempGdid) {
             const folderId = await getFolderID();
             if (folderId) {
-                const fileContent = JSON.stringify([noteObj]);
-                const fileName = `note_${noteObj.datemod}.txt`;
+                const fileContent = JSON.stringify(noteObj);
+                const fileName = 'note.txt';
                 try {
-                    const newGdid = await createGDriveFile(fileName, fileContent, folderId);
+                    const newGdid = await createGDriveFile(folderId, fileName, fileContent);
                     if (newGdid) {
                         const oldGdid = noteObj.gdid;
                         noteObj.gdid = newGdid;
@@ -10240,7 +10249,7 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
             }
         } else {
             try {
-                await updateGDriveFile(noteObj.gdid, JSON.stringify([noteObj]));
+                await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
             } catch (e) {
                 console.error("Failed to update GDrive file in calendar update", e);
             }
