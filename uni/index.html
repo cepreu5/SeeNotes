@@ -7,6 +7,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
+    <link rel="preload" href="i18n-bg.txt" as="fetch" crossorigin="anonymous">
+    <link rel="preload" href="i18n-en.txt" as="fetch" crossorigin="anonymous">
+    <link rel="preload" href="main.js" as="script">
     <meta http-equiv="Content-Security-Policy"
         content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
     <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
@@ -631,6 +634,14 @@
                                     data-key="updateGDriveLabel">
                                     Актуализирай Google Drive:</label>
                                 <input type="checkbox" id="update-gdrive-checkbox" class="settings-checkbox">
+                            </div>
+                            <div class="zoom-control-wrapper" id="force-gdrive-read"
+                                style="margin-top: 10px; justify-content: center;">
+                                <label for="force-gdrive-read-checkbox"
+                                    style="margin-right: 10px; flex-shrink: 0; text-align: left;"
+                                    data-key="forceGDriveReadLabel">
+                                    Четене от GD преди редакция:</label>
+                                <input type="checkbox" id="force-gdrive-read-checkbox" class="settings-checkbox">
                             </div>
                             <div class="zoom-control-wrapper" id="check-empty-boards"
                                 style="margin-top: 10px; justify-content: center;">

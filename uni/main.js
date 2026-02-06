@@ -8,7 +8,7 @@
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 const version = 'Beta 1.0'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
 guide = localStorage.getItem('guide');
@@ -2317,6 +2317,14 @@ async function startApp(isExplicitLogin = false) {
         }
         // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
         updateGlobalStateFlags();
+
+        // --- PRE-LOAD START BOARD SETTING ---
+        // Avoid FOUC by setting currentBoardFilter immediately from storage
+        const savedStartBoard = localStorage.getItem('startBoard');
+        if (savedStartBoard && (isDbOwner || savedStartBoard === 'all')) {
+            currentBoardFilter = savedStartBoard;
+        }
+
         await createBoardsUI([], false);
         await createSettingsUI([], false); // Предварително създава UI на настройките
         // Проверката за потребител и основната логика се извикват директно.
@@ -2385,6 +2393,13 @@ async function getFirstStartEncoded() {
         return nowTs;
     }
 }
+
+// function _(key) {
+//     if (appTranslations[currentLang] && appTranslations[currentLang][key]) {
+//         return appTranslations[currentLang][key];
+//     }
+//     return key;
+// }
 
 function _(key) {
     // If translations aren't loaded yet, try to load them synchronously
@@ -3270,6 +3285,7 @@ function initApp() {
     });
 
     async function triggerSync() {
+        updatedNoteGdims = []; // Clear previous updates
         loaderContainer.style.display = 'block'; // Показваме статус панела
         const dbSource = await getConfig('dbSource');
         let updatedCount = 0;
@@ -3345,6 +3361,7 @@ function initApp() {
             }
             trackMaxIds(validNewNotes);
             // 4. Обновяваме броячите и менюто с бордове
+            currentBoardFilter = 'new-updates'; // Switch to New board
             await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             applyFilters(); // Прилагаме филтрите отново
         }
@@ -5661,6 +5678,10 @@ function showModal(options, noteElement = null) {
     // Store metadata for editing and rendering identification
     modalBody.dataset.id = noteId || '';
     modalBody.dataset.gdid = noteGdid || '';
+    modalBody.dataset.baseDatemod = options.datemod || '0';
+    if (options.originalNote) {
+        modalBody.dataset.baseNote = JSON.stringify(options.originalNote);
+    }
     modalBody.dataset.format = formatString || '';
     modalBody.dataset.titleFormat = titleFormatString || '';
     modalBody.dataset.boardId = (options && options.boardId) ? options.boardId : '';
@@ -7129,6 +7150,14 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         }
+        const forceGDriveReadCheckbox = document.getElementById('force-gdrive-read-checkbox');
+        if (forceGDriveReadCheckbox) {
+            forceGDriveReadCheckbox.checked = localStorage.getItem('forceGDriveRead') === 'true';
+            forceGDriveReadCheckbox.addEventListener('change', () => {
+                localStorage.setItem('forceGDriveRead', forceGDriveReadCheckbox.checked);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
         const checkEmptyBoardsCheckbox = document.getElementById('check-empty-boards-checkbox');
         if (checkEmptyBoardsCheckbox) {
             checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
@@ -8531,6 +8560,7 @@ async function createNoteElement(noteContent) {
         } else {
             // Fallback for cases where it wasn't preloaded (e.g. newly created note)
             note.style.backgroundColor = noteBgColor;
+            note.classList.add('loading-bg');
             createColoredNoteBackground(noteBgColor, imageName, 250, 250).then(canvas => {
                 canvas.toBlob(blob => {
                     const url = URL.createObjectURL(blob);
@@ -8540,9 +8570,11 @@ async function createNoteElement(noteContent) {
                     note.style.backgroundColor = 'transparent';
                     note.style.backgroundSize = '100% 100%';
                     note.style.backgroundRepeat = 'no-repeat';
+                    note.classList.remove('loading-bg');
                 }, 'image/png');
             }).catch(() => {
                 note.style.backgroundColor = noteBgColor;
+                note.classList.remove('loading-bg');
             });
         }
     } else {
@@ -8723,7 +8755,7 @@ async function createNoteElement(noteContent) {
     };
 
     // Обработва клик върху цялата бележка (с изключение на хедъра)
-    const handleNoteClick = (e) => {
+    const handleNoteClick = async (e) => {
         // Check if text is selected. If so, prevent opening the modal.
         const selection = window.getSelection();
         if (selection.toString().length > 0) {
@@ -8731,8 +8763,45 @@ async function createNoteElement(noteContent) {
         }
         // Отваряме модала, само ако не е long press и кликът не е върху футъра
         if (!isLongPress && !e.target.closest('.note-footer')) {
+
+            // --- FORCE GDRIVE READ LOGIC ---
+            const forceGDriveRead = localStorage.getItem('forceGDriveRead') === 'true';
+            if (forceGDriveRead && noteGdid) {
+                showToast(_('loadingFromDrive'), 2000);
+                const txt = await fetchGDriveFileContent(noteGdid);
+                if (txt) {
+                    try {
+                        const newItem = JSON.parse(txt);
+                        // Update memory
+                        Object.assign(noteContent, newItem);
+                        // Update critical fields for modal
+                        if (newItem.notetxt !== undefined) fileContent = newItem.notetxt;
+                        else if (newItem.text !== undefined) fileContent = newItem.text;
+
+                        if (newItem.title_span !== undefined) titleSpan = newItem.title_span;
+                        if (newItem.text_span !== undefined) textSpan = newItem.text_span;
+
+                        extraData = { ...noteContent };
+                        delete extraData.notetxt;
+
+                        // Update global data array reference too (find and update)
+                        if (typeof allNotesData !== 'undefined') {
+                            const noteInHeader = allNotesData.find(n => n.gdid === noteGdid);
+                            if (noteInHeader) {
+                                Object.assign(noteInHeader, newItem);
+                            }
+                        }
+
+                    } catch (err) {
+                        console.error("Error parsing GDrive content", err);
+                        showToast(_('errorParsingNote'), 3000);
+                    }
+                }
+            }
+            // --- END FORCE GDRIVE READ LOGIC ---
+
             const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
-            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
+            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
 
             // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
             const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
@@ -8924,6 +8993,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Update container
     if (!rerenderOnlyMenu) {
         notesContainer.appendChild(fragment);
+        // --- IMMEDIATE FILTER APPLICATION ---
+        // Apply filters synchronously immediately after adding to DOM to prevent "flash" of all notes
+        applyFilters();
     }
     // Hide spinner
     if (!rerenderOnlyMenu && loaderContainer) {
@@ -9013,35 +9085,30 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 }, 100);
             }, 1000);
         }
+    }
 
-        // --- КОРЕКЦИЯ: Програмен клик на стартовия борд ---
-        setTimeout(() => {
-            const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
-            if (startBoardBtn) {
-                startBoardBtn.click();
-            } else {
-                filterNotesByBoard(currentBoardFilter, true);
-            }
-        }, 300);
-        // Start Assistant Guide if needed
-        if (guide) {
-            const startAssistantGuide = () => {
-                if (window.kbAssistant && window.kbAssistant.isInitialized) {
-                    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
-                    if (entry && entry.guide) {
-                        window.kbAssistant.showGuide(entry.guide);
-                        localStorage.setItem('guide', 'false');
-                        guide = false;
-                    }
-                } else {
-                    setTimeout(startAssistantGuide, 100);
+    // --- BUTTON ACTIVE STATE SYNC ---
+    const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
+    if (startBoardBtn) {
+        startBoardBtn.classList.add('active-board');
+        startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+    // Start Assistant Guide if needed
+    if (guide) {
+        const startAssistantGuide = () => {
+            if (window.kbAssistant && window.kbAssistant.isInitialized) {
+                const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
+                if (entry && entry.guide) {
+                    window.kbAssistant.showGuide(entry.guide);
+                    localStorage.setItem('guide', 'false');
+                    guide = false;
                 }
-            };
-            // Delay slightly to ensure UI is ready
-            setTimeout(startAssistantGuide, 1500);
-        }
-    } else {
-        filterNotesByBoard(currentBoardFilter, true);
+            } else {
+                setTimeout(startAssistantGuide, 100);
+            }
+        };
+        // Delay slightly to ensure UI is ready
+        setTimeout(startAssistantGuide, 1500);
     }
     // След първото зареждане, флагът става false.
     isInitialLoad = false;
@@ -9970,6 +10037,293 @@ document.addEventListener('contextmenu', (e) => {
     }
 });
 
+// --- Three-way Merge & Conflict Resolution ---
+async function fetchGDriveFileContent(fileId) {
+    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
+    let accessToken = tokenObj ? tokenObj.access_token : null;
+    if (!accessToken) throw new Error("Missing auth token.");
+    try {
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` },
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            if (response.status === 401) {
+                const refreshed = await refreshAuthToken();
+                if (refreshed && refreshed.pass) {
+                    const retry = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                        headers: { 'Authorization': `Bearer ${refreshed.tokenData.access_token}` },
+                        cache: 'no-store'
+                    });
+                    if (retry.ok) return await retry.text();
+                }
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return await response.text();
+    } catch (e) { console.error("Fetch GDrive failed:", e); return null; }
+}
+
+function mergeField(base, local, server) {
+    if (String(local) === String(server)) return local;
+    if (String(local) === String(base)) return server;
+    if (String(server) === String(base)) return local;
+    return { conflict: true, local, server };
+}
+
+function mergeNotes(baseNote, localNote, serverNote) {
+    const result = { ...localNote };
+    const conflicts = {};
+    const splitNote = (txt) => {
+        const parts = (txt || "").split('|');
+        return { title: parts[0] || "", body: parts[1] || "", hasSplit: parts.length > 1 };
+    };
+    const b = splitNote(baseNote.notetxt), l = splitNote(localNote.notetxt), s = splitNote(serverNote.notetxt);
+    if (l.hasSplit || s.hasSplit || b.hasSplit) {
+        const mT = mergeField(b.title, l.title, s.title);
+        const mB = mergeField(b.body, l.body, s.body);
+        let fT = mT, fB = mB;
+        if (mT && mT.conflict) { conflicts.title = mT; fT = "<<CONFLICT>>"; }
+        if (mB && mB.conflict) { conflicts.body = mB; fB = "<<CONFLICT>>"; }
+        result.notetxt = fT + '|' + fB;
+    } else {
+        const merged = mergeField(baseNote.notetxt, localNote.notetxt, serverNote.notetxt);
+        if (merged && merged.conflict) { conflicts.notetxt = merged; result.notetxt = "<<CONFLICT>>"; }
+        else result.notetxt = merged;
+    }
+    ['color', 'boardid', 'calendarDate', 'text_span', 'title_span', 'pass'].forEach(key => {
+        if (String(localNote[key]) !== String(baseNote[key]) && String(serverNote[key]) !== String(baseNote[key])) {
+            if (String(localNote[key]) !== String(serverNote[key])) conflicts[key] = { local: localNote[key], server: serverNote[key] };
+        } else if (String(serverNote[key]) !== String(baseNote[key])) result[key] = serverNote[key];
+    });
+    return { result, conflicts };
+}
+
+async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.id = 'conflict-resolution-overlay';
+        Object.assign(overlay.style, {
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 30000, display: 'flex',
+            flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px'
+        });
+
+        // Add responsive CSS
+        const style = document.createElement('style');
+        style.textContent = `
+            #conflict-resolution-box {
+                background-image: url('Board.png');
+                background-color: #1a1a1a;
+                background-repeat: repeat;
+                background-size: auto;
+                border-radius: 12px;
+                width: calc(100% - 20px);
+                max-width: 950px;
+                max-height: 95vh;
+                overflow-y: auto;
+                padding: 20px;
+                color: #fff;
+                box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+                border: 1px solid #444;
+                font-family: sans-serif;
+                box-sizing: border-box;
+            }
+            .conflict-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-bottom: 25px;
+            }
+            @media (max-width: 600px) {
+                .conflict-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+            .conflict-cell {
+                padding: 15px;
+                border-radius: 12px;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 3px 5px 15px rgba(0,0,0,0.3);
+                border: 1px solid rgba(0,0,0,0.1);
+                color: #000;
+                transition: transform 0.2s;
+                box-sizing: border-box;
+            }
+            .conflict-cell:hover { transform: translateY(-2px); }
+            .conflict-btn-use {
+                background-color: darkorange;
+                color: #000;
+                border: none;
+                padding: 10px;
+                border-radius: 6px;
+                cursor: pointer;
+                margin-bottom: 12px;
+                font-weight: bold;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            }
+            .conflict-txt-preview {
+                font-size: 0.9em;
+                user-select: text;
+                max-height: 150px;
+                overflow-y: auto;
+                word-break: break-word;
+                white-space: pre-wrap;
+                background: rgba(255,255,255,0.2);
+                padding: 10px;
+                border-radius: 6px;
+            }
+            .result-field {
+                width: 100%;
+                padding: 12px;
+                color: #000;
+                border: 2px solid #444;
+                border-radius: 8px;
+                margin-bottom: 10px;
+                font-size: 1.1em;
+                box-sizing: border-box;
+                font-weight: 500;
+            }
+            .result-field:focus { border-color: darkorange; outline: none; }
+        `;
+        document.head.appendChild(style);
+
+        const box = document.createElement('div');
+        box.id = 'conflict-resolution-box';
+
+        const title = document.createElement('h2');
+        title.textContent = _('conflictDetected') || "Конфликт при запис";
+        title.style.margin = '0 0 20px 0';
+        title.style.textAlign = 'center';
+        title.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+        title.style.color = 'black';
+        box.appendChild(title);
+
+        const noteColors = (typeof noteColorMap !== 'undefined') ? noteColorMap : ['#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF', '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'];
+        const noteBgColor = noteColors[localNote.color || 0];
+
+        const resT = document.createElement('input');
+        resT.className = 'result-field';
+        resT.style.backgroundColor = noteBgColor;
+        const resB = document.createElement('textarea');
+        resB.className = 'result-field';
+        resB.style.backgroundColor = noteBgColor;
+        resB.style.height = '150px'; resB.style.resize = 'vertical';
+
+        const grid = document.createElement('div');
+        grid.className = 'conflict-grid';
+
+        const createHeader = (label) => {
+            const div = document.createElement('div'); div.textContent = label;
+            div.style.fontWeight = 'bold'; div.style.textAlign = 'center'; div.style.paddingBottom = '10px';
+            div.style.color = '#fff'; div.style.fontSize = '1.1em';
+            return div;
+        };
+
+        const decisions = {};
+
+        const addConflictRow = (key, localVal, serverVal, label) => {
+            if (label !== (_('content') || 'Съдържание')) {
+                const rowLabel = document.createElement('div');
+                rowLabel.style.gridColumn = '1 / -1'; rowLabel.style.marginTop = '15px';
+                rowLabel.style.fontWeight = 'bold'; rowLabel.style.color = '#4a90e2';
+                rowLabel.textContent = (label || key).toUpperCase();
+                grid.appendChild(rowLabel);
+            }
+
+            const createCell = (val, side) => {
+                const cell = document.createElement('div');
+                cell.className = 'conflict-cell';
+                const colorIdx = (side === 'local' ? localNote.color : serverNote.color) || 0;
+                cell.style.backgroundColor = noteColors[colorIdx];
+
+                const btn = document.createElement('button');
+                btn.className = 'conflict-btn-use';
+                btn.textContent = _('useThis') || 'Използвай това';
+
+                const txt = document.createElement('div');
+                txt.className = 'conflict-txt-preview';
+                txt.textContent = val;
+
+                cell.appendChild(btn); cell.appendChild(txt);
+                return { cell, btn };
+            };
+            const l = createCell(localVal, 'local');
+            const s = createCell(serverVal, 'server');
+
+            const select = (side) => {
+                l.cell.style.boxShadow = side === 'local' ? '0 0 0 4px #4a90e2' : '3px 5px 15px rgba(0,0,0,0.3)';
+                s.cell.style.boxShadow = side === 'server' ? '0 0 0 4px #4a90e2' : '3px 5px 15px rgba(0,0,0,0.3)';
+                const v = side === 'local' ? localVal : serverVal;
+                decisions[key] = v;
+                if (key === 'title') resT.value = v;
+                if (key === 'body' || key === 'notetxt') resB.value = v;
+
+                // Update result background color based on selected version's color
+                const colorIdx = (side === 'local' ? localNote.color : serverNote.color) || 0;
+                if (resT) resT.style.backgroundColor = noteColors[colorIdx];
+                if (resB) resB.style.backgroundColor = noteColors[colorIdx];
+            };
+            l.btn.onclick = () => select('local');
+            s.btn.onclick = () => select('server');
+            grid.appendChild(l.cell); grid.appendChild(s.cell); select('local');
+        };
+
+        Object.keys(conflicts).forEach(key => {
+            if (key === 'color') return; // Skip color field comparison
+            const conflict = conflicts[key];
+            let label = key;
+            if (key === 'title') label = _('title') || 'Заглавие';
+            else if (key === 'body' || key === 'notetxt') label = _('content') || 'Съдържание';
+            addConflictRow(key, conflict.local, conflict.server, label);
+        });
+        box.appendChild(grid);
+
+        const resLabel = document.createElement('h4'); resLabel.textContent = _('finalResult') || "Краен резултат (редактируем):";
+        resLabel.style.margin = '20px 0 10px 0';
+        resLabel.style.color = 'black';
+        box.appendChild(resLabel);
+
+        const splitNote = (txt) => { const parts = (txt || "").split('|'); return { title: parts[0] || "", body: parts[1] || "", hasSplit: parts.length > 1 }; };
+        const lParts = splitNote(localNote.notetxt);
+        const sParts = splitNote(serverNote.notetxt);
+        if (!decisions.title) resT.value = lParts.title;
+        if (!decisions.body && !decisions.notetxt) resB.value = lParts.body || lParts.title;
+        if (!conflicts.title && !lParts.hasSplit && !sParts.hasSplit) resT.style.display = 'none';
+        box.appendChild(resT); box.appendChild(resB);
+
+        const footer = document.createElement('div');
+        footer.style.display = 'flex'; footer.style.justifyContent = 'flex-end'; footer.style.gap = '15px'; footer.style.marginTop = '25px';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = _('cancel') || "Отказ";
+        Object.assign(cancelBtn.style, { padding: '12px 25px', borderRadius: '8px', border: 'none', backgroundColor: 'red', color: '#fff', cursor: 'pointer', fontWeight: 'bold' });
+        cancelBtn.onclick = () => { overlay.remove(); style.remove(); resolve(null); };
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = _('saveResolved') || "Запази решението";
+        Object.assign(saveBtn.style, { padding: '12px 25px', backgroundColor: 'darkorange', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' });
+        saveBtn.onclick = () => {
+            const resolvedNote = { ...localNote, ...serverNote };
+            if (resT.style.display === 'none') {
+                resolvedNote.notetxt = resB.value;
+            } else {
+                resolvedNote.notetxt = resT.value + '|' + resB.value;
+            }
+            ['color', 'boardid', 'calendarDate', 'text_span', 'title_span', 'pass'].forEach(k => {
+                if (decisions[k] !== undefined) resolvedNote[k] = decisions[k];
+                else resolvedNote[k] = localNote[k];
+            });
+            overlay.remove(); style.remove(); resolve(resolvedNote);
+        };
+        footer.appendChild(cancelBtn); footer.appendChild(saveBtn);
+        box.appendChild(footer); overlay.appendChild(box); document.body.appendChild(overlay);
+    });
+}
+
 // Unified Save Logic
 async function saveEditedNote() {
     const modalBodyElem = document.getElementById('modal-body');
@@ -10087,18 +10441,65 @@ async function saveEditedNote() {
 
     // 2. Update local data model (for existing notes)
     let noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-    if (!noteObj) {
+    if (!noteObj && !isNewNote) {
         console.error("Note object not found for saving.");
         return;
     }
 
-    const originalContent = noteObj.notetxt || "";
-    const newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj.calendarDate || 0);
+    const originalContent = noteObj ? (noteObj.notetxt || "") : "";
+    let newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj ? (noteObj.calendarDate || 0) : 0);
+    let newColor = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (noteObj ? (noteObj.color || 0) : 0);
 
-    const newColor = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (noteObj.color || 0);
+    // --- Conflict Resolution Logic ---
+    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+    if (updateGDriveNow && noteGdid && noteObj) {
+        try {
+            const serverRaw = await fetchGDriveFileContent(noteGdid);
+            if (serverRaw) {
+                const sData = JSON.parse(serverRaw);
+                const sNote = Array.isArray(sData) ? sData[0] : sData;
+                const baseDatemod = parseInt(modalBodyElem.dataset.baseDatemod, 10) || 0;
+                const baseNoteStr = modalBodyElem.dataset.baseNote;
+                const baseNote = baseNoteStr ? JSON.parse(baseNoteStr) : noteObj;
+
+                let dbNote = null;
+                if (useIndexedDb) {
+                    try { dbNote = await getFromDB(NOTE_STORE_NAME, noteGdid || noteId); } catch (e) { }
+                }
+
+                if (debug) {
+                    console.log("--- Conflict Debug ---");
+                    console.log("GDID:", noteGdid);
+                    console.log("1. Base Note (when modal opened) datemod:", baseDatemod);
+                    console.log("2. Local Memory Note (allNotesData) datemod:", noteObj.datemod);
+                    if (useIndexedDb) console.log("3. IndexedDB Note datemod:", dbNote ? dbNote.datemod : "Not found");
+                    console.log("4. Server Note (Google Drive) datemod:", sNote.datemod);
+                    console.log(">> Server > Base?", sNote.datemod > baseDatemod);
+                    console.log(">> Server > Memory?", sNote.datemod > noteObj.datemod);
+                }
+
+                if (sNote && sNote.datemod > baseDatemod) {
+                    const lNote = { ...noteObj, notetxt: processedText, text_span: finalFormat, title_span: finalTitleFormat, color: newColor, calendarDate: newCalendarDate };
+                    const { result, conflicts } = mergeNotes(baseNote, lNote, sNote);
+                    if (Object.keys(conflicts).length > 0) {
+                        const resolved = await showNoteConflictModal(baseNote, lNote, sNote, conflicts);
+                        if (!resolved) {
+                            if (saveBtnElem) { saveBtnElem.style.pointerEvents = 'auto'; saveBtnElem.innerHTML = originalSaveBtnHtml; }
+                            return;
+                        }
+                        processedText = resolved.notetxt; finalFormat = resolved.text_span; finalTitleFormat = resolved.title_span;
+                        newColor = resolved.color; newCalendarDate = resolved.calendarDate;
+                    } else {
+                        processedText = result.notetxt; finalFormat = result.text_span; finalTitleFormat = result.title_span;
+                        newColor = result.color; newCalendarDate = result.calendarDate;
+                    }
+                }
+            }
+        } catch (e) { console.error("Conflict check failed:", e); }
+    }
 
     // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
-    const hasChanges = isNewNote || (processedText !== originalContent || finalFormat !== (noteObj.text_span || "") || finalTitleFormat !== (noteObj.title_span || "") || newCalendarDate !== noteObj.calendarDate || newColor !== noteObj.color);
+    const hasChanges = isNewNote || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color);
 
     if (hasChanges) {
         // --- Apply Changes ---
@@ -10136,8 +10537,7 @@ async function saveEditedNote() {
         }
 
         // --- Save to Source (GDrive / Local / DB) ---
-        const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-        if (updateGDrive) {
+        if (updateGDriveNow) {
             const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
             if (isTempGdid) {
                 const folderId = await getFolderID();
@@ -10191,7 +10591,9 @@ async function saveEditedNote() {
                 color: noteColorStr,
                 boardId: noteObj.boardid,
                 id: noteObj.id,
-                gdid: noteObj.gdid
+                gdid: noteObj.gdid,
+                datemod: noteObj.datemod,
+                originalNote: noteObj
             }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`));
         }
     }

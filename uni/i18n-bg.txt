@@ -261,5 +261,15 @@ bg: {
         "mdClearLabel": "Изчисти",
         "addNoteTooltip": "Нова бележка",
         "inCalendar": "Бележката ще бъде изключена от календара, когато се запише.",
-        "cannotCreateInSystemBoard": "Моля, изберете конкретен борд, за да създадете бележка."
+        cannotCreateInSystemBoard: "Моля, изберете конкретен борд, за да създадете бележка.",
+        conflictDetected: "Конфликт при запис",
+        conflictDesc: "Бележката е била променена на сървъра. Моля, изберете кои промени да запазите.",
+        myVersion: "Моята версия",
+        serverVersion: "Версия на сървъра",
+        useThis: "Използвай това",
+        saveResolved: "Запази решението",
+        finalResult: "Краен резултат (редактируем):",
+        forceGDriveReadLabel: "Четене от Google Drive преди редакция:",
+        loadingFromDrive: "Зареждане от Google Drive...",
+        errorParsingNote: "Грешка при анализ на бележката"
     }

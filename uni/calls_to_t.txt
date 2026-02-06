@@ -1,0 +1,246 @@
+﻿233: const confirmMsg = _('confirmDeleteCorruptedNote')
+241: if (typeof showToast === 'function') showToast(_('fileDeletedSuccess'), 3000);
+245: if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', delErr.message), 5000);
+271: showToast(_('loadedFromLocalNoDrive'), 5000);
+276: showMessagePopup(_('errorFolderNotFound'));
+279: loaderText.textContent = _('loadingFile') + " ...";
+281: loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
+322: showToast(_('errorNoBoardFilesFound'), 15000);
+326: showToast(_('errorNoNoteFilesFound'));
+344: _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang)) :
+345: _('initialGDriveSync');
+398: // loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
+408: loaderText.textContent = _('syncFinishedLoadingData');
+788: if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+798: if (response.status === 401) throw new Error("401 Unauthorized - " + _('errorTokenMissing'));
+809: if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+815: if (response.status === 401) throw new Error("401 Unauthorized - " + _('errorTokenMissing'));
+845: if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+882: const label = _('updateGDriveLabel') || "Update Google Drive";
+883: showToast(label + " " + (_('required') || "required"), 5000);
+898: showToast(_('cannotCreateInSystemBoard') || "Моля, изберете конкретен борд.", 3000);
+1027: showToast(_('errorSessionExpired'));
+1079: alert(_('authFailed'));
+1084: alert(_('authFailed') + `\n\nError: ${error.type}`);
+1180: <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
+1182: <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${calendarIconSvg}</button>
+1326: calendarBtn.title = _('removeFromCalendar') || "Remove from calendar";
+1564: <button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${calendarIconSvg}</button>
+1814: const confirmed = await showConfirmation(_('confirmNoteDelete'));
+1835: if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+1879: showToast(_('noteDeletedSuccess'), 3000);
+1882: showToast(_('noteDeletedError') + " - " + error.message, 15000);
+1896: reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
+1924: showToast(_('noteAlreadyInBoard'), 3000);
+1938: showToast(_('noteMovedSuccess').replace('{boardName}', targetBoardTitle), 3000);
+1940: showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
+1943: showToast(_('noteMovedSuccess').replace('{boardName}', targetBoardTitle), 3000);
+2196: showToast(_('dbDeleted'), 3000);
+2199: deleteRequest.onerror = (event) => { showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000); };
+2200: deleteRequest.onblocked = (event) => { showToast(_('errorDbDeletionBlocked'), 10000); console.log('Database deletion is blocked unexpectedly:', event); };
+2223: showToast(_('dbDeleteFailed'), 10000);
+2426: submitFolderIdBtn.textContent = _('submitButton');
+2431: submitFolderIdBtn.textContent = _('okButton');
+2488: okButton.textContent = _('confirmCreateDbYes');
+2489: noButton.textContent = _('confirmCreateDbNo');
+2493: cancelButton.textContent = options.cancelText || _('cancel') || 'Cancel';
+2641: const errorText = `\n${_('errorClipboardRead')}`;
+2687: const errorText = `\n${_('invalidExpression')}`;
+2939: clearSearchBtn.title = _('closeButton'); // "Close" or "Clear"
+2949: saveSearchBtn.title = _('searchSavedTip');
+3091: showToast(_('errorCopyFailed'));
+3276: throw new Error(_('errorGoogleLibs'));
+3279: if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
+3291: showToast(_('errorSessionExpired'));
+3296: showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 5000);
+3299: if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
+3301: showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 5000);
+3347: const dbOwnerEmail = await getConfig('userEmail') || _('noData');
+3348: const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || _('noData');
+3351: const dbNoteIdType = await getConfig('dbNoteIdType') || _('noData');
+3353: let dbSourceText = _('noData');
+3355: dbSourceText = _('sourceGoogleDrive');
+3357: dbSourceText = _('sourceLocalFolder');
+3359: dbSourceText = _('sourceArchive');
+3362: const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
+3363: const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
+3369: `${_('sysInfoUser')}: ${currentUserEmail}`,
+3370: `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
+3371: `${_('sysInfoLoadTime')}: ${initialLoadTime ? initialLoadTime + ' s' + (loadTimeDate ? ' (' + loadTimeDate + ')' : '') : _('noData')}`,
+3372: `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
+3373: `${_('sysInfoLastLocalSync')}: ${localDate}`,
+3374: `${_('sysInfoLastGDSync')}: ${gdDate}`,
+3375: `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
+3376: ...(tokenRemainingDays !== null ? [`${_('remainingDays')}: ${tokenRemainingDays}`] : []),
+3381: showToast(_('errorSysInfo'));
+3393: searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
+3421: closeBtn.title = _('closeButton') || 'Close';
+3585: const baseTooltip = _('signoutButtonTooltip');
+3769: alert(_('sessionExpired'));
+3839: errorElement.innerHTML = _('invalidCertificate');
+3989: throw new Error(_('errorGoogleLibs'));
+4050: sourceName = _('sourceGoogleDrive');
+4052: sourceName = _('sourceLocalFolder');
+4054: sourceName = _('sourceArchive');
+4057: sourceName = _('sourceGoogleDrive');
+4059: showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceName), 15000);
+4131: showToast(_('dbCreateFailedNoData'), 10000);
+4265: if (currentUseGoogleDb) title = _('modeDbAndDrive');
+4266: else if (currentUseLocalFolder) title = _('modeDbAndLocal');
+4267: else if (currentUseArhDb) title = _('modeDbAndArchive');
+4270: title = _('modeArchiveTitle');
+4273: title = _('modeLocalTitle');
+4276: title = _('modeDrive');
+4279: title = _('modeDb');
+4283: title = _('noData');
+4330: showToast(_('errorNoDataSourceSelected'), 15000);
+4385: const msg = `${_('duplicateNotes')}: ${duplicates.length}. ${_('content')}: "${previewText}"`;
+4490: showToast(_('errorDbSourceMismatch'), 15000);
+4509: showToast(_('noUpdateMode'), 10000);
+4519: showToast(_('errorDbOnlyAndEmpty'), 15000);
+4535: if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
+4540: loaderTitle.textContent = useIndexedDb ? _('dbManagementTitle') : _('loadedFromArhNoDb');
+4544: showToast(_('errorArhFolderNotSelected'), 10000);
+4552: showToast(_('permissionDenied'), 10000);
+4561: const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
+4563: loaderText.textContent = _('creatingDbFromArh');
+4570: showToast(_('dbCreated'), 10000);
+4575: showToast(_('dbCreateFailedNoData'), 10000);
+4582: showToast(_('errorReadArh'), 10000);
+4587: showToast(_('loadedFromArhNoDb'), 10000);
+4596: loaderText.textContent = _('loadingFromDb');
+4619: if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
+4628: if (loaderTitle) loaderTitle.textContent = _('sourceLocalFolder');
+4640: if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
+4641: loaderText.textContent = _('initialDataLoad');
+4661: showToast(_('dbCreated'), 10000);
+4668: if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
+4671: showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 10000);
+4673: if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
+4676: showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 10000);
+4679: loaderText.textContent = _('fetchingFromDb');
+4693: showToast(_('errorProcessingFiles'));
+4727: showToast(_('errorLocalFolderNotSelected'), 10000);
+4754: loaderText.textContent = `${_('loadingFile')} (${Math.min(i + CHUNK_SIZE, entries.length)}/${entries.length})`;
+4788: showToast(_('errorLocalFolderNotFound'), 15000);
+4795: if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
+4798: showToast(_('errorNoteParse'));
+4848: ? _('updatingFilesSince').replace('{date}', updateDate.toLocaleString())
+4849: : _('performingFullSync');
+4856: loaderText.textContent = _('skippedFileScan');
+4861: ? _('localUpdatesFound').replace('{count}', updatedCount)
+4862: : _('localNoUpdates');
+4959: if (localStorage.getItem('useLocalDb') === 'true') showToast(_('errorLocalFolderNotSelected'), 10000);
+5018: loaderText.textContent = _('checkedFilesCount').replace('{count}', Math.min(i + CHUNK_SIZE, entries.length));
+5103: throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+5253: if (!tokenObj) throw new Error(_('errorTokenMissing'));
+5268: throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
+5278: if (!thumbnailUrl) throw new Error(_('noImgPreview'));
+5294: showToast(_('noUpdateMode'), 10000);
+5593: modalBoardNameEl.title = _('goToBoard');
+5708: colorBtn.title = _('changeColor') || 'Change Color';
+5974: moveBtn.title = _('moveNote') || 'Move to board';
+6012: calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
+6087: calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
+6699: if (loaderTitle) loaderTitle.textContent = _('initialDataLoad');
+6728: errorEl.textContent = _('warningInvalidBoard');
+6861: allBoardsLink.title = _('allBoardsCtrlClickTooltip');
+6863: allBoardsText.textContent = _('allBoards');
+6872: newUpdatesLink.textContent = _('newUpdates');
+6882: reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
+6891: photosLink.textContent = _('photosBoardTitle') || "With Photos";
+6900: videosLink.textContent = _('videosBoardTitle') || "With Video";
+6909: soundsLink.textContent = _('soundsBoardTitle') || "With Sounds";
+6918: otherLink.textContent = _('otherBoardTitle') || "Other Attachments";
+7082: showToast(_('settingSaved'), 2000);
+7109: showToast(_('settingSaved'), 2000);
+7117: showToast(_('settingSaved'), 2000);
+7125: showToast(_('settingSaved'), 2000);
+7134: showToast(_('settingSaved'), 2000);
+7150: showToast(_('settingSaved'), 2000);
+7165: showToast(_('settingSaved'), 2000);
+7239: showToast(_('settingSaved'), 2000);
+7250: showToast(_('settingSaved'), 2000);
+7257: showToast(_('settingSaved'), 2000);
+7269: showToast(_('settingSaved'), 2000);
+7277: showToast(_('settingSaved'), 2000);
+7285: showToast(_('settingSaved'), 2000);
+7295: showToast(_('settingSaved'), 2000);
+7304: showToast(_('settingSaved'), 2000);
+7313: showToast(_('settingSaved'), 2000);
+7322: showToast(_('settingSaved'), 2000);
+7331: showToast(_('settingSaved'), 2000);
+7340: showToast(_('settingSaved'), 2000);
+7349: showToast(_('settingSaved'), 2000);
+7363: showToast(_('settingSaved'), 2000);
+7397: showToast(_('settingSaved'), 2000);
+7411: showToast(_('settingSaved'), 2000);
+7423: showToast(_('settingSaved'), 2000);
+7431: showToast(_('settingSaved'), 2000);
+7447: showToast(_('settingSaved'), 2000);
+7458: showToast(_('errorNoDataSourceSelected'), 5000);
+7470: if (!display || display.textContent === _('folderNotSelected')) {
+7488: showToast(_('settingSaved'), 2000);
+7507: showToast(_('settingSaved'), 2000);
+7570: confirmed = await showConfirmation(_('confirmDbRecreate'));
+7577: showToast(_('errorDbDataMismatch'), 10000);
+7600: showToast(_('dbCreated'), 10000);
+7617: const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
+7619: const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
+7629: if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
+7630: if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
+7648: showToast(_('dbDeleted'), 5000);
+7676: let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
+7678: warningMessage += " " + _('requiredFilesForLocalFolder');
+7687: showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
+7725: let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
+7727: warningMessage += " " + _('requiredFilesForLocalFolder');
+7755: showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
+7824: arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
+7827: } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+7840: folderNameDisplay.textContent = _('permissionDenied');
+7842: } else { folderNameDisplay.textContent = _('folderNotSelected'); }
+7862: <option value="all">${_('allBoards')}</option>
+7863: <option value="reminder">${_('reminder')}</option>
+7864: <option value="calendar_monthly">${_('calendar')}</option>
+7865: <option value="calendar_weekly">${_('showWeeklyCalendar')}</option>
+8112: showToast(_('noUpdateMode'), 5000);
+8126: showToast(_('errorOpenFile').replace('{filename}', filename));
+8260: showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
+8275: showToast(_('errorFetchFileId').replace('{fileName}', linkElement.dataset.fileName));
+8417: } else { throw new Error(_('errorNoteFieldMissing')); }
+8418: } catch (e) { fileContent = _('errorNoteParse'); }
+8687: const confirmed = await showConfirmation(_('confirmNoteDelete'));
+8697: if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+8705: showToast(_('noteDeletedSuccess'), 3000);
+8708: showToast(_('noteDeletedError') + " - " + error.message, 15000);
+8882: if (loaderText) loaderText.textContent = _('loadingFile');
+8954: if (boardsModified) showToast(_('cannotDeleteLastBoard'), 3000);
+8958: _('confirmDeleteEmptyBoard').replace('{boardName}', board.title).replace('{count}', currentEmptyCount),
+8959: { showCancel: true, cancelText: _('cancel') || 'Cancel' }
+8987: showToast(_('boardDeletedSuccess').replace('{boardName}', board.title), 2000);
+9053: showToast(_('errorNoArchiveFolderSelected'), 10000);
+9119: showToast(_('errorRequiredArchiveFileMissing'), 10000);
+9122: showToast(_('errorInvalidArchiveData'), 10000);
+9125: showToast(_('errorReadingArchive'), 10000);
+9160: element.innerHTML = _(key);
+9164: element.placeholder = _(key);
+9168: element.title = _(key);
+9231: textSpan.textContent = _('newVersionAvailable');
+9234: refreshBtn.textContent = _('refreshNow');
+10039: title.textContent = _('conflictDetected') || "Конфликт при запис";
+10043: desc.textContent = _('conflictDesc') || "Бележката е била променена на сървъра. Моля, изберете кои промени да запазите.";
+10061: grid.appendChild(createCol(_('myVersion') || "Моята версия"));
+10062: grid.appendChild(createCol(_('serverVersion') || "Версия на сървъра"));
+10073: localBtn.innerHTML = `<div style="font-weight:bold; color:#4a90e2;">${_('useThis') || 'Използвай това'}</div><div style="font-size:0.8em; opacity:0.7; margin-top:5px; word-break:break-all;">${String(localVal).substring(0, 200)}</div>`;
+10077: serverBtn.innerHTML = `<div style="font-weight:bold; color:#4a90e2;">${_('useThis') || 'Използвай това'}</div><div style="font-size:0.8em; opacity:0.7; margin-top:5px; word-break:break-all;">${String(serverVal).substring(0, 200)}</div>`;
+10095: if (key === 'title') label = _('title') || 'Заглавие';
+10096: else if (key === 'body' || key === 'notetxt') label = _('content') || 'Съдържание';
+10097: else if (key === 'color') label = _('color') || 'Цвят';
+10102: const resLabel = document.createElement('h4'); resLabel.textContent = _('finalResult') || "Краен резултат (редактируем):";
+10116: cancelBtn.textContent = _('cancel') || "Отказ";
+10120: saveBtn.textContent = _('saveResolved') || "Запази решението";
+10349: showToast(_('errorSaveGDrive'));
+10359: showToast(_('noteSaved') || "Note saved");
+10389: showToast(_('noteSaved') || "Note saved");
+10453: showToast(_('noteSaved') || "Note saved");

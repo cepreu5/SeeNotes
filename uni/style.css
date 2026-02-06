@@ -483,6 +483,13 @@ main {
     box-shadow: none;
 }
 
+/* Временен клас, докато се генерира фона */
+.note.note-item.loading-bg {
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+}
+
 .note-background-canvas {
     position: absolute;
     top: 0;

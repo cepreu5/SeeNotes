@@ -257,5 +257,15 @@ en: {
         "mdClearLabel": "Clear",
         "addNoteTooltip": "New note",
         "inCalendar": "The note will be removed from the calendar when saved.",
-        "cannotCreateInSystemBoard": "Please select a specific board to create a note."
+        cannotCreateInSystemBoard: "Please select a specific board to create a note.",
+        conflictDetected: "Note Conflict Detected",
+        conflictDesc: "The note has been changed on the server. Please choose which changes to keep.",
+        myVersion: "My Version",
+        serverVersion: "Server (Remote) Version",
+        useThis: "Use This",
+        saveResolved: "Save Resolved Note",
+        finalResult: "Final Result (editable):",
+        forceGDriveReadLabel: "Read from Google Drive before edit:",
+        loadingFromDrive: "Loading from Google Drive...",
+        errorParsingNote: "Error parsing note content"
     }
