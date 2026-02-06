@@ -9087,11 +9087,20 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         }
     }
 
-    // --- BUTTON ACTIVE STATE SYNC ---
+    // --- BUTTON ACTIVE STATE SYNC + PROGRAMMATIC CLICK ---
+    // For special boards like 'new-updates', applyFilters() alone may not be enough
+    // because filterNotesByBoard sets up additional state. Trigger a click on initial load.
     const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
     if (startBoardBtn) {
-        startBoardBtn.classList.add('active-board');
-        startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        if (isInitialLoad) {
+            // Use setTimeout to ensure DOM is fully ready before clicking
+            setTimeout(() => {
+                startBoardBtn.click();
+            }, 50);
+        } else {
+            startBoardBtn.classList.add('active-board');
+            startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
     }
     // Start Assistant Guide if needed
     if (guide) {
@@ -10290,8 +10299,26 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
         const splitNote = (txt) => { const parts = (txt || "").split('|'); return { title: parts[0] || "", body: parts[1] || "", hasSplit: parts.length > 1 }; };
         const lParts = splitNote(localNote.notetxt);
         const sParts = splitNote(serverNote.notetxt);
-        if (!decisions.title) resT.value = lParts.title;
-        if (!decisions.body && !decisions.notetxt) resB.value = lParts.body || lParts.title;
+        const bParts = splitNote(baseNote.notetxt);
+
+        // Helper to determine if we should treat this as a split note
+        const hasSplit = lParts.hasSplit || sParts.hasSplit || bParts.hasSplit;
+
+        if (!decisions.title) {
+            // Use merged title if no conflict
+            resT.value = mergeField(bParts.title, lParts.title, sParts.title);
+        }
+        if (!decisions.body && !decisions.notetxt) {
+            // Use merged body if no conflict
+            const mB = mergeField(bParts.body, lParts.body, sParts.body);
+            if (hasSplit) {
+                resB.value = mB;
+            } else {
+                // If no split, the content is effectively in the title part (first part)
+                // and displayed in resB because resT is hidden
+                resB.value = mergeField(bParts.title, lParts.title, sParts.title);
+            }
+        }
         if (!conflicts.title && !lParts.hasSplit && !sParts.hasSplit) resT.style.display = 'none';
         box.appendChild(resT); box.appendChild(resB);
 
