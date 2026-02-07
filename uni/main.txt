@@ -335,12 +335,10 @@ async function runGoogleDriveSync() {
     if (!useIndexedDb) return 0;
 
     const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
-    const lastSyncTimestampOrig = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
-    let lastSyncTimestamp = lastSyncTimestampOrig;
+    let lastSyncTimestamp = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
     if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
 
     const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
-    let notesForConflictCheck = [];
     if (loaderTitle) {
         loaderTitle.innerText = modifiedSince ?
             _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang)) :
@@ -390,14 +388,6 @@ async function runGoogleDriveSync() {
                         }
                     }
                 }
-                if (isNote && useIndexedDb && lastSyncTimestamp) {
-                    for (let serverNote of data) {
-                        const localNote = await getFromDB(NOTE_STORE_NAME, serverNote.gdid || serverNote.id);
-                        if (localNote && localNote.datemod > lastSyncTimestamp) {
-                            notesForConflictCheck.push({ serverNote, localNote });
-                        }
-                    }
-                }
                 await bulkPutDB(storeName, data, true);
                 if (isNote) data.forEach(note => updatedNoteGdims.push(note.gdid));
                 console.log(`[Sync] Updated ${filename}:`, data);
@@ -415,35 +405,6 @@ async function runGoogleDriveSync() {
     console.timeEnd("runGoogleDriveSync_Parallel");
 
     await saveConfig('lastGDTimestamp', Date.now());
-
-    // --- Conflict Resolution Logic after GDrive Sync ---
-    if (useIndexedDb && notesForConflictCheck.length > 0) {
-        for (const pair of notesForConflictCheck) {
-            const { serverNote, localNote } = pair;
-            // Only trigger if content or critical fields actually differ
-            if (serverNote.notetxt !== localNote.notetxt || serverNote.color !== localNote.color || serverNote.calendarDate !== localNote.calendarDate || serverNote.boardid !== localNote.boardid) {
-                // We use localNote as baseNote for mergeNotes since we don't have a common third version handy.
-                // This means mergeNotes won't automatically detect field conflicts (as local==base),
-                // so we manually check for differences and populate conflicts.
-                const baseNote = localNote;
-                const { conflicts } = mergeNotes(baseNote, localNote, serverNote);
-                if (Object.keys(conflicts).length === 0) {
-                    if (serverNote.notetxt !== localNote.notetxt) conflicts.notetxt = { local: localNote.notetxt, server: serverNote.notetxt };
-                    if (serverNote.color !== localNote.color) conflicts.color = { local: localNote.color, server: serverNote.color };
-                    if (serverNote.calendarDate !== localNote.calendarDate) conflicts.calendarDate = { local: localNote.calendarDate, server: serverNote.calendarDate };
-                }
-                if (Object.keys(conflicts).length > 0) {
-                    const resolved = await showNoteConflictModal(baseNote, localNote, serverNote, conflicts);
-                    if (resolved) {
-                        await bulkPutDB(NOTE_STORE_NAME, [resolved], true);
-                        const mIdx = allNotesData.findIndex(n => n.gdid === resolved.gdid);
-                        if (mIdx !== -1) allNotesData[mIdx] = resolved;
-                    }
-                }
-            }
-        }
-    }
-
     loaderText.textContent = _('syncFinishedLoadingData');
     return updatedFilesCount;
 }

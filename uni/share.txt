@@ -1,0 +1,221 @@
+Добавяш в manifest.json:
+
+{
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}
+
+След това Android ще показва твоето PWA в Share менюто.
+
+Трябва да обработиш POST заявката в service worker
+Примерно:
+self.addEventListener("fetch", event => {
+  const url = new URL(event.request.url);
+
+  if (url.pathname === "/share" && event.request.method === "POST") {
+    event.respondWith((async () => {
+      const formData = await event.request.formData();
+      const text = formData.get("text");
+      const url = formData.get("url");
+
+      // направи нещо с данните
+      return Response.redirect("/?shared=1");
+    })());
+  }
+});
+
+
+----------
+
+Добавяш това в manifest
+
+{
+  "name": "MultiNotes",
+  "short_name": "MultiNotes",
+  "start_url": "/",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ],
+
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}
+
+service-worker.js - Тук обработваме POST заявката, която Android изпраща при споделяне.
+
+self.addEventListener("fetch", event => {
+  const url = new URL(event.request.url);
+
+  if (url.pathname === "/share" && event.request.method === "POST") {
+    event.respondWith(handleShare(event.request));
+  }
+});
+
+async function handleShare(request) {
+  const formData = await request.formData();
+
+  const title = formData.get("title") || "";
+  const text = formData.get("text") || "";
+  const url = formData.get("url") || "";
+
+  // Пакетираме данните в URL параметри
+  const params = new URLSearchParams({
+    shared: "1",
+    title,
+    text,
+    url
+  });
+
+  // Пренасочваме към MultiNotes UI
+  return Response.redirect("/?" + params.toString(), 303);
+}
+
+В твоя MultiNotes UI (например index.js) - При стартиране проверяваш дали има споделени данни:
+
+const params = new URLSearchParams(location.search);
+
+if (params.get("shared") === "1") {
+  const title = params.get("title") || "";
+  const text = params.get("text") || "";
+  const url = params.get("url") || "";
+
+  // Тук решаваш какво да правиш:
+  // - създаваш нова бележка
+  // - отваряш редактора
+  // - добавяш към текуща бележка
+
+  createNewNoteFromShare({ title, text, url });
+}
+
+----------------
+
+версия, която приема файлове
+
+Добавяме files в share_target.params:
+
+v{
+  "name": "MultiNotes",
+  "short_name": "MultiNotes",
+  "start_url": "/",
+  "display": "standalone",
+
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "file",
+          "accept": ["image/*", "text/*", "application/pdf"]
+        }
+      ]
+    }
+  }
+}
+
+service-worker.js — обработка на файловете
+
+self.addEventListener("fetch", event => {
+  const url = new URL(event.request.url);
+
+  if (url.pathname === "/share" && event.request.method === "POST") {
+    event.respondWith(handleShare(event.request));
+  }
+});
+
+async function handleShare(request) {
+  const formData = await request.formData();
+
+  const title = formData.get("title") || "";
+  const text = formData.get("text") || "";
+  const url = formData.get("url") || "";
+
+  // Файловете могат да бъдат един или много
+  const files = formData.getAll("file");
+
+  // Съхраняваме ги временно в IndexedDB или Cache Storage
+  // За минимален пример — просто ги сериализираме в sessionStorage
+  const payload = {
+    title,
+    text,
+    url,
+    files: await Promise.all(files.map(fileToObject))
+  };
+
+  sessionStorage.setItem("sharedPayload", JSON.stringify(payload));
+
+  return Response.redirect("/?shared=1", 303);
+}
+
+async function fileToObject(file) {
+  return {
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    data: await file.arrayBuffer()
+  };
+}
+
+В твоя MultiNotes UI — приемане на файловете
+
+if (location.search.includes("shared=1")) {
+  const raw = sessionStorage.getItem("sharedPayload");
+
+  if (raw) {
+    const payload = JSON.parse(raw);
+    sessionStorage.removeItem("sharedPayload");
+
+    handleSharedData(payload);
+  }
+}
+
+Обработка на споделените файлове
+
+function handleSharedData({ title, text, url, files }) {
+  let content = "";
+
+  if (title) content += title + "\n\n";
+  if (text) content += text + "\n\n";
+  if (url) content += url + "\n\n";
+
+  // Създаваме нова бележка
+  const noteId = createNewNote({
+    content,
+    created: Date.now(),
+    source: "share"
+  });
+
+  // Добавяме файловете към бележката
+  for (const file of files) {
+    saveFileToNote(noteId, file);
+  }
+
+  openNoteEditor(noteId);
+}
+
+
