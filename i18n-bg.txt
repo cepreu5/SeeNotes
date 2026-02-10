@@ -181,6 +181,7 @@ bg: {
         feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com',
         errorForbidden: 'Заявката няма достатъчни права за изпълнение.',
         cancelButton: 'Отказ',
+
         loginPrompt: 'Моля, влезте с Google акаунта, с който сте синхронизирали бележките си в <i>MultiNotes</i>.',
         authorizeButton: 'Вход с Google',
         rememberMeLabel: 'Запомни ме',

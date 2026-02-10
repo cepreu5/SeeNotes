@@ -1,726 +1,803 @@
 <!DOCTYPE html>
-<html lang="bg">
+<html lang="en">
 
 <head>
-    <title>CX Viewer</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
-    <link rel="stylesheet" href="style.css">
-    <meta http-equiv="Content-Security-Policy"
-        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
-    <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
-        crossorigin="anonymous">
-    </script-->
+    <title>CX MultiNotes Viewer - Your notes, everywhere</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #F6F7F9;
+            --bg-dark: #111111;
+            --accent: #FF4D2E;
+            --text-primary: #111111;
+            --text-secondary: #6B6B6B;
+            --card-radius: 28px;
+            --image-radius: 34px;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Typography */
+        .font-heading {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            line-height: 0.95;
+            letter-spacing: -0.02em;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 3vh 8vw;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            transition: background 0.3s, backdrop-filter 0.3s;
+        }
+
+        nav.scrolled {
+            background: rgba(246, 247, 249, 0.85);
+            backdrop-filter: blur(12px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .logo-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Global Improvements */
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 3vh 8vw;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            transition: background 0.3s, backdrop-filter 0.3s;
+        }
+
+        nav.scrolled {
+            background: rgba(246, 247, 249, 0.85);
+            backdrop-filter: blur(12px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .logo-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Sections */
+        section {
+            min-height: 100vh;
+            padding: 12vh 8vw 8vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Hero Section */
+        .hero {
+            display: grid;
+            grid-template-columns: 1fr 1.4fr;
+            gap: 4vw;
+            align-items: center;
+        }
+
+        .hero-content {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .hero-title {
+            font-size: clamp(40px, 5vw, 72px);
+            line-height: 0.95;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeUp 0.8s ease forwards;
+        }
+
+        .hero-subtitle {
+            font-size: 17px;
+            color: var(--text-secondary);
+            max-width: 90%;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeUp 0.8s ease 0.1s forwards;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .btn-primary:hover {
+            background: #E54327;
+            transform: translateY(-1px);
+        }
+
+        .hero-image {
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            height: 70vh;
+            opacity: 0;
+            transform: scale(1.05);
+            animation: fadeScale 1.1s ease forwards;
+        }
+
+        .hero-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Feature Sections */
+        .feature {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6vw;
+            align-items: center;
+        }
+
+        .feature.reverse {
+            direction: rtl;
+        }
+
+        .feature.reverse>* {
+            direction: ltr;
+        }
+
+        .feature-image {
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            height: 65vh;
+            opacity: 0;
+            transform: translateX(-60px);
+            transition: all 0.8s ease;
+        }
+
+        .feature.reverse .feature-image {
+            transform: translateX(60px);
+        }
+
+        .feature-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .feature-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .feature-title {
+            font-size: clamp(32px, 4vw, 48px);
+            opacity: 0;
+            transform: translateX(40px);
+            transition: all 0.7s ease 0.1s;
+        }
+
+        .feature.reverse .feature-title {
+            transform: translateX(-40px);
+        }
+
+        .feature-text {
+            font-size: 17px;
+            color: var(--text-secondary);
+            opacity: 0;
+            transform: translateX(40px);
+            transition: all 0.7s ease 0.15s;
+        }
+
+        .feature.reverse .feature-text {
+            transform: translateX(-40px);
+        }
+
+        /* Note Card */
+        .note-card {
+            background: white;
+            border-radius: var(--card-radius);
+            padding: 28px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(17, 17, 17, 0.06);
+            margin-top: 16px;
+            opacity: 0;
+            transform: translateX(50px) translateY(20px);
+            transition: all 0.7s ease 0.2s;
+        }
+
+        .feature.reverse .note-card {
+            transform: translateX(-50px) translateY(20px);
+        }
+
+        .note-card h4 {
+            font-size: 18px;
+            margin-bottom: 16px;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 14px;
+            background: var(--bg-primary);
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* Speed Section */
+        .speed-section {
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .speed-header {
+            margin-bottom: 48px;
+        }
+
+        .speed-title {
+            font-size: clamp(32px, 4vw, 48px);
+            margin-bottom: 16px;
+            opacity: 0;
+            transform: translateY(-30px);
+            transition: all 0.7s ease;
+        }
+
+        .speed-text {
+            font-size: 17px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+            opacity: 0;
+            transition: all 0.7s ease 0.1s;
+        }
+
+        .speed-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4vw;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .speed-image {
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            height: 50vh;
+            opacity: 0;
+            transform: translateX(-60px);
+            transition: all 0.8s ease 0.15s;
+        }
+
+        .speed-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .info-card {
+            background: white;
+            border-radius: var(--card-radius);
+            padding: 40px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(17, 17, 17, 0.06);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: left;
+            opacity: 0;
+            transform: translateX(60px);
+            transition: all 0.8s ease 0.2s;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            background: var(--bg-dark);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6vw;
+            align-items: center;
+        }
+
+        .cta-content h2 {
+            font-size: clamp(36px, 4.5vw, 56px);
+            color: white;
+            margin-bottom: 20px;
+            opacity: 0;
+            transform: translateX(-40px);
+            transition: all 0.7s ease;
+        }
+
+        .cta-content p {
+            font-size: 17px;
+            color: #9CA3AF;
+            margin-bottom: 28px;
+            opacity: 0;
+            transform: translateX(-40px);
+            transition: all 0.7s ease 0.1s;
+        }
+
+        .cta-content .btn-primary {
+            width: auto;
+            padding: 14px 32px;
+            opacity: 0;
+            transform: translateX(-40px);
+            transition: all 0.7s ease 0.15s;
+        }
+
+        .cta-image {
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+            height: 60vh;
+            opacity: 0;
+            transform: translateX(60px);
+            transition: all 0.8s ease 0.1s;
+        }
+
+        .cta-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Scroll Animation Visibility - Single point of truth */
+        .scroll-animate.visible {
+            opacity: 1 !important;
+            transform: translate(0, 0) scale(1) !important;
+        }
+
+        /* Animations */
+        @keyframes fadeUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeUpScale {
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes fadeScale {
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* Grain overlay */
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.04;
+            mix-blend-mode: multiply;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+
+            .hero,
+            .feature,
+            .cta-section {
+                grid-template-columns: 1fr;
+            }
+
+            .feature.reverse {
+                direction: ltr;
+            }
+
+            .hero-image,
+            .feature-image,
+            .cta-image {
+                height: 40vh;
+                order: -1;
+            }
+
+            .speed-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .speed-image {
+                height: 35vh;
+            }
+
+            .footer-content {
+                grid-template-columns: 1fr;
+                gap: 32px;
+            }
+
+            section {
+                padding: 10vh 6vw 6vh;
+            }
+        }
+
+        .note-card img {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .lang-btn {
+            background: none;
+            border: 1px solid var(--text-secondary);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin-left: 8px;
+        }
+
+        .lang-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .lang-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .nav-link {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            text-decoration: none;
+            position: relative;
+        }
+
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 1.5px;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .nav-link:hover::after {
+            width: 100%;
+        }
+    </style>
 </head>
 
 <body>
-    <!-- Вертикална реклама 120х728>
-    <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
-        data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
-    </ins>
-    <script>
-        (adsbygoogle = window.adsbygoogle || []).push({});
-    </script -->
+    <!-- Grain Overlay -->
+    <div class="grain-overlay"></div>
 
-    <header>
-        <div style="display: flex; align-items: center;">
-            <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
-            <h1 ID="app-title" data-key="appTitle">CX MultiNotes Viewer</h1>
+    <!-- Navigation -->
+    <nav id="navbar">
+        <div class="logo">
+            <span class="logo-text" data-key="logo_text">CX MultiNotes Viewer</span>
         </div>
-        <div id="search-wrapper">
-            <input type="search" id="search-box" autocomplete="off" data-key-placeholder="searchPlaceholder"
-                placeholder="Търсене в заглавията...">
-        </div>
-        <div id="header-buttons">
-            <div id="note-counter" class="note-counter">0</div>
-            <button id="mode_button" class="header-btn" title="Режим" data-key-title="modeButtonTooltip">
-                <!-- Иконата се вмъква от JS -->
-                <div class="mode-icon-wrapper">
-                    <img id="mode-main-icon" src="NoteFav.png" alt="" style="width:24px; height:24px;">
-                    <div class="mode-db-overlay" hidden>
-                        <img id="mode-overlay-icon" src="" alt="">
-                    </div>
-                </div>
-            </button>
-            <button id="calendar_button" class="header-btn" data-key-title="calendarButtonTooltip" title="Календар">
-                <svg width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
-                    stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <rect x="4" y="5" width="16" height="16" rx="2" />
-                    <line x1="16" y1="3" x2="16" y2="7" />
-                    <line x1="8" y1="3" x2="8" y2="7" />
-                    <line x1="4" y1="11" x2="20" y2="11" />
-
-                </svg>
-            </button>
-            <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Настройки">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
-                    fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <path
-                        d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" />
-                    <circle cx="12" cy="12" r="3" />
-                </svg>
-            </button>
-            <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Презареди">
-                <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
-            </button>
-            <!-- FEEDBACK BUTTON 
-            <a id="feedback_button" href="mailto:multinotes.web@gmail.com" class="header-btn"
-                data-key-title="feedbackButtonTooltip" title="Обратна връзка">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                    <polyline points="22,6 12,13 2,6"></polyline>
-                </svg>
-            </a> -->
-            <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Изход">
-                <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
-            </button>
-            <div id="boards-menu-container"></div>
-        </div>
-    </header>
-
-    <div id="login-page" class="login-div" hidden>
-        <!-- Language switcher извън login-box, винаги видим -->
         <div id="lang-switcher-main" style="display: flex; justify-content: center;">
             <button id="lang-bg-main" class="lang-btn">BG</button>
             <button id="lang-en-main" class="lang-btn">EN</button>
         </div>
+        <a href="index-2.html" class="nav-link">Sign in</a>
+    </nav>
 
-        <div class="login-box" style="margin-bottom: 10px; max-width: 350px; display: none;">
-            <!--div id="lang-switcher">
-                <button id="lang-bg-box" class="lang-btn">BG</button>
-                <button id="lang-en-box" class="lang-btn">EN</button>
-            </div-->
-            <p data-key="loginPrompt">Please sign in with Google account you used to sync <i>MultiNotes</i>.</p>
-            <button id="authorize_button" data-key="authorizeButton" style="display:none" disabled>Authorize with
-                Google</button>
-            <button id="trialBtn" data-key="trialButton" style="display:none">Start 30-day trial period</button>
-            <div style="margin-top: 15px;">
-                <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">
-                    Remember me</label>
-                <input type="checkbox" id="rememberMe" class="settings-checkbox">
+    <!-- Section 1: Hero -->
+    <section class="hero" id="hero">
+        <div class="hero-content">
+            <h1 class="hero-title" data-key="hero_title">Вашите бележки,<br>на всяко устройство.</h1>
+            <p class="hero-subtitle" data-key="hero_subtitle">Открийте свободата да работите с бележките си от
+                MultiNotes навсякъде — директно в
+                браузъра и без никакви инсталации. Просто стартирате и имате достъп до цялата си информация.</p>
+        </div>
+        <div class="hero-image">
+            <img src="images/hero_desk_workspace.jpg" alt="Modern workspace">
+        </div>
+    </section>
+
+    <!-- Section 2: Feature - Workspace -->
+    <section class="feature" id="feature1">
+        <div class="feature-image scroll-animate">
+            <img src="images/feature_workspace_left.jpg" alt="Workspace">
+        </div>
+        <div class="feature-content">
+            <h2 class="feature-title scroll-animate" data-key="feature1_title">Вашето работно пространство.</h2>
+            <p class="feature-text scroll-animate" data-key="feature1_text">Идеално подредени бележки, перфектни
+                цветове, структурирани за лесен
+                достъп, така че да се концентрирате върху тези, които са ви необходими.</p>
+            <div class="note-card scroll-animate">
+                <img src="images/MN.png" alt="MN">
             </div>
         </div>
-        <script>
-            (async () => {
-                const cache = await caches.open('app-cache');
-                const cachedResponse = await cache.match('s');
-                if (cachedResponse) {
-                    // Има запис 's' - показваме login box с authorize бутон
-                    document.querySelector('.login-box').style.display = 'block';
-                    document.getElementById("authorize_button").style.display = 'inline-block';
-                    document.getElementById("trialBtn").style.display = 'none';
-                } else {
-                    // Няма запис 's' (първо стартиране) - показваме login box с trial бутон
-                    document.querySelector('.login-box').style.display = 'block';
-                    document.getElementById("authorize_button").style.display = 'none';
-                    document.getElementById("trialBtn").style.display = 'inline-block';
+    </section>
+
+    <!-- Section 3: Feature - Organized -->
+    <section class="feature reverse" id="feature2">
+        <div class="feature-image scroll-animate">
+            <img src="images/feature_workspace_right.jpg" alt="Organized workspace">
+        </div>
+        <div class="feature-content">
+            <h2 class="feature-title scroll-animate" data-key="feature2_title">Подредени, без излишни усилия.</h2>
+            <p class="feature-text scroll-animate" data-key="feature2_text">В различни тематични бордове, с подходящи
+                цветове и шрифтове, с лесно
+                търсене — вашите бележки са идеално организирани.</p>
+            <div class="note-card scroll-animate">
+                <img src="images/Org.png" alt="Org">
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 4: Sync & Access -->
+    <section class="feature" id="feature3">
+        <div class="feature-image scroll-animate">
+            <img src="images/phone_notes.jpg" alt="Phone with notes">
+        </div>
+        <div class="feature-content">
+            <h2 class="feature-title scroll-animate" data-key="feature3_title">На вашия телефон, таблет или лаптоп.</h2>
+            <p class="feature-text scroll-animate" data-key="feature3_text">Бележките ви са в синхрон, независимо дали
+                работите на Android, iOS,
+                Windows, macOS или Linux.</p>
+        </div>
+    </section>
+
+    <!-- Section 5: Security & Offline -->
+    <section class="feature reverse" id="feature4">
+        <div class="feature-image scroll-animate">
+            <img src="images/laptop_workspace.jpg" alt="Laptop workspace">
+        </div>
+        <div class="feature-content">
+            <h2 class="feature-title scroll-animate" data-key="feature4_title">Информацията си остава ваша.</h2>
+            <p class="feature-text scroll-animate" data-key="feature4_text">Данните се четат от вашия Google акаунт,
+                където са надеждно защитени.
+                Използвайте бележките си дори да нямате връзка с интернет - винаги когато са ви необходими.</p>
+        </div>
+    </section>
+
+    <!-- Section 6: Speed & Caching -->
+    <section class="speed-section" id="speed">
+        <div class="speed-header">
+            <h2 class="speed-title scroll-animate" data-key="speed_title">Без засечки, дори при бавни връзки.</h2>
+            <p class="speed-text scroll-animate" data-key="speed_text">Бележките се запомнят (кешират) след първо
+                стартиране, след това
+                зареждате само добавените и променени.</p>
+        </div>
+        <div class="speed-grid">
+            <div class="speed-image scroll-animate">
+                <img src="images/speed_workspace.jpg" alt="Fast workspace">
+            </div>
+            <div class="info-card scroll-animate">
+                <span class="tag" data-key="cache_tag">Локален кеш</span>
+                <h3 style="font-size: 22px; margin: 16px 0 8px;" data-key="cache_h3">Оптимална комуникация</h3>
+                <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 20px;" data-key="cache_p1">
+                    Бележките се пазят в
+                    паметта на браузъра за бърз достъп. Добавяйте нови и променени когато решите.</p>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-top: 16px;" data-key="cache_p2">Работата
+                    с локална база
+                    данни ви прави независими от интернет връзката.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 7: CTA -->
+    <section class="cta-section" id="cta">
+        <div class="cta-content">
+            <h2 class="scroll-animate" data-key="cta_h2">Готови за стартиране!</h2>
+            <p class="scroll-animate" data-key="cta_p1">Влизате веднъж. Вижте бележките си на всяко устройство, по всяко
+                врмее — с
+                интернет или без.</p>
+            <h3 data-key="cta_h3">Влезте, за да започнете</h3>
+            <p data-key="cta_p2">Използвайте същия Google акаунт, с който работите на Android устройството си.</p>
+            <button class="btn-primary scroll-animate" onclick="window.location.href='index-2.html'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        fill="#4285F4" />
+                    <path
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        fill="#34A853" />
+                    <path
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                        fill="#FBBC05" />
+                    <path
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                        fill="#EA4335" />
+                </svg>
+                <span data-key="cta_btn">Продължи с Google</span>
+            </button>
+        </div>
+        <div class="cta-image scroll-animate">
+            <img src="images/closing_phone.jpg" alt="Ready to start">
+        </div>
+    </section>
+
+    <script>
+        // Navbar scroll effect
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+
+        // Scroll animations using Intersection Observer
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.15
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
                 }
-            })();
-        </script>
+            });
+        }, observerOptions);
 
-        <section style="max-width: 800px; margin: 0 auto;">
-            <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което
-                може да
-                имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за
-                Андроид, от
-                вашия компютър, таблет, iPhone и др. независимо дали работите с Windows, Android, macOS, iOS или Linux.
-            </p>
-            <p data-key="intro1a">Необходимо условие за работа на приложението е да сте включили синхронизация с
-                <strong>Google Drive</strong> в настройките на <strong>Multinotes</strong>.
-            </p>
-            <p data-key="intro2"><strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без
-                нужда от инсталация и дори при необходимост дава възможност за работа без връзка с интернет.
-                Основният режим на работа използва локална база данни в браузъра, която се обновява с новите и
-                редактирани
-                бележки от приложението и по този начин осигурява оптимална производителност.</p>
-            <h3 data-key="modeDbTitle">Ето как работи:</h3>
-            <!--p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
-            ефективност и независимост от интернет връзка.</p-->
-            <ul>
-                <li data-key="modeDbPoint1">При първо стартиране приложението изтегля всички бележки от <strong>Google
-                        Drive</strong> и ги записва в локалната база данни на браузъра.</li>
-                <li data-key="modeDbPoint2">Всяко следващо зареждане става директно от тази база, като се прави проверка
-                    и
-                    се изтеглят само новите и променените бележки след последното стартиране, което съществено ускорява
-                    процеса.
-                </li>
-                <li data-key="modeDbPoint3">Ако, след първоначално зареждане, махнете отметката на <strong>Google
-                        Drive</strong> в <strong>Настройки</strong>, бележките ще се зареждат само от базата данни,
-                    което
-                    съществено
-                    ще ускори процеса и дори ще може да работите без връзка с интернет. В този случай няма да се прави
-                    проверка
-                    за нови и променени бележки, затова ще е полезно периодично да връщате отметката, за да
-                    актуализирате
-                    данните си.</li>
-            </ul>
-            <h3 data-key="modeNoDbTitle">Режим без база данни</h3>
-            <ul>
-                <li data-key="modeNoDbPoint1">Ако, след първоначално зареждане, махнете отметката от <strong>База
-                        данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google
-                        Drive</strong> при всяко следващо стартиране.</li>
-                <li data-key="modeNoDbPoint2">Винаги се показват най-актуалните данни.</li>
-                <li data-key="modeNoDbPoint3">По-бавно зареждане, изисква интернет връзка.</li>
-            </ul>
-            <span hidden>
-                <h2 data-key="advancedModesTitle">Допълнителни режими (Разширени настройки)</h2>
-                <p data-key="advancedModesDesc">Чрез менюто <em><strong>Разширени настройки</strong></em> може да
-                    активирате
-                    алтернативни режими на работа, подходящи за специфични случаи. Тези режими могат да работят с или
-                    без
-                    изполване на локална база данни, в зависимост от вашите предпочитания.</p>
-                <h3 data-key="modeLocalTitle">Режим: Локална папка</h3>
-                <ul>
-                    <li data-key="modeLocalPoint1">Режим, подходящ за потребители, които предпочитат да имат локално
-                        копие
-                        на бележките си и искат по-бърз достъп до тях.</li>
-                    <li data-key="modeLocalPoint2">Данните се четат от папка на вашия компютър. Трябва да настроите
-                        приложението <strong>Google Drive for Desktop</strong> да синхронизира
-                        <strong>multinotes_data</strong> от <strong>Google Drive</strong> на компютъра ви (може да
-                        зададете
-                        наличност на данните и в офлайн режим) и да посочите синхронизираната папка в
-                        <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Локална
-                            папка</strong>.
-                    </li>
-                    <li data-key="modeLocalPoint3">Ако изберете този режим и поставите отметка в <strong>База
-                            данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-                    <li data-key="modeLocalPoint4">Когато се използва този режим заедно с <strong>База данни</strong>,
-                        при
-                        всяко стартиране ще се прави проверка и новите и редактирани бележки ще допълват записаните в
-                        базата
-                        данни.</li>
-                    <li data-key="modeLocalPoint5">Ако, след първоначално зареждане, махнете отметката на
-                        <strong>Локална
-                            папка</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може
-                        да
-                        зареждате бележките си без забавяне, но няма да се прави проверка за нови и променени бележки. В
-                        този случай е полезно периодично да връщате отметката, за да актуализирате данните си.
-                    </li>
-                </ul>
-                <h3 data-key="modeArchiveTitle">Режим: Архив</h3>
-                <ul>
-                    <li data-key="modeArchivePoint1">Подходящ за офлайн достъп до стари версии на бележките, показват се
-                        само бележките от архива.</li>
-                    <li data-key="modeArchivePoint2">Този режим се използва, когато прехвърлите zip-архив с бележки,
-                        създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на
-                            данни</strong>
-                        -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я
-                        посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> ->
-                        <strong>Архив</strong>.
-                    </li>
-                    <li data-key="modeArchivePoint3">Ако изберете този режим и поставите отметка в <strong>База
-                            данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-                    <li data-key="modeArchivePoint4">Ако, след първоначално зареждане, махнете отметката на
-                        <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще
-                        може
-                        да зареждате бележките си без забавяне.
-                    </li>
-                </ul>
-            </span>
-        </section>
-    </div>
+        // Observe all scroll-animate elements
+        document.querySelectorAll('.scroll-animate').forEach(el => {
+            observer.observe(el);
+        });
 
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
 
-    <main>
-        <div id="loader-container">
-            <div class="loader"></div>
-            <div id="loader-text"></div>
-        </div>
-        <div id="notes-container"></div>
-        <div id="calendar-container" style="display: none;"></div>
-    </main>
+        // Parallax effect for hero image
+        window.addEventListener('scroll', () => {
+            const scrolled = window.pageYOffset;
+            const heroImage = document.querySelector('.hero-image img');
+            if (heroImage && scrolled < window.innerHeight) {
+                heroImage.style.transform = `translateY(${scrolled * 0.1}px)`;
+            }
+        });
 
-    <div id="folderIdPromptPopup" class="folder-id-prompt-popup">
-        <div class="popup-content">
-            <p data-key="promptFolderId"></p>
-            <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
-            <button id="submitFolderIdBtn" data-key="submitButton" title=""></button>
-        </div>
-    </div>
+        // --- I18N Logic ---
+        let currentLang = localStorage.getItem('language') || 'en';
+        let translations = {};
 
-    <div id="content-modal" class="modal-overlay">
-        <div class="modal-content-box">
-            <div id="modal-board-name"></div>
-            <button id="prev-note-btn" class="modal-header-btn modal-nav-btn" title="Предишна бележка">&lt;</button>
-            <button id="next-note-btn" class="modal-header-btn modal-nav-btn" title="Следваща бележка">&gt;</button>
-            <button id="calculate-modal-btn" class="modal-header-btn" data-key-title="calculateTooltip"
-                title="Изчисли израз">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
-                    fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <rect x="4" y="3" width="16" height="18" rx="2" />
-                    <rect x="8" y="7" width="8" height="3" rx="1" />
-                    <line x1="8" y1="14" x2="8" y2="14.01" />
-                    <line x1="12" y1="14" x2="12" y2="14.01" />
-                    <line x1="16" y1="14" x2="16" y2="14.01" />
-                    <line x1="8" y1="17" x2="8" y2="17.01" />
-                    <line x1="12" y1="17" x2="12" y2="17.01" />
-                    <line x1="16" y1="17" x2="16" y2="17.01" />
-                </svg>
-            </button>
-            <button id="copy-modal-btn" class="modal-header-btn" data-key-title="copyTooltip"
-                title="Копирай съдържанието"></button>
-            <button id="delete-modal-btn" class="modal-header-btn" data-key-title="deleteNoteTooltip"
-                title="Изтрий бележката">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
-                    fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <line x1="4" y1="7" x2="20" y2="7" />
-                    <line x1="10" y1="11" x2="10" y2="17" />
-                    <line x1="14" y1="11" x2="14" y2="17" />
-                    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-                    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-                </svg>
-            </button>
-            <button class="modal-close modal-header-btn">&times;</button>
-            <div id="modal-body"></div>
-            <div class="modal-resize-handle"></div>
-        </div>
-    </div>
+        async function loadTranslations(lang) {
+            try {
+                const response = await fetch(`index-${lang}.json`);
+                translations = await response.json();
+                applyTranslations();
+                updateSwitcherUI(lang);
+                localStorage.setItem('language', lang);
+            } catch (error) {
+                console.error('Error loading translations:', error);
+            }
+        }
 
-    <!-- Нов, отделен модал за менюто с бордове -->
-    <div id="boards-menu-modal" class="modal-overlay">
-        <div class="modal-content-box">
-            <button class="modal-close modal-header-btn">&times;</button>
-            <div id="boards-menu-modal-body"></div>
-        </div>
-    </div>
+        function applyTranslations() {
+            document.querySelectorAll('[data-key]').forEach(el => {
+                const key = el.getAttribute('data-key');
+                if (translations[key]) {
+                    el.innerHTML = translations[key];
+                }
+            });
+            // Update page title
+            if (translations['app_title']) {
+                document.title = translations['app_title'].replace('<br>', ' ').replace('<br/>', ' ');
+            }
+        }
 
-    <button id="scrollTopBtn" data-key-title="topTooltip" title="Към началото"></button>
+        function updateSwitcherUI(lang) {
+            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+            if (lang === 'bg') {
+                document.getElementById('lang-bg-main').classList.add('active');
+            } else {
+                document.getElementById('lang-en-main').classList.add('active');
+            }
+        }
 
-    <div id="toastNotification" class="toast-notification"></div>
+        document.getElementById('lang-bg-main').addEventListener('click', () => loadTranslations('bg'));
+        document.getElementById('lang-en-main').addEventListener('click', () => loadTranslations('en'));
 
-    <div id="settings-modal" class="modal-overlay">
-        <div class="modal-content-box set-modal">
-            <h2 data-key="settingsTitle">Настройки</h2>
-            <h3 class="modal-version">CX MultiNotes Viewer ver. </h3>
-            <div style="text-align: center; margin-bottom: 3px;">
-                <a href="mailto:multinotes.web@gmail.com"
-                    style="text-decoration: none; color: #555; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: bold; font-size: 0.9em;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                        <polyline points="22,6 12,13 2,6"></polyline>
-                    </svg>
-                    <span data-key="feedbackButtonTooltip">Обратна връзка</span>
-                </a>
-            </div>
-            <button class="modal-close modal-header-btn">&times;</button>
-            <div class="corner-dot top-left"></div>
-            <div class="corner-dot top-right"></div>
-            <div class="corner-dot bottom-left"></div>
-            <div class="corner-dot bottom-right"></div>
-            <div id="settings-modal-body">
-                <div class="zoom-control-wrapper">
-                    <label for="scaleSlider" style="margin-right: 10px;" data-key="zoomLabel">Мащаб:</label>
-                    <div class="slider-container">
-                        <input type="range" id="scaleSlider" min="25" max="175" value="100">
-                        <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number">
-                        <span>%</span>
-                    </div>
-                    <button id="applyZoomBtn" class="zoom-btn" style="margin-left: 0px;"
-                        data-key="submitButton">Потвърди</button>
-                </div>
-
-                <div class="zoom-control-wrapper" style="margin-top: 0px;">
-                    <label for="start-board-select" style="margin-right: 10px;" data-key="startBoardLabel">
-                        Стартов борд:</label>
-                    <select id="start-board-select" class="start-board-select">
-                        <!-- Options will be populated by JS -->
-                    </select>
-                </div>
-
-                <div class="zoom-control-wrapper" id="max-searches" style="margin-top: 10px;">
-                    <label for="max-searches-input"
-                        style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="maxSearchesLabel">
-                        Запазени търсения:</label>
-                    <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
-                </div>
-
-                <div class="zoom-control-wrapper" id="note-font-size" style="margin-top: 10px;">
-                    <label for="note-font-size-input"
-                        style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="noteFontSizeLabel">
-                        Размер шрифт (бележка):</label>
-                    <select id="note-font-size-input" class="zoom-input-select"
-                        style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
-                </div>
-
-                <div class="zoom-control-wrapper" id="modal-font-size" style="margin-top: 10px;">
-                    <label for="modal-font-size-input"
-                        style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="modalFontSizeLabel">
-                        Размер шрифт (преглед):</label>
-                    <select id="modal-font-size-input" class="zoom-input-select"
-                        style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
-                </div>
-
-                <div class="zoom-control-wrapper" id="hide-assistant" style="margin-top: 10px;">
-                    <label for="hide-assistant-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="hideAssistantLabel">
-                        Скриване на асистента</label>
-                    <input type="checkbox" id="hide-assistant-checkbox" class="settings-checkbox">
-                </div>
-
-                <div class="zoom-control-wrapper" id="show-date" style="margin-top: 10px;">
-                    <label for="show-datemod-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showDatemodLabel">
-                        Дата</label>
-                    <input type="checkbox" id="show-datemod-checkbox" class="settings-checkbox">
-                </div>
-
-                <div class="zoom-control-wrapper" id="one-tap-link" style="margin-top: 10px;">
-                    <label for="one-tap-link-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="oneTapLinkLabel">
-                        Линкове с едно докосване</label>
-                    <input type="checkbox" id="one-tap-link-checkbox" class="settings-checkbox">
-                </div>
-
-                <div class="zoom-control-wrapper" id="notes-bgrd" style="margin-top: 10px;">
-                    <label for="notes-bgrd-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="notesBgrdLabel">
-                        Графичен фон (бележки)</label>
-                    <input type="checkbox" id="notes-bgrd-checkbox" class="settings-checkbox">
-                </div>
-
-                <div class="zoom-control-wrapper" id="img-bgrd" style="margin-top: 10px;">
-                    <label for="img-bgrd-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="imgBgrdLabel">
-                        Графичен фон (единична бележка)</label>
-                    <input type="checkbox" id="img-bgrd-checkbox" class="settings-checkbox">
-                </div>
-
-                <div class="zoom-control-wrapper" id="note-count" style="margin-top: 10px;">
-                    <label for="show-board-note-count-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showBoardNoteCountLabel">
-                        Брой бележки в борда:</label>
-                    <input type="checkbox" id="show-board-note-count-checkbox" class="settings-checkbox">
-                </div>
-
-                <div class="zoom-control-wrapper" id="weekly-calendar" style="margin-top: 10px;">
-                    <label for="weekly-calendar-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showWeeklyCalendar">
-                        Седмичен календар:</label>
-                    <input type="checkbox" id="weekly-calendar-checkbox" class="settings-checkbox">
-                </div>
-
-                <div class="zoom-control-wrapper" id="remind-board" style="margin-top: 10px;">
-                    <label for="remind-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showBoardRemind">
-                        Покажи борд Напомняния:</label>
-                    <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
-                    <span id="boards-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
-                </div>
-
-                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
-
-                <!-- Скрита секция за опции за бордове -->
-                <div id="boards-options-section" style="display: none;">
-                    <!-- Нов, опростен flex контейнер за опциите за бордове -->
-                    <div class="boards-options-container" style="background-color: #909090;">
-                        <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
-                            <label for="all-board-checkbox"
-                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showBoardAll">
-                                Покажи борд Всички:</label>
-                            <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
-                        </div>
-
-                        <div class="zoom-control-wrapper" id="show-photos-board" style="margin-top: 10px;">
-                            <label for="show-photos-board-checkbox"
-                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showPhotosBoardLabel">
-                                Борд съобщения със снимки:</label>
-                            <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
-                        </div>
-
-                        <div class="zoom-control-wrapper" id="show-videos-board" style="margin-top: 10px;">
-                            <label for="show-videos-board-checkbox"
-                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showVideosBoardLabel">
-                                Борд С видео:</label>
-                            <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
-                        </div>
-
-                        <div class="zoom-control-wrapper" id="show-sounds-board" style="margin-top: 10px;">
-                            <label for="show-sounds-board-checkbox"
-                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showSoundsBoardLabel">
-                                Борд Със звук:</label>
-                            <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
-                        </div>
-
-                        <div class="zoom-control-wrapper" id="show-other-board" style="margin-top: 10px;">
-                            <label for="show-other-board-checkbox"
-                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showOtherBoardLabel">
-                                Борд Други приложения:</label>
-                            <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
-                    <label for="order-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;"
-                        data-key="orderLabel">
-                        Подреждане на бележките:</label>
-                    <input type="checkbox" id="order-checkbox" class="settings-checkbox">
-                    <span id="sorting-arrow" class="accordion-arrow"
-                        style="margin-left: 10px; cursor: pointer;">▼</span>
-                </div>
-
-                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
-
-                <!-- Скрита секция за опции за сортиране -->
-                <div id="sorting-options-section" style="display: none;">
-                    <!-- Нов, опростен flex контейнер за опциите за сортиране -->
-                    <div class="sort-options-container">
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="numord"
-                                id="sort-criteria-numord" class="settings-checkbox" checked> <span
-                                data-key="sortByNumber">по номер</span></label>
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="color"
-                                id="sort-criteria-color" class="settings-checkbox"> <span data-key="sortByColor">по
-                                цвят</span></label>
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="date"
-                                id="sort-criteria-date" class="settings-checkbox"> <span
-                                data-key="sortByCreationDate">по дата на
-                                създаване</span></label>
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="datemod"
-                                id="sort-criteria-datemod" class="settings-checkbox"> <span
-                                data-key="sortByModificationDate">по дата на
-                                редактиране</span></label>
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="calendarDate"
-                                id="sort-criteria-calendarDate" class="settings-checkbox"> <span
-                                data-key="sortByCalendarDate">по дата в
-                                календара</span></label>
-                        <label class="sort-option-label"><input type="radio" name="sort-criteria" value="alpha"
-                                id="sort-criteria-alpha" class="settings-checkbox"> <span
-                                data-key="sortByAlphabetical">по азбучен
-                                ред</span></label>
-                        <!-- Преместваме и чекбоксовете тук, за да имат същия стил -->
-                        <label class="sort-option-label sort-option-separator"><input type="checkbox"
-                                id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">в
-                                обратен ред</span></label>
-                        <label class="sort-option-label"><input type="checkbox" id="sort-reminders-top-checkbox"
-                                class="settings-checkbox"> <span data-key="sortRemindersTop">напомняния
-                                най-отгоре</span></label>
-                    </div>
-                </div>
-
-                <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
-                    <label style="font-weight: bold; display: block; margin-bottom: 10px;"
-                        data-key="dataManagementTitle">Четене на данни</label>
-                    <div class="zoom-control-wrapper" style="margin-top: 0px;" id="google-db-wrapper">
-                        <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
-                        <img src="GDrive.png" alt="Google Drive" style="width:24px; height:24px; margin-right: 10px;">
-                        <label for="use-google-db-checkbox" class="settings-icon-label" data-key="useGoogleDbLabel"
-                            id="use-google-db-label" style="flex-basis: 100px; flex-shrink: 0;">
-                            Google Drive:
-                        </label>
-                        <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
-                    </div>
-
-                    <div class="zoom-control-wrapper" id="use-indexeddb-wrapper" style="margin-top: 10px;">
-                        <img src="Rabbit.png" alt="Rabbit" style="width:20px; height:20px; margin-right: 2px;">
-                        <img src="Database.png" alt="Database" style="width:24px; height:24px; margin-right: 10px;">
-
-                        <label for="use-indexeddb-checkbox" class="settings-icon-label" data-key="useIndexedDbLabel"
-                            style="flex-basis: 100px; flex-shrink: 0;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
-                            </svg>
-                            База данни:
-                        </label>
-                        <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
-                    </div>
-                    <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;"
-                        data-key="dbManagementTitle">
-                        Управление на базата данни
-                    </label>
-                    <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
-                        <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
-                        <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;"
-                            data-key="deleteDbButton">Изтрий</button>
-                    </div>
-                </div>
-
-                <span id="advanced-settings-span" hidden>
-                    <!-- Accordion  -->
-                    <div class="accordion" style="margin-top: 15px;">
-                        <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
-                            <span data-key="advancedSettings">Разширени настройки</span>
-                            <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
-                            <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
-                        </div>
-                        <div class="accordion-content">
-                            <div class="zoom-control-wrapper" style="margin-top: 0px;" id="local-db-wrapper">
-                                <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
-                                <label for="use-local-db-checkbox" class="settings-icon-label"
-                                    data-key="useLocalDbLabel" id="use-local-db-label"
-                                    style="flex-basis: 120px; flex-shrink: 0;">
-                                    Локална папка:
-                                </label>
-                                <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox"
-                                    style="flex-shrink: 0;" />
-                                <span id="local-sync-folder-name"
-                                    style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                            </div>
-
-                            <div class="zoom-control-wrapper" style="margin-top: 10px; padding-bottom: 10px;"
-                                id="arh-db-wrapper">
-                                <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
-                                <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel"
-                                    id="use-arh-db-label" style="flex-basis: 120px; flex-shrink: 0;">
-                                    Архив:
-                                </label>
-                                <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox"
-                                    style="flex-shrink: 0;" />
-                                <span id="arh-folder-name"
-                                    style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                            </div>
-
-                            <div class="settings-section" style="margin-top: 0px; ">
-                                <div style="display: flex; justify-content: center; gap: 10px;">
-                                    <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
-                                        <button id="select-folder-btn" class="zoom-btn"
-                                            data-key="localSyncFolderLabel">Избери локална папка</button>
-                                    </div>
-                                    <div class="zoom-control-wrapper" id="arh-wrapper"
-                                        style="margin-top: 0; margin-bottom: 0;">
-                                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Избери
-                                            архивна папка</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!--div class="zoom-control-wrapper" id="db-export-wrapper" style="margin-top: 15px;">
-                                <button id="db-export1-btn" class="zoom-btn"
-                                    onclick="exportStore('NotesDB', 'config')">Config Export</button>
-                                <button id="db-export2-btn" class="zoom-btn settings-close-btn"
-                                    style="margin-left: 10px;" onclick="exportData('NotesDB', 'boards')">Boards
-                                    Export</button>
-                                <button id="db-export3-btn" class="zoom-btn settings-close-btn"
-                                    style="margin-left: 10px;" onclick="exportNotes()">Export All</button>
-                            </div-->
-                        </div>
-                    </div>
-                </span>
-
-                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
-                <!-- <div style="position: relative; z-index: 200; text-align: center; margin-top: -5px; line-height: 0;">
-                    <script type='text/javascript' src='https://storage.ko-fi.com/cdn/widget/Widget_2.js'></script>
-                    <script
-                        type='text/javascript'>kofiwidget2.init('Подкрепете автора • Споделете: ', 'transparent', 'O5O81RA2VZ'); kofiwidget2.draw();</script>
-                    <style>
-                        /* Compact Ko-fi Widget Overrides */
-                        .btn-container {
-                            margin: 0 !important;
-                        }
-
-                        a.kofi-button {
-                            box-shadow: none !important;
-                            min-width: auto !important;
-                            padding: 0 !important;
-                            line-height: normal !important;
-                            /* Restore line-height for text */
-                            display: inline-flex !important;
-                            /* Use flex to align image and text */
-                            align-items: center !important;
-                            gap: 5px !important;
-                            text-decoration: none !important;
-                        }
-
-                        img.kofiimg {
-                            height: 30px !important;
-                            width: auto !important;
-                            display: inline-block !important;
-                            /* Restore inline behavior */
-                            padding: 0 !important;
-                            margin-bottom: 2px !important;
-                            /* Slight tweak for optical alignment */
-                        }
-                    </style>
-                </div> -->
-
-                <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
-                    <!--script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                        data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
-                        data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
-                        data-font-color="#000000" data-coffee-color="#ffffff"></script>
-                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
-                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
-                    </p>
-                    <iframe id='kofiframe'
-                        src='https://ko-fi.com/multinotes/?hidefeed=true&widget=true&embed=true&preview=true'
-                        style='border:none;width:100%;padding:4px;background:#f9f9f9;' height='52'
-                        title='multinotes'></iframe-->
-                    <script src='https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'></script>
-                    <script>
-                        kofiWidgetOverlay.draw('multinotes', {
-                            'type': 'floating-chat',
-                            'floating-chat.donateButton.text': '',
-                            'floating-chat.donateButton.background-color': 'transparent',
-                            'floating-chat.donateButton.text-color': '#323842'
-                        });
-                    </script>
-                </div>
-                <!--div>
-                    <script async src="https://js.stripe.com/v3/buy-button.js">
-                    </script>
-                    <stripe-buy-button buy-button-id="buy_btn_1SZVZdEgnSjbu4vOL2kPcVPj"
-                        publishable-key="pk_live_51SZTDwEgnSjbu4vO1sy0OJLDXVZBd5u1pq5YkvIVfJ7a8cFuhcZGVSKtKnW7sJnBu7olTphWoho3WtVZmMC7v1wz00ukkbubUH">
-                    </stripe-buy-button>
-                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
-                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
-                    </p>
-                </div-->
-            </div>
-            <div class="settings-close-btn-wrapper">
-                <button id="settings-close-btn" class="zoom-btn settings-close-btn"
-                    data-key="closeButton">Затвори</button>
-            </div>
-        </div>
-    </div>
-    <div id="guide-root"></div>
-
-    <!--script src="calendar.js"></script>
-    <script src="db.js"></script>
-    <script src="fs.js"></script>
-    <script src="config.js"></script-->
-    <!--script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script-->
-
-    <!--link rel="stylesheet" href="msmstyle1.css">
-    <script src="msmguide.js"></script>
-    <script src="load.js"></script>
-    <script src="msmguide.js"></script>
-    <script src="kb-ui.js"></script>
-    <script src="kb-matcher.js"></script>
-    <script src="msm1.js"></script-->
-
-    <!-- KB Assistant -->
-    <link rel="stylesheet" href="msmstyle.css">
-    <link rel="stylesheet" href="kb-assistant.css">
-    <script src="kb-assistantt.js"></script>
-    <script src="msmrtt.js"></script>
-
-    <script src="mainn.js"></script>
+        // Initial load
+        loadTranslations(currentLang);
+    </script>
 </body>
 
 </html>

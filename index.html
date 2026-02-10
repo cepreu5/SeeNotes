@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CX MultiNotes Editor - Your notes, everywhere</title>
+    <title>CX MultiNotes Viewer - Your notes, everywhere</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -530,6 +530,29 @@
             border-color: var(--accent);
             color: white;
         }
+
+        .nav-link {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            text-decoration: none;
+            position: relative;
+        }
+
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 1.5px;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .nav-link:hover::after {
+            width: 100%;
+        }
     </style>
 </head>
 
@@ -546,6 +569,7 @@
             <button id="lang-bg-main" class="lang-btn">BG</button>
             <button id="lang-en-main" class="lang-btn">EN</button>
         </div>
+        <a href="index-2.html" class="nav-link">Sign in</a>
     </nav>
 
     <!-- Section 1: Hero -->
@@ -736,7 +760,7 @@
 
         async function loadTranslations(lang) {
             try {
-                const response = await fetch(`uni/index-${lang}.json`);
+                const response = await fetch(`index-${lang}.json`);
                 translations = await response.json();
                 applyTranslations();
                 updateSwitcherUI(lang);
