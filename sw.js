@@ -1,13 +1,15 @@
-const CACHE_NAME = 'multinotes-b1.41';
+const CACHE_NAME = 'cxeditor-b1.1';
+const OFFLINE_PAGE = new URL('index.html', self.location).href;
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './manifest.webmanifest',
   './style.css',
+  './main.js',
   './msmstyle.css',
   './kb-assistant.css',
   './kb-assistantt.js',
   './msmrtt.js',
-  './mainn.js',
   './kb-core.json',
   './kb-bg.json',
   './kb-en.json',
