@@ -329,84 +329,179 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     return { boardParseError: boardRes.parseError };
 }
 
+let isSyncing = false;
 async function runGoogleDriveSync() {
-    const loaderTitle = document.getElementById('loader-title');
-    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-    if (!useIndexedDb) return 0;
-
-    const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
-    let lastSyncTimestamp = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
-    if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
-
-    const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
-    if (loaderTitle) {
-        loaderTitle.innerText = modifiedSince ?
-            _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang)) :
-            _('initialGDriveSync');
+    if (isSyncing) {
+        console.log("[Sync-Run] Already syncing, skipping call.");
+        return 0;
     }
+    isSyncing = true;
+    try {
+        console.log("[Sync-Run] runGoogleDriveSync started");
+        const loaderTitle = document.getElementById('loader-title');
+        const loaderText = document.getElementById('loader-text');
+        if (!useIndexedDb) {
+            console.log("[Sync-Run] Exiting: useIndexedDb is false");
+            return 0;
+        }
 
-    const folderId = await getFolderID();
-    if (!folderId) return 0;
+        const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
+        const lastSyncTimestampOrig = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
+        let lastSyncTimestamp = lastSyncTimestampOrig;
+        if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
 
-    let updatedFilesCount = 0;
-    const gdidMap = new Map(); // Track duplicates during GDrive sync
-    const syncFileWorker = async (filename, storeName, isNote = false, forceFull = false) => {
-        const since = forceFull ? null : modifiedSince;
-        const files = await fetchFiles(filename, folderId, null, since);
-        if (files.length > 0) {
-            updatedFilesCount += files.length;
-            const { data } = await parseFileResults(files, filename);
-            if (data.length > 0) {
-                // Integrity check for the batch
-                data.forEach(item => {
-                    if (!item.gdid) {
-                        dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive' });
-                    } else if (gdidMap.has(item.gdid)) {
-                        dataIntegrityIssues.push({
-                            type: 'duplicate',
-                            gdid: item.gdid,
-                            file1: gdidMap.get(item.gdid),
-                            file2: filename,
-                            mode: 'gdrive'
-                        });
-                    } else {
-                        gdidMap.set(item.gdid, filename);
-                    }
-                });
-                if (filename === 'media.txt') {
-                    data.forEach(n => {
-                        const i = mediaData.findIndex(m => m.gdid === n.gdid);
-                        if (i !== -1) mediaData[i] = n; else mediaData.push(n);
-                    });
-                } else if (filename === 'board.txt') {
-                    for (let n of data) {
-                        const i = boardsData.findIndex(b => b.gdid === n.gdid);
-                        if (i !== -1) {
-                            boardsData[i] = n;
+        const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
+        let notesForConflictCheck = [];
+        if (loaderTitle) {
+            loaderTitle.innerText = modifiedSince ?
+                _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang)) :
+                _('initialGDriveSync');
+        }
+
+        const syncStartTime = Date.now();
+        const folderId = await getFolderID();
+        if (!folderId) {
+            console.log("[Sync-Run] Exiting: folderId not found.");
+            return 0;
+        }
+        console.log("[Sync-Run] Folder identity found:", folderId);
+
+        let updatedFilesCount = 0;
+        const gdidMap = new Map(); // Track duplicates during GDrive sync
+        const syncFileWorker = async (filename, storeName, isNote = false, forceFull = false) => {
+            const since = forceFull ? null : modifiedSince;
+            const files = await fetchFiles(filename, folderId, null, since);
+            if (files.length > 0) {
+                updatedFilesCount += files.length;
+                const { data } = await parseFileResults(files, filename);
+                if (data.length > 0) {
+                    // Integrity check for the batch
+                    data.forEach(item => {
+                        if (!item.gdid) {
+                            dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive' });
+                        } else if (gdidMap.has(item.gdid)) {
+                            dataIntegrityIssues.push({
+                                type: 'duplicate',
+                                gdid: item.gdid,
+                                file1: gdidMap.get(item.gdid),
+                                file2: filename,
+                                mode: 'gdrive'
+                            });
                         } else {
-                            boardsData.push(n);
+                            gdidMap.set(item.gdid, filename);
+                        }
+                    });
+                    if (filename === 'media.txt') {
+                        data.forEach(n => {
+                            const i = mediaData.findIndex(m => m.gdid === n.gdid);
+                            if (i !== -1) mediaData[i] = n; else mediaData.push(n);
+                        });
+                    } else if (filename === 'board.txt') {
+                        for (let n of data) {
+                            const i = boardsData.findIndex(b => b.gdid === n.gdid);
+                            if (i !== -1) {
+                                boardsData[i] = n;
+                            } else {
+                                boardsData.push(n);
+                            }
+                        }
+                    }
+                    let dataToPut = data;
+                    if (isNote && useIndexedDb && (lastSyncTimestamp || dbExists)) {
+                        const nonConflicting = [];
+                        for (let serverNote of data) {
+                            const localNote = await getFromDB(NOTE_STORE_NAME, serverNote.gdid || serverNote.id);
+                            if (localNote) {
+                                const isDifferent = serverNote.notetxt !== localNote.notetxt || serverNote.color !== localNote.color || serverNote.calendarDate !== localNote.calendarDate || serverNote.boardid !== localNote.boardid;
+                                const localDm = parseInt(localNote.datemod, 10) || 0;
+                                const isDirty = lastSyncTimestamp ? (localDm > lastSyncTimestamp) : isDifferent;
+
+                                // Modal Safety: If this note is currently open in the modal, 
+                                // we MUST treat it as a conflict to avoid silent overwrite of user's view.
+                                const modalBodyElem = document.getElementById('modal-body');
+                                const modalGdid = modalBodyElem?.dataset.gdid;
+                                const modalNoteId = modalBodyElem?.dataset.id;
+                                const isOpenInModal = (serverNote.gdid && String(serverNote.gdid) === String(modalGdid)) || (serverNote.id && String(serverNote.id) === String(modalNoteId));
+
+                                console.log(`[Sync-Debug] Note: ${serverNote.gdid || serverNote.id}`);
+                                console.log(` - Server dm: ${serverNote.datemod}`);
+                                console.log(` - Local dm: ${localNote.datemod}`);
+                                console.log(` - Last sync base: ${lastSyncTimestamp || 'None'}`);
+                                console.log(` - isDifferent: ${isDifferent}, isDirty: ${isDirty}, isOpenInModal: ${isOpenInModal}`);
+
+                                if (isDifferent && (isDirty || isOpenInModal)) {
+                                    console.log(`[Sync-Conflict!] Buffering for manual resolution: ${serverNote.gdid}${isOpenInModal ? " (Open in Modal)" : ""}`);
+                                    notesForConflictCheck.push({ serverNote, localNote });
+                                    continue;
+                                } else if (isDifferent && !isDirty) {
+                                    console.log(`[Sync-Update] Server version is newer: ${serverNote.gdid}`);
+                                }
+                            }
+                            nonConflicting.push(serverNote);
+                        }
+                        dataToPut = nonConflicting;
+                    }
+                    await bulkPutDB(storeName, dataToPut, true);
+                    if (isNote) {
+                        dataToPut.forEach(note => {
+                            if (note.gdid && !updatedNoteGdims.includes(note.gdid)) {
+                                updatedNoteGdims.push(note.gdid);
+                            }
+                        });
+                    }
+                    console.log(`[Sync] Updated ${filename}:`, dataToPut.length, "items.");
+                }
+            }
+        };
+
+        // loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
+        console.time("runGoogleDriveSync_Parallel");
+        await Promise.all([
+            syncFileWorker('board.txt', BOARD_STORE_NAME, false),
+            syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
+            syncFileWorker('note.txt', NOTE_STORE_NAME, true)
+        ]);
+        console.timeEnd("runGoogleDriveSync_Parallel");
+        console.log("[Sync-Run] Parallel sync workers finished. Updated count:", updatedFilesCount);
+
+        await saveConfig('lastGDTimestamp', syncStartTime);
+
+        // --- Conflict Resolution Logic after GDrive Sync ---
+        if (useIndexedDb && notesForConflictCheck.length > 0) {
+            for (const pair of notesForConflictCheck) {
+                const { serverNote, localNote } = pair;
+                // Only trigger if content or critical fields actually differ
+                if (serverNote.notetxt !== localNote.notetxt || serverNote.color !== localNote.color || serverNote.calendarDate !== localNote.calendarDate || serverNote.boardid !== localNote.boardid) {
+                    // We use localNote as baseNote for mergeNotes since we don't have a common third version handy.
+                    // This means mergeNotes won't automatically detect field conflicts (as local==base),
+                    // so we manually check for differences and populate conflicts.
+                    const baseNote = localNote;
+                    const { conflicts } = mergeNotes(baseNote, localNote, serverNote);
+                    if (Object.keys(conflicts).length === 0) {
+                        if (serverNote.notetxt !== localNote.notetxt) conflicts.notetxt = { local: localNote.notetxt, server: serverNote.notetxt };
+                        if (serverNote.color !== localNote.color) conflicts.color = { local: localNote.color, server: serverNote.color };
+                        if (serverNote.calendarDate !== localNote.calendarDate) conflicts.calendarDate = { local: localNote.calendarDate, server: serverNote.calendarDate };
+                    }
+                    if (Object.keys(conflicts).length > 0) {
+                        const resolved = await showNoteConflictModal(baseNote, localNote, serverNote, conflicts);
+                        if (resolved) {
+                            await bulkPutDB(NOTE_STORE_NAME, [resolved], true);
+                            const mIdx = allNotesData.findIndex(n => n.gdid === resolved.gdid);
+                            if (mIdx !== -1) allNotesData[mIdx] = resolved;
+                            if (resolved.gdid && !updatedNoteGdims.includes(resolved.gdid)) {
+                                updatedNoteGdims.push(resolved.gdid);
+                            }
                         }
                     }
                 }
-                await bulkPutDB(storeName, data, true);
-                if (isNote) data.forEach(note => updatedNoteGdims.push(note.gdid));
-                console.log(`[Sync] Updated ${filename}:`, data);
             }
         }
-    };
 
-    // loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
-    console.time("runGoogleDriveSync_Parallel");
-    await Promise.all([
-        syncFileWorker('board.txt', BOARD_STORE_NAME, false),
-        syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
-        syncFileWorker('note.txt', NOTE_STORE_NAME, true)
-    ]);
-    console.timeEnd("runGoogleDriveSync_Parallel");
-
-    await saveConfig('lastGDTimestamp', Date.now());
-    loaderText.textContent = _('syncFinishedLoadingData');
-    return updatedFilesCount;
+        loaderText.textContent = _('syncFinishedLoadingData');
+        return updatedFilesCount;
+    } finally {
+        isSyncing = false;
+    }
 }
 
 /**
@@ -1091,8 +1186,8 @@ function gisLoaded() {
 
     if (hasToken && !isLogout) {
         // Ако имаме токен и не сме в процес на logout, се опитваме да стартираме директно
-        console.log("Existing token found, starting app silently...");
-        document.getElementById('login-page').hidden = true;
+        console.log("Existing token found in GIS callback, starting app silently...");
+        // document.getElementById('login-page').hidden = true; // No need here, startApp handles it
         startApp();
     } else {
         // Винаги показваме екрана за вход
@@ -1105,8 +1200,6 @@ function gisLoaded() {
 
 // --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // Load translations immediately to ensure they're available
-    await loadTranslations(currentLang);
     const rememberMeCheckbox = document.getElementById('rememberMe');
     if (rememberMeCheckbox) {
         rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
@@ -2275,6 +2368,9 @@ async function startApp(isExplicitLogin = false) {
         console.log('First start:', Date.now());
         ts = await getFirstStartEncoded();
         console.log('First start in cache:', ts);
+        // Първо зареждаме преводите, за да избегнем синхронни XHR заявки и предупреждения за preload
+        await loadTranslations(currentLang);
+
         // --- Предварително изчисляване на оставащите дни за UI (използва кеширана функция) ---
         const licenseData = await decryptLicenseToken();
         if (licenseData.remainingDays > 0) {
@@ -2402,20 +2498,9 @@ async function getFirstStartEncoded() {
 // }
 
 function _(key) {
-    // If translations aren't loaded yet, try to load them synchronously
     if (!appTranslations[currentLang]) {
-        try {
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', `i18n-${currentLang}.txt`, false); // false = synchronous
-            xhr.send();
-            if (xhr.status === 200) {
-                const data = new Function('return {' + xhr.responseText + '}')();
-                appTranslations[currentLang] = data[currentLang];
-            }
-        } catch (e) {
-            console.error("Failed to load translations synchronously:", e);
-            return key;
-        }
+        // Fallback: This should rarely happen if loadTranslations was awaited
+        return key;
     }
     return appTranslations[currentLang][key] || key;
 }
@@ -3304,6 +3389,7 @@ function initApp() {
                 throw new Error(_('errorGoogleLibs'));
             }
             console.log("Triggering Google Drive sync...");
+            console.trace("[Sync-Trace] triggerSync called");
             if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
             try {
                 updatedCount = await runGoogleDriveSync();
@@ -4475,15 +4561,15 @@ async function mainLogic() {
         }
         initializeLoad(); // Resets state and shows the loader screen
         // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-        // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
-        // Използваме authResult, тъй като checkAuth е асинхронна и връща обект.
-        const authResult = await checkAuth();
-        if (!authResult || !authResult.pass) {
-            if (isLoadCancelled) return;
-            if (loaderContainer) loaderContainer.style.display = 'none';
-            return; // Прекратяваме, checkAuth вече е пренасочил или показал грешка.
+        if (!authToken) {
+            const authResult = await checkAuth();
+            if (!authResult || !authResult.pass) {
+                if (isLoadCancelled) return;
+                if (loaderContainer) loaderContainer.style.display = 'none';
+                return;
+            }
+            authToken = authResult.tokenData;
         }
-        authToken = authResult.tokenData;
         // Проверяваме за съвпадение на потребителя, ако има локална база.
         await userCheck();
         if (isLoadCancelled) return;
@@ -9224,7 +9310,7 @@ async function readArh(dirHandle) {
 async function loadTranslations(lang) {
     if (appTranslations[lang]) return;
     try {
-        const response = await fetch(`i18n-${lang}.txt`);
+        const response = await fetch(`i18n-${lang}.txt`, { credentials: 'omit' });
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
         const text = await response.text();
@@ -10344,6 +10430,7 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
                 if (decisions[k] !== undefined) resolvedNote[k] = decisions[k];
                 else resolvedNote[k] = localNote[k];
             });
+            resolvedNote.datemod = Date.now();
             overlay.remove(); style.remove(); resolve(resolvedNote);
         };
         footer.appendChild(cancelBtn); footer.appendChild(saveBtn);
@@ -10593,7 +10680,10 @@ async function saveEditedNote() {
             }
         }
         if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
-        showToast(_('noteSaved') || "Note saved");
+        const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
+        const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
+        const msgKey = updateGDriveNow ? 'noteSavedInBoth' : 'noteSavedInDb';
+        showToast(_(msgKey).replace('{boardName}', boardTitle));
     }
 
     // Remove spinner
@@ -10625,7 +10715,6 @@ async function saveEditedNote() {
         }
     }
 
-    showToast(_('noteSaved') || "Note saved");
 }
 
 async function updateNoteCalendarDate(noteRef, selectedDate) {
@@ -10689,7 +10778,10 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
         updateBoardCounterUI(noteObj.boardid);
         updateBoardCounterUI('reminder');
     }
-    showToast(_('noteSaved') || "Note saved");
+    const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
+    const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
+    const msgKey = updateGDriveNow ? 'noteSavedInBoth' : 'noteSavedInDb';
+    showToast(_(msgKey).replace('{boardName}', boardTitle));
 }
 
 // Unified Preview Logic

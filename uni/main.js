@@ -990,7 +990,7 @@ async function createNewNote() {
     const isRealBoard = boardsData.some(b => String(b.gdid) === String(boardId));
 
     if (systemBoards.includes(boardId) || (!isRealBoard && boardsData.length > 0)) {
-        showToast(_('cannotCreateInSystemBoard') || "Моля, изберете конкретен борд.", 3000);
+        showToast(_('cannotCreateInSystemBoard') || "Please select a specific board to create a note.", 3000);
         return;
     }
 
@@ -10290,7 +10290,7 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
         box.id = 'conflict-resolution-box';
 
         const title = document.createElement('h2');
-        title.textContent = _('conflictDetected') || "Конфликт при запис";
+        title.textContent = _('conflictDetected') || "Note Conflict Detected";
         title.style.margin = '0 0 20px 0';
         title.style.textAlign = 'center';
         title.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
@@ -10321,7 +10321,7 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
         const decisions = {};
 
         const addConflictRow = (key, localVal, serverVal, label) => {
-            if (label !== (_('content') || 'Съдържание')) {
+            if (label !== (_('content') || 'Content')) {
                 const rowLabel = document.createElement('div');
                 rowLabel.style.gridColumn = '1 / -1'; rowLabel.style.marginTop = '15px';
                 rowLabel.style.fontWeight = 'bold'; rowLabel.style.color = '#4a90e2';
@@ -10337,7 +10337,7 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
 
                 const btn = document.createElement('button');
                 btn.className = 'conflict-btn-use';
-                btn.textContent = _('useThis') || 'Използвай това';
+                btn.textContent = _('useThis') || 'Use This';
 
                 const txt = document.createElement('div');
                 txt.className = 'conflict-txt-preview';
@@ -10371,13 +10371,13 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
             if (key === 'color') return; // Skip color field comparison
             const conflict = conflicts[key];
             let label = key;
-            if (key === 'title') label = _('title') || 'Заглавие';
-            else if (key === 'body' || key === 'notetxt') label = _('content') || 'Съдържание';
+            if (key === 'title') label = _('title') || 'Title';
+            else if (key === 'body' || key === 'notetxt') label = _('content') || 'Content';
             addConflictRow(key, conflict.local, conflict.server, label);
         });
         box.appendChild(grid);
 
-        const resLabel = document.createElement('h4'); resLabel.textContent = _('finalResult') || "Краен резултат (редактируем):";
+        const resLabel = document.createElement('h4'); resLabel.textContent = _('finalResult') || "Final Result (editable):";
         resLabel.style.margin = '20px 0 10px 0';
         resLabel.style.color = 'black';
         box.appendChild(resLabel);
@@ -10412,12 +10412,12 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
         footer.style.display = 'flex'; footer.style.justifyContent = 'flex-end'; footer.style.gap = '15px'; footer.style.marginTop = '25px';
 
         const cancelBtn = document.createElement('button');
-        cancelBtn.textContent = _('cancel') || "Отказ";
+        cancelBtn.textContent = _('cancel') || "Cancel";
         Object.assign(cancelBtn.style, { padding: '12px 25px', borderRadius: '8px', border: 'none', backgroundColor: 'red', color: '#fff', cursor: 'pointer', fontWeight: 'bold' });
         cancelBtn.onclick = () => { overlay.remove(); style.remove(); resolve(null); };
 
         const saveBtn = document.createElement('button');
-        saveBtn.textContent = _('saveResolved') || "Запази решението";
+        saveBtn.textContent = _('saveResolved') || "Save Resolved Note";
         Object.assign(saveBtn.style, { padding: '12px 25px', backgroundColor: 'darkorange', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' });
         saveBtn.onclick = () => {
             const resolvedNote = { ...localNote, ...serverNote };
@@ -10680,7 +10680,10 @@ async function saveEditedNote() {
             }
         }
         if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
-        showToast(_('noteSaved') || "Note saved");
+        const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
+        const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
+        const msgKey = updateGDriveNow ? 'noteSavedInBoth' : 'noteSavedInDb';
+        showToast(_(msgKey).replace('{boardName}', boardTitle));
     }
 
     // Remove spinner
@@ -10712,7 +10715,6 @@ async function saveEditedNote() {
         }
     }
 
-    showToast(_('noteSaved') || "Note saved");
 }
 
 async function updateNoteCalendarDate(noteRef, selectedDate) {
@@ -10776,7 +10778,10 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
         updateBoardCounterUI(noteObj.boardid);
         updateBoardCounterUI('reminder');
     }
-    showToast(_('noteSaved') || "Note saved");
+    const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
+    const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
+    const msgKey = updateGDriveNow ? 'noteSavedInBoth' : 'noteSavedInDb';
+    showToast(_(msgKey).replace('{boardName}', boardTitle));
 }
 
 // Unified Preview Logic

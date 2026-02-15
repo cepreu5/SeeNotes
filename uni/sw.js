@@ -1,7 +1,9 @@
 const CACHE_NAME = 'cxeditor-b1.0';
+const OFFLINE_PAGE = new URL('index.html', self.location).href;
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './manifest.webmanifest',
   './style.css',
   './main.js',
   './msmstyle.css',
