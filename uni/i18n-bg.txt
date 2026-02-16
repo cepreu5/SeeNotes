@@ -8,6 +8,7 @@ bg: {
         copyTooltip: 'Копирай съдържанието',
         topTooltip: 'Към началото',
         boardsTitle: 'Бордове',
+        searchResultTitle: 'Резултати',
         viewFullContent: 'Виж цялото съдържание',
         loadingFile: 'Четене...',
         of: 'от',

@@ -48,6 +48,7 @@ let boardsData = []; // Съхранява данните за бордовет�
 let mediaData = []; // Съхранява данните за медия
 let folderIds = {}; // Съхранява ID-тата на папките за медия
 let currentBoardFilter = 'all';
+let boardBeforeSearch = 'all';
 let currentBackground = 'Board.png';
 let currentCalendarDate = new Date();
 let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
@@ -367,6 +368,7 @@ async function runGoogleDriveSync() {
         console.log("[Sync-Run] Folder identity found:", folderId);
 
         let updatedFilesCount = 0;
+        let skippedNotesCount = 0;
         const gdidMap = new Map(); // Track duplicates during GDrive sync
         const syncFileWorker = async (filename, storeName, isNote = false, forceFull = false) => {
             const since = forceFull ? null : modifiedSince;
@@ -441,14 +443,19 @@ async function runGoogleDriveSync() {
                         }
                         dataToPut = nonConflicting;
                     }
-                    await bulkPutDB(storeName, dataToPut, true);
                     if (isNote) {
-                        dataToPut.forEach(note => {
+                        for (const note of dataToPut) {
                             if (note.gdid && !updatedNoteGdims.includes(note.gdid)) {
-                                updatedNoteGdims.push(note.gdid);
+                                const localNote = await getFromDB(NOTE_STORE_NAME, note.gdid);
+                                if (!localNote || (parseInt(note.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
+                                    updatedNoteGdims.push(note.gdid);
+                                } else {
+                                    skippedNotesCount++;
+                                }
                             }
-                        });
+                        }
                     }
+                    await bulkPutDB(storeName, dataToPut, true);
                     console.log(`[Sync] Updated ${filename}:`, dataToPut.length, "items.");
                 }
             }
@@ -498,7 +505,7 @@ async function runGoogleDriveSync() {
         }
 
         loaderText.textContent = _('syncFinishedLoadingData');
-        return updatedFilesCount;
+        return Math.max(0, updatedFilesCount - skippedNotesCount);
     } finally {
         isSyncing = false;
     }
@@ -1990,6 +1997,14 @@ function updateBoardCounterUI(boardIdOrGdid) {
         }
         return;
     }
+    if (boardIdOrGdid === 'search-results') {
+        const searchLink = document.getElementById('search-results-board-btn');
+        if (searchLink) {
+            const count = document.getElementById('note-counter')?.textContent || '0';
+            searchLink.textContent = (showCount && parseInt(count) > 0) ? `${_('searchResultTitle')} (${count})` : _('searchResultTitle');
+        }
+        return;
+    }
     const boardData = boardsData.find(b => b.gdid == boardIdOrGdid || b.id == boardIdOrGdid);
     if (!boardData) return;
     const key = boardData.gdid || boardData.id;
@@ -2092,27 +2107,45 @@ async function createColoredNoteBackground(color, src, width, height) {
  */
 function openNotesDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
-                db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
-                db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
-                db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
-                db.createObjectStore(CONFIG_STORE_NAME);
-            }
-            console.log("NotesDB structure is up to date.");
+        let retries = 0;
+        const maxRetries = 3;
+
+        const attemptOpen = () => {
+            const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
+                    db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
+                }
+                if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+                    db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
+                }
+                if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
+                    db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
+                }
+                if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
+                    db.createObjectStore(CONFIG_STORE_NAME);
+                }
+                console.log("NotesDB structure is up to date.");
+            };
+            request.onsuccess = (event) => {
+                resolve(event.target.result);
+            };
+            request.onerror = (event) => {
+                const error = event.target.error;
+                const errorName = error ? error.name : "UnknownError";
+
+                // Retry specifically for UnknownError or if backing store is gone (typical browser hiccups)
+                if ((errorName === 'UnknownError' || errorName === 'VersionError') && retries < maxRetries) {
+                    retries++;
+                    console.warn(`Retry ${retries} opening NotesDB due to ${errorName}...`);
+                    setTimeout(attemptOpen, 100 * retries);
+                    return;
+                }
+                reject("Error opening NotesDB: " + (error ? (error.name + " - " + error.message) : "Unknown"));
+            };
         };
-        request.onsuccess = (event) => {
-            resolve(event.target.result);
-        };
-        request.onerror = (event) => reject("Error opening NotesDB: " + event.target.errorCode);
+        attemptOpen();
     });
 }
 
@@ -2680,6 +2713,11 @@ function extractAndFormat(text, onlyChecked = false) {
         if (onlyChecked && !trimmedLine.includes('☑')) {
             return;
         }
+        // Ако редът съдържа чекбокс за "неотметнато" (☐) или "отказано" (☒), 
+        // го пропускаме в изчисленията (стандартно поведение за списъци)
+        // if (trimmedLine.includes('☐') || trimmedLine.includes('☒')) {
+        //     return;
+        // }
         let normalized = trimmedLine
             // Премахваме чекбоксовете в началото на реда
             .replace(/^[☑☒☐]\s*/, '')
@@ -3066,6 +3104,45 @@ function initApp() {
     searchWrapper.appendChild(clearSearchBtn); // Add Clear Button
     searchWrapper.appendChild(saveSearchBtn);
     searchWrapper.appendChild(savedSearchesPopup);
+
+    function renderSavedSearchesPopup() {
+        const popup = document.getElementById('saved-searches-popup');
+        if (!popup) return;
+        popup.style.display = 'block';
+        popup.innerHTML = ''; // Clear everything
+        // --- Close Button ---
+        const closeBtn = document.createElement('div');
+        closeBtn.className = 'saved-search-close-btn';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.title = _('closeButton') || 'Close';
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            popup.style.display = 'none';
+        });
+        popup.appendChild(closeBtn);
+        // Create a dedicated container for the scrollable items
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'saved-searches-content';
+        popup.appendChild(contentContainer);
+        // Комбинираме последното търсене със запазените и премахваме дубликати,
+        // за да сме сигурни, че всяко търсене се показва само веднъж.
+        const allSearchesForDisplay = [...new Set([lastSearchTerm, ...savedSearches])];
+        allSearchesForDisplay.forEach((term, index) => {
+            if (index > 0 && !term) return; // Don't show empty saved searches
+            const item = document.createElement('div');
+            item.className = 'saved-search-item';
+            item.textContent = term;
+            item.addEventListener('click', () => {
+                if (searchBox) {
+                    searchBox.value = term;
+                    triggerSearch(true);
+                }
+                popup.style.display = 'none';
+            });
+            contentContainer.appendChild(item); // Add items to the new container
+        });
+    }
+
     // This function will be the single point for applying search and UI updates
     const triggerSearch = (isUserTyping = false) => {
         if (isUserTyping) {
@@ -3075,10 +3152,38 @@ function initApp() {
                 localStorage.setItem('lastSearchTerm', lastSearchTerm);
             }
         }
-        applyFilters(); // This just filters the notes
-        // Show/Hide buttons
-        const hasText = searchBox.value.length > 0;
+
         const hasTextTrimmed = searchBox.value.trim().length > 0;
+        const searchBoardBtn = document.getElementById('search-results-board-btn');
+
+        if (!hasTextTrimmed && currentBoardFilter === 'search-results') {
+            // Ако изчистваме търсенето, се връщаме към предния борд
+            currentBoardFilter = boardBeforeSearch || 'all';
+            if (searchBoardBtn) searchBoardBtn.style.display = 'none';
+        } else if (hasTextTrimmed) {
+            // Ако започваме търсене и не сме в режим търсене
+            if (currentBoardFilter !== 'search-results') {
+                boardBeforeSearch = currentBoardFilter;
+                currentBoardFilter = 'search-results';
+            }
+            if (searchBoardBtn) searchBoardBtn.style.display = 'inline-flex';
+        }
+
+        applyFilters();
+
+        // Update UI counters and active state
+        updateBoardCounterUI('search-results');
+
+        // Force UI update for active button state
+        const buttonBoardId = (currentBoardFilter === 'search-results') ? 'search-results' : currentBoardFilter;
+        document.querySelectorAll('.board-filter-link').forEach(link => {
+            const isSelected = link.dataset.boardid === String(buttonBoardId);
+            link.classList.toggle('selected-board', isSelected);
+            link.classList.toggle('active', isSelected);
+            link.style.height = isSelected ? '39px' : '35px';
+        });
+
+        const hasText = searchBox.value.length > 0;
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
     };
@@ -3524,46 +3629,6 @@ function saveSearchTerm(term) {
     localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
 }
 
-function renderSavedSearchesPopup() {
-    const popup = document.getElementById('saved-searches-popup');
-    popup.style.display = 'block';
-    popup.innerHTML = ''; // Clear everything
-    // --- Close Button ---
-    const closeBtn = document.createElement('div');
-    closeBtn.className = 'saved-search-close-btn';
-    closeBtn.innerHTML = '&times;';
-    closeBtn.title = _('closeButton') || 'Close';
-    closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        popup.style.display = 'none';
-    });
-    popup.appendChild(closeBtn);
-    // Create a dedicated container for the scrollable items
-    const contentContainer = document.createElement('div');
-    contentContainer.className = 'saved-searches-content';
-    popup.appendChild(contentContainer);
-    // Комбинираме последното търсене със запазените и премахваме дубликати,
-    // за да сме сигурни, че всяко търсене се показва само веднъж.
-    const allSearchesForDisplay = [...new Set([lastSearchTerm, ...savedSearches])];
-    allSearchesForDisplay.forEach((term, index) => {
-        if (index > 0 && !term) return; // Don't show empty saved searches
-        const item = document.createElement('div');
-        item.className = 'saved-search-item';
-        item.textContent = term;
-        item.addEventListener('click', () => {
-            searchBox.value = term;
-            // Directly call applyFilters to ensure the search runs.
-            applyFilters();
-            // Find buttons dynamically as they might be local in other scopes
-            const clearBtn = document.querySelector('.search-btn-clear');
-            const saveBtn = document.getElementById('save-search-btn'); // ID logic used before
-            if (clearBtn) clearBtn.style.display = 'flex';
-            if (saveBtn) saveBtn.style.display = 'flex';
-            popup.style.display = 'none';
-        });
-        contentContainer.appendChild(item); // Add items to the new container
-    });
-}
 
 // Проверяваме дали има токен преди да стартираме приложението
 // Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
@@ -5112,6 +5177,7 @@ async function processDirectoryContent(minModificationDate) {
         [NOTE_STORE_NAME]: []
     };
     let updatedCount = 0;
+    let skippedNotesCount = 0;
     const entries = [];
     for await (const entry of handle.values()) {
         if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
@@ -5151,7 +5217,13 @@ async function processDirectoryContent(minModificationDate) {
                             stores[MEDIA_STORE_NAME].push(fileObject);
                         } else if (item.isNote) {
                             stores[NOTE_STORE_NAME].push(fileObject);
-                            updatedNoteGdims.push(fileObject.gdid);
+                            if (!localNote || (parseInt(fileObject.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
+                                if (!updatedNoteGdims.includes(fileObject.gdid)) {
+                                    updatedNoteGdims.push(fileObject.gdid);
+                                }
+                            } else {
+                                skippedNotesCount++;
+                            }
                         }
                     } else {
                         const error = `[Missing ID] File '${item.entry.name}' skipped: missing 'gdid' property.`;
@@ -5173,7 +5245,7 @@ async function processDirectoryContent(minModificationDate) {
     console.log(`--- Local Folder sync sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
     console.log(`[Summary] Updated items: ${updatedCount} (Boards: ${stores[BOARD_STORE_NAME].length}, Media: ${stores[MEDIA_STORE_NAME].length}, Notes: ${stores[NOTE_STORE_NAME].length})`);
     console.log("[Local Sync] Updated objects:", stores);
-    return updatedCount;
+    return Math.max(0, updatedCount - skippedNotesCount);
 }
 
 /**
@@ -6390,7 +6462,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const firstAvailableBoard = boardsData.find(b => b.gdid);
         boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
     }
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
     const targetBoard = specialBoards.includes(boardId) ? null : boardsData.find(b => b.gdid == boardId || b.id == boardId);
     const buttonBoardId = targetBoard ? (targetBoard.gdid || targetBoard.id) : boardId;
     // --- Проверка за съществуващ борд ---
@@ -6451,8 +6523,17 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         }
         return;
     }
-    searchInput.value = ''; // Clear the search box
-    saveSearchBtn.style.display = 'none';
+    if (boardId !== 'search-results') {
+        searchInput.value = ''; // Clear the search box
+        saveSearchBtn.style.display = 'none';
+        const searchBoardBtn = document.getElementById('search-results-board-btn');
+        if (searchBoardBtn) {
+            searchBoardBtn.style.display = 'none';
+            searchBoardBtn.classList.remove('selected-board', 'active');
+        }
+        const clearBtn = document.querySelector('.search-btn-clear');
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
     // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
     // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
     const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
@@ -6566,6 +6647,10 @@ const promoImagesList = [
 
 function updatePromoImage() {
     if (!promoNoteElement) return;
+    // Safety check: if dismissed in current board, do not load new image
+    if (currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true') {
+        return;
+    }
     const img = promoNoteElement.querySelector('img');
     if (img) {
         const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
@@ -6634,7 +6719,7 @@ function applyFilters() {
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
     let visibleCount = 0;
     // --- PRE-CALCULATE FILTER MODES ---
-    const isAll = currentBoardFilter === 'all';
+    const isAll = currentBoardFilter === 'all' || currentBoardFilter === 'search-results';
     const isReminder = currentBoardFilter === 'reminder';
     const isNewUpdates = currentBoardFilter === 'new-updates';
     const isWithPhotos = currentBoardFilter === 'with-photos';
@@ -6757,34 +6842,36 @@ function applyFilters() {
     if (localStorage.getItem('hideAssistant') !== 'true') {
         const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
 
-        if (!isDismissedInBoard) {
+        if (isDismissedInBoard) {
+            if (promoNoteElement) promoNoteElement.style.display = 'none';
+        } else {
             if (!promoNoteElement && !isFetchingPromo) {
                 initPromoNote(); // Start loading
             }
-        }
-        if (promoNoteElement) {
-            // Only show if no active search AND not dismissed in this board
-            if (searchTerm === '' && !isDismissedInBoard) {
-                promoNoteElement.style.display = 'flex';
-                // If board changed or promo not in valid place
-                if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
-                    const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
-                        .filter(n => n.style.display !== 'none');
+            if (promoNoteElement) {
+                // Only show if no active search AND not dismissed in this board
+                if (searchTerm === '') {
+                    promoNoteElement.style.display = 'flex';
+                    // If board changed or promo not in valid place
+                    if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
+                        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
+                            .filter(n => n.style.display !== 'none');
 
-                    if (visibleNotes.length > 0) {
-                        // Insert at random position
-                        const rnd = Math.floor(Math.random() * visibleNotes.length);
-                        // Use insertBefore to create randomness
-                        notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
-                    } else {
-                        notesContainer.appendChild(promoNoteElement);
+                        if (visibleNotes.length > 0) {
+                            // Insert at random position
+                            const rnd = Math.floor(Math.random() * visibleNotes.length);
+                            // Use insertBefore to create randomness
+                            notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
+                        } else {
+                            notesContainer.appendChild(promoNoteElement);
+                        }
+                        // Обновяваме изображението при всяка смяна на борда
+                        updatePromoImage();
+                        lastPromoBoardFilter = currentBoardFilter;
                     }
-                    // Обновяваме изображението при всяка смяна на борда
-                    updatePromoImage();
-                    lastPromoBoardFilter = currentBoardFilter;
+                } else {
+                    promoNoteElement.style.display = 'none';
                 }
-            } else {
-                promoNoteElement.style.display = 'none';
             }
         }
     } else {
@@ -6993,6 +7080,20 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         addBoardButtonEvents(newUpdatesLink, 'new-updates');
         allButtonLinks.push(newUpdatesLink);
     }
+    // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "РЕЗУЛТАТИ" ---
+    const searchResultsLink = document.createElement('span');
+    searchResultsLink.id = 'search-results-board-btn';
+    searchResultsLink.textContent = _('searchResultTitle');
+    searchResultsLink.classList.add('board-filter-link', 'search-results-filter-btn');
+    searchResultsLink.dataset.boardid = 'search-results';
+    searchResultsLink.style.display = 'none';
+    searchResultsLink.style.backgroundColor = '#ffeb3b'; // Жълт фон
+    searchResultsLink.style.color = '#000'; // Черен текст
+    searchResultsLink.style.display = 'none'; // Will be set to inline-flex by triggerSearch
+    searchResultsLink.style.justifyContent = 'center';
+    searchResultsLink.style.alignItems = 'center';
+    addBoardButtonEvents(searchResultsLink, 'search-results');
+    allButtonLinks.push(searchResultsLink);
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
     if (localStorage.getItem('showBoardRemind') !== 'false') {
         const reminderNoteCount = reminderCount;
@@ -7938,34 +8039,44 @@ async function createSettingsUI(boardsData, boardParseError) {
 
 // Асинхронно зареждане на името на папката за архив
 (async () => {
-    const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-    const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
-    if (arhHandle) {
-        // Проверяваме дали имаме разрешение, без да питаме потребителя отново
-        const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
-        if (permission === 'granted') {
-            arhFolderNameDisplay.textContent = arhHandle.name;
-            arhFolderNameDisplay.title = arhHandle.name;
-        } else {
-            arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
-            arhFolderNameDisplay.style.color = 'red';
-        }
-    } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+    try {
+        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+        if (!arhFolderNameDisplay) return;
+        const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
+        if (arhHandle) {
+            // Проверяваме дали имаме разрешение, без да питаме потребителя отново
+            const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
+            if (permission === 'granted') {
+                arhFolderNameDisplay.textContent = arhHandle.name;
+                arhFolderNameDisplay.title = arhHandle.name;
+            } else {
+                arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
+                arhFolderNameDisplay.style.color = 'red';
+            }
+        } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+    } catch (err) {
+        console.warn("Could not load archive folder name:", err);
+    }
 })();
 
 // Асинхронно зареждане на името на папката за локална синхронизация
 (async () => {
-    const folderNameDisplay = document.getElementById('local-sync-folder-name');
-    const syncHandle = await getConfig('directoryHandle'); // Четем директно handle-a за синхронизация
-    if (syncHandle) {
-        const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
-        if (permission === 'granted') {
-            folderNameDisplay.textContent = syncHandle.name;
-            folderNameDisplay.title = syncHandle.name;
-        } else {
-            folderNameDisplay.textContent = _('permissionDenied');
-        }
-    } else { folderNameDisplay.textContent = _('folderNotSelected'); }
+    try {
+        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+        if (!folderNameDisplay) return;
+        const syncHandle = await getConfig('directoryHandle'); // Четем директно handle-a за синхронизация
+        if (syncHandle) {
+            const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
+            if (permission === 'granted') {
+                folderNameDisplay.textContent = syncHandle.name;
+                folderNameDisplay.title = syncHandle.name;
+            } else {
+                folderNameDisplay.textContent = _('permissionDenied');
+            }
+        } else { folderNameDisplay.textContent = _('folderNotSelected'); }
+    } catch (err) {
+        console.warn("Could not load local sync folder name:", err);
+    }
 })();
 
 /**
@@ -9020,7 +9131,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             // Използваме setTimeout, за да сме сигурни, че DOM-ът е обновен
             setTimeout(() => {
                 // Използваме същата логика за маркуване като във filterNotesByBoard
-                const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+                const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
                 const targetBoard = specialBoards.includes(currentBoardFilter) ? null : boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
                 const activeIdForUI = targetBoard ? (targetBoard.gdid || targetBoard.id) : currentBoardFilter;
 

@@ -8,6 +8,7 @@ en: {
         copyTooltip: 'Copy content',
         topTooltip: 'Go to top',
         boardsTitle: 'Boards',
+        searchResultTitle: 'Results',
         viewFullContent: 'View full content',
         loadingFile: 'Loading...',
         of: 'of',
