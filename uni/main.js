@@ -3230,7 +3230,7 @@ function initApp() {
     // Specific listener for the settings close button (not class 'modal-close')
     document.getElementById('settings-close-btn').addEventListener('click', () => {
         document.getElementById('settings-modal').classList.remove('visible');
-        window.kbAssistant.terminateGuide(); // Safe to call
+        if (window.kbAssistant) window.kbAssistant.terminateGuide();
         if (notesBgrdChanged) {
             mainLogic();
             notesBgrdChanged = false;
@@ -3243,7 +3243,6 @@ function initApp() {
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
-                    window.kbAssistant.terminateGuide(); // Safe to call
                     if (notesBgrdChanged) {
                         mainLogic();
                         notesBgrdChanged = false;
@@ -7915,7 +7914,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             }
 
             document.getElementById('settings-modal').classList.remove('visible');
-            window.kbAssistant.terminateGuide();
+            if (window.kbAssistant) window.kbAssistant.terminateGuide();
             // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
             updateModeButton();
             const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
@@ -9351,7 +9350,9 @@ async function setLanguage(lang) {
         updateSignoutTooltip();
     }
     // Update KB Assistant Language
-    window.kbAssistant.updateLanguage();
+    if (window.kbAssistant && typeof window.kbAssistant.updateLanguage === 'function') {
+        window.kbAssistant.updateLanguage();
+    }
 }
 
 // --- Service Worker Registration ---
