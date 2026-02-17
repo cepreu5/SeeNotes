@@ -59,5 +59,14 @@
             "type": "image/png",
             "purpose": "any maskable"
         }
-    ]
+    ],
+    "share_target": {
+        "action": "./index.html",
+        "method": "GET",
+        "params": {
+            "title": "shared_title",
+            "text": "shared_text",
+            "url": "shared_url"
+        }
+    }
 }

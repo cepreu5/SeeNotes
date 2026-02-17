@@ -2377,6 +2377,36 @@ async function deleteFromDB(storeName, key) {
 // =================================================================================
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
+// --- Web Share Target API Handler ---
+function handleShareTarget() {
+    const url = new URL(window.location.href);
+    const sharedTitle = url.searchParams.get('shared_title');
+    const sharedText = url.searchParams.get('shared_text');
+    const sharedUrl = url.searchParams.get('shared_url');
+    if (!sharedTitle && !sharedText && !sharedUrl) return;
+    // Съставяме съдържанието на бележката от споделените данни
+    const parts = [];
+    if (sharedTitle) parts.push(sharedTitle);
+    if (sharedText) parts.push(sharedText);
+    if (sharedUrl && sharedUrl !== sharedText) parts.push(sharedUrl);
+    const noteContent = parts.join('\n');
+    // Изчистваме share параметрите от URL-а, за да не се обработват повторно
+    url.searchParams.delete('shared_title');
+    url.searchParams.delete('shared_text');
+    url.searchParams.delete('shared_url');
+    window.history.replaceState({}, document.title, url.pathname + url.search);
+    // Показваме модала със споделеното съдържание
+    setTimeout(() => {
+        showModal({
+            raw: noteContent,
+            format: null,
+            color: '#FBFF86', // Жълт фон по подразбиране
+            id: 'shared'
+        });
+        showToast(_('sharedContentReceived') || '📥 Споделено съдържание получено', 3000);
+    }, 500);
+}
+
 // --- Основна стартова функция ---
 async function startApp(isExplicitLogin = false) {
     if (isAppStarted) return;
@@ -2486,6 +2516,7 @@ async function startApp(isExplicitLogin = false) {
         };
         initDraggableButtons();
         await mainLogic();
+        handleShareTarget();
     } catch (err) {
         console.error("Error in startApp:", err);
     }
