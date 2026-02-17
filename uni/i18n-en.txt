@@ -231,6 +231,7 @@ en: {
         supportMessage: 'If you like this app and find it useful, support the developer with a small amount.',
         newVersionAvailable: 'New version available!',
         refreshNow: 'Refresh',
+        installPromptPlaceholder: 'Install the application',
         "closeAfterSaveLabel": "Close after save",
         "updateGDriveLabel": "Update Google Drive",
         "checkEmptyBoardsLabel": "Check for empty boards",

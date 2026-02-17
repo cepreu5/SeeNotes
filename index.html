@@ -12,19 +12,19 @@
     <link rel="preload" href="main.js" as="script">
     <meta http-equiv="Content-Security-Policy"
         content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
-    <!-- script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
+    <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
         crossorigin="anonymous">
-    </script -->
+    </script-->
 </head>
 
 <body>
-    <!--  Вертикална реклама 120х728>
+    <!-- Вертикална реклама 120х728>
     <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
         data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
     </ins>
     <script>
         (adsbygoogle = window.adsbygoogle || []).push({});
-    </script  -->
+    </script -->
 
     <header>
         <div style="display: flex; align-items: center;">
@@ -32,8 +32,7 @@
             <h1 ID="app-title" data-key="appTitle">CX MultiNotes Editor</h1>
         </div>
         <div id="search-wrapper">
-            <input type="search" id="search-box" autocomplete="off" data-key-placeholder="searchPlaceholder"
-                placeholder="Търсене в заглавията...">
+            <input type="search" id="search-box" autocomplete="off" data-key-placeholder="searchPlaceholder">
         </div>
         <div id="header-buttons">
             <div id="note-counter" class="note-counter">0</div>
@@ -865,24 +864,55 @@
         // PWA Install Prompt
         let deferredPrompt;
         const installBtn = document.getElementById('install_button');
+        const reloadBtn = document.getElementById('search-box');
+
+        const hideInstallBtn = () => {
+            if (installBtn) installBtn.style.display = 'none';
+            if (reloadBtn) reloadBtn.placeholder = (typeof _ === 'function' ? _('searchPlaceholder') : '');
+        };
 
         window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent Chrome 67 and earlier from automatically showing the prompt
             e.preventDefault();
-            // Stash the event so it can be triggered later.
             deferredPrompt = e;
-            // Update UI to notify the user they can add to home screen
-            if (installBtn) installBtn.style.display = 'flex';
+            // Position install_button exactly on top of search-box right edge
+            if (installBtn && reloadBtn) {
+                const rect = reloadBtn.getBoundingClientRect();
+                installBtn.style.position = 'fixed';
+                installBtn.style.left = rect.left + rect.width - rect.height + 'px';
+                installBtn.style.top = rect.top + 'px';
+                installBtn.style.width = rect.height + 'px';
+                installBtn.style.height = rect.height + 'px';
+                installBtn.style.zIndex = '10001';
+                installBtn.style.margin = '0';
+                installBtn.style.display = 'flex';
+                installBtn.style.backgroundColor = '#ff0000';
+                installBtn.style.animation = 'installPulse 1.5s ease-in-out infinite';
+                // Change search placeholder while install button is visible
+                reloadBtn.placeholder = (typeof _ === 'function' ? _('installPromptPlaceholder') : 'Инсталация на приложението');
+                // Auto-hide after 15 seconds
+                setTimeout(hideInstallBtn, 15000);
+            }
         });
+
+        // Add pulse animation - scale + color shift for maximum visibility
+        if (!document.getElementById('install-btn-style')) {
+            const s = document.createElement('style');
+            s.id = 'install-btn-style';
+            s.textContent = `
+                @keyframes installPulse {
+                    0%   { transform: scale(1);    background-color: #ff0000; box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
+                    50%  { transform: scale(1.15); background-color: #ff4444; box-shadow: 0 0 16px 6px rgba(255,0,0,0.4); }
+                    100% { transform: scale(1);    background-color: #ff0000; box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
+                }
+            `;
+            document.head.appendChild(s);
+        }
 
         if (installBtn) {
             installBtn.addEventListener('click', (e) => {
-                // hide our user interface that shows our A2HS button
-                installBtn.style.display = 'none';
+                hideInstallBtn();
                 if (!deferredPrompt) return;
-                // Show the prompt
                 deferredPrompt.prompt();
-                // Wait for the user to respond to the prompt
                 deferredPrompt.userChoice.then((choiceResult) => {
                     if (choiceResult.outcome === 'accepted') {
                         console.log('User accepted the A2HS prompt');

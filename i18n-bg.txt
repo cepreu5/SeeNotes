@@ -8,6 +8,7 @@ bg: {
         copyTooltip: 'Копирай съдържанието',
         topTooltip: 'Към началото',
         boardsTitle: 'Бордове',
+        searchResultTitle: 'Резултати',
         viewFullContent: 'Виж цялото съдържание',
         loadingFile: 'Четене...',
         of: 'от',
@@ -232,6 +233,7 @@ bg: {
         supportMessage: 'Ако харесвате това приложение и го намирате за полезно, подкрепете автора с малка сума.',
         newVersionAvailable: 'Налична е нова версия!',
         refreshNow: 'Обнови',
+        installPromptPlaceholder: 'Инсталация на приложението',
 
 
         "saveLabel": "Запис на архив от паметта",

@@ -3609,6 +3609,9 @@ function initApp() {
 function updateSearchPlaceholder() {
     const searchInput = document.getElementById('search-box');
     if (!searchInput) return;
+    // Don't overwrite if install button is currently visible over the search box
+    const installBtnEl = document.getElementById('install_button');
+    if (installBtnEl && installBtnEl.style.display === 'flex') return;
     searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
 }
 
@@ -9444,6 +9447,7 @@ async function setLanguage(lang) {
         element.innerHTML = _(key);
     });
     document.querySelectorAll('[data-key-placeholder]').forEach(element => {
+
         const key = element.getAttribute('data-key-placeholder');
         element.placeholder = _(key);
     });
@@ -10306,16 +10310,177 @@ function mergeNotes(baseNote, localNote, serverNote) {
     return { result, conflicts };
 }
 
-async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts) {
+async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedConflicts) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
-        overlay.id = 'conflict-resolution-overlay';
-        Object.assign(overlay.style, {
-            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-            backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 30000, display: 'flex',
-            flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px'
-        });
+        overlay.id = 'dual-conflict-overlay';
+        Object.assign(overlay.style, { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' });
 
+        const container = document.createElement('div');
+        const sW = localStorage.getItem('modalWidth') || '400px';
+        const sH = localStorage.getItem('modalHeight') || '300px';
+        Object.assign(container.style, { position: 'relative', width: sW, height: sH, display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px' });
+
+        const renderVersion = (note, zIndex) => {
+            const card = document.createElement('div');
+            card.className = 'modal-content-box';
+            Object.assign(card.style, { position: 'absolute', width: '100%', height: '100%', zIndex: zIndex, transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)', opacity: zIndex > 50 ? '1' : '0.4', transform: zIndex > 50 ? 'scale(1)' : 'scale(0.85) translateY(20px)', pointerEvents: zIndex > 50 ? 'auto' : 'none', margin: '0', display: 'flex', flexDirection: 'column' });
+
+            // Background logic
+            const colorIdx = note.color || 0;
+            card.style.backgroundColor = noteColorMap[colorIdx] || '#FBFF86';
+            if (localStorage.getItem('imgBgrd') !== 'false') card.style.backgroundImage = "url('Note.jpg')";
+
+            // Header: Date only (standard look)
+            const labelEl = document.createElement('div');
+            labelEl.id = 'modal-board-name';
+            labelEl.style.display = 'block'; labelEl.style.left = '15px'; labelEl.style.top = '10px';
+            labelEl.innerHTML = `<span style="font-weight:normal; font-size:11px; opacity:0.6; color:#000;">${new Date(parseInt(note.datemod)).toLocaleString()}</span>`;
+            card.appendChild(labelEl);
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'modal-close modal-header-btn';
+            closeBtn.style.right = '10px'; closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+            card.appendChild(closeBtn);
+
+            const bdy = document.createElement('div');
+            bdy.className = 'modal-body'; bdy.style = 'padding:20px; margin-top:40px; overflow-y:auto; flex-grow:1; position:relative;';
+            card.appendChild(bdy);
+
+            // Action Buttons (Bottom Right)
+            const createBtn = (id, icon, right, title) => {
+                const btn = document.createElement('div');
+                btn.innerHTML = icon; btn.title = title;
+                Object.assign(btn.style, { position: 'absolute', bottom: '15px', right: right, width: '40px', height: '40px', backgroundColor: 'darkorange', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', cursor: 'pointer', zIndex: 100 });
+                card.appendChild(btn); return btn;
+            };
+
+            const btnEdit = createBtn('conf-edit', pencilIconSvg, '100px', 'Edit');
+            const btnSave = createBtn('conf-save', diskIconSvg, '50px', 'Use this version');
+            const btnEye = createBtn('conf-eye', eyeIconSvg, '100px', 'Preview');
+            btnSave.style.display = 'flex'; btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
+
+            const refreshContent = (currentNote) => {
+                let txt = currentNote.notetxt || '';
+                const pipeIdx = txt.indexOf('|');
+                if (pipeIdx !== -1) {
+                    const tPart = txt.substring(0, pipeIdx); const bPart = txt.substring(pipeIdx + 1);
+                    bdy.innerHTML = (typeof formatText === 'function') ? formatText(tPart, currentNote.title_span || '', true) + '<br>' + formatText(bPart, currentNote.text_span || '', true) : tPart + '<br>' + bPart;
+                } else { bdy.innerHTML = (typeof formatText === 'function') ? formatText(txt, currentNote.text_span || '', true) : txt; }
+                bdy.dataset.id = currentNote.id || '';
+                bdy.dataset.gdid = currentNote.gdid || '';
+                bdy.dataset.format = currentNote.text_span || ''; bdy.dataset.titleFormat = currentNote.title_span || '';
+            };
+
+            btnEdit.onclick = () => {
+                const globalModalBody = modalBody;
+                const oldId = globalModalBody ? globalModalBody.id : '';
+                if (globalModalBody) globalModalBody.id = '';
+
+                bdy.id = 'modal-body';
+                modalBody = bdy;
+                currentModalContent = note.notetxt;
+
+                enableNoteEditing(bdy);
+
+                btnEdit.style.display = 'none'; btnSave.style.right = '50px'; btnEye.style.display = 'flex';
+
+                modalBody = globalModalBody;
+                if (globalModalBody) globalModalBody.id = oldId;
+            };
+
+            btnEye.onclick = () => {
+                const titleArea = bdy.querySelector('#note-edit-title-textarea');
+                let txtArea;
+                if (titleArea) {
+                    txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
+                } else {
+                    txtArea = bdy.querySelector('textarea');
+                }
+
+                if (txtArea) {
+                    const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
+                    const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
+                    note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
+                    if (titleArea) {
+                        const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
+                        note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
+                    }
+                }
+                refreshContent(note);
+                btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
+            };
+
+            btnSave.onclick = async () => {
+                const titleArea = bdy.querySelector('#note-edit-title-textarea');
+                let txtArea;
+                if (titleArea) {
+                    txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
+                } else {
+                    txtArea = bdy.querySelector('textarea');
+                }
+
+                if (txtArea) {
+                    const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
+                    const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
+                    note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
+                    if (titleArea) {
+                        const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
+                        note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
+                    }
+                }
+                note.datemod = Date.now(); overlay.remove(); resolve(note);
+            };
+
+            refreshContent(note);
+            return { card, bdy };
+        };
+
+        const local = renderVersion(localNote, 60);
+        const server = renderVersion(serverNote, 40);
+        container.appendChild(server.card); container.appendChild(local.card);
+
+        // Tab-like buttons
+        const tabs = document.createElement('div');
+        Object.assign(tabs.style, { position: 'absolute', bottom: '-65px', display: 'flex', gap: '5px', zIndex: 5 });
+        const createTab = (txt, active) => {
+            const t = document.createElement('button');
+            t.textContent = txt;
+            t.style = `padding:8px 20px; border:none; border-radius:0 0 10px 10px; cursor:pointer; font-weight:bold; background:${active ? 'darkorange' : '#444'}; color:${active ? '#000' : '#fff'}; transition: 0.3s;`;
+            return t;
+        };
+        const tabL = createTab('ЛОКАЛНА (DB)', true);
+        const tabS = createTab('СЪРВЪР (GD)', false);
+
+        const switchView = (isLocal) => {
+            local.card.style.zIndex = isLocal ? 60 : 40; local.card.style.opacity = isLocal ? '1' : '0.4'; local.card.style.transform = isLocal ? 'scale(1)' : 'scale(0.85) translateY(20px)'; local.card.style.pointerEvents = isLocal ? 'auto' : 'none';
+            server.card.style.zIndex = isLocal ? 40 : 60; server.card.style.opacity = isLocal ? '0.4' : '1'; server.card.style.transform = isLocal ? 'scale(0.85) translateY(20px)' : 'scale(1)'; server.card.style.pointerEvents = isLocal ? 'none' : 'auto';
+            tabL.style.background = isLocal ? 'darkorange' : '#444'; tabL.style.color = isLocal ? '#000' : '#fff';
+            tabS.style.background = isLocal ? '#444' : 'darkorange'; tabS.style.color = isLocal ? '#fff' : '#000';
+
+            // Safe ID management: only one element should have 'modal-body' at any time
+            if (isLocal) {
+                server.bdy.id = '';
+                local.bdy.id = 'modal-body';
+            } else {
+                local.bdy.id = '';
+                server.bdy.id = 'modal-body';
+            }
+        };
+
+        tabL.onclick = () => switchView(true);
+        tabS.onclick = () => switchView(false);
+        tabs.appendChild(tabL); tabs.appendChild(tabS);
+        container.appendChild(tabs);
+        overlay.appendChild(container);
+        document.body.appendChild(overlay);
+        switchView(true);
+    });
+}
+
+/* Old implementation commented out
+async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, conflicts) {
+    return new Promise((resolve) => {
         // Add responsive CSS
         const style = document.createElement('style');
         style.textContent = `
@@ -10549,6 +10714,7 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
         box.appendChild(footer); overlay.appendChild(box); document.body.appendChild(overlay);
     });
 }
+*/
 
 // Unified Save Logic
 async function saveEditedNote() {

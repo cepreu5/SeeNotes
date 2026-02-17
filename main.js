@@ -48,6 +48,7 @@ let boardsData = []; // Съхранява данните за бордовет�
 let mediaData = []; // Съхранява данните за медия
 let folderIds = {}; // Съхранява ID-тата на папките за медия
 let currentBoardFilter = 'all';
+let boardBeforeSearch = 'all';
 let currentBackground = 'Board.png';
 let currentCalendarDate = new Date();
 let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
@@ -367,6 +368,7 @@ async function runGoogleDriveSync() {
         console.log("[Sync-Run] Folder identity found:", folderId);
 
         let updatedFilesCount = 0;
+        let skippedNotesCount = 0;
         const gdidMap = new Map(); // Track duplicates during GDrive sync
         const syncFileWorker = async (filename, storeName, isNote = false, forceFull = false) => {
             const since = forceFull ? null : modifiedSince;
@@ -441,14 +443,19 @@ async function runGoogleDriveSync() {
                         }
                         dataToPut = nonConflicting;
                     }
-                    await bulkPutDB(storeName, dataToPut, true);
                     if (isNote) {
-                        dataToPut.forEach(note => {
+                        for (const note of dataToPut) {
                             if (note.gdid && !updatedNoteGdims.includes(note.gdid)) {
-                                updatedNoteGdims.push(note.gdid);
+                                const localNote = await getFromDB(NOTE_STORE_NAME, note.gdid);
+                                if (!localNote || (parseInt(note.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
+                                    updatedNoteGdims.push(note.gdid);
+                                } else {
+                                    skippedNotesCount++;
+                                }
                             }
-                        });
+                        }
                     }
+                    await bulkPutDB(storeName, dataToPut, true);
                     console.log(`[Sync] Updated ${filename}:`, dataToPut.length, "items.");
                 }
             }
@@ -498,7 +505,7 @@ async function runGoogleDriveSync() {
         }
 
         loaderText.textContent = _('syncFinishedLoadingData');
-        return updatedFilesCount;
+        return Math.max(0, updatedFilesCount - skippedNotesCount);
     } finally {
         isSyncing = false;
     }
@@ -1990,6 +1997,14 @@ function updateBoardCounterUI(boardIdOrGdid) {
         }
         return;
     }
+    if (boardIdOrGdid === 'search-results') {
+        const searchLink = document.getElementById('search-results-board-btn');
+        if (searchLink) {
+            const count = document.getElementById('note-counter')?.textContent || '0';
+            searchLink.textContent = (showCount && parseInt(count) > 0) ? `${_('searchResultTitle')} (${count})` : _('searchResultTitle');
+        }
+        return;
+    }
     const boardData = boardsData.find(b => b.gdid == boardIdOrGdid || b.id == boardIdOrGdid);
     if (!boardData) return;
     const key = boardData.gdid || boardData.id;
@@ -2092,27 +2107,45 @@ async function createColoredNoteBackground(color, src, width, height) {
  */
 function openNotesDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
-                db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
-                db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
-                db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
-                db.createObjectStore(CONFIG_STORE_NAME);
-            }
-            console.log("NotesDB structure is up to date.");
+        let retries = 0;
+        const maxRetries = 3;
+
+        const attemptOpen = () => {
+            const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
+                    db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
+                }
+                if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+                    db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
+                }
+                if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
+                    db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
+                }
+                if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
+                    db.createObjectStore(CONFIG_STORE_NAME);
+                }
+                console.log("NotesDB structure is up to date.");
+            };
+            request.onsuccess = (event) => {
+                resolve(event.target.result);
+            };
+            request.onerror = (event) => {
+                const error = event.target.error;
+                const errorName = error ? error.name : "UnknownError";
+
+                // Retry specifically for UnknownError or if backing store is gone (typical browser hiccups)
+                if ((errorName === 'UnknownError' || errorName === 'VersionError') && retries < maxRetries) {
+                    retries++;
+                    console.warn(`Retry ${retries} opening NotesDB due to ${errorName}...`);
+                    setTimeout(attemptOpen, 100 * retries);
+                    return;
+                }
+                reject("Error opening NotesDB: " + (error ? (error.name + " - " + error.message) : "Unknown"));
+            };
         };
-        request.onsuccess = (event) => {
-            resolve(event.target.result);
-        };
-        request.onerror = (event) => reject("Error opening NotesDB: " + event.target.errorCode);
+        attemptOpen();
     });
 }
 
@@ -2680,6 +2713,11 @@ function extractAndFormat(text, onlyChecked = false) {
         if (onlyChecked && !trimmedLine.includes('☑')) {
             return;
         }
+        // Ако редът съдържа чекбокс за "неотметнато" (☐) или "отказано" (☒), 
+        // го пропускаме в изчисленията (стандартно поведение за списъци)
+        // if (trimmedLine.includes('☐') || trimmedLine.includes('☒')) {
+        //     return;
+        // }
         let normalized = trimmedLine
             // Премахваме чекбоксовете в началото на реда
             .replace(/^[☑☒☐]\s*/, '')
@@ -3066,6 +3104,45 @@ function initApp() {
     searchWrapper.appendChild(clearSearchBtn); // Add Clear Button
     searchWrapper.appendChild(saveSearchBtn);
     searchWrapper.appendChild(savedSearchesPopup);
+
+    function renderSavedSearchesPopup() {
+        const popup = document.getElementById('saved-searches-popup');
+        if (!popup) return;
+        popup.style.display = 'block';
+        popup.innerHTML = ''; // Clear everything
+        // --- Close Button ---
+        const closeBtn = document.createElement('div');
+        closeBtn.className = 'saved-search-close-btn';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.title = _('closeButton') || 'Close';
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            popup.style.display = 'none';
+        });
+        popup.appendChild(closeBtn);
+        // Create a dedicated container for the scrollable items
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'saved-searches-content';
+        popup.appendChild(contentContainer);
+        // Комбинираме последното търсене със запазените и премахваме дубликати,
+        // за да сме сигурни, че всяко търсене се показва само веднъж.
+        const allSearchesForDisplay = [...new Set([lastSearchTerm, ...savedSearches])];
+        allSearchesForDisplay.forEach((term, index) => {
+            if (index > 0 && !term) return; // Don't show empty saved searches
+            const item = document.createElement('div');
+            item.className = 'saved-search-item';
+            item.textContent = term;
+            item.addEventListener('click', () => {
+                if (searchBox) {
+                    searchBox.value = term;
+                    triggerSearch(true);
+                }
+                popup.style.display = 'none';
+            });
+            contentContainer.appendChild(item); // Add items to the new container
+        });
+    }
+
     // This function will be the single point for applying search and UI updates
     const triggerSearch = (isUserTyping = false) => {
         if (isUserTyping) {
@@ -3075,10 +3152,38 @@ function initApp() {
                 localStorage.setItem('lastSearchTerm', lastSearchTerm);
             }
         }
-        applyFilters(); // This just filters the notes
-        // Show/Hide buttons
-        const hasText = searchBox.value.length > 0;
+
         const hasTextTrimmed = searchBox.value.trim().length > 0;
+        const searchBoardBtn = document.getElementById('search-results-board-btn');
+
+        if (!hasTextTrimmed && currentBoardFilter === 'search-results') {
+            // Ако изчистваме търсенето, се връщаме към предния борд
+            currentBoardFilter = boardBeforeSearch || 'all';
+            if (searchBoardBtn) searchBoardBtn.style.display = 'none';
+        } else if (hasTextTrimmed) {
+            // Ако започваме търсене и не сме в режим търсене
+            if (currentBoardFilter !== 'search-results') {
+                boardBeforeSearch = currentBoardFilter;
+                currentBoardFilter = 'search-results';
+            }
+            if (searchBoardBtn) searchBoardBtn.style.display = 'inline-flex';
+        }
+
+        applyFilters();
+
+        // Update UI counters and active state
+        updateBoardCounterUI('search-results');
+
+        // Force UI update for active button state
+        const buttonBoardId = (currentBoardFilter === 'search-results') ? 'search-results' : currentBoardFilter;
+        document.querySelectorAll('.board-filter-link').forEach(link => {
+            const isSelected = link.dataset.boardid === String(buttonBoardId);
+            link.classList.toggle('selected-board', isSelected);
+            link.classList.toggle('active', isSelected);
+            link.style.height = isSelected ? '39px' : '35px';
+        });
+
+        const hasText = searchBox.value.length > 0;
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
     };
@@ -3230,7 +3335,7 @@ function initApp() {
     // Specific listener for the settings close button (not class 'modal-close')
     document.getElementById('settings-close-btn').addEventListener('click', () => {
         document.getElementById('settings-modal').classList.remove('visible');
-        window.kbAssistant.terminateGuide(); // Safe to call
+        if (window.kbAssistant) window.kbAssistant.terminateGuide();
         if (notesBgrdChanged) {
             mainLogic();
             notesBgrdChanged = false;
@@ -3243,7 +3348,6 @@ function initApp() {
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
-                    window.kbAssistant.terminateGuide(); // Safe to call
                     if (notesBgrdChanged) {
                         mainLogic();
                         notesBgrdChanged = false;
@@ -3505,6 +3609,9 @@ function initApp() {
 function updateSearchPlaceholder() {
     const searchInput = document.getElementById('search-box');
     if (!searchInput) return;
+    // Don't overwrite if install button is currently visible over the search box
+    const installBtnEl = document.getElementById('install_button');
+    if (installBtnEl && installBtnEl.style.display === 'flex') return;
     searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
 }
 
@@ -3525,46 +3632,6 @@ function saveSearchTerm(term) {
     localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
 }
 
-function renderSavedSearchesPopup() {
-    const popup = document.getElementById('saved-searches-popup');
-    popup.style.display = 'block';
-    popup.innerHTML = ''; // Clear everything
-    // --- Close Button ---
-    const closeBtn = document.createElement('div');
-    closeBtn.className = 'saved-search-close-btn';
-    closeBtn.innerHTML = '&times;';
-    closeBtn.title = _('closeButton') || 'Close';
-    closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        popup.style.display = 'none';
-    });
-    popup.appendChild(closeBtn);
-    // Create a dedicated container for the scrollable items
-    const contentContainer = document.createElement('div');
-    contentContainer.className = 'saved-searches-content';
-    popup.appendChild(contentContainer);
-    // Комбинираме последното търсене със запазените и премахваме дубликати,
-    // за да сме сигурни, че всяко търсене се показва само веднъж.
-    const allSearchesForDisplay = [...new Set([lastSearchTerm, ...savedSearches])];
-    allSearchesForDisplay.forEach((term, index) => {
-        if (index > 0 && !term) return; // Don't show empty saved searches
-        const item = document.createElement('div');
-        item.className = 'saved-search-item';
-        item.textContent = term;
-        item.addEventListener('click', () => {
-            searchBox.value = term;
-            // Directly call applyFilters to ensure the search runs.
-            applyFilters();
-            // Find buttons dynamically as they might be local in other scopes
-            const clearBtn = document.querySelector('.search-btn-clear');
-            const saveBtn = document.getElementById('save-search-btn'); // ID logic used before
-            if (clearBtn) clearBtn.style.display = 'flex';
-            if (saveBtn) saveBtn.style.display = 'flex';
-            popup.style.display = 'none';
-        });
-        contentContainer.appendChild(item); // Add items to the new container
-    });
-}
 
 // Проверяваме дали има токен преди да стартираме приложението
 // Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
@@ -5113,6 +5180,7 @@ async function processDirectoryContent(minModificationDate) {
         [NOTE_STORE_NAME]: []
     };
     let updatedCount = 0;
+    let skippedNotesCount = 0;
     const entries = [];
     for await (const entry of handle.values()) {
         if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
@@ -5152,7 +5220,13 @@ async function processDirectoryContent(minModificationDate) {
                             stores[MEDIA_STORE_NAME].push(fileObject);
                         } else if (item.isNote) {
                             stores[NOTE_STORE_NAME].push(fileObject);
-                            updatedNoteGdims.push(fileObject.gdid);
+                            if (!localNote || (parseInt(fileObject.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
+                                if (!updatedNoteGdims.includes(fileObject.gdid)) {
+                                    updatedNoteGdims.push(fileObject.gdid);
+                                }
+                            } else {
+                                skippedNotesCount++;
+                            }
                         }
                     } else {
                         const error = `[Missing ID] File '${item.entry.name}' skipped: missing 'gdid' property.`;
@@ -5174,7 +5248,7 @@ async function processDirectoryContent(minModificationDate) {
     console.log(`--- Local Folder sync sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
     console.log(`[Summary] Updated items: ${updatedCount} (Boards: ${stores[BOARD_STORE_NAME].length}, Media: ${stores[MEDIA_STORE_NAME].length}, Notes: ${stores[NOTE_STORE_NAME].length})`);
     console.log("[Local Sync] Updated objects:", stores);
-    return updatedCount;
+    return Math.max(0, updatedCount - skippedNotesCount);
 }
 
 /**
@@ -6391,7 +6465,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const firstAvailableBoard = boardsData.find(b => b.gdid);
         boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
     }
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
     const targetBoard = specialBoards.includes(boardId) ? null : boardsData.find(b => b.gdid == boardId || b.id == boardId);
     const buttonBoardId = targetBoard ? (targetBoard.gdid || targetBoard.id) : boardId;
     // --- Проверка за съществуващ борд ---
@@ -6452,8 +6526,17 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         }
         return;
     }
-    searchInput.value = ''; // Clear the search box
-    saveSearchBtn.style.display = 'none';
+    if (boardId !== 'search-results') {
+        searchInput.value = ''; // Clear the search box
+        saveSearchBtn.style.display = 'none';
+        const searchBoardBtn = document.getElementById('search-results-board-btn');
+        if (searchBoardBtn) {
+            searchBoardBtn.style.display = 'none';
+            searchBoardBtn.classList.remove('selected-board', 'active');
+        }
+        const clearBtn = document.querySelector('.search-btn-clear');
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
     // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
     // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
     const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
@@ -6567,6 +6650,10 @@ const promoImagesList = [
 
 function updatePromoImage() {
     if (!promoNoteElement) return;
+    // Safety check: if dismissed in current board, do not load new image
+    if (currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true') {
+        return;
+    }
     const img = promoNoteElement.querySelector('img');
     if (img) {
         const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
@@ -6635,7 +6722,7 @@ function applyFilters() {
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
     let visibleCount = 0;
     // --- PRE-CALCULATE FILTER MODES ---
-    const isAll = currentBoardFilter === 'all';
+    const isAll = currentBoardFilter === 'all' || currentBoardFilter === 'search-results';
     const isReminder = currentBoardFilter === 'reminder';
     const isNewUpdates = currentBoardFilter === 'new-updates';
     const isWithPhotos = currentBoardFilter === 'with-photos';
@@ -6758,34 +6845,36 @@ function applyFilters() {
     if (localStorage.getItem('hideAssistant') !== 'true') {
         const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
 
-        if (!isDismissedInBoard) {
+        if (isDismissedInBoard) {
+            if (promoNoteElement) promoNoteElement.style.display = 'none';
+        } else {
             if (!promoNoteElement && !isFetchingPromo) {
                 initPromoNote(); // Start loading
             }
-        }
-        if (promoNoteElement) {
-            // Only show if no active search AND not dismissed in this board
-            if (searchTerm === '' && !isDismissedInBoard) {
-                promoNoteElement.style.display = 'flex';
-                // If board changed or promo not in valid place
-                if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
-                    const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
-                        .filter(n => n.style.display !== 'none');
+            if (promoNoteElement) {
+                // Only show if no active search AND not dismissed in this board
+                if (searchTerm === '') {
+                    promoNoteElement.style.display = 'flex';
+                    // If board changed or promo not in valid place
+                    if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
+                        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
+                            .filter(n => n.style.display !== 'none');
 
-                    if (visibleNotes.length > 0) {
-                        // Insert at random position
-                        const rnd = Math.floor(Math.random() * visibleNotes.length);
-                        // Use insertBefore to create randomness
-                        notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
-                    } else {
-                        notesContainer.appendChild(promoNoteElement);
+                        if (visibleNotes.length > 0) {
+                            // Insert at random position
+                            const rnd = Math.floor(Math.random() * visibleNotes.length);
+                            // Use insertBefore to create randomness
+                            notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
+                        } else {
+                            notesContainer.appendChild(promoNoteElement);
+                        }
+                        // Обновяваме изображението при всяка смяна на борда
+                        updatePromoImage();
+                        lastPromoBoardFilter = currentBoardFilter;
                     }
-                    // Обновяваме изображението при всяка смяна на борда
-                    updatePromoImage();
-                    lastPromoBoardFilter = currentBoardFilter;
+                } else {
+                    promoNoteElement.style.display = 'none';
                 }
-            } else {
-                promoNoteElement.style.display = 'none';
             }
         }
     } else {
@@ -6994,6 +7083,20 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         addBoardButtonEvents(newUpdatesLink, 'new-updates');
         allButtonLinks.push(newUpdatesLink);
     }
+    // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "РЕЗУЛТАТИ" ---
+    const searchResultsLink = document.createElement('span');
+    searchResultsLink.id = 'search-results-board-btn';
+    searchResultsLink.textContent = _('searchResultTitle');
+    searchResultsLink.classList.add('board-filter-link', 'search-results-filter-btn');
+    searchResultsLink.dataset.boardid = 'search-results';
+    searchResultsLink.style.display = 'none';
+    searchResultsLink.style.backgroundColor = '#ffeb3b'; // Жълт фон
+    searchResultsLink.style.color = '#000'; // Черен текст
+    searchResultsLink.style.display = 'none'; // Will be set to inline-flex by triggerSearch
+    searchResultsLink.style.justifyContent = 'center';
+    searchResultsLink.style.alignItems = 'center';
+    addBoardButtonEvents(searchResultsLink, 'search-results');
+    allButtonLinks.push(searchResultsLink);
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
     if (localStorage.getItem('showBoardRemind') !== 'false') {
         const reminderNoteCount = reminderCount;
@@ -7915,7 +8018,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             }
 
             document.getElementById('settings-modal').classList.remove('visible');
-            window.kbAssistant.terminateGuide();
+            if (window.kbAssistant) window.kbAssistant.terminateGuide();
             // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
             updateModeButton();
             const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
@@ -7939,34 +8042,44 @@ async function createSettingsUI(boardsData, boardParseError) {
 
 // Асинхронно зареждане на името на папката за архив
 (async () => {
-    const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-    const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
-    if (arhHandle) {
-        // Проверяваме дали имаме разрешение, без да питаме потребителя отново
-        const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
-        if (permission === 'granted') {
-            arhFolderNameDisplay.textContent = arhHandle.name;
-            arhFolderNameDisplay.title = arhHandle.name;
-        } else {
-            arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
-            arhFolderNameDisplay.style.color = 'red';
-        }
-    } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+    try {
+        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+        if (!arhFolderNameDisplay) return;
+        const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
+        if (arhHandle) {
+            // Проверяваме дали имаме разрешение, без да питаме потребителя отново
+            const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
+            if (permission === 'granted') {
+                arhFolderNameDisplay.textContent = arhHandle.name;
+                arhFolderNameDisplay.title = arhHandle.name;
+            } else {
+                arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
+                arhFolderNameDisplay.style.color = 'red';
+            }
+        } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+    } catch (err) {
+        console.warn("Could not load archive folder name:", err);
+    }
 })();
 
 // Асинхронно зареждане на името на папката за локална синхронизация
 (async () => {
-    const folderNameDisplay = document.getElementById('local-sync-folder-name');
-    const syncHandle = await getConfig('directoryHandle'); // Четем директно handle-a за синхронизация
-    if (syncHandle) {
-        const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
-        if (permission === 'granted') {
-            folderNameDisplay.textContent = syncHandle.name;
-            folderNameDisplay.title = syncHandle.name;
-        } else {
-            folderNameDisplay.textContent = _('permissionDenied');
-        }
-    } else { folderNameDisplay.textContent = _('folderNotSelected'); }
+    try {
+        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+        if (!folderNameDisplay) return;
+        const syncHandle = await getConfig('directoryHandle'); // Четем директно handle-a за синхронизация
+        if (syncHandle) {
+            const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
+            if (permission === 'granted') {
+                folderNameDisplay.textContent = syncHandle.name;
+                folderNameDisplay.title = syncHandle.name;
+            } else {
+                folderNameDisplay.textContent = _('permissionDenied');
+            }
+        } else { folderNameDisplay.textContent = _('folderNotSelected'); }
+    } catch (err) {
+        console.warn("Could not load local sync folder name:", err);
+    }
 })();
 
 /**
@@ -9021,7 +9134,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             // Използваме setTimeout, за да сме сигурни, че DOM-ът е обновен
             setTimeout(() => {
                 // Използваме същата логика за маркуване като във filterNotesByBoard
-                const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+                const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
                 const targetBoard = specialBoards.includes(currentBoardFilter) ? null : boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
                 const activeIdForUI = targetBoard ? (targetBoard.gdid || targetBoard.id) : currentBoardFilter;
 
@@ -9334,6 +9447,7 @@ async function setLanguage(lang) {
         element.innerHTML = _(key);
     });
     document.querySelectorAll('[data-key-placeholder]').forEach(element => {
+
         const key = element.getAttribute('data-key-placeholder');
         element.placeholder = _(key);
     });
@@ -9351,7 +9465,9 @@ async function setLanguage(lang) {
         updateSignoutTooltip();
     }
     // Update KB Assistant Language
-    window.kbAssistant.updateLanguage();
+    if (window.kbAssistant && typeof window.kbAssistant.updateLanguage === 'function') {
+        window.kbAssistant.updateLanguage();
+    }
 }
 
 // --- Service Worker Registration ---
@@ -10194,16 +10310,177 @@ function mergeNotes(baseNote, localNote, serverNote) {
     return { result, conflicts };
 }
 
-async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts) {
+async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedConflicts) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
-        overlay.id = 'conflict-resolution-overlay';
-        Object.assign(overlay.style, {
-            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-            backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 30000, display: 'flex',
-            flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px'
-        });
+        overlay.id = 'dual-conflict-overlay';
+        Object.assign(overlay.style, { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' });
 
+        const container = document.createElement('div');
+        const sW = localStorage.getItem('modalWidth') || '400px';
+        const sH = localStorage.getItem('modalHeight') || '300px';
+        Object.assign(container.style, { position: 'relative', width: sW, height: sH, display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px' });
+
+        const renderVersion = (note, zIndex) => {
+            const card = document.createElement('div');
+            card.className = 'modal-content-box';
+            Object.assign(card.style, { position: 'absolute', width: '100%', height: '100%', zIndex: zIndex, transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)', opacity: zIndex > 50 ? '1' : '0.4', transform: zIndex > 50 ? 'scale(1)' : 'scale(0.85) translateY(20px)', pointerEvents: zIndex > 50 ? 'auto' : 'none', margin: '0', display: 'flex', flexDirection: 'column' });
+
+            // Background logic
+            const colorIdx = note.color || 0;
+            card.style.backgroundColor = noteColorMap[colorIdx] || '#FBFF86';
+            if (localStorage.getItem('imgBgrd') !== 'false') card.style.backgroundImage = "url('Note.jpg')";
+
+            // Header: Date only (standard look)
+            const labelEl = document.createElement('div');
+            labelEl.id = 'modal-board-name';
+            labelEl.style.display = 'block'; labelEl.style.left = '15px'; labelEl.style.top = '10px';
+            labelEl.innerHTML = `<span style="font-weight:normal; font-size:11px; opacity:0.6; color:#000;">${new Date(parseInt(note.datemod)).toLocaleString()}</span>`;
+            card.appendChild(labelEl);
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'modal-close modal-header-btn';
+            closeBtn.style.right = '10px'; closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+            card.appendChild(closeBtn);
+
+            const bdy = document.createElement('div');
+            bdy.className = 'modal-body'; bdy.style = 'padding:20px; margin-top:40px; overflow-y:auto; flex-grow:1; position:relative;';
+            card.appendChild(bdy);
+
+            // Action Buttons (Bottom Right)
+            const createBtn = (id, icon, right, title) => {
+                const btn = document.createElement('div');
+                btn.innerHTML = icon; btn.title = title;
+                Object.assign(btn.style, { position: 'absolute', bottom: '15px', right: right, width: '40px', height: '40px', backgroundColor: 'darkorange', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', cursor: 'pointer', zIndex: 100 });
+                card.appendChild(btn); return btn;
+            };
+
+            const btnEdit = createBtn('conf-edit', pencilIconSvg, '100px', 'Edit');
+            const btnSave = createBtn('conf-save', diskIconSvg, '50px', 'Use this version');
+            const btnEye = createBtn('conf-eye', eyeIconSvg, '100px', 'Preview');
+            btnSave.style.display = 'flex'; btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
+
+            const refreshContent = (currentNote) => {
+                let txt = currentNote.notetxt || '';
+                const pipeIdx = txt.indexOf('|');
+                if (pipeIdx !== -1) {
+                    const tPart = txt.substring(0, pipeIdx); const bPart = txt.substring(pipeIdx + 1);
+                    bdy.innerHTML = (typeof formatText === 'function') ? formatText(tPart, currentNote.title_span || '', true) + '<br>' + formatText(bPart, currentNote.text_span || '', true) : tPart + '<br>' + bPart;
+                } else { bdy.innerHTML = (typeof formatText === 'function') ? formatText(txt, currentNote.text_span || '', true) : txt; }
+                bdy.dataset.id = currentNote.id || '';
+                bdy.dataset.gdid = currentNote.gdid || '';
+                bdy.dataset.format = currentNote.text_span || ''; bdy.dataset.titleFormat = currentNote.title_span || '';
+            };
+
+            btnEdit.onclick = () => {
+                const globalModalBody = modalBody;
+                const oldId = globalModalBody ? globalModalBody.id : '';
+                if (globalModalBody) globalModalBody.id = '';
+
+                bdy.id = 'modal-body';
+                modalBody = bdy;
+                currentModalContent = note.notetxt;
+
+                enableNoteEditing(bdy);
+
+                btnEdit.style.display = 'none'; btnSave.style.right = '50px'; btnEye.style.display = 'flex';
+
+                modalBody = globalModalBody;
+                if (globalModalBody) globalModalBody.id = oldId;
+            };
+
+            btnEye.onclick = () => {
+                const titleArea = bdy.querySelector('#note-edit-title-textarea');
+                let txtArea;
+                if (titleArea) {
+                    txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
+                } else {
+                    txtArea = bdy.querySelector('textarea');
+                }
+
+                if (txtArea) {
+                    const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
+                    const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
+                    note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
+                    if (titleArea) {
+                        const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
+                        note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
+                    }
+                }
+                refreshContent(note);
+                btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
+            };
+
+            btnSave.onclick = async () => {
+                const titleArea = bdy.querySelector('#note-edit-title-textarea');
+                let txtArea;
+                if (titleArea) {
+                    txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
+                } else {
+                    txtArea = bdy.querySelector('textarea');
+                }
+
+                if (txtArea) {
+                    const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
+                    const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
+                    note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
+                    if (titleArea) {
+                        const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
+                        note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
+                    }
+                }
+                note.datemod = Date.now(); overlay.remove(); resolve(note);
+            };
+
+            refreshContent(note);
+            return { card, bdy };
+        };
+
+        const local = renderVersion(localNote, 60);
+        const server = renderVersion(serverNote, 40);
+        container.appendChild(server.card); container.appendChild(local.card);
+
+        // Tab-like buttons
+        const tabs = document.createElement('div');
+        Object.assign(tabs.style, { position: 'absolute', bottom: '-65px', display: 'flex', gap: '5px', zIndex: 5 });
+        const createTab = (txt, active) => {
+            const t = document.createElement('button');
+            t.textContent = txt;
+            t.style = `padding:8px 20px; border:none; border-radius:0 0 10px 10px; cursor:pointer; font-weight:bold; background:${active ? 'darkorange' : '#444'}; color:${active ? '#000' : '#fff'}; transition: 0.3s;`;
+            return t;
+        };
+        const tabL = createTab('ЛОКАЛНА (DB)', true);
+        const tabS = createTab('СЪРВЪР (GD)', false);
+
+        const switchView = (isLocal) => {
+            local.card.style.zIndex = isLocal ? 60 : 40; local.card.style.opacity = isLocal ? '1' : '0.4'; local.card.style.transform = isLocal ? 'scale(1)' : 'scale(0.85) translateY(20px)'; local.card.style.pointerEvents = isLocal ? 'auto' : 'none';
+            server.card.style.zIndex = isLocal ? 40 : 60; server.card.style.opacity = isLocal ? '0.4' : '1'; server.card.style.transform = isLocal ? 'scale(0.85) translateY(20px)' : 'scale(1)'; server.card.style.pointerEvents = isLocal ? 'none' : 'auto';
+            tabL.style.background = isLocal ? 'darkorange' : '#444'; tabL.style.color = isLocal ? '#000' : '#fff';
+            tabS.style.background = isLocal ? '#444' : 'darkorange'; tabS.style.color = isLocal ? '#fff' : '#000';
+
+            // Safe ID management: only one element should have 'modal-body' at any time
+            if (isLocal) {
+                server.bdy.id = '';
+                local.bdy.id = 'modal-body';
+            } else {
+                local.bdy.id = '';
+                server.bdy.id = 'modal-body';
+            }
+        };
+
+        tabL.onclick = () => switchView(true);
+        tabS.onclick = () => switchView(false);
+        tabs.appendChild(tabL); tabs.appendChild(tabS);
+        container.appendChild(tabs);
+        overlay.appendChild(container);
+        document.body.appendChild(overlay);
+        switchView(true);
+    });
+}
+
+/* Old implementation commented out
+async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, conflicts) {
+    return new Promise((resolve) => {
         // Add responsive CSS
         const style = document.createElement('style');
         style.textContent = `
@@ -10437,6 +10714,7 @@ async function showNoteConflictModal(baseNote, localNote, serverNote, conflicts)
         box.appendChild(footer); overlay.appendChild(box); document.body.appendChild(overlay);
     });
 }
+*/
 
 // Unified Save Logic
 async function saveEditedNote() {

@@ -1059,7 +1059,7 @@ code {
 .popup-menu-btn-floating {
     display: none;
     position: fixed;
-    top: 20px;
+    top: 60px;
     right: 10px;
     z-index: 99;
     border: 2px solid #dddddd;
@@ -2797,7 +2797,6 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* Note Header Info & Board Links */
-/* Note Header Info & Board Links */
 .note-header-info {
     display: flex;
     align-items: center;
@@ -2864,7 +2863,6 @@ body.selection-locked .note.active-selection-note .note-content {
     box-sizing: border-box;
 }
 
-/* Remove potential margins from clones to let gap handle spacing */
 /* Remove potential margins from clones to let gap handle spacing */
 .all-boards-modal-container .board-filter-link {
     margin: 0 !important;
