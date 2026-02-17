@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.5'; // App version
+const version = 'Beta 1.6'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -5616,6 +5616,10 @@ const promoImagesList = [
 
 function updatePromoImage() {
     if (!promoNoteElement) return;
+    // Safety check: if dismissed in current board, do not load new image
+    if (currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true') {
+        return;
+    }
     const img = promoNoteElement.querySelector('img');
     if (img) {
         const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
@@ -5807,34 +5811,36 @@ function applyFilters() {
     if (localStorage.getItem('hideAssistant') !== 'true') {
         const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
 
-        if (!isDismissedInBoard) {
+        if (isDismissedInBoard) {
+            if (promoNoteElement) promoNoteElement.style.display = 'none';
+        } else {
             if (!promoNoteElement && !isFetchingPromo) {
                 initPromoNote(); // Start loading
             }
-        }
-        if (promoNoteElement) {
-            // Only show if no active search AND not dismissed in this board
-            if (searchTerm === '' && !isDismissedInBoard) {
-                promoNoteElement.style.display = 'flex';
-                // If board changed or promo not in valid place
-                if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
-                    const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
-                        .filter(n => n.style.display !== 'none');
+            if (promoNoteElement) {
+                // Only show if no active search AND not dismissed in this board
+                if (searchTerm === '') {
+                    promoNoteElement.style.display = 'flex';
+                    // If board changed or promo not in valid place
+                    if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
+                        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
+                            .filter(n => n.style.display !== 'none');
 
-                    if (visibleNotes.length > 0) {
-                        // Insert at random position
-                        const rnd = Math.floor(Math.random() * visibleNotes.length);
-                        // Use insertBefore to create randomness
-                        notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
-                    } else {
-                        notesContainer.appendChild(promoNoteElement);
+                        if (visibleNotes.length > 0) {
+                            // Insert at random position
+                            const rnd = Math.floor(Math.random() * visibleNotes.length);
+                            // Use insertBefore to create randomness
+                            notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
+                        } else {
+                            notesContainer.appendChild(promoNoteElement);
+                        }
+                        // Обновяваме изображението при всяка смяна на борда
+                        updatePromoImage();
+                        lastPromoBoardFilter = currentBoardFilter;
                     }
-                    // Обновяваме изображението при всяка смяна на борда
-                    updatePromoImage();
-                    lastPromoBoardFilter = currentBoardFilter;
+                } else {
+                    promoNoteElement.style.display = 'none';
                 }
-            } else {
-                promoNoteElement.style.display = 'none';
             }
         }
     } else {
