@@ -69,7 +69,7 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
         const container = document.createElement('div');
         const sW = localStorage.getItem('modalWidth') || '400px';
         const sH = localStorage.getItem('modalHeight') || '300px';
-        Object.assign(container.style, { position: 'relative', width: sW, height: sH, display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px' });
+        Object.assign(container.style, { position: 'relative', width: sW, height: sH, maxWidth: '100vw', display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px' });
 
         const renderVersion = (note, zIndex) => {
             const card = document.createElement('div');
@@ -222,7 +222,7 @@ async function showNoteConflictModalOld(unusedBase, localNote, serverNote, unuse
         overlay.id = 'dual-conflict-overlay';
         Object.assign(overlay.style, { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' });
         const container = document.createElement('div');
-        Object.assign(container.style, { position: 'relative', width: '90%', height: '80%', display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px' });
+        Object.assign(container.style, { position: 'relative', width: '90%', height: '80%', maxWidth: '100vw', display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px' });
         const renderCard = (note, label, zIndex) => {
             const card = document.createElement('div');
             card.className = 'modal-content-box';

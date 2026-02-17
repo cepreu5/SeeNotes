@@ -2384,26 +2384,53 @@ function handleShareTarget() {
     const sharedText = url.searchParams.get('shared_text');
     const sharedUrl = url.searchParams.get('shared_url');
     if (!sharedTitle && !sharedText && !sharedUrl) return;
+
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
     if (sharedTitle) parts.push(sharedTitle);
     if (sharedText) parts.push(sharedText);
     if (sharedUrl && sharedUrl !== sharedText) parts.push(sharedUrl);
     const noteContent = parts.join('\n');
+
     // Изчистваме share параметрите от URL-а, за да не се обработват повторно
     url.searchParams.delete('shared_title');
     url.searchParams.delete('shared_text');
     url.searchParams.delete('shared_url');
     window.history.replaceState({}, document.title, url.pathname + url.search);
+
+    // Подготвяме нова бележка (копирано от createNewNote логиката)
+    noteId++;
+    noteNumord++;
+    const now = Date.now();
+
+    // Определяме борда: ако сме в системен борд, ползваме 'Main' или първия наличен
+    let boardId = currentBoardFilter;
+    const systemBoards = ['all', 'calendar', 'reminders', 'photos', 'videos', 'sounds', 'other', 'new-updates', 'search', 'favorites', 'archived'];
+    const isRealBoard = boardsData.some(b => String(b.gdid) === String(boardId));
+    if (systemBoards.includes(boardId) || (!isRealBoard && boardsData.length > 0)) {
+        const mainBoard = boardsData.find(b => b.title === 'Main' || b.gdid === 'Main');
+        boardId = mainBoard ? mainBoard.gdid : (boardsData.length > 0 ? boardsData[0].gdid : 'Main');
+    }
+
     // Показваме модала със споделеното съдържание
     setTimeout(() => {
-        showModal({
-            raw: noteContent,
-            format: null,
-            color: '#FBFF86', // Жълт фон по подразбиране
-            id: 'shared'
-        });
-        showToast(_('sharedContentReceived') || '📥 Споделено съдържание получено', 3000);
+        if (typeof showModal === 'function') {
+            showModal({
+                raw: noteContent,
+                format: null,
+                color: '#FBFF86', // Жълт фон по подразбиране
+                boardId: boardId,
+                id: noteId,
+                isNewNote: true
+            });
+
+            // Автоматично влизаме в режим на редактиране, за да може потребителят да запише
+            setTimeout(() => {
+                const editBtn = document.getElementById('note-edit-btn');
+                if (editBtn) editBtn.click();
+            }, 150);
+        }
+        showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
     }, 500);
 }
 
@@ -3420,9 +3447,9 @@ function initApp() {
         const currentY = e.touches ? e.touches[0].clientY : e.clientY;
         const newWidth = startWidth + currentX - startX;
         const newHeight = startHeight + currentY - startY;
-        modalContentBox.style.width = Math.max(150, newWidth) + 'px'; // Minimum width
+        modalContentBox.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px'; // Limited by screen width
         modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
-        modalContentBox.style.maxWidth = 'none';
+        modalContentBox.style.maxWidth = '100vw';
         modalContentBox.style.maxHeight = 'none';
     }
 
@@ -5759,7 +5786,7 @@ function showModal(options, noteElement = null) {
     if (options && options.width && options.height) {
         modalContentBox.style.width = typeof options.width === 'number' ? options.width + 'px' : options.width;
         modalContentBox.style.height = typeof options.height === 'number' ? options.height + 'px' : options.height;
-        modalContentBox.style.maxWidth = 'none';
+        modalContentBox.style.maxWidth = '100vw';
         modalContentBox.style.maxHeight = 'none';
     } else {
         // Прилагаме запазените размери, ако съществуват
@@ -5768,13 +5795,13 @@ function showModal(options, noteElement = null) {
         if (savedWidth && savedHeight) {
             modalContentBox.style.width = savedWidth;
             modalContentBox.style.height = savedHeight;
-            modalContentBox.style.maxWidth = 'none';
+            modalContentBox.style.maxWidth = '100vw';
             modalContentBox.style.maxHeight = 'none';
         } else {
-            // Задаваме размер по подразбиране 250x150px, ако няма запазен размер
+            // Задаваме размер по подразбиране 400x300px, ако няма запазен размер
             modalContentBox.style.width = '400px';
             modalContentBox.style.height = '300px';
-            modalContentBox.style.maxWidth = 'none';
+            modalContentBox.style.maxWidth = '100vw';
             modalContentBox.style.maxHeight = 'none';
         }
     }
