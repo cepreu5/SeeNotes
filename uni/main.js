@@ -91,6 +91,7 @@ let initialLoadTime = null; // Time taken for initial Google Drive load in secon
 let initialLoadTimestamp = null; // Timestamp when the load finished
 let isAppStarted = false; // Guard for startApp
 let isMainLogicRunning = false; // Guard for mainLogic concurrency
+let isOffline = false; // Flag for offline mode
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -885,7 +886,7 @@ async function getFileID(folderId, fileName) {
     } catch (e) { return null; }
 }
 async function updateGDriveFile(fileId, content) {
-    if (!fileId) return false;
+    if (isOffline || !fileId) return false;
     try {
         const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
         if (!storedTokenString) throw new Error(_('errorTokenMissing'));
@@ -1245,8 +1246,17 @@ function loadGoogleIdentityServices(retries = 3) {
     document.head.appendChild(script);
 }
 
-// Стартирай зареждането
-loadGoogleIdentityServices();
+// Стартирай зареждането в зависимост от мрежата
+(async () => {
+    dbExists = await checkDbExists(NOTES_DB_NAME);
+    await goOffline();
+    if (!isOffline) {
+        loadGoogleIdentityServices();
+    } else {
+        // В офлайн режим стартираме приложението директно (checkAuth ще покаже login страницата)
+        startApp();
+    }
+})();
 
 // ---------- Calendar ----------------------------
 function renderCalendarView() {
@@ -2489,6 +2499,7 @@ async function startApp(isExplicitLogin = false) {
         // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
         // Това е критично, за да може userCheck() да работи правилно.
         dbExists = await checkDbExists(NOTES_DB_NAME);
+        await goOffline();
         // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
         const authResult = await checkAuth();
         if (!authResult || !authResult.pass) {
@@ -3905,6 +3916,11 @@ async function silentLoginWithIframe(loginHint) {
 }
 
 function handleAuthClick() {
+    if (isOffline) {
+        document.getElementById('login-page').hidden = true;
+        startApp(true);
+        return;
+    }
     // Опит за инициализация, ако липсва tokenClient, но Google lib е налична
     if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         tokenClient = google.accounts.oauth2.initTokenClient({
@@ -3974,6 +3990,19 @@ async function checkAuth() {
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     const storedTokenString = sessionToken || localToken;
+
+    if (isOffline && storedTokenString) return { pass: true };
+    if (isOffline && !storedTokenString) {
+        if (!window.authListenersAdded) {
+            initLoginPage();
+            window.authListenersAdded = true;
+        } else {
+            document.getElementById('login-page').hidden = false;
+            const loader = document.getElementById('loader-container');
+            if (loader) loader.style.display = 'none';
+        }
+        return null;
+    }
     if (!storedTokenString) {
         // Инициализираме login страницата само веднъж, за да избегнем дублиране на listeners
         if (!window.authListenersAdded) {
@@ -4229,6 +4258,7 @@ function loadScript(src) {
 }
 
 async function loadGoogleApis() {
+    if (isOffline) return;
     if (typeof gapi !== 'undefined' && gapi.client) return;
     try {
         await loadScript('https://apis.google.com/js/api.js');
@@ -4602,6 +4632,56 @@ function validateDataSourceSelection() {
 /**
  * Отчита проблеми с целостта на данните (липсващи или дублирани ID-та).
  */
+async function goOffline() {
+    let hasS = false;
+    try {
+        const cache = await caches.open('app-cache');
+        const cachedResponse = await cache.match('s');
+        hasS = !!cachedResponse;
+    } catch (e) {
+        console.warn("Error checking app-cache for 's':", e);
+    }
+
+    if (!navigator.onLine && hasS) {
+        isOffline = true;
+        console.warn("Working in offline mode (s-record found).");
+
+        // Update login buttons if they exist
+        const authBtn = document.getElementById('authorize_button');
+        const trialBtn = document.getElementById('trialBtn');
+        if (authBtn) {
+            authBtn.textContent = _('offlineStartButton');
+            authBtn.style.display = 'inline-block';
+            authBtn.disabled = false;
+        }
+        if (trialBtn) {
+            trialBtn.textContent = _('offlineStartButton');
+            trialBtn.style.display = 'inline-block';
+        }
+        if (document.querySelector('.login-box')) {
+            document.querySelector('.login-box').style.display = 'block';
+        }
+
+        if (dbExists) {
+            try {
+                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (boardsInDb && boardsInDb.length > 0) {
+                    localStorage.setItem('useIndexedDb', 'true');
+                    localStorage.setItem('useGoogleDb', 'false');
+                    localStorage.setItem('updateGDrive', 'false');
+                    localStorage.setItem('forceGDriveRead', 'false');
+                    updateGlobalStateFlags();
+                    // showToast(_('offlineModeMessage'), 10000); // Moved to mainLogic or startApp for better timing
+                }
+            } catch (e) {
+                console.error("Error checking DB in goOffline:", e);
+            }
+        }
+    } else {
+        isOffline = false;
+    }
+}
+
 function reportDataIntegrityIssues() {
     if (dataIntegrityIssues.length === 0) return;
     const duplicates = dataIntegrityIssues.filter(i => i.type === 'duplicate');
@@ -4665,6 +4745,18 @@ function filterNotesForDemo() {
  * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
  */
 async function mainLogic() {
+    if (isOffline) {
+        console.log("Working in offline mode. Skipping sync.");
+        loaderText.textContent = _('loadingFromLocal');
+        try {
+            await fetchAllDataLocal();
+            await renderUI({ boardParseError: false });
+        } catch (e) {
+            console.error("Error loading local data in offline mode:", e);
+        }
+        loaderContainer.style.display = 'none';
+        return;
+    }
     if (isMainLogicRunning) {
         console.log("mainLogic is already running, skipping...");
         return;
@@ -10317,6 +10409,7 @@ document.addEventListener('contextmenu', (e) => {
 
 // --- Three-way Merge & Conflict Resolution ---
 async function fetchGDriveFileContent(fileId) {
+    if (isOffline) return null;
     const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
     let accessToken = tokenObj ? tokenObj.access_token : null;
     if (!accessToken) throw new Error("Missing auth token.");

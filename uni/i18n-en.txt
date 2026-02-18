@@ -274,5 +274,8 @@ en: {
         finalResult: "Final Result (editable):",
         forceGDriveReadLabel: "Read from Google Drive before edit:",
         loadingFromDrive: "Loading from Google Drive...",
-        errorParsingNote: "Error parsing note content"
+        errorParsingNote: "Error parsing note content",
+        offlineModeMessage: "You are working in offline mode. Data loaded from local database.",
+        loadingFromLocal: "Loading from local database...",
+        offlineStartButton: "Start Offline"
     }

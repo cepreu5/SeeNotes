@@ -278,5 +278,8 @@ bg: {
         finalResult: "Краен резултат (редактируем):",
         forceGDriveReadLabel: "Четене от Google Drive преди редакция:",
         loadingFromDrive: "Зареждане от Google Drive...",
-        errorParsingNote: "Грешка при анализ на бележката"
+        errorParsingNote: "Грешка при анализ на бележката",
+        offlineModeMessage: "Работите в офлайн режим. Данните са заредени от локалната база данни.",
+        loadingFromLocal: "Зареждане от локалната база данни...",
+        offlineStartButton: "Старт офлайн"
     }
