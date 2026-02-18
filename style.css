@@ -2143,6 +2143,12 @@ code {
     background-color: #c0c0c0;
 }
 
+#today-month-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* Стил за бутона "Днес" в седмичния календар, за да се центрира иконата */
 #today-week-btn {
     display: flex;

@@ -108,6 +108,7 @@ const NOTES_DB_VERSION = 3;
 // const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><path d="M3 3l18 18"></path></svg>`;
 const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /></svg>`;
+const calendarTodaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><circle cx="12" cy="16" r="1.5" fill="currentColor"></circle></svg>`;
 const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
 const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
 const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
@@ -1278,7 +1279,7 @@ function renderCalendarView() {
     calendarHeader.innerHTML = `
             <div class="calendar-nav-controls">
                 <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
-                <button id="today-month-btn">${calendarIconSvg}</button>
+                <button id="today-month-btn">${calendarTodaySvg}</button>
                 <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${calendarIconSvg}</button>
                 <button id="close-month-calendar-btn" class="close-calendar-btn">
                     <span class="close-symbol">&times;</span>
@@ -1659,7 +1660,7 @@ function renderWeeklyCalendarView(dateForWeek) {
     header.innerHTML = `
         <div class="calendar-nav-controls">
         <button id="prev-week-btn">&laquo;</button>
-        <button id="today-week-btn">${calendarIconSvg}</button>
+        <button id="today-week-btn">${calendarTodaySvg}</button>
         <button id="next-week-btn">&raquo;</button>
         <button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${calendarIconSvg}</button>
         <button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span>
@@ -3224,7 +3225,9 @@ function initApp() {
                 boardBeforeSearch = currentBoardFilter;
                 currentBoardFilter = 'search-results';
             }
-            if (searchBoardBtn) searchBoardBtn.style.display = 'inline-flex';
+            if (searchBoardBtn) {
+                searchBoardBtn.style.display = 'inline-flex';
+            }
         }
 
         applyFilters();
@@ -3244,6 +3247,12 @@ function initApp() {
         const hasText = searchBox.value.length > 0;
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
+
+        if (hasTextTrimmed && searchBoardBtn) {
+            setTimeout(() => {
+                searchBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }, 100);
+        }
     };
 
     // Listen for user typing with Debounce
@@ -3515,7 +3524,7 @@ function initApp() {
     }
     if (calendarButton) {
         calendarButton.addEventListener('click', () => {
-            renderCalendarView();
+            filterNotesByBoard('calendar');
         });
     }
 
@@ -10789,13 +10798,24 @@ async function saveEditedNote() {
     const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
 
     if (newText === undefined) return; // Nothing to save
-
+    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
     // Show spinner on save button
     const saveBtnElem = document.getElementById('note-save-btn');
     const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
     if (saveBtnElem) {
         saveBtnElem.style.pointerEvents = 'none';
         saveBtnElem.innerHTML = `<img src="Refresh.png" class="button-loading" style="width:24px; height:24px; position:absolute; top:50%; left:50%;">`;
+        // Add indicator icons in the modal
+        const indicators = document.createElement('div');
+        indicators.id = 'save-indicators';
+        Object.assign(indicators.style, {
+            position: 'absolute', bottom: '30px', left: '20px', display: 'flex', gap: '8px', zIndex: '10001',
+            pointerEvents: 'none', background: 'transparent', padding: '4px', borderRadius: '8px'
+        });
+        if (useIndexedDb) indicators.innerHTML += `<img src="Database.png" style="width:28px; height:28px;">`;
+        if (updateGDriveNow) indicators.innerHTML += `<img src="GDrive.png" style="width:28px; height:28px;">`;
+        const modalContentBox = modalBodyElem.closest('.modal-content-box');
+        if (modalContentBox) modalContentBox.appendChild(indicators);
     }
 
     // Check if it's a new note (deferred creation)
@@ -10901,7 +10921,6 @@ async function saveEditedNote() {
     let newColor = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (noteObj ? (noteObj.color || 0) : 0);
 
     // --- Conflict Resolution Logic ---
-    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
     if (updateGDriveNow && noteGdid && noteObj) {
         try {
             const serverRaw = await fetchGDriveFileContent(noteGdid);
@@ -10934,7 +10953,12 @@ async function saveEditedNote() {
                     if (Object.keys(conflicts).length > 0) {
                         const resolved = await showNoteConflictModal(baseNote, lNote, sNote, conflicts);
                         if (!resolved) {
-                            if (saveBtnElem) { saveBtnElem.style.pointerEvents = 'auto'; saveBtnElem.innerHTML = originalSaveBtnHtml; }
+                            if (saveBtnElem) {
+                                saveBtnElem.style.pointerEvents = 'auto';
+                                saveBtnElem.innerHTML = originalSaveBtnHtml;
+                                const inds = document.getElementById('save-indicators');
+                                if (inds) inds.remove();
+                            }
                             return;
                         }
                         processedText = resolved.notetxt; finalFormat = resolved.text_span; finalTitleFormat = resolved.title_span;
@@ -11026,6 +11050,8 @@ async function saveEditedNote() {
     if (saveBtnElem) {
         saveBtnElem.style.pointerEvents = 'auto';
         saveBtnElem.innerHTML = originalSaveBtnHtml;
+        const inds = document.getElementById('save-indicators');
+        if (inds) inds.remove();
     }
 
     // Exit edit mode and refresh view
