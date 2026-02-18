@@ -2501,7 +2501,7 @@ async function startApp(isExplicitLogin = false) {
         dbExists = await checkDbExists(NOTES_DB_NAME);
         await goOffline();
         // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-        const authResult = await checkAuth();
+        const authResult = await checkAuth(isExplicitLogin);
         if (!authResult || !authResult.pass) {
             if (isLoadCancelled) return; // Не прави нищо, ако е отказано
             loaderContainer.style.display = 'none';
@@ -3983,7 +3983,7 @@ function checkWhitelist() {
     }, 2000);
 }
 
-async function checkAuth() {
+async function checkAuth(isExplicitLogin = false) {
     console.log("checkAuth");
     // --- Проверяваме и в двата storage-а за токен ---
     // Това решава проблема с безкрайното презареждане при избрана опция "Запомни ме".
@@ -3991,7 +3991,7 @@ async function checkAuth() {
     const localToken = localStorage.getItem('google_auth_token');
     const storedTokenString = sessionToken || localToken;
 
-    if (isOffline && storedTokenString) return { pass: true };
+    if (isOffline && (storedTokenString || isExplicitLogin)) return { pass: true };
     if (isOffline && !storedTokenString) {
         if (!window.authListenersAdded) {
             initLoginPage();
