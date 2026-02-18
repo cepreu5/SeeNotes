@@ -1,18 +1,33 @@
-const CACHE_NAME = 'cxeditor-b1.15';
-const OFFLINE_PAGE = new URL('index.html', self.location).href;
+const CACHE_NAME = 'cxeditor-b1.51';
+const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.webmanifest',
   './style.css',
   './main.js',
+  './fs.js',
   './msmstyle.css',
   './kb-assistant.css',
-  './kb-assistantt.js',
-  './msmrtt.js',
+  './kb-assistant.js',
+  './msmrt.js',
   './kb-core.json',
   './kb-bg.json',
   './kb-en.json',
+  './MNVLogo.png',
+  './NoteFav.png',
+  './Refresh.png',
+  './Logout.png',
+  './Snail.png',
+  './GDrive.png',
+  './Rabbit.png',
+  './Database.png',
+  './Folder.png',
+  './Zip.png',
+  './CXNotes180.png',
+  './Board.png',
+  './Frame.png',
+  './Frame.jpg',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',
@@ -90,18 +105,30 @@ self.addEventListener('message', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // --- FIX: Skip cross-origin requests (e.g. Google GSI, GDrive) to avoid 403/CORS or timeout issues ---
+  // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
+  const isNavigation = event.request.mode === 'navigate';
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // Return cached response if found, otherwise fetch from network
       if (cachedResponse) {
         return cachedResponse;
       }
-      return fetch(event.request);
+
+      // If navigation fails (offline), return the root index.html
+      if (isNavigation) {
+        return caches.match('./index.html');
+      }
+
+      return fetch(event.request).catch(() => {
+        // Fallback for missing resources in offline mode
+        if (isNavigation) {
+          return caches.match('./index.html');
+        }
+      });
     })
   );
 });
