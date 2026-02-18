@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cxeditor-b1.54';
+const CACHE_NAME = 'cxeditor-b1.55';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -14,6 +14,8 @@ const ASSETS_TO_CACHE = [
   './kb-core.json',
   './kb-bg.json',
   './kb-en.json',
+  './i18n-bg.txt',
+  './i18n-en.txt',
   './MNVLogo.png',
   './NoteFav.png',
   './Refresh.png',
@@ -128,6 +130,8 @@ self.addEventListener('fetch', (event) => {
         if (isNavigation) {
           return caches.match('./index.html');
         }
+        // Fix for "Failed to convert value to 'Response'": return a 404 response or similar
+        return new Response('Offline: Resource not found.', { status: 404, statusText: 'Not Found' });
       });
     })
   );

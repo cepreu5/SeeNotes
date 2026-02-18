@@ -3775,10 +3775,52 @@ function saveSearchTerm(term) {
 // След успешно удостоверяване gisLoaded() ще извика startApp()
 
 // Функция за инициализация на login страницата
-function initLoginPage() {
+async function initLoginPage() {
     document.getElementById('login-page').hidden = false;
     document.getElementById('loader-container').style.display = 'none';
-    // document.getElementById("mode_button").style.display = 'none';
+
+    // --- Button Visibility Logic (Restored & Consolidated) ---
+    const loginBox = document.querySelector('.login-box');
+    const authBtn = document.getElementById("authorize_button");
+    const trialBtn = document.getElementById("trialBtn");
+
+    if (loginBox) loginBox.style.display = 'block';
+
+    let hasS = false;
+    try {
+        const cache = await caches.open('app-cache');
+        const cachedResponse = await cache.match('s');
+        hasS = !!cachedResponse;
+    } catch (e) {
+        console.warn("Error checking cache in initLoginPage:", e);
+    }
+
+    if (isOffline) {
+        // Offline Mode: Show "Start Offline" if we have data ('s')
+        if (authBtn) {
+            authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
+            authBtn.style.display = hasS ? 'inline-block' : 'none'; // Only show if we have 's'
+            authBtn.disabled = false;
+            // Remove old listener to avoid duplicates if called multiple times? 
+            // Better: relying on handleAuthClick which handles isOffline check.
+        }
+        if (trialBtn) trialBtn.style.display = 'none'; // No trial in offline mode
+    } else {
+        // Online Mode: Restore original logic
+        if (authBtn) {
+            authBtn.textContent = (typeof _ === 'function') ? _('authorizeButton') : "Authorize with Google";
+            // If we have 's', show Auth. Else hide.
+            authBtn.style.display = hasS ? 'inline-block' : 'none';
+            authBtn.disabled = false;
+        }
+        if (trialBtn) {
+            // If we DO NOT have 's', show Trial. Else hide.
+            trialBtn.style.display = !hasS ? 'inline-block' : 'none';
+            // Ensure text is correct (might have been changed by goOffline previously)
+            trialBtn.textContent = (typeof _ === 'function') ? _('trialButton') : "Start 30-day trial period";
+        }
+    }
+
     // Language switcher event listeners - комбинирани за всички бутони
     const langBgMain = document.getElementById('lang-bg-main');
     const langEnMain = document.getElementById('lang-en-main');
@@ -3787,6 +3829,11 @@ function initLoginPage() {
     // Функция за смяна на език, която актуализира всички бутони
     const switchLanguage = (lang) => {
         setLanguage(lang);
+        // Актуализираме текстовете на бутоните след смяна на езика
+        if (isOffline && authBtn) authBtn.textContent = _('offlineStartButton');
+        else if (!isOffline && authBtn) authBtn.textContent = _('authorizeButton');
+        if (!isOffline && trialBtn) trialBtn.textContent = _('trialButton');
+
         // Актуализираме активното състояние на всички бутони
         const isBg = lang === 'bg';
         if (langBgMain) langBgMain.classList.toggle('active', isBg);
@@ -3806,9 +3853,11 @@ function initLoginPage() {
     if (langBgBox) langBgBox.classList.toggle('active', isBg);
     if (langEnBox) langEnBox.classList.toggle('active', !isBg);
     // Добавяне на действие при натискане на trial бутона
-    const trialBtn = document.getElementById("trialBtn");
     if (trialBtn) {
-        trialBtn.addEventListener("click", (e) => {
+        // Cloning to remove any previous event listeners (simple way to avoid dupes)
+        const newTrialBtn = trialBtn.cloneNode(true);
+        trialBtn.parentNode.replaceChild(newTrialBtn, trialBtn);
+        newTrialBtn.addEventListener("click", (e) => {
             console.log("Trial button clicked");
             e.preventDefault(); // Предотвратяваме стандартното действие
             // 1. Взимаме токена от TRIAL_URL
@@ -4002,136 +4051,130 @@ async function checkAuth(isExplicitLogin = false) {
             if (loader) loader.style.display = 'none';
         }
 
-        // Ensure button text is correct for offline mode
-        const authBtn = document.getElementById('authorize_button');
-        if (authBtn) {
-            authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
-            authBtn.style.display = 'inline-block';
-            authBtn.disabled = false;
-        }
         return null;
     }
-    if (!storedTokenString) {
-        // Инициализираме login страницата само веднъж, за да избегнем дублиране на listeners
-        if (!window.authListenersAdded) {
-            initLoginPage();
-            window.authListenersAdded = true;
-        } else {
-            // Ако вече е инициализирана, само я показваме
-            document.getElementById('login-page').hidden = false;
-            const loader = document.getElementById('loader-container');
-            if (loader) loader.style.display = 'none';
-        }
-        return null; // Stop execution
-    }
-    const tokenData = JSON.parse(storedTokenString);
-    // Explicitly set the token in gapi.client if it's already loaded
-    if (window.gapi && window.gapi.client && tokenData.access_token) {
-        window.gapi.client.setToken(tokenData);
-    }
-    // --- Винаги добавяме email_hint от sessionStorage ---
-    // Това гарантира, че проверката на токена ще работи коректно,
-    // дори когато основният токен се чете от localStorage.
-    tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
-    const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
-    if (isExpired) {
-        console.log("Token expired. Attempting silent refresh...");
-        try {
-            const refreshResult = await refreshAuthToken();
-            if (refreshResult && refreshResult.pass) {
-                console.log("Silent refresh successful.");
-                return refreshResult;
-            }
-        } catch (refreshErr) {
-            console.warn("Silent refresh threw an error (GIS likely not loaded):", refreshErr);
-            // Продължаваме надолу към логиката за неуспешен refresh
-        }
-
-        console.log("Token expired. Refresh failed. Showing login page.");
-        sessionStorage.removeItem('google_auth_token');
-        localStorage.removeItem('google_auth_token');
-        // Показваме login страницата вместо безкраен reload
+}
+if (!storedTokenString) {
+    // Инициализираме login страницата само веднъж, за да избегнем дублиране на listeners
+    if (!window.authListenersAdded) {
         initLoginPage();
-        alert(_('sessionExpired'));
-        return null; // Stop execution
-    }
-    // --- 🔐 Проверка на лиценз (използва кеширана функция) ---
-    const licenseData = await decryptLicenseToken();
-    tokenRemainingDays = licenseData.remainingDays;
-    pass = licenseData.pass;
-
-    if (licenseData.pass) {
-        console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
-        if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
-    } else if (!localStorage.getItem('urlToken')) {
-        console.log("Липсващ токен!");
-        sessionStorage.clear();
+        window.authListenersAdded = true;
     } else {
-        console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
-        sessionStorage.clear();
+        // Ако вече е инициализирана, само я показваме
+        document.getElementById('login-page').hidden = false;
+        const loader = document.getElementById('loader-container');
+        if (loader) loader.style.display = 'none';
     }
-    if (!pass) {
-        document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
-        document.body.style.backgroundColor = '#1a1a1a';
-        document.body.style.display = 'flex';
-        document.body.style.flexDirection = 'column';
-        document.body.style.alignItems = 'center';
-        document.body.style.justifyContent = 'center';
-        document.body.style.minHeight = '100vh';
-        document.body.style.margin = '0';
-        // Създаваме лого
-        const logoImg = document.createElement('img');
-        logoImg.src = 'MNVLogo.png';
-        logoImg.alt = 'Logo';
-        logoImg.style.width = '150px';
-        logoImg.style.marginBottom = '30px';
-        // logoImg.style.cursor = 'pointer';
-        logoImg.style.userSelect = 'none';
-        // Добавяме функционалност за Ctrl+click и long-press
-        let longPressTimer;
-        let isLongPress = false;
-        const handleTokenRefresh = () => {
-            const url = new URL(TRIAL_URL);
-            const urlTokenParam = url.searchParams.get("token");
-            if (urlTokenParam) {
-                localStorage.setItem('urlToken', urlTokenParam);
-                window.location.reload();
-            }
-        };
-        const startPress = (e) => {
-            isLongPress = false;
-            longPressTimer = setTimeout(() => {
-                isLongPress = true;
-                handleTokenRefresh();
-            }, 500);
-            if (e.type === 'touchstart') {
-                e.preventDefault();
-            }
-        };
-        const endPress = () => {
-            clearTimeout(longPressTimer);
-        };
-        logoImg.addEventListener('mousedown', startPress);
-        logoImg.addEventListener('mouseup', endPress);
-        logoImg.addEventListener('mouseleave', endPress);
-        logoImg.addEventListener('touchstart', startPress);
-        logoImg.addEventListener('touchend', endPress);
-        logoImg.addEventListener('click', (e) => {
-            if (isLongPress) return;
-            if (e.ctrlKey) handleTokenRefresh();
-        });
-        document.body.appendChild(logoImg);
-        const errorElement = document.createElement('h1');
-        errorElement.innerHTML = _('invalidCertificate');
-        errorElement.style.color = 'yellow';
-        errorElement.style.textAlign = 'center';
-        errorElement.style.margin = '0';
-        document.body.appendChild(errorElement);
-        sessionStorage.clear();
-        // Early return to prevent any further initialization (including assistant)
-        return null;
+    return null; // Stop execution
+}
+const tokenData = JSON.parse(storedTokenString);
+// Explicitly set the token in gapi.client if it's already loaded
+if (window.gapi && window.gapi.client && tokenData.access_token) {
+    window.gapi.client.setToken(tokenData);
+}
+// --- Винаги добавяме email_hint от sessionStorage ---
+// Това гарантира, че проверката на токена ще работи коректно,
+// дори когато основният токен се чете от localStorage.
+tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
+const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
+if (isExpired) {
+    console.log("Token expired. Attempting silent refresh...");
+    try {
+        const refreshResult = await refreshAuthToken();
+        if (refreshResult && refreshResult.pass) {
+            console.log("Silent refresh successful.");
+            return refreshResult;
+        }
+    } catch (refreshErr) {
+        console.warn("Silent refresh threw an error (GIS likely not loaded):", refreshErr);
+        // Продължаваме надолу към логиката за неуспешен refresh
     }
-    return { tokenData, pass }; // Връщаме обект с данните и резултата от проверката
+
+    console.log("Token expired. Refresh failed. Showing login page.");
+    sessionStorage.removeItem('google_auth_token');
+    localStorage.removeItem('google_auth_token');
+    // Показваме login страницата вместо безкраен reload
+    initLoginPage();
+    alert(_('sessionExpired'));
+    return null; // Stop execution
+}
+// --- 🔐 Проверка на лиценз (използва кеширана функция) ---
+const licenseData = await decryptLicenseToken();
+tokenRemainingDays = licenseData.remainingDays;
+pass = licenseData.pass;
+
+if (licenseData.pass) {
+    console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
+    if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
+} else if (!localStorage.getItem('urlToken')) {
+    console.log("Липсващ токен!");
+    sessionStorage.clear();
+} else {
+    console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
+    sessionStorage.clear();
+}
+if (!pass) {
+    document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
+    document.body.style.backgroundColor = '#1a1a1a';
+    document.body.style.display = 'flex';
+    document.body.style.flexDirection = 'column';
+    document.body.style.alignItems = 'center';
+    document.body.style.justifyContent = 'center';
+    document.body.style.minHeight = '100vh';
+    document.body.style.margin = '0';
+    // Създаваме лого
+    const logoImg = document.createElement('img');
+    logoImg.src = 'MNVLogo.png';
+    logoImg.alt = 'Logo';
+    logoImg.style.width = '150px';
+    logoImg.style.marginBottom = '30px';
+    // logoImg.style.cursor = 'pointer';
+    logoImg.style.userSelect = 'none';
+    // Добавяме функционалност за Ctrl+click и long-press
+    let longPressTimer;
+    let isLongPress = false;
+    const handleTokenRefresh = () => {
+        const url = new URL(TRIAL_URL);
+        const urlTokenParam = url.searchParams.get("token");
+        if (urlTokenParam) {
+            localStorage.setItem('urlToken', urlTokenParam);
+            window.location.reload();
+        }
+    };
+    const startPress = (e) => {
+        isLongPress = false;
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            handleTokenRefresh();
+        }, 500);
+        if (e.type === 'touchstart') {
+            e.preventDefault();
+        }
+    };
+    const endPress = () => {
+        clearTimeout(longPressTimer);
+    };
+    logoImg.addEventListener('mousedown', startPress);
+    logoImg.addEventListener('mouseup', endPress);
+    logoImg.addEventListener('mouseleave', endPress);
+    logoImg.addEventListener('touchstart', startPress);
+    logoImg.addEventListener('touchend', endPress);
+    logoImg.addEventListener('click', (e) => {
+        if (isLongPress) return;
+        if (e.ctrlKey) handleTokenRefresh();
+    });
+    document.body.appendChild(logoImg);
+    const errorElement = document.createElement('h1');
+    errorElement.innerHTML = _('invalidCertificate');
+    errorElement.style.color = 'yellow';
+    errorElement.style.textAlign = 'center';
+    errorElement.style.margin = '0';
+    document.body.appendChild(errorElement);
+    sessionStorage.clear();
+    // Early return to prevent any further initialization (including assistant)
+    return null;
+}
+return { tokenData, pass }; // Връщаме обект с данните и резултата от проверката
 }
 
 /*/ --- 🔐 Вградена декрипция ---
@@ -4654,18 +4697,6 @@ async function goOffline() {
         isOffline = true;
         console.warn("Working in offline mode (s-record found).");
 
-        // Update login buttons if they exist
-        const authBtn = document.getElementById('authorize_button');
-        const trialBtn = document.getElementById('trialBtn');
-        if (authBtn) {
-            authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
-            authBtn.style.display = 'inline-block';
-            authBtn.disabled = false;
-        }
-        if (trialBtn) {
-            trialBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
-            trialBtn.style.display = 'inline-block';
-        }
         if (document.querySelector('.login-box')) {
             document.querySelector('.login-box').style.display = 'block';
         }

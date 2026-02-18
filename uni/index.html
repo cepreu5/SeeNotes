@@ -117,23 +117,6 @@
                 <input type="checkbox" id="rememberMe" class="settings-checkbox">
             </div>
         </div>
-        <script>
-            (async () => {
-                const cache = await caches.open('app-cache');
-                const cachedResponse = await cache.match('s');
-                if (cachedResponse) {
-                    // Има запис 's' - показваме login box с authorize бутон
-                    document.querySelector('.login-box').style.display = 'block';
-                    document.getElementById("authorize_button").style.display = 'inline-block';
-                    document.getElementById("trialBtn").style.display = 'none';
-                } else {
-                    // Няма запис 's' (първо стартиране) - показваме login box с trial бутон
-                    document.querySelector('.login-box').style.display = 'block';
-                    document.getElementById("authorize_button").style.display = 'none';
-                    document.getElementById("trialBtn").style.display = 'inline-block';
-                }
-            })();
-        </script>
 
         <section style="max-width: 800px; margin: 0 auto;">
             <p data-key="intro1"><strong>CX MultiNotes Editor</strong> е приложение, работещо в браузъра ви, чрез което
