@@ -4001,6 +4001,14 @@ async function checkAuth() {
             const loader = document.getElementById('loader-container');
             if (loader) loader.style.display = 'none';
         }
+
+        // Ensure button text is correct for offline mode
+        const authBtn = document.getElementById('authorize_button');
+        if (authBtn) {
+            authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
+            authBtn.style.display = 'inline-block';
+            authBtn.disabled = false;
+        }
         return null;
     }
     if (!storedTokenString) {
@@ -4650,12 +4658,12 @@ async function goOffline() {
         const authBtn = document.getElementById('authorize_button');
         const trialBtn = document.getElementById('trialBtn');
         if (authBtn) {
-            authBtn.textContent = _('offlineStartButton');
+            authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
             authBtn.style.display = 'inline-block';
             authBtn.disabled = false;
         }
         if (trialBtn) {
-            trialBtn.textContent = _('offlineStartButton');
+            trialBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
             trialBtn.style.display = 'inline-block';
         }
         if (document.querySelector('.login-box')) {
