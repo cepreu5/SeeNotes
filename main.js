@@ -2450,6 +2450,14 @@ async function startApp(isExplicitLogin = false) {
     if (isAppStarted) return;
     isAppStarted = true;
 
+    // --- DEBUG: Forced Offline Prompt ---
+    if (confirm("Искате ли да работите offline? / Do you want to work offline?")) {
+        isOffline = true;
+        isExplicitLogin = true; // Force bypass of auth check
+    } else {
+        await goOffline();
+    }
+
     // --- NEW: Graceful fallback for KB Assistant ---
     // If the assistant script failed to load or has errors, create a dummy object
     // to prevent runtime errors in the main application.
@@ -2499,13 +2507,6 @@ async function startApp(isExplicitLogin = false) {
         // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
         // Това е критично, за да може userCheck() да работи правилно.
         dbExists = await checkDbExists(NOTES_DB_NAME);
-        // --- DEBUG: Forced Offline Prompt ---
-        if (confirm("Искате ли да работите offline? / Do you want to work offline?")) {
-            isOffline = true;
-            isExplicitLogin = true; // Force bypass of auth check
-        } else {
-            await goOffline();
-        }
         // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
         const authResult = await checkAuth(isExplicitLogin);
         if (!authResult || !authResult.pass) {
@@ -9725,9 +9726,8 @@ if ('serviceWorker' in navigator) {
             if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
 
             // Force an update check to bypass HTTP cache for sw.js
-            await registration.update();
+            // await registration.update();
 
-            // Function to show update notification as a persistent floating bar
             // Function to show update notification using a blocking confirm dialog
             const showUpdateNotification = (waitingSW) => {
                 const msg = (typeof _ === 'function') ? _('newVersionAvailable') : "New version available.";

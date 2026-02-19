@@ -1,51 +1,16 @@
-const CACHE_NAME = 'cxeditor-b1.58';
-const OFFLINE_PAGE = 'index.html';
+const CACHE_NAME = 'multinotes-b1.41';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './manifest.webmanifest',
   './style.css',
-  './main.js',
-  './fs.js',
-  './i18n-bg.txt',
-  './i18n-en.txt',
-  './MNVLogo.png',
-  './NoteFav.png',
-  './Refresh.png',
-  './Logout.png',
-  './Snail.png',
-  './GDrive.png',
-  './Rabbit.png',
-  './Database.png',
-  './Folder.png',
-  './Zip.png',
-  './Notebook.png',
-  './CXNotes48.png',
-  './CXNotes72.png',
-  './CXNotes96.png',
-  './CXNotes144.png',
-  './CXNotes180.png',
-  './CXNotes384.png',
-  './CXNotes192.png',
-  './CXNotes512.png',
-  './Board.png',
-  './Frame.png',
-  './Frame.jpg',
-  './Note.jpg',
-  './stl1_1.png',
-  './stl2_1.png',
-  './stl3_1.png',
-  './wy1_1.png',
-  './wb1_1.png',
-  './wg1_1.png',
-  './wr1_1.png',
+  './msmstyle.css',
+  './kb-assistant.css',
+  './kb-assistantt.js',
+  './msmrtt.js',
+  './mainn.js',
   './kb-core.json',
   './kb-bg.json',
   './kb-en.json',
-  './msmstyle.css',
-  './kb-assistant.css',
-  './kb-assistant.js',
-  './msmrt.js',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',
@@ -89,7 +54,7 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Force activation to recover from broken main.js
+  // Don't call skipWaiting() here - wait for user confirmation via SKIP_WAITING message
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // Cache assets individually for better error reporting and resilience
@@ -123,32 +88,18 @@ self.addEventListener('message', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests
+  // --- FIX: Skip cross-origin requests (e.g. Google GSI, GDrive) to avoid 403/CORS or timeout issues ---
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
-  const isNavigation = event.request.mode === 'navigate';
-
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
+      // Return cached response if found, otherwise fetch from network
       if (cachedResponse) {
         return cachedResponse;
       }
-
-      // If navigation fails (offline), return the root index.html
-      if (isNavigation) {
-        return caches.match('./index.html');
-      }
-
-      return fetch(event.request).catch(() => {
-        // Fallback for missing resources in offline mode
-        if (isNavigation) {
-          return caches.match('./index.html');
-        }
-        // Fix for "Failed to convert value to 'Response'": return a 404 response or similar
-        return new Response('Offline: Resource not found.', { status: 404, statusText: 'Not Found' });
-      });
+      return fetch(event.request);
     })
   );
 });

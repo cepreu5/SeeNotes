@@ -98,32 +98,8 @@ header h1 {
 }
 
 #search-box:focus {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     outline: none;
-}
-
-.note-save-icon {
-    position: fixed;
-    /* Fixed to viewport as modal scrolls */
-    bottom: 20px;
-    right: 20px;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    background-color: rgba(255, 255, 255, 0.8);
-    border-radius: 50%;
-    padding: 5px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    z-index: 1001;
-    /* Ensure above modal content */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transition: transform 0.2s;
-}
-
-.note-save-icon:hover {
-    transform: scale(1.1);
+    box-shadow: 3px 6px 12px rgba(0, 0, 0, 0.25);
 }
 
 /* Hide native clear button */
@@ -483,13 +459,6 @@ main {
     box-shadow: none;
 }
 
-/* Временен клас, докато се генерира фона */
-.note.note-item.loading-bg {
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
-}
-
 .note-background-canvas {
     position: absolute;
     top: 0;
@@ -719,8 +688,8 @@ code {
     font-style: italic;
 }
 
-/* Hide all header info (date and time) when the body has this class */
-.hide-datemod .note-header-info {
+/* Hide datemod in header when the body has this class */
+.hide-datemod .datemod-header-date {
     display: none;
 }
 
@@ -1059,7 +1028,7 @@ code {
 .popup-menu-btn-floating {
     display: none;
     position: fixed;
-    top: 60px;
+    top: 20px;
     right: 10px;
     z-index: 99;
     border: 2px solid #dddddd;
@@ -1966,10 +1935,9 @@ code {
 .set-modal {
     background: linear-gradient(135deg, #858585, #E4E4E4);
     border-radius: 3px;
-    padding: 20px;
+    padding: 10px;
     position: relative;
-    height: auto;
-    width: 400px;
+    height: 300px;
 }
 
 .corner-dot {
@@ -2141,12 +2109,6 @@ code {
 
 .calendar-header button:hover {
     background-color: #c0c0c0;
-}
-
-#today-month-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 /* Стил за бутона "Днес" в седмичния календар, за да се центрира иконата */
@@ -2803,6 +2765,7 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* Note Header Info & Board Links */
+/* Note Header Info & Board Links */
 .note-header-info {
     display: flex;
     align-items: center;
@@ -2869,6 +2832,7 @@ body.selection-locked .note.active-selection-note .note-content {
     box-sizing: border-box;
 }
 
+/* Remove potential margins from clones to let gap handle spacing */
 /* Remove potential margins from clones to let gap handle spacing */
 .all-boards-modal-container .board-filter-link {
     margin: 0 !important;
