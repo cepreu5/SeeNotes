@@ -73,7 +73,7 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  // Don't call skipWaiting() here - wait for user confirmation via SKIP_WAITING message
+  self.skipWaiting(); // Force activation to recover from broken main.js
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // Cache assets individually for better error reporting and resilience
