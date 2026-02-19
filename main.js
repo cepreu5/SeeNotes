@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.57'; // App version
+const version = 'Beta 1.58'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -2499,7 +2499,13 @@ async function startApp(isExplicitLogin = false) {
         // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
         // Това е критично, за да може userCheck() да работи правилно.
         dbExists = await checkDbExists(NOTES_DB_NAME);
-        await goOffline();
+        // --- DEBUG: Forced Offline Prompt ---
+        if (confirm("Искате ли да работите offline? / Do you want to work offline?")) {
+            isOffline = true;
+            isExplicitLogin = true; // Force bypass of auth check
+        } else {
+            await goOffline();
+        }
         // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
         const authResult = await checkAuth(isExplicitLogin);
         if (!authResult || !authResult.pass) {
@@ -4845,7 +4851,7 @@ async function mainLogic() {
         initializeLoad(); // Resets state and shows the loader screen
         // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
         if (!authToken) {
-            const authResult = await checkAuth();
+            const authResult = await checkAuth(isExplicitLogin);
             if (!authResult || !authResult.pass) {
                 if (isLoadCancelled) return;
                 if (loaderContainer) loaderContainer.style.display = 'none';
@@ -9722,69 +9728,17 @@ if ('serviceWorker' in navigator) {
             await registration.update();
 
             // Function to show update notification as a persistent floating bar
+            // Function to show update notification using a blocking confirm dialog
             const showUpdateNotification = (waitingSW) => {
-                // Don't show if already showing
-                if (document.getElementById('sw-update-bar')) return;
+                const msg = (typeof _ === 'function') ? _('newVersionAvailable') : "New version available.";
+                const refresh = (typeof _ === 'function') ? _('refreshNow') : "Refresh now";
 
-                // Create update notification bar
-                const updateBar = document.createElement('div');
-                updateBar.id = 'sw-update-bar';
-                updateBar.style.cssText = `
-                    position: fixed;
-                    bottom: 10px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    padding: 12px 10px;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-                    z-index: 100000;
-                    display: flex;
-                    align-items: center;
-                    gap: 15px;
-                    white-space: nowrap;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    animation: swSlideUp 0.3s ease;
-                `;
-
-                const textSpan = document.createElement('span');
-                textSpan.textContent = _('newVersionAvailable');
-
-                const refreshBtn = document.createElement('button');
-                refreshBtn.textContent = _('refreshNow');
-                refreshBtn.style.cssText = `
-                    background: white;
-                    color: #667eea;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 5px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    transition: transform 0.2s;
-                `;
-                refreshBtn.onmouseover = () => refreshBtn.style.transform = 'scale(1.05)';
-                refreshBtn.onmouseout = () => refreshBtn.style.transform = 'scale(1)';
-                refreshBtn.onclick = () => {
-                    waitingSW.postMessage({ type: 'SKIP_WAITING' });
-                };
-
-                updateBar.appendChild(textSpan);
-                updateBar.appendChild(refreshBtn);
-                document.body.appendChild(updateBar);
-
-                // Add animation style if not exists
-                if (!document.getElementById('sw-update-style')) {
-                    const style = document.createElement('style');
-                    style.id = 'sw-update-style';
-                    style.textContent = `
-                        @keyframes swSlideUp {
-                            from { transform: translateX(-50%) translateY(100px); opacity: 0; }
-                            to { transform: translateX(-50%) translateY(0); opacity: 1; }
-                        }
-                    `;
-                    document.head.appendChild(style);
-                }
+                // Use setTimeout to allow the browser to render any pending UI updates before blocking
+                setTimeout(() => {
+                    if (confirm(`${msg}\n\n${refresh}?`)) {
+                        waitingSW.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                }, 100);
             };
 
             // Check if there's already a waiting SW
