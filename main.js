@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.51'; // App version
+const version = 'Beta 1.57'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -2506,6 +2506,7 @@ async function startApp(isExplicitLogin = false) {
             if (isLoadCancelled) return; // Не прави нищо, ако е отказано
             loaderContainer.style.display = 'none';
             // checkAuth вече е показал грешка или е пренасочил
+            isAppStarted = false; // Allow re-try
             return;
         }
         authToken = authResult.tokenData;
@@ -4707,6 +4708,8 @@ async function goOffline() {
     } catch (e) {
         console.warn("Error checking app-cache for 's':", e);
     }
+
+    if (isOffline) return; // Keep sticky offline mode if set manually
 
     if (!navigator.onLine && hasS) {
         isOffline = true;
@@ -9644,6 +9647,21 @@ async function loadTranslations(lang) {
         appTranslations[lang] = data[lang];
     } catch (e) {
         console.error("Failed to load translations:", e);
+        // Fallback: Populate with critical keys if fetch fails (e.g. offline with old SW)
+        if (!appTranslations[lang]) {
+            appTranslations[lang] = {};
+            if (lang === 'bg') {
+                appTranslations[lang]['offlineStartButton'] = 'Старт офлайн';
+                appTranslations[lang]['authorizeButton'] = 'Вход с Google';
+                appTranslations[lang]['trialButton'] = 'Старт 30-дневен пробен период';
+                appTranslations[lang]['sessionExpired'] = 'Сесията изтече. Моля, влезте отново.';
+            } else {
+                appTranslations[lang]['offlineStartButton'] = 'Start Offline';
+                appTranslations[lang]['authorizeButton'] = 'Authorize with Google';
+                appTranslations[lang]['trialButton'] = 'Start 30-day trial period';
+                appTranslations[lang]['sessionExpired'] = 'Session expired. Please login again.';
+            }
+        }
     }
 }
 
