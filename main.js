@@ -3964,7 +3964,7 @@ async function silentLoginWithIframe(loginHint) {
 
 }
 
-function handleAuthClick() {
+async function handleAuthClick() {
     if (isOffline) {
         document.getElementById('login-page').hidden = true;
         startApp(true);
@@ -3985,17 +3985,33 @@ function handleAuthClick() {
     }
 
     if (tokenClient) {
+        // ... (standard auth logic)
         const rememberMe = localStorage.getItem('rememberMe') === 'true';
         const loginHint = localStorage.getItem('google_login_hint');
         if (rememberMe && loginHint) {
-            // Ако "Запомни ме" е активно и има запазен имейл, влизаме с hint
-            // Popup-ът ще покаже само запазения акаунт
             tokenClient.requestAccessToken({ hint: loginHint });
         } else {
-            // В противен случай показваме екрана за избор на акаунт
             tokenClient.requestAccessToken({ prompt: 'select_account' });
         }
     } else {
+        // --- NEW FALLBACK FOR FAILED GIS LOAD ---
+        console.warn("Google Identity Services not loaded. Checking for offline capability...");
+        let hasS = false;
+        try {
+            const cache = await caches.open('app-cache');
+            const cachedResponse = await cache.match('s');
+            hasS = !!cachedResponse;
+        } catch (e) { console.warn(e); }
+
+        if (hasS) {
+            if (confirm("Google services could not be loaded (likely due to connection issues).\n\nDo you want to start in Offline Mode?")) {
+                isOffline = true;
+                document.getElementById('login-page').hidden = true;
+                startApp(true);
+                return;
+            }
+        }
+
         console.error("Google Identity Services not loaded.");
         alert("Google services are not loaded yet. Please check your connection and reload via F5.");
     }
