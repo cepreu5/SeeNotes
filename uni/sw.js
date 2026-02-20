@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cxeditor-b1.58';
+const CACHE_NAME = 'cxeditor-b1.59';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -128,26 +128,37 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Only handle GET requests
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   const isNavigation = event.request.mode === 'navigate';
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
+      // 1. If match in cache, return it
       if (cachedResponse) {
         return cachedResponse;
       }
 
-      // If navigation fails (offline), return the root index.html
-      if (isNavigation) {
-        return caches.match('./index.html');
-      }
-
-      return fetch(event.request).catch(() => {
-        // Fallback for missing resources in offline mode
+      // 2. If not in cache, try network
+      return fetch(event.request).then((networkResponse) => {
+        return networkResponse;
+      }).catch(() => {
+        // 3. Fallback logic for offline/network failure
         if (isNavigation) {
-          return caches.match('./index.html');
+          return caches.match('./index.html').then((fallback) => {
+            return fallback || new Response('Offline: Page not found.', {
+              status: 404,
+              headers: { 'Content-Type': 'text/plain' }
+            });
+          });
         }
-        // Fix for "Failed to convert value to 'Response'": return a 404 response or similar
-        return new Response('Offline: Resource not found.', { status: 404, statusText: 'Not Found' });
+        return new Response('Offline: Resource not found.', {
+          status: 404,
+          headers: { 'Content-Type': 'text/plain' }
+        });
       });
     })
   );

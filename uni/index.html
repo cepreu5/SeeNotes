@@ -81,7 +81,7 @@
                 <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
             </button>
             <button id="install_button" class="header-btn" data-key-title="installAppTooltip"
-                title="Инсталирай приложението" style="display: none;">
+                title="Инсталирайте приложението" style="display: none;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="7" height="7"></rect>
@@ -628,6 +628,14 @@
                                     Актуализирай Google Drive:</label>
                                 <input type="checkbox" id="update-gdrive-checkbox" class="settings-checkbox">
                             </div>
+                            <div class="zoom-control-wrapper" id="update-local-folder"
+                                style="margin-top: 10px; justify-content: center;">
+                                <label for="update-local-folder-checkbox"
+                                    style="margin-right: 10px; flex-shrink: 0; text-align: left;"
+                                    data-key="updateLocalFolderLabel">
+                                    Актуализирай Локална папка:</label>
+                                <input type="checkbox" id="update-local-folder-checkbox" class="settings-checkbox">
+                            </div>
                             <div class="zoom-control-wrapper" id="force-gdrive-read"
                                 style="margin-top: 10px; justify-content: center;">
                                 <label for="force-gdrive-read-checkbox"
@@ -846,6 +854,7 @@
     <script>
         // PWA Install Prompt
         let deferredPrompt;
+        let isUIReadyForInstall = false;
         const installBtn = document.getElementById('install_button');
         const reloadBtn = document.getElementById('search-box');
 
@@ -854,11 +863,22 @@
             if (reloadBtn) reloadBtn.placeholder = (typeof _ === 'function' ? _('searchPlaceholder') : '');
         };
 
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            // Position install_button exactly on top of search-box right edge
-            if (installBtn && reloadBtn) {
+        window.showInstallButton = () => {
+            isUIReadyForInstall = true;
+            if (deferredPrompt && installBtn && reloadBtn) {
+                // Проверка за лимит на показванията
+                let installPromptCount = localStorage.getItem('installPromptCount');
+                if (installPromptCount === null) {
+                    installPromptCount = 5;
+                } else {
+                    installPromptCount = parseInt(installPromptCount, 10);
+                }
+
+                if (installPromptCount <= 0 && !(typeof debug !== 'undefined' && debug)) {
+                    console.log("PWA install prompt limit reached.");
+                    return;
+                }
+
                 const rect = reloadBtn.getBoundingClientRect();
                 installBtn.style.position = 'fixed';
                 installBtn.style.left = rect.left + rect.width - rect.height + 'px';
@@ -872,8 +892,22 @@
                 installBtn.style.animation = 'installPulse 1.5s ease-in-out infinite';
                 // Change search placeholder while install button is visible
                 reloadBtn.placeholder = (typeof _ === 'function' ? _('installPromptPlaceholder') : 'Инсталация на приложението');
+
+                // Намаляваме брояча при успешно показване
+                localStorage.setItem('installPromptCount', installPromptCount - 1);
+                console.log(`PWA install button shown. Remaining displays: ${installPromptCount - 1}`);
+
                 // Auto-hide after 15 seconds
                 setTimeout(hideInstallBtn, 15000);
+            }
+        };
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            // Ако интерфейсът вече е зареден, показваме бутона веднага
+            if (isUIReadyForInstall) {
+                window.showInstallButton();
             }
         });
 

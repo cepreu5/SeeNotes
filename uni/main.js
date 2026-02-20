@@ -92,6 +92,7 @@ let initialLoadTimestamp = null; // Timestamp when the load finished
 let isAppStarted = false; // Guard for startApp
 let isMainLogicRunning = false; // Guard for mainLogic concurrency
 let isOffline = false; // Flag for offline mode
+let localFileMap = new Map(); // Карта за съответствие GDID -> име на файл за локална папка
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -885,6 +886,65 @@ async function getFileID(folderId, fileName) {
         return resp.result.files?.[0]?.id || null;
     } catch (e) { return null; }
 }
+async function updateLocalFile(gdid, content) {
+    if (!gdid) return false;
+    try {
+        const handle = await getDirectoryHandle();
+        if (!handle) return false;
+
+        let filename = localFileMap.get(gdid);
+
+        if (!filename) {
+            // Ако нямаме записано име, търсим свободно такова по схемата note.txt, note (1).txt...
+            filename = `note.txt`;
+            let exists = false;
+            try {
+                await handle.getFileHandle(filename, { create: false });
+                exists = true;
+            } catch (e) { exists = false; }
+
+            if (exists) {
+                let counter = 1;
+                while (true) {
+                    filename = `note (${counter}).txt`;
+                    try {
+                        await handle.getFileHandle(filename, { create: false });
+                        counter++;
+                    } catch (e) { break; }
+                }
+            }
+            localFileMap.set(gdid, filename);
+        }
+
+        const fileHandle = await handle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        return true;
+    } catch (e) {
+        console.error("Local file update failed:", e);
+        return false;
+    }
+}
+async function deleteLocalFile(gdid) {
+    if (!gdid) return false;
+    try {
+        const handle = await getDirectoryHandle();
+        if (!handle) return false;
+
+        const filename = localFileMap.get(gdid);
+        if (filename) {
+            await handle.removeEntry(filename);
+            localFileMap.delete(gdid);
+            return true;
+        }
+        return false;
+    } catch (e) {
+        if (e.name === 'NotFoundError') return true;
+        console.error("Local file delete failed:", e);
+        return false;
+    }
+}
 async function updateGDriveFile(fileId, content) {
     if (isOffline || !fileId) return false;
     try {
@@ -981,7 +1041,9 @@ async function createGDriveFile(folderId, filename, content) {
  */
 async function createNewNote() {
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-    if (!updateGDrive) {
+    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+
+    if (!updateGDrive && !useLocalFolder) {
         // Проверяваме за етикета и ако го няма, ползваме стандартно съобщение
         const label = _('updateGDriveLabel') || "Update Google Drive";
         showToast(label + " " + (_('required') || "required"), 5000);
@@ -1887,7 +1949,9 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     if (e) e.stopPropagation();
     if (e) e.preventDefault();
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-    if (!useIndexedDb && !updateGDrive) return; // Изтриването работи с база данни или GDrive update
+    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+
+    if (!useIndexedDb && !updateGDrive && !useLocalFolder) return; // Изтриването работи с база данни, GDrive update или локална папка
     // --- SUPPORT FOR NEW DATASET ATTRIBUTES (g/b) ---
     // Try to get gdid from dataset.g, fallback to extraInfo (legacy)
     let noteGdid = noteEl.dataset ? noteEl.dataset.g : null;
@@ -1940,7 +2004,7 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                     try { await deleteFromDB(NOTE_STORE_NAME, ""); } catch (e) { }
                 }
             }
-            if (updateGDrive && noteGdid) {
+            if (updateGDrive && noteGdid && !isOffline) {
                 deleteGDriveFile(noteGdid).catch(err => {
                     console.error("GDrive delete failed:", err);
                     if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
@@ -3152,6 +3216,18 @@ function initApp() {
         }
     };
     window.onscroll = scrollHandler;
+
+    // --- Listener for Online/Offline Status (Added for Offline Mode) ---
+    window.addEventListener('online', () => {
+        isOffline = false;
+        updateModeButton();
+        if (typeof showToast === 'function') showToast("Online mode restored", 2000);
+    });
+    window.addEventListener('offline', () => {
+        isOffline = true;
+        updateModeButton();
+        if (typeof showToast === 'function') showToast("Offline mode active", 2000);
+    });
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     // --- Search Box Enhancements ---
     const searchWrapper = document.getElementById('search-wrapper');
@@ -3550,6 +3626,10 @@ function initApp() {
     // Click handler
     modeButton.addEventListener('click', (e) => {
         // Логика за обикновен клик: "Умен" бутон
+        if (isOffline) {
+            showToast(_('offlineModeMessage') || "Offline Mode - Sync Disabled", 3000);
+            return;
+        }
         updateGlobalStateFlags();
         const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
         if (isDbOnlyMode && dbExists) {
@@ -3697,7 +3777,7 @@ function updateSearchPlaceholder() {
     if (!searchInput) return;
     // Don't overwrite if install button is currently visible over the search box
     const installBtnEl = document.getElementById('install_button');
-    if (installBtnEl && installBtnEl.style.display === 'flex') return;
+    if (installBtnEl && window.getComputedStyle(installBtnEl).display !== 'none') return;
     searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
 }
 
@@ -4606,13 +4686,20 @@ function updateModeButton() {
     let title = '';
     // --- РАЗШИРЕНА ЛОГИКА: Проверяваме за всяка комбинация с база данни ---
     const isCombinedWithDb = currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb);
+
     if (!modeButton.querySelector('#mode-button-loading-icon')) {
         const loadingIcon = document.createElement('img');
         loadingIcon.src = 'Refresh.png';
         loadingIcon.id = 'mode-button-loading-icon';
         modeButton.appendChild(loadingIcon);
     }
-    if (isCombinedWithDb) {
+
+    if (isOffline) {
+        iconSrc = 'Database.png';
+        title = _('offlineMode') || "Offline Mode";
+        // Ensure overlay is hidden in offline mode unless we want to show it's disabled?
+        // For now, let's keep it simple or maybe show a 'OFF' overlay?
+    } else if (isCombinedWithDb) {
         // Когато имаме комбинация, базата е основна
         iconSrc = 'Database.png';
         if (currentUseGoogleDb) title = _('modeDbAndDrive');
@@ -4642,8 +4729,8 @@ function updateModeButton() {
     mainIcon.style.width = '24px';
     mainIcon.style.height = '24px';
     iconWrapper.appendChild(mainIcon);
-    // Добавяме иконата за наслагване, ако сме в комбиниран режим
-    if (isCombinedWithDb) {
+    // Добавяме иконата за наслагване, ако сме в комбиниран режим И не сме офлайн
+    if (isCombinedWithDb && !isOffline) {
         let overlaySrc = '';
         let overlayAlt = '';
         if (currentUseGoogleDb) {
@@ -4671,6 +4758,7 @@ function updateGlobalStateFlags() {
     useArhDb = localStorage.getItem('useArhDb') === 'true';
     useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
     automatedTimer = localStorage.getItem('automatedTimer') !== 'false'; // true по подразбиране
+    updateLocalFolder = localStorage.getItem('updateLocalFolder') === 'true';
 }
 
 /**
@@ -4812,13 +4900,40 @@ async function mainLogic() {
     if (isOffline) {
         console.log("Working in offline mode. Skipping sync.");
         loaderText.textContent = _('loadingFromLocal');
+
+        // --- КОРЕКЦИЯ: Инициализация на състоянието и в офлайн режим ---
+        updateGlobalStateFlags();
+        if (useArhDb) {
+            dbSourceGlobal = 3; dbNoteIdTypeGlobal = 'id';
+        } else if (useLocalFolder) {
+            dbSourceGlobal = 2; dbNoteIdTypeGlobal = 'gdid';
+        } else if (useGoogleDb) {
+            dbSourceGlobal = 1; dbNoteIdTypeGlobal = 'gdid';
+        }
+        updateModeButton();
+        initializeLoad(); // Нулираме контейнерите и подготвяме за нови данни
+
         try {
             await fetchAllDataLocal();
             await renderUI({ boardParseError: false });
         } catch (e) {
             console.error("Error loading local data in offline mode:", e);
         }
+
+        // --- КОРЕКЦИЯ: Осигуряваме видимост на UI елементите ---
         loaderContainer.style.display = 'none';
+        document.querySelector('header').style.visibility = 'visible';
+        document.querySelector('#search-wrapper').style.display = 'flex';
+        notesContainer.style.visibility = 'visible';
+
+        if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
+            const addNoteFab = document.getElementById('add-note-fab');
+            if (addNoteFab) addNoteFab.style.display = 'flex';
+        }
+
+        // Показваме бутона за инсталиране, ако има такъв
+        if (window.showInstallButton) window.showInstallButton();
+
         return;
     }
     if (isMainLogicRunning) {
@@ -5113,6 +5228,9 @@ async function mainLogic() {
             document.querySelector('#search-wrapper').style.display = 'flex';
             notesContainer.style.visibility = 'visible';
             isMainLogicRunning = false;
+
+            // Показваме бутона за инсталиране, ако има такъв
+            if (window.showInstallButton) window.showInstallButton();
         }
     } finally {
         isMainLogicRunning = false;
@@ -5137,7 +5255,8 @@ async function fetchAllDataFromLocalFolder() {
     let localMedia = [];
     let localNotes = [];
     let boardParseError = false;
-    const gdidMap = new Map(); // To track duplicates
+    const gdidMap = new Map(); // To track duplicates for processing
+    localFileMap.clear(); // Изчистваме глобалната карта преди ново зареждане
     try {
         const entries = [];
         for await (const entry of handle.values()) {
@@ -5173,6 +5292,7 @@ async function fetchAllDataFromLocalFolder() {
                             dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name });
                         } else {
                             gdidMap.set(fileObject.gdid, item.entry.name);
+                            localFileMap.set(fileObject.gdid, item.entry.name); // Попълваме глобалната карта
                         }
                     }
                     if (item.isBoard) {
@@ -5436,6 +5556,7 @@ async function processDirectoryContent(minModificationDate) {
                             dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name, mode: 'sync' });
                         } else {
                             gdidMap.set(fileObject.gdid, item.entry.name);
+                            localFileMap.set(fileObject.gdid, item.entry.name); // Попълваме глобалната карта
                         }
                         if (item.isBoard) {
                             stores[BOARD_STORE_NAME].push(fileObject);
@@ -5443,6 +5564,7 @@ async function processDirectoryContent(minModificationDate) {
                             stores[MEDIA_STORE_NAME].push(fileObject);
                         } else if (item.isNote) {
                             stores[NOTE_STORE_NAME].push(fileObject);
+                            const localNote = allNotesData.find(n => n.gdid == fileObject.gdid);
                             if (!localNote || (parseInt(fileObject.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
                                 if (!updatedNoteGdims.includes(fileObject.gdid)) {
                                     updatedNoteGdims.push(fileObject.gdid);
@@ -6319,8 +6441,11 @@ function showModal(options, noteElement = null) {
     const prevBtn = document.getElementById('prev-note-btn');
     const nextBtn = document.getElementById('next-note-btn');
     const deleteBtn = document.getElementById('delete-modal-btn');
+    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+
     // Показваме/скриваме бутона за изтриване
-    if ((useIndexedDb || updateGDrive) && (currentNoteObj || noteElement) && !isPromo) {
+    // --- КОРЕКЦИЯ: Разрешаваме изтриване и в режим "Локална папка" ---
+    if ((useIndexedDb || updateGDrive || useLocalFolder) && (currentNoteObj || noteElement) && !isPromo) {
         deleteBtn.style.display = 'flex';
         // Премахваме стари event listeners и добавяме нов
         const newDeleteBtn = deleteBtn.cloneNode(true);
@@ -6376,7 +6501,7 @@ function showModal(options, noteElement = null) {
     const oldCalendarBtn = document.getElementById('note-calendar-btn');
     if (oldCalendarBtn) oldCalendarBtn.remove();
 
-    const canEdit = (useIndexedDb || (updateGDrive && options.gdid)) && !isPromo;
+    const canEdit = (useIndexedDb || (updateGDrive && options.gdid) || useLocalFolder) && !isPromo;
 
     if (canEdit) {
         // --- Move Button ---
@@ -7562,6 +7687,15 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         }
+        const updateLocalFolderCheckbox = document.getElementById('update-local-folder-checkbox');
+        if (updateLocalFolderCheckbox) {
+            updateLocalFolderCheckbox.checked = localStorage.getItem('updateLocalFolder') === 'true';
+            updateLocalFolderCheckbox.addEventListener('change', () => {
+                localStorage.setItem('updateLocalFolder', updateLocalFolderCheckbox.checked);
+                updateLocalFolder = updateLocalFolderCheckbox.checked;
+                showToast(_('settingSaved'), 2000);
+            });
+        }
         const forceGDriveReadCheckbox = document.getElementById('force-gdrive-read-checkbox');
         if (forceGDriveReadCheckbox) {
             forceGDriveReadCheckbox.checked = localStorage.getItem('forceGDriveRead') === 'true';
@@ -7958,6 +8092,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 document.getElementById('create-db-btn').click();
             } else {
                 showToast(_('settingSaved'), 2000);
+                updateModeButton();
             }
         });
         // Accordion logic
@@ -8661,7 +8796,11 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
         iconDiv.style.cursor = 'pointer';
         iconDiv.addEventListener('click', (e) => {
             e.stopPropagation();
-            showModal(JSON.stringify(attachment, null, 2));
+            let debugText = JSON.stringify(attachment, null, 2);
+            if (attachment.gdid && localFileMap.has(attachment.gdid)) {
+                debugText = `File: ${localFileMap.get(attachment.gdid)}\n\n` + debugText;
+            }
+            showModal(debugText);
         });
     }
     attachmentWrapper.prepend(iconDiv);
@@ -8678,7 +8817,14 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
     iconDiv.innerHTML = iconData.svg;
     if (!attachment.path) {
         iconDiv.style.cursor = 'pointer';
-        iconDiv.addEventListener('click', (e) => { e.stopPropagation(); showModal(JSON.stringify(attachment, null, 2)); });
+        iconDiv.addEventListener('click', (e) => {
+            e.stopPropagation();
+            let debugText = JSON.stringify(attachment, null, 2);
+            if (attachment.gdid && localFileMap.has(attachment.gdid)) {
+                debugText = `File: ${localFileMap.get(attachment.gdid)}\n\n` + debugText;
+            }
+            showModal(debugText);
+        });
         attachmentWrapper.prepend(iconDiv);
         return;
     }
@@ -8927,7 +9073,11 @@ async function createNoteElement(noteContent) {
     headerDate.addEventListener('click', (e) => {
         if (debug) {
             e.stopPropagation();
-            showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
+            let debugText = JSON.stringify(fullNoteContent, null, 2);
+            if (fullNoteContent.gdid && localFileMap.has(fullNoteContent.gdid)) {
+                debugText = `File: ${localFileMap.get(fullNoteContent.gdid)}\n\n` + debugText;
+            }
+            showModal({ raw: debugText, color: 'white' });
         }
     });
     if (extraData.timer) {
@@ -9141,6 +9291,7 @@ async function createNoteElement(noteContent) {
         clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
 
         const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+        const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
         // Allow delete if using DB OR if updating GDrive is enabled and we have a GDrive ID
         if (!useIndexedDb && (!updateGDrive || !noteGdid)) return;
 
@@ -9150,25 +9301,43 @@ async function createNoteElement(noteContent) {
             // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
             await new Promise(resolve => setTimeout(resolve, 150));
         }
-        const confirmed = await showConfirmation(_('confirmNoteDelete'));
+
+        const confirmMsgKey = (updateGDrive || updateLocalFolderNow) ? 'confirmNoteDeleteSync' : 'confirmNoteDelete';
+        const confirmed = await showConfirmation(_(confirmMsgKey));
         if (confirmed) {
             try {
                 let totalNotes;
                 await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-                // Delete from Google Drive is enabled
-                const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+
+                let gdriveDeleted = false;
                 if (updateGDrive && noteGdid) {
                     deleteGDriveFile(noteGdid).catch(err => {
                         console.error("GDrive delete failed:", err);
                         if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
                     });
+                    gdriveDeleted = true;
                 }
+
+                let localDeleted = false;
+                if (updateLocalFolderNow && noteGdid) {
+                    deleteLocalFile(noteGdid).catch(err => {
+                        console.error("Local file delete failed:", err);
+                    });
+                    localDeleted = true;
+                }
+
                 // Стъпка 1: Премахване от DOM и allNotesData
                 noteEl.remove();
                 allNotesData = allNotesData.filter(n => (n.gdid && n.gdid !== noteGdid) || (n.id && n.id !== noteID));
                 // Стъпка 2: Актуализация на всички броячи чрез applyFilters
                 applyFilters();
-                showToast(_('noteDeletedSuccess'), 3000);
+
+                let successMsgKey = 'noteDeletedSuccess';
+                if (gdriveDeleted && localDeleted) successMsgKey = 'noteDeletedSuccessBoth';
+                else if (gdriveDeleted) successMsgKey = 'noteDeletedSuccessGDrive';
+                else if (localDeleted) successMsgKey = 'noteDeletedSuccessLocal';
+
+                showToast(_(successMsgKey), 3000);
             } catch (error) {
                 console.log("Failed to delete note:", error);
                 showToast(_('noteDeletedError') + " - " + error.message, 15000);
@@ -10918,6 +11087,8 @@ async function saveEditedNote() {
 
     if (newText === undefined) return; // Nothing to save
     const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
     // Show spinner on save button
     const saveBtnElem = document.getElementById('note-save-btn');
     const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
@@ -10932,7 +11103,9 @@ async function saveEditedNote() {
             pointerEvents: 'none', background: 'transparent', padding: '4px', borderRadius: '8px'
         });
         if (useIndexedDb) indicators.innerHTML += `<img src="Database.png" style="width:28px; height:28px;">`;
-        if (updateGDriveNow) indicators.innerHTML += `<img src="GDrive.png" style="width:28px; height:28px;">`;
+        if (updateGDriveNow && !isOffline) indicators.innerHTML += `<img src="GDrive.png" style="width:28px; height:28px;">`;
+        if (useLocalFolder) indicators.innerHTML += `<img src="Folder.png" style="width:28px; height:28px;">`;
+
         const modalContentBox = modalBodyElem.closest('.modal-content-box');
         if (modalContentBox) modalContentBox.appendChild(indicators);
     }
@@ -11158,10 +11331,32 @@ async function saveEditedNote() {
                 } catch (e) { console.error("Failed to update GDrive file", e); }
             }
         }
+
+        if (updateLocalFolderNow) {
+            try {
+                // Ако бележката е нова и няма gdid (или е временен id), генерираме локален такъв
+                const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
+                if (isTempGdid && !updateGDriveNow) {
+                    noteObj.gdid = `L${Date.now()}`;
+                    modalBodyElem.dataset.gdid = noteObj.gdid;
+                }
+                if (noteObj.gdid) {
+                    await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
+                }
+            } catch (e) {
+                console.error("Failed to update local file", e);
+                showToast(_('errorSaveLocalFolder') || "Грешка при запис в локалната папка");
+            }
+        }
         if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
         const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
         const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
-        const msgKey = updateGDriveNow ? 'noteSavedInBoth' : 'noteSavedInDb';
+
+        let msgKey = 'noteSavedInDb';
+        if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll';
+        else if (updateGDriveNow) msgKey = 'noteSavedInBoth';
+        else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
+
         showToast(_(msgKey).replace('{boardName}', boardTitle));
     }
 
@@ -11225,6 +11420,8 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
     }
     // Save to Source
     const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+
     if (updateGDriveNow) {
         const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
         if (isTempGdid) {
@@ -11254,6 +11451,20 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
             }
         }
     }
+
+    if (updateLocalFolderNow) {
+        try {
+            const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
+            if (isTempGdid && !updateGDriveNow) {
+                noteObj.gdid = `L${Date.now()}`;
+            }
+            if (noteObj.gdid) {
+                await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
+            }
+        } catch (e) {
+            console.error("Failed to update local file in calendar update", e);
+        }
+    }
     if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
     if (typeof updateBoardCounterUI === 'function') {
         updateBoardCounterUI(noteObj.boardid);
@@ -11261,7 +11472,12 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
     }
     const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
     const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
-    const msgKey = updateGDriveNow ? 'noteSavedInBoth' : 'noteSavedInDb';
+
+    let msgKey = 'noteSavedInDb';
+    if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll';
+    else if (updateGDriveNow) msgKey = 'noteSavedInBoth';
+    else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
+
     showToast(_(msgKey).replace('{boardName}', boardTitle));
 }
 

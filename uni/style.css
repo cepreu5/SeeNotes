@@ -2520,11 +2520,7 @@ code {
     /* Гарантира, че фонът е зад съдържанието */
 }
 
-#search-wrapper {
-    display: flex;
-    align-items: center;
-    position: relative;
-}
+
 
 .search-mode-btn {
     position: absolute;
@@ -2623,10 +2619,7 @@ code {
     display: none;
 }
 
-.scrolling-menu-wrapper {
-    display: flex;
-    /* Or whatever its default display is */
-}
+
 
 /* 
    When screen is small (likely forcing header to 3 rows), 
@@ -2836,10 +2829,7 @@ body.selection-locked .note.active-selection-note .note-content {
     font-size: 0.9em;
 }
 
-#modal-body {
-    flex-grow: 1;
-    overflow-y: auto;
-}
+
 
 .modal-note-footer .header-icon svg {
     width: 16px;
