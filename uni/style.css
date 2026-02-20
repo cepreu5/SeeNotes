@@ -2879,7 +2879,7 @@ body.selection-locked .note.active-selection-note .note-content {
     padding-bottom: 5px !important;
     margin-left: 20px;
     Центрира я спрямо останалите (250px + 5px margin) */
-    display: flex;
+    display: none;
     flex-direction: column;
     overflow: hidden;
     transition: transform 0.2s;

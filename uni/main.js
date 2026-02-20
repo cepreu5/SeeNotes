@@ -7056,9 +7056,6 @@ async function initPromoNote() {
             });
         });
 
-        const cont = document.getElementById('notes-container');
-        if (cont) cont.appendChild(promoNoteElement);
-        applyFilters();
     }
     isFetchingPromo = false;
 }
