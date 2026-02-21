@@ -223,8 +223,12 @@ async function processAndDownloadExport(boards, notes, media) {
       const saveToFile = async (filename, content) => {
         const fileHandle = await directoryHandle.getFileHandle(filename, { create: true });
         const writable = await fileHandle.createWritable();
-        await writable.write(content);
-        await writable.close();
+        // await writable.write(content);
+        try {
+          await writable.write(new Blob([content], { type: 'application/json' }));
+        } finally {
+          await writable.close();
+        }
       };
 
       await saveToFile("boards.bcp", JSON.stringify(boards));
@@ -269,3 +273,96 @@ async function processAndDownloadExport(boards, notes, media) {
   a3.click();
   URL.revokeObjectURL(url3);
 }
+
+/**
+ * Експортира данните от паметта като индивидуални файлове в избрана локална папка.
+ * Бордовете, бележките и медия метаданните се записват файл по файл.
+ */
+async function exportToIndividualFiles() {
+  const inMemBoards = (typeof boardsData !== 'undefined' && boardsData.length > 0);
+  const inMemNotes = (typeof allNotesData !== 'undefined' && allNotesData.length > 0);
+
+  if (!inMemBoards && !inMemNotes) {
+    const msg = "No data in memory to export!";
+    if (typeof showToast === 'function') showToast(msg, 3000); else alert(msg);
+    return;
+  }
+
+  if (!window.showDirectoryPicker) {
+    const msg = "FileSystem API not supported in this browser.";
+    if (typeof showToast === 'function') showToast(msg, 5000); else alert(msg);
+    return;
+  }
+
+  try {
+    const rootHandle = await window.showDirectoryPicker({
+      mode: 'readwrite',
+      id: 'individual_export'
+    });
+
+    /**
+     * Помощна функция за генериране на уникално име по схемата "име (брояч).txt"
+     */
+    const getUniqueName = async (baseName, handle) => {
+      let filename = `${baseName}.txt`;
+      let exists = false;
+      try {
+        await handle.getFileHandle(filename, { create: false });
+        exists = true;
+      } catch (e) { exists = false; }
+
+      if (exists) {
+        let counter = 1;
+        while (true) {
+          filename = `${baseName} (${counter}).txt`;
+          try {
+            await handle.getFileHandle(filename, { create: false });
+            counter++;
+          } catch (e) { break; }
+        }
+      }
+      return filename;
+    };
+
+    const saveToFile = async (filename, content, folderHandle) => {
+      const fileHandle = await folderHandle.getFileHandle(filename, { create: true });
+      const writable = await fileHandle.createWritable();
+      try {
+        await writable.write(new Blob([content], { type: 'text/plain' }));
+      } finally {
+        await writable.close();
+      }
+    };
+
+    // 1. Експорт на бордове
+    for (const board of boardsData) {
+      const fileName = await getUniqueName('board', rootHandle);
+      await saveToFile(fileName, JSON.stringify(board), rootHandle);
+    }
+
+    // 2. Експорт на бележки
+    for (const note of allNotesData) {
+      const fileName = await getUniqueName('note', rootHandle);
+      await saveToFile(fileName, JSON.stringify(note), rootHandle);
+    }
+
+    // 3. Експорт на медия (метаданни)
+    // Всички метаданни media.txt отиват в основната папка
+    const media = (typeof mediaData !== 'undefined') ? mediaData : [];
+    if (media.length > 0) {
+      for (const m of media) {
+        const fileName = await getUniqueName('media', rootHandle);
+        await saveToFile(fileName, JSON.stringify(m), rootHandle);
+      }
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(_('archiveSavedSuccess') || "Files saved successfully!", 3000);
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    console.error("Individual export failed:", err);
+    if (typeof showToast === 'function') showToast("Error: " + err.message, 5000);
+  }
+}
+

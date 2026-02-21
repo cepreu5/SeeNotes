@@ -918,8 +918,13 @@ async function updateLocalFile(gdid, content) {
 
         const fileHandle = await handle.getFileHandle(filename, { create: true });
         const writable = await fileHandle.createWritable();
-        await writable.write(content);
-        await writable.close();
+        // await writable.write(content);
+        try {
+            // Using a Blob for more reliable writing in some browsers
+            await writable.write(new Blob([content], { type: 'text/plain' }));
+        } finally {
+            await writable.close();
+        }
         return true;
     } catch (e) {
         console.error("Local file update failed:", e);
@@ -6092,6 +6097,12 @@ function showModal(options, noteElement = null) {
             modalContentBox.style.maxHeight = 'none';
         }
     }
+    // Размер на шрифта: от options (демо бележка) или от потребителските настройки
+    if (options && options.fontSize) {
+        modalBody.style.fontSize = (typeof options.fontSize === 'number' ? options.fontSize + 'px' : options.fontSize);
+    } else {
+        modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
+    }
     const modalBoardNameEl = document.getElementById('modal-board-name');
     const isPromo = options.id === 'promo';
 
@@ -6441,7 +6452,6 @@ function showModal(options, noteElement = null) {
     const prevBtn = document.getElementById('prev-note-btn');
     const nextBtn = document.getElementById('next-note-btn');
     const deleteBtn = document.getElementById('delete-modal-btn');
-    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
 
     // Показваме/скриваме бутона за изтриване
     // --- КОРЕКЦИЯ: Разрешаваме изтриване и в режим "Локална папка" ---
@@ -7011,8 +7021,14 @@ function updatePromoImage() {
     }
 }
 
-async function initPromoNote() {
+function initPromoNote() {
     if (promoNoteElement || isFetchingPromo) return;
+
+    // Early escape if dismissed in current board
+    if (currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true') {
+        return;
+    }
+
     isFetchingPromo = true;
 
     const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
@@ -7024,6 +7040,7 @@ async function initPromoNote() {
         promoNoteElement = document.createElement('div');
         promoNoteElement.className = 'note promo-note';
         promoNoteElement.dataset.isPromo = 'true';
+        promoNoteElement.style.display = 'none'; // Ensure it starts hidden in JS too
 
         // Note with image style - refined to use CSS for most parts
         promoNoteElement.innerHTML = `
@@ -7187,43 +7204,45 @@ function applyFilters() {
     }
 
     // --- PROMO NOTE LOGIC: INSERT AT RANDOM PLACE ---
-    if (localStorage.getItem('hideAssistant') !== 'true') {
+    // Skip this entire logic during initial load to prevent flickering before UI is stable
+    if (!isInitialLoad && localStorage.getItem('hideAssistant') !== 'true') {
         const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
 
         if (isDismissedInBoard) {
             if (promoNoteElement) promoNoteElement.style.display = 'none';
         } else {
             if (!promoNoteElement && !isFetchingPromo) {
-                initPromoNote(); // Start loading
+                initPromoNote();
             }
             if (promoNoteElement) {
-                // Only show if no active search AND not dismissed in this board
+                // Only show if no active search
                 if (searchTerm === '') {
-                    promoNoteElement.style.display = 'flex';
-                    // If board changed or promo not in valid place
+                    // If board changed or promo not in valid place, position it while hidden
                     if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
+                        // Ensure it's hidden before moving to prevent flickering at the bottom
+                        promoNoteElement.style.display = 'none';
                         const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
                             .filter(n => n.style.display !== 'none');
 
                         if (visibleNotes.length > 0) {
-                            // Insert at random position
                             const rnd = Math.floor(Math.random() * visibleNotes.length);
-                            // Use insertBefore to create randomness
                             notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
                         } else {
                             notesContainer.appendChild(promoNoteElement);
                         }
-                        // Обновяваме изображението при всяка смяна на борда
                         updatePromoImage();
                         lastPromoBoardFilter = currentBoardFilter;
                     }
+                    // Finally show it in the correct place
+                    promoNoteElement.style.display = 'flex';
                 } else {
                     promoNoteElement.style.display = 'none';
                 }
             }
         }
-    } else {
-        if (promoNoteElement) promoNoteElement.style.display = 'none';
+    } else if (promoNoteElement) {
+        // Explicitly hide it during load or if assistant is hidden
+        promoNoteElement.style.display = 'none';
     }
 
     const noteCounter = document.getElementById('note-counter');
@@ -9709,6 +9728,11 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     // След първото зареждане, флагът става false.
     isInitialLoad = false;
+
+    // ПРИЛОЖЕНИЕ: Сега, когато зареждането е приключило, извикваме applyFilters отново, 
+    // за да може асистентът (промо снимката) да се появи плавно и на правилното място.
+    applyFilters();
+
     const counterEl = document.getElementById('note-counter');
     if (counterEl) {
         counterEl.textContent = notesCount;
@@ -10080,6 +10104,14 @@ function navigateBoard(direction) {
             else console.error('exportNotesFromDB function not found');
         });
     }
+    const saveIndividualBtn = document.getElementById('save-individual-btn');
+    if (saveIndividualBtn) {
+        saveIndividualBtn.addEventListener('click', () => {
+            document.getElementById('settings-modal').classList.remove('visible');
+            if (typeof exportToIndividualFiles === 'function') exportToIndividualFiles();
+            else console.error('exportToIndividualFiles function not found');
+        });
+    }
 })();
 
 /**
@@ -10087,6 +10119,7 @@ function navigateBoard(direction) {
  */
 async function updateAdvancedSettingsVisibility() {
     const saveDbWrapper = document.getElementById('save-db-wrapper');
+    const saveIndividualWrapper = document.getElementById('save-individual-wrapper');
 
     // Sync checkboxes
     const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
@@ -10099,11 +10132,17 @@ async function updateAdvancedSettingsVisibility() {
     if (useGoogleDbCheckbox) useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
     if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
 
-    if (!saveDbWrapper) return;
-
+    // Manage visibility of export buttons
     const useIndexedDbLive = localStorage.getItem('useIndexedDb') === 'true';
 
-    // The button "Save from DB" makes sense ONLY if DB is OFF and DB is NOT empty.
+    // Individual save is always visible if supported by browser
+    if (saveIndividualWrapper) {
+        saveIndividualWrapper.style.display = (window.showDirectoryPicker) ? 'block' : 'none';
+    }
+
+    if (!saveDbWrapper) return;
+
+    // The button "Save from DB" makes sense ONLY if DB mode is OFF and DB is NOT empty.
     if (useIndexedDbLive) {
         saveDbWrapper.style.display = 'none';
         return;

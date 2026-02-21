@@ -242,6 +242,7 @@ bg: {
         installPromptPlaceholder: 'Инсталирайте приложението',
         "saveLabel": "Запис на архив от паметта",
         "saveDbLabel": "Запис на архив от БД",
+        "saveIndividualLabel": "Запис в локална папка",
         "dupLabel": "Изтриване на дубликати",
         "closeAfterSaveLabel": "Затваряне след запис",
         "updateGDriveLabel": "Актуализирай Google Drive",
