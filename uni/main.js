@@ -890,10 +890,16 @@ async function updateLocalFile(gdid, content) {
     if (!gdid) return false;
     try {
         const handle = await getDirectoryHandle();
-        if (!handle) return false;
-
+        if (!handle) {
+            // Няма handle (например Android) — fallback към изтегляне
+            if (typeof downloadAsFile === 'function') {
+                const fname = localFileMap.get(gdid) || `note-${gdid}.txt`;
+                downloadAsFile(fname, content, 'text/plain');
+                return true;
+            }
+            return false;
+        }
         let filename = localFileMap.get(gdid);
-
         if (!filename) {
             // Ако нямаме записано име, търсим свободно такова по схемата note.txt, note (1).txt...
             filename = `note.txt`;
@@ -902,7 +908,6 @@ async function updateLocalFile(gdid, content) {
                 await handle.getFileHandle(filename, { create: false });
                 exists = true;
             } catch (e) { exists = false; }
-
             if (exists) {
                 let counter = 1;
                 while (true) {
@@ -915,15 +920,20 @@ async function updateLocalFile(gdid, content) {
             }
             localFileMap.set(gdid, filename);
         }
-
         const fileHandle = await handle.getFileHandle(filename, { create: true });
-        const writable = await fileHandle.createWritable();
-        // await writable.write(content);
         try {
-            // Using a Blob for more reliable writing in some browsers
-            await writable.write(new Blob([content], { type: 'text/plain' }));
-        } finally {
-            await writable.close();
+            const writable = await fileHandle.createWritable();
+            try {
+                await writable.write(new Blob([content], { type: 'text/plain' }));
+            } finally {
+                await writable.close();
+            }
+        } catch (writeErr) {
+            // createWritable не се поддържа (Android) — fallback към изтегляне
+            console.warn(`createWritable failed for ${filename}, falling back to download:`, writeErr.message);
+            if (typeof downloadAsFile === 'function') {
+                downloadAsFile(filename, content, 'text/plain');
+            }
         }
         return true;
     } catch (e) {
