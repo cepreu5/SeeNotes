@@ -2530,12 +2530,12 @@ async function startApp(isExplicitLogin = false) {
     isAppStarted = true;
 
     // --- DEBUG: Forced Offline Prompt ---
-    if (confirm("Искате ли да работите offline? / Do you want to work offline?")) {
-        isOffline = true;
-        isExplicitLogin = true; // Force bypass of auth check
-    } else {
-        await goOffline();
-    }
+    // if (confirm("Искате ли да работите offline? / Do you want to work offline?")) {
+    //     isOffline = true;
+    //     isExplicitLogin = true; // Force bypass of auth check
+    // } else {
+    //     await goOffline();
+    // }
 
     // --- NEW: Graceful fallback for KB Assistant ---
     // If the assistant script failed to load or has errors, create a dummy object
@@ -3520,8 +3520,21 @@ function initApp() {
     });
 
     document.querySelectorAll('.modal-overlay').forEach(modal => {
+        let isMouseDownInside = false;
+
+        modal.addEventListener('mousedown', (e) => {
+            // Маркираме дали натискането е започнало вътре в съдържанието
+            isMouseDownInside = e.target !== modal;
+        });
+
+        modal.addEventListener('touchstart', (e) => {
+            // Аналогично за мобилни устройства
+            isMouseDownInside = e.target !== modal;
+        }, { passive: true });
+
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
+            // Затваряме само ако и натискането, и отпускането са били върху овърлея
+            if (e.target === modal && !isMouseDownInside) {
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
@@ -3532,7 +3545,6 @@ function initApp() {
                 }
             }
         });
-
     });
     // Prevent clicks inside the content modal from propagating to the underlying notes
     contentModal.addEventListener('click', (e) => {
@@ -4654,29 +4666,38 @@ async function finalizeDbCreation() {
     }
 }
 
-/**
- * Сравнява бордовете в паметта с тези в базата данни за значими несъответствия.
- * Връща true, ако структурата на бордовете изглежда идентична.
- */
 function areBoardsIdentical(memBoards, dbBoards) {
-    if (!memBoards || !dbBoards) return false;
-    if (memBoards.length !== dbBoards.length) return false;
+    if (!memBoards || memBoards.length === 0 || !dbBoards || dbBoards.length === 0) return true; // Празни данни не са несъответствие в този контекст
 
-    // В базата ключовете винаги са в полето gdid (благодарение на ensureGdid при запис)
     const dbGdidSet = new Set(dbBoards.map(b => String(b.gdid)));
-    const dbTitleSet = new Set(dbBoards.map(b => String(b.title).trim().toLowerCase()));
+    const dbTitleSet = new Set(dbBoards.map(b => String(b.title || '').trim().toLowerCase()));
 
+    // Проверяваме дали всички бордове от паметта присъстват в базата
     for (const mb of memBoards) {
-        // Проверяваме дали поне един от възможните идентификатори съществува в базата
-        // При архиви в паметта gdid често е празен, затова пробваме и с id
-        const memGdid = mb.gdid ? String(mb.gdid) : String(mb.id);
-        const memTitle = String(mb.title).trim().toLowerCase();
+        const memGdid = mb.gdid ? String(mb.gdid) : (mb.id !== undefined ? String(mb.id) : null);
+        const memTitle = String(mb.title || '').trim().toLowerCase();
 
-        if (!dbGdidSet.has(memGdid) && !dbTitleSet.has(memTitle)) {
-            console.warn(`Mismatch found: Board "${mb.title}" (ID: ${memGdid}) not in DB.`);
+        if (memGdid !== null && !dbGdidSet.has(memGdid) && !dbTitleSet.has(memTitle)) {
+            console.warn(`Mismatch: Memory board "${mb.title}" (ID: ${memGdid}) not in DB.`);
             return false;
         }
     }
+
+    // Проверяваме и обратното (само ако имаме бордове в базата)
+    if (dbBoards.length > 0) {
+        const memGdidSet = new Set(memBoards.map(mb => mb.gdid ? String(mb.gdid) : (mb.id !== undefined ? String(mb.id) : null)));
+        const memTitleSet = new Set(memBoards.map(mb => String(mb.title || '').trim().toLowerCase()));
+
+        for (const db of dbBoards) {
+            const dbGdid = String(db.gdid);
+            const dbTitle = String(db.title || '').trim().toLowerCase();
+            if (!memGdidSet.has(dbGdid) && !memTitleSet.has(dbTitle)) {
+                console.warn(`Mismatch: DB board "${db.title}" (GDID: ${dbGdid}) not in memory.`);
+                return false;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -6201,23 +6222,24 @@ function showModal(options, noteElement = null) {
         }
     }
     modalBody.innerHTML = displayContent;
+    modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
 
     // Add click-to-edit functionality
     modalBody.addEventListener('click', (e) => {
-        // Do not trigger if a link was clicked, or if already editing
+        // Do not trigger if a link was clicked, if already editing, or if setting is disabled
         if (e.target.closest('a') || modalBody.querySelector('textarea')) {
             return;
         }
+
+        const clickToEditEnabled = localStorage.getItem('clickToEdit') !== 'false'; // Default true
+        if (!clickToEditEnabled) return;
 
         // Calculate character index from click position
         let charIndex = -1;
         const selection = window.getSelection();
         if (selection.rangeCount > 0) {
             const range = selection.getRangeAt(0);
-            const tempRange = document.createRange();
-            tempRange.selectNodeContents(modalBody);
-            tempRange.setEnd(range.startContainer, range.startOffset);
-            charIndex = tempRange.toString().length;
+            charIndex = getPreciseCharIndex(modalBody, range);
         }
 
         enableNoteEditing(modalBody, charIndex);
@@ -6410,13 +6432,13 @@ function showModal(options, noteElement = null) {
         }
     }
     // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
-    // --- ДОБАВЕНА ЛОГИКА ЗА ФУТЪР В МОДАЛА ---
-    // Първо премахваме стария футър, ако има такъв
-    const oldFooter = modalContentBox.querySelector('.modal-note-footer');
-    if (oldFooter) {
-        oldFooter.remove();
-    }
     // --- FOOTER GENERATION LOGIC ---
+    // Remove old search bar and footer if they exist
+    const oldSearchBar = modalContentBox.querySelector('.modal-search-bar');
+    if (oldSearchBar) oldSearchBar.remove();
+    const oldFooter = modalContentBox.querySelector('.modal-note-footer');
+    if (oldFooter) oldFooter.remove();
+
     // First, try to find the note object in memory for the most up-to-date data
     const gdidForLookup = options.gdid || noteGdid;
     const idForLookup = options.id || noteId;
@@ -6542,6 +6564,8 @@ function showModal(options, noteElement = null) {
     if (oldPreviewBtn) oldPreviewBtn.remove();
     const oldCalendarBtn = document.getElementById('note-calendar-btn');
     if (oldCalendarBtn) oldCalendarBtn.remove();
+    const oldSearchBtn = document.getElementById('note-search-btn');
+    if (oldSearchBtn) oldSearchBtn.remove();
 
     const canEdit = (useIndexedDb || (updateGDrive && options.gdid) || useLocalFolder) && !isPromo;
 
@@ -6690,6 +6714,36 @@ function showModal(options, noteElement = null) {
         });
         modalContentBox.appendChild(calendarBtn);
 
+        // --- Search Button ---
+        const searchBtn = document.createElement('div');
+        searchBtn.id = 'note-search-btn';
+        searchBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>`;
+        searchBtn.title = _('searchInNoteTooltip') || "Search in note";
+        Object.assign(searchBtn.style, {
+            position: 'absolute',
+            bottom: '15px',
+            right: '200px',
+            width: '40px',
+            height: '40px',
+            backgroundColor: 'darkorange',
+            borderRadius: '50%',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            boxShadow: '3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23)',
+            cursor: 'pointer',
+            zIndex: '10000',
+            border: '1px solid #ccc'
+        });
+        searchBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleModalSearch(modalContentBox, modalBody);
+        });
+        modalContentBox.appendChild(searchBtn);
+
         // --- Edit Button ---
         const editBtn = document.createElement('div');
         editBtn.id = 'note-edit-btn';
@@ -6717,6 +6771,147 @@ function showModal(options, noteElement = null) {
         });
         modalContentBox.appendChild(editBtn);
     }
+}
+
+function toggleModalSearch(modalContentBox, modalBody) {
+    let searchBar = modalContentBox.querySelector('.modal-search-bar');
+    const restoreContent = () => {
+        if (modalBody.dataset.renderedHtml) {
+            modalBody.innerHTML = modalBody.dataset.renderedHtml;
+        }
+    };
+
+    if (searchBar) {
+        searchBar.remove();
+        restoreContent();
+        return;
+    }
+
+    searchBar = document.createElement('div');
+    searchBar.className = 'modal-search-bar';
+    Object.assign(searchBar.style, {
+        position: 'absolute',
+        bottom: '15px',
+        right: '250px',
+        width: '200px',
+        height: '40px',
+        padding: '0 10px',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        border: '1px solid #ccc',
+        borderRadius: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '5px',
+        zIndex: '10002',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+    });
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = _('searchPlaceholder') || 'Search...';
+    Object.assign(input.style, {
+        flex: '1',
+        border: 'none',
+        padding: '5px',
+        fontSize: '14px',
+        outline: 'none',
+        background: 'transparent',
+        width: '100%'
+    });
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    Object.assign(closeBtn.style, {
+        border: 'none',
+        background: 'transparent',
+        cursor: 'pointer',
+        fontSize: '16px',
+        padding: '0 5px',
+        color: '#666'
+    });
+
+    searchBar.appendChild(input);
+    searchBar.appendChild(closeBtn);
+    modalContentBox.appendChild(searchBar);
+
+    input.focus();
+
+    let highlights = [];
+    let currentIdx = -1;
+
+    const performSearch = () => {
+        const query = input.value.trim();
+        restoreContent(); // Винаги започваме от чисто съдържание
+        highlights = [];
+        currentIdx = -1;
+
+        if (query.length < 2) return;
+
+        const regex = new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi');
+
+        // Търсим само в текстовите елементи
+        const walker = document.createTreeWalker(modalBody, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+
+        nodes.forEach(node => {
+            const text = node.textContent;
+            if (regex.test(text)) {
+                const fragment = document.createDocumentFragment();
+                let lastIdx = 0;
+                text.replace(regex, (match, p1, offset) => {
+                    // Текст преди съвпадението
+                    fragment.appendChild(document.createTextNode(text.substring(lastIdx, offset)));
+                    // Самият маркер
+                    const mark = document.createElement('mark');
+                    mark.className = 'modal-search-highlight';
+                    mark.textContent = match;
+                    Object.assign(mark.style, {
+                        backgroundColor: 'yellow',
+                        color: 'black',
+                        padding: '0',
+                        borderRadius: '2px'
+                    });
+                    fragment.appendChild(mark);
+                    highlights.push(mark);
+                    lastIdx = offset + match.length;
+                });
+                fragment.appendChild(document.createTextNode(text.substring(lastIdx)));
+                node.parentNode.replaceChild(fragment, node);
+            }
+        });
+
+        if (highlights.length > 0) {
+            currentIdx = 0;
+            scrollToHighlight();
+        }
+    };
+
+    const scrollToHighlight = () => {
+        highlights.forEach((h, i) => h.style.backgroundColor = (i === currentIdx) ? 'orange' : 'yellow');
+        if (highlights[currentIdx]) {
+            highlights[currentIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    };
+
+    input.addEventListener('input', performSearch);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            if (highlights.length > 0) {
+                currentIdx = (currentIdx + 1) % highlights.length;
+                scrollToHighlight();
+            }
+        }
+        if (e.key === 'Escape') {
+            searchBar.remove();
+            restoreContent();
+        }
+    });
+
+    closeBtn.onclick = () => {
+        searchBar.remove();
+        restoreContent();
+    };
 }
 
 function showAllBoardsModal(onSelectCallback = null) {
@@ -7673,6 +7868,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
     const selectFolderBtn = document.getElementById('select-folder-btn');
     const folderNameDisplay = document.getElementById('local-sync-folder-name');
+    const clickToEditCheckbox = document.getElementById('click-to-edit-checkbox');
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
     if (!settingsModalBody.dataset.initialized) {
         // Hide Assistant Logic
@@ -7895,6 +8091,14 @@ async function createSettingsUI(boardsData, boardParseError) {
             // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
             renderUI({ boardParseError: false });
         });
+        // Click to edit
+        if (clickToEditCheckbox) {
+            clickToEditCheckbox.checked = localStorage.getItem('clickToEdit') !== 'false'; // Default to true
+            clickToEditCheckbox.addEventListener('change', () => {
+                localStorage.setItem('clickToEdit', clickToEditCheckbox.checked);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
         // Graphical background
         const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
         imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
@@ -8132,15 +8336,22 @@ async function createSettingsUI(boardsData, boardParseError) {
         // Задаваме първоначалното състояние на чекбокса от localStorage
         useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
         // Add event listeners
-        useIndexedDbCheckbox.addEventListener('change', (e) => {
+        useIndexedDbCheckbox.addEventListener('change', async (e) => {
             const isChecked = e.target.checked;
             localStorage.setItem('useIndexedDb', isChecked);
-            // --- НОВА ЛОГИКА: Ако се сложи отметка, симулираме клик на "Създай" ---
+            // --- КОРЕКЦИЯ: Само ако базата НЕ съществува, симулираме клик на "Създай" ---
             if (isChecked) {
-                document.getElementById('create-db-btn').click();
+                if (!dbExists) {
+                    document.getElementById('create-db-btn').click();
+                } else {
+                    updateGlobalStateFlags();
+                    updateModeButton();
+                    showToast(_('settingSaved'), 2000);
+                }
             } else {
-                showToast(_('settingSaved'), 2000);
+                updateGlobalStateFlags();
                 updateModeButton();
+                showToast(_('settingSaved'), 2000);
             }
         });
         // Accordion logic
@@ -8209,16 +8420,12 @@ async function createSettingsUI(boardsData, boardParseError) {
                     // Ако потребителят откаже презапис, проверяваме дали данните съвпадат
                     const memBoards = (typeof boardsData !== 'undefined') ? boardsData : [];
                     if (!areBoardsIdentical(memBoards, boardsInDb)) {
-                        // Несъответствие! Блокираме включването на БД.
-                        showToast(_('errorDbDataMismatch'), 10000);
-                        const cb = document.getElementById('use-indexeddb-checkbox');
-                        if (cb) {
-                            cb.checked = false;
-                            localStorage.setItem('useIndexedDb', 'false');
-                            updateGlobalStateFlags();
-                        }
+                        // Вече само предупреждаваме, без да блокираме
+                        console.warn("DB Identity Check: Some boards in DB not found in current memory. This might be normal during state transitions.");
+                        dbExists = true;
+                        updateGlobalStateFlags();
                         updateModeButton();
-                        return; // Спираме процеса тук
+                        return; // Спираме процеса тук, но не махаме отметката
                     }
                     // Ако са идентични, позволяваме включването без презапис
                     dbExists = true;
@@ -8235,6 +8442,14 @@ async function createSettingsUI(boardsData, boardParseError) {
                 if (success) {
                     showToast(_('dbCreated'), 10000);
                     dbExists = true;
+                    // --- КОРЕКЦИЯ: Автоматично включваме отметката при успешно създаване ---
+                    const cb = document.getElementById('use-indexeddb-checkbox');
+                    if (cb) {
+                        cb.checked = true;
+                        localStorage.setItem('useIndexedDb', 'true');
+                        updateGlobalStateFlags();
+                        updateModeButton();
+                    }
                 }
             }
         });
@@ -10225,6 +10440,54 @@ const stringifyFormatsArray = (arr) => {
     return arr.map(f => JSON.stringify(f)).join('|');
 };
 
+function scrollCaretIntoView(textarea) {
+    if (!textarea) return;
+    const text = textarea.value;
+    const pos = textarea.selectionStart;
+
+    // Създаваме временен "mirror" елемент, за да изчислим височината до курсора
+    const mirror = document.createElement('div');
+    const styles = getComputedStyle(textarea);
+
+    // Копираме всички критични стилове за оформлението
+    const stylesToCopy = [
+        'fontFamily', 'fontSize', 'fontWeight', 'lineHeight',
+        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'width', 'boxSizing', 'whiteSpace', 'wordWrap'
+    ];
+
+    stylesToCopy.forEach(prop => { mirror.style[prop] = styles[prop]; });
+    mirror.style.position = 'absolute';
+    mirror.style.visibility = 'hidden';
+    mirror.style.height = 'auto';
+    mirror.style.overflow = 'hidden';
+
+    // Вземаме текста до позицията на курсора
+    const textBeforeCaret = text.substring(0, pos);
+    mirror.textContent = textBeforeCaret;
+
+    // Добавяме маркер, който да ни даде координатите
+    const marker = document.createElement('span');
+    marker.textContent = '|'; // Виртуален курсор
+    mirror.appendChild(marker);
+
+    document.body.appendChild(mirror);
+
+    const caretY = marker.offsetTop;
+    const markerHeight = marker.offsetHeight;
+    const textareaHeight = textarea.clientHeight;
+    const currentScroll = textarea.scrollTop;
+
+    // Проверка дали курсорът е извън видимата област (отгоре или отдолу)
+    if (caretY < currentScroll) {
+        textarea.scrollTop = caretY - 20; // Скролираме нагоре с малък марж
+    } else if (caretY + markerHeight > currentScroll + textareaHeight) {
+        textarea.scrollTop = caretY + markerHeight - textareaHeight + 30; // Скролираме надолу
+    }
+
+    document.body.removeChild(mirror);
+}
+
 function enableNoteEditing(modalBodyElem, charIndex = -1) {
     if (!modalBodyElem) return;
 
@@ -10240,7 +10503,9 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     const isHiddenNote = noteObj && noteObj.pass === true;
 
-    // --- Pre-process content with Markdown symbols ---
+    let correctedTitleIndex = -1;
+    let correctedBodyIndex = -1;
+
     let titleText = "";
     let bodyText = currentModalContent || "";
     let currentBodyFormats = parseFormatsString(modalBodyElem.dataset.format);
@@ -10254,11 +10519,23 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             bodyText = bodyText.substring(pipeIdx + 1);
         }
 
-        const titleResult = preEdit(titleText, currentTitleFormats);
-        const bodyResult = preEdit(bodyText, currentBodyFormats);
+        let titleCharIdx = -1;
+        let bodyCharIdx = -1;
+        if (charIndex > -1) {
+            if (charIndex <= titleText.length) {
+                titleCharIdx = charIndex;
+            } else {
+                bodyCharIdx = charIndex - (titleText.length + 1);
+            }
+        }
+
+        const titleResult = preEdit(titleText, currentTitleFormats, titleCharIdx);
+        const bodyResult = preEdit(bodyText, currentBodyFormats, bodyCharIdx);
 
         titleText = titleResult.text;
         bodyText = bodyResult.text;
+        correctedTitleIndex = titleResult.correctedIndex;
+        correctedBodyIndex = bodyResult.correctedIndex;
 
         // Store BOTH masked links lists
         const allMasked = [...(titleResult.maskedLinks || []), ...(bodyResult.maskedLinks || [])];
@@ -10267,8 +10544,9 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         modalBodyElem.dataset.titleFormat = stringifyFormatsArray(titleResult.formats);
         modalBodyElem.dataset.format = stringifyFormatsArray(bodyResult.formats);
     } else {
-        const result = preEdit(bodyText, currentBodyFormats);
+        const result = preEdit(bodyText, currentBodyFormats, charIndex);
         bodyText = result.text;
+        correctedBodyIndex = result.correctedIndex;
         modalBodyElem.dataset.maskedLinks = JSON.stringify(result.maskedLinks || []);
         modalBodyElem.dataset.format = stringifyFormatsArray(result.formats);
     }
@@ -10369,15 +10647,10 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
 
     if (focusEl) {
         focusEl.focus();
-        if (charIndex > -1) {
-            // Attempt to place cursor at the clicked position.
-            // This is an approximation as the displayed text and editor text can differ.
-            if (titleTextarea && charIndex <= titleTextarea.value.length) {
-                titleTextarea.setSelectionRange(charIndex, charIndex);
-            } else if (bodyTextarea) {
-                const bodyIndex = titleTextarea ? charIndex - (titleTextarea.value.length + 1) : charIndex;
-                bodyTextarea.setSelectionRange(Math.max(0, bodyIndex), Math.max(0, bodyIndex));
-            }
+        if (correctedTitleIndex > -1 && titleTextarea) {
+            titleTextarea.setSelectionRange(correctedTitleIndex, correctedTitleIndex);
+        } else if (correctedBodyIndex > -1 && bodyTextarea) {
+            bodyTextarea.setSelectionRange(correctedBodyIndex, correctedBodyIndex);
         } else {
             // Fallback to placing caret at the end
             const target = titleTextarea || bodyTextarea;
@@ -10385,20 +10658,40 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
                 placeCaretAtEnd(target);
             }
         }
-
         // --- SCROLL TO CARET LOGIC ---
         setTimeout(() => {
             const textarea = document.activeElement;
             if (textarea && (textarea.id === 'note-edit-textarea' || textarea.id === 'note-edit-title-textarea')) {
-                const upEvent = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowUp', code: 'ArrowUp' });
-                const downEvent = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowDown', code: 'ArrowDown' });
-                textarea.dispatchEvent(upEvent);
-                // textarea.dispatchEvent(downEvent);
+                scrollCaretIntoView(textarea);
             }
-        }, 250); // Small delay to ensure rendering and focus are complete
+        }, 100); // 100ms обикновено е достатъчно след focus
     }
 
-    if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
+    // if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
+}
+
+function getPreciseCharIndex(container, range) {
+    let charCount = 0;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+        acceptNode: (node) => {
+            if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'BR') return NodeFilter.FILTER_SKIP;
+            return NodeFilter.FILTER_ACCEPT;
+        }
+    });
+
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (node === range.startContainer) {
+            charCount += range.startOffset;
+            break;
+        }
+        if (node.nodeType === Node.TEXT_NODE) {
+            charCount += node.textContent.length;
+        } else if (node.tagName === 'BR') {
+            charCount += 1; // Count <br> as \n
+        }
+    }
+    return charCount;
 }
 
 /**
@@ -11830,15 +12123,23 @@ function postEdit(text, formats, maskedLinks = []) {
 /**
  * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
  */
-function preEdit(text, formats) {
-    if (!text) return { text: "", formats: [] };
+function preEdit(text, formats, targetIndex = -1) {
+    if (!text) return { text: "", formats: [], correctedIndex: targetIndex };
 
     let currentText = text;
     let currentFormats = formats ? formats.map(f => ({ ...f })) : [];
+    let correctedIndex = targetIndex;
+    let maskedLinks = [];
+
+    const shiftIndex = (pos, diff) => {
+        if (targetIndex === -1) return;
+        if (pos <= correctedIndex) {
+            correctedIndex += diff;
+        }
+    };
 
     // --- 1. Link Masking (Extract URLs to placeholders) ---
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-    const maskedLinks = [];
     let match;
     while ((match = urlRegex.exec(currentText)) !== null) {
         const url = match[0];
@@ -11848,6 +12149,7 @@ function preEdit(text, formats) {
 
         currentText = currentText.substring(0, start) + placeholder + currentText.substring(start + url.length);
         const diff = placeholder.length - url.length;
+        shiftIndex(start, diff);
 
         // Shift format coordinates to match masked text
         currentFormats.forEach(f => {
@@ -11877,6 +12179,7 @@ function preEdit(text, formats) {
         hIns.sort((a, b) => b.pos - a.pos);
         hIns.forEach(ins => {
             currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
+            shiftIndex(ins.pos, ins.str.length);
             currentFormats.forEach(f => {
                 if (f.start >= ins.pos) f.start += ins.str.length;
                 if (f.end >= ins.pos) f.end += ins.str.length;
@@ -11893,6 +12196,7 @@ function preEdit(text, formats) {
             if (start === -1) break;
             currentText = currentText.substring(0, start) + rule.md + currentText.substring(start + rule.sym.length);
             const shiftLen = rule.md.length - rule.sym.length;
+            shiftIndex(start, shiftLen);
             currentFormats.forEach(f => {
                 if (f.start >= start) f.start += shiftLen;
                 if (f.end >= start) f.end += shiftLen;
@@ -11922,6 +12226,7 @@ function preEdit(text, formats) {
     insertions.sort((a, b) => b.pos - a.pos);
     insertions.forEach(ins => {
         currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
+        shiftIndex(ins.pos, ins.str.length);
         currentFormats.forEach(f => {
             if (f.start >= ins.pos) f.start += ins.str.length;
             if (f.end >= ins.pos) f.end += ins.str.length;
@@ -11931,6 +12236,5 @@ function preEdit(text, formats) {
     const headerScales = [0.7, 0.8, 0.9, 1.1, 1.2, 1.3];
     const remainingFormats = currentFormats.filter(f => !mdTypes.includes(f.type) && !(f.type === 6 && headerScales.includes(f.paramfloat)));
 
-    return { text: currentText, formats: remainingFormats, maskedLinks };
+    return { text: currentText, formats: remainingFormats, maskedLinks, correctedIndex };
 }
-

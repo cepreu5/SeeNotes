@@ -286,5 +286,7 @@ en: {
         errorParsingNote: "Error parsing note content",
         offlineModeMessage: "You are working in offline mode. Data loaded from local database.",
         loadingFromLocal: "Loading from local database...",
-        offlineStartButton: "Start Offline"
+        offlineStartButton: "Start Offline",
+        clickToEditLabel: "Click to edit",
+        searchInNoteTooltip: "Search in note"
     }

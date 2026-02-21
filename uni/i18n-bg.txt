@@ -288,5 +288,7 @@ bg: {
         errorParsingNote: "Грешка при анализ на бележката",
         offlineModeMessage: "Работите в офлайн режим. Данните са заредени от локалната база данни.",
         loadingFromLocal: "Зареждане от локалната база данни...",
-        offlineStartButton: "Старт офлайн"
+        offlineStartButton: "Старт офлайн",
+        clickToEditLabel: "Редактиране с клик",
+        searchInNoteTooltip: "Търсене в бележката"
     }
