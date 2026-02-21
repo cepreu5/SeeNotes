@@ -6058,6 +6058,28 @@ function showModal(options, noteElement = null) {
         }
     }
     modalBody.innerHTML = displayContent;
+
+    // Add click-to-edit functionality
+    modalBody.addEventListener('click', (e) => {
+        // Do not trigger if a link was clicked, or if already editing
+        if (e.target.closest('a') || modalBody.querySelector('textarea')) {
+            return;
+        }
+
+        // Calculate character index from click position
+        let charIndex = -1;
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const tempRange = document.createRange();
+            tempRange.selectNodeContents(modalBody);
+            tempRange.setEnd(range.startContainer, range.startOffset);
+            charIndex = tempRange.toString().length;
+        }
+
+        enableNoteEditing(modalBody, charIndex);
+    }, { capture: true }); // Use capture to handle event before other listeners if needed
+
     // Store metadata for editing and rendering identification
     modalBody.dataset.id = noteId || '';
     modalBody.dataset.gdid = noteGdid || '';
@@ -9988,7 +10010,7 @@ const stringifyFormatsArray = (arr) => {
     return arr.map(f => JSON.stringify(f)).join('|');
 };
 
-function enableNoteEditing(modalBodyElem) {
+function enableNoteEditing(modalBodyElem, charIndex = -1) {
     if (!modalBodyElem) return;
 
     // Show board name when editing starts
@@ -10127,6 +10149,31 @@ function enableNoteEditing(modalBodyElem) {
     }
 
     initNoteEditUI();
+
+    const titleTextarea = document.getElementById('note-edit-title-textarea');
+    const bodyTextarea = document.getElementById('note-edit-textarea');
+    const focusEl = titleTextarea || bodyTextarea;
+
+    if (focusEl) {
+        focusEl.focus();
+        if (charIndex > -1) {
+            // Attempt to place cursor at the clicked position.
+            // This is an approximation as the displayed text and editor text can differ.
+            if (titleTextarea && charIndex <= titleTextarea.value.length) {
+                titleTextarea.setSelectionRange(charIndex, charIndex);
+            } else if (bodyTextarea) {
+                const bodyIndex = titleTextarea ? charIndex - (titleTextarea.value.length + 1) : charIndex;
+                bodyTextarea.setSelectionRange(Math.max(0, bodyIndex), Math.max(0, bodyIndex));
+            }
+        } else {
+            // Fallback to placing caret at the end
+            const target = titleTextarea || bodyTextarea;
+            if (target) {
+                placeCaretAtEnd(target);
+            }
+        }
+    }
+
     if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
 }
 
