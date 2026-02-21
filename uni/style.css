@@ -802,11 +802,11 @@ code {
 }
 
 .modal-content-box {
-    padding-top: 50px;
-    padding-right: 10px;
-    padding-bottom: 10px;
-    padding-left: 10px;
-    padding-left: 10px;
+    padding-top: 55px;
+    /* Ensure space for header buttons */
+    padding-right: 15px;
+    padding-bottom: 0px;
+    padding-left: 15px;
     border-radius: 2px;
     /* По-остри ръбове за реалистичен вид */
     width: 95%;
@@ -888,6 +888,7 @@ code {
 
 #modal-body.no-bg-image {
     padding: 0 0;
+    /* Keeps vertical 0, but content-box handles side padding */
 }
 
 /* Custom scrollbar for modal content */
@@ -2817,16 +2818,21 @@ body.selection-locked .note.active-selection-note .note-content {
     color: #000;
 }
 
-/* Modal Note Footer */
+/* Modal Note Footer (inside toolbar) */
 .modal-note-footer {
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
-    margin-top: 10px;
-    padding-top: 5px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 4px;
+    /* Reduced gap */
     color: #555;
-    font-size: 0.9em;
+    font-size: 0.85em;
+    /* Slightly smaller font */
+    margin-right: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+    /* Limit width */
 }
 
 
@@ -2921,4 +2927,127 @@ body.selection-locked .note.active-selection-note .note-content {
     bottom: -8px !important;
     left: -15px !important;
     right: auto !important;
+}
+
+/* --- RESPONSIVE MODAL TOOLBARS --- */
+.modal-header-toolbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10001;
+    pointer-events: none;
+    padding: 10px 15px;
+    background-color: transparent;
+    min-height: 40px;
+}
+
+.modal-header-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    pointer-events: auto;
+    flex-wrap: wrap;
+    /* Allow wrapping in header */
+    justify-content: flex-end;
+}
+
+.modal-footer-toolbar {
+    position: relative;
+    /* Change from absolute to relative to stay in flow with body results */
+    margin-top: auto;
+    padding: 5px 10px 10px 0px;
+    /* Reduced top padding to make footer smaller */
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+    pointer-events: auto;
+    z-index: 10001;
+    flex-wrap: wrap;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    /* Slight separation */
+}
+
+/* Base styles for individual toolbar components to ensure consistency */
+.modal-header-buttons button,
+.modal-nav-btn,
+.modal-header-btn {
+    position: static !important;
+    /* Override absolute positioning */
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    background-color: transparent;
+    /* Return to transparent */
+    border: 1px solid #aaa;
+    flex-shrink: 0;
+    color: inherit;
+}
+
+.modal-footer-btn {
+    width: 40px;
+    height: 40px;
+    background-color: darkorange;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    cursor: pointer;
+    border: 1px solid #ccc;
+    flex-shrink: 0;
+}
+
+.modal-footer-toolbar .modal-search-bar {
+    position: static !important;
+    width: 100%;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 0px;
+    height: 32px;
+    box-shadow: none;
+    margin-bottom: 0px;
+}
+
+/* Adjustments for #modal-board-name when in toolbar */
+.modal-header-toolbar #modal-board-name {
+    position: static !important;
+    max-width: 60%;
+    pointer-events: auto;
+    font-size: 1.1em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Media query for very small screens */
+@media (max-width: 400px) {
+    .modal-header-buttons {
+        gap: 4px;
+    }
+
+    .modal-footer-toolbar {
+        gap: 5px;
+    }
+
+    .modal-footer-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    .modal-footer-toolbar .modal-search-bar {
+        width: 100%;
+    }
 }
