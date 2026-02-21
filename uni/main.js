@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.58'; // App version
+const version = 'Beta 1.61'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
