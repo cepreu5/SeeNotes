@@ -446,6 +446,39 @@
                 }
             }
         },
+        "temp-note-calc": {
+            "keywords": [
+                "calculator",
+                "calculation",
+                "calc",
+                "sum"
+            ],
+            "question": "How to calculate a sum in the note?",
+            "answer": "You can perform various calculations in the note. Let's look at a few typical cases:",
+            "guide": {
+                "1": {
+                    "text": "The calculator is used for quick calculations, depending on what’s inside the note. We’ll go through a few typical examples of how it works."
+                },
+                "2": {
+                    "text": "Press the <b>Copy</b> button ..."
+                },
+                "3": {
+                    "text": "... and then <b>Calculator</b> button"
+                },
+                "4": {
+                    "text": "Below the text, you’ll see the result of the calculated total of the prices in the list."
+                },
+                "5": {
+                    "text": "But if you press and hold <b>Ctrl</b> and then press <b>Calculator</b>, the calculation will include only the checked items."
+                },
+                "6": {
+                    "text": "The calculator can also evaluate math expressions like this one. Select it and press <b>Calculator</b> to see the result."
+                },
+                "7": {
+                    "text": "Keep in mind that the calculation results are informational only and aren’t added to the note — they disappear when you close it."
+                }
+            }
+        },
         "note": {
             "keywords": [
                 "note",

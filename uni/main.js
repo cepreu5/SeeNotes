@@ -5080,12 +5080,18 @@ function showModal(options, noteElement = null) {
             modalContentBox.style.maxWidth = 'none';
             modalContentBox.style.maxHeight = 'none';
         } else {
-            // Задаваме размер по подразбиране 250x150px, ако няма запазен размер
+            // Задаваме размер по подразбиране 400x300px, ако няма запазен размер
             modalContentBox.style.width = '400px';
             modalContentBox.style.height = '300px';
             modalContentBox.style.maxWidth = 'none';
             modalContentBox.style.maxHeight = 'none';
         }
+    }
+    // Размер на шрифта: от options (демо бележка) или от потребителските настройки
+    if (options && options.fontSize) {
+        modalBody.style.fontSize = (typeof options.fontSize === 'number' ? options.fontSize + 'px' : options.fontSize);
+    } else {
+        modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
     }
     const modalBoardNameEl = document.getElementById('modal-board-name');
     const isPromo = options.id === 'promo';

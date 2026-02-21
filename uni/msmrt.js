@@ -105,7 +105,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
                 id: 'guide-temp-note',
                 color: step.noteColor,
                 width: step.noteWidth,
-                height: step.noteHeight
+                height: step.noteHeight,
+                fontSize: step.noteFontSize
             });
             isTempNoteOpen = true;
         }
