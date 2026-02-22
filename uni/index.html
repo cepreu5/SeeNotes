@@ -306,7 +306,7 @@
                     <span data-key="feedbackButtonTooltip">Обратна връзка</span>
                 </a>
             </div>
-            <button class="modal-close modal-header-btn">&times;</button>
+            <!-- button class="modal-close modal-header-btn">&times;</button -->
             <div class="corner-dot top-left"></div>
             <div class="corner-dot top-right"></div>
             <div class="corner-dot bottom-left"></div>
@@ -883,7 +883,7 @@
             isUIReadyForInstall = true;
             if (deferredPrompt && installBtn && reloadBtn) {
                 // Проверка за лимит на показванията
-                let installPromptCount = localStorage.getItem('installPromptCount');
+                /*let installPromptCount = localStorage.getItem('installPromptCount');
                 if (installPromptCount === null) {
                     installPromptCount = 5;
                 } else {
@@ -893,7 +893,7 @@
                 if (installPromptCount <= 0 && !(typeof debug !== 'undefined' && debug)) {
                     console.log("PWA install prompt limit reached.");
                     return;
-                }
+                }*/
 
                 const rect = reloadBtn.getBoundingClientRect();
                 installBtn.style.position = 'fixed';
@@ -910,8 +910,8 @@
                 reloadBtn.placeholder = (typeof _ === 'function' ? _('installPromptPlaceholder') : 'Инсталация на приложението');
 
                 // Намаляваме брояча при успешно показване
-                localStorage.setItem('installPromptCount', installPromptCount - 1);
-                console.log(`PWA install button shown. Remaining displays: ${installPromptCount - 1}`);
+                /*localStorage.setItem('installPromptCount', installPromptCount - 1);
+                console.log(`PWA install button shown. Remaining displays: ${installPromptCount - 1}`);*/
 
                 // Auto-hide after 15 seconds
                 setTimeout(hideInstallBtn, 15000);

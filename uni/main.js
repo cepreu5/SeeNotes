@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.62'; // App version
+const version = 'Beta 1.63'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -3640,10 +3640,6 @@ function initApp() {
     // --- Mode Button Logic ---
     const modeButton = document.getElementById('mode_button');
     const calendarButton = document.getElementById('calendar_button');
-    // Ако потребителят е запазил 'calendar' като стартов борд, го променяме на 'all'
-    if (localStorage.getItem('startBoard') === 'calendar') {
-        localStorage.setItem('startBoard', 'all');
-    }
     if (calendarButton) {
         calendarButton.addEventListener('click', () => {
             filterNotesByBoard('calendar');
@@ -6621,7 +6617,8 @@ function showModal(options, noteElement = null) {
             if (isAssigned) {
                 const originalHtml = calendarBtn.innerHTML;
                 calendarBtn.style.pointerEvents = 'none';
-                calendarBtn.innerHTML = `<img src="Refresh.png" class="button-loading" style="width:24px; height:24px; position:absolute; top:50%; left:50%;">`;
+                calendarBtn.style.position = 'relative';
+                calendarBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
                 await updateNoteCalendarDate({ id: noteId, gdid: noteGdid }, { getTime: () => 0 });
                 calendarBtn.style.pointerEvents = 'auto';
                 calendarBtn.innerHTML = calendarIconSvg;
@@ -9882,6 +9879,11 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             startBoardBtn.classList.add('active-board');
             startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
         }
+    } else if (isInitialLoad && (currentBoardFilter === 'calendar' || currentBoardFilter === 'calendar_monthly' || currentBoardFilter === 'calendar_weekly')) {
+        // Fallback for cases where the button might be missing from the menu
+        setTimeout(() => {
+            filterNotesByBoard(currentBoardFilter);
+        }, 50);
     }
     // Start Assistant Guide if needed
     if (guide) {
@@ -10800,11 +10802,26 @@ function initNoteEditUI() {
         });
 
         if (footerToolbar) {
-            footerToolbar.appendChild(saveBtn);
+            // We append them in order: Preview, Search (already exists, will move), Save
+            const existingSearchBtn = document.getElementById('note-search-btn');
             footerToolbar.appendChild(previewBtn);
+            if (existingSearchBtn) footerToolbar.appendChild(existingSearchBtn);
+            footerToolbar.appendChild(saveBtn);
         } else if (modalContentBox) {
-            modalContentBox.appendChild(saveBtn);
+            const existingSearchBtn = document.getElementById('note-search-btn');
             modalContentBox.appendChild(previewBtn);
+            if (existingSearchBtn) modalContentBox.appendChild(existingSearchBtn);
+            modalContentBox.appendChild(saveBtn);
+        }
+    } else {
+        // If buttons already exist, re-append them to ensure order: Preview, Search, Save
+        const sBtn = document.getElementById('note-save-btn');
+        const pBtn = document.getElementById('note-preview-btn');
+        const searchBtn = document.getElementById('note-search-btn');
+        if (footerToolbar) {
+            if (pBtn) footerToolbar.appendChild(pBtn);
+            if (searchBtn) footerToolbar.appendChild(searchBtn);
+            if (sBtn) footerToolbar.appendChild(sBtn);
         }
     }
 
@@ -11419,12 +11436,13 @@ async function saveEditedNote() {
     const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
     if (saveBtnElem) {
         saveBtnElem.style.pointerEvents = 'none';
-        saveBtnElem.innerHTML = `<img src="Refresh.png" class="button-loading" style="width:24px; height:24px; position:absolute; top:50%; left:50%;">`;
+        saveBtnElem.style.position = 'relative';
+        saveBtnElem.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
         // Add indicator icons in the modal
         const indicators = document.createElement('div');
         indicators.id = 'save-indicators';
         Object.assign(indicators.style, {
-            position: 'absolute', bottom: '30px', left: '20px', display: 'flex', gap: '8px', zIndex: '10001',
+            position: 'absolute', bottom: '60px', right: '20px', display: 'flex', gap: '8px', zIndex: '10001',
             pointerEvents: 'none', background: 'transparent', padding: '4px', borderRadius: '8px'
         });
         if (useIndexedDb) indicators.innerHTML += `<img src="Database.png" style="width:28px; height:28px;">`;
