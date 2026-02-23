@@ -192,6 +192,7 @@ bg: {
         otherBoardTitle: 'Други приложения',
         oneTapLinkLabel: 'Линкове с един клик:',
         hideAssistantLabel: 'Скриване на асистента:',
+        hideToastLabel: 'Скриване на инфо съобщения:',
         notesBgrdLabel: 'Графичен фон (бележки в борда):',
         imgBgrdLabel: 'Графичен фон (бележка):',
         feedbackButtonTooltip: 'Обратна връзка: multinotes.web@gmail.com',

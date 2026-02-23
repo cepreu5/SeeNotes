@@ -64,6 +64,7 @@ let isDbOwner = true; // Флаг, който показва дали потре
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 let tokenClient = null; // Client for silent auth refresh
 let notesBgrdChanged = false; // Flag to track if notes background setting changed
+let isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
 
 // --- Състояние на търсенето ---
 let searchMode = 'content'; // Default to content search (includes title)
@@ -2705,6 +2706,7 @@ function hideToast() {
 }
 
 function showToast(message, duration = 10000) {
+    if (isToastHidden) return;
     if (isShowingToast) {
         hideToast();
         // Short delay to allow the hide animation to finish before showing the new one
@@ -7794,6 +7796,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const folderNameDisplay = document.getElementById('local-sync-folder-name');
     const clickToEditCheckbox = document.getElementById('click-to-edit-checkbox');
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
+    const hideToastCheckbox = document.getElementById('hide-toast-checkbox');
     if (!settingsModalBody.dataset.initialized) {
         // Hide Assistant Logic
         if (hideAssistantCheckbox) {
@@ -7837,7 +7840,6 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
         let opacityTimeout;
         const applyBtn = document.getElementById('applyZoomBtn');
-
         // Listeners for migrated settings
         const closeAfterSaveCheckbox = document.getElementById('close-after-save-checkbox');
         if (closeAfterSaveCheckbox) {
@@ -7889,7 +7891,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         }
-
         // --- Markdown Symbols Settings ---
         const mdBoldInput = document.getElementById('md-bold-input');
         const mdItalicInput = document.getElementById('md-italic-input');
@@ -8021,6 +8022,18 @@ async function createSettingsUI(boardsData, boardParseError) {
             clickToEditCheckbox.addEventListener('change', () => {
                 localStorage.setItem('clickToEdit', clickToEditCheckbox.checked);
                 showToast(_('settingSaved'), 2000);
+            });
+        }
+        // Hide Toast info messages
+        isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
+        if (hideToastCheckbox) {
+            hideToastCheckbox.checked = isToastHidden;
+            hideToastCheckbox.addEventListener('change', () => {
+                isToastHidden = hideToastCheckbox.checked;
+                localStorage.setItem('hideToast', isToastHidden.toString());
+                if (!isToastHidden) {
+                    showToast(_('settingSaved'), 2000);
+                }
             });
         }
         // Graphical background
@@ -10899,13 +10912,13 @@ document.addEventListener('touchstart', (e) => {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
     if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
-
+ 
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
     const noteGdid = modalBodyElem.dataset.gdid;
-
+ 
     // If not editable, just return, don't start timer
     if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) return;
-
+ 
     editLongPressTriggered = false;
     editLongPressTimer = setTimeout(() => {
         editLongPressTriggered = true;
@@ -10914,14 +10927,14 @@ document.addEventListener('touchstart', (e) => {
         editLongPressTimer = null;
     }, 800);
 }, { passive: true });
-
+ 
 document.addEventListener('touchend', () => {
     if (editLongPressTimer) {
         clearTimeout(editLongPressTimer);
         editLongPressTimer = null;
     }
 });
-
+ 
 document.addEventListener('touchmove', () => {
     if (editLongPressTimer) {
         clearTimeout(editLongPressTimer);
@@ -11259,10 +11272,10 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
             .result-field:focus { border-color: darkorange; outline: none; }
         `;
         document.head.appendChild(style);
-
+ 
         const box = document.createElement('div');
         box.id = 'conflict-resolution-box';
-
+ 
         const title = document.createElement('h2');
         title.textContent = _('conflictDetected') || "Note Conflict Detected";
         title.style.margin = '0 0 20px 0';
@@ -11270,10 +11283,10 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
         title.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
         title.style.color = 'black';
         box.appendChild(title);
-
+ 
         const noteColors = (typeof noteColorMap !== 'undefined') ? noteColorMap : ['#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF', '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'];
         const noteBgColor = noteColors[localNote.color || 0];
-
+ 
         const resT = document.createElement('input');
         resT.className = 'result-field';
         resT.style.backgroundColor = noteBgColor;
@@ -11281,19 +11294,19 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
         resB.className = 'result-field';
         resB.style.backgroundColor = noteBgColor;
         resB.style.height = '150px'; resB.style.resize = 'vertical';
-
+ 
         const grid = document.createElement('div');
         grid.className = 'conflict-grid';
-
+ 
         const createHeader = (label) => {
             const div = document.createElement('div'); div.textContent = label;
             div.style.fontWeight = 'bold'; div.style.textAlign = 'center'; div.style.paddingBottom = '10px';
             div.style.color = '#fff'; div.style.fontSize = '1.1em';
             return div;
         };
-
+ 
         const decisions = {};
-
+ 
         const addConflictRow = (key, localVal, serverVal, label) => {
             if (label !== (_('content') || 'Content')) {
                 const rowLabel = document.createElement('div');
@@ -11302,27 +11315,27 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
                 rowLabel.textContent = (label || key).toUpperCase();
                 grid.appendChild(rowLabel);
             }
-
+ 
             const createCell = (val, side) => {
                 const cell = document.createElement('div');
                 cell.className = 'conflict-cell';
                 const colorIdx = (side === 'local' ? localNote.color : serverNote.color) || 0;
                 cell.style.backgroundColor = noteColors[colorIdx];
-
+ 
                 const btn = document.createElement('button');
                 btn.className = 'conflict-btn-use';
                 btn.textContent = _('useThis') || 'Use This';
-
+ 
                 const txt = document.createElement('div');
                 txt.className = 'conflict-txt-preview';
                 txt.textContent = val;
-
+ 
                 cell.appendChild(btn); cell.appendChild(txt);
                 return { cell, btn };
             };
             const l = createCell(localVal, 'local');
             const s = createCell(serverVal, 'server');
-
+ 
             const select = (side) => {
                 l.cell.style.boxShadow = side === 'local' ? '0 0 0 4px #4a90e2' : '3px 5px 15px rgba(0,0,0,0.3)';
                 s.cell.style.boxShadow = side === 'server' ? '0 0 0 4px #4a90e2' : '3px 5px 15px rgba(0,0,0,0.3)';
@@ -11330,7 +11343,7 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
                 decisions[key] = v;
                 if (key === 'title') resT.value = v;
                 if (key === 'body' || key === 'notetxt') resB.value = v;
-
+ 
                 // Update result background color based on selected version's color
                 const colorIdx = (side === 'local' ? localNote.color : serverNote.color) || 0;
                 if (resT) resT.style.backgroundColor = noteColors[colorIdx];
@@ -11340,7 +11353,7 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
             s.btn.onclick = () => select('server');
             grid.appendChild(l.cell); grid.appendChild(s.cell); select('local');
         };
-
+ 
         Object.keys(conflicts).forEach(key => {
             if (key === 'color') return; // Skip color field comparison
             const conflict = conflicts[key];
@@ -11350,20 +11363,20 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
             addConflictRow(key, conflict.local, conflict.server, label);
         });
         box.appendChild(grid);
-
+ 
         const resLabel = document.createElement('h4'); resLabel.textContent = _('finalResult') || "Final Result (editable):";
         resLabel.style.margin = '20px 0 10px 0';
         resLabel.style.color = 'black';
         box.appendChild(resLabel);
-
+ 
         const splitNote = (txt) => { const parts = (txt || "").split('|'); return { title: parts[0] || "", body: parts[1] || "", hasSplit: parts.length > 1 }; };
         const lParts = splitNote(localNote.notetxt);
         const sParts = splitNote(serverNote.notetxt);
         const bParts = splitNote(baseNote.notetxt);
-
+ 
         // Helper to determine if we should treat this as a split note
         const hasSplit = lParts.hasSplit || sParts.hasSplit || bParts.hasSplit;
-
+ 
         if (!decisions.title) {
             // Use merged title if no conflict
             resT.value = mergeField(bParts.title, lParts.title, sParts.title);
@@ -11381,15 +11394,15 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
         }
         if (!conflicts.title && !lParts.hasSplit && !sParts.hasSplit) resT.style.display = 'none';
         box.appendChild(resT); box.appendChild(resB);
-
+ 
         const footer = document.createElement('div');
         footer.style.display = 'flex'; footer.style.justifyContent = 'flex-end'; footer.style.gap = '15px'; footer.style.marginTop = '25px';
-
+ 
         const cancelBtn = document.createElement('button');
         cancelBtn.textContent = _('cancel') || "Cancel";
         Object.assign(cancelBtn.style, { padding: '12px 25px', borderRadius: '8px', border: 'none', backgroundColor: 'red', color: '#fff', cursor: 'pointer', fontWeight: 'bold' });
         cancelBtn.onclick = () => { overlay.remove(); style.remove(); resolve(null); };
-
+ 
         const saveBtn = document.createElement('button');
         saveBtn.textContent = _('saveResolved') || "Save Resolved Note";
         Object.assign(saveBtn.style, { padding: '12px 25px', backgroundColor: 'darkorange', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' });

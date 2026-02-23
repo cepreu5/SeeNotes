@@ -190,6 +190,7 @@ en: {
         otherBoardTitle: 'Other Attachments',
         oneTapLinkLabel: 'One-click links:',
         hideAssistantLabel: 'Hide Assistant:',
+        hideToastLabel: 'Hide info messages:',
         notesBgrdLabel: 'Graphical background (board notes):',
         imgBgrdLabel: 'Graphical background (note):',
         feedbackButtonTooltip: 'Feedback: multinotes.web@gmail.com',
