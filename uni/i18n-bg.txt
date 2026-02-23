@@ -291,5 +291,14 @@ bg: {
         loadingFromLocal: "Зареждане от локалната база данни...",
         offlineStartButton: "Старт офлайн",
         clickToEditLabel: "Редактиране с клик",
-        searchInNoteTooltip: "Търсене в бележката"
+        searchInNoteTooltip: "Търсене в бележката",
+        addBoardTitle: "Нов борд",
+        boardTitleLabel: "Заглавие:",
+        boardColorLabel: "Цвят:",
+        boardBackgroundLabel: "Фон:",
+        boardFontColorLabel: "Шрифт:",
+        errorEmptyTitle: "Моля, въведете заглавие",
+        savingBoard: "Записване на борд...",
+        boardSaved: "Бордът е записан успешно",
+        errorSaveBoard: "Грешка при запис на борд"
     }

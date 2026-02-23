@@ -287,6 +287,52 @@
         </div>
     </div>
 
+    <!-- Модал за добавяне на нов борд -->
+    <div id="new-board-modal" class="modal-overlay">
+        <div class="modal-content-box"
+            style="width: 320px; padding: 20px; border-radius: 15px; background: url('Frame.jpg') center/cover no-repeat; box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 data-key="addBoardTitle"
+                    style="margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
+                    Нов борд</h2>
+                <button class="modal-close"
+                    style="position: static; font-size: 28px; background: none; border: none; cursor: pointer; color: white;">&times;</button>
+            </div>
+            <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                <label data-key="boardTitleLabel"
+                    style="flex: 0 0 80px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Заглавие:</label>
+                <input type="text" id="new-board-title"
+                    style="flex: 1; height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 10px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
+            </div>
+            <div style="margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px;">
+                <label data-key="boardColorLabel"
+                    style="flex: 0 0 80px; font-weight: 600; color: white; margin-top: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Цвят:</label>
+                <div id="new-board-colors"
+                    style="flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px;">
+                    <!-- Цветове ще бъдат добавени динамично -->
+                </div>
+            </div>
+            <div style="margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px;">
+                <label data-key="boardFontColorLabel"
+                    style="flex: 0 0 80px; font-weight: 600; color: white; margin-top: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Шрифт:</label>
+                <div id="new-board-font-colors"
+                    style="flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px;">
+                    <!-- Цветове на шрифта ще бъдат добавени динамично -->
+                </div>
+            </div>
+            <div style="margin-bottom: 20px; display: flex; align-items: flex-start; gap: 10px;">
+                <label data-key="boardBackgroundLabel"
+                    style="flex: 0 0 80px; font-weight: 600; color: white; margin-top: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Фон:</label>
+                <div id="new-board-backgrounds"
+                    style="flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px;">
+                    <!-- Фонове ще бъдат добавени динамично -->
+                </div>
+            </div>
+            <button id="save-new-board-btn" data-key="submitButton"
+                style="width: 100%; height: 45px; background: darkorange; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s, box-shadow 0.1s;">Потвърди</button>
+        </div>
+    </div>
+
     <button id="scrollTopBtn" data-key-title="topTooltip" title="Към началото"></button>
 
     <div id="toastNotification" class="toast-notification"></div>
@@ -801,6 +847,8 @@
             let isDragging = false;
             let startX, startY, initialLeft, initialTop;
             const dragThreshold = 5;
+            let longPressTimer;
+            let isLongPress = false;
 
             function onDown(e) {
                 isDragging = false;
@@ -808,6 +856,15 @@
                 const clientY = e.clientY || e.touches[0].clientY;
                 startX = clientX;
                 startY = clientY;
+                isLongPress = false;
+
+                longPressTimer = setTimeout(() => {
+                    if (!isDragging) {
+                        isLongPress = true;
+                        if (typeof showNewBoardModal === 'function') showNewBoardModal();
+                        if (navigator.vibrate) navigator.vibrate(50);
+                    }
+                }, 600);
 
                 const rect = fab.getBoundingClientRect();
                 // We use right/bottom in CSS, but for dragging we'll switch to fixed left/top
@@ -838,6 +895,7 @@
                 }
 
                 if (isDragging) {
+                    clearTimeout(longPressTimer);
                     e.preventDefault(); // Prevent scrolling on mobile
                     fab.style.transform = 'none'; // Disable hover scale while dragging
                     fab.style.left = (initialLeft + dx) + 'px';
@@ -850,15 +908,11 @@
                 document.removeEventListener('touchmove', onMove);
                 document.removeEventListener('mouseup', onUp);
                 document.removeEventListener('touchend', onUp);
+                clearTimeout(longPressTimer);
 
-                // If it was just a click (not a drag), trigger the click action manually
-                // because we might have interfered with standard click processing
+                // Always reset transform
+                fab.style.transform = '';
                 if (!isDragging) {
-                    // Reset transform
-                    fab.style.transform = '';
-                    fab.click();
-                } else {
-                    // Snap to edges? Or leave floating? Leaving floating for now.
                     // Reset transition
                     fab.style.transition = 'transform 0.2s, box-shadow 0.2s, opacity 0.3s';
                 }
@@ -869,11 +923,16 @@
 
             // Prevent default click if we dragged
             fab.addEventListener('click', (e) => {
-                if (isDragging) {
+                if (isDragging || isLongPress) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
+                    isLongPress = false;
                 } else {
-                    createNewNote();
+                    if (e.ctrlKey) {
+                        if (typeof showNewBoardModal === 'function') showNewBoardModal();
+                    } else {
+                        createNewNote();
+                    }
                 }
             });
         })();

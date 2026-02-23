@@ -289,5 +289,14 @@ en: {
         loadingFromLocal: "Loading from local database...",
         offlineStartButton: "Start Offline",
         clickToEditLabel: "Click to edit",
-        searchInNoteTooltip: "Search in note"
+        searchInNoteTooltip: "Search in note",
+        addBoardTitle: "New Board",
+        boardTitleLabel: "Title:",
+        boardColorLabel: "Color:",
+        boardBackgroundLabel: "Background:",
+        boardFontColorLabel: "Font:",
+        errorEmptyTitle: "Please enter a title",
+        savingBoard: "Saving board...",
+        boardSaved: "Board saved successfully",
+        errorSaveBoard: "Error saving board"
     }

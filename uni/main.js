@@ -317,6 +317,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     mediaData = mediaRes.data;
     allNotesData = noteRes.data;
     trackMaxIds(allNotesData);
+    trackMaxBoardIds(boardsData);
     // Integrity checks for initial Google Drive load
     const gdidMap = new Map();
     const checkIntegrity = (data, filename) => {
@@ -3041,10 +3042,6 @@ function initApp() {
         signoutButton.addEventListener('click', handleSignoutClick);
     }
     reloadButton = document.getElementById('reload_button');
-    const addNoteFab = document.getElementById('add-note-fab');
-    if (addNoteFab) {
-        addNoteFab.addEventListener('click', createNewNote);
-    }
     settingsButton = document.getElementById('settings_button');
     notesContainer = document.getElementById('notes-container');
     // --- Global Event Delegation for Note Tooltips ---
@@ -5382,6 +5379,7 @@ async function fetchAllDataFromLocalFolder() {
     mediaData = localMedia.flat();
     allNotesData = localNotes;
     trackMaxIds(allNotesData);
+    trackMaxBoardIds(boardsData);
     const endTime = performance.now();
     console.log(`--- Local Folder fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
     console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
@@ -5397,6 +5395,7 @@ async function fetchAllDataFromLocalFolder() {
 async function fetchAllDataLocal() {
     console.log("Fetching all data from local IndexedDB...");
     boardsData = await getAllFromDB(BOARD_STORE_NAME);
+    trackMaxBoardIds(boardsData);
     mediaData = await getAllFromDB(MEDIA_STORE_NAME);
     const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
     allNotesData = notesFromDB;
@@ -9998,6 +9997,7 @@ async function readArh(dirHandle) {
         const boardsFile = await boardsFileHandle.getFile();
         const boardsContent = await boardsFile.text();
         boardsData = JSON.parse(boardsContent);
+        trackMaxBoardIds(boardsData);
         validateFileData(boardsData, 'boards.bcp');
         console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
         // 2. Четене на notes.bcp
@@ -12237,4 +12237,211 @@ function preEdit(text, formats, targetIndex = -1) {
     const remainingFormats = currentFormats.filter(f => !mdTypes.includes(f.type) && !(f.type === 6 && headerScales.includes(f.paramfloat)));
 
     return { text: currentText, formats: remainingFormats, maskedLinks, correctedIndex };
+}
+
+// =================================================================================
+// BOARD CREATION MODAL LOGIC
+// =================================================================================
+
+let boardIdCounter = parseInt(localStorage.getItem('boardIdCounter')) || 1000000;
+
+/**
+ * Търси максималните стойности на id сред бордовете и обновява брояча.
+ */
+function trackMaxBoardIds(boards) {
+    if (!Array.isArray(boards)) return;
+    let currentMax = boardIdCounter;
+    boards.forEach(board => {
+        const id = parseInt(board.id, 10);
+        if (!isNaN(id) && id > currentMax) currentMax = id;
+    });
+    if (currentMax > boardIdCounter) {
+        boardIdCounter = currentMax;
+        localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+    }
+}
+
+/**
+ * Показва модал за създаване на нов борд.
+ */
+async function showNewBoardModal() {
+    const modal = document.getElementById('new-board-modal');
+    if (!modal) return;
+
+    const titleInput = document.getElementById('new-board-title');
+    const colorsContainer = document.getElementById('new-board-colors');
+    const fontColorsContainer = document.getElementById('new-board-font-colors');
+    const backgroundsContainer = document.getElementById('new-board-backgrounds');
+    const saveBtn = document.getElementById('save-new-board-btn');
+
+    titleInput.value = '';
+    colorsContainer.innerHTML = '';
+    fontColorsContainer.innerHTML = '';
+    backgroundsContainer.innerHTML = '';
+
+    let selectedColor = 0;
+    let selectedFontColor = 0; // 0 = Black, 1 = White
+    let selectedBackground = 0;
+
+    // Standard colors 0-6
+    for (let i = 0; i <= 6; i++) {
+        const colorDiv = document.createElement('div');
+        Object.assign(colorDiv.style, {
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            backgroundColor: `var(--board-bg-${i})`,
+            cursor: 'pointer',
+            border: (i === selectedColor) ? '2px solid #555' : '1px solid #ccc',
+            boxShadow: (i === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
+            transition: 'transform 0.1s',
+            margin: 'auto'
+        });
+
+        colorDiv.onclick = () => {
+            selectedColor = i;
+            Array.from(colorsContainer.children).forEach((child, idx) => {
+                child.style.border = (idx === selectedColor) ? '2px solid #555' : '1px solid #ccc';
+                child.style.boxShadow = (idx === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
+                child.style.transform = (idx === selectedColor) ? 'scale(1.1)' : 'scale(1)';
+            });
+        };
+        if (i === selectedColor) colorDiv.style.transform = 'scale(1.1)';
+        colorsContainer.appendChild(colorDiv);
+    }
+
+    // Font colors: Black, White, Red, Blue
+    const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
+    fontColors.forEach((color, i) => {
+        const fcDiv = document.createElement('div');
+        Object.assign(fcDiv.style, {
+            width: '100%',
+            maxWidth: '24px',
+            aspectRatio: '1/1',
+            borderRadius: '4px',
+            backgroundColor: color,
+            cursor: 'pointer',
+            border: (i === selectedFontColor) ? '2px solid #555' : '1px solid #ccc',
+            boxShadow: (i === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
+            transition: 'transform 0.1s',
+            margin: 'auto'
+        });
+
+        fcDiv.onclick = () => {
+            selectedFontColor = i;
+            Array.from(fontColorsContainer.children).forEach((child, idx) => {
+                child.style.border = (idx === selectedFontColor) ? '2px solid #555' : '1px solid #ccc';
+                child.style.boxShadow = (idx === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
+                child.style.transform = (idx === selectedFontColor) ? 'scale(1.1)' : 'scale(1)';
+            });
+        };
+        if (i === selectedFontColor) fcDiv.style.transform = 'scale(1.1)';
+        fontColorsContainer.appendChild(fcDiv);
+    });
+
+    // Standard backgrounds 0-3
+    const bgNames = ['Board.png', 'Board1.png', 'Board2.png', 'Board3.png'];
+    for (let i = 0; i <= 3; i++) {
+        const bgDiv = document.createElement('div');
+        Object.assign(bgDiv.style, {
+            width: '100%',
+            aspectRatio: '16/10',
+            backgroundImage: `url('${bgNames[i]}')`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            cursor: 'pointer',
+            borderRadius: '4px',
+            border: (i === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc',
+            boxShadow: (i === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none',
+            transition: 'transform 0.1s'
+        });
+
+        bgDiv.onclick = () => {
+            selectedBackground = i;
+            Array.from(backgroundsContainer.children).forEach((child, idx) => {
+                child.style.border = (idx === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc';
+                child.style.boxShadow = (idx === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none';
+                child.style.transform = (idx === selectedBackground) ? 'scale(1.05)' : 'scale(1)';
+            });
+        };
+        if (i === selectedBackground) bgDiv.style.transform = 'scale(1.05)';
+        backgroundsContainer.appendChild(bgDiv);
+    }
+
+    saveBtn.onclick = async () => {
+        const title = titleInput.value.trim();
+        if (!title) {
+            showToast(_('errorEmptyTitle') || "Моля, въведете заглавие", 3000);
+            return;
+        }
+
+        trackMaxBoardIds(boardsData); // Ensure we have the latest max
+        boardIdCounter++;
+        localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+
+        const now = Date.now();
+        const newBoard = {
+            "backcolor": 0,
+            "backnum": selectedBackground,
+            "backpath": "",
+            "color": selectedColor,
+            "colorfont": selectedFontColor,
+            "datemod": now,
+            "gdid": "",
+            "id": boardIdCounter,
+            "numord": boardIdCounter,
+            "status": 0,
+            "title": title
+        };
+
+        modal.classList.remove('visible');
+        showToast(_('savingBoard') || "Записване на борд...", 2000);
+
+        try {
+            const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+            const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+
+            if (updateGDriveNow) {
+                const folderId = await getFolderID();
+                if (folderId) {
+                    const fileName = `board.txt`;
+                    const gdid = await createGDriveFile(folderId, fileName, JSON.stringify(newBoard));
+                    newBoard.gdid = gdid;
+                    // Update with gdid included
+                    await updateGDriveFile(gdid, JSON.stringify(newBoard));
+                }
+            }
+
+            if (!newBoard.gdid && updateLocalFolderNow) {
+                newBoard.gdid = `LB${Date.now()}`;
+            }
+
+            if (!newBoard.gdid) {
+                newBoard.gdid = newBoard.id.toString();
+            }
+
+            if (updateLocalFolderNow && newBoard.gdid) {
+                await updateLocalFile(newBoard.gdid, JSON.stringify(newBoard));
+            }
+
+            if (useIndexedDb) {
+                await bulkPutDB(BOARD_STORE_NAME, newBoard, true);
+            }
+
+            boardsData.push(newBoard);
+
+            // Close existing board menu if any and re-render
+            const boardsNote = document.querySelector('header .boards-note');
+            if (boardsNote) boardsNote.remove();
+
+            await renderUI({ boardParseError: false });
+            showToast(_('boardSaved') || "Бордът е записан успешно", 3000);
+
+        } catch (error) {
+            console.error("Failed to create board:", error);
+            showToast(_('errorSaveBoard') || "Грешка при запис на борд", 5000);
+        }
+    };
+
+    modal.classList.add('visible');
 }
