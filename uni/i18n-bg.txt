@@ -300,5 +300,6 @@ bg: {
         errorEmptyTitle: "Моля, въведете заглавие",
         savingBoard: "Записване на борд...",
         boardSaved: "Бордът е записан успешно",
-        errorSaveBoard: "Грешка при запис на борд"
+        errorSaveBoard: "Грешка при запис на борд",
+        boardPreviewLabel: "Преглед:"
     }

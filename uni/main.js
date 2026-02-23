@@ -12273,15 +12273,36 @@ async function showNewBoardModal() {
     const fontColorsContainer = document.getElementById('new-board-font-colors');
     const backgroundsContainer = document.getElementById('new-board-backgrounds');
     const saveBtn = document.getElementById('save-new-board-btn');
+    const previewContainer = document.getElementById('new-board-preview');
+    const previewTab = document.getElementById('preview-tab');
+    const previewBg = document.getElementById('preview-bg');
 
     titleInput.value = '';
     colorsContainer.innerHTML = '';
     fontColorsContainer.innerHTML = '';
     backgroundsContainer.innerHTML = '';
+    //previewContainer.style.display = 'none';
 
     let selectedColor = 0;
     let selectedFontColor = 0; // 0 = Black, 1 = White
     let selectedBackground = 0;
+
+    const bgNames = ['Board.png', 'Board1.png', 'Board2.png', 'Board3.png'];
+    const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
+
+    function updatePreview() {
+        const title = titleInput.value.trim();
+        if (title) {
+            //previewContainer.style.display = 'flex';
+            previewTab.textContent = title;
+            previewTab.style.backgroundColor = `var(--board-bg-${selectedColor})`;
+            previewTab.style.color = fontColors[selectedFontColor];
+            previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
+        } else {
+            //previewContainer.style.display = 'none';
+        }
+    }
+    titleInput.oninput = updatePreview;
 
     // Standard colors 0-6
     for (let i = 0; i <= 6; i++) {
@@ -12305,13 +12326,13 @@ async function showNewBoardModal() {
                 child.style.boxShadow = (idx === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
                 child.style.transform = (idx === selectedColor) ? 'scale(1.1)' : 'scale(1)';
             });
+            updatePreview();
         };
         if (i === selectedColor) colorDiv.style.transform = 'scale(1.1)';
         colorsContainer.appendChild(colorDiv);
     }
 
     // Font colors: Black, White, Red, Blue
-    const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
     fontColors.forEach((color, i) => {
         const fcDiv = document.createElement('div');
         Object.assign(fcDiv.style, {
@@ -12334,13 +12355,13 @@ async function showNewBoardModal() {
                 child.style.boxShadow = (idx === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
                 child.style.transform = (idx === selectedFontColor) ? 'scale(1.1)' : 'scale(1)';
             });
+            updatePreview();
         };
         if (i === selectedFontColor) fcDiv.style.transform = 'scale(1.1)';
         fontColorsContainer.appendChild(fcDiv);
     });
 
     // Standard backgrounds 0-3
-    const bgNames = ['Board.png', 'Board1.png', 'Board2.png', 'Board3.png'];
     for (let i = 0; i <= 3; i++) {
         const bgDiv = document.createElement('div');
         Object.assign(bgDiv.style, {
@@ -12363,6 +12384,7 @@ async function showNewBoardModal() {
                 child.style.boxShadow = (idx === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none';
                 child.style.transform = (idx === selectedBackground) ? 'scale(1.05)' : 'scale(1)';
             });
+            updatePreview();
         };
         if (i === selectedBackground) bgDiv.style.transform = 'scale(1.05)';
         backgroundsContainer.appendChild(bgDiv);
@@ -12444,4 +12466,6 @@ async function showNewBoardModal() {
     };
 
     modal.classList.add('visible');
+    updatePreview();
+
 }
