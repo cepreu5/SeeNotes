@@ -1357,11 +1357,17 @@ code {
     padding-top: 60px;
 }
 
+#boards-menu-modal .modal-close {
+    position: absolute !important;
+    right: 10px !important;
+    /* margin-top: 0px !important; @@*/
+}
+
 #boards-menu-modal-body {
     overflow-y: auto !important;
     flex-grow: 1;
     min-height: 0;
-    padding-bottom: 20px;
+    padding-bottom: 0px;
     width: 100%;
 }
 
@@ -2865,7 +2871,7 @@ body.selection-locked .note.active-selection-note .note-content {
 .all-boards-modal-container .board-filter-link {
     margin: 0 !important;
     box-sizing: border-box;
-    /* Ensure width calculation matches reality */
+    /* Ensure width calculation matches reality @@*/
 }
 
 /* Override default fixed width for boards modal to allow dynamic calculation */
@@ -2873,6 +2879,7 @@ body.selection-locked .note.active-selection-note .note-content {
     width: auto;
     max-width: 95vw;
     display: block;
+    padding: 45px 0px 0 0;
     /* Override flex display if needed to allow fit-content behavior on children properly? No, flex column is fine */
 }
 

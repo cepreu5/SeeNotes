@@ -12277,6 +12277,13 @@ async function showNewBoardModal() {
     const previewTab = document.getElementById('preview-tab');
     const previewBg = document.getElementById('preview-bg');
 
+    const closeBtn = modal.querySelector('.modal-close');
+    if (closeBtn) {
+        closeBtn.style.position = 'absolute';
+        closeBtn.style.top = '10px';
+        closeBtn.style.right = '15px';
+    }
+
     titleInput.value = '';
     colorsContainer.innerHTML = '';
     fontColorsContainer.innerHTML = '';
@@ -12291,16 +12298,11 @@ async function showNewBoardModal() {
     const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
 
     function updatePreview() {
-        const title = titleInput.value.trim();
-        if (title) {
-            //previewContainer.style.display = 'flex';
-            previewTab.textContent = title;
-            previewTab.style.backgroundColor = `var(--board-bg-${selectedColor})`;
-            previewTab.style.color = fontColors[selectedFontColor];
-            previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
-        } else {
-            //previewContainer.style.display = 'none';
-        }
+        const title = titleInput.value.trim() || _('addBoardTitle') || "Нов борд";
+        previewTab.textContent = title;
+        previewTab.style.backgroundColor = `var(--board-bg-${selectedColor})`;
+        previewTab.style.color = fontColors[selectedFontColor];
+        previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
     }
     titleInput.oninput = updatePreview;
 
@@ -12465,7 +12467,6 @@ async function showNewBoardModal() {
         }
     };
 
-    modal.classList.add('visible');
     updatePreview();
-
+    modal.classList.add('visible');
 }
