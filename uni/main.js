@@ -158,6 +158,23 @@ const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="2
 
 const noteBgCache = new Map();
 
+window.getPipeIndex = function (text) {
+    if (!text) return -1;
+    let inCode = false;
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] === '{' && text[i + 1] === '{') {
+            inCode = true;
+            i++;
+        } else if (text[i] === '}' && text[i + 1] === '}') {
+            inCode = false;
+            i++;
+        } else if (text[i] === '|' && !inCode) {
+            return i;
+        }
+    }
+    return -1;
+};
+
 // --- Optimization: Preload unique backgrounds to avoid 'checkered' loading and reduce memory ---
 async function preloadNoteBackgrounds(notesData) {
     const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
@@ -1456,8 +1473,10 @@ function renderCalendarView() {
                     const noteContent = noteData.notetxt;
                     const isHidden = noteData.pass === true;
                     const isType1 = noteData.type === 1;
-                    if ((isHidden || isType1) && noteContent.includes('|')) {
-                        contentToShow = noteContent.split('|')[0].trim();
+                    const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(noteContent) !== -1 : noteContent.includes('|');
+                    if ((isHidden || isType1) && hasPipe) {
+                        const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(noteContent) : noteContent.indexOf('|');
+                        contentToShow = noteContent.substring(0, pipeIdx).trim();
                     } else {
                         const lines = noteContent.split('\n');
                         let firstNonEmptyLineIndex = -1;
@@ -6209,7 +6228,7 @@ function showModal(options, noteElement = null) {
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
     // Special case: if titleFormatString is provided, format the title part separately.
-    const pipeIndex = rawContent.indexOf('|');
+    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
     if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
         // Hidden note with title formatting: split, format each part, then combine
         const titlePart = rawContent.substring(0, pipeIndex);
@@ -6224,8 +6243,10 @@ function showModal(options, noteElement = null) {
         displayContent = formattedTitle + '<br>' + formattedBody;
     } else {
         // Standard logic: replace separator with newline for hidden notes
-        if (rawContent.includes('|')) {
-            rawContent = rawContent.replace('|', '\n');
+        const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
+        if (pipeIdxForReplace !== -1) {
+            // Replace only the first separating pipe
+            rawContent = rawContent.substring(0, pipeIdxForReplace) + '\n' + rawContent.substring(pipeIdxForReplace + 1);
         }
         if (options.isHtml && options.id === 'promo' && !rawContent.includes('{{')) {
             displayContent = rawContent;
@@ -9231,11 +9252,11 @@ async function createNoteElement(noteContent) {
     let noteTitle = '';
     let displayContent = fileContent;
     if (isHiddenNote) {
-        const pipeIndex = fileContent.indexOf('|');
+        const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
         noteTitle = previewContent.split('\n')[0].trim();
     } else if (isType1Note) {
-        const pipeIndex = fileContent.indexOf('|');
+        const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         if (pipeIndex !== -1) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
@@ -9365,7 +9386,7 @@ async function createNoteElement(noteContent) {
     contentEl.className = 'note-content';
     const isForModal = (note.closest('#modal-body') !== null);
     if (isHiddenNote) {
-        const pipeIndex = fileContent.indexOf('|');
+        const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
         contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
     } else {
@@ -9373,8 +9394,11 @@ async function createNoteElement(noteContent) {
         if (formatSource) {
             // Use the exact same logic as in showModal to ensure indices match
             let contentToFormat = fileContent;
-            if (contentToFormat.includes('|')) {
-                contentToFormat = contentToFormat.replace('|', '\n');
+            const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) !== -1 : contentToFormat.includes('|');
+            if (hasPipe) {
+                // Just replace the first pipe to keep indices consistent with modal body
+                const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) : contentToFormat.indexOf('|');
+                contentToFormat = contentToFormat.substring(0, pipeIdxForReplace) + '\n' + contentToFormat.substring(pipeIdxForReplace + 1);
             }
             // Format the full content
             let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
@@ -10460,10 +10484,11 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     let currentBodyFormats = parseFormatsString(modalBodyElem.dataset.format);
     let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
 
-    if ((isHiddenNote || bodyText.includes('|')) && !modalBodyElem.querySelector('textarea')) {
+    const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) !== -1 : bodyText.includes('|');
+    if ((isHiddenNote || hasPipe) && !modalBodyElem.querySelector('textarea')) {
         let splitParts = [];
-        if (bodyText.includes('|')) {
-            const pipeIdx = bodyText.indexOf('|');
+        if (hasPipe) {
+            const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) : bodyText.indexOf('|');
             titleText = bodyText.substring(0, pipeIdx);
             bodyText = bodyText.substring(pipeIdx + 1);
         }
@@ -10996,8 +11021,12 @@ function mergeNotes(baseNote, localNote, serverNote) {
     const result = { ...localNote };
     const conflicts = {};
     const splitNote = (txt) => {
-        const parts = (txt || "").split('|');
-        return { title: parts[0] || "", body: parts[1] || "", hasSplit: parts.length > 1 };
+        const textStr = txt || "";
+        const pIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(textStr) : textStr.indexOf('|');
+        if (pIdx !== -1) {
+            return { title: textStr.substring(0, pIdx), body: textStr.substring(pIdx + 1), hasSplit: true };
+        }
+        return { title: textStr, body: "", hasSplit: false };
     };
     const b = splitNote(baseNote.notetxt), l = splitNote(localNote.notetxt), s = splitNote(serverNote.notetxt);
     if (l.hasSplit || s.hasSplit || b.hasSplit) {
@@ -11071,10 +11100,13 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
             btnSave.style.display = 'flex'; btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
 
             const refreshContent = (currentNote) => {
+                // Apply to text and formatted element
                 let txt = currentNote.notetxt || '';
-                const pipeIdx = txt.indexOf('|');
-                if (pipeIdx !== -1) {
-                    const tPart = txt.substring(0, pipeIdx); const bPart = txt.substring(pipeIdx + 1);
+                const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) !== -1 : txt.includes('|');
+                if (hasPipe) {
+                    const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
+                    const tPart = txt.substring(0, pipeIdx);
+                    const bPart = txt.substring(pipeIdx + 1);
                     bdy.innerHTML = (typeof formatText === 'function') ? formatText(tPart, currentNote.title_span || '', true) + '<br>' + formatText(bPart, currentNote.text_span || '', true) : tPart + '<br>' + bPart;
                 } else { bdy.innerHTML = (typeof formatText === 'function') ? formatText(txt, currentNote.text_span || '', true) : txt; }
                 bdy.dataset.id = currentNote.id || '';
@@ -11369,7 +11401,14 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
         resLabel.style.color = 'black';
         box.appendChild(resLabel);
  
-        const splitNote = (txt) => { const parts = (txt || "").split('|'); return { title: parts[0] || "", body: parts[1] || "", hasSplit: parts.length > 1 }; };
+        const splitNote = (txt) => {
+            const textStr = txt || "";
+            const pIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(textStr) : textStr.indexOf('|');
+            if (pIdx !== -1) {
+                return { title: textStr.substring(0, pIdx), body: textStr.substring(pIdx + 1), hasSplit: true };
+            }
+            return { title: textStr, body: "", hasSplit: false };
+        };
         const lParts = splitNote(localNote.notetxt);
         const sParts = splitNote(serverNote.notetxt);
         const bParts = splitNote(baseNote.notetxt);
