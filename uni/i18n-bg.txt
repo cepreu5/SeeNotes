@@ -48,6 +48,7 @@ bg: {
         settingSaved: 'Настройката е запазена',
         searchSaved: 'Търсенето е запазено',
         closeButton: 'Затвори',
+        clearButton: 'Изчисти',
         allBoardsCtrlClickTooltip: 'Ctrl-клик - меню',
         maxSearchesLabel: 'Запазени търсения:',
         clearSearchesTooltip: 'Изчисти историята на търсенията',
@@ -301,5 +302,8 @@ bg: {
         savingBoard: "Записване на борд...",
         boardSaved: "Бордът е записан успешно",
         errorSaveBoard: "Грешка при запис на борд",
-        boardPreviewLabel: "Преглед:"
+        boardPreviewLabel: "Преглед:",
+        trashBoardTitle: "Кошче",
+        confirmNoteMoveToTrash: "Сигурни ли сте, че искате да преместите тази бележка в кошчето?",
+        noteMovedToTrash: "Бележката е преместена в Кошчето."
     }

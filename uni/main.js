@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.64'; // App version
+const version = 'Beta 1.66'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -182,7 +182,7 @@ async function preloadNoteBackgrounds(notesData) {
 
     const needed = new Set();
     notesData.forEach(note => {
-        if (note.status === 1) return;
+        // We need backgrounds for deleted notes too, if user goes to trash!
         const noteColor = note.color;
         const color = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : '#FBFF86';
         const img = (note.sellist && note.sellist > 0) ? note.sellist : 0;
@@ -2022,72 +2022,108 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
         // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
         await new Promise(resolve => setTimeout(resolve, 150));
     }
-    const confirmed = await showConfirmation(_('confirmNoteDelete'));
+    const isTrashBoard = currentBoardFilter === 'trash';
+    const msgKey = isTrashBoard ? 'confirmNoteDelete' : 'confirmNoteMoveToTrash';
+    const confirmed = await showConfirmation(_(msgKey) || _('confirmNoteDelete'));
     if (confirmed) {
         try {
-            if (useIndexedDb) {
-                // Determine the correct key to delete from IndexedDB
-                if (noteGdid) {
-                    await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-                } else {
-                    // Fallback logic for notes with missing/empty GDID (e.g., local or bugged notes)
-                    // 1. Try deleting using the local ID as the key (standard fallback for local notes)
-                    if (noteId) {
-                        try { await deleteFromDB(NOTE_STORE_NAME, String(noteId)); } catch (e) { }
-                    }
-                    // 2. CRITICAL FIX: Explicitly try to delete the record with an empty string key ("")
-                    // This creates a "clean sweep" for any notes that were incorrectly saved with an empty key.
-                    try { await deleteFromDB(NOTE_STORE_NAME, ""); } catch (e) { }
+            const noteToUpdate = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
+            if (!isTrashBoard && noteToUpdate) {
+                // Преместване в кошче
+                noteToUpdate.status = 1;
+                noteToUpdate.datemod = Date.now();
+                if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+                    await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
                 }
-            }
-            if (updateGDrive && noteGdid && !isOffline) {
-                deleteGDriveFile(noteGdid).catch(err => {
-                    console.error("GDrive delete failed:", err);
-                    if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+                if (updateGDrive && noteGdid && !isOffline) {
+                    try {
+                        await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
+                    } catch (err) {
+                        console.error("GDrive update failed:", err);
+                        if (typeof showToast === 'function') showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
+                    }
+                }
+                if (useLocalFolder && noteGdid) {
+                    try {
+                        await updateLocalFile(noteGdid, JSON.stringify(noteToUpdate));
+                    } catch (err) {
+                        console.error("Local file update failed:", err);
+                    }
+                }
+
+                // Update dataset so applyFilters can handle it
+                noteEl.dataset.s = "1";
+
+                // Актуализираме общия брояч
+                const noteCounter = document.getElementById('note-counter');
+                let newTotalCount = 0;
+                if (noteCounter) {
+                    newTotalCount = parseInt(noteCounter.textContent, 10) - 1;
+                    noteCounter.textContent = Math.max(0, newTotalCount);
+                }
+                // Актуализираме брояча на борда
+                const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
+                if (boardGdidToUpdate) {
+                    updateBoardCounterUI(boardGdidToUpdate);
+                }
+                updateBoardCounterUI('trash');
+
+                applyFilters(); // Important: triggers the update of UI correctly
+                showToast(_('noteMovedToTrash') || "Бележката е преместена в Кошче", 3000);
+            } else {
+                // Permanently delete
+                if (useIndexedDb) {
+                    if (noteGdid) {
+                        await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+                    } else {
+                        if (noteId) {
+                            try { await deleteFromDB(NOTE_STORE_NAME, String(noteId)); } catch (e) { }
+                        }
+                        try { await deleteFromDB(NOTE_STORE_NAME, ""); } catch (e) { }
+                    }
+                }
+                if (updateGDrive && noteGdid && !isOffline) {
+                    deleteGDriveFile(noteGdid).catch(err => {
+                        console.error("GDrive delete failed:", err);
+                        if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+                    });
+                }
+                if (noteEl.remove) noteEl.remove();
+
+                allNotesData = allNotesData.filter(n => {
+                    if (noteGdid) return n.gdid !== noteGdid;
+                    if (noteId) return n.id != noteId;
+                    return true;
                 });
-            }
-            // Remove from DOM if method exists (it might be a mock object)
-            if (noteEl.remove) noteEl.remove();
 
-            // Филтрираме allNotesData
-            allNotesData = allNotesData.filter(n => {
-                if (noteGdid) return n.gdid !== noteGdid;
-                if (noteId) return n.id != noteId;
-                return true;
-            });
+                const noteCounter = document.getElementById('note-counter');
+                let newTotalCount = 0;
+                if (noteCounter) {
+                    newTotalCount = parseInt(noteCounter.textContent, 10) - 1;
+                    noteCounter.textContent = Math.max(0, newTotalCount);
+                }
+                const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
+                if (boardGdidToUpdate) {
+                    updateBoardCounterUI(boardGdidToUpdate);
+                }
+                showToast(_('noteDeletedSuccess'), 3000);
+            }
 
-            // Актуализираме общия брояч
-            const noteCounter = document.getElementById('note-counter');
-            let newTotalCount = 0;
-            if (noteCounter) {
-                newTotalCount = parseInt(noteCounter.textContent, 10) - 1;
-                noteCounter.textContent = Math.max(0, newTotalCount);
-            }
-            // Актуализираме брояча на борда
-            const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
-            if (boardGdidToUpdate) {
-                updateBoardCounterUI(boardGdidToUpdate);
-            }
-            // --- REFRESH CALENDARS ---
-            // Monthly calendar view
+            // --- REFRESH CALENDARS AND BOARD ---
             const calendarContainer = document.getElementById('calendar-container');
             if (calendarContainer && calendarContainer.style.display !== 'none') {
                 renderCalendarView();
             }
-            // Weekly calendar view
             const weeklyContainer = document.getElementById('weekly-calendar-container');
             if (weeklyContainer && weeklyContainer.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
                 renderWeeklyCalendarView(currentWeeklyViewDate);
             }
-            // --- REFRESH BOARD ---
-            // If we deleted a note from the calendar modal, we should also remove its element from the notes container if it exists there
             if (!noteEl.remove || noteEl.remove.name === '') {
                 const realNoteEl = document.querySelector(`.note[data-g="${noteGdid}"]`);
                 if (realNoteEl) {
                     realNoteEl.remove();
                 }
             }
-            showToast(_('noteDeletedSuccess'), 3000);
         } catch (error) {
             console.log("Failed to delete note:", error);
             showToast(_('noteDeletedError') + " - " + error.message, 15000);
@@ -2105,6 +2141,14 @@ function updateBoardCounterUI(boardIdOrGdid) {
         if (reminderLink) {
             const reminderNoteCount = allNotesData.filter(n => n.timer && n.timer > 0 && n.status !== 1).length;
             reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
+        }
+        return;
+    }
+    if (boardIdOrGdid === 'trash') {
+        const trashLink = document.querySelector('.board-filter-link[data-boardid="trash"]');
+        if (trashLink) {
+            const trashCount = allNotesData.filter(n => n.status === 1).length;
+            trashLink.textContent = (showCount && trashCount > 0) ? `${_('trashBoardTitle') || "Кошче"} (${trashCount})` : (_('trashBoardTitle') || "Кошче");
         }
         return;
     }
@@ -3273,7 +3317,7 @@ function initApp() {
     clearSearchBtn.className = 'search-action-btn search-btn-clear';
     clearSearchBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
     clearSearchBtn.style.display = 'none'; // Hidden initially
-    clearSearchBtn.title = _('closeButton'); // "Close" or "Clear"
+    clearSearchBtn.title = _('clearButton') || 'Clear'; // Updated from closeButton to clearButton
     // REMOVED: searchModeToggle logic. We now always search in content (which includes title).
     // Ensure placeholder is correct for content search
     updateSearchPlaceholder();
@@ -3380,6 +3424,14 @@ function initApp() {
             setTimeout(() => {
                 searchBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
             }, 100);
+        } else if (!hasTextTrimmed) {
+            // Скролираме до активния борд след изчистване на търсенето
+            const activeBtn = document.querySelector(`.board-filter-link[data-boardid="${buttonBoardId}"]`);
+            if (activeBtn) {
+                setTimeout(() => {
+                    activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }, 100);
+            }
         }
     };
 
@@ -3412,7 +3464,7 @@ function initApp() {
     clearSearchBtn.addEventListener('click', () => {
         searchBox.value = '';
         triggerSearch(true); // Clear results
-        searchBox.focus();
+        searchBox.blur(); // Remove focus so keyboard doesn't stay open
     });
 
     searchBox.addEventListener('focus', () => {
@@ -6996,7 +7048,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const firstAvailableBoard = boardsData.find(b => b.gdid);
         boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
     }
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'trash'];
     const targetBoard = specialBoards.includes(boardId) ? null : boardsData.find(b => b.gdid == boardId || b.id == boardId);
     const buttonBoardId = targetBoard ? (targetBoard.gdid || targetBoard.id) : boardId;
     // --- Проверка за съществуващ борд ---
@@ -7264,8 +7316,9 @@ function applyFilters() {
     const isWithVideos = currentBoardFilter === 'with-videos';
     const isWithSounds = currentBoardFilter === 'with-sounds';
     const isWithOther = currentBoardFilter === 'with-other';
+    const isTrash = currentBoardFilter === 'trash';
     // If none of the above special modes, it's a standard board filter (by ID)
-    const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther;
+    const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther && !isTrash;
     // --- ENHANCED ID FILTERING (Pre-calc) ---
     // Handle scenarios where notes use legacy ID but filter uses GDID (or vice versa)
     let validBoardIds = [currentBoardFilter];
@@ -7280,9 +7333,15 @@ function applyFilters() {
         if (note.classList.contains('boards-note') || note.classList.contains('promo-note')) {
             continue;
         }
+        const isDeleted = (parseInt(note.dataset.s || '0', 10) === 1);
         let isVisibleByBoard = false;
+
         // Optimized Branching
-        if (isAll) {
+        if (isTrash) {
+            isVisibleByBoard = isDeleted;
+        } else if (isDeleted) {
+            isVisibleByBoard = false;
+        } else if (isAll) {
             isVisibleByBoard = true;
         } else if (isStandard) {
             // Standard board check: Check against all valid IDs for the board (loose equality)
@@ -7634,6 +7693,13 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     searchResultsLink.style.alignItems = 'center';
     addBoardButtonEvents(searchResultsLink, 'search-results');
     allButtonLinks.push(searchResultsLink);
+    // Сортираме бордовете по полето numord, преди да създадем бутоните
+    boardsData.sort((a, b) => {
+        const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+        const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+        return numordA - numordB;
+    })
+
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
     if (localStorage.getItem('showBoardRemind') !== 'false') {
         const reminderNoteCount = reminderCount;
@@ -7644,6 +7710,41 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         addBoardButtonEvents(reminderLink, 'reminder');
         allButtonLinks.push(reminderLink);
     }
+    boardsData.forEach(board => {
+        const boardId = board.gdid || board.id;
+        if (!board.title || boardId === undefined || boardId === null) return;
+        const count = boardCounts.get(String(boardId)) || 0;
+        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+        const link = document.createElement('span');
+        link.textContent = (showCount && count > 0) ? `${board.title} (${count})` : board.title;
+        link.classList.add('board-filter-link');
+        link.dataset.boardid = boardId;
+        // Обработка на цвят на фона
+        if (board.color !== undefined && !isNaN(board.color)) {
+            if (board.color >= 0 && board.color <= 6) {
+                // Стандартни цветове (0-6)
+                link.style.backgroundColor = `var(--board-bg-${board.color})`;
+            } else if (board.color < 0) {
+                // Custom цвят (отрицателно число)
+                // Преобразуваме signed int в hex color string (RRGGBB)
+                // Използваме >>> 0 за да го третираме като unsigned 32-bit int,
+                // след това toString(16) и взимаме последните 6 символа.
+                const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
+                link.style.backgroundColor = hexColor;
+            }
+        }
+        // Обработка на цвят на шрифта
+        link.style.color = 'black'; // Default
+        if (board.status === 1) {
+            link.style.color = 'red';
+        } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
+            // Custom цвят на шрифта (отрицателно число)
+            const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+            link.style.color = hexFontColor;
+        }
+        addBoardButtonEvents(link, boardId);
+        allButtonLinks.push(link);
+    });
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС СНИМКИ" ---
     if (localStorage.getItem('showPhotosBoard') === 'true') {
         const photosLink = document.createElement('span');
@@ -7681,48 +7782,18 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         addBoardButtonEvents(otherLink, 'with-other');
         allButtonLinks.push(otherLink);
     }
-    // Сортираме бордовете по полето numord, преди да създадем бутоните
-    boardsData.sort((a, b) => {
-        const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
-        const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
-        return numordA - numordB;
-    })
-
-    boardsData.forEach(board => {
-        const boardId = board.gdid || board.id;
-        if (!board.title || boardId === undefined || boardId === null) return;
-        const count = boardCounts.get(String(boardId)) || 0;
-        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-        const link = document.createElement('span');
-        link.textContent = (showCount && count > 0) ? `${board.title} (${count})` : board.title;
-        link.classList.add('board-filter-link');
-        link.dataset.boardid = boardId;
-        // Обработка на цвят на фона
-        if (board.color !== undefined && !isNaN(board.color)) {
-            if (board.color >= 0 && board.color <= 6) {
-                // Стандартни цветове (0-6)
-                link.style.backgroundColor = `var(--board-bg-${board.color})`;
-            } else if (board.color < 0) {
-                // Custom цвят (отрицателно число)
-                // Преобразуваме signed int в hex color string (RRGGBB)
-                // Използваме >>> 0 за да го третираме като unsigned 32-bit int,
-                // след това toString(16) и взимаме последните 6 символа.
-                const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
-                link.style.backgroundColor = hexColor;
-            }
-        }
-        // Обработка на цвят на шрифта
-        link.style.color = 'black'; // Default
-        if (board.status === 1) {
-            link.style.color = 'red';
-        } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
-            // Custom цвят на шрифта (отрицателно число)
-            const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-            link.style.color = hexFontColor;
-        }
-        addBoardButtonEvents(link, boardId);
-        allButtonLinks.push(link);
-    });
+    // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "КОШЧЕ" ---
+    if (localStorage.getItem('showTrashBoard') !== 'false' && (extraCounts.trashCount > 0 || currentBoardFilter === 'trash')) {
+        const trashCount = extraCounts.trashCount || 0;
+        const trashLink = document.createElement('span');
+        trashLink.textContent = (showCount && trashCount > 0) ? `${_('trashBoardTitle') || "Кошче"} (${trashCount})` : (_('trashBoardTitle') || "Кошче");
+        trashLink.classList.add('board-filter-link', 'trash-filter-btn');
+        trashLink.dataset.boardid = 'trash';
+        trashLink.style.backgroundColor = '#c00';
+        trashLink.style.color = '#fff';
+        addBoardButtonEvents(trashLink, 'trash');
+        allButtonLinks.push(trashLink);
+    }
     maxWidthForButtons = 0;
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
@@ -9185,6 +9256,7 @@ async function createNoteElement(noteContent) {
     const note = document.createElement('div');
     const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
     note.className = 'note';
+    note.style.display = 'none'; // Keep hidden until applyFilters runs to prevent flashing
     if (notesBgrdEnabled) {
         note.classList.add('note-item');
     }
@@ -9241,7 +9313,9 @@ async function createNoteElement(noteContent) {
                 // Color will be handled by canvas background
             }
             if (extraData.status === 1) {
-                return null; // Skip this note if status is 1
+                // Do not skip deleted notes in the UI entirely, so Trash board can load them.
+                // ApplyFilters will take care of hiding them from everywhere else.
+                // return null; 
             }
         } else { throw new Error(_('errorNoteFieldMissing')); }
     } catch (e) { fileContent = _('errorNoteParse'); }
@@ -9351,22 +9425,22 @@ async function createNoteElement(noteContent) {
             note.style.backgroundRepeat = 'no-repeat';
         } else {
             // Fallback for cases where it wasn't preloaded (e.g. newly created note)
-            note.style.backgroundColor = noteBgColor;
-            note.classList.add('loading-bg');
-            createColoredNoteBackground(noteBgColor, imageName, 250, 250).then(canvas => {
-                canvas.toBlob(blob => {
-                    const url = URL.createObjectURL(blob);
-                    const bgUrl = `url("${url}")`;
-                    noteBgCache.set(cacheKey, bgUrl);
-                    note.style.backgroundImage = bgUrl;
-                    note.style.backgroundColor = 'transparent';
-                    note.style.backgroundSize = '100% 100%';
-                    note.style.backgroundRepeat = 'no-repeat';
-                    note.classList.remove('loading-bg');
-                }, 'image/png');
-            }).catch(() => {
-                note.style.backgroundColor = noteBgColor;
-                note.classList.remove('loading-bg');
+            // We await it to ensure no "text then background" flicker occurs
+            await new Promise(resolve => {
+                createColoredNoteBackground(noteBgColor, imageName, 250, 250).then(canvas => {
+                    canvas.toBlob(blob => {
+                        const url = URL.createObjectURL(blob);
+                        const bgUrl = `url("${url}")`;
+                        noteBgCache.set(cacheKey, bgUrl);
+                        note.style.backgroundImage = bgUrl;
+                        note.style.backgroundSize = '100% 100%';
+                        note.style.backgroundRepeat = 'no-repeat';
+                        resolve();
+                    }, 'image/png');
+                }).catch(() => {
+                    note.style.backgroundColor = noteBgColor; // Only if image fails
+                    resolve();
+                });
             });
         }
     } else {
@@ -9526,41 +9600,74 @@ async function createNoteElement(noteContent) {
         }
 
         const confirmMsgKey = (updateGDrive || updateLocalFolderNow) ? 'confirmNoteDeleteSync' : 'confirmNoteDelete';
-        const confirmed = await showConfirmation(_(confirmMsgKey));
+        const isTrashBoard = currentBoardFilter === 'trash';
+        const msgKey = isTrashBoard ? confirmMsgKey : 'confirmNoteMoveToTrash';
+        const confirmed = await showConfirmation(_(msgKey) || _('confirmNoteDelete'));
         if (confirmed) {
             try {
-                let totalNotes;
-                await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+                let noteToUpdate = allNotesData.find(n => (n.gdid && n.gdid === noteGdid) || (n.id && n.id === noteID));
+                if (!isTrashBoard && noteToUpdate) {
+                    // Update as deleted in GDrive and IndexedDB instead of true deletion
+                    noteToUpdate.status = 1;
+                    noteToUpdate.datemod = Date.now();
+                    if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+                        await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
+                    }
+                    if (updateGDrive && noteGdid) {
+                        try {
+                            await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
+                        } catch (err) {
+                            console.error("GDrive update failed:", err);
+                        }
+                    }
+                    if (updateLocalFolderNow && noteGdid) {
+                        try {
+                            await updateLocalFile(noteGdid, JSON.stringify(noteToUpdate));
+                        } catch (err) {
+                            console.error("Local file update failed:", err);
+                        }
+                    }
+                    // Update dataset so applyFilters can handle it
+                    noteEl.dataset.s = "1";
+                    applyFilters();
+                    updateBoardCounterUI('trash');
+                    // Also update origin board if possible
+                    if (noteToUpdate.boardid) updateBoardCounterUI(noteToUpdate.boardid);
+                    showToast(_('noteMovedToTrash') || 'Бележката е преместена в Кошче', 3000);
+                } else {
+                    let totalNotes;
+                    await deleteFromDB(NOTE_STORE_NAME, noteGdid);
 
-                let gdriveDeleted = false;
-                if (updateGDrive && noteGdid) {
-                    deleteGDriveFile(noteGdid).catch(err => {
-                        console.error("GDrive delete failed:", err);
-                        if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
-                    });
-                    gdriveDeleted = true;
+                    let gdriveDeleted = false;
+                    if (updateGDrive && noteGdid) {
+                        deleteGDriveFile(noteGdid).catch(err => {
+                            console.error("GDrive delete failed:", err);
+                            if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+                        });
+                        gdriveDeleted = true;
+                    }
+
+                    let localDeleted = false;
+                    if (updateLocalFolderNow && noteGdid) {
+                        deleteLocalFile(noteGdid).catch(err => {
+                            console.error("Local file delete failed:", err);
+                        });
+                        localDeleted = true;
+                    }
+
+                    // Стъпка 1: Премахване от DOM и allNotesData
+                    noteEl.remove();
+                    allNotesData = allNotesData.filter(n => (n.gdid && n.gdid !== noteGdid) || (n.id && n.id !== noteID));
+                    // Стъпка 2: Актуализация на всички броячи чрез applyFilters
+                    applyFilters();
+
+                    let successMsgKey = 'noteDeletedSuccess';
+                    if (gdriveDeleted && localDeleted) successMsgKey = 'noteDeletedSuccessBoth';
+                    else if (gdriveDeleted) successMsgKey = 'noteDeletedSuccessGDrive';
+                    else if (localDeleted) successMsgKey = 'noteDeletedSuccessLocal';
+
+                    showToast(_(successMsgKey), 3000);
                 }
-
-                let localDeleted = false;
-                if (updateLocalFolderNow && noteGdid) {
-                    deleteLocalFile(noteGdid).catch(err => {
-                        console.error("Local file delete failed:", err);
-                    });
-                    localDeleted = true;
-                }
-
-                // Стъпка 1: Премахване от DOM и allNotesData
-                noteEl.remove();
-                allNotesData = allNotesData.filter(n => (n.gdid && n.gdid !== noteGdid) || (n.id && n.id !== noteID));
-                // Стъпка 2: Актуализация на всички броячи чрез applyFilters
-                applyFilters();
-
-                let successMsgKey = 'noteDeletedSuccess';
-                if (gdriveDeleted && localDeleted) successMsgKey = 'noteDeletedSuccessBoth';
-                else if (gdriveDeleted) successMsgKey = 'noteDeletedSuccessGDrive';
-                else if (localDeleted) successMsgKey = 'noteDeletedSuccessLocal';
-
-                showToast(_(successMsgKey), 3000);
             } catch (error) {
                 console.log("Failed to delete note:", error);
                 showToast(_('noteDeletedError') + " - " + error.message, 15000);
@@ -9723,14 +9830,18 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     let extraCounts = {
         boardCounts: new Map(),
         reminderCount: 0,
-        calendarCount: 0
+        calendarCount: 0,
+        trashCount: 0
     };
     if (boardsData.length > 0 || boardParseError) {
         const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
         allNotesData.forEach(note => {
-            if (note.status === 1) return;
-            const boardId = String(note.boardid);
-            extraCounts.boardCounts.set(boardId, (extraCounts.boardCounts.get(boardId) || 0) + 1);
+            if (note.status === 1) {
+                extraCounts.trashCount++;
+            } else {
+                const boardId = String(note.boardid);
+                extraCounts.boardCounts.set(boardId, (extraCounts.boardCounts.get(boardId) || 0) + 1);
+            }
             if (note.timer && note.timer > 0) extraCounts.reminderCount++;
             if (note.calendarDate) extraCounts.calendarCount++;
         });
@@ -9811,10 +9922,15 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         // Apply filters synchronously immediately after adding to DOM to prevent "flash" of all notes
         applyFilters();
     }
-    // Hide spinner
+    // Hide spinner - using requestAnimationFrame to ensure the browser has a chance to 
+    // paint the newly added notes with their backgrounds before we remove the overlay.
     if (!rerenderOnlyMenu && loaderContainer) {
-        loaderContainer.style.display = 'none';
-        if (loaderText) loaderText.textContent = '';
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                loaderContainer.style.display = 'none';
+                if (loaderText) loaderText.textContent = '';
+            });
+        });
     }
     // Check if we need to delay showing the menu due to empty board cleanup
     let delayMenuRender = false;

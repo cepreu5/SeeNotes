@@ -1399,6 +1399,19 @@ code {
     text-decoration: none;
 }
 
+.board-filter-link.trash-filter-btn {
+    background-color: #c00 !important;
+    color: #fff !important;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.board-filter-link.trash-filter-btn.active,
+.board-filter-link.trash-filter-btn.selected-board {
+    background-color: #a00 !important;
+    color: #fff !important;
+    border: 1px solid #fff;
+}
+
 .selected-board {
     background-color: #007bff;
     color: #fff;

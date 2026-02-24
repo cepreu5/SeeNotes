@@ -65,6 +65,7 @@ en: {
         selectFolderButton: 'Select Folder',
         folderNotSelected: 'Not selected',
         closeButton: 'Close',
+        clearButton: 'Clear',
         searchByTitleTooltip: 'Search by Title',
         searchByContentTooltip: 'Search by Content',
         searchInTitles: 'in titles',
@@ -298,5 +299,9 @@ en: {
         errorEmptyTitle: "Please enter a title",
         savingBoard: "Saving board...",
         boardSaved: "Board saved successfully",
-        errorSaveBoard: "Error saving board"
+        errorSaveBoard: "Error saving board",
+        boardPreviewLabel: "Preview:",
+        trashBoardTitle: "Trash",
+        confirmNoteMoveToTrash: "Are you sure you want to move this note to the trash?",
+        noteMovedToTrash: "Note moved to Trash."
     }
