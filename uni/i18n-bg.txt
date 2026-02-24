@@ -161,6 +161,7 @@ bg: {
         confirmNoteDelete: 'Сигурни ли сте, че искате да изтриете тази бележка от базата данни (от кеша на браузъра)? Това няма да я изтрие от източника (напр. Google Drive).',
         confirmNoteDeleteSync: 'Сигурни ли сте, че искате да изтриете тази бележка?',
         noteDeletedSuccess: 'Бележката е изтрита успешно от базата данни.',
+        confirmDiscardChanges: 'Затваряне без запис?',
         noteDeletedSuccessGDrive: 'Бележката е изтрита от БД и Google Drive.',
         noteDeletedSuccessLocal: 'Бележката е изтрита от БД и локалната папка.',
         noteDeletedSuccessBoth: 'Бележката е изтрита от БД, GD и локалната папка.',

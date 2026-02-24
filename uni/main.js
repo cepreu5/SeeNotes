@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.66'; // App version
+const version = 'Beta 1.67'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -3610,10 +3610,13 @@ function initApp() {
     });
 
     document.querySelectorAll('.modal-close').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
             const modal = e.currentTarget.closest('.modal-overlay');
-            modal.classList.remove('visible');
-            if (modal.id === 'settings-modal') {
+            if (modal && modal.id === 'content-modal') {
+                if (!(await checkUnsavedChanges())) return;
+            }
+            if (modal) modal.classList.remove('visible');
+            if (modal && modal.id === 'settings-modal') {
                 window.kbAssistant.terminateGuide(); // Safe to call due to dummy object
                 if (notesBgrdChanged) {
                     mainLogic();
@@ -3646,9 +3649,12 @@ function initApp() {
             isMouseDownInside = e.target !== modal;
         }, { passive: true });
 
-        modal.addEventListener('click', (e) => {
+        modal.addEventListener('click', async (e) => {
             // Затваряме само ако и натискането, и отпускането са били върху овърлея
             if (e.target === modal && !isMouseDownInside) {
+                if (modal.id === 'content-modal') {
+                    if (!(await checkUnsavedChanges())) return;
+                }
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
@@ -5366,7 +5372,6 @@ async function mainLogic() {
             loaderText.textContent = ''; // Изчистваме текста за прогреса
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
-            notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
             // Скриваме лоудъра
             loaderContainer.style.display = 'none';
             // Показваме основните елементи, след като всичко е заредено
@@ -7219,7 +7224,6 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         // This prevents flickering on initial load.
         if (currentBackground !== 'Board.png') {
             document.body.style.backgroundImage = '';
-            notesContainer.style.backgroundImage = '';
         }
         currentBackground = 'Board.png';
     } else {
@@ -7235,7 +7239,6 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
             }
         }
         document.body.style.backgroundImage = `url('${newBackground}')`;
-        notesContainer.style.backgroundImage = `url('${newBackground}')`;
         currentBackground = newBackground;
     }
     updateSearchPlaceholder();
@@ -11625,6 +11628,16 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
 }
 */
 
+async function checkUnsavedChanges() {
+    const textarea = document.getElementById('note-edit-textarea');
+    const titleTextarea = document.getElementById('note-edit-title-textarea');
+
+    // If no textareas, we are not in edit mode
+    if (!textarea && !titleTextarea) return true;
+
+    return await showConfirmation(_('confirmDiscardChanges') || "Close without saving?");
+}
+
 // Unified Save Logic
 async function saveEditedNote() {
     const modalBodyElem = document.getElementById('modal-body');
@@ -12137,6 +12150,7 @@ function disableNoteEditing(modalBodyElem) {
     }
     // Note: The actual content replacement (removing textarea) is handled by showModal (called after)
     // or by modal closing. We don't need to manually revert innerHTML here unless we cancel.
+
 }
 /**
  * Превръща MD символи във форматирани области и изчиства текста.
