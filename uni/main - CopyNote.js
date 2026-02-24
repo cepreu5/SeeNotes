@@ -6197,7 +6197,7 @@ function makeElementDraggable(element, storageKey) {
 }
 
 function showModal(options, noteElement = null) {
-    let rawContent, formatString, titleFormatString, displayContent, noteColor, noteId, noteGdid;
+    let rawContent, formatString, titleFormatString, displayContent, noteColor, modalNoteId, modalNoteGdid;
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
     if (typeof options === 'string') {
         rawContent = options;
@@ -6211,8 +6211,8 @@ function showModal(options, noteElement = null) {
         titleFormatString = options.titleFormat;
         noteColor = options.color;
         // Извличаме ID-тата на бележката, ако са подадени
-        noteId = options.id;
-        noteGdid = options.gdid;
+        modalNoteId = options.id;
+        modalNoteGdid = options.gdid;
     }
     // --- Board Name Display in Modal ---
     const modalContentBox = contentModal.querySelector('.modal-content-box');
@@ -6376,8 +6376,9 @@ function showModal(options, noteElement = null) {
     }, { capture: true }); // Use capture to handle event before other listeners if needed
 
     // Store metadata for editing and rendering identification
-    modalBody.dataset.id = noteId || '';
-    modalBody.dataset.gdid = noteGdid || '';
+    modalBody.dataset.id = modalNoteId || '';
+    modalBody.dataset.gdid = modalNoteGdid || '';
+    modalBody.dataset.isNewNote = options.isNewNote ? 'true' : 'false';
     modalBody.dataset.baseDatemod = options.datemod || '0';
     if (options.originalNote) {
         modalBody.dataset.baseNote = JSON.stringify(options.originalNote);
@@ -6389,7 +6390,7 @@ function showModal(options, noteElement = null) {
     if (options.maskedLinks) {
         modalBody.dataset.maskedLinks = JSON.stringify(options.maskedLinks);
     }
-    const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+    const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(modalNoteGdid)) || (n.id && String(n.id) === String(modalNoteId)));
     modalBody.dataset.calendarDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? noteObjForCalendar.calendarDate : '0';
     // Determine color index
     let colorIndex = 0; // Default
@@ -6571,9 +6572,9 @@ function showModal(options, noteElement = null) {
     const oldSearchBar = modalContentBox.querySelector('.modal-search-bar');
     if (oldSearchBar) oldSearchBar.remove();
 
-    const canEdit = (useIndexedDb || (updateGDrive && options.gdid) || useLocalFolder) && !isPromo;
+    const canEdit = (useIndexedDb || (updateGDrive && modalNoteGdid) || useLocalFolder) && !isPromo;
     let footerToolbar = modalContentBox.querySelector('.modal-footer-toolbar');
-    if (!footerToolbar && (canEdit || isPromo)) { // Create toolbar if needed or for date
+    if (!footerToolbar) {
         footerToolbar = document.createElement('div');
         footerToolbar.className = 'modal-footer-toolbar';
         modalContentBox.appendChild(footerToolbar);
@@ -6641,7 +6642,7 @@ function showModal(options, noteElement = null) {
         footerToolbar.appendChild(footer); // Append to toolbar instead of box
     }
 
-    copyBtn.innerHTML = copyIconSvg;
+    if (copyBtn) copyBtn.innerHTML = copyIconSvg;
     // --- Логика за навигация между бележките ---
     const prevBtn = document.getElementById('prev-note-btn');
     const nextBtn = document.getElementById('next-note-btn');
@@ -6657,8 +6658,8 @@ function showModal(options, noteElement = null) {
         newDeleteBtn.addEventListener('click', async (e) => {
             // Use Global handleNoteDelete via element or mock
             const elementToDelete = noteElement || {
-                gdid: gdidForLookup,
-                dataset: { g: gdidForLookup, b: (options && options.boardId) ? options.boardId : null },
+                gdid: modalNoteGdid,
+                dataset: { g: modalNoteGdid, b: (options && options.boardId) ? options.boardId : null },
                 remove: () => { }
             };
             await handleNoteDelete(elementToDelete, e, true);
@@ -6697,58 +6698,60 @@ function showModal(options, noteElement = null) {
     const oldCalendarBtn = document.getElementById('note-calendar-btn');
     if (oldCalendarBtn) oldCalendarBtn.remove();
 
-    if (canEdit && footerToolbar) {
-        // --- Move Button ---
-        const moveBtn = document.createElement('div');
-        moveBtn.id = 'note-move-btn';
-        moveBtn.className = 'modal-footer-btn';
-        moveBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path>
-            <path d="M9 13h6"></path>
-            <path d="M12 10l3 3-3 3"></path>
+    if (footerToolbar) {
+        // --- Duplicate (Copy) Button ---
+        const noteDuplicateBtn = document.createElement('div');
+        noteDuplicateBtn.id = 'note-copy-btn';
+        noteDuplicateBtn.className = 'modal-footer-btn';
+        noteDuplicateBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
         </svg>`;
-        moveBtn.title = _('moveNote') || 'Move to board';
-        moveBtn.addEventListener('click', (e) => {
+        noteDuplicateBtn.title = _('copyNoteTooltip') || 'Copy note';
+        noteDuplicateBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            showAllBoardsModal(async (newBoardId) => {
-                const moved = await moveNoteToBoard(noteGdid, noteId, newBoardId);
-                if (moved) contentModal.classList.remove('visible');
-            });
+            if (!currentNoteObj) return;
+
+            // Clone the note object
+            const noteCopy = JSON.parse(JSON.stringify(currentNoteObj));
+
+            // Assign new unique IDs using global variables
+            window.noteId++;
+            window.noteNumord++;
+            const newId = window.noteId;
+            const newNumord = window.noteNumord;
+
+            noteCopy.id = newId;
+            noteCopy.gdid = String(newId); // Temporary GDID
+            noteCopy.numord = newNumord;
+            noteCopy.date = Date.now();
+            noteCopy.datemod = Date.now();
+
+            // Close original modal
+            contentModal.classList.remove('visible');
+
+            // Small delay to ensure clean transition
+            setTimeout(() => {
+                showModal({
+                    raw: noteCopy.notetxt || noteCopy.text,
+                    format: noteCopy.text_span,
+                    titleFormat: noteCopy.title_span,
+                    color: (typeof noteColorMap !== 'undefined' && noteCopy.color !== null && noteCopy.color >= 0 && noteCopy.color <= 9) ? noteColorMap[noteCopy.color] : noteCopy.color,
+                    boardId: noteCopy.boardid,
+                    id: noteCopy.id,
+                    isNewNote: true,
+                    originalNote: noteCopy
+                });
+
+                // Switch to edit mode automatically
+                setTimeout(() => {
+                    const editBtn = document.getElementById('note-edit-btn');
+                    if (editBtn) editBtn.click();
+                    showToast(_('copyNoteMessage') || 'Original note closed, this is the copy', 4000);
+                }, 150);
+            }, 300);
         });
-        footerToolbar.appendChild(moveBtn);
-
-        // --- Calendar Button ---
-        const noteObjForCalendar = currentNoteObj;
-        const cDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? parseInt(noteObjForCalendar.calendarDate, 10) : 0;
-        const hasCalendarDate = cDate !== 0 && !isNaN(cDate);
-
-        const calendarBtn = document.createElement('div');
-        calendarBtn.id = 'note-calendar-btn';
-        calendarBtn.className = 'modal-footer-btn';
-        calendarBtn.innerHTML = hasCalendarDate ? noCalendarIconSvg : calendarIconSvg;
-        calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
-        calendarBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const currentCalendarDateVal = modalBody.dataset.calendarDate;
-            const isAssigned = currentCalendarDateVal && currentCalendarDateVal !== '0';
-
-            if (isAssigned) {
-                const originalHtml = calendarBtn.innerHTML;
-                calendarBtn.style.pointerEvents = 'none';
-                calendarBtn.style.position = 'relative';
-                calendarBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
-                await updateNoteCalendarDate({ id: noteId, gdid: noteGdid }, { getTime: () => 0 });
-                calendarBtn.style.pointerEvents = 'auto';
-                calendarBtn.innerHTML = calendarIconSvg;
-                calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
-                modalBody.dataset.calendarDate = "0";
-            } else {
-                noteToAssignDate = { id: noteId, gdid: noteGdid };
-                contentModal.classList.remove('visible');
-                renderCalendarView();
-            }
-        });
-        footerToolbar.appendChild(calendarBtn);
+        footerToolbar.appendChild(noteDuplicateBtn);
 
         // --- Search Button ---
         const searchBtn = document.createElement('div');
@@ -6765,4802 +6768,4475 @@ function showModal(options, noteElement = null) {
         });
         footerToolbar.appendChild(searchBtn);
 
-        // --- Edit Button ---
-        const editBtn = document.createElement('div');
-        editBtn.id = 'note-edit-btn';
-        editBtn.className = 'modal-footer-btn';
-        editBtn.innerHTML = pencilIconSvg;
-        editBtn.title = "Edit note";
-        editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            enableNoteEditing(modalBody);
-        });
-        footerToolbar.appendChild(editBtn);
-    }
-}
-
-function toggleModalSearch(modalContentBox, modalBody) {
-    const toolbar = modalContentBox.querySelector('.modal-footer-toolbar');
-    let searchBar = modalContentBox.querySelector('.modal-search-bar');
-
-    const restoreContent = () => {
-        if (modalBody.querySelector('textarea')) {
-            // In edit mode, we just trigger handleEditInput to refresh backdrop (clears marks)
-            const textareas = modalBody.querySelectorAll('textarea');
-            textareas.forEach(ta => {
-                const backdrop = document.getElementById(ta.id + '-backdrop');
-                if (backdrop) handleEditInput(ta, backdrop);
+        if (canEdit) {
+            // --- Move Button ---
+            const moveBtn = document.createElement('div');
+            moveBtn.id = 'note-move-btn';
+            moveBtn.className = 'modal-footer-btn';
+            moveBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path>
+            <path d="M9 13h6"></path>
+            <path d="M12 10l3 3-3 3"></path>
+        </svg>`;
+            moveBtn.title = _('moveNote') || 'Move to board';
+            moveBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showAllBoardsModal(async (newBoardId) => {
+                    const moved = await moveNoteToBoard(modalNoteGdid, modalNoteId, newBoardId);
+                    if (moved) contentModal.classList.remove('visible');
+                });
             });
+            footerToolbar.appendChild(moveBtn);
+
+
+            // --- Calendar Button ---
+            const noteObjForCalendar = currentNoteObj;
+            const cDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? parseInt(noteObjForCalendar.calendarDate, 10) : 0;
+            const hasCalendarDate = cDate !== 0 && !isNaN(cDate);
+
+            const calendarBtn = document.createElement('div');
+            calendarBtn.id = 'note-calendar-btn';
+            calendarBtn.className = 'modal-footer-btn';
+            calendarBtn.innerHTML = hasCalendarDate ? noCalendarIconSvg : calendarIconSvg;
+            calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
+            calendarBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const currentCalendarDateVal = modalBody.dataset.calendarDate;
+                const isAssigned = currentCalendarDateVal && currentCalendarDateVal !== '0';
+
+                if (isAssigned) {
+                    const originalHtml = calendarBtn.innerHTML;
+                    calendarBtn.style.pointerEvents = 'none';
+                    calendarBtn.style.position = 'relative';
+                    calendarBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
+                    await updateNoteCalendarDate({ id: modalNoteId, gdid: modalNoteGdid }, { getTime: () => 0 });
+                    calendarBtn.style.pointerEvents = 'auto';
+                    calendarBtn.innerHTML = calendarIconSvg;
+                    calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
+                    modalBody.dataset.calendarDate = "0";
+                } else {
+                    noteToAssignDate = { id: modalNoteId, gdid: modalNoteGdid };
+                    contentModal.classList.remove('visible');
+                    renderCalendarView();
+                }
+            });
+            footerToolbar.appendChild(calendarBtn);
+
+            // --- Edit Button ---
+            const editBtn = document.createElement('div');
+            editBtn.id = 'note-edit-btn';
+            editBtn.className = 'modal-footer-btn';
+            editBtn.innerHTML = pencilIconSvg;
+            editBtn.title = "Edit note";
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                enableNoteEditing(modalBody);
+            });
+            footerToolbar.appendChild(editBtn);
+        }
+    }
+
+    function toggleModalSearch(modalContentBox, modalBody) {
+        const toolbar = modalContentBox.querySelector('.modal-footer-toolbar');
+        let searchBar = modalContentBox.querySelector('.modal-search-bar');
+
+        const restoreContent = () => {
+            if (modalBody.querySelector('textarea')) {
+                // In edit mode, we just trigger handleEditInput to refresh backdrop (clears marks)
+                const textareas = modalBody.querySelectorAll('textarea');
+                textareas.forEach(ta => {
+                    const backdrop = document.getElementById(ta.id + '-backdrop');
+                    if (backdrop) handleEditInput(ta, backdrop);
+                });
+                return;
+            }
+            if (modalBody.dataset.renderedHtml) {
+                modalBody.innerHTML = modalBody.dataset.renderedHtml;
+            }
+        };
+
+        if (searchBar) {
+            searchBar.remove();
+            restoreContent();
             return;
         }
-        if (modalBody.dataset.renderedHtml) {
-            modalBody.innerHTML = modalBody.dataset.renderedHtml;
+
+        searchBar = document.createElement('div');
+        searchBar.className = 'modal-search-bar';
+
+        // We prepend it to the toolbar if possible
+        if (toolbar) {
+            toolbar.insertBefore(searchBar, toolbar.firstChild);
+        } else {
+            modalContentBox.appendChild(searchBar);
         }
-    };
 
-    if (searchBar) {
-        searchBar.remove();
-        restoreContent();
-        return;
-    }
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = _('searchPlaceholder') || 'Search...';
+        Object.assign(input.style, {
+            flex: '1',
+            border: 'none',
+            padding: '5px',
+            fontSize: '14px',
+            outline: 'none',
+            background: 'transparent',
+            width: '100%'
+        });
 
-    searchBar = document.createElement('div');
-    searchBar.className = 'modal-search-bar';
-
-    // We prepend it to the toolbar if possible
-    if (toolbar) {
-        toolbar.insertBefore(searchBar, toolbar.firstChild);
-    } else {
-        modalContentBox.appendChild(searchBar);
-    }
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = _('searchPlaceholder') || 'Search...';
-    Object.assign(input.style, {
-        flex: '1',
-        border: 'none',
-        padding: '5px',
-        fontSize: '14px',
-        outline: 'none',
-        background: 'transparent',
-        width: '100%'
-    });
-
-    const nextBtn = document.createElement('button');
-    nextBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        const nextBtn = document.createElement('button');
+        nextBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="5" y1="12" x2="19" y2="12"></line>
         <polyline points="12 5 19 12 12 19"></polyline>
     </svg>`;
-    nextBtn.title = _('nextHighlight') || "Next";
-    Object.assign(nextBtn.style, {
-        border: 'none',
-        background: 'transparent',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '0 8px',
-        color: '#333'
-    });
-    nextBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (highlights.length > 0) {
-            currentIdx = (currentIdx + 1) % highlights.length;
-            scrollToHighlight();
-        }
-    };
-
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-    </svg>`;
-    Object.assign(closeBtn.style, {
-        border: 'none',
-        background: 'transparent',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '0 8px',
-        color: '#666'
-    });
-
-    searchBar.appendChild(input);
-    searchBar.appendChild(nextBtn);
-    searchBar.appendChild(closeBtn);
-    // REMOVED redundant modalContentBox.appendChild(searchBar) which moved it to the bottom
-
-    input.focus();
-
-    let highlights = [];
-    let currentIdx = -1;
-
-    const performSearch = () => {
-        const query = input.value.trim();
-        restoreContent(); // Винаги започваме от чисто съдържание
-        highlights = [];
-        currentIdx = -1;
-
-        if (query.length < 2) return;
-
-        const regex = new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi');
-
-        // Търсим само в текстовите елементи
-        const walker = document.createTreeWalker(modalBody, NodeFilter.SHOW_TEXT);
-        const nodes = [];
-        while (walker.nextNode()) nodes.push(walker.currentNode);
-
-        nodes.forEach(node => {
-            const text = node.textContent;
-            if (regex.test(text)) {
-                const fragment = document.createDocumentFragment();
-                let lastIdx = 0;
-                text.replace(regex, (match, p1, offset) => {
-                    // Текст преди съвпадението
-                    fragment.appendChild(document.createTextNode(text.substring(lastIdx, offset)));
-                    // Самият маркер
-                    const mark = document.createElement('mark');
-                    mark.className = 'modal-search-highlight';
-                    mark.textContent = match;
-                    Object.assign(mark.style, {
-                        backgroundColor: '#ffff00', // Ярко жълто
-                        color: 'black',
-                        padding: '0',
-                        borderRadius: '2px',
-                        fontWeight: 'bold'
-                    });
-                    fragment.appendChild(mark);
-                    highlights.push(mark);
-                    lastIdx = offset + match.length;
-                });
-                fragment.appendChild(document.createTextNode(text.substring(lastIdx)));
-                node.parentNode.replaceChild(fragment, node);
-            }
+        nextBtn.title = _('nextHighlight') || "Next";
+        Object.assign(nextBtn.style, {
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 8px',
+            color: '#333'
         });
-
-        if (highlights.length > 0) {
-            currentIdx = 0;
-            scrollToHighlight();
-        }
-    };
-
-    const scrollToHighlight = () => {
-        highlights.forEach((h, i) => {
-            h.style.backgroundColor = (i === currentIdx) ? '#ff9900' : '#ffff00'; // Наситено оранжево за активното
-            h.style.boxShadow = (i === currentIdx) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
-        });
-        if (highlights[currentIdx]) {
-            highlights[currentIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    };
-
-    input.addEventListener('input', performSearch);
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        nextBtn.onclick = (e) => {
+            e.stopPropagation();
             if (highlights.length > 0) {
                 currentIdx = (currentIdx + 1) % highlights.length;
                 scrollToHighlight();
             }
-        }
-        if (e.key === 'Escape') {
-            searchBar.remove();
-            restoreContent();
-        }
-    });
+        };
 
-    closeBtn.onclick = () => {
-        searchBar.remove();
-        restoreContent();
-    };
-}
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>`;
+        Object.assign(closeBtn.style, {
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 8px',
+            color: '#666'
+        });
 
-function showAllBoardsModal(onSelectCallback = null) {
-    const modalContent = document.createElement('div');
-    const boardsModal = document.getElementById('boards-menu-modal');
-    modalContent.className = 'all-boards-modal-container';
-    // Взимаме всички бутони от главното меню в хедъра
-    const headerMenuContainer = document.querySelector('header .board-menu-container');
-    if (!headerMenuContainer) return; // Предпазна мярка
-    const headerButtons = headerMenuContainer.querySelectorAll('.board-filter-link');
-    headerButtons.forEach(button => {
-        const clone = button.cloneNode(true);
-        // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
-        clone.style.width = `${maxWidthForButtons}px`;
-        modalContent.appendChild(clone);
-    });
-    // Делегиран слушател за събития върху контейнера на модала
-    modalContent.addEventListener('click', (e) => {
-        const targetButton = e.target.closest('.board-filter-link');
-        if (targetButton) {
-            e.preventDefault();
-            const boardId = targetButton.dataset.boardid;
+        searchBar.appendChild(input);
+        searchBar.appendChild(nextBtn);
+        searchBar.appendChild(closeBtn);
+        // REMOVED redundant modalContentBox.appendChild(searchBar) which moved it to the bottom
 
-            if (onSelectCallback) {
-                onSelectCallback(boardId);
-                boardsModal.classList.remove('visible');
-                return;
+        input.focus();
+
+        let highlights = [];
+        let currentIdx = -1;
+
+        const performSearch = () => {
+            const query = input.value.trim();
+            restoreContent(); // Винаги започваме от чисто съдържание
+            highlights = [];
+            currentIdx = -1;
+
+            if (query.length < 2) return;
+
+            const regex = new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi');
+
+            // Търсим само в текстовите елементи
+            const walker = document.createTreeWalker(modalBody, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+
+            nodes.forEach(node => {
+                const text = node.textContent;
+                if (regex.test(text)) {
+                    const fragment = document.createDocumentFragment();
+                    let lastIdx = 0;
+                    text.replace(regex, (match, p1, offset) => {
+                        // Текст преди съвпадението
+                        fragment.appendChild(document.createTextNode(text.substring(lastIdx, offset)));
+                        // Самият маркер
+                        const mark = document.createElement('mark');
+                        mark.className = 'modal-search-highlight';
+                        mark.textContent = match;
+                        Object.assign(mark.style, {
+                            backgroundColor: '#ffff00', // Ярко жълто
+                            color: 'black',
+                            padding: '0',
+                            borderRadius: '2px',
+                            fontWeight: 'bold'
+                        });
+                        fragment.appendChild(mark);
+                        highlights.push(mark);
+                        lastIdx = offset + match.length;
+                    });
+                    fragment.appendChild(document.createTextNode(text.substring(lastIdx)));
+                    node.parentNode.replaceChild(fragment, node);
+                }
+            });
+
+            if (highlights.length > 0) {
+                currentIdx = 0;
+                scrollToHighlight();
             }
+        };
 
-            // Намираме съответния бутон в хедъра
-            const headerButton = headerMenuContainer.querySelector(`.board-filter-link[data-boardid="${boardId}"]`);
-            if (headerButton) {
-                // Затваряме модала
-                boardsModal.classList.remove('visible');
-                // Симулираме клик върху бутона в хедъра
-                headerButton.click();
+        const scrollToHighlight = () => {
+            highlights.forEach((h, i) => {
+                h.style.backgroundColor = (i === currentIdx) ? '#ff9900' : '#ffff00'; // Наситено оранжево за активното
+                h.style.boxShadow = (i === currentIdx) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
+            });
+            if (highlights[currentIdx]) {
+                highlights[currentIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
-        }
-    });
-    const boardsModalBody = document.getElementById('boards-menu-modal-body');
-    boardsModalBody.innerHTML = '';
-    boardsModalBody.appendChild(modalContent);
-    // --- Calculate optimal width to fit columns exactly ---
-    let buttonWidth = maxWidthForButtons;
-    // Fallback if global variable is not set or 0
-    if (!buttonWidth) {
-        const tempClone = modalContent.querySelector('.board-filter-link');
-        if (tempClone) {
-            // Try to get width from inline style first, then estimated
-            buttonWidth = parseFloat(tempClone.style.width) || 150;
-        }
-    }
-    if (buttonWidth) {
-        const gap = 10;
-        const paddingOverhead = 40; // Exact fit: ContainerPadding (20px) + Scrollbar (approx 17px) + Buffer
-        const availableWidth = window.innerWidth * 0.95; // Max allowed width (95% of screen)
-        let cols = Math.floor((availableWidth - paddingOverhead + gap) / (buttonWidth + gap));
-        cols = Math.max(1, cols); // At least 1 column
-        const optimalWidth = cols * (buttonWidth + gap) - gap + paddingOverhead;
-        const modalBox = boardsModal.querySelector('.modal-content-box');
-        if (modalBox) {
-            modalBox.style.width = `${optimalWidth}px`;
-            modalBox.style.maxWidth = '95vw'; // Ensure it doesn't overflow viewport width logic
-        }
-    }
-    boardsModal.classList.add('visible');
-}
+        };
 
-function formatDate(dateString) {
-    if (!dateString) return '';
-    try {
-        // Проверка: ако е низ, който е чисто числово (timestamp), го превръщаме в число
-        const parsedValue = !isNaN(dateString) && !isNaN(parseFloat(dateString)) ? Number(dateString) : dateString;
-        const date = new Date(parsedValue);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        return `${day}.${month}.${year}`;
-    } catch (e) { return dateString; }
-}
-
-function formatDateTime(timestamp) {
-    if (!timestamp) return '';
-    try {
-        const date = new Date(timestamp);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${day}.${month}.${year} ${hours}:${minutes}`;
-    } catch (e) {
-        return timestamp; // Fallback
-    }
-}
-
-function formatTime(timestamp) {
-    if (!timestamp) return '';
-    try {
-        const parsedValue = !isNaN(timestamp) && !isNaN(parseFloat(timestamp)) ? Number(timestamp) : timestamp;
-        const date = new Date(parsedValue);
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${hours}:${minutes}`;
-    } catch (e) {
-        return ''; // Fallback
-    }
-}
-// Add an event listener to the modal's close button to reset button visibility
-document.querySelectorAll('.modal-close').forEach(btn => {
-    btn.addEventListener('click', () => {
-        copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
-        contentModal.classList.remove('popup-mode'); // Reset popup mode on close
-        const modalBox = contentModal.querySelector('.modal-content-box');
-        modalBox.style.top = '';
-        modalBox.style.left = '';
-        modalBox.style.transform = '';
-    });
-});
-
-/**
- * Филтрира бележките по избран борд.
- * @param {string|number} boardId - ID-то на борда.
- * @param {boolean} [shouldScroll=false] - Дали да се скролира менюто до избрания борд.
- */
-async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement = null) {
-    // --- ПРОВЕРКА ЗА КОНФЛИКТ: Стартов борд, който е скрит ---
-    // Ако стартовият борд е "Всички", но е скрит, избираме първия наличен борд.
-    if (boardId === 'all' && localStorage.getItem('showBoardAll') === 'false') {
-        // Взимаме първия видим борд (който не е специален)
-        const firstAvailableBoard = boardsData.find(b => b.gdid);
-        boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all'; // Fallback to 'all' if no other boards exist
-    }
-    // Същата логика за "Напомняния"
-    if (boardId === 'reminder' && localStorage.getItem('showBoardRemind') === 'false') {
-        const firstAvailableBoard = boardsData.find(b => b.gdid);
-        boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
-    }
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'trash'];
-    const targetBoard = specialBoards.includes(boardId) ? null : boardsData.find(b => b.gdid == boardId || b.id == boardId);
-    const buttonBoardId = targetBoard ? (targetBoard.gdid || targetBoard.id) : boardId;
-    // --- Проверка за съществуващ борд ---
-    // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
-    // и не съществува в boardsData, превключваме към 'all'.
-    if (!specialBoards.includes(boardId)) {
-        // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
-        // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
-        // В другите режими - по текстов `gdid`.
-        // Бутоните за филтриране винаги подават `gdid`.
-        // Тази логика проверява дали бордът съществува и задава правилния
-        // идентификатор за филтриране (`currentBoardFilter`).
-        let boardToFilter = null;
-        // Търсим борда по gdid или id, който идва от клик на бутон
-        const board = boardsData.find(b => b.gdid == boardId || b.id == boardId);
-        if (board) {
-            // Ако сме в режим Архив, ще филтрираме по числовото `id`.
-            // В противен случай - по `gdid`.
-            boardToFilter = useArhDb ? board.id : board.gdid;
-        }
-        // Проверяваме дали сме намерили борд. `boardId` е оригиналният gdid/id от бутона.
-        const boardExists = boardsData.some(b => b.gdid == boardId || b.id == boardId);
-        if (!boardExists) {
-            console.warn(`Board with ID '${boardId}' not found. Defaulting to 'all'.`);
-            boardId = 'all';
-        }
-    }
-    const searchInput = document.getElementById('search-box'); // The search input field
-    // --- КОРЕКЦИЯ: Първо скролираме, после анимираме ---
-    // Преместваме логиката за скролиране в началото.
-    if (shouldScroll) {
-        // --- КОРЕКЦИЯ: Използваме requestAnimationFrame, за да сме сигурни, че елементът е рендиран ---
-        // Това решава проблема с позиционирането при първоначално зареждане на тесен екран.
-        requestAnimationFrame(() => {
-            const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
-            if (selectedButtonInMenu) {
-                selectedButtonInMenu.scrollIntoView({
-                    behavior: 'smooth',
-                    inline: 'center',
-                    block: 'nearest'
-                });
+        input.addEventListener('input', performSearch);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                if (highlights.length > 0) {
+                    currentIdx = (currentIdx + 1) % highlights.length;
+                    scrollToHighlight();
+                }
+            }
+            if (e.key === 'Escape') {
+                searchBar.remove();
+                restoreContent();
             }
         });
+
+        closeBtn.onclick = () => {
+            searchBar.remove();
+            restoreContent();
+        };
     }
-    if (boardId === 'calendar' || boardId === 'calendar_monthly' || boardId === 'calendar_weekly') {
-        // Проверяваме коя версия на календара да покажем
-        if (boardId === 'calendar_weekly') {
-            renderWeeklyCalendarView();
-        } else if (boardId === 'calendar_monthly') {
-            renderCalendarView();
-        } else {
-            // Standard 'calendar' behavior (respects last view)
-            if (localStorage.getItem('showWeeklyCalendar') === 'true') {
-                renderWeeklyCalendarView();
-            } else {
-                renderCalendarView();
+
+    function showAllBoardsModal(onSelectCallback = null) {
+        const modalContent = document.createElement('div');
+        const boardsModal = document.getElementById('boards-menu-modal');
+        modalContent.className = 'all-boards-modal-container';
+        // Взимаме всички бутони от главното меню в хедъра
+        const headerMenuContainer = document.querySelector('header .board-menu-container');
+        if (!headerMenuContainer) return; // Предпазна мярка
+        const headerButtons = headerMenuContainer.querySelectorAll('.board-filter-link');
+        headerButtons.forEach(button => {
+            const clone = button.cloneNode(true);
+            // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
+            clone.style.width = `${maxWidthForButtons}px`;
+            modalContent.appendChild(clone);
+        });
+        // Делегиран слушател за събития върху контейнера на модала
+        modalContent.addEventListener('click', (e) => {
+            const targetButton = e.target.closest('.board-filter-link');
+            if (targetButton) {
+                e.preventDefault();
+                const boardId = targetButton.dataset.boardid;
+
+                if (onSelectCallback) {
+                    onSelectCallback(boardId);
+                    boardsModal.classList.remove('visible');
+                    return;
+                }
+
+                // Намираме съответния бутон в хедъра
+                const headerButton = headerMenuContainer.querySelector(`.board-filter-link[data-boardid="${boardId}"]`);
+                if (headerButton) {
+                    // Затваряме модала
+                    boardsModal.classList.remove('visible');
+                    // Симулираме клик върху бутона в хедъра
+                    headerButton.click();
+                }
+            }
+        });
+        const boardsModalBody = document.getElementById('boards-menu-modal-body');
+        boardsModalBody.innerHTML = '';
+        boardsModalBody.appendChild(modalContent);
+        // --- Calculate optimal width to fit columns exactly ---
+        let buttonWidth = maxWidthForButtons;
+        // Fallback if global variable is not set or 0
+        if (!buttonWidth) {
+            const tempClone = modalContent.querySelector('.board-filter-link');
+            if (tempClone) {
+                // Try to get width from inline style first, then estimated
+                buttonWidth = parseFloat(tempClone.style.width) || 150;
             }
         }
-        return;
-    }
-    if (boardId !== 'search-results') {
-        searchInput.value = ''; // Clear the search box
-        saveSearchBtn.style.display = 'none';
-        const searchBoardBtn = document.getElementById('search-results-board-btn');
-        if (searchBoardBtn) {
-            searchBoardBtn.style.display = 'none';
-            searchBoardBtn.classList.remove('selected-board', 'active');
-        }
-        const clearBtn = document.querySelector('.search-btn-clear');
-        if (clearBtn) clearBtn.style.display = 'none';
-    }
-    // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
-    // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
-    const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
-    currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid == boardId || b.id == boardId)?.id : boardId);
-    // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
-    const modeButton = document.getElementById('mode_button');
-    const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
-    let animationStartTime = 0;
-    const runFilter = () => {
-        applyFilters();
-        // Спираме анимацията СЛЕД като браузърът е прерисувал екрана
-        if (modeButton && loadingIcon) {
-            // Update UI immediately (Stop spinner, show image)
-            modeButton.classList.remove('mode-button-loading');
-            loadingIcon.classList.remove('button-loading');
-            if (typeof debug !== 'undefined' && debug) {
-                setTimeout(() => {
-                    const duration = performance.now() - animationStartTime;
-                    let logName = boardId;
-                    if (boardId !== 'all' && typeof boardsData !== 'undefined') {
-                        const b = boardsData.find(b => b.gdid === boardId || b.id === boardId);
-                        if (b) logName = b.title;
-                    }
-                    // Get note count from the UI counter which is updated in applyFilters
-                    const noteCounter = document.getElementById('note-counter');
-                    const count = noteCounter ? noteCounter.textContent : '0';
-                    console.log(`Board "${logName}" (${count} notes) render duration: ${duration.toFixed(0)}ms`);
-                }, 0);
+        if (buttonWidth) {
+            const gap = 10;
+            const paddingOverhead = 40; // Exact fit: ContainerPadding (20px) + Scrollbar (approx 17px) + Buffer
+            const availableWidth = window.innerWidth * 0.95; // Max allowed width (95% of screen)
+            let cols = Math.floor((availableWidth - paddingOverhead + gap) / (buttonWidth + gap));
+            cols = Math.max(1, cols); // At least 1 column
+            const optimalWidth = cols * (buttonWidth + gap) - gap + paddingOverhead;
+            const modalBox = boardsModal.querySelector('.modal-content-box');
+            if (modalBox) {
+                modalBox.style.width = `${optimalWidth}px`;
+                modalBox.style.maxWidth = '95vw'; // Ensure it doesn't overflow viewport width logic
             }
         }
-    };
-    if (modeButton && loadingIcon) {
-        animationStartTime = performance.now();
-        modeButton.classList.add('mode-button-loading');
-        loadingIcon.classList.add('button-loading');
-        // Използваме setTimeout, за да позволим на браузъра да рендира анимацията
-        // преди да започне тежката операция по филтриране.
-        setTimeout(runFilter, 10);
-    } else {
-        runFilter(); // За всички други бутони, изпълняваме веднага
+        boardsModal.classList.add('visible');
     }
-    // Маркираме избрания бутон и задаваме визуалното състояние (active + height).
-    document.querySelectorAll('.board-filter-link').forEach(link => {
-        const isSelected = link.dataset.boardid === String(buttonBoardId);
-        link.classList.toggle('selected-board', isSelected);
-        link.classList.toggle('active', isSelected);
-        link.style.height = isSelected ? '39px' : '35px';
+
+    function formatDate(dateString) {
+        if (!dateString) return '';
+        try {
+            // Проверка: ако е низ, който е чисто числово (timestamp), го превръщаме в число
+            const parsedValue = !isNaN(dateString) && !isNaN(parseFloat(dateString)) ? Number(dateString) : dateString;
+            const date = new Date(parsedValue);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}.${month}.${year}`;
+        } catch (e) { return dateString; }
+    }
+
+    function formatDateTime(timestamp) {
+        if (!timestamp) return '';
+        try {
+            const date = new Date(timestamp);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${day}.${month}.${year} ${hours}:${minutes}`;
+        } catch (e) {
+            return timestamp; // Fallback
+        }
+    }
+
+    function formatTime(timestamp) {
+        if (!timestamp) return '';
+        try {
+            const parsedValue = !isNaN(timestamp) && !isNaN(parseFloat(timestamp)) ? Number(timestamp) : timestamp;
+            const date = new Date(parsedValue);
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        } catch (e) {
+            return ''; // Fallback
+        }
+    }
+    // Add an event listener to the modal's close button to reset button visibility
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', () => {
+            copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
+            contentModal.classList.remove('popup-mode'); // Reset popup mode on close
+            const modalBox = contentModal.querySelector('.modal-content-box');
+            modalBox.style.top = '';
+            modalBox.style.left = '';
+            modalBox.style.transform = '';
+        });
     });
-    // Placeholder-ът вече не включва името на борда, тъй като търсенето е във всички бележки
-    // updateSearchPlaceholder() ще зададе общ placeholder
-    if (boardId === 'all') {
-        // For the 'all' view, clear the inline style to let the default CSS background apply.
-        // This prevents flickering on initial load.
-        if (currentBackground !== 'Board.png') {
-            document.body.style.backgroundImage = '';
-            notesContainer.style.backgroundImage = '';
+
+    /**
+     * Филтрира бележките по избран борд.
+     * @param {string|number} boardId - ID-то на борда.
+     * @param {boolean} [shouldScroll=false] - Дали да се скролира менюто до избрания борд.
+     */
+    async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement = null) {
+        // --- ПРОВЕРКА ЗА КОНФЛИКТ: Стартов борд, който е скрит ---
+        // Ако стартовият борд е "Всички", но е скрит, избираме първия наличен борд.
+        if (boardId === 'all' && localStorage.getItem('showBoardAll') === 'false') {
+            // Взимаме първия видим борд (който не е специален)
+            const firstAvailableBoard = boardsData.find(b => b.gdid);
+            boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all'; // Fallback to 'all' if no other boards exist
         }
-        currentBackground = 'Board.png';
-    } else {
-        // For a specific board, set the background via inline style.
-        let newBackground = 'Board.png';
-        // Търсим по gdid, за да вземем фона
-        const board = boardsData.find(b => b.gdid === boardId);
-        if (board && board.backnum) {
-            switch (board.backnum) {
-                case 1: newBackground = 'Board1.png'; break;
-                case 2: newBackground = 'Board2.png'; break;
-                case 3: newBackground = 'Board3.png'; break;
+        // Същата логика за "Напомняния"
+        if (boardId === 'reminder' && localStorage.getItem('showBoardRemind') === 'false') {
+            const firstAvailableBoard = boardsData.find(b => b.gdid);
+            boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
+        }
+        const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'trash'];
+        const targetBoard = specialBoards.includes(boardId) ? null : boardsData.find(b => b.gdid == boardId || b.id == boardId);
+        const buttonBoardId = targetBoard ? (targetBoard.gdid || targetBoard.id) : boardId;
+        // --- Проверка за съществуващ борд ---
+        // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
+        // и не съществува в boardsData, превключваме към 'all'.
+        if (!specialBoards.includes(boardId)) {
+            // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
+            // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
+            // В другите режими - по текстов `gdid`.
+            // Бутоните за филтриране винаги подават `gdid`.
+            // Тази логика проверява дали бордът съществува и задава правилния
+            // идентификатор за филтриране (`currentBoardFilter`).
+            let boardToFilter = null;
+            // Търсим борда по gdid или id, който идва от клик на бутон
+            const board = boardsData.find(b => b.gdid == boardId || b.id == boardId);
+            if (board) {
+                // Ако сме в режим Архив, ще филтрираме по числовото `id`.
+                // В противен случай - по `gdid`.
+                boardToFilter = useArhDb ? board.id : board.gdid;
+            }
+            // Проверяваме дали сме намерили борд. `boardId` е оригиналният gdid/id от бутона.
+            const boardExists = boardsData.some(b => b.gdid == boardId || b.id == boardId);
+            if (!boardExists) {
+                console.warn(`Board with ID '${boardId}' not found. Defaulting to 'all'.`);
+                boardId = 'all';
             }
         }
-        document.body.style.backgroundImage = `url('${newBackground}')`;
-        notesContainer.style.backgroundImage = `url('${newBackground}')`;
-        currentBackground = newBackground;
+        const searchInput = document.getElementById('search-box'); // The search input field
+        // --- КОРЕКЦИЯ: Първо скролираме, после анимираме ---
+        // Преместваме логиката за скролиране в началото.
+        if (shouldScroll) {
+            // --- КОРЕКЦИЯ: Използваме requestAnimationFrame, за да сме сигурни, че елементът е рендиран ---
+            // Това решава проблема с позиционирането при първоначално зареждане на тесен екран.
+            requestAnimationFrame(() => {
+                const selectedButtonInMenu = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${buttonBoardId}"]`);
+                if (selectedButtonInMenu) {
+                    selectedButtonInMenu.scrollIntoView({
+                        behavior: 'smooth',
+                        inline: 'center',
+                        block: 'nearest'
+                    });
+                }
+            });
+        }
+        if (boardId === 'calendar' || boardId === 'calendar_monthly' || boardId === 'calendar_weekly') {
+            // Проверяваме коя версия на календара да покажем
+            if (boardId === 'calendar_weekly') {
+                renderWeeklyCalendarView();
+            } else if (boardId === 'calendar_monthly') {
+                renderCalendarView();
+            } else {
+                // Standard 'calendar' behavior (respects last view)
+                if (localStorage.getItem('showWeeklyCalendar') === 'true') {
+                    renderWeeklyCalendarView();
+                } else {
+                    renderCalendarView();
+                }
+            }
+            return;
+        }
+        if (boardId !== 'search-results') {
+            searchInput.value = ''; // Clear the search box
+            saveSearchBtn.style.display = 'none';
+            const searchBoardBtn = document.getElementById('search-results-board-btn');
+            if (searchBoardBtn) {
+                searchBoardBtn.style.display = 'none';
+                searchBoardBtn.classList.remove('selected-board', 'active');
+            }
+            const clearBtn = document.querySelector('.search-btn-clear');
+            if (clearBtn) clearBtn.style.display = 'none';
+        }
+        // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
+        // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
+        const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
+        currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid == boardId || b.id == boardId)?.id : boardId);
+        // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
+        const modeButton = document.getElementById('mode_button');
+        const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
+        let animationStartTime = 0;
+        const runFilter = () => {
+            applyFilters();
+            // Спираме анимацията СЛЕД като браузърът е прерисувал екрана
+            if (modeButton && loadingIcon) {
+                // Update UI immediately (Stop spinner, show image)
+                modeButton.classList.remove('mode-button-loading');
+                loadingIcon.classList.remove('button-loading');
+                if (typeof debug !== 'undefined' && debug) {
+                    setTimeout(() => {
+                        const duration = performance.now() - animationStartTime;
+                        let logName = boardId;
+                        if (boardId !== 'all' && typeof boardsData !== 'undefined') {
+                            const b = boardsData.find(b => b.gdid === boardId || b.id === boardId);
+                            if (b) logName = b.title;
+                        }
+                        // Get note count from the UI counter which is updated in applyFilters
+                        const noteCounter = document.getElementById('note-counter');
+                        const count = noteCounter ? noteCounter.textContent : '0';
+                        console.log(`Board "${logName}" (${count} notes) render duration: ${duration.toFixed(0)}ms`);
+                    }, 0);
+                }
+            }
+        };
+        if (modeButton && loadingIcon) {
+            animationStartTime = performance.now();
+            modeButton.classList.add('mode-button-loading');
+            loadingIcon.classList.add('button-loading');
+            // Използваме setTimeout, за да позволим на браузъра да рендира анимацията
+            // преди да започне тежката операция по филтриране.
+            setTimeout(runFilter, 10);
+        } else {
+            runFilter(); // За всички други бутони, изпълняваме веднага
+        }
+        // Маркираме избрания бутон и задаваме визуалното състояние (active + height).
+        document.querySelectorAll('.board-filter-link').forEach(link => {
+            const isSelected = link.dataset.boardid === String(buttonBoardId);
+            link.classList.toggle('selected-board', isSelected);
+            link.classList.toggle('active', isSelected);
+            link.style.height = isSelected ? '39px' : '35px';
+        });
+        // Placeholder-ът вече не включва името на борда, тъй като търсенето е във всички бележки
+        // updateSearchPlaceholder() ще зададе общ placeholder
+        if (boardId === 'all') {
+            // For the 'all' view, clear the inline style to let the default CSS background apply.
+            // This prevents flickering on initial load.
+            if (currentBackground !== 'Board.png') {
+                document.body.style.backgroundImage = '';
+                notesContainer.style.backgroundImage = '';
+            }
+            currentBackground = 'Board.png';
+        } else {
+            // For a specific board, set the background via inline style.
+            let newBackground = 'Board.png';
+            // Търсим по gdid, за да вземем фона
+            const board = boardsData.find(b => b.gdid === boardId);
+            if (board && board.backnum) {
+                switch (board.backnum) {
+                    case 1: newBackground = 'Board1.png'; break;
+                    case 2: newBackground = 'Board2.png'; break;
+                    case 3: newBackground = 'Board3.png'; break;
+                }
+            }
+            document.body.style.backgroundImage = `url('${newBackground}')`;
+            notesContainer.style.backgroundImage = `url('${newBackground}')`;
+            currentBackground = newBackground;
+        }
+        updateSearchPlaceholder();
+        window.dispatchEvent(new Event('scroll'));
+        // --- КОРЕКЦИЯ: Възстановяване на UI след затваряне на календара ---
+        // Тъй като renderCalendarView скрива хедъра и контейнера с бележки,
+        // тук трябва изрично да ги покажем отново, ако не сме в режим календар.
+        if (boardId !== 'calendar') {
+            const calendarContainer = document.getElementById('calendar-container');
+            if (calendarContainer) calendarContainer.style.display = 'none';
+            // Възстановяваме видимостта на основните елементи
+            document.querySelector('header').style.display = 'flex';
+            notesContainer.style.display = 'flex';
+            // scrollTopBtn visibility is handled by the scroll event
+            // scrollTopBtn.style.display = 'block';
+            const addNoteFab = document.getElementById('add-note-fab');
+            if (addNoteFab) addNoteFab.style.display = 'flex';
+        }
+        // Add or remove a class from the container to control child visibility
+        // This part is no longer needed as calendar has its own view
+        notesContainer.classList.remove('calendar-view');
     }
-    updateSearchPlaceholder();
-    window.dispatchEvent(new Event('scroll'));
-    // --- КОРЕКЦИЯ: Възстановяване на UI след затваряне на календара ---
-    // Тъй като renderCalendarView скрива хедъра и контейнера с бележки,
-    // тук трябва изрично да ги покажем отново, ако не сме в режим календар.
-    if (boardId !== 'calendar') {
-        const calendarContainer = document.getElementById('calendar-container');
-        if (calendarContainer) calendarContainer.style.display = 'none';
-        // Възстановяваме видимостта на основните елементи
-        document.querySelector('header').style.display = 'flex';
-        notesContainer.style.display = 'flex';
-        // scrollTopBtn visibility is handled by the scroll event
-        // scrollTopBtn.style.display = 'block';
-        const addNoteFab = document.getElementById('add-note-fab');
-        if (addNoteFab) addNoteFab.style.display = 'flex';
+
+    /* --- PROMO NOTE LOGIC START --- */
+    let promoNoteElement = null;
+    let isFetchingPromo = false;
+    let lastPromoBoardFilter = null;
+    let promoImageIndex = parseInt(localStorage.getItem('promoImageIndex') || '0');
+
+    const promoImagesList = [
+        "1764551652828.jpg", "1764551676242.jpg", "1764551691209.jpg", "1764551755697.jpg",
+        "1764553894822.jpg", "1764553917946.jpg", "1764553933512.jpg", "1764553941918.jpg",
+        "1764553952897.jpg", "1764553963870.jpg", "1764553974033.jpg", "1764553984943.jpg",
+        "1764553993077.jpg", "1764554001197.jpg", "1764554007494.jpg", "1764554013461.jpg",
+        "1764554019417.jpg", "1764554055674.jpg", "1764554064490.jpg", "1764554083159.jpg",
+        "1764554091671.jpg", "1764554098238.jpg", "1764554106965.jpg", "1764554137382.jpg",
+        "1764554248286.jpg", "1764554317449.jpg", "1764554407319.jpg", "1764554540104.jpg"
+    ];
+
+    function updatePromoImage() {
+        if (!promoNoteElement) return;
+        // Safety check: if dismissed in current board, do not load new image
+        if (currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true') {
+            return;
+        }
+        const img = promoNoteElement.querySelector('img');
+        if (img) {
+            const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
+            img.src = `msm-ex/${imageFile}`;
+            promoImageIndex++;
+            localStorage.setItem('promoImageIndex', promoImageIndex);
+        }
     }
-    // Add or remove a class from the container to control child visibility
-    // This part is no longer needed as calendar has its own view
-    notesContainer.classList.remove('calendar-view');
-}
 
-/* --- PROMO NOTE LOGIC START --- */
-let promoNoteElement = null;
-let isFetchingPromo = false;
-let lastPromoBoardFilter = null;
-let promoImageIndex = parseInt(localStorage.getItem('promoImageIndex') || '0');
+    function initPromoNote() {
+        if (promoNoteElement || isFetchingPromo) return;
 
-const promoImagesList = [
-    "1764551652828.jpg", "1764551676242.jpg", "1764551691209.jpg", "1764551755697.jpg",
-    "1764553894822.jpg", "1764553917946.jpg", "1764553933512.jpg", "1764553941918.jpg",
-    "1764553952897.jpg", "1764553963870.jpg", "1764553974033.jpg", "1764553984943.jpg",
-    "1764553993077.jpg", "1764554001197.jpg", "1764554007494.jpg", "1764554013461.jpg",
-    "1764554019417.jpg", "1764554055674.jpg", "1764554064490.jpg", "1764554083159.jpg",
-    "1764554091671.jpg", "1764554098238.jpg", "1764554106965.jpg", "1764554137382.jpg",
-    "1764554248286.jpg", "1764554317449.jpg", "1764554407319.jpg", "1764554540104.jpg"
-];
+        // Early escape if dismissed in current board
+        if (currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true') {
+            return;
+        }
 
-function updatePromoImage() {
-    if (!promoNoteElement) return;
-    // Safety check: if dismissed in current board, do not load new image
-    if (currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true') {
-        return;
-    }
-    const img = promoNoteElement.querySelector('img');
-    if (img) {
+        isFetchingPromo = true;
+
         const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
-        img.src = `msm-ex/${imageFile}`;
+        const imgUrl = `msm-ex/${imageFile}`;
         promoImageIndex++;
         localStorage.setItem('promoImageIndex', promoImageIndex);
-    }
-}
 
-function initPromoNote() {
-    if (promoNoteElement || isFetchingPromo) return;
+        if (imgUrl) {
+            promoNoteElement = document.createElement('div');
+            promoNoteElement.className = 'note promo-note';
+            promoNoteElement.dataset.isPromo = 'true';
+            promoNoteElement.style.display = 'none'; // Ensure it starts hidden in JS too
 
-    // Early escape if dismissed in current board
-    if (currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true') {
-        return;
-    }
-
-    isFetchingPromo = true;
-
-    const imageFile = promoImagesList[promoImageIndex % promoImagesList.length];
-    const imgUrl = `msm-ex/${imageFile}`;
-    promoImageIndex++;
-    localStorage.setItem('promoImageIndex', promoImageIndex);
-
-    if (imgUrl) {
-        promoNoteElement = document.createElement('div');
-        promoNoteElement.className = 'note promo-note';
-        promoNoteElement.dataset.isPromo = 'true';
-        promoNoteElement.style.display = 'none'; // Ensure it starts hidden in JS too
-
-        // Note with image style - refined to use CSS for most parts
-        promoNoteElement.innerHTML = `
+            // Note with image style - refined to use CSS for most parts
+            promoNoteElement.innerHTML = `
             <div class="note-content">
                 <img src="${imgUrl}" loading="lazy" alt="Assistant">
             </div>
             <div class="promo-close" style="position:absolute; top:4px; right:4px; cursor:pointer; background:rgba(255,255,255,0.7); border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:16px; z-index:10; transition: all 0.2s;">&times;</div>
         `;
 
-        // Click handler to open the image in the large modal
-        promoNoteElement.addEventListener('click', (e) => {
-            if (e.target.classList.contains('promo-close')) {
-                promoNoteElement.style.display = 'none';
-                // Записваме, че в ТОЗИ борд снимката е затворена
-                if (currentBoardFilter) {
-                    localStorage.setItem(`dismissedPromo_${currentBoardFilter}`, 'true');
-                }
-                return;
-            }
-            const img = promoNoteElement.querySelector('img');
-            const currentSrc = img ? img.src : imgUrl;
-            showModal({
-                raw: `<img src="${currentSrc}" style="width:100%; height:100%; max-height:100%; object-fit:contain; display:block;">`,
-                format: '',
-                isHtml: true,
-                color: '#222',
-                id: 'promo',
-                gdid: 'promo',
-                boardId: 'promo'
-            });
-        });
-
-    }
-    isFetchingPromo = false;
-}
-/* --- PROMO NOTE LOGIC END --- */
-
-function applyFilters() {
-    const searchBox = document.getElementById('search-box');
-    const searchTerm = searchBox ? searchBox.value.toLowerCase() : '';
-    const notes = Array.from(notesContainer.getElementsByClassName('note'));
-    let visibleCount = 0;
-    // --- PRE-CALCULATE FILTER MODES ---
-    const isAll = currentBoardFilter === 'all' || currentBoardFilter === 'search-results';
-    const isReminder = currentBoardFilter === 'reminder';
-    const isNewUpdates = currentBoardFilter === 'new-updates';
-    const isWithPhotos = currentBoardFilter === 'with-photos';
-    const isWithVideos = currentBoardFilter === 'with-videos';
-    const isWithSounds = currentBoardFilter === 'with-sounds';
-    const isWithOther = currentBoardFilter === 'with-other';
-    const isTrash = currentBoardFilter === 'trash';
-    // If none of the above special modes, it's a standard board filter (by ID)
-    const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther && !isTrash;
-    // --- ENHANCED ID FILTERING (Pre-calc) ---
-    // Handle scenarios where notes use legacy ID but filter uses GDID (or vice versa)
-    let validBoardIds = [currentBoardFilter];
-    if (isStandard && typeof boardsData !== 'undefined') {
-        const board = boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
-        if (board) {
-            if (board.gdid) validBoardIds.push(board.gdid);
-            if (board.id) validBoardIds.push(board.id);
-        }
-    }
-    for (const note of notes) {
-        if (note.classList.contains('boards-note') || note.classList.contains('promo-note')) {
-            continue;
-        }
-        const isDeleted = (parseInt(note.dataset.s || '0', 10) === 1);
-        let isVisibleByBoard = false;
-
-        // Optimized Branching
-        if (isTrash) {
-            isVisibleByBoard = isDeleted;
-        } else if (isDeleted) {
-            isVisibleByBoard = false;
-        } else if (isAll) {
-            isVisibleByBoard = true;
-        } else if (isStandard) {
-            // Standard board check: Check against all valid IDs for the board (loose equality)
-            isVisibleByBoard = validBoardIds.some(id => note.dataset.b == id);
-        } else if (isReminder) {
-            isVisibleByBoard = (note.dataset.tm === '1');
-        } else if (isNewUpdates) {
-            const noteStatus = parseInt(note.dataset.s || '0', 10);
-            isVisibleByBoard = (noteStatus === 2 || note.classList.contains('new-update'));
-        } else if (isWithPhotos) {
-            isVisibleByBoard = (note.dataset.hp === '1');
-        } else if (isWithVideos) {
-            isVisibleByBoard = (note.dataset.hv === '1');
-        } else if (isWithSounds) {
-            isVisibleByBoard = (note.dataset.hs === '1');
-        } else if (isWithOther) {
-            isVisibleByBoard = (note.dataset.ho === '1');
-        }
-        // Filter by Search Term
-        let matchesSearch = true;
-        // OPTIMIZATION: Only access DOM textContent if there is a search term!
-        if (searchTerm !== '') {
-            const titleEl = note.querySelector('.note-title-truncated');
-            const contentEl = note.querySelector('.note-content');
-            const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
-            matchesSearch = noteText.toLowerCase().includes(searchTerm);
-        }
-        if ((searchTerm !== '' ? matchesSearch : isVisibleByBoard)) {
-            note.style.display = 'flex';
-            visibleCount++;
-        } else {
-            note.style.display = 'none';
-        }
-    }
-    // --- Sorting Logic ---
-    if (localStorage.getItem('enableNoteSorting') === 'true') {
-        const sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
-        const sortReverse = localStorage.getItem('sortInReverse') === 'true';
-        const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
-        const sortOrder = sortReverse ? -1 : 1;
-        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not([style*="display: none"]):not(.promo-note)'));
-        visibleNotes.sort((a, b) => {
-            if (a.classList.contains('boards-note')) return -1;
-            if (b.classList.contains('boards-note')) return 1;
-            // 1. Reminder Priority
-            if (sortRemindersTop) {
-                const isReminderA = a.dataset.tm === '1';
-                const isReminderB = b.dataset.tm === '1';
-                if (isReminderA && !isReminderB) return -1;
-                if (!isReminderA && isReminderB) return 1;
-            }
-            let valA, valB;
-            // 2. Main Sorting Criteria (Read from SHORT CODES in dataset)
-            if (sortCriteria === 'numord') {
-                valA = parseFloat(a.dataset.no || 0);
-                valB = parseFloat(b.dataset.no || 0);
-            } else if (sortCriteria === 'datemod') { // Last Modified
-                const val = a.dataset.dm || 0;
-                valA = !isNaN(val) ? Number(val) : new Date(val).getTime();
-                const vB = b.dataset.dm || 0;
-                valB = !isNaN(vB) ? Number(vB) : new Date(vB).getTime();
-            } else if (sortCriteria === 'date') { // Creation Date
-                const val = a.dataset.cd || 0;
-                valA = !isNaN(val) ? Number(val) : new Date(val).getTime();
-                const vB = b.dataset.cd || 0;
-                valB = !isNaN(vB) ? Number(vB) : new Date(vB).getTime();
-            } else if (sortCriteria === 'calendarDate') { // Calendar Date
-                const val = a.dataset.cda || 0;
-                valA = val ? (!isNaN(val) ? Number(val) : new Date(val).getTime()) : null;
-                const vB = b.dataset.cda || 0;
-                valB = vB ? (!isNaN(vB) ? Number(vB) : new Date(vB).getTime()) : null;
-            } else if (sortCriteria === 'alpha') { // Alphabetical
-                valA = a.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
-                valB = b.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
-            } else if (sortCriteria === 'color') { // Color
-                valA = parseInt(a.dataset.c || -1); // data-c
-                valB = parseInt(b.dataset.c || -1);
-            } else {
-                valA = 0; valB = 0; // Fallback
-            }
-            // Handle Null/Undefined values (always push to bottom)
-            const aExists = valA !== null && valA !== undefined && !Number.isNaN(valA) && valA !== '';
-            const bExists = valB !== null && valB !== undefined && !Number.isNaN(valB) && valB !== '';
-            if (!aExists && bExists) return 1;
-            if (aExists && !bExists) return -1;
-            if (!aExists && !bExists) return 0;
-            if (valA < valB) return -1 * sortOrder;
-            if (valA > valB) return 1 * sortOrder;
-            return 0;
-        });
-        visibleNotes.forEach(note => notesContainer.appendChild(note));
-    }
-
-    // --- PROMO NOTE LOGIC: INSERT AT RANDOM PLACE ---
-    // Skip this entire logic during initial load to prevent flickering before UI is stable
-    if (!isInitialLoad && localStorage.getItem('hideAssistant') !== 'true') {
-        const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
-
-        if (isDismissedInBoard) {
-            if (promoNoteElement) promoNoteElement.style.display = 'none';
-        } else {
-            if (!promoNoteElement && !isFetchingPromo) {
-                initPromoNote();
-            }
-            if (promoNoteElement) {
-                // Only show if no active search
-                if (searchTerm === '') {
-                    // If board changed or promo not in valid place, position it while hidden
-                    if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
-                        // Ensure it's hidden before moving to prevent flickering at the bottom
-                        promoNoteElement.style.display = 'none';
-                        const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
-                            .filter(n => n.style.display !== 'none');
-
-                        if (visibleNotes.length > 0) {
-                            const rnd = Math.floor(Math.random() * visibleNotes.length);
-                            notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
-                        } else {
-                            notesContainer.appendChild(promoNoteElement);
-                        }
-                        updatePromoImage();
-                        lastPromoBoardFilter = currentBoardFilter;
-                    }
-                    // Finally show it in the correct place
-                    promoNoteElement.style.display = 'flex';
-                } else {
+            // Click handler to open the image in the large modal
+            promoNoteElement.addEventListener('click', (e) => {
+                if (e.target.classList.contains('promo-close')) {
                     promoNoteElement.style.display = 'none';
+                    // Записваме, че в ТОЗИ борд снимката е затворена
+                    if (currentBoardFilter) {
+                        localStorage.setItem(`dismissedPromo_${currentBoardFilter}`, 'true');
+                    }
+                    return;
                 }
+                const img = promoNoteElement.querySelector('img');
+                const currentSrc = img ? img.src : imgUrl;
+                showModal({
+                    raw: `<img src="${currentSrc}" style="width:100%; height:100%; max-height:100%; object-fit:contain; display:block;">`,
+                    format: '',
+                    isHtml: true,
+                    color: '#222',
+                    id: 'promo',
+                    gdid: 'promo',
+                    boardId: 'promo'
+                });
+            });
+
+        }
+        isFetchingPromo = false;
+    }
+    /* --- PROMO NOTE LOGIC END --- */
+
+    function applyFilters() {
+        const searchBox = document.getElementById('search-box');
+        const searchTerm = searchBox ? searchBox.value.toLowerCase() : '';
+        const notes = Array.from(notesContainer.getElementsByClassName('note'));
+        let visibleCount = 0;
+        // --- PRE-CALCULATE FILTER MODES ---
+        const isAll = currentBoardFilter === 'all' || currentBoardFilter === 'search-results';
+        const isReminder = currentBoardFilter === 'reminder';
+        const isNewUpdates = currentBoardFilter === 'new-updates';
+        const isWithPhotos = currentBoardFilter === 'with-photos';
+        const isWithVideos = currentBoardFilter === 'with-videos';
+        const isWithSounds = currentBoardFilter === 'with-sounds';
+        const isWithOther = currentBoardFilter === 'with-other';
+        const isTrash = currentBoardFilter === 'trash';
+        // If none of the above special modes, it's a standard board filter (by ID)
+        const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther && !isTrash;
+        // --- ENHANCED ID FILTERING (Pre-calc) ---
+        // Handle scenarios where notes use legacy ID but filter uses GDID (or vice versa)
+        let validBoardIds = [currentBoardFilter];
+        if (isStandard && typeof boardsData !== 'undefined') {
+            const board = boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
+            if (board) {
+                if (board.gdid) validBoardIds.push(board.gdid);
+                if (board.id) validBoardIds.push(board.id);
             }
         }
-    } else if (promoNoteElement) {
-        // Explicitly hide it during load or if assistant is hidden
-        promoNoteElement.style.display = 'none';
-    }
-
-    const noteCounter = document.getElementById('note-counter');
-    if (noteCounter) {
-        noteCounter.textContent = visibleCount;
-    }
-
-    // --- Sync Menu Counters ---
-    if (typeof updateBoardCounterUI === 'function') {
-        updateBoardCounterUI(currentBoardFilter);
-        updateBoardCounterUI('reminder');
-    }
-}
-
-// --- GDrive Fetch & ID logic moved to load.js ---
-/**
- * Initializes the loading process by resetting state and showing the loader.
- */
-function initializeLoad() {
-    boardsData = [];
-    allNotesData = [];
-    notesContainer.innerHTML = ''; // Продължаваме да изчистваме бележките
-    loaderContainer.style.display = 'block'; // Показваме лоудъра веднага
-    // Задаваме първоначален текст, за да избегнем "премигване" на празен панел
-    const loaderTitle = document.getElementById('loader-title');
-    if (loaderTitle) loaderTitle.textContent = _('initialDataLoad');
-    currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
-    const popup = document.getElementById('board-filter-popup');
-    if (popup) {
-        popup.classList.remove('visible');
-    }
-    document.querySelectorAll('.board-filter-link').forEach(link => {
-        link.classList.remove('selected-board');
-    });
-    // Fix: Remove the old boards note from the header to prevent duplication on reload
-    const oldBoardsNote = document.querySelector('header .boards-note');
-    if (oldBoardsNote) {
-        oldBoardsNote.remove();
-    }
-}
-
-async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
-    const { boardCounts = new Map(), reminderCount = 0, calendarCount = 0 } = extraCounts;
-    const boardsNote = document.createElement('div');
-    boardsNote.className = 'boards-note';
-    const contentWrapper = document.createElement('div');
-    contentWrapper.className = 'note-content';
-    contentWrapper.style.minHeight = '0';
-    const contentEl = document.createElement('div');
-    contentEl.className = 'board-menu-container';
-    if (boardParseError) {
-        const errorEl = document.createElement('div');
-        errorEl.style.color = 'red';
-        errorEl.style.marginTop = '10px';
-        errorEl.textContent = _('warningInvalidBoard');
-        contentEl.appendChild(errorEl);
-    }
-    contentWrapper.appendChild(contentEl);
-    boardsNote.appendChild(contentWrapper);
-
-    /**
-     * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
-     * @param {HTMLElement} element The element to attach events to.
-     * @param {Function} [singleClickCallback] An optional callback for a regular single click.
-     */
-    const addAllBoardsModalEvents = (element, singleClickCallback) => {
-        let longPressTimer;
-        let isLongPress = false;
-        const startPress = (e) => {
-            isLongPress = false;
-            longPressTimer = setTimeout(() => {
-                isLongPress = true;
-                showAllBoardsModal();
-            }, 500);
-            // Only prevent default on touch to avoid unwanted scrolling while holding
-            if (e.type === 'touchstart') {
-                e.preventDefault();
+        for (const note of notes) {
+            if (note.classList.contains('boards-note') || note.classList.contains('promo-note')) {
+                continue;
             }
-        };
-        const endPress = (e) => {
-            clearTimeout(longPressTimer);
-            // If it's a touchend and not a long press, trigger the single click action
-            if (e.type === 'touchend' && !isLongPress && singleClickCallback) {
-                singleClickCallback(e);
-            }
-        };
-        element.addEventListener('mousedown', startPress);
-        element.addEventListener('mouseup', endPress);
-        element.addEventListener('mouseleave', endPress);
-        element.addEventListener('touchstart', startPress);
-        element.addEventListener('touchend', endPress);
-        element.addEventListener('click', (e) => {
-            if (isLongPress) return;
-            if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(e);
-        });
-    };
+            const isDeleted = (parseInt(note.dataset.s || '0', 10) === 1);
+            let isVisibleByBoard = false;
 
-    const allButtonLinks = [];
-    const boardClick = (e, boardId, forcePreview = false) => {
-        const link = e.currentTarget;
-        if (e.preventDefault) e.preventDefault();
-        // 1. Logic for Debug JSON (Ctrl+Click in Debug Mode)
-        if (debug && e.ctrlKey && !e.shiftKey && !forcePreview) {
-            const board = boardsData.find(b => b.gdid == boardId) || { id: boardId, warning: 'Special Board or Data Not Found' };
-            showModal(JSON.stringify(board, null, 2));
-            return;
-        }
-        // --- NEW LOGIC: Ctrl+Click when debug is false ---
-        if (!debug && e.ctrlKey && !forcePreview) {
-            if (boardId !== 'with-photos') {
-                showAllBoardsModal();
-                return;
+            // Optimized Branching
+            if (isTrash) {
+                isVisibleByBoard = isDeleted;
+            } else if (isDeleted) {
+                isVisibleByBoard = false;
+            } else if (isAll) {
+                isVisibleByBoard = true;
+            } else if (isStandard) {
+                // Standard board check: Check against all valid IDs for the board (loose equality)
+                isVisibleByBoard = validBoardIds.some(id => note.dataset.b == id);
+            } else if (isReminder) {
+                isVisibleByBoard = (note.dataset.tm === '1');
+            } else if (isNewUpdates) {
+                const noteStatus = parseInt(note.dataset.s || '0', 10);
+                isVisibleByBoard = (noteStatus === 2 || note.classList.contains('new-update'));
+            } else if (isWithPhotos) {
+                isVisibleByBoard = (note.dataset.hp === '1');
+            } else if (isWithVideos) {
+                isVisibleByBoard = (note.dataset.hv === '1');
+            } else if (isWithSounds) {
+                isVisibleByBoard = (note.dataset.hs === '1');
+            } else if (isWithOther) {
+                isVisibleByBoard = (note.dataset.ho === '1');
+            }
+            // Filter by Search Term
+            let matchesSearch = true;
+            // OPTIMIZATION: Only access DOM textContent if there is a search term!
+            if (searchTerm !== '') {
+                const titleEl = note.querySelector('.note-title-truncated');
+                const contentEl = note.querySelector('.note-content');
+                const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
+                matchesSearch = noteText.toLowerCase().includes(searchTerm);
+            }
+            if ((searchTerm !== '' ? matchesSearch : isVisibleByBoard)) {
+                note.style.display = 'flex';
+                visibleCount++;
+            } else {
+                note.style.display = 'none';
             }
         }
-        // 2. Standard Navigation & Scroll
-        if (link && link.scrollIntoView) {
-            link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-        }
-        filterNotesByBoard(boardId, false);
-        // 3. Logic for Preview Toggle (Ctrl+Click or Long Press)
-        if (e.ctrlKey || forcePreview) {
-            setTimeout(() => showBoardPreviews(), 100);
-        }
-    };
-
-    /**
-     * Adds standard click and long-press events to a board button.
-     * Handles Context Menu prevention on mobile.
-     */
-    const addBoardButtonEvents = (element, boardId) => {
-        let longPressTimer;
-        let isLongPress = false;
-        let isTouchMove = false;
-        const startPress = (e) => {
-            isTouchMove = false;
-            isLongPress = false;
-            longPressTimer = setTimeout(() => {
-                isLongPress = true;
-                if (!isTouchMove) {
-                    console.log('Long press for preview:', boardId);
-                    // Simulate Ctrl+Click behavior
-                    // This creates consistency: If Debug is ON -> JSON; If Debug is OFF -> Preview
-                    boardClick({ currentTarget: element, ctrlKey: true, preventDefault: () => { } }, boardId);
-                    // Optional: Vibrate to indicate success
-                    if (navigator.vibrate) navigator.vibrate(50);
+        // --- Sorting Logic ---
+        if (localStorage.getItem('enableNoteSorting') === 'true') {
+            const sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
+            const sortReverse = localStorage.getItem('sortInReverse') === 'true';
+            const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
+            const sortOrder = sortReverse ? -1 : 1;
+            const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not([style*="display: none"]):not(.promo-note)'));
+            visibleNotes.sort((a, b) => {
+                if (a.classList.contains('boards-note')) return -1;
+                if (b.classList.contains('boards-note')) return 1;
+                // 1. Reminder Priority
+                if (sortRemindersTop) {
+                    const isReminderA = a.dataset.tm === '1';
+                    const isReminderB = b.dataset.tm === '1';
+                    if (isReminderA && !isReminderB) return -1;
+                    if (!isReminderA && isReminderB) return 1;
                 }
-            }, 600);
-        };
-        const cancelPress = () => clearTimeout(longPressTimer);
-        const endPress = (e) => {
-            clearTimeout(longPressTimer);
-            if (isLongPress) {
-                if (e.cancelable) e.preventDefault();
-                e.stopPropagation();
-            }
-        };
-        const onMove = () => {
-            isTouchMove = true;
-            clearTimeout(longPressTimer);
-        };
-        element.addEventListener('touchstart', startPress, { passive: true });
-        element.addEventListener('touchend', endPress);
-        element.addEventListener('touchmove', onMove, { passive: true });
-        element.addEventListener('touchcancel', cancelPress);
-        // Prevent context menu on long press
-        element.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        });
-        // Standard Click
-        element.addEventListener('click', (e) => {
-            if (isLongPress) {
-                e.stopImmediatePropagation();
-                e.preventDefault();
-                isLongPress = false;
-                return;
-            }
-            boardClick(e, boardId);
-        });
-    };
-
-    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ВСИЧКИ" ---
-    if (localStorage.getItem('showBoardAll') !== 'false') {
-        const allBoardsLink = document.createElement('span');
-        allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
-        allBoardsLink.dataset.boardid = 'all';
-        allBoardsLink.title = _('allBoardsCtrlClickTooltip');
-        const allBoardsText = document.createElement('span');
-        allBoardsText.textContent = _('allBoards');
-        allBoardsLink.appendChild(allBoardsText);
-        addAllBoardsModalEvents(allBoardsLink, (e) => boardClick(e, 'all'));
-        allButtonLinks.push(allBoardsLink);
-    }
-    const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-    // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
-    if (updatedNoteGdims.length > 0) {
-        const newUpdatesLink = document.createElement('span');
-        newUpdatesLink.textContent = _('newUpdates');
-        newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
-        newUpdatesLink.dataset.boardid = 'new-updates';
-        addBoardButtonEvents(newUpdatesLink, 'new-updates');
-        allButtonLinks.push(newUpdatesLink);
-    }
-    // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "РЕЗУЛТАТИ" ---
-    const searchResultsLink = document.createElement('span');
-    searchResultsLink.id = 'search-results-board-btn';
-    searchResultsLink.textContent = _('searchResultTitle');
-    searchResultsLink.classList.add('board-filter-link', 'search-results-filter-btn');
-    searchResultsLink.dataset.boardid = 'search-results';
-    searchResultsLink.style.display = 'none';
-    searchResultsLink.style.backgroundColor = '#ffeb3b'; // Жълт фон
-    searchResultsLink.style.color = '#000'; // Черен текст
-    searchResultsLink.style.display = 'none'; // Will be set to inline-flex by triggerSearch
-    searchResultsLink.style.justifyContent = 'center';
-    searchResultsLink.style.alignItems = 'center';
-    addBoardButtonEvents(searchResultsLink, 'search-results');
-    allButtonLinks.push(searchResultsLink);
-    // Сортираме бордовете по полето numord, преди да създадем бутоните
-    boardsData.sort((a, b) => {
-        const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
-        const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
-        return numordA - numordB;
-    })
-
-    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
-    if (localStorage.getItem('showBoardRemind') !== 'false') {
-        const reminderNoteCount = reminderCount;
-        const reminderLink = document.createElement('span');
-        reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
-        reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
-        reminderLink.dataset.boardid = 'reminder';
-        addBoardButtonEvents(reminderLink, 'reminder');
-        allButtonLinks.push(reminderLink);
-    }
-    boardsData.forEach(board => {
-        const boardId = board.gdid || board.id;
-        if (!board.title || boardId === undefined || boardId === null) return;
-        const count = boardCounts.get(String(boardId)) || 0;
-        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-        const link = document.createElement('span');
-        link.textContent = (showCount && count > 0) ? `${board.title} (${count})` : board.title;
-        link.classList.add('board-filter-link');
-        link.dataset.boardid = boardId;
-        // Обработка на цвят на фона
-        if (board.color !== undefined && !isNaN(board.color)) {
-            if (board.color >= 0 && board.color <= 6) {
-                // Стандартни цветове (0-6)
-                link.style.backgroundColor = `var(--board-bg-${board.color})`;
-            } else if (board.color < 0) {
-                // Custom цвят (отрицателно число)
-                // Преобразуваме signed int в hex color string (RRGGBB)
-                // Използваме >>> 0 за да го третираме като unsigned 32-bit int,
-                // след това toString(16) и взимаме последните 6 символа.
-                const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
-                link.style.backgroundColor = hexColor;
-            }
-        }
-        // Обработка на цвят на шрифта
-        link.style.color = 'black'; // Default
-        if (board.status === 1) {
-            link.style.color = 'red';
-        } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
-            // Custom цвят на шрифта (отрицателно число)
-            const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-            link.style.color = hexFontColor;
-        }
-        addBoardButtonEvents(link, boardId);
-        allButtonLinks.push(link);
-    });
-    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС СНИМКИ" ---
-    if (localStorage.getItem('showPhotosBoard') === 'true') {
-        const photosLink = document.createElement('span');
-        photosLink.textContent = _('photosBoardTitle') || "With Photos";
-        photosLink.classList.add('board-filter-link', 'photos-filter-btn');
-        photosLink.dataset.boardid = 'with-photos';
-        addBoardButtonEvents(photosLink, 'with-photos');
-        allButtonLinks.push(photosLink);
-    }
-    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "С ВИДЕО" ---
-    if (localStorage.getItem('showVideosBoard') === 'true') {
-        const videosLink = document.createElement('span');
-        videosLink.textContent = _('videosBoardTitle') || "With Video";
-        videosLink.classList.add('board-filter-link', 'videos-filter-btn');
-        videosLink.dataset.boardid = 'with-videos';
-        addBoardButtonEvents(videosLink, 'with-videos');
-        allButtonLinks.push(videosLink);
-    }
-    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС ЗВУК" ---
-    if (localStorage.getItem('showSoundsBoard') === 'true') {
-        const soundsLink = document.createElement('span');
-        soundsLink.textContent = _('soundsBoardTitle') || "With Sounds";
-        soundsLink.classList.add('board-filter-link', 'sounds-filter-btn');
-        soundsLink.dataset.boardid = 'with-sounds';
-        addBoardButtonEvents(soundsLink, 'with-sounds');
-        allButtonLinks.push(soundsLink);
-    }
-    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ДРУГИ ПРИЛОЖЕНИЯ" ---
-    if (localStorage.getItem('showOtherBoard') === 'true') {
-        const otherLink = document.createElement('span');
-        otherLink.textContent = _('otherBoardTitle') || "Other Attachments";
-        otherLink.classList.add('board-filter-link', 'other-filter-btn');
-        otherLink.dataset.boardid = 'with-other';
-        otherLink.style.backgroundColor = '#a6a6a6';
-        addBoardButtonEvents(otherLink, 'with-other');
-        allButtonLinks.push(otherLink);
-    }
-    // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "КОШЧЕ" ---
-    if (localStorage.getItem('showTrashBoard') !== 'false' && (extraCounts.trashCount > 0 || currentBoardFilter === 'trash')) {
-        const trashCount = extraCounts.trashCount || 0;
-        const trashLink = document.createElement('span');
-        trashLink.textContent = (showCount && trashCount > 0) ? `${_('trashBoardTitle') || "Кошче"} (${trashCount})` : (_('trashBoardTitle') || "Кошче");
-        trashLink.classList.add('board-filter-link', 'trash-filter-btn');
-        trashLink.dataset.boardid = 'trash';
-        trashLink.style.backgroundColor = '#c00';
-        trashLink.style.color = '#fff';
-        addBoardButtonEvents(trashLink, 'trash');
-        allButtonLinks.push(trashLink);
-    }
-    maxWidthForButtons = 0;
-    const tempContainer = document.createElement('div');
-    tempContainer.style.position = 'absolute';
-    tempContainer.style.visibility = 'hidden';
-    document.body.appendChild(tempContainer);
-    allButtonLinks.forEach(link => {
-        tempContainer.appendChild(link);
-        maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
-    });
-
-    document.body.removeChild(tempContainer);
-    maxWidthForButtons += 10;
-    allButtonLinks.forEach(link => {
-        link.style.width = `${maxWidthForButtons}px`;
-        contentEl.appendChild(link);
-    });
-
-    const scrollWrapper = document.createElement('div');
-    scrollWrapper.className = 'scrolling-menu-wrapper';
-    const allBoardsBtn = document.createElement('button');
-    allBoardsBtn.className = 'board-menu-button popup-menu-btn'; // Ново, по-семантично име на класовете
-    allBoardsBtn.innerHTML = boardIconSvg; // Use the board icon
-    // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
-    addAllBoardsModalEvents(allBoardsBtn, () => { showAllBoardsModal(); });
-    scrollWrapper.appendChild(allBoardsBtn);
-
-    // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container --- @@
-    const boardsMenuContainer = document.getElementById('boards-menu-container');
-    if (boardsMenuContainer) {
-        // Клонираме бутона, за да го имаме и на двете места, или го местим.
-        const allBoardsBtnForContainer = document.createElement('button');
-        allBoardsBtnForContainer.className = 'popup-menu-btn-floating'; // Използваме floating стил, за да стои над страницата
-        allBoardsBtnForContainer.innerHTML = boardIconSvg;
-        // --- DRAGGABLE FUNCTIONALITY ---
-        // Използваме новата функция за drag-and-drop
-        makeElementDraggable(allBoardsBtnForContainer, 'popupMenuBtnPosition');
-        // Long press logic remains for specific actions if needed, but for now standard draggable covers the move.
-        // The original code had specific long press interaction which we preserve via showAllBoardsModal call logic below if needed.
-        // But here we just need to attach the click handler. makeElementDraggable blocks click if dragged.
-        // Click event - отваря менюто с малко забавяне, за да има време за drag (ако не е преместен)
-        let clickTimer;
-        allBoardsBtnForContainer.addEventListener('click', (e) => {
-            // makeElementDraggable already handles stopping propagation if moved.
-            // If we are here, it wasn't a drag.
-            // Малко забавяне преди отваряне на менюто
-            e.preventDefault();
-            e.stopPropagation();
-            clearTimeout(clickTimer);
-            clickTimer = setTimeout(() => {
-                showAllBoardsModal();
-            }, 200);
-        });
-
-        // Изчистваме контейнера преди да добавим (ако се презарежда UI)
-        boardsMenuContainer.innerHTML = '';
-        boardsMenuContainer.appendChild(allBoardsBtnForContainer);
-    }
-    scrollWrapper.appendChild(contentEl);
-    contentWrapper.appendChild(scrollWrapper);
-    allBoardsBtn.classList.add('visible');
-    return boardsNote;
-}
-async function createSettingsUI(boardsData, boardParseError) {
-    const settingsModalBody = document.getElementById('settings-modal-body');
-    // --- Get Element References ---
-    const scaleSlider = document.getElementById('scaleSlider');
-    const scaleInput = document.getElementById('scaleInput');
-    const noteFontSizeInput = document.getElementById('note-font-size-input');
-    const modalFontSizeInput = document.getElementById('modal-font-size-input');
-    const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
-    const orderCheckbox = document.getElementById('order-checkbox');
-    const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
-    const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
-    const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
-    const weeklyCalendarCheckbox = document.getElementById('weekly-calendar-checkbox');
-    const showBoardRemindCheckbox = document.getElementById('remind-board-checkbox');
-    const showPhotosBoardCheckbox = document.getElementById('show-photos-board-checkbox');
-    const showVideosBoardCheckbox = document.getElementById('show-videos-board-checkbox');
-    const showSoundsBoardCheckbox = document.getElementById('show-sounds-board-checkbox');
-    const showOtherBoardCheckbox = document.getElementById('show-other-board-checkbox');
-    // const startBoardSelect = document.getElementById('start-board-select');
-    const maxSearchesInput = document.getElementById('max-searches-input');
-    const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
-    const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
-    const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
-    const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-    const updateFromSourceCheckbox = document.getElementById('update-from-source-checkbox');
-    const dbSectionWrapper = document.getElementById('db-section-wrapper');
-    const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
-    const selectFolderBtn = document.getElementById('select-folder-btn');
-    const folderNameDisplay = document.getElementById('local-sync-folder-name');
-    const clickToEditCheckbox = document.getElementById('click-to-edit-checkbox');
-    const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
-    const hideToastCheckbox = document.getElementById('hide-toast-checkbox');
-    if (!settingsModalBody.dataset.initialized) {
-        // Hide Assistant Logic
-        if (hideAssistantCheckbox) {
-            hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
-            hideAssistantCheckbox.addEventListener('change', () => {
-                const isChecked = hideAssistantCheckbox.checked;
-                localStorage.setItem('hideAssistant', isChecked);
-                const fabButton = document.getElementById('kb-fab');
-                if (fabButton) {
-                    fabButton.style.display = isChecked ? 'none' : 'block';
+                let valA, valB;
+                // 2. Main Sorting Criteria (Read from SHORT CODES in dataset)
+                if (sortCriteria === 'numord') {
+                    valA = parseFloat(a.dataset.no || 0);
+                    valB = parseFloat(b.dataset.no || 0);
+                } else if (sortCriteria === 'datemod') { // Last Modified
+                    const val = a.dataset.dm || 0;
+                    valA = !isNaN(val) ? Number(val) : new Date(val).getTime();
+                    const vB = b.dataset.dm || 0;
+                    valB = !isNaN(vB) ? Number(vB) : new Date(vB).getTime();
+                } else if (sortCriteria === 'date') { // Creation Date
+                    const val = a.dataset.cd || 0;
+                    valA = !isNaN(val) ? Number(val) : new Date(val).getTime();
+                    const vB = b.dataset.cd || 0;
+                    valB = !isNaN(vB) ? Number(vB) : new Date(vB).getTime();
+                } else if (sortCriteria === 'calendarDate') { // Calendar Date
+                    const val = a.dataset.cda || 0;
+                    valA = val ? (!isNaN(val) ? Number(val) : new Date(val).getTime()) : null;
+                    const vB = b.dataset.cda || 0;
+                    valB = vB ? (!isNaN(vB) ? Number(vB) : new Date(vB).getTime()) : null;
+                } else if (sortCriteria === 'alpha') { // Alphabetical
+                    valA = a.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
+                    valB = b.querySelector('.note-title-truncated')?.textContent.trim().toLowerCase() || '';
+                } else if (sortCriteria === 'color') { // Color
+                    valA = parseInt(a.dataset.c || -1); // data-c
+                    valB = parseInt(b.dataset.c || -1);
+                } else {
+                    valA = 0; valB = 0; // Fallback
                 }
-                // Ако скрием асистента, скриваме и промо бележката веднага
-                if (isChecked) {
-                    if (promoNoteElement) {
+                // Handle Null/Undefined values (always push to bottom)
+                const aExists = valA !== null && valA !== undefined && !Number.isNaN(valA) && valA !== '';
+                const bExists = valB !== null && valB !== undefined && !Number.isNaN(valB) && valB !== '';
+                if (!aExists && bExists) return 1;
+                if (aExists && !bExists) return -1;
+                if (!aExists && !bExists) return 0;
+                if (valA < valB) return -1 * sortOrder;
+                if (valA > valB) return 1 * sortOrder;
+                return 0;
+            });
+            visibleNotes.forEach(note => notesContainer.appendChild(note));
+        }
+
+        // --- PROMO NOTE LOGIC: INSERT AT RANDOM PLACE ---
+        // Skip this entire logic during initial load to prevent flickering before UI is stable
+        if (!isInitialLoad && localStorage.getItem('hideAssistant') !== 'true') {
+            const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
+
+            if (isDismissedInBoard) {
+                if (promoNoteElement) promoNoteElement.style.display = 'none';
+            } else {
+                if (!promoNoteElement && !isFetchingPromo) {
+                    initPromoNote();
+                }
+                if (promoNoteElement) {
+                    // Only show if no active search
+                    if (searchTerm === '') {
+                        // If board changed or promo not in valid place, position it while hidden
+                        if (currentBoardFilter !== lastPromoBoardFilter || !notesContainer.contains(promoNoteElement)) {
+                            // Ensure it's hidden before moving to prevent flickering at the bottom
+                            promoNoteElement.style.display = 'none';
+                            const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
+                                .filter(n => n.style.display !== 'none');
+
+                            if (visibleNotes.length > 0) {
+                                const rnd = Math.floor(Math.random() * visibleNotes.length);
+                                notesContainer.insertBefore(promoNoteElement, visibleNotes[rnd]);
+                            } else {
+                                notesContainer.appendChild(promoNoteElement);
+                            }
+                            updatePromoImage();
+                            lastPromoBoardFilter = currentBoardFilter;
+                        }
+                        // Finally show it in the correct place
+                        promoNoteElement.style.display = 'flex';
+                    } else {
                         promoNoteElement.style.display = 'none';
                     }
-                    // Изчистваме флаговете за затворени промо бележки, за да се покажат отново при включване
-                    Object.keys(localStorage).forEach(key => {
-                        if (key.startsWith('dismissedPromo_')) {
-                            localStorage.removeItem(key);
+                }
+            }
+        } else if (promoNoteElement) {
+            // Explicitly hide it during load or if assistant is hidden
+            promoNoteElement.style.display = 'none';
+        }
+
+        const noteCounter = document.getElementById('note-counter');
+        if (noteCounter) {
+            noteCounter.textContent = visibleCount;
+        }
+
+        // --- Sync Menu Counters ---
+        if (typeof updateBoardCounterUI === 'function') {
+            updateBoardCounterUI(currentBoardFilter);
+            updateBoardCounterUI('reminder');
+        }
+    }
+
+    // --- GDrive Fetch & ID logic moved to load.js ---
+    /**
+     * Initializes the loading process by resetting state and showing the loader.
+     */
+    function initializeLoad() {
+        boardsData = [];
+        allNotesData = [];
+        notesContainer.innerHTML = ''; // Продължаваме да изчистваме бележките
+        loaderContainer.style.display = 'block'; // Показваме лоудъра веднага
+        // Задаваме първоначален текст, за да избегнем "премигване" на празен панел
+        const loaderTitle = document.getElementById('loader-title');
+        if (loaderTitle) loaderTitle.textContent = _('initialDataLoad');
+        currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
+        const popup = document.getElementById('board-filter-popup');
+        if (popup) {
+            popup.classList.remove('visible');
+        }
+        document.querySelectorAll('.board-filter-link').forEach(link => {
+            link.classList.remove('selected-board');
+        });
+        // Fix: Remove the old boards note from the header to prevent duplication on reload
+        const oldBoardsNote = document.querySelector('header .boards-note');
+        if (oldBoardsNote) {
+            oldBoardsNote.remove();
+        }
+    }
+
+    async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
+        const { boardCounts = new Map(), reminderCount = 0, calendarCount = 0 } = extraCounts;
+        const boardsNote = document.createElement('div');
+        boardsNote.className = 'boards-note';
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'note-content';
+        contentWrapper.style.minHeight = '0';
+        const contentEl = document.createElement('div');
+        contentEl.className = 'board-menu-container';
+        if (boardParseError) {
+            const errorEl = document.createElement('div');
+            errorEl.style.color = 'red';
+            errorEl.style.marginTop = '10px';
+            errorEl.textContent = _('warningInvalidBoard');
+            contentEl.appendChild(errorEl);
+        }
+        contentWrapper.appendChild(contentEl);
+        boardsNote.appendChild(contentWrapper);
+
+        /**
+         * Attaches long-press and Ctrl-click events to an element to show the all-boards modal.
+         * @param {HTMLElement} element The element to attach events to.
+         * @param {Function} [singleClickCallback] An optional callback for a regular single click.
+         */
+        const addAllBoardsModalEvents = (element, singleClickCallback) => {
+            let longPressTimer;
+            let isLongPress = false;
+            const startPress = (e) => {
+                isLongPress = false;
+                longPressTimer = setTimeout(() => {
+                    isLongPress = true;
+                    showAllBoardsModal();
+                }, 500);
+                // Only prevent default on touch to avoid unwanted scrolling while holding
+                if (e.type === 'touchstart') {
+                    e.preventDefault();
+                }
+            };
+            const endPress = (e) => {
+                clearTimeout(longPressTimer);
+                // If it's a touchend and not a long press, trigger the single click action
+                if (e.type === 'touchend' && !isLongPress && singleClickCallback) {
+                    singleClickCallback(e);
+                }
+            };
+            element.addEventListener('mousedown', startPress);
+            element.addEventListener('mouseup', endPress);
+            element.addEventListener('mouseleave', endPress);
+            element.addEventListener('touchstart', startPress);
+            element.addEventListener('touchend', endPress);
+            element.addEventListener('click', (e) => {
+                if (isLongPress) return;
+                if (e.ctrlKey) showAllBoardsModal(); else if (singleClickCallback) singleClickCallback(e);
+            });
+        };
+
+        const allButtonLinks = [];
+        const boardClick = (e, boardId, forcePreview = false) => {
+            const link = e.currentTarget;
+            if (e.preventDefault) e.preventDefault();
+            // 1. Logic for Debug JSON (Ctrl+Click in Debug Mode)
+            if (debug && e.ctrlKey && !e.shiftKey && !forcePreview) {
+                const board = boardsData.find(b => b.gdid == boardId) || { id: boardId, warning: 'Special Board or Data Not Found' };
+                showModal(JSON.stringify(board, null, 2));
+                return;
+            }
+            // --- NEW LOGIC: Ctrl+Click when debug is false ---
+            if (!debug && e.ctrlKey && !forcePreview) {
+                if (boardId !== 'with-photos') {
+                    showAllBoardsModal();
+                    return;
+                }
+            }
+            // 2. Standard Navigation & Scroll
+            if (link && link.scrollIntoView) {
+                link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }
+            filterNotesByBoard(boardId, false);
+            // 3. Logic for Preview Toggle (Ctrl+Click or Long Press)
+            if (e.ctrlKey || forcePreview) {
+                setTimeout(() => showBoardPreviews(), 100);
+            }
+        };
+
+        /**
+         * Adds standard click and long-press events to a board button.
+         * Handles Context Menu prevention on mobile.
+         */
+        const addBoardButtonEvents = (element, boardId) => {
+            let longPressTimer;
+            let isLongPress = false;
+            let isTouchMove = false;
+            const startPress = (e) => {
+                isTouchMove = false;
+                isLongPress = false;
+                longPressTimer = setTimeout(() => {
+                    isLongPress = true;
+                    if (!isTouchMove) {
+                        console.log('Long press for preview:', boardId);
+                        // Simulate Ctrl+Click behavior
+                        // This creates consistency: If Debug is ON -> JSON; If Debug is OFF -> Preview
+                        boardClick({ currentTarget: element, ctrlKey: true, preventDefault: () => { } }, boardId);
+                        // Optional: Vibrate to indicate success
+                        if (navigator.vibrate) navigator.vibrate(50);
+                    }
+                }, 600);
+            };
+            const cancelPress = () => clearTimeout(longPressTimer);
+            const endPress = (e) => {
+                clearTimeout(longPressTimer);
+                if (isLongPress) {
+                    if (e.cancelable) e.preventDefault();
+                    e.stopPropagation();
+                }
+            };
+            const onMove = () => {
+                isTouchMove = true;
+                clearTimeout(longPressTimer);
+            };
+            element.addEventListener('touchstart', startPress, { passive: true });
+            element.addEventListener('touchend', endPress);
+            element.addEventListener('touchmove', onMove, { passive: true });
+            element.addEventListener('touchcancel', cancelPress);
+            // Prevent context menu on long press
+            element.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            });
+            // Standard Click
+            element.addEventListener('click', (e) => {
+                if (isLongPress) {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                    isLongPress = false;
+                    return;
+                }
+                boardClick(e, boardId);
+            });
+        };
+
+        // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ВСИЧКИ" ---
+        if (localStorage.getItem('showBoardAll') !== 'false') {
+            const allBoardsLink = document.createElement('span');
+            allBoardsLink.classList.add('board-filter-link', 'all-boards-filter-btn');
+            allBoardsLink.dataset.boardid = 'all';
+            allBoardsLink.title = _('allBoardsCtrlClickTooltip');
+            const allBoardsText = document.createElement('span');
+            allBoardsText.textContent = _('allBoards');
+            allBoardsLink.appendChild(allBoardsText);
+            addAllBoardsModalEvents(allBoardsLink, (e) => boardClick(e, 'all'));
+            allButtonLinks.push(allBoardsLink);
+        }
+        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+        // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
+        if (updatedNoteGdims.length > 0) {
+            const newUpdatesLink = document.createElement('span');
+            newUpdatesLink.textContent = _('newUpdates');
+            newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
+            newUpdatesLink.dataset.boardid = 'new-updates';
+            addBoardButtonEvents(newUpdatesLink, 'new-updates');
+            allButtonLinks.push(newUpdatesLink);
+        }
+        // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "РЕЗУЛТАТИ" ---
+        const searchResultsLink = document.createElement('span');
+        searchResultsLink.id = 'search-results-board-btn';
+        searchResultsLink.textContent = _('searchResultTitle');
+        searchResultsLink.classList.add('board-filter-link', 'search-results-filter-btn');
+        searchResultsLink.dataset.boardid = 'search-results';
+        searchResultsLink.style.display = 'none';
+        searchResultsLink.style.backgroundColor = '#ffeb3b'; // Жълт фон
+        searchResultsLink.style.color = '#000'; // Черен текст
+        searchResultsLink.style.display = 'none'; // Will be set to inline-flex by triggerSearch
+        searchResultsLink.style.justifyContent = 'center';
+        searchResultsLink.style.alignItems = 'center';
+        addBoardButtonEvents(searchResultsLink, 'search-results');
+        allButtonLinks.push(searchResultsLink);
+        // Сортираме бордовете по полето numord, преди да създадем бутоните
+        boardsData.sort((a, b) => {
+            const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+            const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+            return numordA - numordB;
+        })
+
+        // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
+        if (localStorage.getItem('showBoardRemind') !== 'false') {
+            const reminderNoteCount = reminderCount;
+            const reminderLink = document.createElement('span');
+            reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
+            reminderLink.classList.add('board-filter-link', 'reminder-filter-btn');
+            reminderLink.dataset.boardid = 'reminder';
+            addBoardButtonEvents(reminderLink, 'reminder');
+            allButtonLinks.push(reminderLink);
+        }
+        boardsData.forEach(board => {
+            const boardId = board.gdid || board.id;
+            if (!board.title || boardId === undefined || boardId === null) return;
+            const count = boardCounts.get(String(boardId)) || 0;
+            const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+            const link = document.createElement('span');
+            link.textContent = (showCount && count > 0) ? `${board.title} (${count})` : board.title;
+            link.classList.add('board-filter-link');
+            link.dataset.boardid = boardId;
+            // Обработка на цвят на фона
+            if (board.color !== undefined && !isNaN(board.color)) {
+                if (board.color >= 0 && board.color <= 6) {
+                    // Стандартни цветове (0-6)
+                    link.style.backgroundColor = `var(--board-bg-${board.color})`;
+                } else if (board.color < 0) {
+                    // Custom цвят (отрицателно число)
+                    // Преобразуваме signed int в hex color string (RRGGBB)
+                    // Използваме >>> 0 за да го третираме като unsigned 32-bit int,
+                    // след това toString(16) и взимаме последните 6 символа.
+                    const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
+                    link.style.backgroundColor = hexColor;
+                }
+            }
+            // Обработка на цвят на шрифта
+            link.style.color = 'black'; // Default
+            if (board.status === 1) {
+                link.style.color = 'red';
+            } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
+                // Custom цвят на шрифта (отрицателно число)
+                const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+                link.style.color = hexFontColor;
+            }
+            addBoardButtonEvents(link, boardId);
+            allButtonLinks.push(link);
+        });
+        // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС СНИМКИ" ---
+        if (localStorage.getItem('showPhotosBoard') === 'true') {
+            const photosLink = document.createElement('span');
+            photosLink.textContent = _('photosBoardTitle') || "With Photos";
+            photosLink.classList.add('board-filter-link', 'photos-filter-btn');
+            photosLink.dataset.boardid = 'with-photos';
+            addBoardButtonEvents(photosLink, 'with-photos');
+            allButtonLinks.push(photosLink);
+        }
+        // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "С ВИДЕО" ---
+        if (localStorage.getItem('showVideosBoard') === 'true') {
+            const videosLink = document.createElement('span');
+            videosLink.textContent = _('videosBoardTitle') || "With Video";
+            videosLink.classList.add('board-filter-link', 'videos-filter-btn');
+            videosLink.dataset.boardid = 'with-videos';
+            addBoardButtonEvents(videosLink, 'with-videos');
+            allButtonLinks.push(videosLink);
+        }
+        // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС ЗВУК" ---
+        if (localStorage.getItem('showSoundsBoard') === 'true') {
+            const soundsLink = document.createElement('span');
+            soundsLink.textContent = _('soundsBoardTitle') || "With Sounds";
+            soundsLink.classList.add('board-filter-link', 'sounds-filter-btn');
+            soundsLink.dataset.boardid = 'with-sounds';
+            addBoardButtonEvents(soundsLink, 'with-sounds');
+            allButtonLinks.push(soundsLink);
+        }
+        // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "ДРУГИ ПРИЛОЖЕНИЯ" ---
+        if (localStorage.getItem('showOtherBoard') === 'true') {
+            const otherLink = document.createElement('span');
+            otherLink.textContent = _('otherBoardTitle') || "Other Attachments";
+            otherLink.classList.add('board-filter-link', 'other-filter-btn');
+            otherLink.dataset.boardid = 'with-other';
+            otherLink.style.backgroundColor = '#a6a6a6';
+            addBoardButtonEvents(otherLink, 'with-other');
+            allButtonLinks.push(otherLink);
+        }
+        // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "КОШЧЕ" ---
+        if (localStorage.getItem('showTrashBoard') !== 'false' && (extraCounts.trashCount > 0 || currentBoardFilter === 'trash')) {
+            const trashCount = extraCounts.trashCount || 0;
+            const trashLink = document.createElement('span');
+            trashLink.textContent = (showCount && trashCount > 0) ? `${_('trashBoardTitle') || "Кошче"} (${trashCount})` : (_('trashBoardTitle') || "Кошче");
+            trashLink.classList.add('board-filter-link', 'trash-filter-btn');
+            trashLink.dataset.boardid = 'trash';
+            trashLink.style.backgroundColor = '#c00';
+            trashLink.style.color = '#fff';
+            addBoardButtonEvents(trashLink, 'trash');
+            allButtonLinks.push(trashLink);
+        }
+        maxWidthForButtons = 0;
+        const tempContainer = document.createElement('div');
+        tempContainer.style.position = 'absolute';
+        tempContainer.style.visibility = 'hidden';
+        document.body.appendChild(tempContainer);
+        allButtonLinks.forEach(link => {
+            tempContainer.appendChild(link);
+            maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
+        });
+
+        document.body.removeChild(tempContainer);
+        maxWidthForButtons += 10;
+        allButtonLinks.forEach(link => {
+            link.style.width = `${maxWidthForButtons}px`;
+            contentEl.appendChild(link);
+        });
+
+        const scrollWrapper = document.createElement('div');
+        scrollWrapper.className = 'scrolling-menu-wrapper';
+        const allBoardsBtn = document.createElement('button');
+        allBoardsBtn.className = 'board-menu-button popup-menu-btn'; // Ново, по-семантично име на класовете
+        allBoardsBtn.innerHTML = boardIconSvg; // Use the board icon
+        // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
+        addAllBoardsModalEvents(allBoardsBtn, () => { showAllBoardsModal(); });
+        scrollWrapper.appendChild(allBoardsBtn);
+
+        // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container --- @@
+        const boardsMenuContainer = document.getElementById('boards-menu-container');
+        if (boardsMenuContainer) {
+            // Клонираме бутона, за да го имаме и на двете места, или го местим.
+            const allBoardsBtnForContainer = document.createElement('button');
+            allBoardsBtnForContainer.className = 'popup-menu-btn-floating'; // Използваме floating стил, за да стои над страницата
+            allBoardsBtnForContainer.innerHTML = boardIconSvg;
+            // --- DRAGGABLE FUNCTIONALITY ---
+            // Използваме новата функция за drag-and-drop
+            makeElementDraggable(allBoardsBtnForContainer, 'popupMenuBtnPosition');
+            // Long press logic remains for specific actions if needed, but for now standard draggable covers the move.
+            // The original code had specific long press interaction which we preserve via showAllBoardsModal call logic below if needed.
+            // But here we just need to attach the click handler. makeElementDraggable blocks click if dragged.
+            // Click event - отваря менюто с малко забавяне, за да има време за drag (ако не е преместен)
+            let clickTimer;
+            allBoardsBtnForContainer.addEventListener('click', (e) => {
+                // makeElementDraggable already handles stopping propagation if moved.
+                // If we are here, it wasn't a drag.
+                // Малко забавяне преди отваряне на менюто
+                e.preventDefault();
+                e.stopPropagation();
+                clearTimeout(clickTimer);
+                clickTimer = setTimeout(() => {
+                    showAllBoardsModal();
+                }, 200);
+            });
+
+            // Изчистваме контейнера преди да добавим (ако се презарежда UI)
+            boardsMenuContainer.innerHTML = '';
+            boardsMenuContainer.appendChild(allBoardsBtnForContainer);
+        }
+        scrollWrapper.appendChild(contentEl);
+        contentWrapper.appendChild(scrollWrapper);
+        allBoardsBtn.classList.add('visible');
+        return boardsNote;
+    }
+    async function createSettingsUI(boardsData, boardParseError) {
+        const settingsModalBody = document.getElementById('settings-modal-body');
+        // --- Get Element References ---
+        const scaleSlider = document.getElementById('scaleSlider');
+        const scaleInput = document.getElementById('scaleInput');
+        const noteFontSizeInput = document.getElementById('note-font-size-input');
+        const modalFontSizeInput = document.getElementById('modal-font-size-input');
+        const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
+        const orderCheckbox = document.getElementById('order-checkbox');
+        const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
+        const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
+        const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
+        const weeklyCalendarCheckbox = document.getElementById('weekly-calendar-checkbox');
+        const showBoardRemindCheckbox = document.getElementById('remind-board-checkbox');
+        const showPhotosBoardCheckbox = document.getElementById('show-photos-board-checkbox');
+        const showVideosBoardCheckbox = document.getElementById('show-videos-board-checkbox');
+        const showSoundsBoardCheckbox = document.getElementById('show-sounds-board-checkbox');
+        const showOtherBoardCheckbox = document.getElementById('show-other-board-checkbox');
+        // const startBoardSelect = document.getElementById('start-board-select');
+        const maxSearchesInput = document.getElementById('max-searches-input');
+        const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
+        const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
+        const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
+        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+        const updateFromSourceCheckbox = document.getElementById('update-from-source-checkbox');
+        const dbSectionWrapper = document.getElementById('db-section-wrapper');
+        const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
+        const selectFolderBtn = document.getElementById('select-folder-btn');
+        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+        const clickToEditCheckbox = document.getElementById('click-to-edit-checkbox');
+        const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
+        const hideToastCheckbox = document.getElementById('hide-toast-checkbox');
+        if (!settingsModalBody.dataset.initialized) {
+            // Hide Assistant Logic
+            if (hideAssistantCheckbox) {
+                hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
+                hideAssistantCheckbox.addEventListener('change', () => {
+                    const isChecked = hideAssistantCheckbox.checked;
+                    localStorage.setItem('hideAssistant', isChecked);
+                    const fabButton = document.getElementById('kb-fab');
+                    if (fabButton) {
+                        fabButton.style.display = isChecked ? 'none' : 'block';
+                    }
+                    // Ако скрием асистента, скриваме и промо бележката веднага
+                    if (isChecked) {
+                        if (promoNoteElement) {
+                            promoNoteElement.style.display = 'none';
+                        }
+                        // Изчистваме флаговете за затворени промо бележки, за да се покажат отново при включване
+                        Object.keys(localStorage).forEach(key => {
+                            if (key.startsWith('dismissedPromo_')) {
+                                localStorage.removeItem(key);
+                            }
+                        });
+                    }
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+            // Zooom
+            const updateZoom = (value) => {
+                value = Math.max(25, Math.min(175, parseInt(value, 10)));
+                if (isNaN(value)) value = 100;
+                notesContainer.style.zoom = value / 100;
+                scaleSlider.value = value;
+                scaleInput.value = value;
+            };
+            let savedZoom = localStorage.getItem('zoomLevel');
+            if (savedZoom) {
+                scaleSlider.value = savedZoom;
+                updateZoom(savedZoom);
+            } else {
+                updateZoom(scaleSlider.value);
+            }
+            let opacityTimeout;
+            const applyBtn = document.getElementById('applyZoomBtn');
+            // Listeners for migrated settings
+            const closeAfterSaveCheckbox = document.getElementById('close-after-save-checkbox');
+            if (closeAfterSaveCheckbox) {
+                closeAfterSaveCheckbox.checked = localStorage.getItem('closeAfterSave') === 'true';
+                closeAfterSaveCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('closeAfterSave', closeAfterSaveCheckbox.checked);
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+            const updateGDriveCheckbox = document.getElementById('update-gdrive-checkbox');
+            if (updateGDriveCheckbox) {
+                updateGDriveCheckbox.checked = localStorage.getItem('updateGDrive') === 'true';
+                updateGDriveCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('updateGDrive', updateGDriveCheckbox.checked);
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+            const updateLocalFolderCheckbox = document.getElementById('update-local-folder-checkbox');
+            if (updateLocalFolderCheckbox) {
+                updateLocalFolderCheckbox.checked = localStorage.getItem('updateLocalFolder') === 'true';
+                updateLocalFolderCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('updateLocalFolder', updateLocalFolderCheckbox.checked);
+                    updateLocalFolder = updateLocalFolderCheckbox.checked;
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+            const forceGDriveReadCheckbox = document.getElementById('force-gdrive-read-checkbox');
+            if (forceGDriveReadCheckbox) {
+                forceGDriveReadCheckbox.checked = localStorage.getItem('forceGDriveRead') === 'true';
+                forceGDriveReadCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('forceGDriveRead', forceGDriveReadCheckbox.checked);
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+            const checkEmptyBoardsCheckbox = document.getElementById('check-empty-boards-checkbox');
+            if (checkEmptyBoardsCheckbox) {
+                checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
+                checkEmptyBoardsCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('checkEmptyBoards', checkEmptyBoardsCheckbox.checked);
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+            const automatedTimerCheckbox = document.getElementById('automated-timer-checkbox');
+            if (automatedTimerCheckbox) {
+                automatedTimerCheckbox.checked = localStorage.getItem('automatedTimer') !== 'false';
+                automatedTimerCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('automatedTimer', automatedTimerCheckbox.checked);
+                    automatedTimer = automatedTimerCheckbox.checked;
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+            // --- Markdown Symbols Settings ---
+            const mdBoldInput = document.getElementById('md-bold-input');
+            const mdItalicInput = document.getElementById('md-italic-input');
+            const mdStrikeInput = document.getElementById('md-strike-input');
+            const mdUnderlineInput = document.getElementById('md-underline-input');
+            const mdClearInput = document.getElementById('md-clear-input');
+
+            const setupMdInput = (input, storageKey, defaultValue) => {
+                if (input) {
+                    input.value = localStorage.getItem(storageKey) || defaultValue;
+                    input.addEventListener('change', () => {
+                        localStorage.setItem(storageKey, input.value);
+                        showToast(_('settingSaved'), 2000);
+                    });
+                }
+            };
+
+            setupMdInput(mdBoldInput, 'mdBold', '**');
+            setupMdInput(mdItalicInput, 'mdItalic', '*');
+            setupMdInput(mdStrikeInput, 'mdStrike', '~~');
+            setupMdInput(mdUnderlineInput, 'mdUnderline', '_');
+            setupMdInput(mdClearInput, 'mdClear', '--');
+
+            applyBtn.addEventListener('click', () => {
+                const zoomValue = scaleInput.value;
+                updateZoom(zoomValue);
+                localStorage.setItem('zoomLevel', zoomValue);
+                showToast(_('settingSaved'), 2000);
+                // Keep transparency for 5 seconds
+                if (typeof startOpacityChange === 'function') {
+                    startOpacityChange();
+                    if (opacityTimeout) clearTimeout(opacityTimeout);
+                    opacityTimeout = setTimeout(() => {
+                        endOpacityChange();
+                    }, 5000);
+                }
+            });
+            scaleInput.addEventListener('change', () => {
+                const zoomValue = scaleInput.value;
+                updateZoom(zoomValue);
+                localStorage.setItem('zoomLevel', zoomValue);
+            });
+            scaleSlider.addEventListener('input', () => {
+                const zoomValue = scaleSlider.value;
+                updateZoom(zoomValue);
+                localStorage.setItem('zoomLevel', zoomValue);
+            });
+            // --- Прозрачност при използване на плъзгача ---
+            const settingsModal = document.getElementById('settings-modal');
+            const startOpacityChange = () => {
+                if (settingsModal) settingsModal.style.opacity = '0.7';
+            };
+            const endOpacityChange = () => {
+                if (settingsModal) settingsModal.style.opacity = '1';
+            };
+            scaleSlider.addEventListener('mousedown', startOpacityChange);
+            scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
+            scaleSlider.addEventListener('mouseup', endOpacityChange);
+            scaleSlider.addEventListener('touchend', endOpacityChange);
+            scaleSlider.addEventListener('mouseleave', endOpacityChange); // За всеки случай
+            scaleSlider.addEventListener('click', (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    let currentValue = parseInt(scaleSlider.value, 10);
+                    let newValue;
+                    if (currentValue % 10 === 0) {
+                        newValue = currentValue + 10;
+                    } else {
+                        newValue = Math.round(currentValue / 10) * 10;
+                    }
+                    const max = parseInt(scaleSlider.max, 10);
+                    const min = parseInt(scaleSlider.min, 10);
+                    if (newValue > max) newValue = max;
+                    if (newValue < min) newValue = min;
+                    scaleSlider.value = newValue;
+                    updateZoom(newValue);
+                    localStorage.setItem('zoomLevel', newValue);
+                }
+            });
+            // Make modal transparent when typing in scaleInput
+            scaleInput.addEventListener('focus', () => {
+                startOpacityChange();
+                if (opacityTimeout) clearTimeout(opacityTimeout);
+            });
+            scaleInput.addEventListener('blur', endOpacityChange);
+            // Fonts
+            const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
+                const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
+                fontSizes.forEach(size => {
+                    const option = document.createElement('option');
+                    option.value = size;
+                    option.textContent = `${size}px`;
+                    selectElement.appendChild(option);
+                });
+                selectElement.value = localStorage.getItem(storageKey) || defaultValue;
+                // Apply initial value
+                targetUpdate(selectElement.value);
+                selectElement.addEventListener('change', () => {
+                    const value = selectElement.value;
+                    localStorage.setItem(storageKey, value);
+                    targetUpdate(value);
+                    showToast(_('settingSaved'), 2000);
+                });
+            };
+            setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
+            setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
+            // Date
+            showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
+            showDatemodCheckbox.addEventListener('change', () => {
+                const isChecked = showDatemodCheckbox.checked;
+                localStorage.setItem('showDatemod', isChecked);
+                document.body.classList.toggle('hide-datemod', !isChecked);
+                showToast(_('settingSaved'), 2000);
+            });
+            // One-tap links
+            oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
+            oneTapLinkCheckbox.addEventListener('change', () => {
+                const isChecked = oneTapLinkCheckbox.checked;
+                localStorage.setItem('oneTapLink', isChecked);
+                showToast(_('settingSaved'), 2000);
+                // Затваряме настройките, за да се вижда презареждането
+                document.getElementById('settings-modal').classList.remove('visible');
+                // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
+                renderUI({ boardParseError: false });
+            });
+            // Click to edit
+            if (clickToEditCheckbox) {
+                clickToEditCheckbox.checked = localStorage.getItem('clickToEdit') !== 'false'; // Default to true
+                clickToEditCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('clickToEdit', clickToEditCheckbox.checked);
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+            // Hide Toast info messages
+            isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
+            if (hideToastCheckbox) {
+                hideToastCheckbox.checked = isToastHidden;
+                hideToastCheckbox.addEventListener('change', () => {
+                    isToastHidden = hideToastCheckbox.checked;
+                    localStorage.setItem('hideToast', isToastHidden.toString());
+                    if (!isToastHidden) {
+                        showToast(_('settingSaved'), 2000);
+                    }
+                });
+            }
+            // Graphical background
+            const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
+            imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+            imgBgrdCheckbox.addEventListener('change', () => {
+                const isChecked = imgBgrdCheckbox.checked;
+                localStorage.setItem('imgBgrd', isChecked);
+                showToast(_('settingSaved'), 2000);
+            });
+            // Graphical background (notes list)
+            const notesBgrdCheckbox = document.getElementById('notes-bgrd-checkbox');
+            notesBgrdCheckbox.checked = localStorage.getItem('notesBgrd') !== 'false'; // Default to true
+            notesBgrdCheckbox.addEventListener('change', () => {
+                const isChecked = notesBgrdCheckbox.checked;
+                localStorage.setItem('notesBgrd', isChecked);
+                showToast(_('settingSaved'), 2000);
+                notesBgrdChanged = true;
+            });
+            // Board Note Count
+            if (showBoardNoteCountCheckbox) {
+                showBoardNoteCountCheckbox.checked = localStorage.getItem('showBoardNoteCount') === 'true';
+                showBoardNoteCountCheckbox.addEventListener('change', async () => {
+                    localStorage.setItem('showBoardNoteCount', showBoardNoteCountCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    // Просто презареждаме менюто. renderUI ще се погрижи за показването/скриването.
+                    await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+            // Show 'All' Board Checkbox
+            if (showBoardAllCheckbox) {
+                showBoardAllCheckbox.checked = localStorage.getItem('showBoardAll') !== 'false'; // Default to true
+                showBoardAllCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showBoardAll', showBoardAllCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+            // Show 'Reminders' Board Checkbox
+            if (showBoardRemindCheckbox) {
+                showBoardRemindCheckbox.checked = localStorage.getItem('showBoardRemind') !== 'false'; // Default to true
+                showBoardRemindCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showBoardRemind', showBoardRemindCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+            // Show 'Photos' Board Checkbox
+            if (showPhotosBoardCheckbox) {
+                showPhotosBoardCheckbox.checked = localStorage.getItem('showPhotosBoard') === 'true';
+                showPhotosBoardCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showPhotosBoard', showPhotosBoardCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+            // Show 'Videos' Board Checkbox
+            if (showVideosBoardCheckbox) {
+                showVideosBoardCheckbox.checked = localStorage.getItem('showVideosBoard') === 'true';
+                showVideosBoardCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showVideosBoard', showVideosBoardCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+            // Show 'Sounds' Board Checkbox
+            if (showSoundsBoardCheckbox) {
+                showSoundsBoardCheckbox.checked = localStorage.getItem('showSoundsBoard') === 'true';
+                showSoundsBoardCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showSoundsBoard', showSoundsBoardCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+            // Show 'Other' Board Checkbox
+            if (showOtherBoardCheckbox) {
+                showOtherBoardCheckbox.checked = localStorage.getItem('showOtherBoard') === 'true';
+                showOtherBoardCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showOtherBoard', showOtherBoardCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                });
+            }
+            // Weekly Calendar Checkbox
+            if (weeklyCalendarCheckbox) {
+                weeklyCalendarCheckbox.checked = localStorage.getItem('showWeeklyCalendar') === 'true';
+                weeklyCalendarCheckbox.addEventListener('change', () => {
+                    localStorage.setItem('showWeeklyCalendar', weeklyCalendarCheckbox.checked.toString());
+                    showToast(_('settingSaved'), 2000);
+                    // No need to rerender, it's checked on calendar view open
+                });
+            }
+            // Order checkbox
+            orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
+            const sortingOptionsSection = document.getElementById('sorting-options-section');
+            const sortingArrow = document.getElementById('sorting-arrow');
+            const boardsOptionsSection = document.getElementById('boards-options-section');
+            const boardsArrow = document.getElementById('boards-arrow');
+            // Event listener for the checkbox itself
+            orderCheckbox.addEventListener('change', () => {
+                localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
+                applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
+                showToast(_('settingSaved'), 2000);
+            });
+            // Event listener for the arrow ONLY
+            sortingArrow.addEventListener('click', () => {
+                const isActive = sortingOptionsSection.style.display === 'block';
+                sortingOptionsSection.style.display = isActive ? 'none' : 'block';
+                // Animate arrow rotation
+                sortingArrow.style.transition = 'transform 0.3s ease';
+                sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+            });
+            // Event listener for the arrow ONLY
+            boardsArrow.addEventListener('click', () => {
+                const isActive = boardsOptionsSection.style.display === 'block';
+                boardsOptionsSection.style.display = isActive ? 'none' : 'block';
+                // Animate arrow rotation
+                boardsArrow.style.transition = 'transform 0.3s ease';
+                boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+            });
+            // Sorting options
+            const sortCriteriaRadios = document.querySelectorAll('input[name="sort-criteria"]');
+            const savedSortCriteria = localStorage.getItem('sortCriteria') || 'numord';
+            sortCriteriaRadios.forEach(radio => {
+                if (radio.value === savedSortCriteria) {
+                    radio.checked = true;
+                }
+                radio.addEventListener('change', () => {
+                    if (radio.checked) {
+                        // Автоматично активиране на сортирането при избор на критерий
+                        if (!orderCheckbox.checked) {
+                            orderCheckbox.checked = true;
+                            localStorage.setItem('enableNoteSorting', 'true');
+                        }
+                        localStorage.setItem('sortCriteria', radio.value);
+                        applyFilters();
+                        showToast(_('settingSaved'), 2000);
+                    }
+                });
+            });
+            const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
+            sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
+            sortReverseCheckbox.addEventListener('change', () => {
+                // Автоматично активиране на сортирането
+                if (!orderCheckbox.checked) {
+                    orderCheckbox.checked = true;
+                    localStorage.setItem('enableNoteSorting', 'true');
+                }
+                localStorage.setItem('sortInReverse', sortReverseCheckbox.checked);
+                applyFilters();
+                showToast(_('settingSaved'), 2000);
+            });
+            const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
+            sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
+            sortRemindersTopCheckbox.addEventListener('change', () => {
+                // Автоматично активиране на сортирането
+                if (!orderCheckbox.checked) {
+                    orderCheckbox.checked = true;
+                    localStorage.setItem('enableNoteSorting', 'true');
+                }
+                localStorage.setItem('sortRemindersTop', sortRemindersTopCheckbox.checked);
+                applyFilters();
+                showToast(_('settingSaved'), 2000);
+            });
+            // Start Board
+            let startBoardSelect; // Declare here to be accessible in the whole function
+            startBoardSelect = document.getElementById('start-board-select');
+            startBoardSelect.value = localStorage.getItem('startBoard') || 'Main';
+            startBoardSelect.addEventListener('change', () => {
+                localStorage.setItem('startBoard', startBoardSelect.value);
+                showToast(_('settingSaved'), 2000);
+            });
+            // Max Searches
+            // let maxSearchesInput; // Declare here as well
+            maxSearchesInput.value = maxSavedSearches;
+            maxSearchesInput.addEventListener('change', () => {
+                let newValue = parseInt(maxSearchesInput.value, 10);
+                if (isNaN(newValue) || newValue < 0) newValue = 0;
+                if (newValue > 20) newValue = 20;
+                maxSavedSearches = newValue;
+                localStorage.setItem('maxSavedSearches', newValue);
+                // Trim existing searches if new limit is smaller
+                if (savedSearches.length > maxSavedSearches) {
+                    savedSearches.length = maxSavedSearches;
+                    localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+                }
+                showToast(_('settingSaved'), 2000);
+            });
+            // --- New Data Source Selection Logic ---
+            const dataSources = [
+                { checkbox: useGoogleDbCheckbox, key: 'useGoogleDb' },
+                { checkbox: useLocalDbCheckbox, key: 'useLocalDb' },
+                { checkbox: useArhDbCheckbox, key: 'useArhDb' }
+            ];
+            const handleDataSourceChange = (changedCheckbox, changedKey) => {
+                // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
+                if (!changedCheckbox.checked && !dbExists) {
+                    showToast(_('errorNoDataSourceSelected'), 5000);
+                    // Не позволяваме премахването, като връщаме отметката
+                    changedCheckbox.checked = true;
+                    return;
+                }
+                if (changedCheckbox.checked) {
+                    // Преди да запишем в localStorage, проверяваме дали имаме избрана папка
+                    if (changedKey === 'useLocalDb' || changedKey === 'useArhDb') {
+                        const display = (changedKey === 'useLocalDb') ?
+                            document.getElementById('local-sync-folder-name') :
+                            document.getElementById('arh-folder-name');
+
+                        if (!display || display.textContent === _('folderNotSelected')) {
+                            // Не записваме в localStorage, махаме отметката и отваряме избора на папка
+                            changedCheckbox.checked = false;
+                            const btnId = (changedKey === 'useLocalDb') ? 'select-folder-btn' : 'select-arh-btn';
+                            document.getElementById(btnId).click();
+                            return;
+                        }
+                    }
+                    // Uncheck all other data sources
+                    dataSources.forEach(({ checkbox, key }) => {
+                        if (key !== changedKey) {
+                            checkbox.checked = false;
+                            localStorage.setItem(key, 'false');
                         }
                     });
                 }
+                // Save the state of the changed checkbox
+                localStorage.setItem(changedKey, changedCheckbox.checked);
                 showToast(_('settingSaved'), 2000);
+                updateModeButton();
+            };
+            dataSources.forEach(({ checkbox, key }) => {
+                checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key));
             });
-        }
-        // Zooom
-        const updateZoom = (value) => {
-            value = Math.max(25, Math.min(175, parseInt(value, 10)));
-            if (isNaN(value)) value = 100;
-            notesContainer.style.zoom = value / 100;
-            scaleSlider.value = value;
-            scaleInput.value = value;
-        };
-        let savedZoom = localStorage.getItem('zoomLevel');
-        if (savedZoom) {
-            scaleSlider.value = savedZoom;
-            updateZoom(savedZoom);
-        } else {
-            updateZoom(scaleSlider.value);
-        }
-        let opacityTimeout;
-        const applyBtn = document.getElementById('applyZoomBtn');
-        // Listeners for migrated settings
-        const closeAfterSaveCheckbox = document.getElementById('close-after-save-checkbox');
-        if (closeAfterSaveCheckbox) {
-            closeAfterSaveCheckbox.checked = localStorage.getItem('closeAfterSave') === 'true';
-            closeAfterSaveCheckbox.addEventListener('change', () => {
-                localStorage.setItem('closeAfterSave', closeAfterSaveCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const updateGDriveCheckbox = document.getElementById('update-gdrive-checkbox');
-        if (updateGDriveCheckbox) {
-            updateGDriveCheckbox.checked = localStorage.getItem('updateGDrive') === 'true';
-            updateGDriveCheckbox.addEventListener('change', () => {
-                localStorage.setItem('updateGDrive', updateGDriveCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const updateLocalFolderCheckbox = document.getElementById('update-local-folder-checkbox');
-        if (updateLocalFolderCheckbox) {
-            updateLocalFolderCheckbox.checked = localStorage.getItem('updateLocalFolder') === 'true';
-            updateLocalFolderCheckbox.addEventListener('change', () => {
-                localStorage.setItem('updateLocalFolder', updateLocalFolderCheckbox.checked);
-                updateLocalFolder = updateLocalFolderCheckbox.checked;
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const forceGDriveReadCheckbox = document.getElementById('force-gdrive-read-checkbox');
-        if (forceGDriveReadCheckbox) {
-            forceGDriveReadCheckbox.checked = localStorage.getItem('forceGDriveRead') === 'true';
-            forceGDriveReadCheckbox.addEventListener('change', () => {
-                localStorage.setItem('forceGDriveRead', forceGDriveReadCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const checkEmptyBoardsCheckbox = document.getElementById('check-empty-boards-checkbox');
-        if (checkEmptyBoardsCheckbox) {
-            checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
-            checkEmptyBoardsCheckbox.addEventListener('change', () => {
-                localStorage.setItem('checkEmptyBoards', checkEmptyBoardsCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const automatedTimerCheckbox = document.getElementById('automated-timer-checkbox');
-        if (automatedTimerCheckbox) {
-            automatedTimerCheckbox.checked = localStorage.getItem('automatedTimer') !== 'false';
-            automatedTimerCheckbox.addEventListener('change', () => {
-                localStorage.setItem('automatedTimer', automatedTimerCheckbox.checked);
-                automatedTimer = automatedTimerCheckbox.checked;
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        // --- Markdown Symbols Settings ---
-        const mdBoldInput = document.getElementById('md-bold-input');
-        const mdItalicInput = document.getElementById('md-italic-input');
-        const mdStrikeInput = document.getElementById('md-strike-input');
-        const mdUnderlineInput = document.getElementById('md-underline-input');
-        const mdClearInput = document.getElementById('md-clear-input');
-
-        const setupMdInput = (input, storageKey, defaultValue) => {
-            if (input) {
-                input.value = localStorage.getItem(storageKey) || defaultValue;
-                input.addEventListener('change', () => {
-                    localStorage.setItem(storageKey, input.value);
-                    showToast(_('settingSaved'), 2000);
-                });
-            }
-        };
-
-        setupMdInput(mdBoldInput, 'mdBold', '**');
-        setupMdInput(mdItalicInput, 'mdItalic', '*');
-        setupMdInput(mdStrikeInput, 'mdStrike', '~~');
-        setupMdInput(mdUnderlineInput, 'mdUnderline', '_');
-        setupMdInput(mdClearInput, 'mdClear', '--');
-
-        applyBtn.addEventListener('click', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-            showToast(_('settingSaved'), 2000);
-            // Keep transparency for 5 seconds
-            if (typeof startOpacityChange === 'function') {
-                startOpacityChange();
-                if (opacityTimeout) clearTimeout(opacityTimeout);
-                opacityTimeout = setTimeout(() => {
-                    endOpacityChange();
-                }, 5000);
-            }
-        });
-        scaleInput.addEventListener('change', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-        });
-        scaleSlider.addEventListener('input', () => {
-            const zoomValue = scaleSlider.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-        });
-        // --- Прозрачност при използване на плъзгача ---
-        const settingsModal = document.getElementById('settings-modal');
-        const startOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '0.7';
-        };
-        const endOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '1';
-        };
-        scaleSlider.addEventListener('mousedown', startOpacityChange);
-        scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
-        scaleSlider.addEventListener('mouseup', endOpacityChange);
-        scaleSlider.addEventListener('touchend', endOpacityChange);
-        scaleSlider.addEventListener('mouseleave', endOpacityChange); // За всеки случай
-        scaleSlider.addEventListener('click', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                let currentValue = parseInt(scaleSlider.value, 10);
-                let newValue;
-                if (currentValue % 10 === 0) {
-                    newValue = currentValue + 10;
-                } else {
-                    newValue = Math.round(currentValue / 10) * 10;
-                }
-                const max = parseInt(scaleSlider.max, 10);
-                const min = parseInt(scaleSlider.min, 10);
-                if (newValue > max) newValue = max;
-                if (newValue < min) newValue = min;
-                scaleSlider.value = newValue;
-                updateZoom(newValue);
-                localStorage.setItem('zoomLevel', newValue);
-            }
-        });
-        // Make modal transparent when typing in scaleInput
-        scaleInput.addEventListener('focus', () => {
-            startOpacityChange();
-            if (opacityTimeout) clearTimeout(opacityTimeout);
-        });
-        scaleInput.addEventListener('blur', endOpacityChange);
-        // Fonts
-        const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
-            const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
-            fontSizes.forEach(size => {
-                const option = document.createElement('option');
-                option.value = size;
-                option.textContent = `${size}px`;
-                selectElement.appendChild(option);
-            });
-            selectElement.value = localStorage.getItem(storageKey) || defaultValue;
-            // Apply initial value
-            targetUpdate(selectElement.value);
-            selectElement.addEventListener('change', () => {
-                const value = selectElement.value;
-                localStorage.setItem(storageKey, value);
-                targetUpdate(value);
-                showToast(_('settingSaved'), 2000);
-            });
-        };
-        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
-        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
-        // Date
-        showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
-        showDatemodCheckbox.addEventListener('change', () => {
-            const isChecked = showDatemodCheckbox.checked;
-            localStorage.setItem('showDatemod', isChecked);
-            document.body.classList.toggle('hide-datemod', !isChecked);
-            showToast(_('settingSaved'), 2000);
-        });
-        // One-tap links
-        oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
-        oneTapLinkCheckbox.addEventListener('change', () => {
-            const isChecked = oneTapLinkCheckbox.checked;
-            localStorage.setItem('oneTapLink', isChecked);
-            showToast(_('settingSaved'), 2000);
-            // Затваряме настройките, за да се вижда презареждането
-            document.getElementById('settings-modal').classList.remove('visible');
-            // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
-            renderUI({ boardParseError: false });
-        });
-        // Click to edit
-        if (clickToEditCheckbox) {
-            clickToEditCheckbox.checked = localStorage.getItem('clickToEdit') !== 'false'; // Default to true
-            clickToEditCheckbox.addEventListener('change', () => {
-                localStorage.setItem('clickToEdit', clickToEditCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        // Hide Toast info messages
-        isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
-        if (hideToastCheckbox) {
-            hideToastCheckbox.checked = isToastHidden;
-            hideToastCheckbox.addEventListener('change', () => {
-                isToastHidden = hideToastCheckbox.checked;
-                localStorage.setItem('hideToast', isToastHidden.toString());
-                if (!isToastHidden) {
-                    showToast(_('settingSaved'), 2000);
-                }
-            });
-        }
-        // Graphical background
-        const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
-        imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
-        imgBgrdCheckbox.addEventListener('change', () => {
-            const isChecked = imgBgrdCheckbox.checked;
-            localStorage.setItem('imgBgrd', isChecked);
-            showToast(_('settingSaved'), 2000);
-        });
-        // Graphical background (notes list)
-        const notesBgrdCheckbox = document.getElementById('notes-bgrd-checkbox');
-        notesBgrdCheckbox.checked = localStorage.getItem('notesBgrd') !== 'false'; // Default to true
-        notesBgrdCheckbox.addEventListener('change', () => {
-            const isChecked = notesBgrdCheckbox.checked;
-            localStorage.setItem('notesBgrd', isChecked);
-            showToast(_('settingSaved'), 2000);
-            notesBgrdChanged = true;
-        });
-        // Board Note Count
-        if (showBoardNoteCountCheckbox) {
-            showBoardNoteCountCheckbox.checked = localStorage.getItem('showBoardNoteCount') === 'true';
-            showBoardNoteCountCheckbox.addEventListener('change', async () => {
-                localStorage.setItem('showBoardNoteCount', showBoardNoteCountCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                // Просто презареждаме менюто. renderUI ще се погрижи за показването/скриването.
-                await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'All' Board Checkbox
-        if (showBoardAllCheckbox) {
-            showBoardAllCheckbox.checked = localStorage.getItem('showBoardAll') !== 'false'; // Default to true
-            showBoardAllCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showBoardAll', showBoardAllCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Reminders' Board Checkbox
-        if (showBoardRemindCheckbox) {
-            showBoardRemindCheckbox.checked = localStorage.getItem('showBoardRemind') !== 'false'; // Default to true
-            showBoardRemindCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showBoardRemind', showBoardRemindCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Photos' Board Checkbox
-        if (showPhotosBoardCheckbox) {
-            showPhotosBoardCheckbox.checked = localStorage.getItem('showPhotosBoard') === 'true';
-            showPhotosBoardCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showPhotosBoard', showPhotosBoardCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Videos' Board Checkbox
-        if (showVideosBoardCheckbox) {
-            showVideosBoardCheckbox.checked = localStorage.getItem('showVideosBoard') === 'true';
-            showVideosBoardCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showVideosBoard', showVideosBoardCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Sounds' Board Checkbox
-        if (showSoundsBoardCheckbox) {
-            showSoundsBoardCheckbox.checked = localStorage.getItem('showSoundsBoard') === 'true';
-            showSoundsBoardCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showSoundsBoard', showSoundsBoardCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Other' Board Checkbox
-        if (showOtherBoardCheckbox) {
-            showOtherBoardCheckbox.checked = localStorage.getItem('showOtherBoard') === 'true';
-            showOtherBoardCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showOtherBoard', showOtherBoardCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Weekly Calendar Checkbox
-        if (weeklyCalendarCheckbox) {
-            weeklyCalendarCheckbox.checked = localStorage.getItem('showWeeklyCalendar') === 'true';
-            weeklyCalendarCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showWeeklyCalendar', weeklyCalendarCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                // No need to rerender, it's checked on calendar view open
-            });
-        }
-        // Order checkbox
-        orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
-        const sortingOptionsSection = document.getElementById('sorting-options-section');
-        const sortingArrow = document.getElementById('sorting-arrow');
-        const boardsOptionsSection = document.getElementById('boards-options-section');
-        const boardsArrow = document.getElementById('boards-arrow');
-        // Event listener for the checkbox itself
-        orderCheckbox.addEventListener('change', () => {
-            localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
-            applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
-            showToast(_('settingSaved'), 2000);
-        });
-        // Event listener for the arrow ONLY
-        sortingArrow.addEventListener('click', () => {
-            const isActive = sortingOptionsSection.style.display === 'block';
-            sortingOptionsSection.style.display = isActive ? 'none' : 'block';
-            // Animate arrow rotation
-            sortingArrow.style.transition = 'transform 0.3s ease';
-            sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
-        });
-        // Event listener for the arrow ONLY
-        boardsArrow.addEventListener('click', () => {
-            const isActive = boardsOptionsSection.style.display === 'block';
-            boardsOptionsSection.style.display = isActive ? 'none' : 'block';
-            // Animate arrow rotation
-            boardsArrow.style.transition = 'transform 0.3s ease';
-            boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
-        });
-        // Sorting options
-        const sortCriteriaRadios = document.querySelectorAll('input[name="sort-criteria"]');
-        const savedSortCriteria = localStorage.getItem('sortCriteria') || 'numord';
-        sortCriteriaRadios.forEach(radio => {
-            if (radio.value === savedSortCriteria) {
-                radio.checked = true;
-            }
-            radio.addEventListener('change', () => {
-                if (radio.checked) {
-                    // Автоматично активиране на сортирането при избор на критерий
-                    if (!orderCheckbox.checked) {
-                        orderCheckbox.checked = true;
-                        localStorage.setItem('enableNoteSorting', 'true');
+            // indexedDB
+            const dbSectionWrapper = document.getElementById('db-section-wrapper');
+            const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+            // Задаваме първоначалното състояние на чекбокса от localStorage
+            useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+            // Add event listeners
+            useIndexedDbCheckbox.addEventListener('change', async (e) => {
+                const isChecked = e.target.checked;
+                localStorage.setItem('useIndexedDb', isChecked);
+                // --- КОРЕКЦИЯ: Само ако базата НЕ съществува, симулираме клик на "Създай" ---
+                if (isChecked) {
+                    if (!dbExists) {
+                        document.getElementById('create-db-btn').click();
+                    } else {
+                        updateGlobalStateFlags();
+                        updateModeButton();
+                        showToast(_('settingSaved'), 2000);
                     }
-                    localStorage.setItem('sortCriteria', radio.value);
-                    applyFilters();
-                    showToast(_('settingSaved'), 2000);
-                }
-            });
-        });
-        const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
-        sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
-        sortReverseCheckbox.addEventListener('change', () => {
-            // Автоматично активиране на сортирането
-            if (!orderCheckbox.checked) {
-                orderCheckbox.checked = true;
-                localStorage.setItem('enableNoteSorting', 'true');
-            }
-            localStorage.setItem('sortInReverse', sortReverseCheckbox.checked);
-            applyFilters();
-            showToast(_('settingSaved'), 2000);
-        });
-        const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
-        sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
-        sortRemindersTopCheckbox.addEventListener('change', () => {
-            // Автоматично активиране на сортирането
-            if (!orderCheckbox.checked) {
-                orderCheckbox.checked = true;
-                localStorage.setItem('enableNoteSorting', 'true');
-            }
-            localStorage.setItem('sortRemindersTop', sortRemindersTopCheckbox.checked);
-            applyFilters();
-            showToast(_('settingSaved'), 2000);
-        });
-        // Start Board
-        let startBoardSelect; // Declare here to be accessible in the whole function
-        startBoardSelect = document.getElementById('start-board-select');
-        startBoardSelect.value = localStorage.getItem('startBoard') || 'Main';
-        startBoardSelect.addEventListener('change', () => {
-            localStorage.setItem('startBoard', startBoardSelect.value);
-            showToast(_('settingSaved'), 2000);
-        });
-        // Max Searches
-        // let maxSearchesInput; // Declare here as well
-        maxSearchesInput.value = maxSavedSearches;
-        maxSearchesInput.addEventListener('change', () => {
-            let newValue = parseInt(maxSearchesInput.value, 10);
-            if (isNaN(newValue) || newValue < 0) newValue = 0;
-            if (newValue > 20) newValue = 20;
-            maxSavedSearches = newValue;
-            localStorage.setItem('maxSavedSearches', newValue);
-            // Trim existing searches if new limit is smaller
-            if (savedSearches.length > maxSavedSearches) {
-                savedSearches.length = maxSavedSearches;
-                localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-            }
-            showToast(_('settingSaved'), 2000);
-        });
-        // --- New Data Source Selection Logic ---
-        const dataSources = [
-            { checkbox: useGoogleDbCheckbox, key: 'useGoogleDb' },
-            { checkbox: useLocalDbCheckbox, key: 'useLocalDb' },
-            { checkbox: useArhDbCheckbox, key: 'useArhDb' }
-        ];
-        const handleDataSourceChange = (changedCheckbox, changedKey) => {
-            // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
-            if (!changedCheckbox.checked && !dbExists) {
-                showToast(_('errorNoDataSourceSelected'), 5000);
-                // Не позволяваме премахването, като връщаме отметката
-                changedCheckbox.checked = true;
-                return;
-            }
-            if (changedCheckbox.checked) {
-                // Преди да запишем в localStorage, проверяваме дали имаме избрана папка
-                if (changedKey === 'useLocalDb' || changedKey === 'useArhDb') {
-                    const display = (changedKey === 'useLocalDb') ?
-                        document.getElementById('local-sync-folder-name') :
-                        document.getElementById('arh-folder-name');
-
-                    if (!display || display.textContent === _('folderNotSelected')) {
-                        // Не записваме в localStorage, махаме отметката и отваряме избора на папка
-                        changedCheckbox.checked = false;
-                        const btnId = (changedKey === 'useLocalDb') ? 'select-folder-btn' : 'select-arh-btn';
-                        document.getElementById(btnId).click();
-                        return;
-                    }
-                }
-                // Uncheck all other data sources
-                dataSources.forEach(({ checkbox, key }) => {
-                    if (key !== changedKey) {
-                        checkbox.checked = false;
-                        localStorage.setItem(key, 'false');
-                    }
-                });
-            }
-            // Save the state of the changed checkbox
-            localStorage.setItem(changedKey, changedCheckbox.checked);
-            showToast(_('settingSaved'), 2000);
-            updateModeButton();
-        };
-        dataSources.forEach(({ checkbox, key }) => {
-            checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key));
-        });
-        // indexedDB
-        const dbSectionWrapper = document.getElementById('db-section-wrapper');
-        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-        // Задаваме първоначалното състояние на чекбокса от localStorage
-        useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-        // Add event listeners
-        useIndexedDbCheckbox.addEventListener('change', async (e) => {
-            const isChecked = e.target.checked;
-            localStorage.setItem('useIndexedDb', isChecked);
-            // --- КОРЕКЦИЯ: Само ако базата НЕ съществува, симулираме клик на "Създай" ---
-            if (isChecked) {
-                if (!dbExists) {
-                    document.getElementById('create-db-btn').click();
                 } else {
                     updateGlobalStateFlags();
                     updateModeButton();
                     showToast(_('settingSaved'), 2000);
                 }
-            } else {
-                updateGlobalStateFlags();
-                updateModeButton();
-                showToast(_('settingSaved'), 2000);
-            }
-        });
-        // Accordion logic
-        const accordionHeader = document.querySelector('.accordion-header');
-        if (accordionHeader) {
-            accordionHeader.addEventListener('click', () => {
-                const accordion = accordionHeader.parentElement;
-                accordion.classList.toggle('active');
-                const content = accordion.querySelector('.accordion-content');
-                const advancedSettingsDiv = document.getElementById('advanced-settings');
-                const dataFoldersDiv = document.getElementById('data-folders');
-                const settingsModalBody = document.getElementById('settings-modal-body');
-
-                if (content.style.maxHeight) {
-                    content.style.maxHeight = null;
-                    if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'none'; // Hide content when collapsed
-                    if (dataFoldersDiv) {
-                        dataFoldersDiv.style.maxHeight = null;
-                        dataFoldersDiv.style.display = 'none';
-                    }
-                    if (settingsModalBody) {
-                        settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара, ако е бил скрит
-                    }
-                } else {
-                    if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'block'; // Show content before calculating height
-                    if (dataFoldersDiv) {
-                        dataFoldersDiv.style.display = 'block';
-                        dataFoldersDiv.style.maxHeight = dataFoldersDiv.scrollHeight + "px";
-                    }
-                    content.style.maxHeight = content.scrollHeight + "px";
-
-                    // Скролираме модала надолу, за да видим отворената секция
-                    if (settingsModalBody) {
-                        // Временно скриваме скролбара, докато се скролира
-                        settingsModalBody.style.overflowY = 'hidden';
-                        // Изчакваме анимацията на акордеона да завърши (300ms)
-                        setTimeout(() => {
-                            settingsModalBody.scrollTo({
-                                top: settingsModalBody.scrollHeight,
-                                behavior: 'smooth'
-                            });
-                            // Изчакваме и скролирането да приключи (още около 500ms)
-                            setTimeout(() => {
-                                settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара
-                            }, 500);
-                        }, 300);
-                    }
-                }
             });
-        }
-        // --- End of DB Section ---
-        // DB delete
-        const createDbBtn = document.getElementById('create-db-btn');
-        createDbBtn.addEventListener('click', async () => {
-            let confirmed = false;
-            // Проверяваме дали базата съществува И дали не е празна.
-            const boardsInDb = dbExists ? await getAllFromDB(BOARD_STORE_NAME) : [];
-            if (dbExists && boardsInDb.length > 0) {
-                // Показваме диалог за потвърждение само ако базата съществува и има данни.
-                document.getElementById('settings-modal').classList.remove('visible');
-                updateModeButton();
-                await new Promise(resolve => setTimeout(resolve, 150));
-                confirmed = await showConfirmation(_('confirmDbRecreate'));
+            // Accordion logic
+            const accordionHeader = document.querySelector('.accordion-header');
+            if (accordionHeader) {
+                accordionHeader.addEventListener('click', () => {
+                    const accordion = accordionHeader.parentElement;
+                    accordion.classList.toggle('active');
+                    const content = accordion.querySelector('.accordion-content');
+                    const advancedSettingsDiv = document.getElementById('advanced-settings');
+                    const dataFoldersDiv = document.getElementById('data-folders');
+                    const settingsModalBody = document.getElementById('settings-modal-body');
 
-                if (!confirmed) {
-                    // Ако потребителят откаже презапис, проверяваме дали данните съвпадат
-                    const memBoards = (typeof boardsData !== 'undefined') ? boardsData : [];
-                    if (!areBoardsIdentical(memBoards, boardsInDb)) {
-                        // Вече само предупреждаваме, без да блокираме
-                        console.warn("DB Identity Check: Some boards in DB not found in current memory. This might be normal during state transitions.");
+                    if (content.style.maxHeight) {
+                        content.style.maxHeight = null;
+                        if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'none'; // Hide content when collapsed
+                        if (dataFoldersDiv) {
+                            dataFoldersDiv.style.maxHeight = null;
+                            dataFoldersDiv.style.display = 'none';
+                        }
+                        if (settingsModalBody) {
+                            settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара, ако е бил скрит
+                        }
+                    } else {
+                        if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'block'; // Show content before calculating height
+                        if (dataFoldersDiv) {
+                            dataFoldersDiv.style.display = 'block';
+                            dataFoldersDiv.style.maxHeight = dataFoldersDiv.scrollHeight + "px";
+                        }
+                        content.style.maxHeight = content.scrollHeight + "px";
+
+                        // Скролираме модала надолу, за да видим отворената секция
+                        if (settingsModalBody) {
+                            // Временно скриваме скролбара, докато се скролира
+                            settingsModalBody.style.overflowY = 'hidden';
+                            // Изчакваме анимацията на акордеона да завърши (300ms)
+                            setTimeout(() => {
+                                settingsModalBody.scrollTo({
+                                    top: settingsModalBody.scrollHeight,
+                                    behavior: 'smooth'
+                                });
+                                // Изчакваме и скролирането да приключи (още около 500ms)
+                                setTimeout(() => {
+                                    settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара
+                                }, 500);
+                            }, 300);
+                        }
+                    }
+                });
+            }
+            // --- End of DB Section ---
+            // DB delete
+            const createDbBtn = document.getElementById('create-db-btn');
+            createDbBtn.addEventListener('click', async () => {
+                let confirmed = false;
+                // Проверяваме дали базата съществува И дали не е празна.
+                const boardsInDb = dbExists ? await getAllFromDB(BOARD_STORE_NAME) : [];
+                if (dbExists && boardsInDb.length > 0) {
+                    // Показваме диалог за потвърждение само ако базата съществува и има данни.
+                    document.getElementById('settings-modal').classList.remove('visible');
+                    updateModeButton();
+                    await new Promise(resolve => setTimeout(resolve, 150));
+                    confirmed = await showConfirmation(_('confirmDbRecreate'));
+
+                    if (!confirmed) {
+                        // Ако потребителят откаже презапис, проверяваме дали данните съвпадат
+                        const memBoards = (typeof boardsData !== 'undefined') ? boardsData : [];
+                        if (!areBoardsIdentical(memBoards, boardsInDb)) {
+                            // Вече само предупреждаваме, без да блокираме
+                            console.warn("DB Identity Check: Some boards in DB not found in current memory. This might be normal during state transitions.");
+                            dbExists = true;
+                            updateGlobalStateFlags();
+                            updateModeButton();
+                            return; // Спираме процеса тук, но не махаме отметката
+                        }
+                        // Ако са идентични, позволяваме включването без презапис
                         dbExists = true;
                         updateGlobalStateFlags();
                         updateModeButton();
-                        return; // Спираме процеса тук, но не махаме отметката
+                        return;
                     }
-                    // Ако са идентични, позволяваме включването без презапис
-                    dbExists = true;
-                    updateGlobalStateFlags();
+                } else {
+                    // Ако базата не съществува или е празна, продължаваме директно със създаването.
+                    confirmed = true;
+                }
+                if (confirmed) {
+                    const success = await createDatabaseFromMemory();
+                    if (success) {
+                        showToast(_('dbCreated'), 10000);
+                        dbExists = true;
+                        // --- КОРЕКЦИЯ: Автоматично включваме отметката при успешно създаване ---
+                        const cb = document.getElementById('use-indexeddb-checkbox');
+                        if (cb) {
+                            cb.checked = true;
+                            localStorage.setItem('useIndexedDb', 'true');
+                            updateGlobalStateFlags();
+                            updateModeButton();
+                        }
+                    }
+                }
+            });
+            const deleteDbBtn = document.getElementById('delete-db-btn');
+            deleteDbBtn.addEventListener('click', async () => {
+                // --- КОРЕКЦИЯ: Запомняме дали сме в режим "Само база данни" ПРЕДИ изтриването ---
+                const isDbOnlyMode =
+                    document.getElementById('use-indexeddb-checkbox').checked &&
+                    !document.getElementById('use-google-db-checkbox').checked &&
+                    !document.getElementById('use-local-db-checkbox').checked &&
+                    !document.getElementById('use-arh-db-checkbox').checked;
+                // Затваряме настройките, за да се видят диалозите за потвърждение
+                document.getElementById('settings-modal').classList.remove('visible');
+                // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
+                await new Promise(resolve => setTimeout(resolve, 150));
+                const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
+                if (confirmedDataDelete) {
+                    const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
+                        backgroundColor: '#lightgreen', // Light red background for warning
+                        width: '450px'
+                    });
+                    if (confirmedConfigDelete) {
+                        // Потребителят иска да изтрие всичко, включително настройките
+                        await deleteNotesDB();
+                        // Нулираме UI елементите за избраните папки
+                        const folderNameDisplay = document.getElementById('local-sync-folder-name');
+                        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+                        if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
+                        if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
+                        dbExists = false; // Актуализираме глобалния флаг
+                        // --- НОВА ЛОГИКА: Премахваме отметките за локални източници ---
+                        const localCheckbox = document.getElementById('use-local-db-checkbox');
+                        const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                        if (localCheckbox) localCheckbox.checked = false;
+                        if (arhCheckbox) arhCheckbox.checked = false;
+                        localStorage.setItem('useLocalDb', 'false');
+                        localStorage.setItem('useArhDb', 'false');
+                        dirHandle = null; // Нулираме и handle-a в паметта
+                    } else {
+                        // Потребителят иска да изтрие само данните, но да запази настройките
+                        await clearDbStores();
+                    }
+                    // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
+                    localStorage.removeItem('startBoard');
+                    // --- НОВА МИНИМАЛНА КОРЕКЦИЯ ---
+                    // След успешно изтриване, ВИНАГИ премахваме отметката и обновяваме localStorage.
+                    showToast(_('dbDeleted'), 5000);
+                    const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+                    useIndexedDbCheckbox.checked = false;
+                    localStorage.setItem('useIndexedDb', 'false');
+                    // Ако сме били в режим "Само база данни", автоматично включваме Google Drive
+                    if (isDbOnlyMode) {
+                        localStorage.setItem('useGoogleDb', 'true');
+                        document.getElementById('use-google-db-checkbox').checked = true;
+                        updateGlobalStateFlags();
+                    }
+                    // --- КОРЕКЦИЯ: Актуализираме иконата за режим веднага ---
                     updateModeButton();
+                } else {
+                    // Ако потребителят откаже изтриването, отваряме настройките отново, за да не остава празен екран.
+                    document.getElementById('settings-modal').classList.add('visible');
+                }
+                // Активираме контролите, в случай че са били деактивирани от userCheck
+                enableSettingsControls();
+            });
+            // --- Local Sync Folder ---
+            const selectFolderBtn = document.getElementById('select-folder-btn');
+            const folderNameDisplay = document.getElementById('local-sync-folder-name');
+            selectFolderBtn.addEventListener('click', async () => {
+                try {
+                    const handle = await window.showDirectoryPicker();
+                    if (handle) {
+                        const validationResult = await validateFolderContent(handle);
+                        if (!validationResult.isValid) {
+                            let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
+                            if (validationResult.reason === 'criteria_not_met') {
+                                warningMessage += " " + _('requiredFilesForLocalFolder');
+                            }
+                            showToast(warningMessage, 15000);
+                            return;
+                        }
+                        await saveConfig('directoryHandle', handle);
+                        dirHandle = handle;
+                        folderNameDisplay.textContent = handle.name;
+                        folderNameDisplay.title = handle.name;
+                        showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
+
+                        // Актуализираме отметката и localStorage
+                        const localCheckbox = document.getElementById('use-local-db-checkbox');
+                        if (localCheckbox) localCheckbox.checked = true;
+                        localStorage.setItem('useLocalDb', 'true');
+
+                        // Изключваме другите източници
+                        localStorage.setItem('useGoogleDb', 'false');
+                        localStorage.setItem('useArhDb', 'false');
+                        const googleCheckbox = document.getElementById('use-google-db-checkbox');
+                        const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                        if (googleCheckbox) googleCheckbox.checked = false;
+                        if (arhCheckbox) arhCheckbox.checked = false;
+
+                        const settingsModal = document.getElementById('settings-modal');
+                        const settings2Modal = document.getElementById('settings2-modal');
+                        if (settingsModal) settingsModal.classList.remove('visible');
+                        if (settings2Modal) settings2Modal.classList.remove('visible');
+
+                        updateModeButton();
+                        mainLogic();
+                    }
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        console.log("Error selecting directory:", error);
+                    }
+                }
+            });
+            // --- Archive Folder Setting ---
+            const selectArhBtn = document.getElementById('select-arh-btn');
+            const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+            selectArhBtn.addEventListener('click', async () => {
+                try {
+                    const handle = await window.showDirectoryPicker(); // Prompt user to select
+                    if (handle) {
+                        const validationArh = await validateArhFolderContent(handle);
+                        if (!validationArh.isValid) {
+                            let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
+                            if (validationArh.reason === 'criteria_not_met') {
+                                warningMessage += " " + _('requiredFilesForLocalFolder');
+                            }
+                            showToast(warningMessage, 15000);
+                            return;
+                        }
+                        arhFolderNameDisplay.textContent = handle.name;
+                        arhFolderNameDisplay.title = handle.name;
+                        dirHandle = handle; // <--- ДОБАВЕН РЕД
+                        await saveConfig('arhHandle', handle); // Запазваме избраната папка
+
+                        // Актуализираме отметката и localStorage
+                        const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                        if (arhCheckbox) arhCheckbox.checked = true;
+                        localStorage.setItem('useArhDb', 'true');
+
+                        // Изключваме другите източници
+                        localStorage.setItem('useGoogleDb', 'false');
+                        localStorage.setItem('useLocalDb', 'false');
+                        const googleCheckbox = document.getElementById('use-google-db-checkbox');
+                        const localCheckbox = document.getElementById('use-local-db-checkbox');
+                        if (googleCheckbox) googleCheckbox.checked = false;
+                        if (localCheckbox) localCheckbox.checked = false;
+
+                        const settingsModal = document.getElementById('settings-modal');
+                        const settings2Modal = document.getElementById('settings2-modal');
+                        if (settingsModal) settingsModal.classList.remove('visible');
+                        if (settings2Modal) settings2Modal.classList.remove('visible');
+
+                        showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
+                        // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
+                        updateGlobalStateFlags();
+
+                        updateModeButton();
+                        // След избор, просто презареждаме основната логика,
+                        // която вече ще види, че е избран режим "Архив".
+                        mainLogic();
+                    }
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        console.log("Error selecting directory:", error);
+                    }
+                }
+            });
+            // Close
+            /*const settingsCloseBtn = */
+            document.getElementById('settings-close-btn').addEventListener('click', async () => {
+                /* const configData = await exportConfig();
+                console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
+                const currentState = {
+                    useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
+                    useLocalDb: document.getElementById('use-local-db-checkbox').checked,
+                    useArhDb: document.getElementById('use-arh-db-checkbox').checked,
+                    useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
+                };
+
+                // --- STRICT VALIDATION FIRST ---
+                updateGlobalStateFlags();
+                if (!validateDataSourceSelection()) {
+                    // If validation fails, DO NOT close the modal.
+                    // toast is shown by validateDataSourceSelection
                     return;
                 }
-            } else {
-                // Ако базата не съществува или е празна, продължаваме директно със създаването.
-                confirmed = true;
-            }
-            if (confirmed) {
-                const success = await createDatabaseFromMemory();
-                if (success) {
-                    showToast(_('dbCreated'), 10000);
-                    dbExists = true;
-                    // --- КОРЕКЦИЯ: Автоматично включваме отметката при успешно създаване ---
-                    const cb = document.getElementById('use-indexeddb-checkbox');
-                    if (cb) {
-                        cb.checked = true;
-                        localStorage.setItem('useIndexedDb', 'true');
-                        updateGlobalStateFlags();
-                        updateModeButton();
-                    }
-                }
-            }
-        });
-        const deleteDbBtn = document.getElementById('delete-db-btn');
-        deleteDbBtn.addEventListener('click', async () => {
-            // --- КОРЕКЦИЯ: Запомняме дали сме в режим "Само база данни" ПРЕДИ изтриването ---
-            const isDbOnlyMode =
-                document.getElementById('use-indexeddb-checkbox').checked &&
-                !document.getElementById('use-google-db-checkbox').checked &&
-                !document.getElementById('use-local-db-checkbox').checked &&
-                !document.getElementById('use-arh-db-checkbox').checked;
-            // Затваряме настройките, за да се видят диалозите за потвърждение
-            document.getElementById('settings-modal').classList.remove('visible');
-            // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
-            await new Promise(resolve => setTimeout(resolve, 150));
-            const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
-            if (confirmedDataDelete) {
-                const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
-                    backgroundColor: '#lightgreen', // Light red background for warning
-                    width: '450px'
-                });
-                if (confirmedConfigDelete) {
-                    // Потребителят иска да изтрие всичко, включително настройките
-                    await deleteNotesDB();
-                    // Нулираме UI елементите за избраните папки
-                    const folderNameDisplay = document.getElementById('local-sync-folder-name');
-                    const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-                    if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
-                    if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
-                    dbExists = false; // Актуализираме глобалния флаг
-                    // --- НОВА ЛОГИКА: Премахваме отметките за локални източници ---
-                    const localCheckbox = document.getElementById('use-local-db-checkbox');
-                    const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                    if (localCheckbox) localCheckbox.checked = false;
-                    if (arhCheckbox) arhCheckbox.checked = false;
-                    localStorage.setItem('useLocalDb', 'false');
-                    localStorage.setItem('useArhDb', 'false');
-                    dirHandle = null; // Нулираме и handle-a в паметта
-                } else {
-                    // Потребителят иска да изтрие само данните, но да запази настройките
-                    await clearDbStores();
-                }
-                // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
-                localStorage.removeItem('startBoard');
-                // --- НОВА МИНИМАЛНА КОРЕКЦИЯ ---
-                // След успешно изтриване, ВИНАГИ премахваме отметката и обновяваме localStorage.
-                showToast(_('dbDeleted'), 5000);
-                const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-                useIndexedDbCheckbox.checked = false;
-                localStorage.setItem('useIndexedDb', 'false');
-                // Ако сме били в режим "Само база данни", автоматично включваме Google Drive
-                if (isDbOnlyMode) {
-                    localStorage.setItem('useGoogleDb', 'true');
-                    document.getElementById('use-google-db-checkbox').checked = true;
-                    updateGlobalStateFlags();
-                }
-                // --- КОРЕКЦИЯ: Актуализираме иконата за режим веднага ---
+
+                document.getElementById('settings-modal').classList.remove('visible');
+                if (window.kbAssistant) window.kbAssistant.terminateGuide();
+                // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
                 updateModeButton();
-            } else {
-                // Ако потребителят откаже изтриването, отваряме настройките отново, за да не остава празен екран.
-                document.getElementById('settings-modal').classList.add('visible');
-            }
-            // Активираме контролите, в случай че са били деактивирани от userCheck
-            enableSettingsControls();
-        });
-        // --- Local Sync Folder ---
-        const selectFolderBtn = document.getElementById('select-folder-btn');
-        const folderNameDisplay = document.getElementById('local-sync-folder-name');
-        selectFolderBtn.addEventListener('click', async () => {
-            try {
-                const handle = await window.showDirectoryPicker();
-                if (handle) {
-                    const validationResult = await validateFolderContent(handle);
-                    if (!validationResult.isValid) {
-                        let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
-                        if (validationResult.reason === 'criteria_not_met') {
-                            warningMessage += " " + _('requiredFilesForLocalFolder');
-                        }
-                        showToast(warningMessage, 15000);
-                        return;
-                    }
-                    await saveConfig('directoryHandle', handle);
-                    dirHandle = handle;
-                    folderNameDisplay.textContent = handle.name;
-                    folderNameDisplay.title = handle.name;
-                    showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-
-                    // Актуализираме отметката и localStorage
-                    const localCheckbox = document.getElementById('use-local-db-checkbox');
-                    if (localCheckbox) localCheckbox.checked = true;
-                    localStorage.setItem('useLocalDb', 'true');
-
-                    // Изключваме другите източници
-                    localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('useArhDb', 'false');
-                    const googleCheckbox = document.getElementById('use-google-db-checkbox');
-                    const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                    if (googleCheckbox) googleCheckbox.checked = false;
-                    if (arhCheckbox) arhCheckbox.checked = false;
-
-                    const settingsModal = document.getElementById('settings-modal');
-                    const settings2Modal = document.getElementById('settings2-modal');
-                    if (settingsModal) settingsModal.classList.remove('visible');
-                    if (settings2Modal) settings2Modal.classList.remove('visible');
-
-                    updateModeButton();
-                    mainLogic();
+                const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
+                if (window.wasOpenedForMissingFolder) {
+                    window.wasOpenedForMissingFolder = false; // Нулираме флага
+                    mainLogic(); // Извикваме основната логика отново
+                } else if (hasChanged) {
+                    mainLogic(); // Извикваме основната логика отново
                 }
-            } catch (error) {
-                if (error.name !== 'AbortError') {
-                    console.log("Error selecting directory:", error);
-                }
-            }
-        });
-        // --- Archive Folder Setting ---
-        const selectArhBtn = document.getElementById('select-arh-btn');
-        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-        selectArhBtn.addEventListener('click', async () => {
-            try {
-                const handle = await window.showDirectoryPicker(); // Prompt user to select
-                if (handle) {
-                    const validationArh = await validateArhFolderContent(handle);
-                    if (!validationArh.isValid) {
-                        let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
-                        if (validationArh.reason === 'criteria_not_met') {
-                            warningMessage += " " + _('requiredFilesForLocalFolder');
-                        }
-                        showToast(warningMessage, 15000);
-                        return;
-                    }
-                    arhFolderNameDisplay.textContent = handle.name;
-                    arhFolderNameDisplay.title = handle.name;
-                    dirHandle = handle; // <--- ДОБАВЕН РЕД
-                    await saveConfig('arhHandle', handle); // Запазваме избраната папка
-
-                    // Актуализираме отметката и localStorage
-                    const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                    if (arhCheckbox) arhCheckbox.checked = true;
-                    localStorage.setItem('useArhDb', 'true');
-
-                    // Изключваме другите източници
-                    localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('useLocalDb', 'false');
-                    const googleCheckbox = document.getElementById('use-google-db-checkbox');
-                    const localCheckbox = document.getElementById('use-local-db-checkbox');
-                    if (googleCheckbox) googleCheckbox.checked = false;
-                    if (localCheckbox) localCheckbox.checked = false;
-
-                    const settingsModal = document.getElementById('settings-modal');
-                    const settings2Modal = document.getElementById('settings2-modal');
-                    if (settingsModal) settingsModal.classList.remove('visible');
-                    if (settings2Modal) settings2Modal.classList.remove('visible');
-
-                    showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
-                    // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
-                    updateGlobalStateFlags();
-
-                    updateModeButton();
-                    // След избор, просто презареждаме основната логика,
-                    // която вече ще види, че е избран режим "Архив".
-                    mainLogic();
-                }
-            } catch (error) {
-                if (error.name !== 'AbortError') {
-                    console.log("Error selecting directory:", error);
-                }
-            }
-        });
-        // Close
-        /*const settingsCloseBtn = */
-        document.getElementById('settings-close-btn').addEventListener('click', async () => {
-            /* const configData = await exportConfig();
-            console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
-            const currentState = {
-                useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
-                useLocalDb: document.getElementById('use-local-db-checkbox').checked,
-                useArhDb: document.getElementById('use-arh-db-checkbox').checked,
-                useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
-            };
-
-            // --- STRICT VALIDATION FIRST ---
-            updateGlobalStateFlags();
-            if (!validateDataSourceSelection()) {
-                // If validation fails, DO NOT close the modal.
-                // toast is shown by validateDataSourceSelection
-                return;
-            }
-
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (window.kbAssistant) window.kbAssistant.terminateGuide();
-            // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
-            updateModeButton();
-            const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
-            if (window.wasOpenedForMissingFolder) {
-                window.wasOpenedForMissingFolder = false; // Нулираме флага
-                mainLogic(); // Извикваме основната логика отново
-            } else if (hasChanged) {
-                mainLogic(); // Извикваме основната логика отново
-            }
-        });
-        settingsModalBody.dataset.initialized = true;
-    }
-    // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
-    // Разширените настройки вече са част от settings2-modal и са винаги видими
-    const advancedSettings = document.getElementById('advanced-settings');
-    if (advancedSettings) {
-        // Вече не се скриват
-        advancedSettings.removeAttribute('hidden');
-    }
-}
-
-// Асинхронно зареждане на името на папката за архив
-(async () => {
-    try {
-        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-        if (!arhFolderNameDisplay) return;
-        const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
-        if (arhHandle) {
-            // Проверяваме дали имаме разрешение, без да питаме потребителя отново
-            const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
-            if (permission === 'granted') {
-                arhFolderNameDisplay.textContent = arhHandle.name;
-                arhFolderNameDisplay.title = arhHandle.name;
-            } else {
-                arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
-                arhFolderNameDisplay.style.color = 'red';
-            }
-        } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
-    } catch (err) {
-        console.warn("Could not load archive folder name:", err);
-    }
-})();
-
-// Асинхронно зареждане на името на папката за локална синхронизация
-(async () => {
-    try {
-        const folderNameDisplay = document.getElementById('local-sync-folder-name');
-        if (!folderNameDisplay) return;
-        const syncHandle = await getConfig('directoryHandle'); // Четем директно handle-a за синхронизация
-        if (syncHandle) {
-            const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
-            if (permission === 'granted') {
-                folderNameDisplay.textContent = syncHandle.name;
-                folderNameDisplay.title = syncHandle.name;
-            } else {
-                folderNameDisplay.textContent = _('permissionDenied');
-            }
-        } else { folderNameDisplay.textContent = _('folderNotSelected'); }
-    } catch (err) {
-        console.warn("Could not load local sync folder name:", err);
-    }
-})();
-
-/**
- * Попълва падащото меню за избор на стартов борд в настройките.
- */
-function populateStartBoardSelect() {
-    const startBoardSelect = document.getElementById('start-board-select');
-    let savedValue = localStorage.getItem('startBoard');
-    // Ако няма запазена стойност и няма борд "Main", избираме първия наличен борд
-    if (!savedValue) {
-        const mainBoard = boardsData.find(b => b.title === 'Main');
-        if (!mainBoard && boardsData.length > 0) {
-            savedValue = boardsData[0].gdid;
-        } else {
-            savedValue = 'Main';
+            });
+            settingsModalBody.dataset.initialized = true;
+        }
+        // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
+        // Разширените настройки вече са част от settings2-modal и са винаги видими
+        const advancedSettings = document.getElementById('advanced-settings');
+        if (advancedSettings) {
+            // Вече не се скриват
+            advancedSettings.removeAttribute('hidden');
         }
     }
-    // Изчистваме напълно списъка, преди да го попълним наново
-    startBoardSelect.innerHTML = `
+
+    // Асинхронно зареждане на името на папката за архив
+    (async () => {
+        try {
+            const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+            if (!arhFolderNameDisplay) return;
+            const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
+            if (arhHandle) {
+                // Проверяваме дали имаме разрешение, без да питаме потребителя отново
+                const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
+                if (permission === 'granted') {
+                    arhFolderNameDisplay.textContent = arhHandle.name;
+                    arhFolderNameDisplay.title = arhHandle.name;
+                } else {
+                    arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
+                    arhFolderNameDisplay.style.color = 'red';
+                }
+            } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+        } catch (err) {
+            console.warn("Could not load archive folder name:", err);
+        }
+    })();
+
+    // Асинхронно зареждане на името на папката за локална синхронизация
+    (async () => {
+        try {
+            const folderNameDisplay = document.getElementById('local-sync-folder-name');
+            if (!folderNameDisplay) return;
+            const syncHandle = await getConfig('directoryHandle'); // Четем директно handle-a за синхронизация
+            if (syncHandle) {
+                const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
+                if (permission === 'granted') {
+                    folderNameDisplay.textContent = syncHandle.name;
+                    folderNameDisplay.title = syncHandle.name;
+                } else {
+                    folderNameDisplay.textContent = _('permissionDenied');
+                }
+            } else { folderNameDisplay.textContent = _('folderNotSelected'); }
+        } catch (err) {
+            console.warn("Could not load local sync folder name:", err);
+        }
+    })();
+
+    /**
+     * Попълва падащото меню за избор на стартов борд в настройките.
+     */
+    function populateStartBoardSelect() {
+        const startBoardSelect = document.getElementById('start-board-select');
+        let savedValue = localStorage.getItem('startBoard');
+        // Ако няма запазена стойност и няма борд "Main", избираме първия наличен борд
+        if (!savedValue) {
+            const mainBoard = boardsData.find(b => b.title === 'Main');
+            if (!mainBoard && boardsData.length > 0) {
+                savedValue = boardsData[0].gdid;
+            } else {
+                savedValue = 'Main';
+            }
+        }
+        // Изчистваме напълно списъка, преди да го попълним наново
+        startBoardSelect.innerHTML = `
             <option value="all">${_('allBoards')}</option>
             <option value="reminder">${_('reminder')}</option>
             <option value="calendar_monthly">${_('calendar')}</option>
             <option value="calendar_weekly">${_('showWeeklyCalendar')}</option>
         `;
-    boardsData.forEach(board => {
-        const boardId = board.gdid || board.id;
-        if (boardId && board.title) {
-            startBoardSelect.add(new Option(board.title, boardId));
+        boardsData.forEach(board => {
+            const boardId = board.gdid || board.id;
+            if (boardId && board.title) {
+                startBoardSelect.add(new Option(board.title, boardId));
+            }
+        });
+        startBoardSelect.value = savedValue; // Задаваме правилната стойност
+    }
+
+    function escapeHtml(text) {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    /**
+     * Processes note content to handle links, code blocks, and newlines.
+     * @param {string} text - The raw text content of the note.
+     * @param {boolean} isForModal - Flag to indicate if the content is for the modal view.
+     * @returns {string} The processed HTML content.
+     */
+    function processNoteContent(text, isForModal = false) { // isForModal is now used to decide about links
+        if (!text) return '';
+        // 1. Handle code blocks first, just like in renderNoteContent
+        const codeBlocks = [];
+        const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
+        const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
+            codeBlocks.push(escapeHtml(code)); // escapeHtml is crucial here
+            return '%%CODE_BLOCK%%';
+        });
+        // 2. Escape the rest of the text to prevent HTML injection
+        const escapedText = escapeHtml(textWithoutCode);
+        // 3. Decide whether to create links based on the setting and context (modal/card)
+        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true'; // false by default
+        let html;
+        if (isForModal || oneTapLinksEnabled) {
+            // В модала или ако е включено - показваме линковете
+            const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+            html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        } else {
+            // В затворената бележка и е изключено - НЕ показваме текста на линковете
+            const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+            html = escapedText.replace(urlRegex, ''); // Премахваме линковете изцяло
         }
-    });
-    startBoardSelect.value = savedValue; // Задаваме правилната стойност
-}
+        // 4. Re-insert code blocks
+        codeBlocks.forEach(block => {
+            html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
+        });
+        // 5. Finally, replace newlines with <br>
+        // This needs to be done on the final HTML string, not on the escaped text
+        return html.replace(/\n/g, '<br>');
+    }
 
-function escapeHtml(text) {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
+    function renderNoteContent(text) {
+        if (!text) return '';
+        const codeBlocks = [];
+        const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
+        const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
+            codeBlocks.push(escapeHtml(code));
+            return '%%CODE_BLOCK%%';
+        });
 
-/**
- * Processes note content to handle links, code blocks, and newlines.
- * @param {string} text - The raw text content of the note.
- * @param {boolean} isForModal - Flag to indicate if the content is for the modal view.
- * @returns {string} The processed HTML content.
- */
-function processNoteContent(text, isForModal = false) { // isForModal is now used to decide about links
-    if (!text) return '';
-    // 1. Handle code blocks first, just like in renderNoteContent
-    const codeBlocks = [];
-    const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
-    const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
-        codeBlocks.push(escapeHtml(code)); // escapeHtml is crucial here
-        return '%%CODE_BLOCK%%';
-    });
-    // 2. Escape the rest of the text to prevent HTML injection
-    const escapedText = escapeHtml(textWithoutCode);
-    // 3. Decide whether to create links based on the setting and context (modal/card)
-    const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true'; // false by default
-    let html;
-    if (isForModal || oneTapLinksEnabled) {
-        // В модала или ако е включено - показваме линковете
+        // First, escape the entire remaining text to neutralize any HTML
+        const escapedText = escapeHtml(textWithoutCode);
+        // Then, find URLs in the *escaped* text and wrap them in <a> tags.
         const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-        html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    } else {
-        // В затворената бележка и е изключено - НЕ показваме текста на линковете
-        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-        html = escapedText.replace(urlRegex, ''); // Премахваме линковете изцяло
-    }
-    // 4. Re-insert code blocks
-    codeBlocks.forEach(block => {
-        html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
-    });
-    // 5. Finally, replace newlines with <br>
-    // This needs to be done on the final HTML string, not on the escaped text
-    return html.replace(/\n/g, '<br>');
-}
-
-function renderNoteContent(text) {
-    if (!text) return '';
-    const codeBlocks = [];
-    const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
-    const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
-        codeBlocks.push(escapeHtml(code));
-        return '%%CODE_BLOCK%%';
-    });
-
-    // First, escape the entire remaining text to neutralize any HTML
-    const escapedText = escapeHtml(textWithoutCode);
-    // Then, find URLs in the *escaped* text and wrap them in <a> tags.
-    const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-    let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    codeBlocks.forEach(block => {
-        html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
-    });
-
-    return html;
-}
-
-/**
- * Форматира текстов низ възоснова на JSON параметри.
- * @param {string} text - Текстовият низ за форматиране.
- * @param {string} formatString - Форматиращият низ, разделен с '\n'.
- * @param {boolean} isForModal - Дали е за модал (за линковете).
- * @returns {string} Форматираният HTML низ.
- */
-function formatText(text, formatString, isForModal = false) {
-    let localText = text;
-    const mdClear = localStorage.getItem('mdClear') || '--';
-
-    // --- mdClear Logic (Markers removal) ---
-    // If no formatString, we still process the text to remove markers
-    let formats = [];
-    if (formatString) {
-        if (formatString.endsWith('|')) formatString = formatString.slice(0, -1);
-        formats = formatString.split(/[|\n]/).map(f => {
-            try { return JSON.parse(f); } catch (e) { return null; }
-        }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
-    }
-
-    if (localText.includes(mdClear)) {
-        let searchIdx = 0;
-        const shiftHelper = (pos, diff) => {
-            const L = Math.abs(diff);
-            formats.forEach(f => {
-                if (f.start > pos + L) f.start -= L; else if (f.start > pos) f.start = pos;
-                if (f.end > pos + L) f.end -= L; else if (f.end > pos) f.end = pos;
-            });
-        };
-
-        while (true) {
-            let start = localText.indexOf(mdClear, searchIdx);
-            if (start === -1) break;
-            let end = localText.indexOf(mdClear, start + mdClear.length);
-            if (end === -1) break;
-
-            const clearRangeStart = start;
-            const clearRangeEnd = end + mdClear.length;
-
-            // Remove formats that overlap with this range
-            formats = formats.filter(f => !(f.start < clearRangeEnd && f.end > clearRangeStart));
-
-            // Remove markers
-            localText = localText.substring(0, end) + localText.substring(end + mdClear.length);
-            shiftHelper(end, -mdClear.length);
-            localText = localText.substring(0, start) + localText.substring(start + mdClear.length);
-            shiftHelper(start, -mdClear.length);
-
-            searchIdx = start + (end - start - mdClear.length);
-        }
-    }
-
-    if (formats.length === 0) {
-        return processNoteContent(localText, isForModal);
-    }
-    // Continue with localText instead of text
-    const points = new Set([0, localText.length]);
-    formats.forEach(f => {
-        points.add(f.start);
-        points.add(f.end);
-    });
-    const sortedPoints = Array.from(points).sort((a, b) => a - b);
-    let html = '';
-    for (let i = 0; i < sortedPoints.length - 1; i++) {
-        const start = sortedPoints[i];
-        const end = sortedPoints[i + 1];
-        const segmentText = localText.substring(start, end);
-        if (segmentText.length === 0) continue;
-        const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
-        // Use processNoteContent instead of renderNoteContent
-        let formattedSegment = processNoteContent(segmentText, isForModal);
-        activeFormats.sort((a, b) => a.type - b.type); // Sort ascending to apply inline styles (bold/italic/etc) first
-        activeFormats.forEach(format => {
-            const {
-                type,
-                paramint,
-                paramfloat
-            } = format;
-            switch (type) {
-                case 1: // bold
-                    formattedSegment = `<strong>${formattedSegment}</strong>`;
-                    break;
-                case 2: // italic
-                    formattedSegment = `<em>${formattedSegment}</em>`;
-                    break;
-                case 3: // underline
-                    formattedSegment = `<u>${formattedSegment}</u>`;
-                    break;
-                case 4: // text color
-                case 5: // background color
-                    {
-                        let aVal = (paramint >> 24) & 0xff;
-                        // If alpha is 0, but the color is not black, assume it should be opaque.
-                        if (aVal === 0 && (paramint & 0x00ffffff) !== 0) {
-                            aVal = 255;
-                        }
-                        const r = (paramint >> 16) & 0xff;
-                        const g = (paramint >> 8) & 0xff;
-                        const b = paramint & 0xff;
-                        const a = aVal / 255;
-                        const rgbaColor = `rgba(${r}, ${g}, ${b}, ${a})`;
-                        if (type === 4) {
-                            formattedSegment = `<span style="color: ${rgbaColor};">${formattedSegment}</span>`;
-                        } else {
-                            formattedSegment = `<span style="background-color: ${rgbaColor};">${formattedSegment}</span>`;
-                        }
-                        break;
-                    }
-                case 6: // font size
-                    {
-                        if (paramfloat && paramfloat > 0) {
-                            const fontSizeInPercent = (paramfloat * 100).toFixed(1);
-                            formattedSegment = `<span style="font-size: ${fontSizeInPercent}%; display: inline; line-height: normal;">${formattedSegment}</span>`;
-                        }
-                        break;
-                    }
-                case 7: // strike-through
-                    formattedSegment = `<s>${formattedSegment}</s>`;
-                    break;
-                default:
-                    break;
-            }
+        let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        codeBlocks.forEach(block => {
+            html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
         });
-        html += formattedSegment;
-    }
-    return html;
-}
 
-/**
- * Обработва и създава UI за прикачен файл от локална папка.
- * @param {object} attachment - Обектът на прикачения файл.
- * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
- * @param {object} iconData - SVG иконата за типа на файла.
- */
-async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local', isForModal = false) {
-    const iconDiv = document.createElement('div');
-    iconDiv.innerHTML = iconData.svg;
-    const filename = attachment.path ? attachment.path.split('/').pop() : '';
-    const archiveFolderName = dirHandle.name;
-    const createLink = async (folderName, textPrefix) => {
-        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-        if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
-            const span = document.createElement('span');
-            span.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
-            return span;
-        }
-        const link = document.createElement('a');
-        link.href = '#';
-        link.onclick = async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // --- КОРЕКЦИЯ: Зареждаме dirHandle при нужда в режим "Само база данни" ---
-            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-            if (isDbOnlyMode && !dirHandle) {
-                const dbSource = await getConfig('dbSource');
-                let handleKey = null;
-                if (dbSource === 2) handleKey = 'directoryHandle';
-                else if (dbSource === 3) handleKey = 'arhHandle';
-                if (handleKey) {
-                    const handle = await getConfig(handleKey);
-                    if (handle) {
-                        const verifiedHandle = await verifyPermission(handle);
-                        if (verifiedHandle) dirHandle = verifiedHandle;
-                    }
-                }
-                // Ако и след този опит нямаме handle, показваме съобщение и прекратяваме.
-                if (!dirHandle) {
-                    showToast(_('noUpdateMode'), 5000);
-                    return;
-                }
-            }
-            if (!filename) return;
-            console.log(`Opening file: ${folderName}/${filename}   DirHandle:`, dirHandle);
-            try {
-                const fileHandle = mode === 'local'
-                    ? await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(filename)
-                    : await dirHandle.getFileHandle(filename); // Винаги използваме filename
-                const file = await fileHandle.getFile();
-                window.open(URL.createObjectURL(file), '_blank');
-            } catch (err) {
-                console.log(`Could not open local file ${folderName}/${filename}`, err);
-                showToast(_('errorOpenFile').replace('{filename}', filename));
-            }
-        };
-        link.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
-        return link;
-    };
-    const appendWithDescription = async (folder, prefix, description) => {
-        const container = document.createElement('div');
-        container.style.flexGrow = '1';
-        container.style.flexShrink = '1';
-        container.style.minWidth = '0';
-        container.appendChild(await createLink(folder, prefix));
-        const line2 = document.createElement('div');
-        line2.textContent = description || '';
-        container.appendChild(line2);
-        attachmentWrapper.appendChild(container);
-    };
-    switch (attachment.type) {
-        case 1: // Image
-            const imgLink = await createLink(mode === 'local' ? 'Images' : '', mode === 'local' ? '' : '');
-            attachmentWrapper.appendChild(imgLink);
-            // Добавяме липсващата логика за преглед при клик на иконата
-            addInNotePreviewListener(iconDiv, attachment.path, mode, false);
-            break;
-        case 2: // Sound
-            await appendWithDescription(
-                mode === 'local' ? 'Sound' : '',
-                mode === 'local' ? '' : '', // `${archiveFolderName}/`
-                attachment.description
-            );
-            break;
-        case 3: // Other
-            attachmentWrapper.appendChild(await createLink(
-                mode === 'local' ? 'Other' : '',
-                mode === 'local' ? '' : '' // `${archiveFolderName}/`
-            ));
-            break;
-        case 4: // Video
-            const videoContainer = document.createElement('div');
-            videoContainer.appendChild(await createLink(mode === 'local' ? 'Video' : '', mode === 'local' ? '' : ''));
-            videoContainer.appendChild(document.createTextNode(attachment.description || ''));
-            attachmentWrapper.appendChild(videoContainer);
-            addInNotePreviewListener(iconDiv, attachment.path, mode, true);
-            break;
-        case 5: // Location
-            const parts = attachment.path.split('|');
-            if (parts.length < 3) break;
-            const [lat, lng, label] = parts;
-            const textContainer = document.createElement('div');
-            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-            const isForModal = !!attachmentWrapper.closest('#modal-body');
-            let linkElement;
-            if (!isForModal && !oneTapLinksEnabled) {
-                linkElement = document.createElement('span');
-                linkElement.textContent = `${lat}, ${lng}`;
-            } else {
-                linkElement = document.createElement('a');
-                linkElement.textContent = `${lat}, ${lng}`;
-                linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
-                linkElement.target = '_blank';
-                linkElement.rel = 'noopener noreferrer';
-                linkElement.onclick = (e) => e.stopPropagation();
-            }
-            textContainer.appendChild(linkElement);
-            const line2 = document.createElement('div');
-            line2.textContent = label;
-            textContainer.appendChild(line2);
-            attachmentWrapper.appendChild(textContainer);
-            break;
+        return html;
     }
-    // Добавяме стандартния listener за показване на JSON данни само в дебъг режим
-    if (debug) {
-        iconDiv.style.cursor = 'pointer';
-        iconDiv.addEventListener('click', (e) => {
-            e.stopPropagation();
-            let debugText = JSON.stringify(attachment, null, 2);
-            if (attachment.gdid && localFileMap.has(attachment.gdid)) {
-                debugText = `File: ${localFileMap.get(attachment.gdid)}\n\n` + debugText;
-            }
-            showModal(debugText);
-        });
-    }
-    attachmentWrapper.prepend(iconDiv);
-}
 
-/**
- * Обработва и създава UI за прикачен файл от Google Drive.
- * @param {object} attachment - Обектът на прикачения файл.
- * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
- * @param {object} iconData - SVG иконата за типа на файла.
- */
-async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, isForModal = false) {
-    const iconDiv = document.createElement('div');
-    iconDiv.innerHTML = iconData.svg;
-    if (!attachment.path) {
-        iconDiv.style.cursor = 'pointer';
-        iconDiv.addEventListener('click', (e) => {
-            e.stopPropagation();
-            let debugText = JSON.stringify(attachment, null, 2);
-            if (attachment.gdid && localFileMap.has(attachment.gdid)) {
-                debugText = `File: ${localFileMap.get(attachment.gdid)}\n\n` + debugText;
-            }
-            showModal(debugText);
-        });
-        attachmentWrapper.prepend(iconDiv);
-        return;
-    }
-    const filename = attachment.path.split('/').pop();
-    const fileId = attachment.pathGD; // Вече имаме fileId директно в attachment обекта.
-    // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
-    const setupLink = (folderName, textPrefix) => {
-        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-        let linkElement;
-        if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
-            linkElement = document.createElement('span');
-            linkElement.textContent = textPrefix + filename;
-            return linkElement; // Връщаме span елемента
-        }
-        linkElement = document.createElement('a');
-        linkElement.href = '#'; // href вече не сочи директно към файла.
-        linkElement.textContent = textPrefix + filename;
-        linkElement.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
-        linkElement.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
-        linkElement.title = `Click to open ${filename} from Google Drive`;
-        linkElement.onclick = async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // Authentication is handled inside showInNotePreview -> loadMedia, or locally for other files
-            // --- IMPROVED ATTACHMENT OPENING (Avoid Account Prompt) ---
-            if (fileId) {
-                // For media (Images, Sound, Video), use internal authenticated viewer
-                if (attachment.type === 1 || attachment.type === 2 || attachment.type === 4) {
-                    let targetEl = linkElement.closest('.note') || document.getElementById('modal-body') || document.body;
-                    const noteGdid = attachment.noteid || (isForModal && typeof isForModal === 'object' ? isForModal.gdid : null);
-                    if (!noteGdid) {
-                        // Fallback: just preview this single one if we can't find others
-                        showInNotePreview(targetEl, [{ pathGD: fileId, type: attachment.type }], 0, 'gdrive', attachment.type === 4);
-                        return;
-                    }
-                    const attachmentsOfType = mediaData.filter(m => m.noteid === noteGdid && m.type === attachment.type);
-                    const currentIndex = attachmentsOfType.findIndex(m => (m.pathGD || m.path) === fileId);
-                    showInNotePreview(targetEl, attachmentsOfType, currentIndex !== -1 ? currentIndex : 0, 'gdrive', attachment.type === 4);
-                    return;
-                }
-                // For other files, try fetching with token and opening the blob to skip Google Auth prompt
-                showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
-                try {
-                    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
-                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-                        headers: { 'Authorization': `Bearer ${tokenObj ? tokenObj.access_token : ''}` }
-                    });
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    const blob = await response.blob();
-                    const blobUrl = URL.createObjectURL(blob);
-                    window.open(blobUrl, '_blank');
-                } catch (error) {
-                    console.warn("Auth-based fetch failed, falling back to direct link:", error);
-                    window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer');
-                }
-            } else {
-                showToast(_('errorFetchFileId').replace('{fileName}', linkElement.dataset.fileName));
-            }
-        };
-        return linkElement; // Връщаме конфигурирания 'a' елемент
-    };
-    switch (attachment.type) {
-        case 1: // Image
-            const imgLink = setupLink('Images', '');
-            addInNotePreviewListener(iconDiv, fileId, 'gdrive', false);
-            attachmentWrapper.appendChild(imgLink);
-            break;
-        case 2: // Sound
-            const soundLink = setupLink('Sound', '');
-            const soundTextContainer = document.createElement('div');
-            soundTextContainer.style.flexGrow = '1';
-            soundTextContainer.style.flexShrink = '1';
-            soundTextContainer.style.minWidth = '0';
-            soundTextContainer.appendChild(soundLink);
-            const soundLine2 = document.createElement('div');
-            soundLine2.textContent = attachment.description || '';
-            soundTextContainer.appendChild(soundLine2);
-            attachmentWrapper.appendChild(soundTextContainer);
-            break;
-        case 3: // Other
-            const otherLink = setupLink('Other', '');
-            attachmentWrapper.appendChild(otherLink);
-            break;
-        case 4: // Video
-            const videoLink = setupLink('Video', '');
-            const videoTextContainer = document.createElement('div');
-            videoTextContainer.style.flexGrow = '1';
-            videoTextContainer.style.flexShrink = '1';
-            videoTextContainer.style.minWidth = '0';
-            videoTextContainer.appendChild(videoLink);
-            const videoLine2 = document.createElement('div');
-            videoLine2.textContent = attachment.description || '';
-            videoTextContainer.appendChild(videoLine2);
-            addInNotePreviewListener(iconDiv, fileId, 'gdrive', true);
-            attachmentWrapper.appendChild(videoTextContainer);
-            break;
-        case 5: // Location
-            const parts = attachment.path.split('|');
-            if (parts.length < 3) break;
-            const [lat, lng, label] = parts;
-            const textContainer = document.createElement('div');
-            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-            const isForModal = !!attachmentWrapper.closest('#modal-body');
-            let linkElement;
-            if (!isForModal && !oneTapLinksEnabled) {
-                linkElement = document.createElement('span');
-                linkElement.textContent = `${lat}, ${lng}`;
-            } else {
-                linkElement = document.createElement('a');
-                linkElement.textContent = `${lat}, ${lng}`;
-                linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
-                linkElement.target = '_blank';
-                linkElement.rel = 'noopener noreferrer';
-                linkElement.onclick = (e) => e.stopPropagation();
-            }
-            textContainer.appendChild(linkElement);
-            const line2 = document.createElement('div');
-            line2.textContent = label;
-            textContainer.appendChild(line2);
-            attachmentWrapper.appendChild(textContainer);
-            break;
-    }
-    if (attachment.type !== 1 && attachment.type !== 4) { // Add generic info click for non-preview types
-        iconDiv.style.cursor = 'pointer';
-    }
-    // Винаги добавяме listener за показване на JSON в дебъг режим
-    if (debug) {
-        iconDiv.style.cursor = 'pointer';
-        iconDiv.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showModal(JSON.stringify(attachment, null, 2));
-        });
-    }
-    attachmentWrapper.prepend(iconDiv);
-}
+    /**
+     * Форматира текстов низ възоснова на JSON параметри.
+     * @param {string} text - Текстовият низ за форматиране.
+     * @param {string} formatString - Форматиращият низ, разделен с '\n'.
+     * @param {boolean} isForModal - Дали е за модал (за линковете).
+     * @returns {string} Форматираният HTML низ.
+     */
+    function formatText(text, formatString, isForModal = false) {
+        let localText = text;
+        const mdClear = localStorage.getItem('mdClear') || '--';
 
-async function createNoteElement(noteContent) {
-    const note = document.createElement('div');
-    const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
-    note.className = 'note';
-    note.style.display = 'none'; // Keep hidden until applyFilters runs to prevent flashing
-    if (notesBgrdEnabled) {
-        note.classList.add('note-item');
-    }
-    let fileContent = '';
-    let noteGdid = null;
-    let noteID = null;
-    let noteColor = null;
-    let textSpan = null;
-    let titleSpan = null;
-    let extraData = {};
-    const fullNoteContent = noteContent; // Вече имаме целия обект
-    try {
-        if (noteContent && (noteContent.notetxt !== undefined || noteContent.text !== undefined)) {
-            fileContent = noteContent.notetxt !== undefined ? noteContent.notetxt : noteContent.text;
-            noteGdid = noteContent.gdid;
-            noteID = noteContent.id;
-            // --- Mark as update if in updated list ---
-            if (updatedNoteGdims.includes(noteGdid)) {
-                note.classList.add('new-update');
-            }
-            noteColor = noteContent.color;
-            if (noteContent.text_span) {
-                textSpan = noteContent.text_span;
-            }
-            if (noteContent.title_span) {
-                titleSpan = noteContent.title_span;
-            }
-            extraData = { ...noteContent };
-            delete extraData.notetxt;
-            // --- OPTIMIZATION: Use individual SHORT dataset attributes ---
-            // data-g -> gdid, data-i -> id
-            if (noteGdid) note.dataset.g = noteGdid;
-            if (noteID) note.dataset.i = noteID;
-            // data-b -> boardid
-            if (extraData.boardid !== undefined) note.dataset.b = extraData.boardid;
-            // data-dm -> datemod
-            if (extraData.datemod) note.dataset.dm = extraData.datemod;
-            // data-no -> numord
-            if (extraData.numord !== undefined) note.dataset.no = extraData.numord;
-            // data-s -> status
-            if (extraData.status !== undefined) note.dataset.s = extraData.status;
-            // data-cd -> date (creation date)
-            if (extraData.date) note.dataset.cd = extraData.date;
-            // data-cda -> calendarDate
-            if (extraData.calendarDate) note.dataset.cda = extraData.calendarDate;
-            // data-c -> color
-            if (noteColor !== null && noteColor !== undefined) note.dataset.c = noteColor;
-            // --- Set attributes for special filters (SHORT CODES, "1" for true) ---
-            if (extraData.timer && extraData.timer !== 0) {
-                note.dataset.tm = '1'; // data-tm
-            }
-            // if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
-            if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
-                // Color will be handled by canvas background
-            }
-            if (extraData.status === 1) {
-                // Do not skip deleted notes in the UI entirely, so Trash board can load them.
-                // ApplyFilters will take care of hiding them from everywhere else.
-                // return null; 
-            }
-        } else { throw new Error(_('errorNoteFieldMissing')); }
-    } catch (e) { fileContent = _('errorNoteParse'); }
-    const isHiddenNote = extraData.pass === true;
-    const isType1Note = extraData.type === 1;
-    // let attachments = [];
-    let noteTitle = '';
-    let displayContent = fileContent;
-    if (isHiddenNote) {
-        const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
-        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
-        noteTitle = previewContent.split('\n')[0].trim();
-    } else if (isType1Note) {
-        const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
-        if (pipeIndex !== -1) {
-            noteTitle = fileContent.substring(0, pipeIndex).trim();
-            displayContent = fileContent.substring(pipeIndex + 1).trim();
-        } else {
-            noteTitle = fileContent.split('\n')[0].substring(0, 50);
+        // --- mdClear Logic (Markers removal) ---
+        // If no formatString, we still process the text to remove markers
+        let formats = [];
+        if (formatString) {
+            if (formatString.endsWith('|')) formatString = formatString.slice(0, -1);
+            formats = formatString.split(/[|\n]/).map(f => {
+                try { return JSON.parse(f); } catch (e) { return null; }
+            }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
         }
-    } else if (!isHiddenNote) {
-        const lines = fileContent.split('\n');
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine) {
-                noteTitle = trimmedLine.substring(0, 50);
-                break;
-            }
-        }
-    }
-    if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
-    const titleWrapper = document.createElement('div');
-    const titleEl = document.createElement('h3');
-    // For hidden notes with title_span, apply formatting to the title
-    if (isHiddenNote && titleSpan && titleSpan.trim() !== '') {
-        titleEl.innerHTML = formatText(noteTitle, titleSpan, false);
-    } else {
-        titleEl.textContent = noteTitle;
-    }
-    titleEl.className = 'note-title-truncated';
-    // Create header info container for date and time
-    const headerInfoContainer = document.createElement('div');
-    headerInfoContainer.className = 'note-header-info';
-    const headerDate = document.createElement('span');
-    headerDate.className = 'note-header-date';
-    const headerTime = document.createElement('span');
-    headerTime.className = 'note-header-time';
-    // Add click listener to the date to show full note data
-    headerDate.addEventListener('click', (e) => {
-        if (debug) {
-            e.stopPropagation();
-            let debugText = JSON.stringify(fullNoteContent, null, 2);
-            if (fullNoteContent.gdid && localFileMap.has(fullNoteContent.gdid)) {
-                debugText = `File: ${localFileMap.get(fullNoteContent.gdid)}\n\n` + debugText;
-            }
-            showModal({ raw: debugText, color: 'white' });
-        }
-    });
-    if (extraData.timer) {
-        const dateText = formatDate(extraData.timer);
-        const showCalIcon = extraData.calendarDate && parseInt(extraData.calendarDate, 10) > 0;
-        if (dateText) {
-            if (showCalIcon) headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
-            else headerDate.textContent = dateText;
-        }
-        const timeText = formatTime(extraData.timer);
-        if (timeText) headerTime.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
-    } else if (extraData.calendarDate && extraData.calendarDate > 0) {
-        const dateText = formatDate(extraData.calendarDate);
-        if (dateText) {
-            headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
-        }
-    } else if (extraData.datemod) { // Always create the element
-        const dateText = formatDate(extraData.datemod);
-        if (dateText) {
-            headerDate.textContent = dateText; // No icon for datemod
-            headerDate.classList.add('datemod-header-date');
-            const timeText = formatTime(extraData.datemod);
-            if (timeText) headerTime.textContent = timeText;
-        }
-    } else if (extraData.date) { // Fallback to creation date
-        const dateText = formatDate(extraData.date);
-        if (dateText) {
-            headerDate.textContent = dateText; // No icon for datemod
-            headerDate.classList.add('creation-header-date');
-            const timeText = formatTime(extraData.date);
-            if (timeText) headerTime.textContent = timeText;
-        }
-    }
-    headerInfoContainer.appendChild(headerDate);
-    headerInfoContainer.appendChild(headerTime);
-    // Add the new container before the title
-    titleWrapper.appendChild(headerInfoContainer);
-    titleWrapper.appendChild(titleEl);
-    // Use the color map for reliability and define a clear fallback color
-    const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9)
-        ? noteColorMap[noteColor]
-        : '#FBFF86';
-    note.style.margin = '5px';
-    if (notesBgrdEnabled) {
-        const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
-        const cacheKey = `${noteBgColor}_${imageName}`;
-        if (noteBgCache.has(cacheKey)) {
-            // Apply preloaded background instantly
-            note.style.backgroundImage = noteBgCache.get(cacheKey);
-            note.style.backgroundSize = '100% 100%';
-            note.style.backgroundRepeat = 'no-repeat';
-        } else {
-            // Fallback for cases where it wasn't preloaded (e.g. newly created note)
-            // We await it to ensure no "text then background" flicker occurs
-            await new Promise(resolve => {
-                createColoredNoteBackground(noteBgColor, imageName, 250, 250).then(canvas => {
-                    canvas.toBlob(blob => {
-                        const url = URL.createObjectURL(blob);
-                        const bgUrl = `url("${url}")`;
-                        noteBgCache.set(cacheKey, bgUrl);
-                        note.style.backgroundImage = bgUrl;
-                        note.style.backgroundSize = '100% 100%';
-                        note.style.backgroundRepeat = 'no-repeat';
-                        resolve();
-                    }, 'image/png');
-                }).catch(() => {
-                    note.style.backgroundColor = noteBgColor; // Only if image fails
-                    resolve();
+
+        if (localText.includes(mdClear)) {
+            let searchIdx = 0;
+            const shiftHelper = (pos, diff) => {
+                const L = Math.abs(diff);
+                formats.forEach(f => {
+                    if (f.start > pos + L) f.start -= L; else if (f.start > pos) f.start = pos;
+                    if (f.end > pos + L) f.end -= L; else if (f.end > pos) f.end = pos;
                 });
-            });
-        }
-    } else {
-        note.style.backgroundColor = noteBgColor;
-    }
-    const contentWrapper = document.createElement('div');
-    contentWrapper.className = 'note-content-wrapper';
-    note.appendChild(contentWrapper);
-    if (isHiddenNote) {
-        const lockIconOverlay = document.createElement('div');
-        lockIconOverlay.className = 'lock-icon-overlay';
-        lockIconOverlay.innerHTML = lockIconSvg;
-        contentWrapper.appendChild(lockIconOverlay);
-    }
-    const contentEl = document.createElement('div');
-    contentEl.className = 'note-content';
-    const isForModal = (note.closest('#modal-body') !== null);
-    if (isHiddenNote) {
-        const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
-        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
-        contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
-    } else {
-        const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
-        if (formatSource) {
-            // Use the exact same logic as in showModal to ensure indices match
-            let contentToFormat = fileContent;
-            const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) !== -1 : contentToFormat.includes('|');
-            if (hasPipe) {
-                // Just replace the first pipe to keep indices consistent with modal body
-                const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) : contentToFormat.indexOf('|');
-                contentToFormat = contentToFormat.substring(0, pipeIdxForReplace) + '\n' + contentToFormat.substring(pipeIdxForReplace + 1);
-            }
-            // Format the full content
-            let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
-            contentEl.innerHTML = formattedHtml;
-        } else {
-            contentEl.innerHTML = processNoteContent(displayContent, isForModal);
-        }
-    }
-    let attachments = [];
-    if (useIndexedDb) {
-        // Когато използваме база данни, трябва да знаем как е създадена.
-        // Използваме глобалната променлива, която е заредена в mainLogic
-        const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid'; // 'gdid' е fallback за стари бази
-        if (dbNoteIdType === 'id') {
-            attachments = mediaData.filter(media => +media.noteid === +noteID);
-        } else { // 'gdid'
-            attachments = mediaData.filter(media => media.noteid === noteGdid);
-        }
-    } else {
-        // Когато четем директно, логиката зависи от текущия режим.
-        if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteID);
-        else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
-    }
-    if (attachments.length > 0) {
-        note.dataset.hasAttachments = 'true';
-        // --- КОРЕКЦИЯ: Добавяме специфична проверка за снимки (тип 1) ---
-        if (attachments.some(att => att.type === 1)) {
-            note.dataset.hp = '1';
-            // --- Store preview data for programmatic access (e.g. Board Previews) ---
-            const firstPhoto = attachments.find(att => att.type === 1);
-            let mode = 'gdrive';
-            // Determine mode based on global state, mirroring the attachment rendering logic
-            // Note: DB logic relies on globals set in mainLogic
-            if (useIndexedDb) {
-                if (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id' && typeof dbSourceGlobal !== 'undefined' && dbSourceGlobal === 3) mode = 'archive';
-                else if (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'gdid' && typeof dbSourceGlobal !== 'undefined' && dbSourceGlobal === 2) mode = 'local';
-            } else if (useArhDb) {
-                mode = 'archive';
-            } else if (useLocalFolder) {
-                mode = 'local';
-            }
-            const fileId = (mode === 'gdrive') ? (firstPhoto.pathGD || firstPhoto.path) : firstPhoto.path;
-            const previewData = {
-                fileId: fileId,
-                mode: mode,
-                isVideo: false
-            };
-            note.dataset.previewAttachment = JSON.stringify(previewData);
-        }
-        // --- Край на корекцията ---
-        // Check for video attachments (type 4)
-        if (attachments.some(att => att.type === 4)) {
-            note.dataset.hv = '1';
-        }
-        // Check for sound attachments (type 2)
-        if (attachments.some(att => att.type === 2)) {
-            note.dataset.hs = '1';
-        }
-        // Check for other attachments (not type 1 or 4)
-        if (attachments.some(att => att.type !== 1 && att.type !== 4 && att.type !== 2)) {
-            note.dataset.ho = '1';
-        }
-        // Проверка дали да показваме иконите за прикачени файлове в затворената бележка
-        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true';
-        const shouldShowAttachments = isForModal || oneTapLinksEnabled;
-        if (shouldShowAttachments) {
-            const separator = document.createElement('hr');
-            separator.style.marginTop = '10px';
-            separator.style.marginBottom = '10px';
-            contentEl.appendChild(separator);
-            await Promise.all(attachments.map(async attachment => {
-                const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-                if (!iconData) return;
-                const attachmentWrapper = document.createElement('div');
-                attachmentWrapper.style.display = 'flex';
-                attachmentWrapper.style.alignItems = 'center';
-                attachmentWrapper.style.gap = '5px';
-                attachmentWrapper.dataset.type = attachment.type; // Add type for easy selection
-                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-                if (isDbOnlyMode) {
-                    // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
-                    // Използваме глобалните променливи, зададени в mainLogic.
-                    if (dbNoteIdTypeGlobal === 'id' && dbSourceGlobal === 3) { // Валидна комбинация за Архив
-                        await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 2) { // Валидна комбинация за Локална папка
-                        await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 1) { // Валидна комбинация за Google Drive
-                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-                    }
-                    // При невалидна комбинация, не правим нищо и линкове не се създават.
-                    // Съобщението за грешка вече се показва от mainLogic.
-                } else if (useArhDb) {
-                    // --- ЛОГИКА ЗА АРХИВ ---
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                } else if (useLocalFolder) {
-                    // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                } else { // По подразбиране, ако не е нито един от горните, е Google Drive
-                    // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
-                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-                }
-                contentEl.appendChild(attachmentWrapper);
-            }));
-
-        }
-    }
-    // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
-    let longPressTimer;
-    let isLongPress = false;
-    const handleNoteDelete = async (noteEl, e, fromModal = false) => {
-        e.stopPropagation();
-        e.preventDefault();
-        isLongPress = false;
-        clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
-
-        const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-        const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
-        // Allow delete if using DB OR if updating GDrive is enabled and we have a GDrive ID
-        if (!useIndexedDb && (!updateGDrive || !noteGdid)) return;
-
-        // Ако е извикано от модала, първо го затваряме.
-        if (fromModal) {
-            document.getElementById('content-modal').classList.remove('visible');
-            // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
-            await new Promise(resolve => setTimeout(resolve, 150));
-        }
-
-        const confirmMsgKey = (updateGDrive || updateLocalFolderNow) ? 'confirmNoteDeleteSync' : 'confirmNoteDelete';
-        const isTrashBoard = currentBoardFilter === 'trash';
-        const msgKey = isTrashBoard ? confirmMsgKey : 'confirmNoteMoveToTrash';
-        const confirmed = await showConfirmation(_(msgKey) || _('confirmNoteDelete'));
-        if (confirmed) {
-            try {
-                let noteToUpdate = allNotesData.find(n => (n.gdid && n.gdid === noteGdid) || (n.id && n.id === noteID));
-                if (!isTrashBoard && noteToUpdate) {
-                    // Update as deleted in GDrive and IndexedDB instead of true deletion
-                    noteToUpdate.status = 1;
-                    noteToUpdate.datemod = Date.now();
-                    if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
-                        await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
-                    }
-                    if (updateGDrive && noteGdid) {
-                        try {
-                            await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
-                        } catch (err) {
-                            console.error("GDrive update failed:", err);
-                        }
-                    }
-                    if (updateLocalFolderNow && noteGdid) {
-                        try {
-                            await updateLocalFile(noteGdid, JSON.stringify(noteToUpdate));
-                        } catch (err) {
-                            console.error("Local file update failed:", err);
-                        }
-                    }
-                    // Update dataset so applyFilters can handle it
-                    noteEl.dataset.s = "1";
-                    applyFilters();
-                    updateBoardCounterUI('trash');
-                    // Also update origin board if possible
-                    if (noteToUpdate.boardid) updateBoardCounterUI(noteToUpdate.boardid);
-                    showToast(_('noteMovedToTrash') || 'Бележката е преместена в Кошче', 3000);
-                } else {
-                    let totalNotes;
-                    await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-
-                    let gdriveDeleted = false;
-                    if (updateGDrive && noteGdid) {
-                        deleteGDriveFile(noteGdid).catch(err => {
-                            console.error("GDrive delete failed:", err);
-                            if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
-                        });
-                        gdriveDeleted = true;
-                    }
-
-                    let localDeleted = false;
-                    if (updateLocalFolderNow && noteGdid) {
-                        deleteLocalFile(noteGdid).catch(err => {
-                            console.error("Local file delete failed:", err);
-                        });
-                        localDeleted = true;
-                    }
-
-                    // Стъпка 1: Премахване от DOM и allNotesData
-                    noteEl.remove();
-                    allNotesData = allNotesData.filter(n => (n.gdid && n.gdid !== noteGdid) || (n.id && n.id !== noteID));
-                    // Стъпка 2: Актуализация на всички броячи чрез applyFilters
-                    applyFilters();
-
-                    let successMsgKey = 'noteDeletedSuccess';
-                    if (gdriveDeleted && localDeleted) successMsgKey = 'noteDeletedSuccessBoth';
-                    else if (gdriveDeleted) successMsgKey = 'noteDeletedSuccessGDrive';
-                    else if (localDeleted) successMsgKey = 'noteDeletedSuccessLocal';
-
-                    showToast(_(successMsgKey), 3000);
-                }
-            } catch (error) {
-                console.log("Failed to delete note:", error);
-                showToast(_('noteDeletedError') + " - " + error.message, 15000);
-            }
-        }
-    };
-
-    // Обработва клик върху цялата бележка (с изключение на хедъра)
-    const handleNoteClick = async (e) => {
-        // Check if text is selected. If so, prevent opening the modal.
-        const selection = window.getSelection();
-        if (selection.toString().length > 0) {
-            return;
-        }
-        // Отваряме модала, само ако не е long press и кликът не е върху футъра
-        if (!isLongPress && !e.target.closest('.note-footer')) {
-
-            // --- FORCE GDRIVE READ LOGIC ---
-            const forceGDriveRead = localStorage.getItem('forceGDriveRead') === 'true';
-            if (forceGDriveRead && noteGdid) {
-                showToast(_('loadingFromDrive'), 2000);
-                const txt = await fetchGDriveFileContent(noteGdid);
-                if (txt) {
-                    try {
-                        const newItem = JSON.parse(txt);
-                        // Update memory
-                        Object.assign(noteContent, newItem);
-                        // Update critical fields for modal
-                        if (newItem.notetxt !== undefined) fileContent = newItem.notetxt;
-                        else if (newItem.text !== undefined) fileContent = newItem.text;
-
-                        if (newItem.title_span !== undefined) titleSpan = newItem.title_span;
-                        if (newItem.text_span !== undefined) textSpan = newItem.text_span;
-
-                        extraData = { ...noteContent };
-                        delete extraData.notetxt;
-
-                        // Update global data array reference too (find and update)
-                        if (typeof allNotesData !== 'undefined') {
-                            const noteInHeader = allNotesData.find(n => n.gdid === noteGdid);
-                            if (noteInHeader) {
-                                Object.assign(noteInHeader, newItem);
-                            }
-                        }
-
-                    } catch (err) {
-                        console.error("Error parsing GDrive content", err);
-                        showToast(_('errorParsingNote'), 3000);
-                    }
-                }
-            }
-            // --- END FORCE GDRIVE READ LOGIC ---
-
-            const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
-            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
-
-            // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
-            const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-            if (e.ctrlKey) {
-                if ((typeof useIndexedDb !== 'undefined' && useIndexedDb) || (updateGDrive && noteGdid)) {
-                    const modalBodyElem = document.getElementById('modal-body');
-                    if (modalBodyElem) {
-                        enableNoteEditing(modalBodyElem);
-                    }
-                } else if (!useIndexedDb && !updateGDrive) {
-                    showToast("Editing requires Database Mode or 'Update Google Drive' enabled.", 3000);
-                }
-            }
-        }
-    };
-
-    // Обработва клик върху хедъра (за изтриване)
-    const handleHeaderClick = (e) => { if (e.ctrlKey) handleNoteDelete(note, e); };
-    // Закачаме събитията за изтриване само за хедъра
-
-    titleWrapper.addEventListener('click', handleHeaderClick);
-    addLongPressOrCtrlClick(titleWrapper, (e) => handleNoteDelete(note, e));
-
-    // Закачаме събитието за отваряне на модала за цялата бележка
-    note.addEventListener('click', handleNoteClick);
-    note.addEventListener('contextmenu', e => e.preventDefault());
-    contentWrapper.appendChild(titleWrapper);
-    contentWrapper.appendChild(contentEl);
-    // --- Създаване на футър с икони за прикачени файлове ---
-    // Проверяваме дали има прикачени файлове (масивът `attachments` вече е попълнен правилно по-горе)
-    // и дали бележката има идентификатор.
-    if (!isHiddenNote && (noteGdid || noteID) && attachments.length > 0) {
-        const uniqueTypes = [...new Set(attachments.map(att => att.type))];
-        // --- Set explicit SHORT dataset attributes for attachment types ---
-        if (uniqueTypes.includes(1)) note.dataset.hp = '1'; // data-hp = hasPhoto
-        if (uniqueTypes.includes(4)) note.dataset.hv = '1'; // data-hv = hasVideo
-        if (uniqueTypes.includes(2)) note.dataset.hs = '1'; // data-hs = hasSound
-        if (uniqueTypes.includes(3)) note.dataset.ho = '1'; // data-ho = hasOther
-        if (uniqueTypes.length > 0) {
-            const footerEl = document.createElement('div');
-            footerEl.className = 'note-footer';
-            uniqueTypes.sort((a, b) => a - b).forEach(type => {
-                const iconData = attachmentIcons.find(icon => icon.type === type);
-                if (iconData) {
-                    const iconDiv = document.createElement('div');
-                    iconDiv.className = 'footer-icon';
-                    iconDiv.innerHTML = iconData.svg;
-                    iconDiv.style.borderRadius = '5px'; // Добавяме заобляне на ъглите
-                    iconDiv.style.backgroundColor = noteBgColor;
-                    iconDiv.dataset.type = type; // Add type for easier selection
-                    // Calculate count of attachments of this type
-                    const typeCount = attachments.filter(att => att.type === type).length;
-                    if (typeCount > 1) {
-                        const plusSpan = document.createElement('span');
-                        plusSpan.textContent = '+';
-                        plusSpan.style.marginLeft = '2px';
-                        plusSpan.style.fontWeight = 'bold';
-                        plusSpan.style.fontSize = '14px'; // Adjust size as needed
-                        plusSpan.style.color = '#333'; // Make sure it's visible
-                        // Use inline-flex to align SVG and text
-                        iconDiv.style.display = 'inline-flex';
-                        iconDiv.style.alignItems = 'center';
-                        iconDiv.style.justifyContent = 'center';
-                        iconDiv.style.paddingRight = '4px'; // Add some padding
-                        iconDiv.appendChild(plusSpan);
-                    }
-                    // Добавяме preview само за снимки (type 1) и видео (type 4),
-                    // и само ако текущият режим на работа е Google Drive.
-                    if (type === 1 || type === 4) {
-                        const firstAttachmentOfType = attachments.find(att => att.type === type);
-                        if (firstAttachmentOfType) {
-                            let sourceMode = 'gdrive'; // По подразбиране
-                            if (useArhDb) sourceMode = 'archive'; // Ако е архив, източникът е архив
-                            else if (useLocalFolder) sourceMode = 'local'; // Ако е локална папка, източникът е локален
-                            else if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb) { // Ако е само IndexedDB
-                                if (dbSourceGlobal === 3) sourceMode = 'archive'; // И базата е от архив
-                                else if (dbSourceGlobal === 2) sourceMode = 'local'; // Или базата е от локална папка
-                                // Ако dbSourceGlobal е 1 (Google Drive), sourceMode остава 'gdrive'
-                            }
-                            // Активираме превюто, ако източникът е Google Drive, Локална папка или Архив
-                            // Only add preview listener if we actually found the attachment
-                            if (sourceMode === 'gdrive' || sourceMode === 'local' || sourceMode === 'archive') {
-                                // Filter attachments of this type (already filtered above for counting, but let's be explicit or reuse)
-                                const attachmentsOfType = attachments.filter(att => att.type === type);
-                                const isVideo = type === 4;
-                                addInNotePreviewListener(iconDiv, attachmentsOfType, 0, sourceMode, isVideo);
-                            }
-                        }
-                    }
-                    footerEl.appendChild(iconDiv);
-                }
-            });
-
-            note.appendChild(footerEl); // Преместваме футъра да е директен наследник на .note
-        }
-    }
-    return note;
-}
-async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
-    // Изчистваме бележките само ако не презареждаме единствено менюто - ПРЕМЕСТЕНО ПО-ДОЛУ ЗА ИЗБЯГВАНЕ НА 'МИГАНЕ'
-    /* if (!rerenderOnlyMenu) {
-        notesContainer.innerHTML = '';
-    } */
-    let boardsNoteElement = null;
-    let extraCounts = {
-        boardCounts: new Map(),
-        reminderCount: 0,
-        calendarCount: 0,
-        trashCount: 0
-    };
-    if (boardsData.length > 0 || boardParseError) {
-        const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-        allNotesData.forEach(note => {
-            if (note.status === 1) {
-                extraCounts.trashCount++;
-            } else {
-                const boardId = String(note.boardid);
-                extraCounts.boardCounts.set(boardId, (extraCounts.boardCounts.get(boardId) || 0) + 1);
-            }
-            if (note.timer && note.timer > 0) extraCounts.reminderCount++;
-            if (note.calendarDate) extraCounts.calendarCount++;
-        });
-        boardsNoteElement = await createBoardsUI(boardsData, boardParseError, extraCounts);
-    }
-    // Винаги премахваме старото меню, за да го заменим с новото
-    const oldBoardsNote = document.querySelector('header .boards-note');
-    if (oldBoardsNote) {
-        oldBoardsNote.remove();
-    }
-    // Ако само презареждаме менюто, добавяме новото и спираме дотук.
-    if (rerenderOnlyMenu) {
-        if (boardsNoteElement) {
-            document.querySelector('header').appendChild(boardsNoteElement);
-            // Синхронизираме визуалното състояние на менюто и скролираме до активния бутон
-            // Използваме setTimeout, за да сме сигурни, че DOM-ът е обновен
-            setTimeout(() => {
-                // Използваме същата логика за маркуване като във filterNotesByBoard
-                const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
-                const targetBoard = specialBoards.includes(currentBoardFilter) ? null : boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
-                const activeIdForUI = targetBoard ? (targetBoard.gdid || targetBoard.id) : currentBoardFilter;
-
-                document.querySelectorAll('.board-filter-link').forEach(link => {
-                    const isSelected = link.dataset.boardid === String(activeIdForUI);
-                    link.classList.toggle('selected-board', isSelected);
-                    link.classList.toggle('active', isSelected);
-                    link.style.height = isSelected ? '39px' : '35px';
-                    if (isSelected) {
-                        link.scrollIntoView({
-                            behavior: 'smooth',
-                            inline: 'center',
-                            block: 'nearest'
-                        });
-                    }
-                });
-            }, 50);
-        }
-        return; // КЛЮЧОВА СТЪПКА: Прекратяваме функцията тук
-    }
-    // --- Оттук надолу е логиката за ПЪЛНО презареждане ---
-    // 1. Show spinner immediately
-    if (!rerenderOnlyMenu && loaderContainer) {
-        loaderContainer.style.display = 'block';
-        if (loaderText) loaderText.textContent = _('loadingFile');
-    }
-    // Method 1: Clear immediately to save memory
-    if (!rerenderOnlyMenu) {
-        notesContainer.innerHTML = '';
-    }
-    // 2. Use setTimeout to allow browser to render the spinner
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    // 2.1 Optimization: Preload backgrounds before creating elements to avoid staggered loading
-    await preloadNoteBackgrounds(allNotesData);
-
-    const noteElementsResults = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
-    // Create fragment and populate it with new elements
-    const fragment = document.createDocumentFragment();
-    let notesCount = 0;
-    let skippedNotesCount = 0;
-    noteElementsResults.forEach(noteEl => {
-        // console.log(noteEl);
-        if (noteEl) {
-            fragment.appendChild(noteEl);
-            notesCount++;
-        } else {
-            skippedNotesCount++;
-        }
-    });
-
-    if (skippedNotesCount > 0) {
-        console.log(`[renderUI] Skipped ${skippedNotesCount} notes (likely status=1/deleted).`);
-    }
-    // Update container
-    if (!rerenderOnlyMenu) {
-        notesContainer.appendChild(fragment);
-        // --- IMMEDIATE FILTER APPLICATION ---
-        // Apply filters synchronously immediately after adding to DOM to prevent "flash" of all notes
-        applyFilters();
-    }
-    // Hide spinner - using requestAnimationFrame to ensure the browser has a chance to 
-    // paint the newly added notes with their backgrounds before we remove the overlay.
-    if (!rerenderOnlyMenu && loaderContainer) {
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                loaderContainer.style.display = 'none';
-                if (loaderText) loaderText.textContent = '';
-            });
-        });
-    }
-    // Check if we need to delay showing the menu due to empty board cleanup
-    let delayMenuRender = false;
-    if (isInitialLoad && localStorage.getItem('checkEmptyBoards') === 'true') {
-        const potentialEmptyBoards = boardsData.filter(b => (extraCounts.boardCounts.get(String(b.gdid || b.id)) || 0) === 0);
-        if (potentialEmptyBoards.length > 0) {
-            delayMenuRender = true;
-        }
-    }
-
-    if (boardsNoteElement && !delayMenuRender) {
-        document.querySelector('header').appendChild(boardsNoteElement);
-    }
-    // --- OWNER CHECK ---
-    // If the user is not the owner, force 'all' boards view instead of saved startup board.
-    if (!isDbOwner) {
-        currentBoardFilter = 'all';
-    }
-    // Обработка на стартов борд 'Main'
-    if (currentBoardFilter === 'Main') {
-        const mainBoard = boardsData.find(b => b.title === 'Main');
-        currentBoardFilter = mainBoard ? (mainBoard.gdid || mainBoard.id) : 'all';
-    }
-    // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
-    if (isInitialLoad && localStorage.getItem('checkEmptyBoards') === 'true') {
-        // Check for empty boards and offer deletion individually
-        const emptyBoards = boardsData.filter(b => (extraCounts.boardCounts.get(String(b.gdid || b.id)) || 0) === 0);
-        if (emptyBoards.length > 0) {
-            setTimeout(async () => {
-                let boardsModified = false;
-                let currentEmptyCount = emptyBoards.length;
-                for (const board of emptyBoards) {
-                    // Safety check: Don't delete the last remaining board
-                    if (boardsData.length <= 1) {
-                        if (boardsModified) showToast(_('cannotDeleteLastBoard'), 3000);
-                        break;
-                    }
-                    const confirmed = await showConfirmation(
-                        _('confirmDeleteEmptyBoard').replace('{boardName}', board.title).replace('{count}', currentEmptyCount),
-                        { showCancel: true, cancelText: _('cancel') || 'Cancel' }
-                    );
-                    // User clicked Cancel - stop the entire process
-                    if (confirmed === 'cancel') {
-                        break;
-                    }
-                    if (confirmed === true) {
-                        currentEmptyCount--;
-                        boardsModified = true;
-                        boardsData = boardsData.filter(b => (b.gdid || b.id) !== (board.gdid || board.id));
-                        // Update DB if used
-                        if (useIndexedDb && typeof deleteFromDB === 'function') {
-                            await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
-                        }
-                        // Delete the board file from Google Drive if it has a gdid
-                        const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
-                        if (updateGDriveNow && board.gdid && typeof deleteGDriveFile === 'function') {
-                            try {
-                                if (await deleteGDriveFile(board.gdid)) {
-                                    console.log(`Deleted board file from GDrive: ${board.gdid}`);
-                                } else {
-                                    console.log(`Board file ${board.gdid} not found on GDrive (already deleted).`);
-                                }
-                            } catch (gdErr) {
-                                console.error(`Failed to delete board file ${board.gdid} from GDrive:`, gdErr);
-                            }
-                        }
-                        // Confirmation toast
-                        showToast(_('boardDeletedSuccess').replace('{boardName}', board.title), 2000);
-                    }
-                }
-                // Individual board files were already deleted via deleteGDriveFile(board.gdid) above
-                // No need to update a centralized board.txt as boards are stored individually
-                // Finally render the menu (it was hidden initially)
-                renderUI({ rerenderOnlyMenu: true });
-                // Re-apply active state to the board button as it was just rendered
-                setTimeout(() => {
-                    const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
-                    if (startBoardBtn) {
-                        startBoardBtn.classList.add('active-board');
-                        startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-                    }
-                }, 100);
-            }, 1000);
-        }
-    }
-
-    // --- BUTTON ACTIVE STATE SYNC + PROGRAMMATIC CLICK ---
-    // For special boards like 'new-updates', applyFilters() alone may not be enough
-    // because filterNotesByBoard sets up additional state. Trigger a click on initial load.
-    const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
-    if (startBoardBtn) {
-        if (isInitialLoad) {
-            // Use setTimeout to ensure DOM is fully ready before clicking
-            setTimeout(() => {
-                startBoardBtn.click();
-            }, 50);
-        } else {
-            startBoardBtn.classList.add('active-board');
-            startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-        }
-    } else if (isInitialLoad && (currentBoardFilter === 'calendar' || currentBoardFilter === 'calendar_monthly' || currentBoardFilter === 'calendar_weekly')) {
-        // Fallback for cases where the button might be missing from the menu
-        setTimeout(() => {
-            filterNotesByBoard(currentBoardFilter);
-        }, 50);
-    }
-    // Start Assistant Guide if needed
-    if (guide) {
-        const startAssistantGuide = () => {
-            if (window.kbAssistant && window.kbAssistant.isInitialized) {
-                const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
-                if (entry && entry.guide) {
-                    window.kbAssistant.showGuide(entry.guide);
-                    localStorage.setItem('guide', 'false');
-                    guide = false;
-                }
-            } else {
-                setTimeout(startAssistantGuide, 100);
-            }
-        };
-        // Delay slightly to ensure UI is ready
-        setTimeout(startAssistantGuide, 1500);
-    }
-    // След първото зареждане, флагът става false.
-    isInitialLoad = false;
-
-    // ПРИЛОЖЕНИЕ: Сега, когато зареждането е приключило, извикваме applyFilters отново, 
-    // за да може асистентът (промо снимката) да се появи плавно и на правилното място.
-    applyFilters();
-
-    const counterEl = document.getElementById('note-counter');
-    if (counterEl) {
-        counterEl.textContent = notesCount;
-    }
-    populateStartBoardSelect();
-}
-
-/**
- * Чете архивни данни (boards.bcp, notes.bcp, medias.bcp) от подадена директория
- * и попълва глобалните променливи boardsData, allNotesData и mediaData.
- *
- * @param {FileSystemDirectoryHandle} dirHandle - Handle към директорията, съдържаща .bcp файловете.
- * @returns {Promise<boolean>} Връща true при успех, false при провал.
- */
-async function readArh(dirHandle) {
-    if (!dirHandle) {
-        console.log("readArh: Не е подаден валиден handle на директория.");
-        showToast(_('errorNoArchiveFolderSelected'), 10000);
-        return false;
-    }
-    console.log("--- Archive fetch sequence started ---");
-    const startTime = performance.now();
-    let success = true;
-    // Map usage removed here, now using local maps in validateFileData
-    // const gdidMap = new Map();
-    const validateFileData = (data, fileName) => {
-        const fileMap = new Map();
-        if (Array.isArray(data)) {
-            data.forEach(item => {
-                const itemId = item.id || item.gdid;
-                if (itemId === undefined || itemId === null) {
-                    const error = `[Archive] Item in '${fileName}' is missing ID property.`;
-                    console.warn(error);
-                    dataIntegrityIssues.push({ type: 'missing', file: fileName });
-                } else {
-                    if (fileMap.has(itemId)) {
-                        const error = `[Duplicate ID] ID '${itemId}' found multiple times in '${fileName}'. Conflict within file.`;
-                        console.error(error);
-                        dataIntegrityIssues.push({ type: 'duplicate', gdid: itemId, file1: fileName, file2: fileName, mode: 'archive' });
-                    } else {
-                        fileMap.set(itemId, true);
-                    }
-                }
-            });
-        }
-    };
-    try {
-        // 1. Четене на boards.bcp
-        const boardsFileHandle = await dirHandle.getFileHandle('boards.bcp');
-        const boardsFile = await boardsFileHandle.getFile();
-        const boardsContent = await boardsFile.text();
-        boardsData = JSON.parse(boardsContent);
-        trackMaxBoardIds(boardsData);
-        validateFileData(boardsData, 'boards.bcp');
-        console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
-        // 2. Четене на notes.bcp
-        const notesFileHandle = await dirHandle.getFileHandle('notes.bcp');
-        const notesFile = await notesFileHandle.getFile();
-        const notesContent = await notesFile.text();
-        const notesArray = JSON.parse(notesContent);
-        allNotesData = notesArray;
-        trackMaxIds(allNotesData);
-        validateFileData(allNotesData, 'notes.bcp');
-        console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
-        // 3. Четене на medias.bcp (ако съществува)
-        try {
-            const mediaFileHandle = await dirHandle.getFileHandle('medias.bcp');
-            const mediaFile = await mediaFileHandle.getFile();
-            const mediaContent = await mediaFile.text();
-            mediaData = JSON.parse(mediaContent);
-            validateFileData(mediaData, 'medias.bcp');
-            console.log(`Успешно заредени ${mediaData.length} медийни файла от medias.bcp.`);
-        } catch (mediaError) {
-            if (mediaError.name === 'NotFoundError') {
-                console.log("Файл 'medias.bcp' не е намерен. Продължаваме без него.");
-                mediaData = [];
-            } else {
-                throw mediaError;
-            }
-        }
-    } catch (error) {
-        success = false;
-        if (error.name === 'NotFoundError') {
-            console.log(`Грешка: Файл 'boards.bcp' или 'notes.bcp' не е намерен в папката '${dirHandle.name}'.`);
-            showToast(_('errorRequiredArchiveFileMissing'), 10000);
-        } else if (error instanceof SyntaxError) {
-            console.log("Грешка при парсване на JSON съдържание от архивен файл:", error);
-            showToast(_('errorInvalidArchiveData'), 10000);
-        } else {
-            console.log("Възникна неочаквана грешка при четене на архива:", error);
-            showToast(_('errorReadingArchive'), 10000);
-        }
-    }
-    const endTime = performance.now();
-    if (success) {
-        console.log(`--- Archive fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
-        console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
-    }
-    return success;
-}
-
-async function loadTranslations(lang) {
-    if (appTranslations[lang]) return;
-    try {
-        const response = await fetch(`i18n-${lang}.txt`, { credentials: 'omit' });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-        const text = await response.text();
-        const data = new Function('return {' + text + '}')();
-        appTranslations[lang] = data[lang];
-    } catch (e) {
-        console.error("Failed to load translations:", e);
-        // Fallback: Populate with critical keys if fetch fails (e.g. offline with old SW)
-        if (!appTranslations[lang]) {
-            appTranslations[lang] = {};
-            if (lang === 'bg') {
-                appTranslations[lang]['offlineStartButton'] = 'Старт офлайн';
-                appTranslations[lang]['authorizeButton'] = 'Вход с Google';
-                appTranslations[lang]['trialButton'] = 'Старт 30-дневен пробен период';
-                appTranslations[lang]['sessionExpired'] = 'Сесията изтече. Моля, влезте отново.';
-            } else {
-                appTranslations[lang]['offlineStartButton'] = 'Start Offline';
-                appTranslations[lang]['authorizeButton'] = 'Authorize with Google';
-                appTranslations[lang]['trialButton'] = 'Start 30-day trial period';
-                appTranslations[lang]['sessionExpired'] = 'Session expired. Please login again.';
-            }
-        }
-    }
-}
-
-async function setLanguage(lang) {
-    if (!appTranslations[lang]) {
-        await loadTranslations(lang);
-    }
-    if (!appTranslations[lang]) return;
-    currentLang = lang;
-    localStorage.setItem('language', lang);
-    document.documentElement.lang = lang;
-    document.querySelectorAll('[data-key]').forEach(element => {
-        const key = element.getAttribute('data-key');
-        element.innerHTML = _(key);
-    });
-    document.querySelectorAll('[data-key-placeholder]').forEach(element => {
-
-        const key = element.getAttribute('data-key-placeholder');
-        element.placeholder = _(key);
-    });
-    document.querySelectorAll('[data-key-title]').forEach(element => {
-        const key = element.getAttribute('data-key-title');
-        element.title = _(key);
-    });
-    // Update active button
-    const langBg = document.getElementById('lang-bg');
-    const langEn = document.getElementById('lang-en');
-    if (langBg) langBg.classList.toggle('active', lang === 'bg');
-    if (langEn) langEn.classList.toggle('active', lang === 'en');
-    // Check if updateSignoutTooltip exists before calling it
-    if (typeof updateSignoutTooltip === 'function') {
-        updateSignoutTooltip();
-    }
-    // Update KB Assistant Language
-    if (window.kbAssistant && typeof window.kbAssistant.updateLanguage === 'function') {
-        window.kbAssistant.updateLanguage();
-    }
-}
-
-// --- Service Worker Registration ---
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', async () => {
-        try {
-            // КОРЕКЦИЯ: Изчистваме старите или дублиращи се Service Workers
-            const registrations = await navigator.serviceWorker.getRegistrations();
-            for (let registration of registrations) {
-                // Ако имаме множество регистрации, това може да причини забавяния (timeouts)
-                if (registrations.length > 1 || !registration.active || !registration.active.scriptURL.includes('sw.js')) {
-                    console.log('Unregistering stagnant/duplicate service worker:', registration.active?.scriptURL);
-                    await registration.unregister();
-                }
-            }
-            // Регистрираме версията с флаг, за да принудим браузъра да я презареди
-            const registration = await navigator.serviceWorker.register('sw.js');
-            if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
-
-            // Force an update check to bypass HTTP cache for sw.js
-            // await registration.update();
-
-            // Function to show update notification using a blocking confirm dialog
-            const showUpdateNotification = (waitingSW) => {
-                const msg = (typeof _ === 'function') ? _('newVersionAvailable') : "New version available.";
-                const refresh = (typeof _ === 'function') ? _('refreshNow') : "Refresh now";
-
-                // Use setTimeout to allow the browser to render any pending UI updates before blocking
-                setTimeout(() => {
-                    if (confirm(`${msg}\n\n${refresh}?`)) {
-                        waitingSW.postMessage({ type: 'SKIP_WAITING' });
-                    }
-                }, 100);
             };
 
-            // Check if there's already a waiting SW
-            if (registration.waiting) {
-                showUpdateNotification(registration.waiting);
-            }
+            while (true) {
+                let start = localText.indexOf(mdClear, searchIdx);
+                if (start === -1) break;
+                let end = localText.indexOf(mdClear, start + mdClear.length);
+                if (end === -1) break;
 
-            // Listen for new SW installing
-            registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                if (newWorker) {
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            // New SW is installed and waiting
-                            showUpdateNotification(newWorker);
-                        }
-                    });
-                }
-            });
+                const clearRangeStart = start;
+                const clearRangeEnd = end + mdClear.length;
 
-            // Reload when the new Service Worker takes control
-            let refreshing = false;
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (!refreshing) {
-                    window.location.reload();
-                    refreshing = true;
-                }
-            });
+                // Remove formats that overlap with this range
+                formats = formats.filter(f => !(f.start < clearRangeEnd && f.end > clearRangeStart));
 
-        } catch (err) {
-            console.log('ServiceWorker registration failed: ', err);
-        }
-    });
+                // Remove markers
+                localText = localText.substring(0, end) + localText.substring(end + mdClear.length);
+                shiftHelper(end, -mdClear.length);
+                localText = localText.substring(0, start) + localText.substring(start + mdClear.length);
+                shiftHelper(start, -mdClear.length);
 
-}
-/*
- * Iterates through all visible notes and opens the preview for the first image attachment.
- */
-async function showBoardPreviews() {
-    console.log("Toggling board previews...");
-    // Robustly find visible notes (not 'none'). The previous selector [style*="display: flex"] might fail if style is empty.
-    const allNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note)'));
-    const visibleNotes = allNotes.filter(n => n.style.display !== 'none');
-    // Check if there are any open previews
-    const openPreviews = visibleNotes.filter(n => n.querySelector('.image-preview-overlay'));
-    if (openPreviews.length > 0) {
-        // Close all open previews
-        console.log("Closing open previews...");
-        openPreviews.forEach(note => {
-            const overlay = note.querySelector('.image-preview-overlay');
-            if (overlay) overlay.remove();
-        });
-    } else {
-        // Open previews
-        console.log("Opening previews...");
-        for (const note of visibleNotes) {
-            // 1. Primary Method: Click the Footer Icon (Standard UI behavior)
-            // This ensures consistency with manual user interaction.
-            const footerIcon = note.querySelector('.footer-icon[data-type="1"]');
-            if (footerIcon) {
-                footerIcon.click();
-                continue; // Success, move to next note
-            }
-            // 2. Fallback Method: Check dataset.previewAttachment (Invisible Metadata)
-            // Useful if for some reason the footer icon is not rendered or found.
-            if (note.dataset.previewAttachment) {
-                try {
-                    const data = JSON.parse(note.dataset.previewAttachment);
-                    showInNotePreview(note, data.fileId, data.mode, data.isVideo);
-                    continue;
-                } catch (e) {
-                    console.log("Error parsing preview attachment data:", e);
-                }
-            }
-        }
-    }
-}
-
-// --- Swipe Navigation for Boards ---
-let touchStartX = 0;
-let touchStartY = 0;
-
-document.addEventListener('touchstart', e => {
-    // Ignore if multi-touch
-    if (e.touches.length > 1) return;
-    touchStartX = e.changedTouches[0].screenX;
-    touchStartY = e.changedTouches[0].screenY;
-}, { passive: true });
-
-document.addEventListener('touchend', e => {
-    // Ignore if multi-touch
-    if (e.changedTouches.length > 1) return;
-
-    // Check if any modal is open
-    if (document.querySelector('.modal-overlay.visible')) return;
-
-    // Check if target is scrollable horizontally
-    let target = e.target;
-    while (target && target !== document.body) {
-        // Simple check for potentially scrollable elements
-        if (['PRE', 'CODE', 'TABLE', 'TH', 'TD'].includes(target.tagName)) return;
-        // Check if element has horizontal scroll
-        if (target.scrollWidth > target.clientWidth) {
-            return;
-        }
-        target = target.parentElement;
-    }
-
-    const touchEndX = e.changedTouches[0].screenX;
-    const touchEndY = e.changedTouches[0].screenY;
-    handleSwipe(touchStartX, touchStartY, touchEndX, touchEndY);
-}, { passive: true });
-
-function handleSwipe(startX, startY, endX, endY) {
-    const minSwipeDistance = 100;
-    const maxVerticalDistance = 60;
-
-    const diffX = endX - startX;
-    const diffY = endY - startY;
-
-    if (Math.abs(diffX) > minSwipeDistance && Math.abs(diffY) < maxVerticalDistance) {
-        if (diffX > 0) {
-            // Right Swipe -> Previous (Left)
-            navigateBoard(-1);
-        } else {
-            // Left Swipe -> Next (Right)
-            navigateBoard(1);
-        }
-    }
-}
-
-function navigateBoard(direction) {
-    const buttons = Array.from(document.querySelectorAll('.board-menu-container .board-filter-link'));
-    if (!buttons.length) return;
-
-    let currentIndex = buttons.findIndex(btn => btn.classList.contains('selected-board'));
-
-    // If no board is selected (e.g. initial state or cleared), assume 0
-    if (currentIndex === -1) currentIndex = 0;
-
-    let nextIndex = currentIndex + direction;
-
-    // Cyclic navigation
-    if (nextIndex < 0) nextIndex = buttons.length - 1;
-    if (nextIndex >= buttons.length) nextIndex = 0;
-
-    const targetBtn = buttons[nextIndex];
-    if (targetBtn) {
-        targetBtn.click();
-    }
-}
-
-//     <!-- === --- === В Т О Р А   В Е Р С И Я === --- === -->
-
-// Settings 2 IIFE removed
-
-// --- Save Button Listener ---
-// --- Save Button Listener ---
-(function () {
-    const saveBtn = document.getElementById('save-btn');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (typeof exportNotes === 'function') exportNotes();
-            else console.error('exportNotes function not found');
-        });
-    }
-    const saveDbBtn = document.getElementById('save-db-btn');
-    if (saveDbBtn) {
-        saveDbBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (typeof exportNotesFromDB === 'function') exportNotesFromDB();
-            else console.error('exportNotesFromDB function not found');
-        });
-    }
-    const saveIndividualBtn = document.getElementById('save-individual-btn');
-    if (saveIndividualBtn) {
-        saveIndividualBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (typeof exportToIndividualFiles === 'function') exportToIndividualFiles();
-            else console.error('exportToIndividualFiles function not found');
-        });
-    }
-})();
-
-/**
- * Updates the visibility of elements in Advanced Settings based on application state.
- */
-async function updateAdvancedSettingsVisibility() {
-    const saveDbWrapper = document.getElementById('save-db-wrapper');
-    const saveIndividualWrapper = document.getElementById('save-individual-wrapper');
-
-    // Sync checkboxes
-    const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
-    const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
-    const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
-    const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-
-    if (useArhDbCheckbox) useArhDbCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
-    if (useLocalDbCheckbox) useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
-    if (useGoogleDbCheckbox) useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
-    if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-
-    // Manage visibility of export buttons
-    const useIndexedDbLive = localStorage.getItem('useIndexedDb') === 'true';
-
-    // Individual save is always visible if supported by browser
-    if (saveIndividualWrapper) {
-        saveIndividualWrapper.style.display = (window.showDirectoryPicker) ? 'block' : 'none';
-    }
-
-    if (!saveDbWrapper) return;
-
-    // The button "Save from DB" makes sense ONLY if DB mode is OFF and DB is NOT empty.
-    if (useIndexedDbLive) {
-        saveDbWrapper.style.display = 'none';
-        return;
-    }
-
-    try {
-        const dbExistsLive = await checkDbExists(NOTES_DB_NAME);
-        if (!dbExistsLive) {
-            saveDbWrapper.style.display = 'none';
-            return;
-        }
-
-        const db = await openNotesDB();
-        const transaction = db.transaction([BOARD_STORE_NAME], 'readonly');
-        const store = transaction.objectStore(BOARD_STORE_NAME);
-        const countRequest = store.count();
-
-        countRequest.onsuccess = () => {
-            const count = countRequest.result;
-            saveDbWrapper.style.display = (count > 0) ? 'block' : 'none';
-            db.close();
-        };
-        countRequest.onerror = () => {
-            saveDbWrapper.style.display = 'none';
-            db.close();
-        };
-    } catch (e) {
-        console.warn("Failed to check DB count for Settings2 visibility:", e);
-        saveDbWrapper.style.display = 'none';
-    }
-}
-
-// --- Edit Note on Ctrl+Click (DB Mode) ---
-const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
-const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
-const noCalendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><line x1="3" y1="3" x2="21" y2="21" /></svg>`;
-
-// Helper to parse format string into array of objects
-const parseFormatsString = (str) => {
-    if (!str || str.trim() === "") return [];
-    return str.split(/[|\n]/).filter(f => f.trim() !== "").map(f => {
-        try { return JSON.parse(f); } catch (e) { return null; }
-    }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
-};
-
-// Helper to stringify array of objects back to format string
-const stringifyFormatsArray = (arr) => {
-    return arr.map(f => JSON.stringify(f)).join('|');
-};
-
-function scrollCaretIntoView(textarea) {
-    if (!textarea) return;
-    const text = textarea.value;
-    const pos = textarea.selectionStart;
-
-    // Създаваме временен "mirror" елемент, за да изчислим височината до курсора
-    const mirror = document.createElement('div');
-    const styles = getComputedStyle(textarea);
-
-    // Копираме всички критични стилове за оформлението
-    const stylesToCopy = [
-        'fontFamily', 'fontSize', 'fontWeight', 'lineHeight',
-        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-        'width', 'boxSizing', 'whiteSpace', 'wordWrap'
-    ];
-
-    stylesToCopy.forEach(prop => { mirror.style[prop] = styles[prop]; });
-    mirror.style.position = 'absolute';
-    mirror.style.visibility = 'hidden';
-    mirror.style.height = 'auto';
-    mirror.style.overflow = 'hidden';
-
-    // Вземаме текста до позицията на курсора
-    const textBeforeCaret = text.substring(0, pos);
-    mirror.textContent = textBeforeCaret;
-
-    // Добавяме маркер, който да ни даде координатите
-    const marker = document.createElement('span');
-    marker.textContent = '|'; // Виртуален курсор
-    mirror.appendChild(marker);
-
-    document.body.appendChild(mirror);
-
-    const caretY = marker.offsetTop;
-    const markerHeight = marker.offsetHeight;
-    const textareaHeight = textarea.clientHeight;
-    const currentScroll = textarea.scrollTop;
-
-    // Проверка дали курсорът е извън видимата област (отгоре или отдолу)
-    if (caretY < currentScroll) {
-        textarea.scrollTop = caretY - 20; // Скролираме нагоре с малък марж
-    } else if (caretY + markerHeight > currentScroll + textareaHeight) {
-        textarea.scrollTop = caretY + markerHeight - textareaHeight + 30; // Скролираме надолу
-    }
-
-    document.body.removeChild(mirror);
-}
-
-function enableNoteEditing(modalBodyElem, charIndex = -1) {
-    if (!modalBodyElem) return;
-
-    // Show board name when editing starts
-    const modalBoardNameEl = document.getElementById('modal-board-name');
-    if (modalBoardNameEl) modalBoardNameEl.style.display = 'block';
-
-    // If already editing, don't re-init
-    if (modalBodyElem.querySelector('textarea')) return;
-
-    // If search is open, we don't close it, so user can keep searching while editing
-    const modalContentBox = modalBodyElem.closest('.modal-content-box');
-    const searchBar = modalContentBox.querySelector('.modal-search-bar');
-    if (searchBar) {
-        // We don't remove it, but we might want to refresh its context if needed
-    }
-
-    const noteGdid = modalBodyElem.dataset.gdid;
-    const noteId = modalBodyElem.dataset.id;
-    const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-    const isHiddenNote = noteObj && noteObj.pass === true;
-
-    let correctedTitleIndex = -1;
-    let correctedBodyIndex = -1;
-
-    let titleText = "";
-    let bodyText = currentModalContent || "";
-    let currentBodyFormats = parseFormatsString(modalBodyElem.dataset.format);
-    let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
-
-    const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) !== -1 : bodyText.includes('|');
-    if ((isHiddenNote || hasPipe) && !modalBodyElem.querySelector('textarea')) {
-        let splitParts = [];
-        if (hasPipe) {
-            const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) : bodyText.indexOf('|');
-            titleText = bodyText.substring(0, pipeIdx);
-            bodyText = bodyText.substring(pipeIdx + 1);
-        }
-
-        let titleCharIdx = -1;
-        let bodyCharIdx = -1;
-        if (charIndex > -1) {
-            if (charIndex <= titleText.length) {
-                titleCharIdx = charIndex;
-            } else {
-                bodyCharIdx = charIndex - (titleText.length + 1);
+                searchIdx = start + (end - start - mdClear.length);
             }
         }
 
-        const titleResult = preEdit(titleText, currentTitleFormats, titleCharIdx);
-        const bodyResult = preEdit(bodyText, currentBodyFormats, bodyCharIdx);
-
-        titleText = titleResult.text;
-        bodyText = bodyResult.text;
-        correctedTitleIndex = titleResult.correctedIndex;
-        correctedBodyIndex = bodyResult.correctedIndex;
-
-        // Store BOTH masked links lists
-        const allMasked = [...(titleResult.maskedLinks || []), ...(bodyResult.maskedLinks || [])];
-        modalBodyElem.dataset.maskedLinks = JSON.stringify(allMasked);
-
-        modalBodyElem.dataset.titleFormat = stringifyFormatsArray(titleResult.formats);
-        modalBodyElem.dataset.format = stringifyFormatsArray(bodyResult.formats);
-    } else {
-        const result = preEdit(bodyText, currentBodyFormats, charIndex);
-        bodyText = result.text;
-        correctedBodyIndex = result.correctedIndex;
-        modalBodyElem.dataset.maskedLinks = JSON.stringify(result.maskedLinks || []);
-        modalBodyElem.dataset.format = stringifyFormatsArray(result.formats);
-    }
-
-    modalBodyElem.innerHTML = '';
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:relative; width:100%; height:100%; display: flex; flex-direction: column;';
-
-    const createEditor = (id, value, height = '100%', isTitle = false) => {
-        const container = document.createElement('div');
-        container.style.cssText = `position:relative; width:100%; height:${height}; overflow:hidden; border-bottom: ${isTitle ? '1px solid #ccc' : 'none'};`;
-
-        const textarea = document.createElement('textarea');
-        textarea.id = id;
-        textarea.value = value;
-        Object.assign(textarea.style, {
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            fontFamily: getComputedStyle(modalBodyElem).fontFamily,
-            fontSize: isTitle ? '1.2em' : getComputedStyle(modalBodyElem).fontSize,
-            fontWeight: isTitle ? 'bold' : 'normal',
-            color: 'inherit',
-            resize: 'none',
-            padding: '10px',
-            boxSizing: 'border-box',
-            overflowY: 'auto',
-            whiteSpace: 'pre-wrap',
-            position: 'relative',
-            zIndex: '2',
-            lineHeight: 'normal'
-        });
-
-        const backdrop = document.createElement('div');
-        backdrop.id = id + '-backdrop';
-        Object.assign(backdrop.style, {
-            position: 'absolute',
-            top: '0',
-            left: '0',
-            width: '100%',
-            height: '100%',
-            padding: '10px',
-            boxSizing: 'border-box',
-            fontFamily: textarea.style.fontFamily,
-            fontSize: textarea.style.fontSize,
-            fontWeight: textarea.style.fontWeight,
-            lineHeight: 'normal',
-            whiteSpace: 'pre-wrap',
-            wordWrap: 'break-word',
-            color: 'transparent',
-            pointerEvents: 'none',
-            zIndex: '1',
-            overflow: 'hidden'
-        });
-
-        container.appendChild(backdrop);
-        container.appendChild(textarea);
-        return { container, textarea, backdrop };
-    };
-
-    if ((isHiddenNote || titleText !== "") && bodyText !== null) {
-        const titleEditor = createEditor('note-edit-title-textarea', titleText, '60px', true);
-        const bodyEditor = createEditor('note-edit-textarea', bodyText, 'calc(100% - 60px)');
-
-        wrapper.appendChild(titleEditor.container);
-        wrapper.appendChild(bodyEditor.container);
-    } else {
-        const editor = createEditor('note-edit-textarea', bodyText);
-        wrapper.appendChild(editor.container);
-    }
-
-    modalBodyElem.appendChild(wrapper);
-
-    const bodyTextarea = document.getElementById('note-edit-textarea');
-    const bodyBackdrop = document.getElementById('note-edit-textarea-backdrop');
-    const titleTextarea = document.getElementById('note-edit-title-textarea');
-    const titleBackdrop = document.getElementById('note-edit-title-textarea-backdrop');
-
-    // Sync scrolling for both if applicable (mostly body)
-    if (bodyTextarea && bodyBackdrop) {
-        bodyTextarea.addEventListener('scroll', () => { bodyBackdrop.scrollTop = bodyTextarea.scrollTop; });
-        bodyBackdrop.addEventListener('scroll', () => { bodyTextarea.scrollTop = bodyBackdrop.scrollTop; });
-        bodyTextarea.addEventListener('input', () => { handleEditInput(bodyTextarea, bodyBackdrop); });
-        handleEditInput(bodyTextarea, bodyBackdrop);
-    }
-    if (titleTextarea && titleBackdrop) {
-        titleTextarea.addEventListener('scroll', () => { titleBackdrop.scrollTop = titleTextarea.scrollTop; });
-        titleBackdrop.addEventListener('scroll', () => { titleTextarea.scrollTop = titleBackdrop.scrollTop; });
-        titleTextarea.addEventListener('input', () => { handleEditInput(titleTextarea, titleBackdrop); });
-        handleEditInput(titleTextarea, titleBackdrop);
-    }
-
-    initNoteEditUI();
-
-    const focusEl = (charIndex !== -1 && bodyTextarea) ? bodyTextarea : (titleTextarea || bodyTextarea);
-
-    if (focusEl) {
-        focusEl.focus();
-        if (correctedTitleIndex > -1 && titleTextarea) {
-            titleTextarea.setSelectionRange(correctedTitleIndex, correctedTitleIndex);
-        } else if (correctedBodyIndex > -1 && bodyTextarea) {
-            bodyTextarea.setSelectionRange(correctedBodyIndex, correctedBodyIndex);
-        } else {
-            placeCaretAtEnd(focusEl);
+        if (formats.length === 0) {
+            return processNoteContent(localText, isForModal);
         }
-        // --- SCROLL TO CARET LOGIC ---
-        setTimeout(() => {
-            const textarea = document.activeElement;
-            if (textarea && (textarea.id === 'note-edit-textarea' || textarea.id === 'note-edit-title-textarea')) {
-                scrollCaretIntoView(textarea);
-            }
-        }, 150);
-    }
-
-    // if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
-}
-
-function getPreciseCharIndex(container, range) {
-    let charCount = 0;
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
-        acceptNode: (node) => {
-            if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'BR') return NodeFilter.FILTER_SKIP;
-            return NodeFilter.FILTER_ACCEPT;
-        }
-    });
-
-    while (walker.nextNode()) {
-        const node = walker.currentNode;
-        if (node === range.startContainer) {
-            charCount += range.startOffset;
-            break;
-        }
-        if (node.nodeType === Node.TEXT_NODE) {
-            charCount += node.textContent.length;
-        } else if (node.tagName === 'BR') {
-            charCount += 1; // Count <br> as \n
-        }
-    }
-    return charCount;
-}
-
-/**
- * Глобален слушател за прихващане на системни преки пътища (Ctrl+N, Ctrl+U и др.)
- */
-document.addEventListener('keydown', (e) => {
-    const activeTextarea = document.activeElement;
-    if (!activeTextarea || (activeTextarea.id !== 'note-edit-textarea' && activeTextarea.id !== 'note-edit-title-textarea')) return;
-
-    if (e.ctrlKey || e.metaKey) {
-        const key = e.key.toLowerCase();
-        const code = e.code;
-        const isB = (code === 'KeyB' || key === 'b');
-        const isI = (code === 'KeyI' || key === 'i');
-        const isU = (code === 'KeyU' || key === 'u');
-        const isD = (code === 'KeyD' || key === 'd');
-
-        if (isB || isI || isU || isD) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-
-            const backdropId = (activeTextarea.id === 'note-edit-textarea') ? 'note-edit-textarea-backdrop' : 'note-edit-title-textarea-backdrop';
-            const backdrop = document.getElementById(backdropId);
-
-            formatKeyboardHotkeys(activeTextarea, backdrop, isB, isI, isU, isD);
-        }
-    }
-}, true); // Capture phase is crucial for overriding browser defaults
-
-// --- Escape key to close modals ---
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        const visibleModal = document.querySelector('.modal-overlay.visible');
-        if (visibleModal) {
-            const closeBtn = visibleModal.querySelector('.modal-close');
-            if (closeBtn) {
-                closeBtn.click();
-            } else {
-                // Fallback for settings or other specific close buttons
-                const settingsClose = document.getElementById('settings-close-btn');
-                if (settingsClose && visibleModal.contains(settingsClose)) {
-                    settingsClose.click();
-                } else {
-                    visibleModal.classList.remove('visible');
-                }
-            }
-        }
-    }
-});
-
-
-
-
-function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD) {
-    let symbol = '';
-    if (isB) symbol = localStorage.getItem('mdBold') || '**';
-    else if (isI) symbol = localStorage.getItem('mdItalic') || '*';
-    else if (isU) symbol = localStorage.getItem('mdUnderline') || '_';
-    else if (isD) symbol = localStorage.getItem('mdStrike') || '~~';
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end);
-    const replacement = symbol + selectedText + symbol;
-
-    textarea.setRangeText(replacement, start, end, 'select');
-
-    if (start === end) {
-        textarea.selectionStart = start + symbol.length;
-        textarea.selectionEnd = textarea.selectionStart;
-    } else {
-        textarea.selectionStart = start + symbol.length;
-        textarea.selectionEnd = start + symbol.length + selectedText.length;
-    }
-
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-// --- Logic for preserving formatting during editing ---
-function handleEditInput(textarea, backdrop) {
-    const modalBodyElem = document.getElementById('modal-body');
-    if (!modalBodyElem) return;
-
-    const isTitle = textarea.id === 'note-edit-title-textarea';
-    const storageKey = isTitle ? 'titleFormat' : 'format';
-    let formats = [];
-    const fmtStr = modalBodyElem.dataset[storageKey];
-
-    if (fmtStr && fmtStr.trim() !== '') {
-        formats = fmtStr.split('|').map(p => {
-            try { return JSON.parse(p); } catch (e) { return null; }
-        }).filter(f => f && f.start !== undefined);
-    }
-
-    const text = textarea.value;
-    const lastVal = textarea.dataset.lastVal || text;
-    const diff = text.length - lastVal.length;
-    const pos = textarea.selectionStart;
-
-    if (diff > 0) {
-        const P = pos - diff;
-        const L = diff;
+        // Continue with localText instead of text
+        const points = new Set([0, localText.length]);
         formats.forEach(f => {
-            if (P <= f.start) { f.start += L; f.end += L; }
-            else if (P < f.end) { f.end += L; }
-        });
-    } else if (diff < 0) {
-        const L = Math.abs(diff);
-        const P = pos;
-        formats.forEach(f => {
-            if (f.start > P + L) f.start -= L; else if (f.start > P) f.start = P;
-            if (f.end > P + L) f.end -= L; else if (f.end > P) f.end = P;
-        });
-    }
-
-    textarea.dataset.lastVal = text;
-    if (diff !== 0) {
-        modalBodyElem.dataset[storageKey] = formats.map(f => JSON.stringify(f)).join('|');
-    }
-
-    // Render Backdrop
-    if (!formats.length) {
-        backdrop.innerText = text;
-    } else {
-        const points = new Set([0, text.length]);
-        formats.forEach(f => {
-            points.add(Math.max(0, Math.min(text.length, f.start)));
-            points.add(Math.max(0, Math.min(text.length, f.end)));
+            points.add(f.start);
+            points.add(f.end);
         });
         const sortedPoints = Array.from(points).sort((a, b) => a - b);
         let html = '';
         for (let i = 0; i < sortedPoints.length - 1; i++) {
             const start = sortedPoints[i];
             const end = sortedPoints[i + 1];
-            let segment = text.substring(start, end);
-            const isFormatted = formats.some(f => start >= f.start && end <= f.end);
-            segment = segment.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            if (isFormatted) {
-                html += `<span style="border-bottom: 2px dashed black; background-color: rgba(128, 128, 128, 0.3);">${segment}</span>`;
+            const segmentText = localText.substring(start, end);
+            if (segmentText.length === 0) continue;
+            const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
+            // Use processNoteContent instead of renderNoteContent
+            let formattedSegment = processNoteContent(segmentText, isForModal);
+            activeFormats.sort((a, b) => a.type - b.type); // Sort ascending to apply inline styles (bold/italic/etc) first
+            activeFormats.forEach(format => {
+                const {
+                    type,
+                    paramint,
+                    paramfloat
+                } = format;
+                switch (type) {
+                    case 1: // bold
+                        formattedSegment = `<strong>${formattedSegment}</strong>`;
+                        break;
+                    case 2: // italic
+                        formattedSegment = `<em>${formattedSegment}</em>`;
+                        break;
+                    case 3: // underline
+                        formattedSegment = `<u>${formattedSegment}</u>`;
+                        break;
+                    case 4: // text color
+                    case 5: // background color
+                        {
+                            let aVal = (paramint >> 24) & 0xff;
+                            // If alpha is 0, but the color is not black, assume it should be opaque.
+                            if (aVal === 0 && (paramint & 0x00ffffff) !== 0) {
+                                aVal = 255;
+                            }
+                            const r = (paramint >> 16) & 0xff;
+                            const g = (paramint >> 8) & 0xff;
+                            const b = paramint & 0xff;
+                            const a = aVal / 255;
+                            const rgbaColor = `rgba(${r}, ${g}, ${b}, ${a})`;
+                            if (type === 4) {
+                                formattedSegment = `<span style="color: ${rgbaColor};">${formattedSegment}</span>`;
+                            } else {
+                                formattedSegment = `<span style="background-color: ${rgbaColor};">${formattedSegment}</span>`;
+                            }
+                            break;
+                        }
+                    case 6: // font size
+                        {
+                            if (paramfloat && paramfloat > 0) {
+                                const fontSizeInPercent = (paramfloat * 100).toFixed(1);
+                                formattedSegment = `<span style="font-size: ${fontSizeInPercent}%; display: inline; line-height: normal;">${formattedSegment}</span>`;
+                            }
+                            break;
+                        }
+                    case 7: // strike-through
+                        formattedSegment = `<s>${formattedSegment}</s>`;
+                        break;
+                    default:
+                        break;
+                }
+            });
+            html += formattedSegment;
+        }
+        return html;
+    }
+
+    /**
+     * Обработва и създава UI за прикачен файл от локална папка.
+     * @param {object} attachment - Обектът на прикачения файл.
+     * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
+     * @param {object} iconData - SVG иконата за типа на файла.
+     */
+    async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local', isForModal = false) {
+        const iconDiv = document.createElement('div');
+        iconDiv.innerHTML = iconData.svg;
+        const filename = attachment.path ? attachment.path.split('/').pop() : '';
+        const archiveFolderName = dirHandle.name;
+        const createLink = async (folderName, textPrefix) => {
+            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+            if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
+                const span = document.createElement('span');
+                span.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
+                return span;
+            }
+            const link = document.createElement('a');
+            link.href = '#';
+            link.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // --- КОРЕКЦИЯ: Зареждаме dirHandle при нужда в режим "Само база данни" ---
+                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+                if (isDbOnlyMode && !dirHandle) {
+                    const dbSource = await getConfig('dbSource');
+                    let handleKey = null;
+                    if (dbSource === 2) handleKey = 'directoryHandle';
+                    else if (dbSource === 3) handleKey = 'arhHandle';
+                    if (handleKey) {
+                        const handle = await getConfig(handleKey);
+                        if (handle) {
+                            const verifiedHandle = await verifyPermission(handle);
+                            if (verifiedHandle) dirHandle = verifiedHandle;
+                        }
+                    }
+                    // Ако и след този опит нямаме handle, показваме съобщение и прекратяваме.
+                    if (!dirHandle) {
+                        showToast(_('noUpdateMode'), 5000);
+                        return;
+                    }
+                }
+                if (!filename) return;
+                console.log(`Opening file: ${folderName}/${filename}   DirHandle:`, dirHandle);
+                try {
+                    const fileHandle = mode === 'local'
+                        ? await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(filename)
+                        : await dirHandle.getFileHandle(filename); // Винаги използваме filename
+                    const file = await fileHandle.getFile();
+                    window.open(URL.createObjectURL(file), '_blank');
+                } catch (err) {
+                    console.log(`Could not open local file ${folderName}/${filename}`, err);
+                    showToast(_('errorOpenFile').replace('{filename}', filename));
+                }
+            };
+            link.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
+            return link;
+        };
+        const appendWithDescription = async (folder, prefix, description) => {
+            const container = document.createElement('div');
+            container.style.flexGrow = '1';
+            container.style.flexShrink = '1';
+            container.style.minWidth = '0';
+            container.appendChild(await createLink(folder, prefix));
+            const line2 = document.createElement('div');
+            line2.textContent = description || '';
+            container.appendChild(line2);
+            attachmentWrapper.appendChild(container);
+        };
+        switch (attachment.type) {
+            case 1: // Image
+                const imgLink = await createLink(mode === 'local' ? 'Images' : '', mode === 'local' ? '' : '');
+                attachmentWrapper.appendChild(imgLink);
+                // Добавяме липсващата логика за преглед при клик на иконата
+                addInNotePreviewListener(iconDiv, attachment.path, mode, false);
+                break;
+            case 2: // Sound
+                await appendWithDescription(
+                    mode === 'local' ? 'Sound' : '',
+                    mode === 'local' ? '' : '', // `${archiveFolderName}/`
+                    attachment.description
+                );
+                break;
+            case 3: // Other
+                attachmentWrapper.appendChild(await createLink(
+                    mode === 'local' ? 'Other' : '',
+                    mode === 'local' ? '' : '' // `${archiveFolderName}/`
+                ));
+                break;
+            case 4: // Video
+                const videoContainer = document.createElement('div');
+                videoContainer.appendChild(await createLink(mode === 'local' ? 'Video' : '', mode === 'local' ? '' : ''));
+                videoContainer.appendChild(document.createTextNode(attachment.description || ''));
+                attachmentWrapper.appendChild(videoContainer);
+                addInNotePreviewListener(iconDiv, attachment.path, mode, true);
+                break;
+            case 5: // Location
+                const parts = attachment.path.split('|');
+                if (parts.length < 3) break;
+                const [lat, lng, label] = parts;
+                const textContainer = document.createElement('div');
+                const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+                const isForModal = !!attachmentWrapper.closest('#modal-body');
+                let linkElement;
+                if (!isForModal && !oneTapLinksEnabled) {
+                    linkElement = document.createElement('span');
+                    linkElement.textContent = `${lat}, ${lng}`;
+                } else {
+                    linkElement = document.createElement('a');
+                    linkElement.textContent = `${lat}, ${lng}`;
+                    linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                    linkElement.target = '_blank';
+                    linkElement.rel = 'noopener noreferrer';
+                    linkElement.onclick = (e) => e.stopPropagation();
+                }
+                textContainer.appendChild(linkElement);
+                const line2 = document.createElement('div');
+                line2.textContent = label;
+                textContainer.appendChild(line2);
+                attachmentWrapper.appendChild(textContainer);
+                break;
+        }
+        // Добавяме стандартния listener за показване на JSON данни само в дебъг режим
+        if (debug) {
+            iconDiv.style.cursor = 'pointer';
+            iconDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                let debugText = JSON.stringify(attachment, null, 2);
+                if (attachment.gdid && localFileMap.has(attachment.gdid)) {
+                    debugText = `File: ${localFileMap.get(attachment.gdid)}\n\n` + debugText;
+                }
+                showModal(debugText);
+            });
+        }
+        attachmentWrapper.prepend(iconDiv);
+    }
+
+    /**
+     * Обработва и създава UI за прикачен файл от Google Drive.
+     * @param {object} attachment - Обектът на прикачения файл.
+     * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
+     * @param {object} iconData - SVG иконата за типа на файла.
+     */
+    async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, isForModal = false) {
+        const iconDiv = document.createElement('div');
+        iconDiv.innerHTML = iconData.svg;
+        if (!attachment.path) {
+            iconDiv.style.cursor = 'pointer';
+            iconDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                let debugText = JSON.stringify(attachment, null, 2);
+                if (attachment.gdid && localFileMap.has(attachment.gdid)) {
+                    debugText = `File: ${localFileMap.get(attachment.gdid)}\n\n` + debugText;
+                }
+                showModal(debugText);
+            });
+            attachmentWrapper.prepend(iconDiv);
+            return;
+        }
+        const filename = attachment.path.split('/').pop();
+        const fileId = attachment.pathGD; // Вече имаме fileId директно в attachment обекта.
+        // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
+        const setupLink = (folderName, textPrefix) => {
+            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+            let linkElement;
+            if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
+                linkElement = document.createElement('span');
+                linkElement.textContent = textPrefix + filename;
+                return linkElement; // Връщаме span елемента
+            }
+            linkElement = document.createElement('a');
+            linkElement.href = '#'; // href вече не сочи директно към файла.
+            linkElement.textContent = textPrefix + filename;
+            linkElement.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
+            linkElement.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
+            linkElement.title = `Click to open ${filename} from Google Drive`;
+            linkElement.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Authentication is handled inside showInNotePreview -> loadMedia, or locally for other files
+                // --- IMPROVED ATTACHMENT OPENING (Avoid Account Prompt) ---
+                if (fileId) {
+                    // For media (Images, Sound, Video), use internal authenticated viewer
+                    if (attachment.type === 1 || attachment.type === 2 || attachment.type === 4) {
+                        let targetEl = linkElement.closest('.note') || document.getElementById('modal-body') || document.body;
+                        const noteGdid = attachment.noteid || (isForModal && typeof isForModal === 'object' ? isForModal.gdid : null);
+                        if (!noteGdid) {
+                            // Fallback: just preview this single one if we can't find others
+                            showInNotePreview(targetEl, [{ pathGD: fileId, type: attachment.type }], 0, 'gdrive', attachment.type === 4);
+                            return;
+                        }
+                        const attachmentsOfType = mediaData.filter(m => m.noteid === noteGdid && m.type === attachment.type);
+                        const currentIndex = attachmentsOfType.findIndex(m => (m.pathGD || m.path) === fileId);
+                        showInNotePreview(targetEl, attachmentsOfType, currentIndex !== -1 ? currentIndex : 0, 'gdrive', attachment.type === 4);
+                        return;
+                    }
+                    // For other files, try fetching with token and opening the blob to skip Google Auth prompt
+                    showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
+                    try {
+                        const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
+                        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                            headers: { 'Authorization': `Bearer ${tokenObj ? tokenObj.access_token : ''}` }
+                        });
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const blob = await response.blob();
+                        const blobUrl = URL.createObjectURL(blob);
+                        window.open(blobUrl, '_blank');
+                    } catch (error) {
+                        console.warn("Auth-based fetch failed, falling back to direct link:", error);
+                        window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer');
+                    }
+                } else {
+                    showToast(_('errorFetchFileId').replace('{fileName}', linkElement.dataset.fileName));
+                }
+            };
+            return linkElement; // Връщаме конфигурирания 'a' елемент
+        };
+        switch (attachment.type) {
+            case 1: // Image
+                const imgLink = setupLink('Images', '');
+                addInNotePreviewListener(iconDiv, fileId, 'gdrive', false);
+                attachmentWrapper.appendChild(imgLink);
+                break;
+            case 2: // Sound
+                const soundLink = setupLink('Sound', '');
+                const soundTextContainer = document.createElement('div');
+                soundTextContainer.style.flexGrow = '1';
+                soundTextContainer.style.flexShrink = '1';
+                soundTextContainer.style.minWidth = '0';
+                soundTextContainer.appendChild(soundLink);
+                const soundLine2 = document.createElement('div');
+                soundLine2.textContent = attachment.description || '';
+                soundTextContainer.appendChild(soundLine2);
+                attachmentWrapper.appendChild(soundTextContainer);
+                break;
+            case 3: // Other
+                const otherLink = setupLink('Other', '');
+                attachmentWrapper.appendChild(otherLink);
+                break;
+            case 4: // Video
+                const videoLink = setupLink('Video', '');
+                const videoTextContainer = document.createElement('div');
+                videoTextContainer.style.flexGrow = '1';
+                videoTextContainer.style.flexShrink = '1';
+                videoTextContainer.style.minWidth = '0';
+                videoTextContainer.appendChild(videoLink);
+                const videoLine2 = document.createElement('div');
+                videoLine2.textContent = attachment.description || '';
+                videoTextContainer.appendChild(videoLine2);
+                addInNotePreviewListener(iconDiv, fileId, 'gdrive', true);
+                attachmentWrapper.appendChild(videoTextContainer);
+                break;
+            case 5: // Location
+                const parts = attachment.path.split('|');
+                if (parts.length < 3) break;
+                const [lat, lng, label] = parts;
+                const textContainer = document.createElement('div');
+                const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+                const isForModal = !!attachmentWrapper.closest('#modal-body');
+                let linkElement;
+                if (!isForModal && !oneTapLinksEnabled) {
+                    linkElement = document.createElement('span');
+                    linkElement.textContent = `${lat}, ${lng}`;
+                } else {
+                    linkElement = document.createElement('a');
+                    linkElement.textContent = `${lat}, ${lng}`;
+                    linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                    linkElement.target = '_blank';
+                    linkElement.rel = 'noopener noreferrer';
+                    linkElement.onclick = (e) => e.stopPropagation();
+                }
+                textContainer.appendChild(linkElement);
+                const line2 = document.createElement('div');
+                line2.textContent = label;
+                textContainer.appendChild(line2);
+                attachmentWrapper.appendChild(textContainer);
+                break;
+        }
+        if (attachment.type !== 1 && attachment.type !== 4) { // Add generic info click for non-preview types
+            iconDiv.style.cursor = 'pointer';
+        }
+        // Винаги добавяме listener за показване на JSON в дебъг режим
+        if (debug) {
+            iconDiv.style.cursor = 'pointer';
+            iconDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showModal(JSON.stringify(attachment, null, 2));
+            });
+        }
+        attachmentWrapper.prepend(iconDiv);
+    }
+
+    async function createNoteElement(noteContent) {
+        const note = document.createElement('div');
+        const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
+        note.className = 'note';
+        note.style.display = 'none'; // Keep hidden until applyFilters runs to prevent flashing
+        if (notesBgrdEnabled) {
+            note.classList.add('note-item');
+        }
+        let fileContent = '';
+        let noteGdid = null;
+        let noteID = null;
+        let noteColor = null;
+        let textSpan = null;
+        let titleSpan = null;
+        let extraData = {};
+        const fullNoteContent = noteContent; // Вече имаме целия обект
+        try {
+            if (noteContent && (noteContent.notetxt !== undefined || noteContent.text !== undefined)) {
+                fileContent = noteContent.notetxt !== undefined ? noteContent.notetxt : noteContent.text;
+                noteGdid = noteContent.gdid;
+                noteID = noteContent.id;
+                // --- Mark as update if in updated list ---
+                if (updatedNoteGdims.includes(noteGdid)) {
+                    note.classList.add('new-update');
+                }
+                noteColor = noteContent.color;
+                if (noteContent.text_span) {
+                    textSpan = noteContent.text_span;
+                }
+                if (noteContent.title_span) {
+                    titleSpan = noteContent.title_span;
+                }
+                extraData = { ...noteContent };
+                delete extraData.notetxt;
+                // --- OPTIMIZATION: Use individual SHORT dataset attributes ---
+                // data-g -> gdid, data-i -> id
+                if (noteGdid) note.dataset.g = noteGdid;
+                if (noteID) note.dataset.i = noteID;
+                // data-b -> boardid
+                if (extraData.boardid !== undefined) note.dataset.b = extraData.boardid;
+                // data-dm -> datemod
+                if (extraData.datemod) note.dataset.dm = extraData.datemod;
+                // data-no -> numord
+                if (extraData.numord !== undefined) note.dataset.no = extraData.numord;
+                // data-s -> status
+                if (extraData.status !== undefined) note.dataset.s = extraData.status;
+                // data-cd -> date (creation date)
+                if (extraData.date) note.dataset.cd = extraData.date;
+                // data-cda -> calendarDate
+                if (extraData.calendarDate) note.dataset.cda = extraData.calendarDate;
+                // data-c -> color
+                if (noteColor !== null && noteColor !== undefined) note.dataset.c = noteColor;
+                // --- Set attributes for special filters (SHORT CODES, "1" for true) ---
+                if (extraData.timer && extraData.timer !== 0) {
+                    note.dataset.tm = '1'; // data-tm
+                }
+                // if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
+                if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
+                    // Color will be handled by canvas background
+                }
+                if (extraData.status === 1) {
+                    // Do not skip deleted notes in the UI entirely, so Trash board can load them.
+                    // ApplyFilters will take care of hiding them from everywhere else.
+                    // return null; 
+                }
+            } else { throw new Error(_('errorNoteFieldMissing')); }
+        } catch (e) { fileContent = _('errorNoteParse'); }
+        const isHiddenNote = extraData.pass === true;
+        const isType1Note = extraData.type === 1;
+        // let attachments = [];
+        let noteTitle = '';
+        let displayContent = fileContent;
+        if (isHiddenNote) {
+            const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
+            const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
+            noteTitle = previewContent.split('\n')[0].trim();
+        } else if (isType1Note) {
+            const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
+            if (pipeIndex !== -1) {
+                noteTitle = fileContent.substring(0, pipeIndex).trim();
+                displayContent = fileContent.substring(pipeIndex + 1).trim();
             } else {
-                html += segment;
+                noteTitle = fileContent.split('\n')[0].substring(0, 50);
+            }
+        } else if (!isHiddenNote) {
+            const lines = fileContent.split('\n');
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (trimmedLine) {
+                    noteTitle = trimmedLine.substring(0, 50);
+                    break;
+                }
             }
         }
-        backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
-    }
-}
-
-function initNoteEditUI() {
-    const contentModal = document.getElementById('content-modal');
-    const modalContentBox = contentModal?.querySelector('.modal-content-box');
-    const footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
-
-    // Add save button if not exists
-    if (!document.getElementById('note-save-btn')) {
-        const saveBtn = document.createElement('div');
-        saveBtn.id = 'note-save-btn';
-        saveBtn.className = 'modal-footer-btn';
-        saveBtn.innerHTML = diskIconSvg;
-        saveBtn.title = _('saveTooltip') || "Save changes";
-        saveBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (typeof saveEditedNote === 'function') saveEditedNote();
-        });
-
-        // Add preview button
-        const previewBtn = document.createElement('div');
-        previewBtn.id = 'note-preview-btn';
-        previewBtn.className = 'modal-footer-btn';
-        previewBtn.innerHTML = eyeIconSvg;
-        previewBtn.style.backgroundColor = '#4a90e2';
-        previewBtn.title = _('previewTooltip') || "Preview changes";
-        previewBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (typeof previewEditedNote === 'function') previewEditedNote();
-        });
-
-        if (footerToolbar) {
-            // We append them in order: Preview, Search (already exists, will move), Save
-            const existingSearchBtn = document.getElementById('note-search-btn');
-            footerToolbar.appendChild(previewBtn);
-            if (existingSearchBtn) footerToolbar.appendChild(existingSearchBtn);
-            footerToolbar.appendChild(saveBtn);
-        } else if (modalContentBox) {
-            const existingSearchBtn = document.getElementById('note-search-btn');
-            modalContentBox.appendChild(previewBtn);
-            if (existingSearchBtn) modalContentBox.appendChild(existingSearchBtn);
-            modalContentBox.appendChild(saveBtn);
+        if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
+        const titleWrapper = document.createElement('div');
+        const titleEl = document.createElement('h3');
+        // For hidden notes with title_span, apply formatting to the title
+        if (isHiddenNote && titleSpan && titleSpan.trim() !== '') {
+            titleEl.innerHTML = formatText(noteTitle, titleSpan, false);
+        } else {
+            titleEl.textContent = noteTitle;
         }
-    } else {
-        // If buttons already exist, re-append them to ensure order: Preview, Search, Save
-        const sBtn = document.getElementById('note-save-btn');
-        const pBtn = document.getElementById('note-preview-btn');
-        const searchBtn = document.getElementById('note-search-btn');
-        if (footerToolbar) {
-            if (pBtn) footerToolbar.appendChild(pBtn);
-            if (searchBtn) footerToolbar.appendChild(searchBtn);
-            if (sBtn) footerToolbar.appendChild(sBtn);
-        }
-    }
-
-    // Ensure state-specific visibility
-    const saveBtn = document.getElementById('note-save-btn');
-    const previewBtn = document.getElementById('note-preview-btn');
-    const editBtn = document.getElementById('note-edit-btn');
-    const moveBtn = document.getElementById('note-move-btn');
-
-    if (saveBtn) { saveBtn.style.display = 'flex'; saveBtn.style.position = 'static'; }
-    if (previewBtn) { previewBtn.style.display = 'flex'; previewBtn.style.position = 'static'; }
-    if (editBtn) editBtn.style.display = 'none';
-    if (moveBtn) moveBtn.style.display = 'none';
-    const calendarBtn = document.getElementById('note-calendar-btn');
-    if (calendarBtn) calendarBtn.style.display = 'none';
-    const searchBtn = document.getElementById('note-search-btn');
-    if (searchBtn) searchBtn.style.display = 'flex';
-    const colorBtn = document.getElementById('modal-color-btn');
-    if (colorBtn) colorBtn.style.display = 'flex';
-    // Remove graphical background for edit mode
-    const modalBodyEl = document.getElementById('modal-body');
-    if (modalContentBox) {
-        modalContentBox.style.backgroundImage = 'none';
-        modalContentBox.classList.add('no-bg-image');
-    }
-    if (modalBodyEl) modalBodyEl.classList.add('no-bg-image');
-}
-
-function placeCaretAtEnd(el) {
-    el.focus();
-    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-        const len = el.value.length;
-        el.setSelectionRange(len, len);
-    } else if (typeof window.getSelection != "undefined" && typeof document.createRange != "undefined") {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-    }
-}
-
-document.addEventListener('click', (e) => {
-    // Check for Ctrl key - Only then proceed with edit checks
-    if (!e.ctrlKey) return;
-
-    // Check for target is inside modal-body and NOT inside footer/header
-    const modalBodyElem = document.getElementById('modal-body');
-    if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
-
-    // Explicitly ignore clicks on footer or any other elements appended to modalBody
-    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
-
-    // Check if Database mode is active OR if GDrive update is enabled
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-    const noteGdid = modalBodyElem.dataset.gdid;
-
-    if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) {
-        // Warn if trying to edit but can't save anywhere
-        showToast("Editing requires Database Mode or 'Update Google Drive' enabled.", 3000);
-        return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    enableNoteEditing(modalBodyElem);
-}, true);
-
-/* / --- Long Press for Editing (Mobile) ---
-let editLongPressTimer;
-let editLongPressTriggered = false;
-document.addEventListener('touchstart', (e) => {
-    const modalBodyElem = document.getElementById('modal-body');
-    if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
-    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
- 
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-    const noteGdid = modalBodyElem.dataset.gdid;
- 
-    // If not editable, just return, don't start timer
-    if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) return;
- 
-    editLongPressTriggered = false;
-    editLongPressTimer = setTimeout(() => {
-        editLongPressTriggered = true;
-        enableNoteEditing(modalBodyElem);
-        if (navigator.vibrate) navigator.vibrate(50);
-        editLongPressTimer = null;
-    }, 800);
-}, { passive: true });
- 
-document.addEventListener('touchend', () => {
-    if (editLongPressTimer) {
-        clearTimeout(editLongPressTimer);
-        editLongPressTimer = null;
-    }
-});
- 
-document.addEventListener('touchmove', () => {
-    if (editLongPressTimer) {
-        clearTimeout(editLongPressTimer);
-        editLongPressTimer = null;
-    }
-});*/
-
-document.addEventListener('contextmenu', (e) => {
-    /* if (editLongPressTriggered) {
-        e.preventDefault();
-        editLongPressTriggered = false;
-        return;
-    } */
-    const modalBodyElem = document.getElementById('modal-body');
-    if (modalBodyElem && modalBodyElem.contains(e.target) && !e.target.closest('.note-footer') && !e.target.closest('.modal-note-footer')) {
-        // If textarea exists, it means we are editing or just started
-        if (modalBodyElem.querySelector('textarea')) {
-            e.preventDefault();
-        }
-    }
-});
-
-// --- Three-way Merge & Conflict Resolution ---
-async function fetchGDriveFileContent(fileId) {
-    if (isOffline) return null;
-    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
-    let accessToken = tokenObj ? tokenObj.access_token : null;
-    if (!accessToken) throw new Error("Missing auth token.");
-    try {
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` },
-            cache: 'no-store'
+        titleEl.className = 'note-title-truncated';
+        // Create header info container for date and time
+        const headerInfoContainer = document.createElement('div');
+        headerInfoContainer.className = 'note-header-info';
+        const headerDate = document.createElement('span');
+        headerDate.className = 'note-header-date';
+        const headerTime = document.createElement('span');
+        headerTime.className = 'note-header-time';
+        // Add click listener to the date to show full note data
+        headerDate.addEventListener('click', (e) => {
+            if (debug) {
+                e.stopPropagation();
+                let debugText = JSON.stringify(fullNoteContent, null, 2);
+                if (fullNoteContent.gdid && localFileMap.has(fullNoteContent.gdid)) {
+                    debugText = `File: ${localFileMap.get(fullNoteContent.gdid)}\n\n` + debugText;
+                }
+                showModal({ raw: debugText, color: 'white' });
+            }
         });
-        if (!response.ok) {
-            if (response.status === 401) {
-                const refreshed = await refreshAuthToken();
-                if (refreshed && refreshed.pass) {
-                    const retry = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-                        headers: { 'Authorization': `Bearer ${refreshed.tokenData.access_token}` },
-                        cache: 'no-store'
+        if (extraData.timer) {
+            const dateText = formatDate(extraData.timer);
+            const showCalIcon = extraData.calendarDate && parseInt(extraData.calendarDate, 10) > 0;
+            if (dateText) {
+                if (showCalIcon) headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+                else headerDate.textContent = dateText;
+            }
+            const timeText = formatTime(extraData.timer);
+            if (timeText) headerTime.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
+        } else if (extraData.calendarDate && extraData.calendarDate > 0) {
+            const dateText = formatDate(extraData.calendarDate);
+            if (dateText) {
+                headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+            }
+        } else if (extraData.datemod) { // Always create the element
+            const dateText = formatDate(extraData.datemod);
+            if (dateText) {
+                headerDate.textContent = dateText; // No icon for datemod
+                headerDate.classList.add('datemod-header-date');
+                const timeText = formatTime(extraData.datemod);
+                if (timeText) headerTime.textContent = timeText;
+            }
+        } else if (extraData.date) { // Fallback to creation date
+            const dateText = formatDate(extraData.date);
+            if (dateText) {
+                headerDate.textContent = dateText; // No icon for datemod
+                headerDate.classList.add('creation-header-date');
+                const timeText = formatTime(extraData.date);
+                if (timeText) headerTime.textContent = timeText;
+            }
+        }
+        headerInfoContainer.appendChild(headerDate);
+        headerInfoContainer.appendChild(headerTime);
+        // Add the new container before the title
+        titleWrapper.appendChild(headerInfoContainer);
+        titleWrapper.appendChild(titleEl);
+        // Use the color map for reliability and define a clear fallback color
+        const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9)
+            ? noteColorMap[noteColor]
+            : '#FBFF86';
+        note.style.margin = '5px';
+        if (notesBgrdEnabled) {
+            const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
+            const cacheKey = `${noteBgColor}_${imageName}`;
+            if (noteBgCache.has(cacheKey)) {
+                // Apply preloaded background instantly
+                note.style.backgroundImage = noteBgCache.get(cacheKey);
+                note.style.backgroundSize = '100% 100%';
+                note.style.backgroundRepeat = 'no-repeat';
+            } else {
+                // Fallback for cases where it wasn't preloaded (e.g. newly created note)
+                // We await it to ensure no "text then background" flicker occurs
+                await new Promise(resolve => {
+                    createColoredNoteBackground(noteBgColor, imageName, 250, 250).then(canvas => {
+                        canvas.toBlob(blob => {
+                            const url = URL.createObjectURL(blob);
+                            const bgUrl = `url("${url}")`;
+                            noteBgCache.set(cacheKey, bgUrl);
+                            note.style.backgroundImage = bgUrl;
+                            note.style.backgroundSize = '100% 100%';
+                            note.style.backgroundRepeat = 'no-repeat';
+                            resolve();
+                        }, 'image/png');
+                    }).catch(() => {
+                        note.style.backgroundColor = noteBgColor; // Only if image fails
+                        resolve();
                     });
-                    if (retry.ok) return await retry.text();
-                }
+                });
             }
-            throw new Error(`HTTP ${response.status}`);
+        } else {
+            note.style.backgroundColor = noteBgColor;
         }
-        return await response.text();
-    } catch (e) { console.error("Fetch GDrive failed:", e); return null; }
-}
-
-function mergeField(base, local, server) {
-    if (String(local) === String(server)) return local;
-    if (String(local) === String(base)) return server;
-    if (String(server) === String(base)) return local;
-    return { conflict: true, local, server };
-}
-
-function mergeNotes(baseNote, localNote, serverNote) {
-    const result = { ...localNote };
-    const conflicts = {};
-    const splitNote = (txt) => {
-        const textStr = txt || "";
-        const pIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(textStr) : textStr.indexOf('|');
-        if (pIdx !== -1) {
-            return { title: textStr.substring(0, pIdx), body: textStr.substring(pIdx + 1), hasSplit: true };
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'note-content-wrapper';
+        note.appendChild(contentWrapper);
+        if (isHiddenNote) {
+            const lockIconOverlay = document.createElement('div');
+            lockIconOverlay.className = 'lock-icon-overlay';
+            lockIconOverlay.innerHTML = lockIconSvg;
+            contentWrapper.appendChild(lockIconOverlay);
         }
-        return { title: textStr, body: "", hasSplit: false };
-    };
-    const b = splitNote(baseNote.notetxt), l = splitNote(localNote.notetxt), s = splitNote(serverNote.notetxt);
-    if (l.hasSplit || s.hasSplit || b.hasSplit) {
-        const mT = mergeField(b.title, l.title, s.title);
-        const mB = mergeField(b.body, l.body, s.body);
-        let fT = mT, fB = mB;
-        if (mT && mT.conflict) { conflicts.title = mT; fT = "<<CONFLICT>>"; }
-        if (mB && mB.conflict) { conflicts.body = mB; fB = "<<CONFLICT>>"; }
-        result.notetxt = fT + '|' + fB;
-    } else {
-        const merged = mergeField(baseNote.notetxt, localNote.notetxt, serverNote.notetxt);
-        if (merged && merged.conflict) { conflicts.notetxt = merged; result.notetxt = "<<CONFLICT>>"; }
-        else result.notetxt = merged;
-    }
-    ['color', 'boardid', 'calendarDate', 'text_span', 'title_span', 'pass'].forEach(key => {
-        if (String(localNote[key]) !== String(baseNote[key]) && String(serverNote[key]) !== String(baseNote[key])) {
-            if (String(localNote[key]) !== String(serverNote[key])) conflicts[key] = { local: localNote[key], server: serverNote[key] };
-        } else if (String(serverNote[key]) !== String(baseNote[key])) result[key] = serverNote[key];
-    });
-    return { result, conflicts };
-}
-
-async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedConflicts) {
-    return new Promise((resolve) => {
-        const overlay = document.createElement('div');
-        overlay.id = 'dual-conflict-overlay';
-        Object.assign(overlay.style, { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' });
-
-        const container = document.createElement('div');
-        const sW = localStorage.getItem('modalWidth') || '400px';
-        const sH = localStorage.getItem('modalHeight') || '300px';
-        Object.assign(container.style, { position: 'relative', width: sW, height: sH, display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px' });
-
-        const renderVersion = (note, zIndex) => {
-            const card = document.createElement('div');
-            card.className = 'modal-content-box';
-            Object.assign(card.style, { position: 'absolute', width: '100%', height: '100%', zIndex: zIndex, transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)', opacity: zIndex > 50 ? '1' : '0.4', transform: zIndex > 50 ? 'scale(1)' : 'scale(0.85) translateY(20px)', pointerEvents: zIndex > 50 ? 'auto' : 'none', margin: '0', display: 'flex', flexDirection: 'column' });
-
-            // Background logic
-            const colorIdx = note.color || 0;
-            card.style.backgroundColor = noteColorMap[colorIdx] || '#FBFF86';
-            if (localStorage.getItem('imgBgrd') !== 'false') card.style.backgroundImage = "url('Note.jpg')";
-
-            // Header: Date only (standard look)
-            const labelEl = document.createElement('div');
-            labelEl.id = 'modal-board-name';
-            labelEl.style.display = 'block'; labelEl.style.left = '15px'; labelEl.style.top = '10px';
-            labelEl.innerHTML = `<span style="font-weight:normal; font-size:11px; opacity:0.6; color:#000;">${new Date(parseInt(note.datemod)).toLocaleString()}</span>`;
-            card.appendChild(labelEl);
-
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'modal-close modal-header-btn';
-            closeBtn.style.right = '10px'; closeBtn.onclick = () => { overlay.remove(); resolve(null); };
-            card.appendChild(closeBtn);
-
-            const bdy = document.createElement('div');
-            bdy.className = 'modal-body'; bdy.style = 'padding:20px; margin-top:40px; overflow-y:auto; flex-grow:1; position:relative;';
-            card.appendChild(bdy);
-
-            // Action Buttons (Bottom Right)
-            const createBtn = (id, icon, right, title) => {
-                const btn = document.createElement('div');
-                btn.innerHTML = icon; btn.title = title;
-                Object.assign(btn.style, { position: 'absolute', bottom: '15px', right: right, width: '40px', height: '40px', backgroundColor: 'darkorange', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', cursor: 'pointer', zIndex: 100 });
-                card.appendChild(btn); return btn;
-            };
-
-            const btnEdit = createBtn('conf-edit', pencilIconSvg, '100px', 'Edit');
-            const btnSave = createBtn('conf-save', diskIconSvg, '50px', 'Use this version');
-            const btnEye = createBtn('conf-eye', eyeIconSvg, '100px', 'Preview');
-            btnSave.style.display = 'flex'; btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
-
-            const refreshContent = (currentNote) => {
-                // Apply to text and formatted element
-                let txt = currentNote.notetxt || '';
-                const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) !== -1 : txt.includes('|');
+        const contentEl = document.createElement('div');
+        contentEl.className = 'note-content';
+        const isForModal = (note.closest('#modal-body') !== null);
+        if (isHiddenNote) {
+            const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
+            const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
+            contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
+        } else {
+            const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
+            if (formatSource) {
+                // Use the exact same logic as in showModal to ensure indices match
+                let contentToFormat = fileContent;
+                const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) !== -1 : contentToFormat.includes('|');
                 if (hasPipe) {
-                    const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
-                    const tPart = txt.substring(0, pipeIdx);
-                    const bPart = txt.substring(pipeIdx + 1);
-                    bdy.innerHTML = (typeof formatText === 'function') ? formatText(tPart, currentNote.title_span || '', true) + '<br>' + formatText(bPart, currentNote.text_span || '', true) : tPart + '<br>' + bPart;
-                } else { bdy.innerHTML = (typeof formatText === 'function') ? formatText(txt, currentNote.text_span || '', true) : txt; }
-                bdy.dataset.id = currentNote.id || '';
-                bdy.dataset.gdid = currentNote.gdid || '';
-                bdy.dataset.format = currentNote.text_span || ''; bdy.dataset.titleFormat = currentNote.title_span || '';
-            };
-
-            btnEdit.onclick = () => {
-                const globalModalBody = modalBody;
-                const oldId = globalModalBody ? globalModalBody.id : '';
-                if (globalModalBody) globalModalBody.id = '';
-
-                bdy.id = 'modal-body';
-                modalBody = bdy;
-                currentModalContent = note.notetxt;
-
-                enableNoteEditing(bdy);
-
-                btnEdit.style.display = 'none'; btnSave.style.right = '50px'; btnEye.style.display = 'flex';
-
-                modalBody = globalModalBody;
-                if (globalModalBody) globalModalBody.id = oldId;
-            };
-
-            btnEye.onclick = () => {
-                const titleArea = bdy.querySelector('#note-edit-title-textarea');
-                let txtArea;
-                if (titleArea) {
-                    txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
-                } else {
-                    txtArea = bdy.querySelector('textarea');
+                    // Just replace the first pipe to keep indices consistent with modal body
+                    const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) : contentToFormat.indexOf('|');
+                    contentToFormat = contentToFormat.substring(0, pipeIdxForReplace) + '\n' + contentToFormat.substring(pipeIdxForReplace + 1);
                 }
-
-                if (txtArea) {
-                    const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
-                    const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
-                    note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
-                    if (titleArea) {
-                        const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
-                        note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
-                    }
-                }
-                refreshContent(note);
-                btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
-            };
-
-            btnSave.onclick = async () => {
-                const titleArea = bdy.querySelector('#note-edit-title-textarea');
-                let txtArea;
-                if (titleArea) {
-                    txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
-                } else {
-                    txtArea = bdy.querySelector('textarea');
-                }
-
-                if (txtArea) {
-                    const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
-                    const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
-                    note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
-                    if (titleArea) {
-                        const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
-                        note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
-                    }
-                }
-                note.datemod = Date.now(); overlay.remove(); resolve(note);
-            };
-
-            refreshContent(note);
-            return { card, bdy };
-        };
-
-        const local = renderVersion(localNote, 60);
-        const server = renderVersion(serverNote, 40);
-        container.appendChild(server.card); container.appendChild(local.card);
-
-        // Tab-like buttons
-        const tabs = document.createElement('div');
-        Object.assign(tabs.style, { position: 'absolute', bottom: '-65px', display: 'flex', gap: '5px', zIndex: 5 });
-        const createTab = (txt, active) => {
-            const t = document.createElement('button');
-            t.textContent = txt;
-            t.style = `padding:8px 20px; border:none; border-radius:0 0 10px 10px; cursor:pointer; font-weight:bold; background:${active ? 'darkorange' : '#444'}; color:${active ? '#000' : '#fff'}; transition: 0.3s;`;
-            return t;
-        };
-        const tabL = createTab('ЛОКАЛНА (DB)', true);
-        const tabS = createTab('СЪРВЪР (GD)', false);
-
-        const switchView = (isLocal) => {
-            local.card.style.zIndex = isLocal ? 60 : 40; local.card.style.opacity = isLocal ? '1' : '0.4'; local.card.style.transform = isLocal ? 'scale(1)' : 'scale(0.85) translateY(20px)'; local.card.style.pointerEvents = isLocal ? 'auto' : 'none';
-            server.card.style.zIndex = isLocal ? 40 : 60; server.card.style.opacity = isLocal ? '0.4' : '1'; server.card.style.transform = isLocal ? 'scale(0.85) translateY(20px)' : 'scale(1)'; server.card.style.pointerEvents = isLocal ? 'none' : 'auto';
-            tabL.style.background = isLocal ? 'darkorange' : '#444'; tabL.style.color = isLocal ? '#000' : '#fff';
-            tabS.style.background = isLocal ? '#444' : 'darkorange'; tabS.style.color = isLocal ? '#fff' : '#000';
-
-            // Safe ID management: only one element should have 'modal-body' at any time
-            if (isLocal) {
-                server.bdy.id = '';
-                local.bdy.id = 'modal-body';
+                // Format the full content
+                let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
+                contentEl.innerHTML = formattedHtml;
             } else {
-                local.bdy.id = '';
-                server.bdy.id = 'modal-body';
+                contentEl.innerHTML = processNoteContent(displayContent, isForModal);
             }
-        };
+        }
+        let attachments = [];
+        if (useIndexedDb) {
+            // Когато използваме база данни, трябва да знаем как е създадена.
+            // Използваме глобалната променлива, която е заредена в mainLogic
+            const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid'; // 'gdid' е fallback за стари бази
+            if (dbNoteIdType === 'id') {
+                attachments = mediaData.filter(media => +media.noteid === +noteID);
+            } else { // 'gdid'
+                attachments = mediaData.filter(media => media.noteid === noteGdid);
+            }
+        } else {
+            // Когато четем директно, логиката зависи от текущия режим.
+            if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteID);
+            else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
+        }
+        if (attachments.length > 0) {
+            note.dataset.hasAttachments = 'true';
+            // --- КОРЕКЦИЯ: Добавяме специфична проверка за снимки (тип 1) ---
+            if (attachments.some(att => att.type === 1)) {
+                note.dataset.hp = '1';
+                // --- Store preview data for programmatic access (e.g. Board Previews) ---
+                const firstPhoto = attachments.find(att => att.type === 1);
+                let mode = 'gdrive';
+                // Determine mode based on global state, mirroring the attachment rendering logic
+                // Note: DB logic relies on globals set in mainLogic
+                if (useIndexedDb) {
+                    if (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id' && typeof dbSourceGlobal !== 'undefined' && dbSourceGlobal === 3) mode = 'archive';
+                    else if (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'gdid' && typeof dbSourceGlobal !== 'undefined' && dbSourceGlobal === 2) mode = 'local';
+                } else if (useArhDb) {
+                    mode = 'archive';
+                } else if (useLocalFolder) {
+                    mode = 'local';
+                }
+                const fileId = (mode === 'gdrive') ? (firstPhoto.pathGD || firstPhoto.path) : firstPhoto.path;
+                const previewData = {
+                    fileId: fileId,
+                    mode: mode,
+                    isVideo: false
+                };
+                note.dataset.previewAttachment = JSON.stringify(previewData);
+            }
+            // --- Край на корекцията ---
+            // Check for video attachments (type 4)
+            if (attachments.some(att => att.type === 4)) {
+                note.dataset.hv = '1';
+            }
+            // Check for sound attachments (type 2)
+            if (attachments.some(att => att.type === 2)) {
+                note.dataset.hs = '1';
+            }
+            // Check for other attachments (not type 1 or 4)
+            if (attachments.some(att => att.type !== 1 && att.type !== 4 && att.type !== 2)) {
+                note.dataset.ho = '1';
+            }
+            // Проверка дали да показваме иконите за прикачени файлове в затворената бележка
+            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true';
+            const shouldShowAttachments = isForModal || oneTapLinksEnabled;
+            if (shouldShowAttachments) {
+                const separator = document.createElement('hr');
+                separator.style.marginTop = '10px';
+                separator.style.marginBottom = '10px';
+                contentEl.appendChild(separator);
+                await Promise.all(attachments.map(async attachment => {
+                    const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
+                    if (!iconData) return;
+                    const attachmentWrapper = document.createElement('div');
+                    attachmentWrapper.style.display = 'flex';
+                    attachmentWrapper.style.alignItems = 'center';
+                    attachmentWrapper.style.gap = '5px';
+                    attachmentWrapper.dataset.type = attachment.type; // Add type for easy selection
+                    const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+                    if (isDbOnlyMode) {
+                        // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
+                        // Използваме глобалните променливи, зададени в mainLogic.
+                        if (dbNoteIdTypeGlobal === 'id' && dbSourceGlobal === 3) { // Валидна комбинация за Архив
+                            await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
+                        } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 2) { // Валидна комбинация за Локална папка
+                            await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
+                        } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 1) { // Валидна комбинация за Google Drive
+                            await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
+                        }
+                        // При невалидна комбинация, не правим нищо и линкове не се създават.
+                        // Съобщението за грешка вече се показва от mainLogic.
+                    } else if (useArhDb) {
+                        // --- ЛОГИКА ЗА АРХИВ ---
+                        await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
+                    } else if (useLocalFolder) {
+                        // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
+                        await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
+                    } else { // По подразбиране, ако не е нито един от горните, е Google Drive
+                        // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
+                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
+                    }
+                    contentEl.appendChild(attachmentWrapper);
+                }));
 
-        tabL.onclick = () => switchView(true);
-        tabS.onclick = () => switchView(false);
-        tabs.appendChild(tabL); tabs.appendChild(tabS);
-        container.appendChild(tabs);
-        overlay.appendChild(container);
-        document.body.appendChild(overlay);
-        switchView(true);
-    });
-}
+            }
+        }
+        // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
+        let longPressTimer;
+        let isLongPress = false;
+        const handleNoteDelete = async (noteEl, e, fromModal = false) => {
+            e.stopPropagation();
+            e.preventDefault();
+            isLongPress = false;
+            clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
 
-/* Old implementation commented out
-async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, conflicts) {
-    return new Promise((resolve) => {
-        // Add responsive CSS
-        const style = document.createElement('style');
-        style.textContent = `
-            #conflict-resolution-box {
-                background-image: url('Board.png');
-                background-color: #1a1a1a;
-                background-repeat: repeat;
-                background-size: auto;
-                border-radius: 12px;
-                width: calc(100% - 20px);
-                max-width: 950px;
-                max-height: 95vh;
-                overflow-y: auto;
-                padding: 20px;
-                color: #fff;
-                box-shadow: 0 20px 50px rgba(0,0,0,0.7);
-                border: 1px solid #444;
-                font-family: sans-serif;
-                box-sizing: border-box;
+            const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+            const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+            // Allow delete if using DB OR if updating GDrive is enabled and we have a GDrive ID
+            if (!useIndexedDb && (!updateGDrive || !noteGdid)) return;
+
+            // Ако е извикано от модала, първо го затваряме.
+            if (fromModal) {
+                document.getElementById('content-modal').classList.remove('visible');
+                // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
+                await new Promise(resolve => setTimeout(resolve, 150));
             }
-            .conflict-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 20px;
-                margin-bottom: 25px;
-            }
-            @media (max-width: 600px) {
-                .conflict-grid {
-                    grid-template-columns: 1fr;
+
+            const confirmMsgKey = (updateGDrive || updateLocalFolderNow) ? 'confirmNoteDeleteSync' : 'confirmNoteDelete';
+            const isTrashBoard = currentBoardFilter === 'trash';
+            const msgKey = isTrashBoard ? confirmMsgKey : 'confirmNoteMoveToTrash';
+            const confirmed = await showConfirmation(_(msgKey) || _('confirmNoteDelete'));
+            if (confirmed) {
+                try {
+                    let noteToUpdate = allNotesData.find(n => (n.gdid && n.gdid === noteGdid) || (n.id && n.id === noteID));
+                    if (!isTrashBoard && noteToUpdate) {
+                        // Update as deleted in GDrive and IndexedDB instead of true deletion
+                        noteToUpdate.status = 1;
+                        noteToUpdate.datemod = Date.now();
+                        if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+                            await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
+                        }
+                        if (updateGDrive && noteGdid) {
+                            try {
+                                await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
+                            } catch (err) {
+                                console.error("GDrive update failed:", err);
+                            }
+                        }
+                        if (updateLocalFolderNow && noteGdid) {
+                            try {
+                                await updateLocalFile(noteGdid, JSON.stringify(noteToUpdate));
+                            } catch (err) {
+                                console.error("Local file update failed:", err);
+                            }
+                        }
+                        // Update dataset so applyFilters can handle it
+                        noteEl.dataset.s = "1";
+                        applyFilters();
+                        updateBoardCounterUI('trash');
+                        // Also update origin board if possible
+                        if (noteToUpdate.boardid) updateBoardCounterUI(noteToUpdate.boardid);
+                        showToast(_('noteMovedToTrash') || 'Бележката е преместена в Кошче', 3000);
+                    } else {
+                        let totalNotes;
+                        await deleteFromDB(NOTE_STORE_NAME, noteGdid);
+
+                        let gdriveDeleted = false;
+                        if (updateGDrive && noteGdid) {
+                            deleteGDriveFile(noteGdid).catch(err => {
+                                console.error("GDrive delete failed:", err);
+                                if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+                            });
+                            gdriveDeleted = true;
+                        }
+
+                        let localDeleted = false;
+                        if (updateLocalFolderNow && noteGdid) {
+                            deleteLocalFile(noteGdid).catch(err => {
+                                console.error("Local file delete failed:", err);
+                            });
+                            localDeleted = true;
+                        }
+
+                        // Стъпка 1: Премахване от DOM и allNotesData
+                        noteEl.remove();
+                        allNotesData = allNotesData.filter(n => (n.gdid && n.gdid !== noteGdid) || (n.id && n.id !== noteID));
+                        // Стъпка 2: Актуализация на всички броячи чрез applyFilters
+                        applyFilters();
+
+                        let successMsgKey = 'noteDeletedSuccess';
+                        if (gdriveDeleted && localDeleted) successMsgKey = 'noteDeletedSuccessBoth';
+                        else if (gdriveDeleted) successMsgKey = 'noteDeletedSuccessGDrive';
+                        else if (localDeleted) successMsgKey = 'noteDeletedSuccessLocal';
+
+                        showToast(_(successMsgKey), 3000);
+                    }
+                } catch (error) {
+                    console.log("Failed to delete note:", error);
+                    showToast(_('noteDeletedError') + " - " + error.message, 15000);
                 }
             }
-            .conflict-cell {
-                padding: 15px;
-                border-radius: 12px;
-                display: flex;
-                flex-direction: column;
-                box-shadow: 3px 5px 15px rgba(0,0,0,0.3);
-                border: 1px solid rgba(0,0,0,0.1);
-                color: #000;
-                transition: transform 0.2s;
-                box-sizing: border-box;
-            }
-            .conflict-cell:hover { transform: translateY(-2px); }
-            .conflict-btn-use {
-                background-color: darkorange;
-                color: #000;
-                border: none;
-                padding: 10px;
-                border-radius: 6px;
-                cursor: pointer;
-                margin-bottom: 12px;
-                font-weight: bold;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            }
-            .conflict-txt-preview {
-                font-size: 0.9em;
-                user-select: text;
-                max-height: 150px;
-                overflow-y: auto;
-                word-break: break-word;
-                white-space: pre-wrap;
-                background: rgba(255,255,255,0.2);
-                padding: 10px;
-                border-radius: 6px;
-            }
-            .result-field {
-                width: 100%;
-                padding: 12px;
-                color: #000;
-                border: 2px solid #444;
-                border-radius: 8px;
-                margin-bottom: 10px;
-                font-size: 1.1em;
-                box-sizing: border-box;
-                font-weight: 500;
-            }
-            .result-field:focus { border-color: darkorange; outline: none; }
-        `;
-        document.head.appendChild(style);
- 
-        const box = document.createElement('div');
-        box.id = 'conflict-resolution-box';
- 
-        const title = document.createElement('h2');
-        title.textContent = _('conflictDetected') || "Note Conflict Detected";
-        title.style.margin = '0 0 20px 0';
-        title.style.textAlign = 'center';
-        title.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
-        title.style.color = 'black';
-        box.appendChild(title);
- 
-        const noteColors = (typeof noteColorMap !== 'undefined') ? noteColorMap : ['#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF', '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'];
-        const noteBgColor = noteColors[localNote.color || 0];
- 
-        const resT = document.createElement('input');
-        resT.className = 'result-field';
-        resT.style.backgroundColor = noteBgColor;
-        const resB = document.createElement('textarea');
-        resB.className = 'result-field';
-        resB.style.backgroundColor = noteBgColor;
-        resB.style.height = '150px'; resB.style.resize = 'vertical';
- 
-        const grid = document.createElement('div');
-        grid.className = 'conflict-grid';
- 
-        const createHeader = (label) => {
-            const div = document.createElement('div'); div.textContent = label;
-            div.style.fontWeight = 'bold'; div.style.textAlign = 'center'; div.style.paddingBottom = '10px';
-            div.style.color = '#fff'; div.style.fontSize = '1.1em';
-            return div;
         };
- 
-        const decisions = {};
- 
-        const addConflictRow = (key, localVal, serverVal, label) => {
-            if (label !== (_('content') || 'Content')) {
-                const rowLabel = document.createElement('div');
-                rowLabel.style.gridColumn = '1 / -1'; rowLabel.style.marginTop = '15px';
-                rowLabel.style.fontWeight = 'bold'; rowLabel.style.color = '#4a90e2';
-                rowLabel.textContent = (label || key).toUpperCase();
-                grid.appendChild(rowLabel);
+
+        // Обработва клик върху цялата бележка (с изключение на хедъра)
+        const handleNoteClick = async (e) => {
+            // Check if text is selected. If so, prevent opening the modal.
+            const selection = window.getSelection();
+            if (selection.toString().length > 0) {
+                return;
             }
- 
-            const createCell = (val, side) => {
-                const cell = document.createElement('div');
-                cell.className = 'conflict-cell';
-                const colorIdx = (side === 'local' ? localNote.color : serverNote.color) || 0;
-                cell.style.backgroundColor = noteColors[colorIdx];
- 
-                const btn = document.createElement('button');
-                btn.className = 'conflict-btn-use';
-                btn.textContent = _('useThis') || 'Use This';
- 
-                const txt = document.createElement('div');
-                txt.className = 'conflict-txt-preview';
-                txt.textContent = val;
- 
-                cell.appendChild(btn); cell.appendChild(txt);
-                return { cell, btn };
-            };
-            const l = createCell(localVal, 'local');
-            const s = createCell(serverVal, 'server');
- 
-            const select = (side) => {
-                l.cell.style.boxShadow = side === 'local' ? '0 0 0 4px #4a90e2' : '3px 5px 15px rgba(0,0,0,0.3)';
-                s.cell.style.boxShadow = side === 'server' ? '0 0 0 4px #4a90e2' : '3px 5px 15px rgba(0,0,0,0.3)';
-                const v = side === 'local' ? localVal : serverVal;
-                decisions[key] = v;
-                if (key === 'title') resT.value = v;
-                if (key === 'body' || key === 'notetxt') resB.value = v;
- 
-                // Update result background color based on selected version's color
-                const colorIdx = (side === 'local' ? localNote.color : serverNote.color) || 0;
-                if (resT) resT.style.backgroundColor = noteColors[colorIdx];
-                if (resB) resB.style.backgroundColor = noteColors[colorIdx];
-            };
-            l.btn.onclick = () => select('local');
-            s.btn.onclick = () => select('server');
-            grid.appendChild(l.cell); grid.appendChild(s.cell); select('local');
+            // Отваряме модала, само ако не е long press и кликът не е върху футъра
+            if (!isLongPress && !e.target.closest('.note-footer')) {
+
+                // --- FORCE GDRIVE READ LOGIC ---
+                const forceGDriveRead = localStorage.getItem('forceGDriveRead') === 'true';
+                if (forceGDriveRead && noteGdid) {
+                    showToast(_('loadingFromDrive'), 2000);
+                    const txt = await fetchGDriveFileContent(noteGdid);
+                    if (txt) {
+                        try {
+                            const newItem = JSON.parse(txt);
+                            // Update memory
+                            Object.assign(noteContent, newItem);
+                            // Update critical fields for modal
+                            if (newItem.notetxt !== undefined) fileContent = newItem.notetxt;
+                            else if (newItem.text !== undefined) fileContent = newItem.text;
+
+                            if (newItem.title_span !== undefined) titleSpan = newItem.title_span;
+                            if (newItem.text_span !== undefined) textSpan = newItem.text_span;
+
+                            extraData = { ...noteContent };
+                            delete extraData.notetxt;
+
+                            // Update global data array reference too (find and update)
+                            if (typeof allNotesData !== 'undefined') {
+                                const noteInHeader = allNotesData.find(n => n.gdid === noteGdid);
+                                if (noteInHeader) {
+                                    Object.assign(noteInHeader, newItem);
+                                }
+                            }
+
+                        } catch (err) {
+                            console.error("Error parsing GDrive content", err);
+                            showToast(_('errorParsingNote'), 3000);
+                        }
+                    }
+                }
+                // --- END FORCE GDRIVE READ LOGIC ---
+
+                const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
+                showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
+
+                // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
+                const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+                if (e.ctrlKey) {
+                    if ((typeof useIndexedDb !== 'undefined' && useIndexedDb) || (updateGDrive && noteGdid)) {
+                        const modalBodyElem = document.getElementById('modal-body');
+                        if (modalBodyElem) {
+                            enableNoteEditing(modalBodyElem);
+                        }
+                    } else if (!useIndexedDb && !updateGDrive) {
+                        showToast("Editing requires Database Mode or 'Update Google Drive' enabled.", 3000);
+                    }
+                }
+            }
         };
- 
-        Object.keys(conflicts).forEach(key => {
-            if (key === 'color') return; // Skip color field comparison
-            const conflict = conflicts[key];
-            let label = key;
-            if (key === 'title') label = _('title') || 'Title';
-            else if (key === 'body' || key === 'notetxt') label = _('content') || 'Content';
-            addConflictRow(key, conflict.local, conflict.server, label);
+
+        // Обработва клик върху хедъра (за изтриване)
+        const handleHeaderClick = (e) => { if (e.ctrlKey) handleNoteDelete(note, e); };
+        // Закачаме събитията за изтриване само за хедъра
+
+        titleWrapper.addEventListener('click', handleHeaderClick);
+        addLongPressOrCtrlClick(titleWrapper, (e) => handleNoteDelete(note, e));
+
+        // Закачаме събитието за отваряне на модала за цялата бележка
+        note.addEventListener('click', handleNoteClick);
+        note.addEventListener('contextmenu', e => e.preventDefault());
+        contentWrapper.appendChild(titleWrapper);
+        contentWrapper.appendChild(contentEl);
+        // --- Създаване на футър с икони за прикачени файлове ---
+        // Проверяваме дали има прикачени файлове (масивът `attachments` вече е попълнен правилно по-горе)
+        // и дали бележката има идентификатор.
+        if (!isHiddenNote && (noteGdid || noteID) && attachments.length > 0) {
+            const uniqueTypes = [...new Set(attachments.map(att => att.type))];
+            // --- Set explicit SHORT dataset attributes for attachment types ---
+            if (uniqueTypes.includes(1)) note.dataset.hp = '1'; // data-hp = hasPhoto
+            if (uniqueTypes.includes(4)) note.dataset.hv = '1'; // data-hv = hasVideo
+            if (uniqueTypes.includes(2)) note.dataset.hs = '1'; // data-hs = hasSound
+            if (uniqueTypes.includes(3)) note.dataset.ho = '1'; // data-ho = hasOther
+            if (uniqueTypes.length > 0) {
+                const footerEl = document.createElement('div');
+                footerEl.className = 'note-footer';
+                uniqueTypes.sort((a, b) => a - b).forEach(type => {
+                    const iconData = attachmentIcons.find(icon => icon.type === type);
+                    if (iconData) {
+                        const iconDiv = document.createElement('div');
+                        iconDiv.className = 'footer-icon';
+                        iconDiv.innerHTML = iconData.svg;
+                        iconDiv.style.borderRadius = '5px'; // Добавяме заобляне на ъглите
+                        iconDiv.style.backgroundColor = noteBgColor;
+                        iconDiv.dataset.type = type; // Add type for easier selection
+                        // Calculate count of attachments of this type
+                        const typeCount = attachments.filter(att => att.type === type).length;
+                        if (typeCount > 1) {
+                            const plusSpan = document.createElement('span');
+                            plusSpan.textContent = '+';
+                            plusSpan.style.marginLeft = '2px';
+                            plusSpan.style.fontWeight = 'bold';
+                            plusSpan.style.fontSize = '14px'; // Adjust size as needed
+                            plusSpan.style.color = '#333'; // Make sure it's visible
+                            // Use inline-flex to align SVG and text
+                            iconDiv.style.display = 'inline-flex';
+                            iconDiv.style.alignItems = 'center';
+                            iconDiv.style.justifyContent = 'center';
+                            iconDiv.style.paddingRight = '4px'; // Add some padding
+                            iconDiv.appendChild(plusSpan);
+                        }
+                        // Добавяме preview само за снимки (type 1) и видео (type 4),
+                        // и само ако текущият режим на работа е Google Drive.
+                        if (type === 1 || type === 4) {
+                            const firstAttachmentOfType = attachments.find(att => att.type === type);
+                            if (firstAttachmentOfType) {
+                                let sourceMode = 'gdrive'; // По подразбиране
+                                if (useArhDb) sourceMode = 'archive'; // Ако е архив, източникът е архив
+                                else if (useLocalFolder) sourceMode = 'local'; // Ако е локална папка, източникът е локален
+                                else if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb) { // Ако е само IndexedDB
+                                    if (dbSourceGlobal === 3) sourceMode = 'archive'; // И базата е от архив
+                                    else if (dbSourceGlobal === 2) sourceMode = 'local'; // Или базата е от локална папка
+                                    // Ако dbSourceGlobal е 1 (Google Drive), sourceMode остава 'gdrive'
+                                }
+                                // Активираме превюто, ако източникът е Google Drive, Локална папка или Архив
+                                // Only add preview listener if we actually found the attachment
+                                if (sourceMode === 'gdrive' || sourceMode === 'local' || sourceMode === 'archive') {
+                                    // Filter attachments of this type (already filtered above for counting, but let's be explicit or reuse)
+                                    const attachmentsOfType = attachments.filter(att => att.type === type);
+                                    const isVideo = type === 4;
+                                    addInNotePreviewListener(iconDiv, attachmentsOfType, 0, sourceMode, isVideo);
+                                }
+                            }
+                        }
+                        footerEl.appendChild(iconDiv);
+                    }
+                });
+
+                note.appendChild(footerEl); // Преместваме футъра да е директен наследник на .note
+            }
+        }
+        return note;
+    }
+    async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
+        // Изчистваме бележките само ако не презареждаме единствено менюто - ПРЕМЕСТЕНО ПО-ДОЛУ ЗА ИЗБЯГВАНЕ НА 'МИГАНЕ'
+        /* if (!rerenderOnlyMenu) {
+            notesContainer.innerHTML = '';
+        } */
+        let boardsNoteElement = null;
+        let extraCounts = {
+            boardCounts: new Map(),
+            reminderCount: 0,
+            calendarCount: 0,
+            trashCount: 0
+        };
+        if (boardsData.length > 0 || boardParseError) {
+            const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
+            allNotesData.forEach(note => {
+                if (note.status === 1) {
+                    extraCounts.trashCount++;
+                } else {
+                    const boardId = String(note.boardid);
+                    extraCounts.boardCounts.set(boardId, (extraCounts.boardCounts.get(boardId) || 0) + 1);
+                }
+                if (note.timer && note.timer > 0) extraCounts.reminderCount++;
+                if (note.calendarDate) extraCounts.calendarCount++;
+            });
+            boardsNoteElement = await createBoardsUI(boardsData, boardParseError, extraCounts);
+        }
+        // Винаги премахваме старото меню, за да го заменим с новото
+        const oldBoardsNote = document.querySelector('header .boards-note');
+        if (oldBoardsNote) {
+            oldBoardsNote.remove();
+        }
+        // Ако само презареждаме менюто, добавяме новото и спираме дотук.
+        if (rerenderOnlyMenu) {
+            if (boardsNoteElement) {
+                document.querySelector('header').appendChild(boardsNoteElement);
+                // Синхронизираме визуалното състояние на менюто и скролираме до активния бутон
+                // Използваме setTimeout, за да сме сигурни, че DOM-ът е обновен
+                setTimeout(() => {
+                    // Използваме същата логика за маркуване като във filterNotesByBoard
+                    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+                    const targetBoard = specialBoards.includes(currentBoardFilter) ? null : boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
+                    const activeIdForUI = targetBoard ? (targetBoard.gdid || targetBoard.id) : currentBoardFilter;
+
+                    document.querySelectorAll('.board-filter-link').forEach(link => {
+                        const isSelected = link.dataset.boardid === String(activeIdForUI);
+                        link.classList.toggle('selected-board', isSelected);
+                        link.classList.toggle('active', isSelected);
+                        link.style.height = isSelected ? '39px' : '35px';
+                        if (isSelected) {
+                            link.scrollIntoView({
+                                behavior: 'smooth',
+                                inline: 'center',
+                                block: 'nearest'
+                            });
+                        }
+                    });
+                }, 50);
+            }
+            return; // КЛЮЧОВА СТЪПКА: Прекратяваме функцията тук
+        }
+        // --- Оттук надолу е логиката за ПЪЛНО презареждане ---
+        // 1. Show spinner immediately
+        if (!rerenderOnlyMenu && loaderContainer) {
+            loaderContainer.style.display = 'block';
+            if (loaderText) loaderText.textContent = _('loadingFile');
+        }
+        // Method 1: Clear immediately to save memory
+        if (!rerenderOnlyMenu) {
+            notesContainer.innerHTML = '';
+        }
+        // 2. Use setTimeout to allow browser to render the spinner
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // 2.1 Optimization: Preload backgrounds before creating elements to avoid staggered loading
+        await preloadNoteBackgrounds(allNotesData);
+
+        const noteElementsResults = await Promise.all(allNotesData.map(noteData => createNoteElement(noteData)));
+        // Create fragment and populate it with new elements
+        const fragment = document.createDocumentFragment();
+        let notesCount = 0;
+        let skippedNotesCount = 0;
+        noteElementsResults.forEach(noteEl => {
+            // console.log(noteEl);
+            if (noteEl) {
+                fragment.appendChild(noteEl);
+                notesCount++;
+            } else {
+                skippedNotesCount++;
+            }
         });
-        box.appendChild(grid);
- 
-        const resLabel = document.createElement('h4'); resLabel.textContent = _('finalResult') || "Final Result (editable):";
-        resLabel.style.margin = '20px 0 10px 0';
-        resLabel.style.color = 'black';
-        box.appendChild(resLabel);
- 
+
+        if (skippedNotesCount > 0) {
+            console.log(`[renderUI] Skipped ${skippedNotesCount} notes (likely status=1/deleted).`);
+        }
+        // Update container
+        if (!rerenderOnlyMenu) {
+            notesContainer.appendChild(fragment);
+            // --- IMMEDIATE FILTER APPLICATION ---
+            // Apply filters synchronously immediately after adding to DOM to prevent "flash" of all notes
+            applyFilters();
+        }
+        // Hide spinner - using requestAnimationFrame to ensure the browser has a chance to 
+        // paint the newly added notes with their backgrounds before we remove the overlay.
+        if (!rerenderOnlyMenu && loaderContainer) {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    loaderContainer.style.display = 'none';
+                    if (loaderText) loaderText.textContent = '';
+                });
+            });
+        }
+        // Check if we need to delay showing the menu due to empty board cleanup
+        let delayMenuRender = false;
+        if (isInitialLoad && localStorage.getItem('checkEmptyBoards') === 'true') {
+            const potentialEmptyBoards = boardsData.filter(b => (extraCounts.boardCounts.get(String(b.gdid || b.id)) || 0) === 0);
+            if (potentialEmptyBoards.length > 0) {
+                delayMenuRender = true;
+            }
+        }
+
+        if (boardsNoteElement && !delayMenuRender) {
+            document.querySelector('header').appendChild(boardsNoteElement);
+        }
+        // --- OWNER CHECK ---
+        // If the user is not the owner, force 'all' boards view instead of saved startup board.
+        if (!isDbOwner) {
+            currentBoardFilter = 'all';
+        }
+        // Обработка на стартов борд 'Main'
+        if (currentBoardFilter === 'Main') {
+            const mainBoard = boardsData.find(b => b.title === 'Main');
+            currentBoardFilter = mainBoard ? (mainBoard.gdid || mainBoard.id) : 'all';
+        }
+        // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
+        if (isInitialLoad && localStorage.getItem('checkEmptyBoards') === 'true') {
+            // Check for empty boards and offer deletion individually
+            const emptyBoards = boardsData.filter(b => (extraCounts.boardCounts.get(String(b.gdid || b.id)) || 0) === 0);
+            if (emptyBoards.length > 0) {
+                setTimeout(async () => {
+                    let boardsModified = false;
+                    let currentEmptyCount = emptyBoards.length;
+                    for (const board of emptyBoards) {
+                        // Safety check: Don't delete the last remaining board
+                        if (boardsData.length <= 1) {
+                            if (boardsModified) showToast(_('cannotDeleteLastBoard'), 3000);
+                            break;
+                        }
+                        const confirmed = await showConfirmation(
+                            _('confirmDeleteEmptyBoard').replace('{boardName}', board.title).replace('{count}', currentEmptyCount),
+                            { showCancel: true, cancelText: _('cancel') || 'Cancel' }
+                        );
+                        // User clicked Cancel - stop the entire process
+                        if (confirmed === 'cancel') {
+                            break;
+                        }
+                        if (confirmed === true) {
+                            currentEmptyCount--;
+                            boardsModified = true;
+                            boardsData = boardsData.filter(b => (b.gdid || b.id) !== (board.gdid || board.id));
+                            // Update DB if used
+                            if (useIndexedDb && typeof deleteFromDB === 'function') {
+                                await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
+                            }
+                            // Delete the board file from Google Drive if it has a gdid
+                            const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+                            if (updateGDriveNow && board.gdid && typeof deleteGDriveFile === 'function') {
+                                try {
+                                    if (await deleteGDriveFile(board.gdid)) {
+                                        console.log(`Deleted board file from GDrive: ${board.gdid}`);
+                                    } else {
+                                        console.log(`Board file ${board.gdid} not found on GDrive (already deleted).`);
+                                    }
+                                } catch (gdErr) {
+                                    console.error(`Failed to delete board file ${board.gdid} from GDrive:`, gdErr);
+                                }
+                            }
+                            // Confirmation toast
+                            showToast(_('boardDeletedSuccess').replace('{boardName}', board.title), 2000);
+                        }
+                    }
+                    // Individual board files were already deleted via deleteGDriveFile(board.gdid) above
+                    // No need to update a centralized board.txt as boards are stored individually
+                    // Finally render the menu (it was hidden initially)
+                    renderUI({ rerenderOnlyMenu: true });
+                    // Re-apply active state to the board button as it was just rendered
+                    setTimeout(() => {
+                        const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
+                        if (startBoardBtn) {
+                            startBoardBtn.classList.add('active-board');
+                            startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                        }
+                    }, 100);
+                }, 1000);
+            }
+        }
+
+        // --- BUTTON ACTIVE STATE SYNC + PROGRAMMATIC CLICK ---
+        // For special boards like 'new-updates', applyFilters() alone may not be enough
+        // because filterNotesByBoard sets up additional state. Trigger a click on initial load.
+        const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
+        if (startBoardBtn) {
+            if (isInitialLoad) {
+                // Use setTimeout to ensure DOM is fully ready before clicking
+                setTimeout(() => {
+                    startBoardBtn.click();
+                }, 50);
+            } else {
+                startBoardBtn.classList.add('active-board');
+                startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }
+        } else if (isInitialLoad && (currentBoardFilter === 'calendar' || currentBoardFilter === 'calendar_monthly' || currentBoardFilter === 'calendar_weekly')) {
+            // Fallback for cases where the button might be missing from the menu
+            setTimeout(() => {
+                filterNotesByBoard(currentBoardFilter);
+            }, 50);
+        }
+        // Start Assistant Guide if needed
+        if (guide) {
+            const startAssistantGuide = () => {
+                if (window.kbAssistant && window.kbAssistant.isInitialized) {
+                    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
+                    if (entry && entry.guide) {
+                        window.kbAssistant.showGuide(entry.guide);
+                        localStorage.setItem('guide', 'false');
+                        guide = false;
+                    }
+                } else {
+                    setTimeout(startAssistantGuide, 100);
+                }
+            };
+            // Delay slightly to ensure UI is ready
+            setTimeout(startAssistantGuide, 1500);
+        }
+        // След първото зареждане, флагът става false.
+        isInitialLoad = false;
+
+        // ПРИЛОЖЕНИЕ: Сега, когато зареждането е приключило, извикваме applyFilters отново, 
+        // за да може асистентът (промо снимката) да се появи плавно и на правилното място.
+        applyFilters();
+
+        const counterEl = document.getElementById('note-counter');
+        if (counterEl) {
+            counterEl.textContent = notesCount;
+        }
+        populateStartBoardSelect();
+    }
+
+    /**
+     * Чете архивни данни (boards.bcp, notes.bcp, medias.bcp) от подадена директория
+     * и попълва глобалните променливи boardsData, allNotesData и mediaData.
+     *
+     * @param {FileSystemDirectoryHandle} dirHandle - Handle към директорията, съдържаща .bcp файловете.
+     * @returns {Promise<boolean>} Връща true при успех, false при провал.
+     */
+    async function readArh(dirHandle) {
+        if (!dirHandle) {
+            console.log("readArh: Не е подаден валиден handle на директория.");
+            showToast(_('errorNoArchiveFolderSelected'), 10000);
+            return false;
+        }
+        console.log("--- Archive fetch sequence started ---");
+        const startTime = performance.now();
+        let success = true;
+        // Map usage removed here, now using local maps in validateFileData
+        // const gdidMap = new Map();
+        const validateFileData = (data, fileName) => {
+            const fileMap = new Map();
+            if (Array.isArray(data)) {
+                data.forEach(item => {
+                    const itemId = item.id || item.gdid;
+                    if (itemId === undefined || itemId === null) {
+                        const error = `[Archive] Item in '${fileName}' is missing ID property.`;
+                        console.warn(error);
+                        dataIntegrityIssues.push({ type: 'missing', file: fileName });
+                    } else {
+                        if (fileMap.has(itemId)) {
+                            const error = `[Duplicate ID] ID '${itemId}' found multiple times in '${fileName}'. Conflict within file.`;
+                            console.error(error);
+                            dataIntegrityIssues.push({ type: 'duplicate', gdid: itemId, file1: fileName, file2: fileName, mode: 'archive' });
+                        } else {
+                            fileMap.set(itemId, true);
+                        }
+                    }
+                });
+            }
+        };
+        try {
+            // 1. Четене на boards.bcp
+            const boardsFileHandle = await dirHandle.getFileHandle('boards.bcp');
+            const boardsFile = await boardsFileHandle.getFile();
+            const boardsContent = await boardsFile.text();
+            boardsData = JSON.parse(boardsContent);
+            trackMaxBoardIds(boardsData);
+            validateFileData(boardsData, 'boards.bcp');
+            console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
+            // 2. Четене на notes.bcp
+            const notesFileHandle = await dirHandle.getFileHandle('notes.bcp');
+            const notesFile = await notesFileHandle.getFile();
+            const notesContent = await notesFile.text();
+            const notesArray = JSON.parse(notesContent);
+            allNotesData = notesArray;
+            trackMaxIds(allNotesData);
+            validateFileData(allNotesData, 'notes.bcp');
+            console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
+            // 3. Четене на medias.bcp (ако съществува)
+            try {
+                const mediaFileHandle = await dirHandle.getFileHandle('medias.bcp');
+                const mediaFile = await mediaFileHandle.getFile();
+                const mediaContent = await mediaFile.text();
+                mediaData = JSON.parse(mediaContent);
+                validateFileData(mediaData, 'medias.bcp');
+                console.log(`Успешно заредени ${mediaData.length} медийни файла от medias.bcp.`);
+            } catch (mediaError) {
+                if (mediaError.name === 'NotFoundError') {
+                    console.log("Файл 'medias.bcp' не е намерен. Продължаваме без него.");
+                    mediaData = [];
+                } else {
+                    throw mediaError;
+                }
+            }
+        } catch (error) {
+            success = false;
+            if (error.name === 'NotFoundError') {
+                console.log(`Грешка: Файл 'boards.bcp' или 'notes.bcp' не е намерен в папката '${dirHandle.name}'.`);
+                showToast(_('errorRequiredArchiveFileMissing'), 10000);
+            } else if (error instanceof SyntaxError) {
+                console.log("Грешка при парсване на JSON съдържание от архивен файл:", error);
+                showToast(_('errorInvalidArchiveData'), 10000);
+            } else {
+                console.log("Възникна неочаквана грешка при четене на архива:", error);
+                showToast(_('errorReadingArchive'), 10000);
+            }
+        }
+        const endTime = performance.now();
+        if (success) {
+            console.log(`--- Archive fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
+            console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
+        }
+        return success;
+    }
+
+    async function loadTranslations(lang) {
+        if (appTranslations[lang]) return;
+        try {
+            const response = await fetch(`i18n-${lang}.txt`, { credentials: 'omit' });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const text = await response.text();
+            const data = new Function('return {' + text + '}')();
+            appTranslations[lang] = data[lang];
+        } catch (e) {
+            console.error("Failed to load translations:", e);
+            // Fallback: Populate with critical keys if fetch fails (e.g. offline with old SW)
+            if (!appTranslations[lang]) {
+                appTranslations[lang] = {};
+                if (lang === 'bg') {
+                    appTranslations[lang]['offlineStartButton'] = 'Старт офлайн';
+                    appTranslations[lang]['authorizeButton'] = 'Вход с Google';
+                    appTranslations[lang]['trialButton'] = 'Старт 30-дневен пробен период';
+                    appTranslations[lang]['sessionExpired'] = 'Сесията изтече. Моля, влезте отново.';
+                } else {
+                    appTranslations[lang]['offlineStartButton'] = 'Start Offline';
+                    appTranslations[lang]['authorizeButton'] = 'Authorize with Google';
+                    appTranslations[lang]['trialButton'] = 'Start 30-day trial period';
+                    appTranslations[lang]['sessionExpired'] = 'Session expired. Please login again.';
+                }
+            }
+        }
+    }
+
+    async function setLanguage(lang) {
+        if (!appTranslations[lang]) {
+            await loadTranslations(lang);
+        }
+        if (!appTranslations[lang]) return;
+        currentLang = lang;
+        localStorage.setItem('language', lang);
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-key]').forEach(element => {
+            const key = element.getAttribute('data-key');
+            element.innerHTML = _(key);
+        });
+        document.querySelectorAll('[data-key-placeholder]').forEach(element => {
+
+            const key = element.getAttribute('data-key-placeholder');
+            element.placeholder = _(key);
+        });
+        document.querySelectorAll('[data-key-title]').forEach(element => {
+            const key = element.getAttribute('data-key-title');
+            element.title = _(key);
+        });
+        // Update active button
+        const langBg = document.getElementById('lang-bg');
+        const langEn = document.getElementById('lang-en');
+        if (langBg) langBg.classList.toggle('active', lang === 'bg');
+        if (langEn) langEn.classList.toggle('active', lang === 'en');
+        // Check if updateSignoutTooltip exists before calling it
+        if (typeof updateSignoutTooltip === 'function') {
+            updateSignoutTooltip();
+        }
+        // Update KB Assistant Language
+        if (window.kbAssistant && typeof window.kbAssistant.updateLanguage === 'function') {
+            window.kbAssistant.updateLanguage();
+        }
+    }
+
+    // --- Service Worker Registration ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', async () => {
+            try {
+                // КОРЕКЦИЯ: Изчистваме старите или дублиращи се Service Workers
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (let registration of registrations) {
+                    // Ако имаме множество регистрации, това може да причини забавяния (timeouts)
+                    if (registrations.length > 1 || !registration.active || !registration.active.scriptURL.includes('sw.js')) {
+                        console.log('Unregistering stagnant/duplicate service worker:', registration.active?.scriptURL);
+                        await registration.unregister();
+                    }
+                }
+                // Регистрираме версията с флаг, за да принудим браузъра да я презареди
+                const registration = await navigator.serviceWorker.register('sw.js');
+                if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
+
+                // Force an update check to bypass HTTP cache for sw.js
+                // await registration.update();
+
+                // Function to show update notification using a blocking confirm dialog
+                const showUpdateNotification = (waitingSW) => {
+                    const msg = (typeof _ === 'function') ? _('newVersionAvailable') : "New version available.";
+                    const refresh = (typeof _ === 'function') ? _('refreshNow') : "Refresh now";
+
+                    // Use setTimeout to allow the browser to render any pending UI updates before blocking
+                    setTimeout(() => {
+                        if (confirm(`${msg}\n\n${refresh}?`)) {
+                            waitingSW.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                    }, 100);
+                };
+
+                // Check if there's already a waiting SW
+                if (registration.waiting) {
+                    showUpdateNotification(registration.waiting);
+                }
+
+                // Listen for new SW installing
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    if (newWorker) {
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                // New SW is installed and waiting
+                                showUpdateNotification(newWorker);
+                            }
+                        });
+                    }
+                });
+
+                // Reload when the new Service Worker takes control
+                let refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (!refreshing) {
+                        window.location.reload();
+                        refreshing = true;
+                    }
+                });
+
+            } catch (err) {
+                console.log('ServiceWorker registration failed: ', err);
+            }
+        });
+
+    }
+    /*
+     * Iterates through all visible notes and opens the preview for the first image attachment.
+     */
+    async function showBoardPreviews() {
+        console.log("Toggling board previews...");
+        // Robustly find visible notes (not 'none'). The previous selector [style*="display: flex"] might fail if style is empty.
+        const allNotes = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note)'));
+        const visibleNotes = allNotes.filter(n => n.style.display !== 'none');
+        // Check if there are any open previews
+        const openPreviews = visibleNotes.filter(n => n.querySelector('.image-preview-overlay'));
+        if (openPreviews.length > 0) {
+            // Close all open previews
+            console.log("Closing open previews...");
+            openPreviews.forEach(note => {
+                const overlay = note.querySelector('.image-preview-overlay');
+                if (overlay) overlay.remove();
+            });
+        } else {
+            // Open previews
+            console.log("Opening previews...");
+            for (const note of visibleNotes) {
+                // 1. Primary Method: Click the Footer Icon (Standard UI behavior)
+                // This ensures consistency with manual user interaction.
+                const footerIcon = note.querySelector('.footer-icon[data-type="1"]');
+                if (footerIcon) {
+                    footerIcon.click();
+                    continue; // Success, move to next note
+                }
+                // 2. Fallback Method: Check dataset.previewAttachment (Invisible Metadata)
+                // Useful if for some reason the footer icon is not rendered or found.
+                if (note.dataset.previewAttachment) {
+                    try {
+                        const data = JSON.parse(note.dataset.previewAttachment);
+                        showInNotePreview(note, data.fileId, data.mode, data.isVideo);
+                        continue;
+                    } catch (e) {
+                        console.log("Error parsing preview attachment data:", e);
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Swipe Navigation for Boards ---
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    document.addEventListener('touchstart', e => {
+        // Ignore if multi-touch
+        if (e.touches.length > 1) return;
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', e => {
+        // Ignore if multi-touch
+        if (e.changedTouches.length > 1) return;
+
+        // Check if any modal is open
+        if (document.querySelector('.modal-overlay.visible')) return;
+
+        // Check if target is scrollable horizontally
+        let target = e.target;
+        while (target && target !== document.body) {
+            // Simple check for potentially scrollable elements
+            if (['PRE', 'CODE', 'TABLE', 'TH', 'TD'].includes(target.tagName)) return;
+            // Check if element has horizontal scroll
+            if (target.scrollWidth > target.clientWidth) {
+                return;
+            }
+            target = target.parentElement;
+        }
+
+        const touchEndX = e.changedTouches[0].screenX;
+        const touchEndY = e.changedTouches[0].screenY;
+        handleSwipe(touchStartX, touchStartY, touchEndX, touchEndY);
+    }, { passive: true });
+
+    function handleSwipe(startX, startY, endX, endY) {
+        const minSwipeDistance = 100;
+        const maxVerticalDistance = 60;
+
+        const diffX = endX - startX;
+        const diffY = endY - startY;
+
+        if (Math.abs(diffX) > minSwipeDistance && Math.abs(diffY) < maxVerticalDistance) {
+            if (diffX > 0) {
+                // Right Swipe -> Previous (Left)
+                navigateBoard(-1);
+            } else {
+                // Left Swipe -> Next (Right)
+                navigateBoard(1);
+            }
+        }
+    }
+
+    function navigateBoard(direction) {
+        const buttons = Array.from(document.querySelectorAll('.board-menu-container .board-filter-link'));
+        if (!buttons.length) return;
+
+        let currentIndex = buttons.findIndex(btn => btn.classList.contains('selected-board'));
+
+        // If no board is selected (e.g. initial state or cleared), assume 0
+        if (currentIndex === -1) currentIndex = 0;
+
+        let nextIndex = currentIndex + direction;
+
+        // Cyclic navigation
+        if (nextIndex < 0) nextIndex = buttons.length - 1;
+        if (nextIndex >= buttons.length) nextIndex = 0;
+
+        const targetBtn = buttons[nextIndex];
+        if (targetBtn) {
+            targetBtn.click();
+        }
+    }
+
+    //     <!-- === --- === В Т О Р А   В Е Р С И Я === --- === -->
+
+    // Settings 2 IIFE removed
+
+    // --- Save Button Listener ---
+    // --- Save Button Listener ---
+    (function () {
+        const saveBtn = document.getElementById('save-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                document.getElementById('settings-modal').classList.remove('visible');
+                if (typeof exportNotes === 'function') exportNotes();
+                else console.error('exportNotes function not found');
+            });
+        }
+        const saveDbBtn = document.getElementById('save-db-btn');
+        if (saveDbBtn) {
+            saveDbBtn.addEventListener('click', () => {
+                document.getElementById('settings-modal').classList.remove('visible');
+                if (typeof exportNotesFromDB === 'function') exportNotesFromDB();
+                else console.error('exportNotesFromDB function not found');
+            });
+        }
+        const saveIndividualBtn = document.getElementById('save-individual-btn');
+        if (saveIndividualBtn) {
+            saveIndividualBtn.addEventListener('click', () => {
+                document.getElementById('settings-modal').classList.remove('visible');
+                if (typeof exportToIndividualFiles === 'function') exportToIndividualFiles();
+                else console.error('exportToIndividualFiles function not found');
+            });
+        }
+    })();
+
+    /**
+     * Updates the visibility of elements in Advanced Settings based on application state.
+     */
+    async function updateAdvancedSettingsVisibility() {
+        const saveDbWrapper = document.getElementById('save-db-wrapper');
+        const saveIndividualWrapper = document.getElementById('save-individual-wrapper');
+
+        // Sync checkboxes
+        const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
+        const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
+        const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
+        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+
+        if (useArhDbCheckbox) useArhDbCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
+        if (useLocalDbCheckbox) useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
+        if (useGoogleDbCheckbox) useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
+        if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+
+        // Manage visibility of export buttons
+        const useIndexedDbLive = localStorage.getItem('useIndexedDb') === 'true';
+
+        // Individual save is always visible if supported by browser
+        if (saveIndividualWrapper) {
+            saveIndividualWrapper.style.display = (window.showDirectoryPicker) ? 'block' : 'none';
+        }
+
+        if (!saveDbWrapper) return;
+
+        // The button "Save from DB" makes sense ONLY if DB mode is OFF and DB is NOT empty.
+        if (useIndexedDbLive) {
+            saveDbWrapper.style.display = 'none';
+            return;
+        }
+
+        try {
+            const dbExistsLive = await checkDbExists(NOTES_DB_NAME);
+            if (!dbExistsLive) {
+                saveDbWrapper.style.display = 'none';
+                return;
+            }
+
+            const db = await openNotesDB();
+            const transaction = db.transaction([BOARD_STORE_NAME], 'readonly');
+            const store = transaction.objectStore(BOARD_STORE_NAME);
+            const countRequest = store.count();
+
+            countRequest.onsuccess = () => {
+                const count = countRequest.result;
+                saveDbWrapper.style.display = (count > 0) ? 'block' : 'none';
+                db.close();
+            };
+            countRequest.onerror = () => {
+                saveDbWrapper.style.display = 'none';
+                db.close();
+            };
+        } catch (e) {
+            console.warn("Failed to check DB count for Settings2 visibility:", e);
+            saveDbWrapper.style.display = 'none';
+        }
+    }
+
+    // --- Edit Note on Ctrl+Click (DB Mode) ---
+    const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+    const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
+    const noCalendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><line x1="3" y1="3" x2="21" y2="21" /></svg>`;
+
+    // Helper to parse format string into array of objects
+    const parseFormatsString = (str) => {
+        if (!str || str.trim() === "") return [];
+        return str.split(/[|\n]/).filter(f => f.trim() !== "").map(f => {
+            try { return JSON.parse(f); } catch (e) { return null; }
+        }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
+    };
+
+    // Helper to stringify array of objects back to format string
+    const stringifyFormatsArray = (arr) => {
+        return arr.map(f => JSON.stringify(f)).join('|');
+    };
+
+    function scrollCaretIntoView(textarea) {
+        if (!textarea) return;
+        const text = textarea.value;
+        const pos = textarea.selectionStart;
+
+        // Създаваме временен "mirror" елемент, за да изчислим височината до курсора
+        const mirror = document.createElement('div');
+        const styles = getComputedStyle(textarea);
+
+        // Копираме всички критични стилове за оформлението
+        const stylesToCopy = [
+            'fontFamily', 'fontSize', 'fontWeight', 'lineHeight',
+            'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+            'width', 'boxSizing', 'whiteSpace', 'wordWrap'
+        ];
+
+        stylesToCopy.forEach(prop => { mirror.style[prop] = styles[prop]; });
+        mirror.style.position = 'absolute';
+        mirror.style.visibility = 'hidden';
+        mirror.style.height = 'auto';
+        mirror.style.overflow = 'hidden';
+
+        // Вземаме текста до позицията на курсора
+        const textBeforeCaret = text.substring(0, pos);
+        mirror.textContent = textBeforeCaret;
+
+        // Добавяме маркер, който да ни даде координатите
+        const marker = document.createElement('span');
+        marker.textContent = '|'; // Виртуален курсор
+        mirror.appendChild(marker);
+
+        document.body.appendChild(mirror);
+
+        const caretY = marker.offsetTop;
+        const markerHeight = marker.offsetHeight;
+        const textareaHeight = textarea.clientHeight;
+        const currentScroll = textarea.scrollTop;
+
+        // Проверка дали курсорът е извън видимата област (отгоре или отдолу)
+        if (caretY < currentScroll) {
+            textarea.scrollTop = caretY - 20; // Скролираме нагоре с малък марж
+        } else if (caretY + markerHeight > currentScroll + textareaHeight) {
+            textarea.scrollTop = caretY + markerHeight - textareaHeight + 30; // Скролираме надолу
+        }
+
+        document.body.removeChild(mirror);
+    }
+
+    function enableNoteEditing(modalBodyElem, charIndex = -1) {
+        if (!modalBodyElem) return;
+
+        // Show board name when editing starts
+        const modalBoardNameEl = document.getElementById('modal-board-name');
+        if (modalBoardNameEl) modalBoardNameEl.style.display = 'block';
+
+        // If already editing, don't re-init
+        if (modalBodyElem.querySelector('textarea')) return;
+
+        // If search is open, we don't close it, so user can keep searching while editing
+        const modalContentBox = modalBodyElem.closest('.modal-content-box');
+        const searchBar = modalContentBox.querySelector('.modal-search-bar');
+        if (searchBar) {
+            // We don't remove it, but we might want to refresh its context if needed
+        }
+
+        const noteGdid = modalBodyElem.dataset.gdid;
+        const noteId = modalBodyElem.dataset.id;
+        const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+        const isHiddenNote = noteObj && noteObj.pass === true;
+
+        let correctedTitleIndex = -1;
+        let correctedBodyIndex = -1;
+
+        let titleText = "";
+        let bodyText = currentModalContent || "";
+        let currentBodyFormats = parseFormatsString(modalBodyElem.dataset.format);
+        let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
+
+        const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) !== -1 : bodyText.includes('|');
+        if ((isHiddenNote || hasPipe) && !modalBodyElem.querySelector('textarea')) {
+            let splitParts = [];
+            if (hasPipe) {
+                const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) : bodyText.indexOf('|');
+                titleText = bodyText.substring(0, pipeIdx);
+                bodyText = bodyText.substring(pipeIdx + 1);
+            }
+
+            let titleCharIdx = -1;
+            let bodyCharIdx = -1;
+            if (charIndex > -1) {
+                if (charIndex <= titleText.length) {
+                    titleCharIdx = charIndex;
+                } else {
+                    bodyCharIdx = charIndex - (titleText.length + 1);
+                }
+            }
+
+            const titleResult = preEdit(titleText, currentTitleFormats, titleCharIdx);
+            const bodyResult = preEdit(bodyText, currentBodyFormats, bodyCharIdx);
+
+            titleText = titleResult.text;
+            bodyText = bodyResult.text;
+            correctedTitleIndex = titleResult.correctedIndex;
+            correctedBodyIndex = bodyResult.correctedIndex;
+
+            // Store BOTH masked links lists
+            const allMasked = [...(titleResult.maskedLinks || []), ...(bodyResult.maskedLinks || [])];
+            modalBodyElem.dataset.maskedLinks = JSON.stringify(allMasked);
+
+            modalBodyElem.dataset.titleFormat = stringifyFormatsArray(titleResult.formats);
+            modalBodyElem.dataset.format = stringifyFormatsArray(bodyResult.formats);
+        } else {
+            const result = preEdit(bodyText, currentBodyFormats, charIndex);
+            bodyText = result.text;
+            correctedBodyIndex = result.correctedIndex;
+            modalBodyElem.dataset.maskedLinks = JSON.stringify(result.maskedLinks || []);
+            modalBodyElem.dataset.format = stringifyFormatsArray(result.formats);
+        }
+
+        modalBodyElem.innerHTML = '';
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:relative; width:100%; height:100%; display: flex; flex-direction: column;';
+
+        const createEditor = (id, value, height = '100%', isTitle = false) => {
+            const container = document.createElement('div');
+            container.style.cssText = `position:relative; width:100%; height:${height}; overflow:hidden; border-bottom: ${isTitle ? '1px solid #ccc' : 'none'};`;
+
+            const textarea = document.createElement('textarea');
+            textarea.id = id;
+            textarea.value = value;
+            Object.assign(textarea.style, {
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontFamily: getComputedStyle(modalBodyElem).fontFamily,
+                fontSize: isTitle ? '1.2em' : getComputedStyle(modalBodyElem).fontSize,
+                fontWeight: isTitle ? 'bold' : 'normal',
+                color: 'inherit',
+                resize: 'none',
+                padding: '10px',
+                boxSizing: 'border-box',
+                overflowY: 'auto',
+                whiteSpace: 'pre-wrap',
+                position: 'relative',
+                zIndex: '2',
+                lineHeight: 'normal'
+            });
+
+            const backdrop = document.createElement('div');
+            backdrop.id = id + '-backdrop';
+            Object.assign(backdrop.style, {
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                padding: '10px',
+                boxSizing: 'border-box',
+                fontFamily: textarea.style.fontFamily,
+                fontSize: textarea.style.fontSize,
+                fontWeight: textarea.style.fontWeight,
+                lineHeight: 'normal',
+                whiteSpace: 'pre-wrap',
+                wordWrap: 'break-word',
+                color: 'transparent',
+                pointerEvents: 'none',
+                zIndex: '1',
+                overflow: 'hidden'
+            });
+
+            container.appendChild(backdrop);
+            container.appendChild(textarea);
+            return { container, textarea, backdrop };
+        };
+
+        if ((isHiddenNote || titleText !== "") && bodyText !== null) {
+            const titleEditor = createEditor('note-edit-title-textarea', titleText, '60px', true);
+            const bodyEditor = createEditor('note-edit-textarea', bodyText, 'calc(100% - 60px)');
+
+            wrapper.appendChild(titleEditor.container);
+            wrapper.appendChild(bodyEditor.container);
+        } else {
+            const editor = createEditor('note-edit-textarea', bodyText);
+            wrapper.appendChild(editor.container);
+        }
+
+        modalBodyElem.appendChild(wrapper);
+
+        const bodyTextarea = document.getElementById('note-edit-textarea');
+        const bodyBackdrop = document.getElementById('note-edit-textarea-backdrop');
+        const titleTextarea = document.getElementById('note-edit-title-textarea');
+        const titleBackdrop = document.getElementById('note-edit-title-textarea-backdrop');
+
+        // Sync scrolling for both if applicable (mostly body)
+        if (bodyTextarea && bodyBackdrop) {
+            bodyTextarea.addEventListener('scroll', () => { bodyBackdrop.scrollTop = bodyTextarea.scrollTop; });
+            bodyBackdrop.addEventListener('scroll', () => { bodyTextarea.scrollTop = bodyBackdrop.scrollTop; });
+            bodyTextarea.addEventListener('input', () => { handleEditInput(bodyTextarea, bodyBackdrop); });
+            handleEditInput(bodyTextarea, bodyBackdrop);
+        }
+        if (titleTextarea && titleBackdrop) {
+            titleTextarea.addEventListener('scroll', () => { titleBackdrop.scrollTop = titleTextarea.scrollTop; });
+            titleBackdrop.addEventListener('scroll', () => { titleTextarea.scrollTop = titleBackdrop.scrollTop; });
+            titleTextarea.addEventListener('input', () => { handleEditInput(titleTextarea, titleBackdrop); });
+            handleEditInput(titleTextarea, titleBackdrop);
+        }
+
+        initNoteEditUI();
+
+        const focusEl = (charIndex !== -1 && bodyTextarea) ? bodyTextarea : (titleTextarea || bodyTextarea);
+
+        if (focusEl) {
+            focusEl.focus();
+            if (correctedTitleIndex > -1 && titleTextarea) {
+                titleTextarea.setSelectionRange(correctedTitleIndex, correctedTitleIndex);
+            } else if (correctedBodyIndex > -1 && bodyTextarea) {
+                bodyTextarea.setSelectionRange(correctedBodyIndex, correctedBodyIndex);
+            } else {
+                placeCaretAtEnd(focusEl);
+            }
+            // --- SCROLL TO CARET LOGIC ---
+            setTimeout(() => {
+                const textarea = document.activeElement;
+                if (textarea && (textarea.id === 'note-edit-textarea' || textarea.id === 'note-edit-title-textarea')) {
+                    scrollCaretIntoView(textarea);
+                }
+            }, 150);
+        }
+
+        // if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
+    }
+
+    function getPreciseCharIndex(container, range) {
+        let charCount = 0;
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+            acceptNode: (node) => {
+                if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'BR') return NodeFilter.FILTER_SKIP;
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        });
+
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (node === range.startContainer) {
+                charCount += range.startOffset;
+                break;
+            }
+            if (node.nodeType === Node.TEXT_NODE) {
+                charCount += node.textContent.length;
+            } else if (node.tagName === 'BR') {
+                charCount += 1; // Count <br> as \n
+            }
+        }
+        return charCount;
+    }
+
+    /**
+     * Глобален слушател за прихващане на системни преки пътища (Ctrl+N, Ctrl+U и др.)
+     */
+    document.addEventListener('keydown', (e) => {
+        const activeTextarea = document.activeElement;
+        if (!activeTextarea || (activeTextarea.id !== 'note-edit-textarea' && activeTextarea.id !== 'note-edit-title-textarea')) return;
+
+        if (e.ctrlKey || e.metaKey) {
+            const key = e.key.toLowerCase();
+            const code = e.code;
+            const isB = (code === 'KeyB' || key === 'b');
+            const isI = (code === 'KeyI' || key === 'i');
+            const isU = (code === 'KeyU' || key === 'u');
+            const isD = (code === 'KeyD' || key === 'd');
+
+            if (isB || isI || isU || isD) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                const backdropId = (activeTextarea.id === 'note-edit-textarea') ? 'note-edit-textarea-backdrop' : 'note-edit-title-textarea-backdrop';
+                const backdrop = document.getElementById(backdropId);
+
+                formatKeyboardHotkeys(activeTextarea, backdrop, isB, isI, isU, isD);
+            }
+        }
+    }, true); // Capture phase is crucial for overriding browser defaults
+
+    // --- Escape key to close modals ---
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const visibleModal = document.querySelector('.modal-overlay.visible');
+            if (visibleModal) {
+                const closeBtn = visibleModal.querySelector('.modal-close');
+                if (closeBtn) {
+                    closeBtn.click();
+                } else {
+                    // Fallback for settings or other specific close buttons
+                    const settingsClose = document.getElementById('settings-close-btn');
+                    if (settingsClose && visibleModal.contains(settingsClose)) {
+                        settingsClose.click();
+                    } else {
+                        visibleModal.classList.remove('visible');
+                    }
+                }
+            }
+        }
+    });
+
+
+
+
+    function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD) {
+        let symbol = '';
+        if (isB) symbol = localStorage.getItem('mdBold') || '**';
+        else if (isI) symbol = localStorage.getItem('mdItalic') || '*';
+        else if (isU) symbol = localStorage.getItem('mdUnderline') || '_';
+        else if (isD) symbol = localStorage.getItem('mdStrike') || '~~';
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const selectedText = textarea.value.substring(start, end);
+        const replacement = symbol + selectedText + symbol;
+
+        textarea.setRangeText(replacement, start, end, 'select');
+
+        if (start === end) {
+            textarea.selectionStart = start + symbol.length;
+            textarea.selectionEnd = textarea.selectionStart;
+        } else {
+            textarea.selectionStart = start + symbol.length;
+            textarea.selectionEnd = start + symbol.length + selectedText.length;
+        }
+
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    // --- Logic for preserving formatting during editing ---
+    function handleEditInput(textarea, backdrop) {
+        const modalBodyElem = document.getElementById('modal-body');
+        if (!modalBodyElem) return;
+
+        const isTitle = textarea.id === 'note-edit-title-textarea';
+        const storageKey = isTitle ? 'titleFormat' : 'format';
+        let formats = [];
+        const fmtStr = modalBodyElem.dataset[storageKey];
+
+        if (fmtStr && fmtStr.trim() !== '') {
+            formats = fmtStr.split('|').map(p => {
+                try { return JSON.parse(p); } catch (e) { return null; }
+            }).filter(f => f && f.start !== undefined);
+        }
+
+        const text = textarea.value;
+        const lastVal = textarea.dataset.lastVal || text;
+        const diff = text.length - lastVal.length;
+        const pos = textarea.selectionStart;
+
+        if (diff > 0) {
+            const P = pos - diff;
+            const L = diff;
+            formats.forEach(f => {
+                if (P <= f.start) { f.start += L; f.end += L; }
+                else if (P < f.end) { f.end += L; }
+            });
+        } else if (diff < 0) {
+            const L = Math.abs(diff);
+            const P = pos;
+            formats.forEach(f => {
+                if (f.start > P + L) f.start -= L; else if (f.start > P) f.start = P;
+                if (f.end > P + L) f.end -= L; else if (f.end > P) f.end = P;
+            });
+        }
+
+        textarea.dataset.lastVal = text;
+        if (diff !== 0) {
+            modalBodyElem.dataset[storageKey] = formats.map(f => JSON.stringify(f)).join('|');
+        }
+
+        // Render Backdrop
+        if (!formats.length) {
+            backdrop.innerText = text;
+        } else {
+            const points = new Set([0, text.length]);
+            formats.forEach(f => {
+                points.add(Math.max(0, Math.min(text.length, f.start)));
+                points.add(Math.max(0, Math.min(text.length, f.end)));
+            });
+            const sortedPoints = Array.from(points).sort((a, b) => a - b);
+            let html = '';
+            for (let i = 0; i < sortedPoints.length - 1; i++) {
+                const start = sortedPoints[i];
+                const end = sortedPoints[i + 1];
+                let segment = text.substring(start, end);
+                const isFormatted = formats.some(f => start >= f.start && end <= f.end);
+                segment = segment.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                if (isFormatted) {
+                    html += `<span style="border-bottom: 2px dashed black; background-color: rgba(128, 128, 128, 0.3);">${segment}</span>`;
+                } else {
+                    html += segment;
+                }
+            }
+            backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
+        }
+    }
+
+    function initNoteEditUI() {
+        const contentModal = document.getElementById('content-modal');
+        const modalContentBox = contentModal?.querySelector('.modal-content-box');
+        const footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
+
+        // Add save button if not exists
+        if (!document.getElementById('note-save-btn')) {
+            const saveBtn = document.createElement('div');
+            saveBtn.id = 'note-save-btn';
+            saveBtn.className = 'modal-footer-btn';
+            saveBtn.innerHTML = diskIconSvg;
+            saveBtn.title = _('saveTooltip') || "Save changes";
+            saveBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (typeof saveEditedNote === 'function') saveEditedNote();
+            });
+
+            // Add preview button
+            const previewBtn = document.createElement('div');
+            previewBtn.id = 'note-preview-btn';
+            previewBtn.className = 'modal-footer-btn';
+            previewBtn.innerHTML = eyeIconSvg;
+            previewBtn.style.backgroundColor = '#4a90e2';
+            previewBtn.title = _('previewTooltip') || "Preview changes";
+            previewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (typeof previewEditedNote === 'function') previewEditedNote();
+            });
+
+            if (footerToolbar) {
+                // We append them in order: Preview, Search (already exists, will move), Save
+                const existingSearchBtn = document.getElementById('note-search-btn');
+                footerToolbar.appendChild(previewBtn);
+                if (existingSearchBtn) footerToolbar.appendChild(existingSearchBtn);
+                footerToolbar.appendChild(saveBtn);
+            } else if (modalContentBox) {
+                const existingSearchBtn = document.getElementById('note-search-btn');
+                modalContentBox.appendChild(previewBtn);
+                if (existingSearchBtn) modalContentBox.appendChild(existingSearchBtn);
+                modalContentBox.appendChild(saveBtn);
+            }
+        } else {
+            // If buttons already exist, re-append them to ensure order: Preview, Search, Save
+            const sBtn = document.getElementById('note-save-btn');
+            const pBtn = document.getElementById('note-preview-btn');
+            const searchBtn = document.getElementById('note-search-btn');
+            if (footerToolbar) {
+                if (pBtn) footerToolbar.appendChild(pBtn);
+                if (searchBtn) footerToolbar.appendChild(searchBtn);
+                if (sBtn) footerToolbar.appendChild(sBtn);
+            }
+        }
+
+        // Ensure state-specific visibility
+        const saveBtn = document.getElementById('note-save-btn');
+        const previewBtn = document.getElementById('note-preview-btn');
+        const editBtn = document.getElementById('note-edit-btn');
+        const moveBtn = document.getElementById('note-move-btn');
+
+        if (saveBtn) { saveBtn.style.display = 'flex'; saveBtn.style.position = 'static'; }
+        if (previewBtn) { previewBtn.style.display = 'flex'; previewBtn.style.position = 'static'; }
+        if (editBtn) editBtn.style.display = 'none';
+        if (moveBtn) moveBtn.style.display = 'none';
+        const calendarBtn = document.getElementById('note-calendar-btn');
+        if (calendarBtn) calendarBtn.style.display = 'none';
+        const searchBtn = document.getElementById('note-search-btn');
+        if (searchBtn) searchBtn.style.display = 'flex';
+        const colorBtn = document.getElementById('modal-color-btn');
+        if (colorBtn) colorBtn.style.display = 'flex';
+        // Remove graphical background for edit mode
+        const modalBodyEl = document.getElementById('modal-body');
+        if (modalContentBox) {
+            modalContentBox.style.backgroundImage = 'none';
+            modalContentBox.classList.add('no-bg-image');
+        }
+        if (modalBodyEl) modalBodyEl.classList.add('no-bg-image');
+    }
+
+    function placeCaretAtEnd(el) {
+        el.focus();
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+            const len = el.value.length;
+            el.setSelectionRange(len, len);
+        } else if (typeof window.getSelection != "undefined" && typeof document.createRange != "undefined") {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        // Check for Ctrl key - Only then proceed with edit checks
+        if (!e.ctrlKey) return;
+
+        // Check for target is inside modal-body and NOT inside footer/header
+        const modalBodyElem = document.getElementById('modal-body');
+        if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
+
+        // Explicitly ignore clicks on footer or any other elements appended to modalBody
+        if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
+
+        // Check if Database mode is active OR if GDrive update is enabled
+        const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+        const noteGdid = modalBodyElem.dataset.gdid;
+
+        if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) {
+            // Warn if trying to edit but can't save anywhere
+            showToast("Editing requires Database Mode or 'Update Google Drive' enabled.", 3000);
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        enableNoteEditing(modalBodyElem);
+    }, true);
+
+    /* / --- Long Press for Editing (Mobile) ---
+    let editLongPressTimer;
+    let editLongPressTriggered = false;
+    document.addEventListener('touchstart', (e) => {
+        const modalBodyElem = document.getElementById('modal-body');
+        if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
+        if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
+     
+        const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+        const noteGdid = modalBodyElem.dataset.gdid;
+     
+        // If not editable, just return, don't start timer
+        if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) return;
+     
+        editLongPressTriggered = false;
+        editLongPressTimer = setTimeout(() => {
+            editLongPressTriggered = true;
+            enableNoteEditing(modalBodyElem);
+            if (navigator.vibrate) navigator.vibrate(50);
+            editLongPressTimer = null;
+        }, 800);
+    }, { passive: true });
+     
+    document.addEventListener('touchend', () => {
+        if (editLongPressTimer) {
+            clearTimeout(editLongPressTimer);
+            editLongPressTimer = null;
+        }
+    });
+     
+    document.addEventListener('touchmove', () => {
+        if (editLongPressTimer) {
+            clearTimeout(editLongPressTimer);
+            editLongPressTimer = null;
+        }
+    });*/
+
+    document.addEventListener('contextmenu', (e) => {
+        /* if (editLongPressTriggered) {
+            e.preventDefault();
+            editLongPressTriggered = false;
+            return;
+        } */
+        const modalBodyElem = document.getElementById('modal-body');
+        if (modalBodyElem && modalBodyElem.contains(e.target) && !e.target.closest('.note-footer') && !e.target.closest('.modal-note-footer')) {
+            // If textarea exists, it means we are editing or just started
+            if (modalBodyElem.querySelector('textarea')) {
+                e.preventDefault();
+            }
+        }
+    });
+
+    // --- Three-way Merge & Conflict Resolution ---
+    async function fetchGDriveFileContent(fileId) {
+        if (isOffline) return null;
+        const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
+        let accessToken = tokenObj ? tokenObj.access_token : null;
+        if (!accessToken) throw new Error("Missing auth token.");
+        try {
+            const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+                cache: 'no-store'
+            });
+            if (!response.ok) {
+                if (response.status === 401) {
+                    const refreshed = await refreshAuthToken();
+                    if (refreshed && refreshed.pass) {
+                        const retry = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                            headers: { 'Authorization': `Bearer ${refreshed.tokenData.access_token}` },
+                            cache: 'no-store'
+                        });
+                        if (retry.ok) return await retry.text();
+                    }
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return await response.text();
+        } catch (e) { console.error("Fetch GDrive failed:", e); return null; }
+    }
+
+    function mergeField(base, local, server) {
+        if (String(local) === String(server)) return local;
+        if (String(local) === String(base)) return server;
+        if (String(server) === String(base)) return local;
+        return { conflict: true, local, server };
+    }
+
+    function mergeNotes(baseNote, localNote, serverNote) {
+        const result = { ...localNote };
+        const conflicts = {};
         const splitNote = (txt) => {
             const textStr = txt || "";
             const pIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(textStr) : textStr.indexOf('|');
@@ -11569,266 +11245,772 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
             }
             return { title: textStr, body: "", hasSplit: false };
         };
-        const lParts = splitNote(localNote.notetxt);
-        const sParts = splitNote(serverNote.notetxt);
-        const bParts = splitNote(baseNote.notetxt);
- 
-        // Helper to determine if we should treat this as a split note
-        const hasSplit = lParts.hasSplit || sParts.hasSplit || bParts.hasSplit;
- 
-        if (!decisions.title) {
-            // Use merged title if no conflict
-            resT.value = mergeField(bParts.title, lParts.title, sParts.title);
+        const b = splitNote(baseNote.notetxt), l = splitNote(localNote.notetxt), s = splitNote(serverNote.notetxt);
+        if (l.hasSplit || s.hasSplit || b.hasSplit) {
+            const mT = mergeField(b.title, l.title, s.title);
+            const mB = mergeField(b.body, l.body, s.body);
+            let fT = mT, fB = mB;
+            if (mT && mT.conflict) { conflicts.title = mT; fT = "<<CONFLICT>>"; }
+            if (mB && mB.conflict) { conflicts.body = mB; fB = "<<CONFLICT>>"; }
+            result.notetxt = fT + '|' + fB;
+        } else {
+            const merged = mergeField(baseNote.notetxt, localNote.notetxt, serverNote.notetxt);
+            if (merged && merged.conflict) { conflicts.notetxt = merged; result.notetxt = "<<CONFLICT>>"; }
+            else result.notetxt = merged;
         }
-        if (!decisions.body && !decisions.notetxt) {
-            // Use merged body if no conflict
-            const mB = mergeField(bParts.body, lParts.body, sParts.body);
-            if (hasSplit) {
-                resB.value = mB;
-            } else {
-                // If no split, the content is effectively in the title part (first part)
-                // and displayed in resB because resT is hidden
-                resB.value = mergeField(bParts.title, lParts.title, sParts.title);
-            }
-        }
-        if (!conflicts.title && !lParts.hasSplit && !sParts.hasSplit) resT.style.display = 'none';
-        box.appendChild(resT); box.appendChild(resB);
- 
-        const footer = document.createElement('div');
-        footer.style.display = 'flex'; footer.style.justifyContent = 'flex-end'; footer.style.gap = '15px'; footer.style.marginTop = '25px';
- 
-        const cancelBtn = document.createElement('button');
-        cancelBtn.textContent = _('cancel') || "Cancel";
-        Object.assign(cancelBtn.style, { padding: '12px 25px', borderRadius: '8px', border: 'none', backgroundColor: 'red', color: '#fff', cursor: 'pointer', fontWeight: 'bold' });
-        cancelBtn.onclick = () => { overlay.remove(); style.remove(); resolve(null); };
- 
-        const saveBtn = document.createElement('button');
-        saveBtn.textContent = _('saveResolved') || "Save Resolved Note";
-        Object.assign(saveBtn.style, { padding: '12px 25px', backgroundColor: 'darkorange', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' });
-        saveBtn.onclick = () => {
-            const resolvedNote = { ...localNote, ...serverNote };
-            if (resT.style.display === 'none') {
-                resolvedNote.notetxt = resB.value;
-            } else {
-                resolvedNote.notetxt = resT.value + '|' + resB.value;
-            }
-            ['color', 'boardid', 'calendarDate', 'text_span', 'title_span', 'pass'].forEach(k => {
-                if (decisions[k] !== undefined) resolvedNote[k] = decisions[k];
-                else resolvedNote[k] = localNote[k];
-            });
-            resolvedNote.datemod = Date.now();
-            overlay.remove(); style.remove(); resolve(resolvedNote);
-        };
-        footer.appendChild(cancelBtn); footer.appendChild(saveBtn);
-        box.appendChild(footer); overlay.appendChild(box); document.body.appendChild(overlay);
-    });
-}
-*/
-
-// Unified Save Logic
-async function saveEditedNote() {
-    const modalBodyElem = document.getElementById('modal-body');
-    const textarea = document.getElementById('note-edit-textarea');
-    const titleTextarea = document.getElementById('note-edit-title-textarea');
-    if (!modalBodyElem) return;
-    if (!textarea && !modalBodyElem.dataset.draftText) return; // Need at least one source
-
-    // 1. Get content and format
-    let newText = textarea ? textarea.value : modalBodyElem.dataset.draftText;
-    let titleText = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
-    const formatStr = modalBodyElem.dataset.format || "";
-    const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
-
-    if (newText === undefined) return; // Nothing to save
-    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
-    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
-    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-    // Show spinner on save button
-    const saveBtnElem = document.getElementById('note-save-btn');
-    const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
-    if (saveBtnElem) {
-        saveBtnElem.style.pointerEvents = 'none';
-        saveBtnElem.style.position = 'relative';
-        saveBtnElem.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
-        // Add indicator icons in the modal
-        const indicators = document.createElement('div');
-        indicators.id = 'save-indicators';
-        Object.assign(indicators.style, {
-            position: 'absolute', bottom: '60px', right: '20px', display: 'flex', gap: '8px', zIndex: '10001',
-            pointerEvents: 'none', background: 'transparent', padding: '4px', borderRadius: '8px'
+        ['color', 'boardid', 'calendarDate', 'text_span', 'title_span', 'pass'].forEach(key => {
+            if (String(localNote[key]) !== String(baseNote[key]) && String(serverNote[key]) !== String(baseNote[key])) {
+                if (String(localNote[key]) !== String(serverNote[key])) conflicts[key] = { local: localNote[key], server: serverNote[key] };
+            } else if (String(serverNote[key]) !== String(baseNote[key])) result[key] = serverNote[key];
         });
-        if (useIndexedDb) indicators.innerHTML += `<img src="Database.png" style="width:28px; height:28px;">`;
-        if (updateGDriveNow && !isOffline) indicators.innerHTML += `<img src="GDrive.png" style="width:28px; height:28px;">`;
-        if (useLocalFolder) indicators.innerHTML += `<img src="Folder.png" style="width:28px; height:28px;">`;
-
-        const modalContentBox = modalBodyElem.closest('.modal-content-box');
-        if (modalContentBox) modalContentBox.appendChild(indicators);
+        return { result, conflicts };
     }
 
-    // Check if it's a new note (deferred creation)
-    let noteGdid = modalBodyElem.dataset.gdid;
-    let noteId = parseInt(modalBodyElem.dataset.id, 10);
-    const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-    const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
+    async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedConflicts) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.id = 'dual-conflict-overlay';
+            Object.assign(overlay.style, { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' });
 
-    // --- Process Markdown Formatting ---
-    let processedText = newText;
-    let finalFormat = formatStr;
-    let finalTitleFormat = titleFormatStr;
+            const container = document.createElement('div');
+            const sW = localStorage.getItem('modalWidth') || '400px';
+            const sH = localStorage.getItem('modalHeight') || '300px';
+            Object.assign(container.style, { position: 'relative', width: sW, height: sH, display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px' });
 
-    // Retrieve masked links from dataset if they exist
-    const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
+            const renderVersion = (note, zIndex) => {
+                const card = document.createElement('div');
+                card.className = 'modal-content-box';
+                Object.assign(card.style, { position: 'absolute', width: '100%', height: '100%', zIndex: zIndex, transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)', opacity: zIndex > 50 ? '1' : '0.4', transform: zIndex > 50 ? 'scale(1)' : 'scale(0.85) translateY(20px)', pointerEvents: zIndex > 50 ? 'auto' : 'none', margin: '0', display: 'flex', flexDirection: 'column' });
 
-    if ((isHiddenNote || (titleTextarea && titleText !== "")) && titleTextarea) {
-        // Handle hidden note OR normal note with split content
-        const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
-        finalTitleFormat = stringifyFormatsArray(titleRes.formats);
+                // Background logic
+                const colorIdx = note.color || 0;
+                card.style.backgroundColor = noteColorMap[colorIdx] || '#FBFF86';
+                if (localStorage.getItem('imgBgrd') !== 'false') card.style.backgroundImage = "url('Note.jpg')";
 
-        const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
-        finalFormat = stringifyFormatsArray(bodyRes.formats);
+                // Header: Date only (standard look)
+                const labelEl = document.createElement('div');
+                labelEl.id = 'modal-board-name';
+                labelEl.style.display = 'block'; labelEl.style.left = '15px'; labelEl.style.top = '10px';
+                labelEl.innerHTML = `<span style="font-weight:normal; font-size:11px; opacity:0.6; color:#000;">${new Date(parseInt(note.datemod)).toLocaleString()}</span>`;
+                card.appendChild(labelEl);
 
-        processedText = titleRes.text + '|' + bodyRes.text;
-    } else {
-        // Standard note
-        const res = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
-        processedText = res.text;
-        finalFormat = stringifyFormatsArray(res.formats);
-    }
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'modal-close modal-header-btn';
+                closeBtn.style.right = '10px'; closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+                card.appendChild(closeBtn);
 
-    const dateMod = Date.now();
+                const bdy = document.createElement('div');
+                bdy.className = 'modal-body'; bdy.style = 'padding:20px; margin-top:40px; overflow-y:auto; flex-grow:1; position:relative;';
+                card.appendChild(bdy);
 
-    if (modalNoteObj === undefined) {
-        // ... (This part handles isNewNote, but we already have isNewNote logic below)
-    }
+                // Action Buttons (Bottom Right)
+                const createBtn = (id, icon, right, title) => {
+                    const btn = document.createElement('div');
+                    btn.innerHTML = icon; btn.title = title;
+                    Object.assign(btn.style, { position: 'absolute', bottom: '15px', right: right, width: '40px', height: '40px', backgroundColor: 'darkorange', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', cursor: 'pointer', zIndex: 100 });
+                    card.appendChild(btn); return btn;
+                };
 
-    // Re-check isNewNote because we might have changed processedText
-    const isNewNote = !modalNoteObj && !noteGdid;
-    if (isNewNote) {
-        // --- Handle Creation of New Note ---
-        const boardId = modalBodyElem.dataset.boardId || currentBoardFilter;
-        // Generate new ID/GDID if missing
-        if (!noteId || isNaN(noteId)) {
-            noteId = ++window.noteId;
-            noteNumord++;
-        }
+                const btnEdit = createBtn('conf-edit', pencilIconSvg, '100px', 'Edit');
+                const btnSave = createBtn('conf-save', diskIconSvg, '50px', 'Use this version');
+                const btnEye = createBtn('conf-eye', eyeIconSvg, '100px', 'Preview');
+                btnSave.style.display = 'flex'; btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
 
-        // Define new note object
-        const newNote = {
-            "alarm_type": -1,
-            "boardid": boardId,
-            "calendarDate": 0,
-            "color": modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : 0,
-            "date": dateMod,
-            "datemod": dateMod,
-            "eventId": 0,
-            "gdid": String(noteId), // Use ID as temporary key to prevent empty key errors
-            "id": noteId,
-            "notetxt": processedText,
-            "numord": window.noteNumord,
-            "pass": isHiddenNote, // Use the state from modalNoteObj if available, or false
-            "sellist": 0,
-            "status": 0,
-            "text_span": finalFormat,
-            "title_span": finalTitleFormat,
-            "timer": 0,
-            "timer_type": -1,
-            "timer_val": 1,
-            "type": 0,
-            "version": 243
-        };
+                const refreshContent = (currentNote) => {
+                    // Apply to text and formatted element
+                    let txt = currentNote.notetxt || '';
+                    const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) !== -1 : txt.includes('|');
+                    if (hasPipe) {
+                        const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
+                        const tPart = txt.substring(0, pipeIdx);
+                        const bPart = txt.substring(pipeIdx + 1);
+                        bdy.innerHTML = (typeof formatText === 'function') ? formatText(tPart, currentNote.title_span || '', true) + '<br>' + formatText(bPart, currentNote.text_span || '', true) : tPart + '<br>' + bPart;
+                    } else { bdy.innerHTML = (typeof formatText === 'function') ? formatText(txt, currentNote.text_span || '', true) : txt; }
+                    bdy.dataset.id = currentNote.id || '';
+                    bdy.dataset.gdid = currentNote.gdid || '';
+                    bdy.dataset.format = currentNote.text_span || ''; bdy.dataset.titleFormat = currentNote.title_span || '';
+                };
 
-        // Add to Global Data
-        allNotesData.push(newNote);
+                btnEdit.onclick = () => {
+                    const globalModalBody = modalBody;
+                    const oldId = globalModalBody ? globalModalBody.id : '';
+                    if (globalModalBody) globalModalBody.id = '';
 
-        // Create DOM Element
-        const newEl = await createNoteElement(newNote);
-        if (newEl) {
-            notesContainer.prepend(newEl);
-            // Update dataset for subsequent saves
-            modalBodyElem.dataset.id = newNote.id;
-            modalBodyElem.dataset.gdid = newNote.gdid;
-        }
+                    bdy.id = 'modal-body';
+                    modalBody = bdy;
+                    currentModalContent = note.notetxt;
 
-        // Update Board Counter
-        if (typeof updateBoardCounterUI === 'function') {
-            updateBoardCounterUI(boardId);
-            updateBoardCounterUI('reminder');
-        }
-    }
+                    enableNoteEditing(bdy);
 
-    // 2. Update local data model (for existing notes)
-    let noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-    if (!noteObj && !isNewNote) {
-        console.error("Note object not found for saving.");
-        return;
-    }
+                    btnEdit.style.display = 'none'; btnSave.style.right = '50px'; btnEye.style.display = 'flex';
 
-    const originalContent = noteObj ? (noteObj.notetxt || "") : "";
-    let newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj ? (noteObj.calendarDate || 0) : 0);
-    let newColor = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (noteObj ? (noteObj.color || 0) : 0);
+                    modalBody = globalModalBody;
+                    if (globalModalBody) globalModalBody.id = oldId;
+                };
 
-    // --- Conflict Resolution Logic ---
-    if (updateGDriveNow && noteGdid && noteObj) {
-        try {
-            const serverRaw = await fetchGDriveFileContent(noteGdid);
-            if (serverRaw) {
-                const sData = JSON.parse(serverRaw);
-                const sNote = Array.isArray(sData) ? sData[0] : sData;
-                const baseDatemod = parseInt(modalBodyElem.dataset.baseDatemod, 10) || 0;
-                const baseNoteStr = modalBodyElem.dataset.baseNote;
-                const baseNote = baseNoteStr ? JSON.parse(baseNoteStr) : noteObj;
-
-                let dbNote = null;
-                if (useIndexedDb) {
-                    try { dbNote = await getFromDB(NOTE_STORE_NAME, noteGdid || noteId); } catch (e) { }
-                }
-
-                if (debug) {
-                    console.log("--- Conflict Debug ---");
-                    console.log("GDID:", noteGdid);
-                    console.log("1. Base Note (when modal opened) datemod:", baseDatemod);
-                    console.log("2. Local Memory Note (allNotesData) datemod:", noteObj.datemod);
-                    if (useIndexedDb) console.log("3. IndexedDB Note datemod:", dbNote ? dbNote.datemod : "Not found");
-                    console.log("4. Server Note (Google Drive) datemod:", sNote.datemod);
-                    console.log(">> Server > Base?", sNote.datemod > baseDatemod);
-                    console.log(">> Server > Memory?", sNote.datemod > noteObj.datemod);
-                }
-
-                if (sNote && sNote.datemod > baseDatemod) {
-                    const lNote = { ...noteObj, notetxt: processedText, text_span: finalFormat, title_span: finalTitleFormat, color: newColor, calendarDate: newCalendarDate };
-                    const { result, conflicts } = mergeNotes(baseNote, lNote, sNote);
-                    if (Object.keys(conflicts).length > 0) {
-                        const resolved = await showNoteConflictModal(baseNote, lNote, sNote, conflicts);
-                        if (!resolved) {
-                            if (saveBtnElem) {
-                                saveBtnElem.style.pointerEvents = 'auto';
-                                saveBtnElem.innerHTML = originalSaveBtnHtml;
-                                const inds = document.getElementById('save-indicators');
-                                if (inds) inds.remove();
-                            }
-                            return;
-                        }
-                        processedText = resolved.notetxt; finalFormat = resolved.text_span; finalTitleFormat = resolved.title_span;
-                        newColor = resolved.color; newCalendarDate = resolved.calendarDate;
+                btnEye.onclick = () => {
+                    const titleArea = bdy.querySelector('#note-edit-title-textarea');
+                    let txtArea;
+                    if (titleArea) {
+                        txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
                     } else {
-                        processedText = result.notetxt; finalFormat = result.text_span; finalTitleFormat = result.title_span;
-                        newColor = result.color; newCalendarDate = result.calendarDate;
+                        txtArea = bdy.querySelector('textarea');
+                    }
+
+                    if (txtArea) {
+                        const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
+                        const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
+                        note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
+                        if (titleArea) {
+                            const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
+                            note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
+                        }
+                    }
+                    refreshContent(note);
+                    btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
+                };
+
+                btnSave.onclick = async () => {
+                    const titleArea = bdy.querySelector('#note-edit-title-textarea');
+                    let txtArea;
+                    if (titleArea) {
+                        txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
+                    } else {
+                        txtArea = bdy.querySelector('textarea');
+                    }
+
+                    if (txtArea) {
+                        const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
+                        const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
+                        note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
+                        if (titleArea) {
+                            const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
+                            note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
+                        }
+                    }
+                    note.datemod = Date.now(); overlay.remove(); resolve(note);
+                };
+
+                refreshContent(note);
+                return { card, bdy };
+            };
+
+            const local = renderVersion(localNote, 60);
+            const server = renderVersion(serverNote, 40);
+            container.appendChild(server.card); container.appendChild(local.card);
+
+            // Tab-like buttons
+            const tabs = document.createElement('div');
+            Object.assign(tabs.style, { position: 'absolute', bottom: '-65px', display: 'flex', gap: '5px', zIndex: 5 });
+            const createTab = (txt, active) => {
+                const t = document.createElement('button');
+                t.textContent = txt;
+                t.style = `padding:8px 20px; border:none; border-radius:0 0 10px 10px; cursor:pointer; font-weight:bold; background:${active ? 'darkorange' : '#444'}; color:${active ? '#000' : '#fff'}; transition: 0.3s;`;
+                return t;
+            };
+            const tabL = createTab('ЛОКАЛНА (DB)', true);
+            const tabS = createTab('СЪРВЪР (GD)', false);
+
+            const switchView = (isLocal) => {
+                local.card.style.zIndex = isLocal ? 60 : 40; local.card.style.opacity = isLocal ? '1' : '0.4'; local.card.style.transform = isLocal ? 'scale(1)' : 'scale(0.85) translateY(20px)'; local.card.style.pointerEvents = isLocal ? 'auto' : 'none';
+                server.card.style.zIndex = isLocal ? 40 : 60; server.card.style.opacity = isLocal ? '0.4' : '1'; server.card.style.transform = isLocal ? 'scale(0.85) translateY(20px)' : 'scale(1)'; server.card.style.pointerEvents = isLocal ? 'none' : 'auto';
+                tabL.style.background = isLocal ? 'darkorange' : '#444'; tabL.style.color = isLocal ? '#000' : '#fff';
+                tabS.style.background = isLocal ? '#444' : 'darkorange'; tabS.style.color = isLocal ? '#fff' : '#000';
+
+                // Safe ID management: only one element should have 'modal-body' at any time
+                if (isLocal) {
+                    server.bdy.id = '';
+                    local.bdy.id = 'modal-body';
+                } else {
+                    local.bdy.id = '';
+                    server.bdy.id = 'modal-body';
+                }
+            };
+
+            tabL.onclick = () => switchView(true);
+            tabS.onclick = () => switchView(false);
+            tabs.appendChild(tabL); tabs.appendChild(tabS);
+            container.appendChild(tabs);
+            overlay.appendChild(container);
+            document.body.appendChild(overlay);
+            switchView(true);
+        });
+    }
+
+    /* Old implementation commented out
+    async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, conflicts) {
+        return new Promise((resolve) => {
+            // Add responsive CSS
+            const style = document.createElement('style');
+            style.textContent = `
+                #conflict-resolution-box {
+                    background-image: url('Board.png');
+                    background-color: #1a1a1a;
+                    background-repeat: repeat;
+                    background-size: auto;
+                    border-radius: 12px;
+                    width: calc(100% - 20px);
+                    max-width: 950px;
+                    max-height: 95vh;
+                    overflow-y: auto;
+                    padding: 20px;
+                    color: #fff;
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+                    border: 1px solid #444;
+                    font-family: sans-serif;
+                    box-sizing: border-box;
+                }
+                .conflict-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 20px;
+                    margin-bottom: 25px;
+                }
+                @media (max-width: 600px) {
+                    .conflict-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+                .conflict-cell {
+                    padding: 15px;
+                    border-radius: 12px;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 3px 5px 15px rgba(0,0,0,0.3);
+                    border: 1px solid rgba(0,0,0,0.1);
+                    color: #000;
+                    transition: transform 0.2s;
+                    box-sizing: border-box;
+                }
+                .conflict-cell:hover { transform: translateY(-2px); }
+                .conflict-btn-use {
+                    background-color: darkorange;
+                    color: #000;
+                    border: none;
+                    padding: 10px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    margin-bottom: 12px;
+                    font-weight: bold;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                }
+                .conflict-txt-preview {
+                    font-size: 0.9em;
+                    user-select: text;
+                    max-height: 150px;
+                    overflow-y: auto;
+                    word-break: break-word;
+                    white-space: pre-wrap;
+                    background: rgba(255,255,255,0.2);
+                    padding: 10px;
+                    border-radius: 6px;
+                }
+                .result-field {
+                    width: 100%;
+                    padding: 12px;
+                    color: #000;
+                    border: 2px solid #444;
+                    border-radius: 8px;
+                    margin-bottom: 10px;
+                    font-size: 1.1em;
+                    box-sizing: border-box;
+                    font-weight: 500;
+                }
+                .result-field:focus { border-color: darkorange; outline: none; }
+            `;
+            document.head.appendChild(style);
+     
+            const box = document.createElement('div');
+            box.id = 'conflict-resolution-box';
+     
+            const title = document.createElement('h2');
+            title.textContent = _('conflictDetected') || "Note Conflict Detected";
+            title.style.margin = '0 0 20px 0';
+            title.style.textAlign = 'center';
+            title.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+            title.style.color = 'black';
+            box.appendChild(title);
+     
+            const noteColors = (typeof noteColorMap !== 'undefined') ? noteColorMap : ['#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF', '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'];
+            const noteBgColor = noteColors[localNote.color || 0];
+     
+            const resT = document.createElement('input');
+            resT.className = 'result-field';
+            resT.style.backgroundColor = noteBgColor;
+            const resB = document.createElement('textarea');
+            resB.className = 'result-field';
+            resB.style.backgroundColor = noteBgColor;
+            resB.style.height = '150px'; resB.style.resize = 'vertical';
+     
+            const grid = document.createElement('div');
+            grid.className = 'conflict-grid';
+     
+            const createHeader = (label) => {
+                const div = document.createElement('div'); div.textContent = label;
+                div.style.fontWeight = 'bold'; div.style.textAlign = 'center'; div.style.paddingBottom = '10px';
+                div.style.color = '#fff'; div.style.fontSize = '1.1em';
+                return div;
+            };
+     
+            const decisions = {};
+     
+            const addConflictRow = (key, localVal, serverVal, label) => {
+                if (label !== (_('content') || 'Content')) {
+                    const rowLabel = document.createElement('div');
+                    rowLabel.style.gridColumn = '1 / -1'; rowLabel.style.marginTop = '15px';
+                    rowLabel.style.fontWeight = 'bold'; rowLabel.style.color = '#4a90e2';
+                    rowLabel.textContent = (label || key).toUpperCase();
+                    grid.appendChild(rowLabel);
+                }
+     
+                const createCell = (val, side) => {
+                    const cell = document.createElement('div');
+                    cell.className = 'conflict-cell';
+                    const colorIdx = (side === 'local' ? localNote.color : serverNote.color) || 0;
+                    cell.style.backgroundColor = noteColors[colorIdx];
+     
+                    const btn = document.createElement('button');
+                    btn.className = 'conflict-btn-use';
+                    btn.textContent = _('useThis') || 'Use This';
+     
+                    const txt = document.createElement('div');
+                    txt.className = 'conflict-txt-preview';
+                    txt.textContent = val;
+     
+                    cell.appendChild(btn); cell.appendChild(txt);
+                    return { cell, btn };
+                };
+                const l = createCell(localVal, 'local');
+                const s = createCell(serverVal, 'server');
+     
+                const select = (side) => {
+                    l.cell.style.boxShadow = side === 'local' ? '0 0 0 4px #4a90e2' : '3px 5px 15px rgba(0,0,0,0.3)';
+                    s.cell.style.boxShadow = side === 'server' ? '0 0 0 4px #4a90e2' : '3px 5px 15px rgba(0,0,0,0.3)';
+                    const v = side === 'local' ? localVal : serverVal;
+                    decisions[key] = v;
+                    if (key === 'title') resT.value = v;
+                    if (key === 'body' || key === 'notetxt') resB.value = v;
+     
+                    // Update result background color based on selected version's color
+                    const colorIdx = (side === 'local' ? localNote.color : serverNote.color) || 0;
+                    if (resT) resT.style.backgroundColor = noteColors[colorIdx];
+                    if (resB) resB.style.backgroundColor = noteColors[colorIdx];
+                };
+                l.btn.onclick = () => select('local');
+                s.btn.onclick = () => select('server');
+                grid.appendChild(l.cell); grid.appendChild(s.cell); select('local');
+            };
+     
+            Object.keys(conflicts).forEach(key => {
+                if (key === 'color') return; // Skip color field comparison
+                const conflict = conflicts[key];
+                let label = key;
+                if (key === 'title') label = _('title') || 'Title';
+                else if (key === 'body' || key === 'notetxt') label = _('content') || 'Content';
+                addConflictRow(key, conflict.local, conflict.server, label);
+            });
+            box.appendChild(grid);
+     
+            const resLabel = document.createElement('h4'); resLabel.textContent = _('finalResult') || "Final Result (editable):";
+            resLabel.style.margin = '20px 0 10px 0';
+            resLabel.style.color = 'black';
+            box.appendChild(resLabel);
+     
+            const splitNote = (txt) => {
+                const textStr = txt || "";
+                const pIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(textStr) : textStr.indexOf('|');
+                if (pIdx !== -1) {
+                    return { title: textStr.substring(0, pIdx), body: textStr.substring(pIdx + 1), hasSplit: true };
+                }
+                return { title: textStr, body: "", hasSplit: false };
+            };
+            const lParts = splitNote(localNote.notetxt);
+            const sParts = splitNote(serverNote.notetxt);
+            const bParts = splitNote(baseNote.notetxt);
+     
+            // Helper to determine if we should treat this as a split note
+            const hasSplit = lParts.hasSplit || sParts.hasSplit || bParts.hasSplit;
+     
+            if (!decisions.title) {
+                // Use merged title if no conflict
+                resT.value = mergeField(bParts.title, lParts.title, sParts.title);
+            }
+            if (!decisions.body && !decisions.notetxt) {
+                // Use merged body if no conflict
+                const mB = mergeField(bParts.body, lParts.body, sParts.body);
+                if (hasSplit) {
+                    resB.value = mB;
+                } else {
+                    // If no split, the content is effectively in the title part (first part)
+                    // and displayed in resB because resT is hidden
+                    resB.value = mergeField(bParts.title, lParts.title, sParts.title);
+                }
+            }
+            if (!conflicts.title && !lParts.hasSplit && !sParts.hasSplit) resT.style.display = 'none';
+            box.appendChild(resT); box.appendChild(resB);
+     
+            const footer = document.createElement('div');
+            footer.style.display = 'flex'; footer.style.justifyContent = 'flex-end'; footer.style.gap = '15px'; footer.style.marginTop = '25px';
+     
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = _('cancel') || "Cancel";
+            Object.assign(cancelBtn.style, { padding: '12px 25px', borderRadius: '8px', border: 'none', backgroundColor: 'red', color: '#fff', cursor: 'pointer', fontWeight: 'bold' });
+            cancelBtn.onclick = () => { overlay.remove(); style.remove(); resolve(null); };
+     
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = _('saveResolved') || "Save Resolved Note";
+            Object.assign(saveBtn.style, { padding: '12px 25px', backgroundColor: 'darkorange', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' });
+            saveBtn.onclick = () => {
+                const resolvedNote = { ...localNote, ...serverNote };
+                if (resT.style.display === 'none') {
+                    resolvedNote.notetxt = resB.value;
+                } else {
+                    resolvedNote.notetxt = resT.value + '|' + resB.value;
+                }
+                ['color', 'boardid', 'calendarDate', 'text_span', 'title_span', 'pass'].forEach(k => {
+                    if (decisions[k] !== undefined) resolvedNote[k] = decisions[k];
+                    else resolvedNote[k] = localNote[k];
+                });
+                resolvedNote.datemod = Date.now();
+                overlay.remove(); style.remove(); resolve(resolvedNote);
+            };
+            footer.appendChild(cancelBtn); footer.appendChild(saveBtn);
+            box.appendChild(footer); overlay.appendChild(box); document.body.appendChild(overlay);
+        });
+    }
+    */
+
+    // Unified Save Logic
+    async function saveEditedNote() {
+        const modalBodyElem = document.getElementById('modal-body');
+        const textarea = document.getElementById('note-edit-textarea');
+        const titleTextarea = document.getElementById('note-edit-title-textarea');
+        if (!modalBodyElem) return;
+        if (!textarea && !modalBodyElem.dataset.draftText) return; // Need at least one source
+
+        // 1. Get content and format
+        let newText = textarea ? textarea.value : modalBodyElem.dataset.draftText;
+        let titleText = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
+        const formatStr = modalBodyElem.dataset.format || "";
+        const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
+
+        if (newText === undefined) return; // Nothing to save
+        const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+        const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+        // Show spinner on save button
+        const saveBtnElem = document.getElementById('note-save-btn');
+        const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
+        if (saveBtnElem) {
+            saveBtnElem.style.pointerEvents = 'none';
+            saveBtnElem.style.position = 'relative';
+            saveBtnElem.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
+            // Add indicator icons in the modal
+            const indicators = document.createElement('div');
+            indicators.id = 'save-indicators';
+            Object.assign(indicators.style, {
+                position: 'absolute', bottom: '60px', right: '20px', display: 'flex', gap: '8px', zIndex: '10001',
+                pointerEvents: 'none', background: 'transparent', padding: '4px', borderRadius: '8px'
+            });
+            if (useIndexedDb) indicators.innerHTML += `<img src="Database.png" style="width:28px; height:28px;">`;
+            if (updateGDriveNow && !isOffline) indicators.innerHTML += `<img src="GDrive.png" style="width:28px; height:28px;">`;
+            if (useLocalFolder) indicators.innerHTML += `<img src="Folder.png" style="width:28px; height:28px;">`;
+
+            const modalContentBox = modalBodyElem.closest('.modal-content-box');
+            if (modalContentBox) modalContentBox.appendChild(indicators);
+        }
+
+        // Check if it's a new note (deferred creation)
+        let noteGdid = modalBodyElem.dataset.gdid;
+        let noteId = parseInt(modalBodyElem.dataset.id, 10);
+        const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+        const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
+
+        // --- Process Markdown Formatting ---
+        let processedText = newText;
+        let finalFormat = formatStr;
+        let finalTitleFormat = titleFormatStr;
+
+        // Retrieve masked links from dataset if they exist
+        const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
+
+        if ((isHiddenNote || (titleTextarea && titleText !== "")) && titleTextarea) {
+            // Handle hidden note OR normal note with split content
+            const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
+            finalTitleFormat = stringifyFormatsArray(titleRes.formats);
+
+            const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
+            finalFormat = stringifyFormatsArray(bodyRes.formats);
+
+            processedText = titleRes.text + '|' + bodyRes.text;
+        } else {
+            // Standard note
+            const res = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
+            processedText = res.text;
+            finalFormat = stringifyFormatsArray(res.formats);
+        }
+
+        const dateMod = Date.now();
+
+        if (modalNoteObj === undefined) {
+            // ... (This part handles isNewNote, but we already have isNewNote logic below)
+        }
+
+        // Re-check isNewNote because we might have changed processedText
+        const isNewNote = (!modalNoteObj && !noteGdid) || modalBodyElem.dataset.isNewNote === 'true';
+        if (isNewNote) {
+            // --- Handle Creation of New Note ---
+            const boardId = modalBodyElem.dataset.boardId || currentBoardFilter;
+            // Generate new ID/GDID if missing
+            if (!noteId || isNaN(noteId)) {
+                noteId = ++window.noteId;
+                noteNumord++;
+            }
+
+            // Define new note object
+            const newNote = {
+                "alarm_type": -1,
+                "boardid": boardId,
+                "calendarDate": 0,
+                "color": modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : 0,
+                "date": dateMod,
+                "datemod": dateMod,
+                "eventId": 0,
+                "gdid": String(noteId), // Use ID as temporary key to prevent empty key errors
+                "id": noteId,
+                "notetxt": processedText,
+                "numord": window.noteNumord,
+                "pass": isHiddenNote, // Use the state from modalNoteObj if available, or false
+                "sellist": 0,
+                "status": 0,
+                "text_span": finalFormat,
+                "title_span": finalTitleFormat,
+                "timer": 0,
+                "timer_type": -1,
+                "timer_val": 1,
+                "type": 0,
+                "version": 243
+            };
+
+            // Add to Global Data
+            allNotesData.push(newNote);
+
+            // Create DOM Element
+            const newEl = await createNoteElement(newNote);
+            if (newEl) {
+                notesContainer.prepend(newEl);
+                // Update dataset for subsequent saves
+                modalBodyElem.dataset.id = newNote.id;
+                modalBodyElem.dataset.gdid = newNote.gdid;
+                modalBodyElem.dataset.isNewNote = 'false';
+            }
+
+            // Update Board Counter
+            if (typeof updateBoardCounterUI === 'function') {
+                updateBoardCounterUI(boardId);
+                updateBoardCounterUI('reminder');
+            }
+        }
+
+        // 2. Update local data model (for existing notes)
+        let noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+        if (!noteObj && !isNewNote) {
+            console.error("Note object not found for saving.");
+            return;
+        }
+
+        const originalContent = noteObj ? (noteObj.notetxt || "") : "";
+        let newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj ? (noteObj.calendarDate || 0) : 0);
+        let newColor = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (noteObj ? (noteObj.color || 0) : 0);
+
+        // --- Conflict Resolution Logic ---
+        if (updateGDriveNow && noteGdid && noteObj) {
+            try {
+                const serverRaw = await fetchGDriveFileContent(noteGdid);
+                if (serverRaw) {
+                    const sData = JSON.parse(serverRaw);
+                    const sNote = Array.isArray(sData) ? sData[0] : sData;
+                    const baseDatemod = parseInt(modalBodyElem.dataset.baseDatemod, 10) || 0;
+                    const baseNoteStr = modalBodyElem.dataset.baseNote;
+                    const baseNote = baseNoteStr ? JSON.parse(baseNoteStr) : noteObj;
+
+                    let dbNote = null;
+                    if (useIndexedDb) {
+                        try { dbNote = await getFromDB(NOTE_STORE_NAME, noteGdid || noteId); } catch (e) { }
+                    }
+
+                    if (debug) {
+                        console.log("--- Conflict Debug ---");
+                        console.log("GDID:", noteGdid);
+                        console.log("1. Base Note (when modal opened) datemod:", baseDatemod);
+                        console.log("2. Local Memory Note (allNotesData) datemod:", noteObj.datemod);
+                        if (useIndexedDb) console.log("3. IndexedDB Note datemod:", dbNote ? dbNote.datemod : "Not found");
+                        console.log("4. Server Note (Google Drive) datemod:", sNote.datemod);
+                        console.log(">> Server > Base?", sNote.datemod > baseDatemod);
+                        console.log(">> Server > Memory?", sNote.datemod > noteObj.datemod);
+                    }
+
+                    if (sNote && sNote.datemod > baseDatemod) {
+                        const lNote = { ...noteObj, notetxt: processedText, text_span: finalFormat, title_span: finalTitleFormat, color: newColor, calendarDate: newCalendarDate };
+                        const { result, conflicts } = mergeNotes(baseNote, lNote, sNote);
+                        if (Object.keys(conflicts).length > 0) {
+                            const resolved = await showNoteConflictModal(baseNote, lNote, sNote, conflicts);
+                            if (!resolved) {
+                                if (saveBtnElem) {
+                                    saveBtnElem.style.pointerEvents = 'auto';
+                                    saveBtnElem.innerHTML = originalSaveBtnHtml;
+                                    const inds = document.getElementById('save-indicators');
+                                    if (inds) inds.remove();
+                                }
+                                return;
+                            }
+                            processedText = resolved.notetxt; finalFormat = resolved.text_span; finalTitleFormat = resolved.title_span;
+                            newColor = resolved.color; newCalendarDate = resolved.calendarDate;
+                        } else {
+                            processedText = result.notetxt; finalFormat = result.text_span; finalTitleFormat = result.title_span;
+                            newColor = result.color; newCalendarDate = result.calendarDate;
+                        }
+                    }
+                }
+            } catch (e) { console.error("Conflict check failed:", e); }
+        }
+
+        // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
+        const hasChanges = isNewNote || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color);
+
+        if (hasChanges) {
+            // --- Apply Changes ---
+            noteObj.notetxt = processedText;
+            noteObj.color = newColor;
+            noteObj.text_span = finalFormat;
+            noteObj.title_span = finalTitleFormat;
+            const oldCalendarDate = noteObj.calendarDate || 0;
+            noteObj.calendarDate = newCalendarDate;
+
+            // --- Sync with timer ---
+            if (automatedTimer) {
+                if (newCalendarDate > 0) {
+                    noteObj.timer = newCalendarDate; // добавяне на служебен таймер
+                } else if (newCalendarDate === 0 && oldCalendarDate > 0) {
+                    if (noteObj.timer === oldCalendarDate) {
+                        noteObj.timer = 0; // изтриване на служебен таймер
                     }
                 }
             }
-        } catch (e) { console.error("Conflict check failed:", e); }
+
+            noteObj.datemod = dateMod;
+
+            // --- Update UI (DOM Note) ---
+            const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
+            if (noteEl) {
+                const updatedEl = await createNoteElement(noteObj);
+                if (updatedEl) noteEl.replaceWith(updatedEl);
+            }
+
+            // --- Update Board Counter ---
+            if (typeof updateBoardCounterUI === 'function') {
+                updateBoardCounterUI(noteObj.boardid);
+                updateBoardCounterUI('reminder');
+            }
+
+            // --- Save to Source (GDrive / Local / DB) ---
+            if (updateGDriveNow) {
+                const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
+                if (isTempGdid) {
+                    const folderId = await getFolderID();
+                    if (folderId) {
+                        const fileContent = JSON.stringify(noteObj);
+                        const fileName = 'note.txt'; // @@ 
+                        try {
+                            const tempGdid = noteObj.gdid;
+                            const newGdid = await createGDriveFile(folderId, fileName, fileContent);
+                            noteObj.gdid = newGdid;
+                            modalBodyElem.dataset.gdid = newGdid;
+                            await updateGDriveFile(newGdid, JSON.stringify(noteObj));
+                            if (useIndexedDb) {
+                                await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+                                if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
+                            }
+                        } catch (e) {
+                            console.error("Failed to create GDrive file", e);
+                            showToast(_('errorSaveGDrive'));
+                        }
+                    }
+                } else {
+                    try {
+                        await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
+                    } catch (e) { console.error("Failed to update GDrive file", e); }
+                }
+            }
+
+            if (updateLocalFolderNow) {
+                try {
+                    // Ако бележката е нова и няма gdid (или е временен id), генерираме локален такъв
+                    const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
+                    if (isTempGdid && !updateGDriveNow) {
+                        noteObj.gdid = `L${Date.now()}`;
+                        modalBodyElem.dataset.gdid = noteObj.gdid;
+                    }
+                    if (noteObj.gdid) {
+                        await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
+                    }
+                } catch (e) {
+                    console.error("Failed to update local file", e);
+                    showToast(_('errorSaveLocalFolder') || "Грешка при запис в локалната папка");
+                }
+            }
+            if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+            const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
+            const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
+
+            let msgKey = 'noteSavedInDb';
+            if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll';
+            else if (updateGDriveNow) msgKey = 'noteSavedInBoth';
+            else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
+
+            showToast(_(msgKey).replace('{boardName}', boardTitle));
+        }
+
+        // Remove spinner
+        if (saveBtnElem) {
+            saveBtnElem.style.pointerEvents = 'auto';
+            saveBtnElem.innerHTML = originalSaveBtnHtml;
+            const inds = document.getElementById('save-indicators');
+            if (inds) inds.remove();
+        }
+
+        // Exit edit mode and refresh view
+        disableNoteEditing(modalBodyElem);
+        const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
+        if (closeAfterSave) {
+            const contentModal = document.getElementById('content-modal');
+            if (contentModal) contentModal.classList.remove('visible');
+        } else {
+            if (typeof showModal === 'function') {
+                const noteColorStr = (typeof noteColorMap !== 'undefined' && noteObj.color !== null && noteObj.color >= 0 && noteObj.color <= 9) ? noteColorMap[noteObj.color] : noteObj.color;
+                showModal({
+                    raw: noteObj.notetxt,
+                    format: noteObj.text_span,
+                    titleFormat: noteObj.title_span,
+                    color: noteColorStr,
+                    boardId: noteObj.boardid,
+                    id: noteObj.id,
+                    gdid: noteObj.gdid,
+                    datemod: noteObj.datemod,
+                    originalNote: noteObj
+                }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`));
+            }
+        }
+        applyFilters();
     }
 
-    // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
-    const hasChanges = isNewNote || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color);
-
-    if (hasChanges) {
-        // --- Apply Changes ---
-        noteObj.notetxt = processedText;
-        noteObj.color = newColor;
-        noteObj.text_span = finalFormat;
-        noteObj.title_span = finalTitleFormat;
+    async function updateNoteCalendarDate(noteRef, selectedDate) {
+        const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteRef.gdid)) || (n.id && String(n.id) === String(noteRef.id)));
+        if (!noteObj) return;
         const oldCalendarDate = noteObj.calendarDate || 0;
+        const newCalendarDate = selectedDate.getTime();
         noteObj.calendarDate = newCalendarDate;
 
         // --- Sync with timer ---
@@ -11842,68 +12024,65 @@ async function saveEditedNote() {
             }
         }
 
-        noteObj.datemod = dateMod;
-
-        // --- Update UI (DOM Note) ---
+        noteObj.datemod = Date.now();
+        // Update UI (DOM Note)
         const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
         if (noteEl) {
             const updatedEl = await createNoteElement(noteObj);
             if (updatedEl) noteEl.replaceWith(updatedEl);
         }
+        // Save to Source
+        const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+        const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
 
-        // --- Update Board Counter ---
-        if (typeof updateBoardCounterUI === 'function') {
-            updateBoardCounterUI(noteObj.boardid);
-            updateBoardCounterUI('reminder');
-        }
-
-        // --- Save to Source (GDrive / Local / DB) ---
         if (updateGDriveNow) {
             const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
             if (isTempGdid) {
                 const folderId = await getFolderID();
                 if (folderId) {
                     const fileContent = JSON.stringify(noteObj);
-                    const fileName = 'note.txt'; // @@ 
+                    const fileName = 'note.txt';
                     try {
-                        const tempGdid = noteObj.gdid;
                         const newGdid = await createGDriveFile(folderId, fileName, fileContent);
-                        noteObj.gdid = newGdid;
-                        modalBodyElem.dataset.gdid = newGdid;
-                        await updateGDriveFile(newGdid, JSON.stringify(noteObj));
-                        if (useIndexedDb) {
-                            await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
-                            if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
+                        if (newGdid) {
+                            const oldGdid = noteObj.gdid;
+                            noteObj.gdid = newGdid;
+                            if (useIndexedDb) {
+                                await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+                                if (oldGdid && oldGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, oldGdid);
+                            }
                         }
                     } catch (e) {
-                        console.error("Failed to create GDrive file", e);
-                        showToast(_('errorSaveGDrive'));
+                        console.error("Failed to create GDrive file in calendar update", e);
                     }
                 }
             } else {
                 try {
                     await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
-                } catch (e) { console.error("Failed to update GDrive file", e); }
+                } catch (e) {
+                    console.error("Failed to update GDrive file in calendar update", e);
+                }
             }
         }
 
         if (updateLocalFolderNow) {
             try {
-                // Ако бележката е нова и няма gdid (или е временен id), генерираме локален такъв
                 const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
                 if (isTempGdid && !updateGDriveNow) {
                     noteObj.gdid = `L${Date.now()}`;
-                    modalBodyElem.dataset.gdid = noteObj.gdid;
                 }
                 if (noteObj.gdid) {
                     await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
                 }
             } catch (e) {
-                console.error("Failed to update local file", e);
-                showToast(_('errorSaveLocalFolder') || "Грешка при запис в локалната папка");
+                console.error("Failed to update local file in calendar update", e);
             }
         }
-        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+        if (typeof updateBoardCounterUI === 'function') {
+            updateBoardCounterUI(noteObj.boardid);
+            updateBoardCounterUI('reminder');
+        }
         const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
         const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
 
@@ -11913,432 +12092,358 @@ async function saveEditedNote() {
         else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
 
         showToast(_(msgKey).replace('{boardName}', boardTitle));
+        applyFilters();
     }
 
-    // Remove spinner
-    if (saveBtnElem) {
-        saveBtnElem.style.pointerEvents = 'auto';
-        saveBtnElem.innerHTML = originalSaveBtnHtml;
-        const inds = document.getElementById('save-indicators');
-        if (inds) inds.remove();
-    }
+    // Unified Preview Logic
+    function previewEditedNote() {
+        const modalBodyElem = document.getElementById('modal-body');
+        const textarea = document.getElementById('note-edit-textarea');
+        const titleTextarea = document.getElementById('note-edit-title-textarea');
+        if (!modalBodyElem || !textarea) return;
 
-    // Exit edit mode and refresh view
-    disableNoteEditing(modalBodyElem);
-    const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
-    if (closeAfterSave) {
-        const contentModal = document.getElementById('content-modal');
-        if (contentModal) contentModal.classList.remove('visible');
-    } else {
-        if (typeof showModal === 'function') {
-            const noteColorStr = (typeof noteColorMap !== 'undefined' && noteObj.color !== null && noteObj.color >= 0 && noteObj.color <= 9) ? noteColorMap[noteObj.color] : noteObj.color;
-            showModal({
-                raw: noteObj.notetxt,
-                format: noteObj.text_span,
-                titleFormat: noteObj.title_span,
-                color: noteColorStr,
-                boardId: noteObj.boardid,
-                id: noteObj.id,
-                gdid: noteObj.gdid,
-                datemod: noteObj.datemod,
-                originalNote: noteObj
-            }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`));
-        }
-    }
-    applyFilters();
-}
+        const newText = textarea.value;
+        const titleText = titleTextarea ? titleTextarea.value : "";
+        const formatStr = modalBodyElem.dataset.format || "";
+        const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
 
-async function updateNoteCalendarDate(noteRef, selectedDate) {
-    const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteRef.gdid)) || (n.id && String(n.id) === String(noteRef.id)));
-    if (!noteObj) return;
-    const oldCalendarDate = noteObj.calendarDate || 0;
-    const newCalendarDate = selectedDate.getTime();
-    noteObj.calendarDate = newCalendarDate;
+        let noteGdid = modalBodyElem.dataset.gdid;
+        let noteId = parseInt(modalBodyElem.dataset.id, 10);
+        const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+        const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
 
-    // --- Sync with timer ---
-    if (automatedTimer) {
-        if (newCalendarDate > 0) {
-            noteObj.timer = newCalendarDate; // добавяне на служебен таймер
-        } else if (newCalendarDate === 0 && oldCalendarDate > 0) {
-            if (noteObj.timer === oldCalendarDate) {
-                noteObj.timer = 0; // изтриване на служебен таймер
-            }
-        }
-    }
+        let processedText = newText;
+        let finalFormat = formatStr;
+        let finalTitleFormat = titleFormatStr;
 
-    noteObj.datemod = Date.now();
-    // Update UI (DOM Note)
-    const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
-    if (noteEl) {
-        const updatedEl = await createNoteElement(noteObj);
-        if (updatedEl) noteEl.replaceWith(updatedEl);
-    }
-    // Save to Source
-    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
-    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+        // Store drafts for saveEditedNote to work without textarea
+        modalBodyElem.dataset.draftText = newText;
+        modalBodyElem.dataset.draftTitle = titleText;
 
-    if (updateGDriveNow) {
-        const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-        if (isTempGdid) {
-            const folderId = await getFolderID();
-            if (folderId) {
-                const fileContent = JSON.stringify(noteObj);
-                const fileName = 'note.txt';
-                try {
-                    const newGdid = await createGDriveFile(folderId, fileName, fileContent);
-                    if (newGdid) {
-                        const oldGdid = noteObj.gdid;
-                        noteObj.gdid = newGdid;
-                        if (useIndexedDb) {
-                            await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
-                            if (oldGdid && oldGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, oldGdid);
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to create GDrive file in calendar update", e);
-                }
-            }
+        // Retrieve masked links
+        const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
+
+        if ((isHiddenNote || (titleTextarea && titleText !== "")) && titleTextarea) {
+            const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
+            finalTitleFormat = stringifyFormatsArray(titleRes.formats);
+            const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
+            finalFormat = stringifyFormatsArray(bodyRes.formats);
+            processedText = titleRes.text + '|' + bodyRes.text;
         } else {
-            try {
-                await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
-            } catch (e) {
-                console.error("Failed to update GDrive file in calendar update", e);
-            }
+            const res = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
+            processedText = res.text;
+            finalFormat = stringifyFormatsArray(res.formats);
+        }
+
+        if (typeof showModal === 'function') {
+            const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
+            const color = (modalNoteObj && modalNoteObj.color !== undefined) ? modalNoteObj.color : (modalBodyElem.dataset.color || 0);
+            const noteColorStr = (typeof noteColorMap !== 'undefined' && color !== null && color >= 0 && color <= 9) ? noteColorMap[color] : color;
+
+            showModal({
+                raw: processedText,
+                format: finalFormat,
+                titleFormat: finalTitleFormat,
+                color: noteColorStr,
+                boardId: boardId,
+                id: noteId,
+                gdid: noteGdid,
+                maskedLinks: maskedLinks
+            }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
+
+            // --- Custom preview state: Show Save, Preview AND Edit buttons ---
+            // 1. Re-initialize edit buttons (showModal cleaned them up)
+            initNoteEditUI();
+
+            // 2. Adjust visibility and positions for the 4-button preview layout
+            const saveBtn = document.getElementById('note-save-btn');
+            const previewBtn = document.getElementById('note-preview-btn');
+            const editBtn = document.getElementById('note-edit-btn');
+            const moveBtn = document.getElementById('note-move-btn');
+
+            if (saveBtn) { saveBtn.style.display = 'flex'; saveBtn.style.right = '50px'; }
+            if (editBtn) { editBtn.style.display = 'flex'; editBtn.style.right = '100px'; }
+            if (previewBtn) { previewBtn.style.display = 'none'; }
+            if (moveBtn) { moveBtn.style.display = 'flex'; moveBtn.style.right = '150px'; }
         }
     }
 
-    if (updateLocalFolderNow) {
-        try {
-            const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-            if (isTempGdid && !updateGDriveNow) {
-                noteObj.gdid = `L${Date.now()}`;
-            }
-            if (noteObj.gdid) {
-                await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
-            }
-        } catch (e) {
-            console.error("Failed to update local file in calendar update", e);
-        }
-    }
-    if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
-    if (typeof updateBoardCounterUI === 'function') {
-        updateBoardCounterUI(noteObj.boardid);
-        updateBoardCounterUI('reminder');
-    }
-    const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
-    const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
+    function disableNoteEditing(modalBodyElem) {
+        if (!modalBodyElem) return;
 
-    let msgKey = 'noteSavedInDb';
-    if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll';
-    else if (updateGDriveNow) msgKey = 'noteSavedInBoth';
-    else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
-
-    showToast(_(msgKey).replace('{boardName}', boardTitle));
-    applyFilters();
-}
-
-// Unified Preview Logic
-function previewEditedNote() {
-    const modalBodyElem = document.getElementById('modal-body');
-    const textarea = document.getElementById('note-edit-textarea');
-    const titleTextarea = document.getElementById('note-edit-title-textarea');
-    if (!modalBodyElem || !textarea) return;
-
-    const newText = textarea.value;
-    const titleText = titleTextarea ? titleTextarea.value : "";
-    const formatStr = modalBodyElem.dataset.format || "";
-    const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
-
-    let noteGdid = modalBodyElem.dataset.gdid;
-    let noteId = parseInt(modalBodyElem.dataset.id, 10);
-    const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-    const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
-
-    let processedText = newText;
-    let finalFormat = formatStr;
-    let finalTitleFormat = titleFormatStr;
-
-    // Store drafts for saveEditedNote to work without textarea
-    modalBodyElem.dataset.draftText = newText;
-    modalBodyElem.dataset.draftTitle = titleText;
-
-    // Retrieve masked links
-    const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
-
-    if ((isHiddenNote || (titleTextarea && titleText !== "")) && titleTextarea) {
-        const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
-        finalTitleFormat = stringifyFormatsArray(titleRes.formats);
-        const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
-        finalFormat = stringifyFormatsArray(bodyRes.formats);
-        processedText = titleRes.text + '|' + bodyRes.text;
-    } else {
-        const res = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
-        processedText = res.text;
-        finalFormat = stringifyFormatsArray(res.formats);
-    }
-
-    if (typeof showModal === 'function') {
-        const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
-        const color = (modalNoteObj && modalNoteObj.color !== undefined) ? modalNoteObj.color : (modalBodyElem.dataset.color || 0);
-        const noteColorStr = (typeof noteColorMap !== 'undefined' && color !== null && color >= 0 && color <= 9) ? noteColorMap[color] : color;
-
-        showModal({
-            raw: processedText,
-            format: finalFormat,
-            titleFormat: finalTitleFormat,
-            color: noteColorStr,
-            boardId: boardId,
-            id: noteId,
-            gdid: noteGdid,
-            maskedLinks: maskedLinks
-        }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
-
-        // --- Custom preview state: Show Save, Preview AND Edit buttons ---
-        // 1. Re-initialize edit buttons (showModal cleaned them up)
-        initNoteEditUI();
-
-        // 2. Adjust visibility and positions for the 4-button preview layout
+        // 1. Hide Save and Preview Buttons
         const saveBtn = document.getElementById('note-save-btn');
+        if (saveBtn) saveBtn.style.display = 'none';
         const previewBtn = document.getElementById('note-preview-btn');
+        if (previewBtn) previewBtn.style.display = 'none';
+
+        // 2. Show Edit Button (if it exists)
         const editBtn = document.getElementById('note-edit-btn');
-        const moveBtn = document.getElementById('note-move-btn');
-
-        if (saveBtn) { saveBtn.style.display = 'flex'; saveBtn.style.right = '50px'; }
-        if (editBtn) { editBtn.style.display = 'flex'; editBtn.style.right = '100px'; }
-        if (previewBtn) { previewBtn.style.display = 'none'; }
-        if (moveBtn) { moveBtn.style.display = 'flex'; moveBtn.style.right = '150px'; }
-    }
-}
-
-function disableNoteEditing(modalBodyElem) {
-    if (!modalBodyElem) return;
-
-    // 1. Hide Save and Preview Buttons
-    const saveBtn = document.getElementById('note-save-btn');
-    if (saveBtn) saveBtn.style.display = 'none';
-    const previewBtn = document.getElementById('note-preview-btn');
-    if (previewBtn) previewBtn.style.display = 'none';
-
-    // 2. Show Edit Button (if it exists)
-    const editBtn = document.getElementById('note-edit-btn');
-    if (editBtn) editBtn.style.display = 'flex';
-    // 3. Hide Color Button
-    const colorBtn = document.getElementById('modal-color-btn');
-    if (colorBtn) colorBtn.style.display = 'none';
-    // 4. Restore graphical background if setting allows
-    const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false';
-    const modalContentBox = document.querySelector('#content-modal .modal-content-box');
-    if (modalContentBox) {
-        if (imgBgrdEnabled) {
-            modalContentBox.style.backgroundImage = '';
-            modalContentBox.classList.remove('no-bg-image');
-            modalBodyElem.classList.remove('no-bg-image');
+        if (editBtn) editBtn.style.display = 'flex';
+        // 3. Hide Color Button
+        const colorBtn = document.getElementById('modal-color-btn');
+        if (colorBtn) colorBtn.style.display = 'none';
+        // 4. Restore graphical background if setting allows
+        const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false';
+        const modalContentBox = document.querySelector('#content-modal .modal-content-box');
+        if (modalContentBox) {
+            if (imgBgrdEnabled) {
+                modalContentBox.style.backgroundImage = '';
+                modalContentBox.classList.remove('no-bg-image');
+                modalBodyElem.classList.remove('no-bg-image');
+            }
         }
+        // Note: The actual content replacement (removing textarea) is handled by showModal (called after)
+        // or by modal closing. We don't need to manually revert innerHTML here unless we cancel.
     }
-    // Note: The actual content replacement (removing textarea) is handled by showModal (called after)
-    // or by modal closing. We don't need to manually revert innerHTML here unless we cancel.
-}
-/**
- * Превръща MD символи във форматирани области и изчиства текста.
- */
-function postEdit(text, formats, maskedLinks = []) {
-    let currentText = text;
-    let currentFormats = [...formats];
+    /**
+     * Превръща MD символи във форматирани области и изчиства текста.
+     */
+    function postEdit(text, formats, maskedLinks = []) {
+        let currentText = text;
+        let currentFormats = [...formats];
 
-    const shift = (pos, diff) => {
-        const L = Math.abs(diff);
-        currentFormats.forEach(f => {
-            if (f.start > pos + L) f.start -= L; else if (f.start > pos) f.start = pos;
-            if (f.end > pos + L) f.end -= L; else if (f.end > pos) f.end = pos;
-        });
-    };
+        const shift = (pos, diff) => {
+            const L = Math.abs(diff);
+            currentFormats.forEach(f => {
+                if (f.start > pos + L) f.start -= L; else if (f.start > pos) f.start = pos;
+                if (f.end > pos + L) f.end -= L; else if (f.end > pos) f.end = pos;
+            });
+        };
 
-    // 1. Първоначално премахваме всички формати, които попадат в обхвата на mdClear (ръчно въведени --)
-    const handleClear = (removeMarkers = true) => {
-        const mdClear = (localStorage.getItem('mdClear') || '--').trim();
-        if (!mdClear) return;
-        let sIdx = 0;
-        while (true) {
-            let start = currentText.indexOf(mdClear, sIdx);
-            if (start === -1) break;
-            let end = currentText.indexOf(mdClear, start + mdClear.length);
-            if (end === -1) {
+        // 1. Първоначално премахваме всички формати, които попадат в обхвата на mdClear (ръчно въведени --)
+        const handleClear = (removeMarkers = true) => {
+            const mdClear = (localStorage.getItem('mdClear') || '--').trim();
+            if (!mdClear) return;
+            let sIdx = 0;
+            while (true) {
+                let start = currentText.indexOf(mdClear, sIdx);
+                if (start === -1) break;
+                let end = currentText.indexOf(mdClear, start + mdClear.length);
+                if (end === -1) {
+                    if (removeMarkers) {
+                        currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
+                        shift(start, -mdClear.length);
+                    } else {
+                        sIdx = start + mdClear.length;
+                    }
+                    continue;
+                }
+                const rangeStart = start;
+                const rangeEnd = end + mdClear.length;
+                currentFormats = currentFormats.filter(f => !(f.start < rangeEnd && f.end > rangeStart));
                 if (removeMarkers) {
+                    currentText = currentText.substring(0, end) + currentText.substring(end + mdClear.length);
+                    shift(end, -mdClear.length);
                     currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
                     shift(start, -mdClear.length);
+                    sIdx = start;
                 } else {
-                    sIdx = start + mdClear.length;
+                    sIdx = end + mdClear.length;
                 }
-                continue;
             }
-            const rangeStart = start;
-            const rangeEnd = end + mdClear.length;
-            currentFormats = currentFormats.filter(f => !(f.start < rangeEnd && f.end > rangeStart));
-            if (removeMarkers) {
-                currentText = currentText.substring(0, end) + currentText.substring(end + mdClear.length);
-                shift(end, -mdClear.length);
-                currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
-                shift(start, -mdClear.length);
-                sIdx = start;
-            } else {
-                sIdx = end + mdClear.length;
+        };
+
+        handleClear(false); // Phase 1: Keep markers, clean existing formats
+
+        const rules = [
+            { s: (localStorage.getItem('mdBold') || '**').trim(), e: (localStorage.getItem('mdBold') || '**').trim(), t: 1 },
+            { s: (localStorage.getItem('mdStrike') || '~~').trim(), e: (localStorage.getItem('mdStrike') || '~~').trim(), t: 7 },
+            { s: (localStorage.getItem('mdItalic') || '*').trim(), e: (localStorage.getItem('mdItalic') || '*').trim(), t: 2 },
+            { s: (localStorage.getItem('mdUnderline') || '_').trim(), e: (localStorage.getItem('mdUnderline') || '_').trim(), t: 3 }
+        ];
+
+        rules.forEach(rule => {
+            let searchIdx = 0;
+            // Clean existing formats of this type to avoid duplicates
+            currentFormats = currentFormats.filter(f => f.type !== rule.t);
+            while (true) {
+                let start = currentText.indexOf(rule.s, searchIdx);
+                if (start === -1) break;
+                let end = currentText.indexOf(rule.e, start + rule.s.length);
+                if (end === -1) {
+                    searchIdx = start + rule.s.length;
+                    continue;
+                }
+                const contentLen = end - start - rule.s.length;
+                currentText = currentText.substring(0, end) + currentText.substring(end + rule.e.length);
+                shift(end, -rule.e.length);
+                currentText = currentText.substring(0, start) + currentText.substring(start + rule.s.length);
+                shift(start, -rule.s.length);
+                currentFormats.push({ start, end: start + contentLen, type: rule.t, paramint: 0, paramfloat: 0 });
+                searchIdx = start + contentLen;
             }
-        }
-    };
-
-    handleClear(false); // Phase 1: Keep markers, clean existing formats
-
-    const rules = [
-        { s: (localStorage.getItem('mdBold') || '**').trim(), e: (localStorage.getItem('mdBold') || '**').trim(), t: 1 },
-        { s: (localStorage.getItem('mdStrike') || '~~').trim(), e: (localStorage.getItem('mdStrike') || '~~').trim(), t: 7 },
-        { s: (localStorage.getItem('mdItalic') || '*').trim(), e: (localStorage.getItem('mdItalic') || '*').trim(), t: 2 },
-        { s: (localStorage.getItem('mdUnderline') || '_').trim(), e: (localStorage.getItem('mdUnderline') || '_').trim(), t: 3 }
-    ];
-
-    rules.forEach(rule => {
-        let searchIdx = 0;
-        // Clean existing formats of this type to avoid duplicates
-        currentFormats = currentFormats.filter(f => f.type !== rule.t);
-        while (true) {
-            let start = currentText.indexOf(rule.s, searchIdx);
-            if (start === -1) break;
-            let end = currentText.indexOf(rule.e, start + rule.s.length);
-            if (end === -1) {
-                searchIdx = start + rule.s.length;
-                continue;
-            }
-            const contentLen = end - start - rule.s.length;
-            currentText = currentText.substring(0, end) + currentText.substring(end + rule.e.length);
-            shift(end, -rule.e.length);
-            currentText = currentText.substring(0, start) + currentText.substring(start + rule.s.length);
-            shift(start, -rule.s.length);
-            currentFormats.push({ start, end: start + contentLen, type: rule.t, paramint: 0, paramfloat: 0 });
-            searchIdx = start + contentLen;
-        }
-    });
-
-    const checkRegex = /\[\s*[xXхХ]?\s*\]/g;
-    let chMatch;
-    while ((chMatch = checkRegex.exec(currentText)) !== null) {
-        const fullMatch = chMatch[0];
-        const start = chMatch.index;
-        const isChecked = /[xXхХ]/.test(fullMatch);
-        const sym = isChecked ? '☑' : '☐';
-        currentText = currentText.substring(0, start) + sym + currentText.substring(start + fullMatch.length);
-        shift(start, -(fullMatch.length - sym.length));
-        checkRegex.lastIndex = start + sym.length;
-    }
-
-    const headerRules = [
-        { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
-        { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
-    ];
-    // Clean header formats
-    currentFormats = currentFormats.filter(f => f.type !== 6);
-    headerRules.forEach(rule => {
-        let hIdx = 0;
-        while (true) {
-            let found = -1;
-            if (currentText.startsWith(rule.md, hIdx)) found = hIdx;
-            else {
-                let next = currentText.indexOf('\n' + rule.md, hIdx);
-                if (next !== -1) found = next + 1;
-            }
-            if (found === -1) break;
-            let lineEnd = currentText.indexOf('\n', found);
-            if (lineEnd === -1) lineEnd = currentText.length;
-            currentText = currentText.substring(0, found) + currentText.substring(found + rule.md.length);
-            shift(found, -rule.md.length);
-            lineEnd -= rule.md.length;
-            currentFormats.push({ start: found, end: lineEnd, type: 6, paramint: 0, paramfloat: rule.scale });
-            hIdx = lineEnd;
-        }
-    });
-
-    handleClear(true); // Phase 2: Final sweep and marker removal
-
-    // --- Restore Masked Links with proper shifting ---
-    maskedLinks.forEach((link, idx) => {
-        const placeholder = `{#L${idx}#}`;
-        let pIdx = currentText.indexOf(placeholder);
-        while (pIdx !== -1) {
-            currentText = currentText.substring(0, pIdx) + link + currentText.substring(pIdx + placeholder.length);
-            const diff = link.length - placeholder.length;
-            const startPos = pIdx;
-            const markerLen = placeholder.length;
-
-            currentFormats.forEach(f => {
-                if (f.start >= startPos + markerLen) f.start += diff;
-                if (f.end >= startPos + markerLen) f.end += diff;
-            });
-            pIdx = currentText.indexOf(placeholder, startPos + link.length);
-        }
-    });
-
-    return { text: currentText, formats: currentFormats };
-}
-
-/**
- * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
- */
-/**
- * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
- */
-function preEdit(text, formats, targetIndex = -1) {
-    if (!text) return { text: "", formats: [], correctedIndex: targetIndex };
-
-    let currentText = text;
-    let currentFormats = formats ? formats.map(f => ({ ...f })) : [];
-    let correctedIndex = targetIndex;
-    let maskedLinks = [];
-
-    const shiftIndex = (pos, diff) => {
-        if (targetIndex === -1) return;
-        if (pos <= correctedIndex) {
-            correctedIndex += diff;
-        }
-    };
-
-    // --- 1. Link Masking (Extract URLs to placeholders) ---
-    const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-    let match;
-    while ((match = urlRegex.exec(currentText)) !== null) {
-        const url = match[0];
-        const start = match.index;
-        const placeholder = `{#L${maskedLinks.length}#}`;
-        maskedLinks.push(url);
-
-        currentText = currentText.substring(0, start) + placeholder + currentText.substring(start + url.length);
-        const diff = placeholder.length - url.length;
-        shiftIndex(start, diff);
-
-        // Shift format coordinates to match masked text
-        currentFormats.forEach(f => {
-            if (f.start >= start + url.length) f.start += diff;
-            else if (f.start > start) f.start = start; // Clip if it was inside URL
-            if (f.end >= start + url.length) f.end += diff;
-            else if (f.end > start) f.end = start; // Clip if it was inside URL
         });
 
-        urlRegex.lastIndex = start + placeholder.length; // Adjust for new text length
+        const checkRegex = /\[\s*[xXхХ]?\s*\]/g;
+        let chMatch;
+        while ((chMatch = checkRegex.exec(currentText)) !== null) {
+            const fullMatch = chMatch[0];
+            const start = chMatch.index;
+            const isChecked = /[xXхХ]/.test(fullMatch);
+            const sym = isChecked ? '☑' : '☐';
+            currentText = currentText.substring(0, start) + sym + currentText.substring(start + fullMatch.length);
+            shift(start, -(fullMatch.length - sym.length));
+            checkRegex.lastIndex = start + sym.length;
+        }
+
+        const headerRules = [
+            { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
+            { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
+        ];
+        // Clean header formats
+        currentFormats = currentFormats.filter(f => f.type !== 6);
+        headerRules.forEach(rule => {
+            let hIdx = 0;
+            while (true) {
+                let found = -1;
+                if (currentText.startsWith(rule.md, hIdx)) found = hIdx;
+                else {
+                    let next = currentText.indexOf('\n' + rule.md, hIdx);
+                    if (next !== -1) found = next + 1;
+                }
+                if (found === -1) break;
+                let lineEnd = currentText.indexOf('\n', found);
+                if (lineEnd === -1) lineEnd = currentText.length;
+                currentText = currentText.substring(0, found) + currentText.substring(found + rule.md.length);
+                shift(found, -rule.md.length);
+                lineEnd -= rule.md.length;
+                currentFormats.push({ start: found, end: lineEnd, type: 6, paramint: 0, paramfloat: rule.scale });
+                hIdx = lineEnd;
+            }
+        });
+
+        handleClear(true); // Phase 2: Final sweep and marker removal
+
+        // --- Restore Masked Links with proper shifting ---
+        maskedLinks.forEach((link, idx) => {
+            const placeholder = `{#L${idx}#}`;
+            let pIdx = currentText.indexOf(placeholder);
+            while (pIdx !== -1) {
+                currentText = currentText.substring(0, pIdx) + link + currentText.substring(pIdx + placeholder.length);
+                const diff = link.length - placeholder.length;
+                const startPos = pIdx;
+                const markerLen = placeholder.length;
+
+                currentFormats.forEach(f => {
+                    if (f.start >= startPos + markerLen) f.start += diff;
+                    if (f.end >= startPos + markerLen) f.end += diff;
+                });
+                pIdx = currentText.indexOf(placeholder, startPos + link.length);
+            }
+        });
+
+        return { text: currentText, formats: currentFormats };
     }
 
-    // Re-calculate format positions relative to masked text
-    // (Simplistic approach: if a format was on a link, it might get slightly offset, but links shouldn't be formatted anyway)
-    // For now, let's just use the currentText for further MD insertion
+    /**
+     * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
+     */
+    /**
+     * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
+     */
+    function preEdit(text, formats, targetIndex = -1) {
+        if (!text) return { text: "", formats: [], correctedIndex: targetIndex };
 
-    // --- 2. Header Support (font size -> # levels) ---
-    const headerMap = [
-        { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
-        { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
-    ];
+        let currentText = text;
+        let currentFormats = formats ? formats.map(f => ({ ...f })) : [];
+        let correctedIndex = targetIndex;
+        let maskedLinks = [];
 
-    headerMap.forEach(rule => {
-        const hFormats = currentFormats.filter(f => f.type === 6 && f.paramfloat === rule.scale);
-        let hIns = [];
-        hFormats.forEach(f => hIns.push({ pos: f.start, str: rule.md }));
-        hIns.sort((a, b) => b.pos - a.pos);
-        hIns.forEach(ins => {
+        const shiftIndex = (pos, diff) => {
+            if (targetIndex === -1) return;
+            if (pos <= correctedIndex) {
+                correctedIndex += diff;
+            }
+        };
+
+        // --- 1. Link Masking (Extract URLs to placeholders) ---
+        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+        let match;
+        while ((match = urlRegex.exec(currentText)) !== null) {
+            const url = match[0];
+            const start = match.index;
+            const placeholder = `{#L${maskedLinks.length}#}`;
+            maskedLinks.push(url);
+
+            currentText = currentText.substring(0, start) + placeholder + currentText.substring(start + url.length);
+            const diff = placeholder.length - url.length;
+            shiftIndex(start, diff);
+
+            // Shift format coordinates to match masked text
+            currentFormats.forEach(f => {
+                if (f.start >= start + url.length) f.start += diff;
+                else if (f.start > start) f.start = start; // Clip if it was inside URL
+                if (f.end >= start + url.length) f.end += diff;
+                else if (f.end > start) f.end = start; // Clip if it was inside URL
+            });
+
+            urlRegex.lastIndex = start + placeholder.length; // Adjust for new text length
+        }
+
+        // Re-calculate format positions relative to masked text
+        // (Simplistic approach: if a format was on a link, it might get slightly offset, but links shouldn't be formatted anyway)
+        // For now, let's just use the currentText for further MD insertion
+
+        // --- 2. Header Support (font size -> # levels) ---
+        const headerMap = [
+            { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
+            { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
+        ];
+
+        headerMap.forEach(rule => {
+            const hFormats = currentFormats.filter(f => f.type === 6 && f.paramfloat === rule.scale);
+            let hIns = [];
+            hFormats.forEach(f => hIns.push({ pos: f.start, str: rule.md }));
+            hIns.sort((a, b) => b.pos - a.pos);
+            hIns.forEach(ins => {
+                currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
+                shiftIndex(ins.pos, ins.str.length);
+                currentFormats.forEach(f => {
+                    if (f.start >= ins.pos) f.start += ins.str.length;
+                    if (f.end >= ins.pos) f.end += ins.str.length;
+                });
+            });
+        });
+
+        // --- 3. Checkbox Support (Unicode to MD) ---
+        const checkRules = [{ md: '[ ]', sym: '☐' }, { md: '[x]', sym: '☑' }];
+        checkRules.forEach(rule => {
+            let cIdx = 0;
+            while (true) {
+                let start = currentText.indexOf(rule.sym, cIdx);
+                if (start === -1) break;
+                currentText = currentText.substring(0, start) + rule.md + currentText.substring(start + rule.sym.length);
+                const shiftLen = rule.md.length - rule.sym.length;
+                shiftIndex(start, shiftLen);
+                currentFormats.forEach(f => {
+                    if (f.start >= start) f.start += shiftLen;
+                    if (f.end >= start) f.end += shiftLen;
+                });
+                cIdx = start + rule.md.length;
+            }
+        });
+
+        // --- 4. Inline Formatting Rules ---
+        const rules = [
+            { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 },
+            { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 },
+            { s: localStorage.getItem('mdItalic') || '*', e: localStorage.getItem('mdItalic') || '*', t: 2 },
+            { s: localStorage.getItem('mdUnderline') || '_', e: localStorage.getItem('mdUnderline') || '_', t: 3 }
+        ];
+
+        const mdTypes = [1, 2, 3, 7];
+        let insertions = [];
+        currentFormats.forEach(f => {
+            const rule = rules.find(r => r.t === f.type);
+            if (rule) {
+                insertions.push({ pos: f.end, str: rule.e });
+                insertions.push({ pos: f.start, str: rule.s });
+            }
+        });
+
+        insertions.sort((a, b) => b.pos - a.pos);
+        insertions.forEach(ins => {
             currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
             shiftIndex(ins.pos, ins.str.length);
             currentFormats.forEach(f => {
@@ -12346,288 +12451,241 @@ function preEdit(text, formats, targetIndex = -1) {
                 if (f.end >= ins.pos) f.end += ins.str.length;
             });
         });
-    });
 
-    // --- 3. Checkbox Support (Unicode to MD) ---
-    const checkRules = [{ md: '[ ]', sym: '☐' }, { md: '[x]', sym: '☑' }];
-    checkRules.forEach(rule => {
-        let cIdx = 0;
-        while (true) {
-            let start = currentText.indexOf(rule.sym, cIdx);
-            if (start === -1) break;
-            currentText = currentText.substring(0, start) + rule.md + currentText.substring(start + rule.sym.length);
-            const shiftLen = rule.md.length - rule.sym.length;
-            shiftIndex(start, shiftLen);
-            currentFormats.forEach(f => {
-                if (f.start >= start) f.start += shiftLen;
-                if (f.end >= start) f.end += shiftLen;
-            });
-            cIdx = start + rule.md.length;
+        const headerScales = [0.7, 0.8, 0.9, 1.1, 1.2, 1.3];
+        const remainingFormats = currentFormats.filter(f => !mdTypes.includes(f.type) && !(f.type === 6 && headerScales.includes(f.paramfloat)));
+
+        return { text: currentText, formats: remainingFormats, maskedLinks, correctedIndex };
+    }
+
+    // =================================================================================
+    // BOARD CREATION MODAL LOGIC
+    // =================================================================================
+
+    let boardIdCounter = parseInt(localStorage.getItem('boardIdCounter')) || 1000000;
+
+    /**
+     * Търси максималните стойности на id сред бордовете и обновява брояча.
+     */
+    function trackMaxBoardIds(boards) {
+        if (!Array.isArray(boards)) return;
+        let currentMax = boardIdCounter;
+        boards.forEach(board => {
+            const id = parseInt(board.id, 10);
+            if (!isNaN(id) && id > currentMax) currentMax = id;
+        });
+        if (currentMax > boardIdCounter) {
+            boardIdCounter = currentMax;
+            localStorage.setItem('boardIdCounter', boardIdCounter.toString());
         }
-    });
-
-    // --- 4. Inline Formatting Rules ---
-    const rules = [
-        { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 },
-        { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 },
-        { s: localStorage.getItem('mdItalic') || '*', e: localStorage.getItem('mdItalic') || '*', t: 2 },
-        { s: localStorage.getItem('mdUnderline') || '_', e: localStorage.getItem('mdUnderline') || '_', t: 3 }
-    ];
-
-    const mdTypes = [1, 2, 3, 7];
-    let insertions = [];
-    currentFormats.forEach(f => {
-        const rule = rules.find(r => r.t === f.type);
-        if (rule) {
-            insertions.push({ pos: f.end, str: rule.e });
-            insertions.push({ pos: f.start, str: rule.s });
-        }
-    });
-
-    insertions.sort((a, b) => b.pos - a.pos);
-    insertions.forEach(ins => {
-        currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
-        shiftIndex(ins.pos, ins.str.length);
-        currentFormats.forEach(f => {
-            if (f.start >= ins.pos) f.start += ins.str.length;
-            if (f.end >= ins.pos) f.end += ins.str.length;
-        });
-    });
-
-    const headerScales = [0.7, 0.8, 0.9, 1.1, 1.2, 1.3];
-    const remainingFormats = currentFormats.filter(f => !mdTypes.includes(f.type) && !(f.type === 6 && headerScales.includes(f.paramfloat)));
-
-    return { text: currentText, formats: remainingFormats, maskedLinks, correctedIndex };
-}
-
-// =================================================================================
-// BOARD CREATION MODAL LOGIC
-// =================================================================================
-
-let boardIdCounter = parseInt(localStorage.getItem('boardIdCounter')) || 1000000;
-
-/**
- * Търси максималните стойности на id сред бордовете и обновява брояча.
- */
-function trackMaxBoardIds(boards) {
-    if (!Array.isArray(boards)) return;
-    let currentMax = boardIdCounter;
-    boards.forEach(board => {
-        const id = parseInt(board.id, 10);
-        if (!isNaN(id) && id > currentMax) currentMax = id;
-    });
-    if (currentMax > boardIdCounter) {
-        boardIdCounter = currentMax;
-        localStorage.setItem('boardIdCounter', boardIdCounter.toString());
-    }
-}
-
-/**
- * Показва модал за създаване на нов борд.
- */
-async function showNewBoardModal() {
-    const modal = document.getElementById('new-board-modal');
-    if (!modal) return;
-
-    const titleInput = document.getElementById('new-board-title');
-    const colorsContainer = document.getElementById('new-board-colors');
-    const fontColorsContainer = document.getElementById('new-board-font-colors');
-    const backgroundsContainer = document.getElementById('new-board-backgrounds');
-    const saveBtn = document.getElementById('save-new-board-btn');
-    const previewContainer = document.getElementById('new-board-preview');
-    const previewTab = document.getElementById('preview-tab');
-    const previewBg = document.getElementById('preview-bg');
-
-    const closeBtn = modal.querySelector('.modal-close');
-    if (closeBtn) {
-        closeBtn.style.position = 'absolute';
-        closeBtn.style.top = '10px';
-        closeBtn.style.right = '15px';
     }
 
-    titleInput.value = '';
-    colorsContainer.innerHTML = '';
-    fontColorsContainer.innerHTML = '';
-    backgroundsContainer.innerHTML = '';
-    //previewContainer.style.display = 'none';
+    /**
+     * Показва модал за създаване на нов борд.
+     */
+    async function showNewBoardModal() {
+        const modal = document.getElementById('new-board-modal');
+        if (!modal) return;
 
-    let selectedColor = 0;
-    let selectedFontColor = 0; // 0 = Black, 1 = White
-    let selectedBackground = 0;
+        const titleInput = document.getElementById('new-board-title');
+        const colorsContainer = document.getElementById('new-board-colors');
+        const fontColorsContainer = document.getElementById('new-board-font-colors');
+        const backgroundsContainer = document.getElementById('new-board-backgrounds');
+        const saveBtn = document.getElementById('save-new-board-btn');
+        const previewContainer = document.getElementById('new-board-preview');
+        const previewTab = document.getElementById('preview-tab');
+        const previewBg = document.getElementById('preview-bg');
 
-    const bgNames = ['Board.png', 'Board1.png', 'Board2.png', 'Board3.png'];
-    const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
-
-    function updatePreview() {
-        const title = titleInput.value.trim() || _('addBoardTitle') || "Нов борд";
-        previewTab.textContent = title;
-        previewTab.style.backgroundColor = `var(--board-bg-${selectedColor})`;
-        previewTab.style.color = fontColors[selectedFontColor];
-        previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
-    }
-    titleInput.oninput = updatePreview;
-
-    // Standard colors 0-6
-    for (let i = 0; i <= 6; i++) {
-        const colorDiv = document.createElement('div');
-        Object.assign(colorDiv.style, {
-            width: '24px',
-            height: '24px',
-            borderRadius: '50%',
-            backgroundColor: `var(--board-bg-${i})`,
-            cursor: 'pointer',
-            border: (i === selectedColor) ? '2px solid #555' : '1px solid #ccc',
-            boxShadow: (i === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
-            transition: 'transform 0.1s',
-            margin: 'auto'
-        });
-
-        colorDiv.onclick = () => {
-            selectedColor = i;
-            Array.from(colorsContainer.children).forEach((child, idx) => {
-                child.style.border = (idx === selectedColor) ? '2px solid #555' : '1px solid #ccc';
-                child.style.boxShadow = (idx === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
-                child.style.transform = (idx === selectedColor) ? 'scale(1.1)' : 'scale(1)';
-            });
-            updatePreview();
-        };
-        if (i === selectedColor) colorDiv.style.transform = 'scale(1.1)';
-        colorsContainer.appendChild(colorDiv);
-    }
-
-    // Font colors: Black, White, Red, Blue
-    fontColors.forEach((color, i) => {
-        const fcDiv = document.createElement('div');
-        Object.assign(fcDiv.style, {
-            width: '100%',
-            maxWidth: '24px',
-            aspectRatio: '1/1',
-            borderRadius: '4px',
-            backgroundColor: color,
-            cursor: 'pointer',
-            border: (i === selectedFontColor) ? '2px solid #555' : '1px solid #ccc',
-            boxShadow: (i === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
-            transition: 'transform 0.1s',
-            margin: 'auto'
-        });
-
-        fcDiv.onclick = () => {
-            selectedFontColor = i;
-            Array.from(fontColorsContainer.children).forEach((child, idx) => {
-                child.style.border = (idx === selectedFontColor) ? '2px solid #555' : '1px solid #ccc';
-                child.style.boxShadow = (idx === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
-                child.style.transform = (idx === selectedFontColor) ? 'scale(1.1)' : 'scale(1)';
-            });
-            updatePreview();
-        };
-        if (i === selectedFontColor) fcDiv.style.transform = 'scale(1.1)';
-        fontColorsContainer.appendChild(fcDiv);
-    });
-
-    // Standard backgrounds 0-3
-    for (let i = 0; i <= 3; i++) {
-        const bgDiv = document.createElement('div');
-        Object.assign(bgDiv.style, {
-            width: '100%',
-            aspectRatio: '16/10',
-            backgroundImage: `url('${bgNames[i]}')`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            cursor: 'pointer',
-            borderRadius: '4px',
-            border: (i === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc',
-            boxShadow: (i === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none',
-            transition: 'transform 0.1s'
-        });
-
-        bgDiv.onclick = () => {
-            selectedBackground = i;
-            Array.from(backgroundsContainer.children).forEach((child, idx) => {
-                child.style.border = (idx === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc';
-                child.style.boxShadow = (idx === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none';
-                child.style.transform = (idx === selectedBackground) ? 'scale(1.05)' : 'scale(1)';
-            });
-            updatePreview();
-        };
-        if (i === selectedBackground) bgDiv.style.transform = 'scale(1.05)';
-        backgroundsContainer.appendChild(bgDiv);
-    }
-
-    saveBtn.onclick = async () => {
-        const title = titleInput.value.trim();
-        if (!title) {
-            showToast(_('errorEmptyTitle') || "Моля, въведете заглавие", 3000);
-            return;
+        const closeBtn = modal.querySelector('.modal-close');
+        if (closeBtn) {
+            closeBtn.style.position = 'absolute';
+            closeBtn.style.top = '10px';
+            closeBtn.style.right = '15px';
         }
 
-        trackMaxBoardIds(boardsData); // Ensure we have the latest max
-        boardIdCounter++;
-        localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+        titleInput.value = '';
+        colorsContainer.innerHTML = '';
+        fontColorsContainer.innerHTML = '';
+        backgroundsContainer.innerHTML = '';
+        //previewContainer.style.display = 'none';
 
-        const now = Date.now();
-        const newBoard = {
-            "backcolor": 0,
-            "backnum": selectedBackground,
-            "backpath": "",
-            "color": selectedColor,
-            "colorfont": selectedFontColor,
-            "datemod": now,
-            "gdid": "",
-            "id": boardIdCounter,
-            "numord": boardIdCounter,
-            "status": 0,
-            "title": title
-        };
+        let selectedColor = 0;
+        let selectedFontColor = 0; // 0 = Black, 1 = White
+        let selectedBackground = 0;
 
-        modal.classList.remove('visible');
-        showToast(_('savingBoard') || "Записване на борд...", 2000);
+        const bgNames = ['Board.png', 'Board1.png', 'Board2.png', 'Board3.png'];
+        const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
 
-        try {
-            const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
-            const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+        function updatePreview() {
+            const title = titleInput.value.trim() || _('addBoardTitle') || "Нов борд";
+            previewTab.textContent = title;
+            previewTab.style.backgroundColor = `var(--board-bg-${selectedColor})`;
+            previewTab.style.color = fontColors[selectedFontColor];
+            previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
+        }
+        titleInput.oninput = updatePreview;
 
-            if (updateGDriveNow) {
-                const folderId = await getFolderID();
-                if (folderId) {
-                    const fileName = `board.txt`;
-                    const gdid = await createGDriveFile(folderId, fileName, JSON.stringify(newBoard));
-                    newBoard.gdid = gdid;
-                    // Update with gdid included
-                    await updateGDriveFile(gdid, JSON.stringify(newBoard));
+        // Standard colors 0-6
+        for (let i = 0; i <= 6; i++) {
+            const colorDiv = document.createElement('div');
+            Object.assign(colorDiv.style, {
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                backgroundColor: `var(--board-bg-${i})`,
+                cursor: 'pointer',
+                border: (i === selectedColor) ? '2px solid #555' : '1px solid #ccc',
+                boxShadow: (i === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
+                transition: 'transform 0.1s',
+                margin: 'auto'
+            });
+
+            colorDiv.onclick = () => {
+                selectedColor = i;
+                Array.from(colorsContainer.children).forEach((child, idx) => {
+                    child.style.border = (idx === selectedColor) ? '2px solid #555' : '1px solid #ccc';
+                    child.style.boxShadow = (idx === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
+                    child.style.transform = (idx === selectedColor) ? 'scale(1.1)' : 'scale(1)';
+                });
+                updatePreview();
+            };
+            if (i === selectedColor) colorDiv.style.transform = 'scale(1.1)';
+            colorsContainer.appendChild(colorDiv);
+        }
+
+        // Font colors: Black, White, Red, Blue
+        fontColors.forEach((color, i) => {
+            const fcDiv = document.createElement('div');
+            Object.assign(fcDiv.style, {
+                width: '100%',
+                maxWidth: '24px',
+                aspectRatio: '1/1',
+                borderRadius: '4px',
+                backgroundColor: color,
+                cursor: 'pointer',
+                border: (i === selectedFontColor) ? '2px solid #555' : '1px solid #ccc',
+                boxShadow: (i === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
+                transition: 'transform 0.1s',
+                margin: 'auto'
+            });
+
+            fcDiv.onclick = () => {
+                selectedFontColor = i;
+                Array.from(fontColorsContainer.children).forEach((child, idx) => {
+                    child.style.border = (idx === selectedFontColor) ? '2px solid #555' : '1px solid #ccc';
+                    child.style.boxShadow = (idx === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
+                    child.style.transform = (idx === selectedFontColor) ? 'scale(1.1)' : 'scale(1)';
+                });
+                updatePreview();
+            };
+            if (i === selectedFontColor) fcDiv.style.transform = 'scale(1.1)';
+            fontColorsContainer.appendChild(fcDiv);
+        });
+
+        // Standard backgrounds 0-3
+        for (let i = 0; i <= 3; i++) {
+            const bgDiv = document.createElement('div');
+            Object.assign(bgDiv.style, {
+                width: '100%',
+                aspectRatio: '16/10',
+                backgroundImage: `url('${bgNames[i]}')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                border: (i === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc',
+                boxShadow: (i === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none',
+                transition: 'transform 0.1s'
+            });
+
+            bgDiv.onclick = () => {
+                selectedBackground = i;
+                Array.from(backgroundsContainer.children).forEach((child, idx) => {
+                    child.style.border = (idx === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc';
+                    child.style.boxShadow = (idx === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none';
+                    child.style.transform = (idx === selectedBackground) ? 'scale(1.05)' : 'scale(1)';
+                });
+                updatePreview();
+            };
+            if (i === selectedBackground) bgDiv.style.transform = 'scale(1.05)';
+            backgroundsContainer.appendChild(bgDiv);
+        }
+
+        saveBtn.onclick = async () => {
+            const title = titleInput.value.trim();
+            if (!title) {
+                showToast(_('errorEmptyTitle') || "Моля, въведете заглавие", 3000);
+                return;
+            }
+
+            trackMaxBoardIds(boardsData); // Ensure we have the latest max
+            boardIdCounter++;
+            localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+
+            const now = Date.now();
+            const newBoard = {
+                "backcolor": 0,
+                "backnum": selectedBackground,
+                "backpath": "",
+                "color": selectedColor,
+                "colorfont": selectedFontColor,
+                "datemod": now,
+                "gdid": "",
+                "id": boardIdCounter,
+                "numord": boardIdCounter,
+                "status": 0,
+                "title": title
+            };
+
+            modal.classList.remove('visible');
+            showToast(_('savingBoard') || "Записване на борд...", 2000);
+
+            try {
+                const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+                const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+
+                if (updateGDriveNow) {
+                    const folderId = await getFolderID();
+                    if (folderId) {
+                        const fileName = `board.txt`;
+                        const gdid = await createGDriveFile(folderId, fileName, JSON.stringify(newBoard));
+                        newBoard.gdid = gdid;
+                        // Update with gdid included
+                        await updateGDriveFile(gdid, JSON.stringify(newBoard));
+                    }
                 }
+
+                if (!newBoard.gdid && updateLocalFolderNow) {
+                    newBoard.gdid = `LB${Date.now()}`;
+                }
+
+                if (!newBoard.gdid) {
+                    newBoard.gdid = newBoard.id.toString();
+                }
+
+                if (updateLocalFolderNow && newBoard.gdid) {
+                    await updateLocalFile(newBoard.gdid, JSON.stringify(newBoard));
+                }
+
+                if (useIndexedDb) {
+                    await bulkPutDB(BOARD_STORE_NAME, newBoard, true);
+                }
+
+                boardsData.push(newBoard);
+
+                // Close existing board menu if any and re-render
+                const boardsNote = document.querySelector('header .boards-note');
+                if (boardsNote) boardsNote.remove();
+
+                await renderUI({ boardParseError: false });
+                showToast(_('boardSaved') || "Бордът е записан успешно", 3000);
+
+            } catch (error) {
+                console.error("Failed to create board:", error);
+                showToast(_('errorSaveBoard') || "Грешка при запис на борд", 5000);
             }
+        };
 
-            if (!newBoard.gdid && updateLocalFolderNow) {
-                newBoard.gdid = `LB${Date.now()}`;
-            }
-
-            if (!newBoard.gdid) {
-                newBoard.gdid = newBoard.id.toString();
-            }
-
-            if (updateLocalFolderNow && newBoard.gdid) {
-                await updateLocalFile(newBoard.gdid, JSON.stringify(newBoard));
-            }
-
-            if (useIndexedDb) {
-                await bulkPutDB(BOARD_STORE_NAME, newBoard, true);
-            }
-
-            boardsData.push(newBoard);
-
-            // Close existing board menu if any and re-render
-            const boardsNote = document.querySelector('header .boards-note');
-            if (boardsNote) boardsNote.remove();
-
-            await renderUI({ boardParseError: false });
-            showToast(_('boardSaved') || "Бордът е записан успешно", 3000);
-
-        } catch (error) {
-            console.error("Failed to create board:", error);
-            showToast(_('errorSaveBoard') || "Грешка при запис на борд", 5000);
-        }
-    };
-
-    updatePreview();
-    modal.classList.add('visible');
-}
+        updatePreview();
+        modal.classList.add('visible');
+    }
