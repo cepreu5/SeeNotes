@@ -1576,10 +1576,7 @@ code {
         flex-direction: column;
         align-items: flex-start;
         gap: 5px;
-    }
-
-    .zoom-control-wrapper {
-        margin-top: 15px !important;
+        margin-top: 5px !important;
         /* Reduce space between settings groups */
     }
 
@@ -1616,6 +1613,9 @@ code {
     #note-count,
     #one-tap-link,
     #click-to-edit,
+    #close-after-save,
+    #update-local-folder,
+    #automated-timer,
     #hide-toast,
     #hide-assistant,
     #show-photos-board,
@@ -1628,10 +1628,31 @@ code {
     #use-indexeddb-wrapper,
     #db-buttons-wrapper,
     #local-db-wrapper,
-    #arh-db-wrapper {
+    #arh-db-wrapper,
+    #scale-wrapper,
+    #start-board-wrapper,
+    #force-gdrive-read,
+    #check-empty-boards {
         flex-direction: row !important;
         align-items: center !important;
         /* Поддържа вертикално центриране */
+    }
+
+    #scale-wrapper .slider-container {
+        flex-wrap: nowrap;
+    }
+
+    #scale-wrapper #scaleInput {
+        min-width: 55px;
+        width: 55px;
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
+
+    #scale-wrapper #scaleInput::-webkit-outer-spin-button,
+    #scale-wrapper #scaleInput::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
     }
 
     /* Превключва грида за сортиране в една колона на тесни екрани */
@@ -1809,13 +1830,34 @@ code {
 .slider-container {
     display: flex;
     align-items: center;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     padding: 10px;
-    margin-bottom: 10px;
-    /* Add some padding */
-    margin-top: 10px;
-    /* Add some padding */
     box-sizing: border-box;
+    overflow: visible;
+}
+
+.scale-step-btn {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #1f3b52;
+    border-radius: 4px;
+    background-color: #dde8f0;
+    color: #1f3b52;
+    font-size: 1.2em;
+    font-weight: bold;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    padding: 0;
+    line-height: 1;
+}
+
+.scale-step-btn:active {
+    background-color: #b0c4d8;
 }
 
 #scaleSlider {
@@ -1940,6 +1982,8 @@ code {
 
 .zoom-input-number {
     width: 50px;
+    min-width: 50px;
+    flex-shrink: 0;
     margin: 0 2px 0 10px;
     /* top, right, bottom, left */
     text-align: center;

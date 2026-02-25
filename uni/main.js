@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.67'; // App version
+const version = 'Beta 1.68'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -8059,6 +8059,38 @@ async function createSettingsUI(boardsData, boardParseError) {
             updateZoom(scaleSlider.value);
         }
         let opacityTimeout;
+        const settingsModal = document.getElementById('settings-modal');
+        const startOpacityChange = () => {
+            if (settingsModal) settingsModal.style.opacity = '0.7';
+        };
+        const endOpacityChange = () => {
+            if (settingsModal) settingsModal.style.opacity = '1';
+        };
+        const scaleDecBtn = document.getElementById('scaleDecBtn');
+        const scaleIncBtn = document.getElementById('scaleIncBtn');
+        const stepBtnOpacity = () => {
+            startOpacityChange();
+            if (opacityTimeout) clearTimeout(opacityTimeout);
+            opacityTimeout = setTimeout(endOpacityChange, 1500);
+        };
+        if (scaleDecBtn) {
+            scaleDecBtn.addEventListener('click', () => {
+                let val = parseInt(scaleInput.value, 10) || 100;
+                val = Math.max(25, val - 1);
+                updateZoom(val);
+                localStorage.setItem('zoomLevel', val);
+                stepBtnOpacity();
+            });
+        }
+        if (scaleIncBtn) {
+            scaleIncBtn.addEventListener('click', () => {
+                let val = parseInt(scaleInput.value, 10) || 100;
+                val = Math.min(175, val + 1);
+                updateZoom(val);
+                localStorage.setItem('zoomLevel', val);
+                stepBtnOpacity();
+            });
+        }
         const applyBtn = document.getElementById('applyZoomBtn');
         // Listeners for migrated settings
         const closeAfterSaveCheckbox = document.getElementById('close-after-save-checkbox');
@@ -8159,13 +8191,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             localStorage.setItem('zoomLevel', zoomValue);
         });
         // --- Прозрачност при използване на плъзгача ---
-        const settingsModal = document.getElementById('settings-modal');
-        const startOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '0.7';
-        };
-        const endOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '1';
-        };
         scaleSlider.addEventListener('mousedown', startOpacityChange);
         scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
         scaleSlider.addEventListener('mouseup', endOpacityChange);
