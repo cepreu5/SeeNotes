@@ -306,5 +306,9 @@ bg: {
         boardPreviewLabel: "Преглед:",
         trashBoardTitle: "Кошче",
         confirmNoteMoveToTrash: "Сигурни ли сте, че искате да преместите тази бележка в кошчето?",
-        noteMovedToTrash: "Бележката е преместена в Кошчето."
+        noteMovedToTrash: "Бележката е преместена в Кошчето.",
+        emptyTrashTooltip: "Изпразни кошчето",
+        confirmEmptyTrash: "Сигурни ли сте, че искате да изпразните кошчето окончателно? Това действие е необратимо.",
+        trashAlreadyEmpty: "Кошчето е вече празно.",
+        trashEmptiedSuccess: "Кошчето е изпразнено успешно."
     }

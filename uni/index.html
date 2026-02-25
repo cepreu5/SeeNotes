@@ -376,7 +376,7 @@
                     <label for="scaleSlider" style="margin-right: 10px;" data-key="zoomLabel">Мащаб:</label>
                     <div class="slider-container">
                         <input type="range" id="scaleSlider" min="25" max="175" value="100">
-                        <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number">
+                        <input type="number" id="scaleInput" step="1" min="25" max="175" class="zoom-input-number">
                         <span>%</span>
                     </div>
                     <button id="applyZoomBtn" class="zoom-btn" style="margin-left: 0px;"
@@ -828,7 +828,34 @@
     <link rel="stylesheet" href="kb-assistant.css">
     <script src="kb-assistant.js"></script>
     <script src="msmrt.js"></script>
-
+    <button id="empty-trash-fab" title="Изпразни кошчето" data-key-title="emptyTrashTooltip" style="
+        position: fixed;
+        bottom: 10px;
+        right: 140px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #ff4d4d 0%, #cc0000 100%);
+        color: white;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 9997;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s;
+        opacity: 0.8;
+    " onmouseover="this.style.transform='scale(1.1)'; this.style.opacity='1'"
+        onmouseout="this.style.transform='scale(1)'; this.style.opacity='0.8'">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <line x1="10" y1="11" x2="14" y2="17"></line>
+            <line x1="14" y1="11" x2="10" y2="17"></line>
+        </svg>
+    </button>
     <button id="add-note-fab" title="Нова бележка" data-key-title="addNoteTooltip" style="
         position: fixed;
         bottom: 10px;

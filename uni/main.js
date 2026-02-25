@@ -1309,12 +1309,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (rememberMeCheckbox) {
         rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
     }
+
     // Apply Hide Assistant setting on load
     if (localStorage.getItem('hideAssistant') === 'true') {
         const fabButton = document.getElementById('kb-fab');
         if (fabButton) {
             fabButton.style.display = 'none';
         }
+    }
+
+    const emptyTrashFab = document.getElementById('empty-trash-fab');
+    if (emptyTrashFab) {
+        emptyTrashFab.addEventListener('click', emptyTrash);
     }
 });
 
@@ -1987,147 +1993,158 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
     const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
 
-    if (!useIndexedDb && !updateGDrive && !useLocalFolder) return; // Изтриването работи с база данни, GDrive update или локална папка
-    // --- SUPPORT FOR NEW DATASET ATTRIBUTES (g/b) ---
-    // Try to get gdid from dataset.g, fallback to extraInfo (legacy)
+    if (!useIndexedDb && !updateGDrive && !useLocalFolder) return;
+
     let noteGdid = noteEl.dataset ? noteEl.dataset.g : null;
-    let noteId = noteEl.dataset ? noteEl.dataset.i : null; // Get local ID
+    let noteId = noteEl.dataset ? noteEl.dataset.i : null;
     let extraInfo = {};
     if (!noteGdid) {
-        // Fallback for mock objects that might not have dataset structured exactly as DOM element or strictly for safety
-        if (noteEl.gdid) noteGdid = noteEl.gdid; // Direct property fallback
+        if (noteEl.gdid) noteGdid = noteEl.gdid;
         else {
-            extraInfo = JSON.parse((noteEl.dataset && noteEl.dataset.extraInfo) ? noteEl.dataset.extraInfo : '{}');
-            noteGdid = extraInfo.gdid;
+            try {
+                extraInfo = JSON.parse((noteEl.dataset && noteEl.dataset.extraInfo) ? noteEl.dataset.extraInfo : '{}');
+                noteGdid = extraInfo.gdid;
+            } catch (ex) { }
         }
     }
 
-    // Ако нямаме GDID, проверяваме дали имаме поне ID (за локални/нови бележки)
     if (!noteGdid && !noteId) return;
 
-    // --- BOARD ID retrieval ---
-    let boardIdOfDeletedNote = noteEl.dataset ? noteEl.dataset.b : null;
-    if (!boardIdOfDeletedNote) {
-        boardIdOfDeletedNote = extraInfo.boardid;
-        // As a last fallback, find it in allNotesData (slow, but reliable)
-        if (!boardIdOfDeletedNote) {
-            // Търсим по GDID или ID
-            const found = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
-            if (found) boardIdOfDeletedNote = found.boardid;
-        }
-    }
-    // Ако е извикано от модала, първо го затваряме.
-    if (fromModal) {
-        document.getElementById('content-modal').classList.remove('visible');
-        // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
-        await new Promise(resolve => setTimeout(resolve, 150));
-    }
-    const isTrashBoard = currentBoardFilter === 'trash';
+    const isTrashBoard = currentBoardFilter === 'trash' || (noteEl.dataset && noteEl.dataset.s === '1');
     const msgKey = isTrashBoard ? 'confirmNoteDelete' : 'confirmNoteMoveToTrash';
-    const confirmed = await showConfirmation(_(msgKey) || _('confirmNoteDelete'));
+
+    const confirmed = (e === null) ? true : await showConfirmation(_(msgKey) || _('confirmNoteDelete'));
+
     if (confirmed) {
         try {
             const noteToUpdate = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
+            const boardIdOfNote = noteToUpdate ? noteToUpdate.boardid : (noteEl.dataset ? noteEl.dataset.b : null);
+
             if (!isTrashBoard && noteToUpdate) {
-                // Преместване в кошче
+                // Move to trash
                 noteToUpdate.status = 1;
                 noteToUpdate.datemod = Date.now();
-                if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
-                    await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
-                }
-                if (updateGDrive && noteGdid && !isOffline) {
-                    try {
-                        await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
-                    } catch (err) {
-                        console.error("GDrive update failed:", err);
-                        if (typeof showToast === 'function') showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
-                    }
-                }
-                if (useLocalFolder && noteGdid) {
-                    try {
-                        await updateLocalFile(noteGdid, JSON.stringify(noteToUpdate));
-                    } catch (err) {
-                        console.error("Local file update failed:", err);
-                    }
-                }
-
-                // Update dataset so applyFilters can handle it
-                noteEl.dataset.s = "1";
-
-                // Актуализираме общия брояч
-                const noteCounter = document.getElementById('note-counter');
-                let newTotalCount = 0;
-                if (noteCounter) {
-                    newTotalCount = parseInt(noteCounter.textContent, 10) - 1;
-                    noteCounter.textContent = Math.max(0, newTotalCount);
-                }
-                // Актуализираме брояча на борда
-                const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
-                if (boardGdidToUpdate) {
-                    updateBoardCounterUI(boardGdidToUpdate);
-                }
-                updateBoardCounterUI('trash');
-
-                applyFilters(); // Important: triggers the update of UI correctly
-                showToast(_('noteMovedToTrash') || "Бележката е преместена в Кошче", 3000);
-            } else {
-                // Permanently delete
-                if (useIndexedDb) {
-                    if (noteGdid) {
-                        await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-                    } else {
-                        if (noteId) {
-                            try { await deleteFromDB(NOTE_STORE_NAME, String(noteId)); } catch (e) { }
-                        }
-                        try { await deleteFromDB(NOTE_STORE_NAME, ""); } catch (e) { }
-                    }
-                }
-                if (updateGDrive && noteGdid && !isOffline) {
-                    deleteGDriveFile(noteGdid).catch(err => {
-                        console.error("GDrive delete failed:", err);
-                        if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', err.message), 5000);
+                if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
+                    const db = await openNotesDB();
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
+                        tx.objectStore(NOTE_STORE_NAME).put(noteToUpdate);
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
                     });
                 }
-                if (noteEl.remove) noteEl.remove();
-
-                allNotesData = allNotesData.filter(n => {
-                    if (noteGdid) return n.gdid !== noteGdid;
-                    if (noteId) return n.id != noteId;
-                    return true;
-                });
-
-                const noteCounter = document.getElementById('note-counter');
-                let newTotalCount = 0;
-                if (noteCounter) {
-                    newTotalCount = parseInt(noteCounter.textContent, 10) - 1;
-                    noteCounter.textContent = Math.max(0, newTotalCount);
+                if (updateGDrive && noteGdid && !isOffline && typeof updateGDriveFile === 'function') {
+                    await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
                 }
-                const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
-                if (boardGdidToUpdate) {
-                    updateBoardCounterUI(boardGdidToUpdate);
+                if (useLocalFolder && noteGdid && typeof updateLocalFile === 'function') {
+                    await updateLocalFile(noteGdid, JSON.stringify(noteToUpdate));
                 }
-                showToast(_('noteDeletedSuccess'), 3000);
+                noteEl.remove();
+                if (!fromModal && e !== null) showToast(_('noteMovedToTrash') || "Бележката е преместена в Кошче", 3000);
+            } else {
+                // Permanently delete
+                if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
+                    const db = await openNotesDB();
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
+                        tx.objectStore(NOTE_STORE_NAME).delete(noteGdid || Number(noteId));
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                }
+                if (updateGDrive && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
+                    await deleteGDriveFile(noteGdid);
+                }
+                if (useLocalFolder && noteGdid && typeof deleteLocalFile === 'function') {
+                    await deleteLocalFile(noteGdid);
+                }
+
+                // Remove from local memory
+                const midx = allNotesData.findIndex(n => (noteGdid ? n.gdid === noteGdid : n.id == noteId));
+                if (midx !== -1) allNotesData.splice(midx, 1);
+
+                noteEl.remove();
+                if (fromModal) document.getElementById('content-modal').classList.remove('visible');
+                if (!fromModal && e !== null) showToast(_('noteDeletedSuccess') || "Изтрито успешно", 3000);
             }
 
-            // --- REFRESH CALENDARS AND BOARD ---
-            const calendarContainer = document.getElementById('calendar-container');
-            if (calendarContainer && calendarContainer.style.display !== 'none') {
-                renderCalendarView();
-            }
-            const weeklyContainer = document.getElementById('weekly-calendar-container');
-            if (weeklyContainer && weeklyContainer.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
+            if (boardIdOfNote) updateBoardCounterUI(boardIdOfNote);
+            updateBoardCounterUI('trash');
+            applyFilters();
+
+            // Refresh calendars if visible
+            const cal = document.getElementById('calendar-container');
+            if (cal && cal.style.display !== 'none') renderCalendarView();
+            const week = document.getElementById('weekly-calendar-container');
+            if (week && week.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
                 renderWeeklyCalendarView(currentWeeklyViewDate);
             }
-            if (!noteEl.remove || noteEl.remove.name === '') {
-                const realNoteEl = document.querySelector(`.note[data-g="${noteGdid}"]`);
-                if (realNoteEl) {
-                    realNoteEl.remove();
-                }
-            }
+
         } catch (error) {
-            console.log("Failed to delete note:", error);
-            showToast(_('noteDeletedError') + " - " + error.message, 15000);
+            console.error("Failed to delete note:", error);
+            showToast((_('noteDeletedError') || "Грешка при изтриване") + " - " + error.message, 5000);
         }
+    }
+}
+
+async function emptyTrash() {
+    const trashBtn = document.getElementById('empty-trash-fab');
+    if (!trashBtn) return;
+
+    const notesInTrash = Array.from(notesContainer.querySelectorAll('.note'))
+        .filter(note => note.style.display !== 'none' && !note.classList.contains('promo-note'));
+
+    if (notesInTrash.length === 0) {
+        showToast(_('trashAlreadyEmpty') || "Кошчето е вече празно.", 3000);
+        return;
+    }
+
+    const confirmed = await showConfirmation(_('confirmEmptyTrash') || "Сигурни ли сте, че искате да изпразните кошчето окончателно? Това действие е необратимо.");
+    if (!confirmed) return;
+
+    const originalContent = trashBtn.innerHTML;
+    trashBtn.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="spin-animation"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" stroke="white" stroke-width="2" stroke-linecap="round"/></svg><style>@keyframes spin{to{transform:rotate(360deg)}}.spin-animation{animation:spin 1s linear infinite}</style>`;
+    trashBtn.style.pointerEvents = 'none';
+
+    try {
+        const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+        const db = useIndexedDb ? await openNotesDB() : null;
+
+        for (const noteEl of notesInTrash) {
+            const noteGdid = noteEl.dataset.g;
+            const noteId = noteEl.dataset.i;
+
+            if (db && typeof NOTE_STORE_NAME !== 'undefined') {
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
+                    tx.objectStore(NOTE_STORE_NAME).delete(noteGdid || Number(noteId));
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                });
+            }
+            if (updateGDrive && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
+                await deleteGDriveFile(noteGdid);
+            }
+            if (useLocalFolder && noteGdid && typeof deleteLocalFile === 'function') {
+                await deleteLocalFile(noteGdid);
+            }
+
+            const midx = allNotesData.findIndex(n => (noteGdid ? n.gdid === noteGdid : n.id == noteId));
+            if (midx !== -1) allNotesData.splice(midx, 1);
+
+            noteEl.remove();
+        }
+
+        updateBoardCounterUI('trash');
+        applyFilters();
+        showToast(_('trashEmptiedSuccess') || "Кошчето е изпразнено успешно.", 3000);
+    } catch (error) {
+        console.error("Error emptying trash:", error);
+        showToast("Error: " + error.message, 5000);
+    } finally {
+        trashBtn.innerHTML = originalContent;
+        trashBtn.style.pointerEvents = 'auto';
     }
 }
 /**
@@ -6703,6 +6720,65 @@ function showModal(options, noteElement = null) {
     if (oldCalendarBtn) oldCalendarBtn.remove();
 
     if (canEdit && footerToolbar) {
+        // --- Duplicate (Copy) Button ---
+        const noteDuplicateBtn = document.createElement('div');
+        noteDuplicateBtn.id = 'note-duplicate-btn';
+        // Use a custom SVG to match the scale and style of other footer buttons
+        noteDuplicateBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+            <path d="M16 8v-2a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+        </svg>`;
+        noteDuplicateBtn.className = 'modal-footer-btn';
+        noteDuplicateBtn.title = _('copyNoteTooltip') || 'Copy note';
+        noteDuplicateBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!currentNoteObj) return;
+
+            // Clone the note object
+            const noteCopy = JSON.parse(JSON.stringify(currentNoteObj));
+
+            // Assign new unique IDs using global variables
+            // Ensure globals exist and use them
+            window.noteId = (window.noteId || 1000000) + 1;
+            window.noteNumord = (window.noteNumord || 1000000) + 1;
+            const newId = window.noteId;
+            const newNumord = window.noteNumord;
+
+            noteCopy.id = newId;
+            noteCopy.gdid = String(newId); // Temporary GDID
+            noteCopy.numord = newNumord;
+            noteCopy.date = Date.now();
+            noteCopy.datemod = Date.now();
+            noteCopy.isNewNote = true; // Mark as new for save logic
+
+            // Close original modal
+            contentModal.classList.remove('visible');
+
+            // Small delay to ensure clean transition
+            setTimeout(() => {
+                showModal({
+                    raw: noteCopy.notetxt || noteCopy.text || "",
+                    format: noteCopy.text_span,
+                    titleFormat: noteCopy.title_span,
+                    color: (typeof noteColorMap !== 'undefined' && noteCopy.color !== null && noteCopy.color >= 0 && noteCopy.color <= 9) ? noteColorMap[noteCopy.color] : noteCopy.color,
+                    boardId: noteCopy.boardid,
+                    id: noteCopy.id,
+                    isNewNote: true,
+                    originalNote: noteCopy
+                });
+
+                // Switch to edit mode automatically
+                setTimeout(() => {
+                    const editBtn = document.getElementById('note-edit-btn');
+                    if (editBtn) {
+                        editBtn.click();
+                        showToast(_('copyNoteMessage') || 'Original note closed, this is the copy', 4000);
+                    }
+                }, 150);
+            }, 300);
+        });
+        footerToolbar.appendChild(noteDuplicateBtn);
+
         // --- Move Button ---
         const moveBtn = document.createElement('div');
         moveBtn.id = 'note-move-btn';
@@ -7529,10 +7605,16 @@ function applyFilters() {
         noteCounter.textContent = visibleCount;
     }
 
-    // --- Sync Menu Counters ---
     if (typeof updateBoardCounterUI === 'function') {
         updateBoardCounterUI(currentBoardFilter);
         updateBoardCounterUI('reminder');
+    }
+
+    // --- Покажи/Скрий бутона за изпразване на кошчето ---
+    const emptyTrashFab = document.getElementById('empty-trash-fab');
+    if (emptyTrashFab) {
+        const isTrash = currentBoardFilter === 'trash';
+        emptyTrashFab.style.display = (isTrash && visibleCount > 0) ? 'flex' : 'none';
     }
 }
 

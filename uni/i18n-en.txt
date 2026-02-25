@@ -304,5 +304,9 @@ en: {
         boardPreviewLabel: "Preview:",
         trashBoardTitle: "Trash",
         confirmNoteMoveToTrash: "Are you sure you want to move this note to the trash?",
-        noteMovedToTrash: "Note moved to Trash."
+        noteMovedToTrash: "Note moved to Trash.",
+        emptyTrashTooltip: "Empty Trash",
+        confirmEmptyTrash: "Are you sure you want to empty the trash permanently? This action cannot be undone.",
+        trashAlreadyEmpty: "Trash is already empty.",
+        trashEmptiedSuccess: "Trash emptied successfully."
     }

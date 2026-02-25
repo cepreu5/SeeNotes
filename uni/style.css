@@ -1939,7 +1939,7 @@ code {
 }
 
 .zoom-input-number {
-    width: 40px;
+    width: 50px;
     margin: 0 2px 0 10px;
     /* top, right, bottom, left */
     text-align: center;
@@ -1947,9 +1947,9 @@ code {
     border: 1px solid #1f3b52;
     border-radius: 4px;
     background-color: #eef5fb;
-    -moz-appearance: textfield;
-    /* Firefox */
-    appearance: none;
+    /* -moz-appearance: textfield;
+    Firefox
+    appearance: none; */
     /* Standard property to remove default appearance */
 }
 
@@ -1967,12 +1967,11 @@ code {
 }
 
 
-.zoom-input-number::-webkit-outer-spin-button,
+/* .zoom-input-number::-webkit-outer-spin-button,
 .zoom-input-number::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
-    /* Safari */
-}
+} */
 
 .modal-version {
     text-align: center;
@@ -2984,6 +2983,7 @@ body.selection-locked .note.active-selection-note .note-content {
     /* Reduced top padding to make footer smaller */
     display: flex;
     gap: 10px;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
     pointer-events: auto;
@@ -3025,6 +3025,7 @@ body.selection-locked .note.active-selection-note .note-content {
     cursor: pointer;
     border: 1px solid #ccc;
     flex-shrink: 0;
+    color: black;
 }
 
 .modal-footer-toolbar .modal-search-bar {
