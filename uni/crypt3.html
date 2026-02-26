@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Криптиране на токен</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 1rem;
+            background-color: gray;
+        }
+
+        input,
+        button,
+        textarea {
+            display: block;
+            width: 100%;
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+            font-size: 1rem;
+            box-sizing: border-box;
+            background-color: lightgray;
+        }
+
+        label,
+        h2 {
+            margin-top: 1rem;
+            font-weight: bold;
+            color: white
+        }
+
+        .btn-action {
+            background-color: #941703 !important;
+            color: white;
+            font-weight: bold;
+            border: 2px solid #45a049;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .btn-action:hover {
+            background-color: #c81d03 !important;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                margin: 1rem auto;
+                padding: 0.5rem;
+            }
+
+            input,
+            button,
+            textarea {
+                margin: 0.5rem 0;
+                padding: 0.5rem;
+            }
+
+            #token-container {
+                flex-direction: column;
+            }
+
+            #copyBtn {
+                width: 100% !important;
+                margin-top: 0.5rem !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h2>🔐 Криптиране на имейл с валидност</h2>
+
+    <label for="email">Имейл:</label>
+    <input type="email" id="email" placeholder="user@example.com">
+
+    <label for="validity">Период на валидност (в дни):</label>
+    <input type="number" id="validity" value="1" min="0" max="365">
+
+    <button onclick="handleEncrypt()" class="btn-action">Криптирай</button>
+
+    <label for="token">Криптиран токен:</label>
+    <div id="token-container" style="display: flex; gap: 0.5rem; margin: 0.5rem 0;">
+        <textarea id="token" rows="3" style="flex: 1;"></textarea>
+        <button id="copyBtn" onclick="copyToken()"
+            style="width: auto; padding: 0.5rem 1rem; align-self: flex-start; margin-top: 0; font-size: 0.9rem;">📋
+            Копирай</button>
+    </div>
+
+    <button onclick="handleDecrypt()" class="btn-action">Декриптирай</button>
+
+    <label for="decrypted">Декриптиран имейл:</label>
+    <input type="text" id="decrypted">
+
+    <label for="decrypted-validity">Валидност (от токена):</label>
+    <input type="text" id="decrypted-validity" readonly>
+
+    <label for="decrypted-timestamp">Дата на изтичане:</label>
+    <input type="text" id="decrypted-timestamp" readonly>
+
+    <script>
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        const secretKey = encoder.encode('59fegvrs9tjimpmc'); // AES-128 (16 байта)
+
+        function toBase64Url(bytes) {
+            return btoa(String.fromCharCode(...bytes))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function fromBase64Url(str) {
+            const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+            return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+        }
+
+        async function getKey() {
+            return await crypto.subtle.importKey(
+                'raw',
+                secretKey,
+                { name: 'AES-GCM' },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptEmail(email, validity) {
+            const key = await getKey();
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const timestamp = Date.now();
+            const payload = `${email}|${timestamp}|${validity}`;
+            const encoded = encoder.encode(payload);
+            const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+
+            const combined = new Uint8Array(iv.length + encrypted.byteLength);
+            combined.set(iv);
+            combined.set(new Uint8Array(encrypted), iv.length);
+
+            return toBase64Url(combined);
+        }
+
+        async function decryptEmail(token, maxAgeDays) {
+            try {
+                const key = await getKey();
+                const combined = fromBase64Url(token);
+                const iv = combined.slice(0, 12);
+                const data = combined.slice(12);
+
+                const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+                const payload = decoder.decode(decrypted);
+                const [email, timestampStr, validityStr] = payload.split('|');
+                const timestamp = parseInt(timestampStr, 10);
+
+                const now = Date.now();
+                const ageDays = (now - timestamp) / (1000 * 60 * 60 * 24);
+
+                if (ageDays > maxAgeDays) {
+                    return { error: 'Токенът е изтекъл' };
+                }
+
+                // Форматираме timestamp-а в човешки вид
+                const date = new Date(timestamp);
+                const formattedDate = date.toLocaleString('bg-BG', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                return { email, validity: validityStr, timestamp: formattedDate, rawTimestamp: timestamp };
+            } catch (err) {
+                return { error: 'Невалиден токен' };
+            }
+        }
+
+        async function handleEncrypt() {
+            const email = document.getElementById('email').value.trim();
+            const validityInput = document.getElementById('validity').value.trim();
+            const validity = Number(validityInput);
+            if (!email) return alert('Моля, въведи имейл.');
+            if (!validityInput || isNaN(validity) || validity < 0 || validity > 365) return alert('Моля, въведи правилен период на валидност (0-365 дни).');
+            try {
+                const token = await encryptEmail(email, validity);
+                const tokenWithPrefix = '?token=' + token;
+                const tokenField = document.getElementById('token');
+                tokenField.value = tokenWithPrefix;
+
+                // Копираме токена с префикс в клипборда с fallback
+                try {
+                    await navigator.clipboard.writeText(tokenWithPrefix);
+                    showCopiedState(copyBtn);
+                } catch (clipboardErr) {
+                    // Fallback метод за копиране
+                    tokenField.select();
+                    tokenField.setSelectionRange(0, 99999); // За мобилни устройства
+                    document.execCommand('copy');
+                    showCopiedState(copyBtn);
+                }
+            } catch (err) {
+                alert('Грешка при криптиране: ' + err.message);
+            }
+        }
+
+        async function handleDecrypt() {
+            let token = document.getElementById('token').value.trim();
+            const validityInput = document.getElementById('validity').value.trim();
+            const validity = Number(validityInput);
+
+            if (!token) return alert('Моля, въведи токен.');
+
+            // Премахваме префикса ?token= ако съществува
+            if (token.startsWith('?token=')) {
+                token = token.substring(7);
+            }
+
+            if (!validityInput || isNaN(validity) || validity < 0 || validity > 365) {
+                return alert('Моля, въведи валиден период на валидност (0-365 дни).');
+            }
+
+            const result = await decryptEmail(token, validity);
+
+            if (result.error) {
+                document.getElementById('decrypted').value = result.error;
+                document.getElementById('decrypted-validity').value = '';
+                document.getElementById('decrypted-timestamp').value = '';
+            } else {
+                document.getElementById('decrypted').value = result.email;
+                document.getElementById('decrypted-validity').value = result.validity + ' дни';
+
+                // Пресмятаме дата на изтичане
+                const createdDate = new Date(result.rawTimestamp);
+                const expirationDate = new Date(createdDate.getTime() + (parseInt(result.validity) * 24 * 60 * 60 * 1000));
+                const formattedExpiration = expirationDate.toLocaleString('bg-BG', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                document.getElementById('decrypted-timestamp').value = formattedExpiration;
+            }
+        }
+
+        function copyToken() {
+            const tokenField = document.getElementById('token');
+            const copyBtn = document.getElementById('copyBtn');
+            const tokenText = tokenField.value.trim();
+
+            if (!tokenText) {
+                alert('Няма токен за копиране.');
+                return;
+            }
+
+            try {
+                navigator.clipboard.writeText(tokenText).then(() => {
+                    showCopiedState(copyBtn);
+                }).catch(() => {
+                    // Fallback за старите браузери
+                    tokenField.select();
+                    tokenField.setSelectionRange(0, 99999);
+                    document.execCommand('copy');
+                    showCopiedState(copyBtn);
+                });
+            } catch (err) {
+                // Fallback метод
+                tokenField.select();
+                tokenField.setSelectionRange(0, 99999);
+                document.execCommand('copy');
+                showCopiedState(copyBtn);
+            }
+        }
+
+        function showCopiedState(btn) {
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Копиран';
+            btn.style.backgroundColor = 'white';
+            btn.disabled = true;
+
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.backgroundColor = '';
+                btn.disabled = false;
+            }, 15000);
+        }
+    </script>
+</body>
+
+</html>

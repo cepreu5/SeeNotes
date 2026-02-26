@@ -37,9 +37,10 @@ const DEMO_NOTE_LIMIT = 5;
 // =================================================================================
 
 // --- Конфигурация и версия ---
-const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
+// const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
+const CLIENT_ID = '365177022923-59fegvrs9tjimpmclr8nbrvk6ik8qfg6.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email';
-const TRIAL_URL = "http://index.html?token=DtBhz0nmHgisBO7KMIaXaUBp2QFBph4fylvi_uHP-St3CLvu0V69txLgrDO2uJqMRyLI4PtzwKC0v7AbWMacbWrZXTVl"; // days token
+const TRIAL_URL = "http://index.html?token=bEis1x9_geJ3w1aM4SWnR3KjEXbz6l9SK91w9Zk5Clqd6TBnMQgUbMTYErrb_js5wP4I699wO-NflxzGy2yn"; // days token
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -587,6 +588,7 @@ async function decryptLicenseToken() {
             false,
             ['decrypt']
         );
+        console.log(CLIENT_ID.match(/-(.{16})/)[1]);
         const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
         const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
 

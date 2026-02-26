@@ -1,5 +1,5 @@
 en: {
-        appTitle: 'CX MultiNotes Editor',
+        appTitle: 'CX Notes',
         searchPlaceholder: 'Type text',
         reloadButtonTooltip: 'Reload',
         signoutButtonTooltip: 'Sign Out',
@@ -204,9 +204,9 @@ en: {
         trialButton: 'Start 30-day trial period',
         authFailed: 'Authentication failed. Please try again.',
         gapiNotReady: 'Google authentication library is not ready. Please wait a moment and try again.',
-        intro1: '<strong>CX MultiNotes Editor</strong> is a simple, browser‑based tool that lets you open your <a href="https://play.google.com/store/apps/details?id=monitor.kmv.multinotes" target="_blank"><strong>Multinotes</strong></a> Android notes on any device — your computer, tablet, iPhone, or anything else you use, no matter if you’re on Windows, Android, macOS, iOS, or Linux.',
+        intro1: '<strong>CX Notes</strong> is a simple, browser‑based tool that lets you open your <a href="https://play.google.com/store/apps/details?id=monitor.kmv.multinotes" target="_blank"><strong>Multinotes</strong></a> Android notes on any device — your computer, tablet, iPhone, or anything else you use, no matter if you’re on Windows, Android, macOS, iOS, or Linux.',
         intro1a: 'This feature is currently available exclusively to users of the <b>MultiNotes</b> Android version downloaded from <b>Google Play</b>, with <b>Google Drive</b> sync enabled. Support for the <b>Huawei</b> version is coming soon, so stay tuned for updates.',
-        intro2: 'With <strong>CX MultiNotes Editor</strong>, you can get to your notes quickly, without installing anything — and it even works offline when you need it. Your browser keeps a local copy of your notes and updates it automatically whenever something new is added or changed, so everything stays fast and smooth.',
+        intro2: 'With <strong>CX Notes</strong>, you can get to your notes quickly, without installing anything — and it even works offline when you need it. Your browser keeps a local copy of your notes and updates it automatically whenever something new is added or changed, so everything stays fast and smooth.',
         modeDbTitle: 'Here is how it works:',
         modeDbPoint1: 'On the first launch, the viewer downloads all your notes from <strong>Google Drive</strong> and stores them in a local database (cache) inside your browser.',
         modeDbPoint2: 'After that, everything loads directly from this local copy. The app only checks for new or updated notes since your last visit, which makes things much faster.',
