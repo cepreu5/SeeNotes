@@ -1,1 +1,0 @@
-[{"alarm_type":-1,"boardid":"1421opdM_t-mKzW2zeJ_lgUvikcVyAo6G","calendarDate":0,"color":4,"date":1770293061412,"datemod":1770293061412,"eventId":0,"gdid":"19qdzddt6OmzSdfWziZVsQ3kYc0QrkHpk","id":1000004,"notetxt":"първа бележка","sellist":0,"status":0,"text_span":"","title_span":"","timer":0,"timer_type":-1,"timer_val":1,"type":0,"version":243}]
