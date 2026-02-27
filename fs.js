@@ -1,3 +1,17 @@
+/**
+ * Помощна функция за изтегляне на файл чрез <a> елемент.
+ * Използва octet-stream по подразбиране за да не преименува Android Chrome файла.
+ */
+function downloadAsFile(filename, content, mimeType = 'application/octet-stream') {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function exportStore(dbName, storeName) {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(dbName);
@@ -28,17 +42,8 @@ async function exportStore(dbName, storeName) {
         } else {
           // Курсорът е стигнал до края, всички данни са прочетени.
           const data = JSON.stringify(results, null, 2);
+          downloadAsFile(`${storeName}-backup.bcp`, data);
 
-          // Създаваме Blob и предлагаме на потребителя да го свали
-          const blob = new Blob([data], { type: "application/json" });
-          const url = URL.createObjectURL(blob);
-
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `${storeName}-backup.bcp`; // Променяме името на файла
-          a.click();
-
-          URL.revokeObjectURL(url);
           db.close();
           resolve();
         }
@@ -222,9 +227,17 @@ async function processAndDownloadExport(boards, notes, media) {
 
       const saveToFile = async (filename, content) => {
         const fileHandle = await directoryHandle.getFileHandle(filename, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(content);
-        await writable.close();
+        try {
+          const writable = await fileHandle.createWritable();
+          try {
+            await writable.write(new Blob([content], { type: 'application/octet-stream' }));
+          } finally {
+            await writable.close();
+          }
+        } catch (writeErr) {
+          console.warn(`createWritable failed for ${filename}, falling back to download:`, writeErr.message);
+          downloadAsFile(filename, content, 'application/octet-stream');
+        }
       };
 
       await saveToFile("boards.bcp", JSON.stringify(boards));
@@ -244,28 +257,106 @@ async function processAndDownloadExport(boards, notes, media) {
     }
   }
 
-  // Fallback: Multiple separate downloads
-  const blob = new Blob([JSON.stringify(boards)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "boards.bcp";
-  a.click();
-  URL.revokeObjectURL(url);
-
-  const blob2 = new Blob([JSON.stringify(notes)], { type: "application/json" });
-  const url2 = URL.createObjectURL(blob2);
-  const a2 = document.createElement("a");
-  a2.href = url2;
-  a2.download = "notes.bcp";
-  a2.click();
-  URL.revokeObjectURL(url2);
-
-  const blob3 = new Blob([JSON.stringify(media)], { type: "application/json" });
-  const url3 = URL.createObjectURL(blob3);
-  const a3 = document.createElement("a");
-  a3.href = url3;
-  a3.download = "medias.bcp";
-  a3.click();
-  URL.revokeObjectURL(url3);
+  // Fallback: Multiple separate downloads (octet-stream prevents Android adding .json)
+  downloadAsFile("boards.bcp", JSON.stringify(boards), "application/octet-stream");
+  downloadAsFile("notes.bcp", JSON.stringify(notes), "application/octet-stream");
+  downloadAsFile("medias.bcp", JSON.stringify(media), "application/octet-stream");
 }
+
+/**
+ * Експортира данните от паметта като индивидуални файлове в избрана локална папка.
+ * Бордовете, бележките и медия метаданните се записват файл по файл.
+ */
+async function exportToIndividualFiles() {
+  const inMemBoards = (typeof boardsData !== 'undefined' && boardsData.length > 0);
+  const inMemNotes = (typeof allNotesData !== 'undefined' && allNotesData.length > 0);
+
+  if (!inMemBoards && !inMemNotes) {
+    const msg = "No data in memory to export!";
+    if (typeof showToast === 'function') showToast(msg, 3000); else alert(msg);
+    return;
+  }
+
+  if (!window.showDirectoryPicker) {
+    const msg = "FileSystem API not supported in this browser.";
+    if (typeof showToast === 'function') showToast(msg, 5000); else alert(msg);
+    return;
+  }
+
+  try {
+    const rootHandle = await window.showDirectoryPicker({
+      mode: 'readwrite',
+      id: 'individual_export'
+    });
+
+    /**
+     * Помощна функция за генериране на уникално име по схемата "име (брояч).txt"
+     */
+    const getUniqueName = async (baseName, handle) => {
+      let filename = `${baseName}.txt`;
+      let exists = false;
+      try {
+        await handle.getFileHandle(filename, { create: false });
+        exists = true;
+      } catch (e) { exists = false; }
+
+      if (exists) {
+        let counter = 1;
+        while (true) {
+          filename = `${baseName} (${counter}).txt`;
+          try {
+            await handle.getFileHandle(filename, { create: false });
+            counter++;
+          } catch (e) { break; }
+        }
+      }
+      return filename;
+    };
+
+    const saveToFile = async (filename, content, folderHandle) => {
+      const fileHandle = await folderHandle.getFileHandle(filename, { create: true });
+      try {
+        const writable = await fileHandle.createWritable();
+        try {
+          await writable.write(new Blob([content], { type: 'text/plain' }));
+        } finally {
+          await writable.close();
+        }
+      } catch (writeErr) {
+        console.warn(`createWritable failed for ${filename}, falling back to download:`, writeErr.message);
+        downloadAsFile(filename, content, 'text/plain');
+      }
+    };
+
+    // 1. Експорт на бордове
+    for (const board of boardsData) {
+      const fileName = await getUniqueName('board', rootHandle);
+      await saveToFile(fileName, JSON.stringify(board), rootHandle);
+    }
+
+    // 2. Експорт на бележки
+    for (const note of allNotesData) {
+      const fileName = await getUniqueName('note', rootHandle);
+      await saveToFile(fileName, JSON.stringify(note), rootHandle);
+    }
+
+    // 3. Експорт на медия (метаданни)
+    // Всички метаданни media.txt отиват в основната папка
+    const media = (typeof mediaData !== 'undefined') ? mediaData : [];
+    if (media.length > 0) {
+      for (const m of media) {
+        const fileName = await getUniqueName('media', rootHandle);
+        await saveToFile(fileName, JSON.stringify(m), rootHandle);
+      }
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(_('archiveSavedSuccess') || "Files saved successfully!", 3000);
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    console.error("Individual export failed:", err);
+    if (typeof showToast === 'function') showToast("Error: " + err.message, 5000);
+  }
+}
+

@@ -1,4 +1,4 @@
-/**
+/** terser msmrt.js -c 'pure_funcs=["console.log"]' --output msmrtt.js
  * MSM Runtime (Lean) - Guide Execution Only
  * Stripped of debug/editing tools.
  */
@@ -9,6 +9,7 @@ let currentActiveStep = null;
 let stepTime = 10000;
 let animationFrameId;
 let activeSteps = typeof steps !== 'undefined' ? steps : [];
+let isTempNoteOpen = false;
 
 window.setGuideSteps = function (newSteps) {
     activeSteps = newSteps;
@@ -28,6 +29,11 @@ window.removeGuide = function () {
     if (container && document.body.contains(container)) {
         container.remove();
         container = null;
+    }
+    if (isTempNoteOpen) {
+        const modal = document.getElementById('content-modal');
+        if (modal) modal.classList.remove('visible');
+        isTempNoteOpen = false;
     }
 };
 
@@ -89,6 +95,22 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         return;
     }
     currentActiveStep = step;
+
+    // Handle action: note (Create/Open temporary note)
+    if (step.action === 'note') {
+        if (typeof window.showModal === 'function') {
+            const content = step.noteContent || step.note || "";
+            window.showModal({
+                raw: content,
+                id: 'guide-temp-note',
+                color: step.noteColor,
+                width: step.noteWidth,
+                height: step.noteHeight,
+                fontSize: step.noteFontSize
+            });
+            isTempNoteOpen = true;
+        }
+    }
 
     // Execute onStart callback if exists and wait for animations
     const continueShowStep = () => {
@@ -226,6 +248,41 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         };
         img.onclick = imgClickHandler;
         bubble.onclick = bubbleClickHandler;
+
+        // Long press logic
+        let longPressTimer;
+        const longPressDuration = 800; // 800ms
+
+        const startLongPress = (e) => {
+            longPressTimer = setTimeout(() => {
+                window.removeGuide();
+                if (navigator.vibrate) navigator.vibrate(50);
+            }, longPressDuration);
+        };
+
+        const endLongPress = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
+        img.addEventListener('mousedown', startLongPress);
+        img.addEventListener('mouseup', endLongPress);
+        img.addEventListener('mouseleave', endLongPress);
+
+        img.addEventListener('touchstart', startLongPress, { passive: true });
+        img.addEventListener('touchend', endLongPress);
+        img.addEventListener('touchcancel', endLongPress);
+        img.addEventListener('touchmove', endLongPress, { passive: true });
+
+        // Prevent context menu on long press (mobile)
+        img.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        });
+
         // Keyboard Navigation
         const handleKeyPress = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
@@ -385,4 +442,3 @@ window.toggleHero = function () {
     showStep(0);
     return true;
 };
-
