@@ -1197,6 +1197,26 @@
             "category": "features"
         },
         {
+            "id": "version-1.69",
+            "category": "features",
+            "guide": {
+                "1": {
+                    "image": "msm/l-up-w.png",
+                    "height": 100,
+                    "x": 291,
+                    "y": 14,
+                    "bx": -141,
+                    "by": -111,
+                    "bWidth": 305,
+                    "bHeight": 70,
+                    "target": "#show-photos-board"
+                },
+                "stopAfter": true,
+                "action": "#boards-arrow",
+                "context": "boards"
+            }
+        },
+        {
             "id": "offline-mode",
             "category": "data-management"
         }

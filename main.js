@@ -11141,10 +11141,12 @@ function initNoteEditUI() {
     const editBtn = document.getElementById('note-edit-btn');
     const moveBtn = document.getElementById('note-move-btn');
 
-    if (saveBtn) { saveBtn.style.display = 'flex'; saveBtn.style.position = 'static'; }
-    if (previewBtn) { previewBtn.style.display = 'flex'; previewBtn.style.position = 'static'; }
+    if (saveBtn) { saveBtn.style.display = 'flex'; }
+    if (previewBtn) { previewBtn.style.display = 'flex'; }
     if (editBtn) editBtn.style.display = 'none';
     if (moveBtn) moveBtn.style.display = 'none';
+    const duplicateBtn = document.getElementById('note-duplicate-btn');
+    if (duplicateBtn) duplicateBtn.style.display = 'none';
     const calendarBtn = document.getElementById('note-calendar-btn');
     if (calendarBtn) calendarBtn.style.display = 'none';
     const searchBtn = document.getElementById('note-search-btn');
@@ -11770,7 +11772,6 @@ async function saveEditedNote() {
     const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
     if (saveBtnElem) {
         saveBtnElem.style.pointerEvents = 'none';
-        saveBtnElem.style.position = 'relative';
         saveBtnElem.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
         // Add indicator icons in the modal
         const indicators = document.createElement('div');
@@ -12225,10 +12226,12 @@ function previewEditedNote() {
         const editBtn = document.getElementById('note-edit-btn');
         const moveBtn = document.getElementById('note-move-btn');
 
-        if (saveBtn) { saveBtn.style.display = 'flex'; saveBtn.style.right = '50px'; }
-        if (editBtn) { editBtn.style.display = 'flex'; editBtn.style.right = '100px'; }
+        if (saveBtn) { saveBtn.style.display = 'flex'; }
+        if (editBtn) { editBtn.style.display = 'flex'; }
         if (previewBtn) { previewBtn.style.display = 'none'; }
-        if (moveBtn) { moveBtn.style.display = 'flex'; moveBtn.style.right = '150px'; }
+        if (moveBtn) { moveBtn.style.display = 'flex'; }
+        const dupBtn = document.getElementById('note-duplicate-btn');
+        if (dupBtn) dupBtn.style.display = 'none';
     }
 }
 
