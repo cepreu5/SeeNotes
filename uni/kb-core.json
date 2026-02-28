@@ -1197,6 +1197,27 @@
             "category": "features"
         },
         {
+            "id": "Beta 1.7",
+            "category": "workflow",
+            "guide": {
+                "1": {
+                    "image": "msm/expl.png",
+                    "height": 100,
+                    "time": 50000,
+                    "x": -9,
+                    "y": 10,
+                    "bx": 182,
+                    "by": 85,
+                    "bWidth": 278,
+                    "bHeight": 50,
+                    "target": "#search-box"
+                },
+                "stopAfter": true,
+                "action": "explain",
+                "context": ""
+            }
+        },
+        {
             "id": "offline-mode",
             "category": "data-management"
         }

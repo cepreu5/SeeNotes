@@ -570,6 +570,21 @@
             "question": "How do I use the calendar?",
             "answer": "Click the <b><i>Calendar</i></b> button in the board names menu. The calendar displays all notes for which you have set a date. You can switch between monthly and weekly view. If you click a date in the monthly view, the weekly calendar will open, showing the week that contains the selected date."
         },
+        "Beta 1.7": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "1.7"
+            ],
+            "question": "What new features and changes are in the app?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.7<br><br><span align='left'><b>Noto</b> announces changes in new versions.</span>"
+                }
+            }
+        },
         "offline-mode": {
             "keywords": [
                 "offline",

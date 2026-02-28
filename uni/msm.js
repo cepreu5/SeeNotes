@@ -32,21 +32,22 @@ window.toggleHero = function () {
     if (activeSteps.length === 0) {
       // Default debug step
       const debugStep = {
-        image: 'msm/msm-show.png',
+        image: 'msm/l-up.png',
         text: { bg: 'Здравей! Аз съм твоят асистент в Debug режим. 🐛', en: 'Hello! I am your assistant in Debug mode. 🐛' },
-        x: window.innerWidth / 2 - 50, // Center roughly
-        y: window.innerHeight / 2 - 100,
-        target: 'html',
+        x: 20,
+        y: 20,
+        target: '#search-box',
         bx: 0, by: 120,
         bWidth: 220, bHeight: 100
       };
       showStep(debugStep);
     } else {
       let step = { ...activeSteps[0] };
-      if (step.x !== undefined) {
-        step.x += 150;
-      } else {
-        step.x = 150;
+      // Ако първата стъпка няма target, насочваме я към search-box за сигурност
+      if (!step.target || step.target === 'html' || step.target === 'body') {
+        step.target = '#search-box';
+        step.x = (step.x || 0) + 20;
+        step.y = (step.y || 0) + 20;
       }
       showStep(step);
     }
@@ -256,7 +257,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   if (!container || !document.body.contains(container)) {
     container = document.createElement('div');
     container.className = 'guide-container';
-    container.style.position = 'absolute';
+    container.style.position = 'fixed'; // По-надеждно за дебъг и позициониране
     container.style.opacity = '0'; // Hide initially
     container.style.zIndex = '10000';
     container.style.pointerEvents = 'none'; // Pass clicks through
@@ -264,10 +265,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     document.body.appendChild(container);
   } else {
     // Reuse
+    container.style.position = 'fixed';
     container.style.transition = 'none';
     container.style.opacity = '0';
-    container.style.left = '0px';
-    container.style.top = '0px';
   }
   // --- DEBUG OVERLAY ---
   let debugOverlay = document.getElementById('msm-debug-overlay');
@@ -414,20 +414,20 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       newHeight = Math.max(50, startHeight + dy); // Min height 50
       bubble.style.width = newWidth + 'px';
       bubble.style.height = newHeight + 'px';
-      debugOverlay.innerText = `Size: w: ${newWidth}, h: ${newHeight}`;
+      debugOverlay.innerText = `Size: w: ${newWidth}, h: ${newHeight} | bx: ${step.bx || 0}, by: ${step.by || 0}`;
     };
     document.onmouseup = () => {
       document.onmousemove = null;
       document.onmouseup = null;
       isResizing = false;
       isBubbleInteracting = false;
-      // Copy to clipboard
+
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
-      const clipboardText = `bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}`;
+      const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}, "target": "${step.target || ''}"`;
       navigator.clipboard.writeText(clipboardText);
       debugOverlay.innerText = `Copied: ${clipboardText}`;
-      // Update step object (optional, for current session)
+
       step.bWidth = newWidth;
       step.bHeight = newHeight;
     };
@@ -457,18 +457,20 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       newHeight = Math.max(50, startHeight + dy);
       bubble.style.width = newWidth + 'px';
       bubble.style.height = newHeight + 'px';
-      debugOverlay.innerText = `Size: w: ${newWidth}, h: ${newHeight}`;
+      debugOverlay.innerText = `Size: w: ${newWidth}, h: ${newHeight} | bx: ${step.bx || 0}, by: ${step.by || 0}`;
     };
     document.ontouchend = () => {
       document.ontouchmove = null;
       document.ontouchend = null;
       isResizing = false;
       isBubbleInteracting = false;
+
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
-      const clipboardText = `bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}`;
+      const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}, "target": "${step.target || ''}"`;
       navigator.clipboard.writeText(clipboardText);
       debugOverlay.innerText = `Copied: ${clipboardText}`;
+
       step.bWidth = newWidth;
       step.bHeight = newHeight;
     };
@@ -502,7 +504,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         finalBx = Math.round(initialBx + dx);
         finalBy = Math.round(initialBy + dy);
         bubble.style.transform = `translate(${finalBx}px, ${finalBy}px)`;
-        debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy}`;
+        debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy} | x: ${step.x || 0}, y: ${step.y || 0}`;
       }
     };
     document.onmouseup = () => {
@@ -513,7 +515,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         // Copy to clipboard
         const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
         const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
-        const clipboardText = `bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
+        const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${step.target || ''}"`;
         navigator.clipboard.writeText(clipboardText);
         debugOverlay.innerText = `Copied: ${clipboardText}`;
         step.bx = finalBx;
@@ -575,7 +577,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         finalBx = Math.round(initialBx + dx);
         finalBy = Math.round(initialBy + dy);
         bubble.style.transform = `translate(${finalBx}px, ${finalBy}px)`;
-        debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy}`;
+        debugOverlay.innerText = `Bubble: bx: ${finalBx}, by: ${finalBy} | x: ${step.x || 0}, y: ${step.y || 0}`;
       }
     };
     document.ontouchend = () => {
@@ -586,7 +588,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         // Copy to clipboard
         const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
         const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
-        const clipboardText = `bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}`;
+        const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${step.target || ''}"`;
         navigator.clipboard.writeText(clipboardText);
         debugOverlay.innerText = `Copied: ${clipboardText}`;
         step.bx = finalBx;
@@ -727,18 +729,29 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         // Check if target has 0 dimensions (hidden), unless it's body/html
         const isBodyOrHtml = targetEl.tagName === 'BODY' || targetEl.tagName === 'HTML';
         if (!isBodyOrHtml && rect.width === 0 && rect.height === 0) {
-          container.style.opacity = '0';
+          // Fallback: If target is hidden but we want to show it, center on screen
+          container.style.left = "50%";
+          container.style.top = "50%";
+          container.style.transform = "translate(-50%, -50%)";
+          container.style.opacity = '1';
+          console.warn("[MSM] Target element hidden, centering assistant.", targetEl);
           animationFrameId = requestAnimationFrame(updatePosition);
           return;
         }
 
-        container.style.left = (rect.left + window.scrollX + step.x - imgOffsetLeft) + "px";
-        container.style.top = (rect.top + window.scrollY + step.y - imgOffsetTop) + "px";
+        // Reset transform if it was centered
+        container.style.transform = 'none';
+
+        // Since container is now position: fixed, we use viewport coordinates directly
+        // without adding window.scrollX/Y
+        container.style.left = (rect.left + step.x - imgOffsetLeft) + "px";
+        container.style.top = (rect.top + step.y - imgOffsetTop) + "px";
 
         // Show container
         if (container.style.opacity === '0') {
           container.style.transition = 'opacity 0.3s ease';
           container.style.opacity = '1';
+          console.log(`[MSM] Assistant visible at ${container.style.left}, ${container.style.top}`);
         }
         // Boundary Check for Bubble
         const vpW = window.visualViewport ? window.visualViewport.width : (window.innerWidth || document.documentElement.clientWidth);
@@ -819,7 +832,15 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         if (!container) return;
         const dx = moveEvent.clientX - startX;
         const dy = moveEvent.clientY - startY;
-        // Отчитаме влачене само ако има движение над 10 пиксела
+
+        // КОРЕКЦИЯ: Изчистваме таймера за дълго натискане веднага при движение,
+        // дори и да е малко, за да не изчезва асистента при бавно влачене.
+        if (longPressTimer && (dx !== 0 || dy !== 0)) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+
+        // Отчитаме влачене (за логиката на асистента) само ако има движение над 10 пиксела
         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
           wasDragged = true;
         }
@@ -858,7 +879,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       };
       document.onmouseup = () => {
         // Ensure visibility is restored
-        container.style.visibility = 'visible';
+        if (container) container.style.visibility = 'visible';
         document.onmousemove = null;
         document.onmouseup = null;
         isDragging = false; // Разрешаваме отново автоматичното позициониране
@@ -930,6 +951,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const moveTouch = moveEvent.touches[0];
         const dx = moveTouch.clientX - startX;
         const dy = moveTouch.clientY - startY;
+
+        // КОРЕКЦИЯ: Изчистваме таймера веднага при тъч движение
+        if (longPressTimer && (dx !== 0 || dy !== 0)) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+
         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
           wasDragged = true;
         }
@@ -967,7 +995,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       };
       document.ontouchend = () => {
         // Ensure visibility is restored
-        container.style.visibility = 'visible';
+        if (container) container.style.visibility = 'visible';
         document.ontouchmove = null;
         document.ontouchend = null;
         isDragging = false;
@@ -1072,12 +1100,23 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       lastTap = currentTime;
     });
-    // Auto-start if configured
-    if (typeof msm !== 'undefined' && msm) {
-      // Изчакваме малко, за да се заредят шрифтове и стилове
-      setTimeout(() => {
-        showStep(0);
-      }, 1000);
-    }
+  }
+
+  // --- AUTO-START LOGIC (Outside appTitle check) ---
+  // Check both window property and local variable for msm/debug
+  const shouldStart = (typeof msm !== 'undefined' && msm) ||
+    (window.msm) ||
+    (typeof debug !== 'undefined' && debug) ||
+    (window.debug);
+
+  if (shouldStart) {
+    console.log("[MSM] Auto-start triggered (debug/msm flag found)");
+    // Изчакваме малко, за да се заредят шрифтове, стилове и DOM елементи
+    setTimeout(() => {
+      if (typeof toggleHero === 'function') {
+        // Използваме toggleHero, за да задействаме debug режима (буболечката)
+        toggleHero();
+      }
+    }, 1200);
   }
 });
