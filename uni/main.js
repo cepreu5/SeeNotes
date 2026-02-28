@@ -3241,6 +3241,10 @@ function initApp() {
     // Настройване на UI и езикови настройки
     const toast = document.getElementById('toastNotification');
     toast.addEventListener('click', hideToast);
+
+    // Инициализираме местенето на FAB бутона
+    initFABDragging();
+
     scrollTopBtn.innerHTML = arrowSvg;
     const appTitle = document.querySelector('header h1');
     if (appTitle) {
@@ -12690,4 +12694,98 @@ async function showNewBoardModal() {
 
     updatePreview();
     modal.classList.add('visible');
+}
+
+/**
+ * Инициализира функционалността за местене (dragging) на FAB бутона
+ */
+function initFABDragging() {
+    const fab = document.getElementById('add-note-fab');
+    if (!fab) return;
+
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+    const dragThreshold = 5;
+    let longPressTimer;
+    let isLongPress = false;
+
+    function onDown(e) {
+        isDragging = false;
+        const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+        const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+        startX = clientX;
+        startY = clientY;
+        isLongPress = false;
+
+        longPressTimer = setTimeout(() => {
+            if (!isDragging) {
+                isLongPress = true;
+                if (typeof showNewBoardModal === 'function') showNewBoardModal();
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+        }, 600);
+
+        const rect = fab.getBoundingClientRect();
+        fab.style.right = 'auto';
+        fab.style.bottom = 'auto';
+        fab.style.left = rect.left + 'px';
+        fab.style.top = rect.top + 'px';
+
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('mouseup', onUp);
+        document.addEventListener('touchend', onUp);
+    }
+
+    function onMove(e) {
+        const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+        const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+        const dx = clientX - startX;
+        const dy = clientY - startY;
+
+        if (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold) {
+            isDragging = true;
+        }
+
+        if (isDragging) {
+            clearTimeout(longPressTimer);
+            if (e.cancelable) e.preventDefault();
+            fab.style.transform = 'none';
+            fab.style.left = (initialLeft + dx) + 'px';
+            fab.style.top = (initialTop + dy) + 'px';
+        }
+    }
+
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('touchend', onUp);
+        clearTimeout(longPressTimer);
+
+        fab.style.transform = '';
+        if (!isDragging) {
+            fab.style.transition = 'transform 0.2s, box-shadow 0.2s, opacity 0.3s';
+        }
+    }
+
+    fab.addEventListener('mousedown', onDown);
+    fab.addEventListener('touchstart', onDown, { passive: false });
+
+    fab.addEventListener('click', (e) => {
+        if (isDragging || isLongPress) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            isLongPress = false;
+        } else {
+            if (e.ctrlKey) {
+                if (typeof showNewBoardModal === 'function') showNewBoardModal();
+            } else {
+                if (typeof createNewNote === 'function') createNewNote();
+            }
+        }
+    });
 }

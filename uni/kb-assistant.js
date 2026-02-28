@@ -712,19 +712,25 @@ class KBAssistant {
         const lastSeenVersion = localStorage.getItem('app_version_seen');
         if (lastSeenVersion === currentVersion) return;
 
-        // If it's a fresh install (no lastSeenVersion), we just record version and don't spam
+        const allItems = [...(this.kbData.general || []), ...(this.kbData.settings || [])];
+        const parseV = (v) => { if (!v) return 0; const match = v.match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
+
+        // Fresh install: Show the latest update scenario (Beta/Version)
         if (!lastSeenVersion) {
             localStorage.setItem('app_version_seen', currentVersion);
+            const versionScenarios = allItems.filter(item =>
+                item.guide && /^(Beta|Version)/i.test(item.id)
+            );
+            if (versionScenarios.length > 0) {
+                versionScenarios.sort((a, b) => parseV(b.id) - parseV(a.id));
+                const latest = versionScenarios[0];
+                console.log(`[KB Assistant] Fresh install. Showing latest update guide: ${latest.id}`);
+                this.showGuide({ ...latest.guide, id: latest.id });
+            }
             return;
         }
 
         console.log(`[KB Assistant] Version changed from ${lastSeenVersion} to ${currentVersion}. Checking for update guides...`);
-
-        // Get all possible scenarios from general and settings
-        const allItems = [...(this.kbData.general || []), ...(this.kbData.settings || [])];
-
-        // Helper to parse 'Beta 1.68' into 1.68
-        const parseV = (v) => { if (!v) return 0; const match = v.match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
 
         const lastV = parseV(lastSeenVersion);
         const currV = parseV(currentVersion);

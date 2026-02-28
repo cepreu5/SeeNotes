@@ -825,12 +825,6 @@
         </div>
     </div>
     <div id="guide-root"></div>
-
-    <!-- KB Assistant -->
-    <link rel="stylesheet" href="msmstyle.css">
-    <link rel="stylesheet" href="kb-assistant.css">
-    <script src="kb-assistant.js"></script>
-    <script src="msmrt.js"></script>
     <button id="empty-trash-fab" title="Изпразни кошчето" data-key-title="emptyTrashTooltip" style="
         position: fixed;
         bottom: 10px;
@@ -885,102 +879,12 @@
             <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
     </button>
-    <script>
-        (function () {
-            const fab = document.getElementById('add-note-fab');
-            let isDragging = false;
-            let startX, startY, initialLeft, initialTop;
-            const dragThreshold = 5;
-            let longPressTimer;
-            let isLongPress = false;
 
-            function onDown(e) {
-                isDragging = false;
-                const clientX = e.clientX || e.touches[0].clientX;
-                const clientY = e.clientY || e.touches[0].clientY;
-                startX = clientX;
-                startY = clientY;
-                isLongPress = false;
-
-                longPressTimer = setTimeout(() => {
-                    if (!isDragging) {
-                        isLongPress = true;
-                        if (typeof showNewBoardModal === 'function') showNewBoardModal();
-                        if (navigator.vibrate) navigator.vibrate(50);
-                    }
-                }, 600);
-
-                const rect = fab.getBoundingClientRect();
-                // We use right/bottom in CSS, but for dragging we'll switch to fixed left/top
-                // so we can move it freely.
-                // First, lock current position
-                fab.style.right = 'auto';
-                fab.style.bottom = 'auto';
-                fab.style.left = rect.left + 'px';
-                fab.style.top = rect.top + 'px';
-
-                initialLeft = rect.left;
-                initialTop = rect.top;
-
-                document.addEventListener('mousemove', onMove);
-                document.addEventListener('touchmove', onMove, { passive: false });
-                document.addEventListener('mouseup', onUp);
-                document.addEventListener('touchend', onUp);
-            }
-
-            function onMove(e) {
-                const clientX = e.clientX || e.touches[0].clientX;
-                const clientY = e.clientY || e.touches[0].clientY;
-                const dx = clientX - startX;
-                const dy = clientY - startY;
-
-                if (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold) {
-                    isDragging = true;
-                }
-
-                if (isDragging) {
-                    clearTimeout(longPressTimer);
-                    e.preventDefault(); // Prevent scrolling on mobile
-                    fab.style.transform = 'none'; // Disable hover scale while dragging
-                    fab.style.left = (initialLeft + dx) + 'px';
-                    fab.style.top = (initialTop + dy) + 'px';
-                }
-            }
-
-            function onUp(e) {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('touchmove', onMove);
-                document.removeEventListener('mouseup', onUp);
-                document.removeEventListener('touchend', onUp);
-                clearTimeout(longPressTimer);
-
-                // Always reset transform
-                fab.style.transform = '';
-                if (!isDragging) {
-                    // Reset transition
-                    fab.style.transition = 'transform 0.2s, box-shadow 0.2s, opacity 0.3s';
-                }
-            }
-
-            fab.addEventListener('mousedown', onDown);
-            fab.addEventListener('touchstart', onDown, { passive: false });
-
-            // Prevent default click if we dragged
-            fab.addEventListener('click', (e) => {
-                if (isDragging || isLongPress) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    isLongPress = false;
-                } else {
-                    if (e.ctrlKey) {
-                        if (typeof showNewBoardModal === 'function') showNewBoardModal();
-                    } else {
-                        createNewNote();
-                    }
-                }
-            });
-        })();
-    </script>
+    <!-- KB Assistant -->
+    <link rel="stylesheet" href="msmstyle.css">
+    <link rel="stylesheet" href="kb-assistant.css">
+    <script src="kb-assistant.js"></script>
+    <script src="msm.js"></script>
     <script src="main.js"></script>
     <script src="fs.js"></script>
     <script>
@@ -1023,7 +927,7 @@
                 installBtn.style.backgroundColor = '#ff0000';
                 installBtn.style.animation = 'installPulse 1.5s ease-in-out infinite';
                 // Change search placeholder while install button is visible
-                reloadBtn.placeholder = (typeof _ === 'function' ? _('installPromptPlaceholder') : 'Инсталация на приложението');
+                reloadBtn.placeholder = (typeof _ === 'function' ? _('installPromptPlaceholder') : 'Install the application');
 
                 // Намаляваме брояча при успешно показване
                 /*localStorage.setItem('installPromptCount', installPromptCount - 1);

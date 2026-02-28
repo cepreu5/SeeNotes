@@ -1201,15 +1201,15 @@
             "category": "workflow",
             "guide": {
                 "1": {
-                    "image": "msm/l-up-w.png",
+                    "image": "msm/expl.png",
                     "height": 100,
                     "time": 50000,
-                    "x": 291,
-                    "y": 14,
-                    "bx": -141,
-                    "by": -111,
-                    "bWidth": 305,
-                    "bHeight": 170,
+                    "x": -10,
+                    "y": 11,
+                    "bx": 102,
+                    "by": 90,
+                    "bWidth": 267,
+                    "bHeight": 91,
                     "target": "#search-box"
                 },
                 "stopAfter": true,
