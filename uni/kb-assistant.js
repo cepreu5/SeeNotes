@@ -421,6 +421,11 @@ class KBAssistant {
 
             this.updateLanguage();
 
+            // --- NEW: Check for version updates and trigger guides ---
+            setTimeout(() => {
+                this.checkVersionUpdates();
+            }, 1000); // Small delay to let the UI settle
+
             console.log('✅ KB Assistant initialized successfully with split data files.');
             console.log('Current language:', this.getCurrentLanguage());
 
@@ -695,6 +700,79 @@ class KBAssistant {
             window.showGuideStep(step);
         }
 
+    }
+
+    /**
+     * Checks if the app version has changed and triggers sequential guides for skipped versions
+     */
+    checkVersionUpdates() {
+        const currentVersion = typeof version !== 'undefined' ? version : null;
+        if (!currentVersion) return;
+
+        const lastSeenVersion = localStorage.getItem('app_version_seen');
+        if (lastSeenVersion === currentVersion) return;
+
+        // If it's a fresh install (no lastSeenVersion), we just record version and don't spam
+        if (!lastSeenVersion) {
+            localStorage.setItem('app_version_seen', currentVersion);
+            return;
+        }
+
+        console.log(`[KB Assistant] Version changed from ${lastSeenVersion} to ${currentVersion}. Checking for update guides...`);
+
+        // Get all possible scenarios from general and settings
+        const allItems = [...(this.kbData.general || []), ...(this.kbData.settings || [])];
+
+        // Helper to parse 'Beta 1.68' into 1.68
+        const parseV = (v) => { if (!v) return 0; const match = v.match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
+
+        const lastV = parseV(lastSeenVersion);
+        const currV = parseV(currentVersion);
+
+        // Find all items whose ID matches a version string and are between last and current
+        const updateScenarios = allItems.filter(item => {
+            const itemV = parseV(item.id);
+            return itemV > lastV && itemV <= currV && item.guide;
+        });
+
+        // Sort by version ascending
+        updateScenarios.sort((a, b) => parseV(a.id) - parseV(b.id));
+
+        if (updateScenarios.length > 0) {
+            console.log(`[KB Assistant] Found ${updateScenarios.length} update scenarios. Building combined tour for ${currentVersion}...`);
+
+            // Build a single "virtual" guideData object that combines all steps
+            const virtualGuide = {
+                id: currentVersion, // Use the actual version string (e.g. 'Beta 1.69')
+                context: updateScenarios[0].guide.context || 'general'
+            };
+
+            let globalStepIdx = 1;
+            updateScenarios.forEach(scenario => {
+                let i = 1;
+                while (scenario.guide[i]) {
+                    // Extract step data and merge with scenario-level defaults (like context/action)
+                    const stepData = { ...scenario.guide[i] };
+
+                    // Inherit context/action/etc if not present in the step config itself
+                    if (typeof stepData.context === 'undefined' && scenario.guide.context) stepData.context = scenario.guide.context;
+                    if (typeof stepData.action === 'undefined' && scenario.guide.action) stepData.action = scenario.guide.action;
+
+                    virtualGuide[globalStepIdx] = stepData;
+                    globalStepIdx++;
+                    i++;
+                }
+            });
+
+            if (globalStepIdx > 1) {
+                console.log(`[KB Assistant] Starting combined version update tour with ${globalStepIdx - 1} steps.`);
+                // Use the internal showGuide to benefit from context/settings/action logic
+                this.showGuide(virtualGuide);
+            }
+        }
+
+        // Update stored version
+        localStorage.setItem('app_version_seen', currentVersion);
     }
 
     /**

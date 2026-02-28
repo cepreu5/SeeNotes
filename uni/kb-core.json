@@ -1197,23 +1197,24 @@
             "category": "features"
         },
         {
-            "id": "version-1.69",
-            "category": "features",
+            "id": "Beta 1.69",
+            "category": "workflow",
             "guide": {
                 "1": {
                     "image": "msm/l-up-w.png",
                     "height": 100,
+                    "time": 50000,
                     "x": 291,
                     "y": 14,
                     "bx": -141,
                     "by": -111,
                     "bWidth": 305,
-                    "bHeight": 70,
-                    "target": "#show-photos-board"
+                    "bHeight": 170,
+                    "target": "#search-box"
                 },
                 "stopAfter": true,
-                "action": "#boards-arrow",
-                "context": "boards"
+                "action": "explain",
+                "context": ""
             }
         },
         {
