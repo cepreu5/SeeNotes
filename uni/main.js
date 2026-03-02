@@ -3569,8 +3569,12 @@ function initApp() {
     // Clear Button Logic
     clearSearchBtn.addEventListener('click', () => {
         searchBox.value = '';
-        triggerSearch(true); // Clear results
-        searchBox.blur(); // Remove focus so keyboard doesn't stay open
+        lastSearchTerm = '';
+        localStorage.setItem('lastSearchTerm', lastSearchTerm);
+        triggerSearch(true);
+        searchBox.blur();
+        const popup = document.getElementById('saved-searches-popup');
+        if (popup) popup.style.display = 'none';
     });
 
     searchBox.addEventListener('focus', () => {
@@ -12563,7 +12567,7 @@ function showBoardReorderPopup() {
     const closeBtn = document.createElement('button');
     closeBtn.innerHTML = '&times;';
     closeBtn.className = 'modal-close';
-    closeBtn.style.cssText = `position:absolute;top:10px;right:10px;background:#d6d6d6;border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:24px;display:flex;align-items:center;justify-content:center;color:#333;`;
+    closeBtn.style.cssText = `position:absolute;top:10px;right:10px;background:#d6d6d6;border:none;border-radius:6px;width:44px;height:32px;cursor:pointer;font-size:28px;display:flex;align-items:center;justify-content:center;color:#333;box-shadow:0 2px 5px rgba(0,0,0,0.2);`;
     closeBtn.onclick = () => overlay.remove();
     box.appendChild(closeBtn);
     const title = document.createElement('h3');
