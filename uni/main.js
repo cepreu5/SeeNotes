@@ -630,11 +630,11 @@ async function decryptLicenseToken() {
 // Singleton promise to prevent multiple concurrent refresh attempts
 let refreshPromise = null;
 
-async function refreshAuthToken() {
+async function refreshAuthToken(forcePopup = false) {
     if (refreshPromise) return refreshPromise;
 
     refreshPromise = new Promise(async (resolve, reject) => {
-        console.log("Refreshing auth token...");
+        console.log("Refreshing auth token (forcePopup: " + forcePopup + ")...");
         try {
             // Wait for Google Identity Services to load (with timeout)
             const waitForGis = () => new Promise((res, rej) => {
@@ -659,7 +659,7 @@ async function refreshAuthToken() {
             try {
                 await waitForGis();
             } catch (gisError) {
-                console.warn("GIS not available, cannot refresh token silently:", gisError.message);
+                console.warn("GIS not available, cannot refresh token:", gisError.message);
                 reject(new Error("Google Identity Services not loaded. User interaction required."));
                 return;
             }
@@ -671,33 +671,25 @@ async function refreshAuthToken() {
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
                         // Determine storage based on existing token location or rememberMe
-                        // --- FIX: Prioritize updating sessionStorage if it exists, to match checkAuth priority ---
                         if (sessionStorage.getItem('google_auth_token')) {
                             sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         }
-
                         const rememberMe = localStorage.getItem('google_auth_token') !== null ||
                             localStorage.getItem('rememberMe') === 'true';
-
                         if (rememberMe) {
                             localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         } else if (!sessionStorage.getItem('google_auth_token')) {
                             sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         }
-
                         console.log("Token refreshed successfully.");
-
                         // Update global state immediately
                         authToken = tokenWithTimestamp;
                         if (typeof gapi !== 'undefined' && gapi.client) {
                             gapi.client.setToken({ access_token: authToken.access_token });
                         }
-
                         resolve({ pass: true, tokenData: tokenWithTimestamp });
                     } else {
                         console.warn("Token refresh failed:", tokenResponse);
-                        // Вместо да reject-ваме веднага, връщаме pass: false, за да може
-                        // checkAuth да обработи това като "нужен е логин"
                         resolve({ pass: false, error: tokenResponse });
                     }
                 },
@@ -708,33 +700,24 @@ async function refreshAuthToken() {
                 reject(new Error("Token refresh request timed out after 30s."));
             }, 30000);
 
-            // Request the token (silent refresh using login_hint)
-            // Важно: Ако няма login_hint, това ще покаже прозорец (което не искаме при silent refresh),
-            // но prompt: 'none' предотвратява това и връща грешка, ако е нужна интеракция.
             const loginHint = localStorage.getItem('google_login_hint') ||
                 (cachedLicenseData && cachedLicenseData.email_hint);
 
-            if (loginHint) {
-                client.requestAccessToken({ hint: loginHint, prompt: 'none' });
-            } else {
-                clearTimeout(requestTimeout);
-                console.warn("No login hint available for silent refresh.");
-                resolve({ pass: false, reason: "no_hint" });
-            }
+            // Request the token
+            const tokenOptions = {
+                prompt: forcePopup ? 'select_account' : 'none'
+            };
+            if (loginHint) tokenOptions.hint = loginHint;
 
+            client.requestAccessToken(tokenOptions);
         } catch (error) {
             reject(error);
         }
     }).finally(() => {
-        refreshPromise = null; // Винаги зачистваме promise-а
+        refreshPromise = null;
     });
 
-    try {
-        const result = await refreshPromise;
-        return result;
-    } finally {
-        refreshPromise = null; // Reset promise so next time we can try again
-    }
+    return refreshPromise;
 }
 
 /**
@@ -983,19 +966,39 @@ async function deleteLocalFile(gdid) {
 }
 async function updateGDriveFile(fileId, content) {
     if (isOffline || !fileId) return false;
-    try {
-        const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        const tokenData = JSON.parse(storedTokenString);
-        const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    const sendRequest = async (token) => {
+        return fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
             method: 'PATCH',
             headers: {
-                'Authorization': `Bearer ${tokenData.access_token}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'text/plain'
             },
             body: content
         });
-        if (response.status === 401) throw new Error("401 Unauthorized - " + _('errorTokenMissing'));
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        let tokenData = JSON.parse(storedTokenString);
+        let response = await sendRequest(tokenData.access_token);
+        if (response.status === 401) {
+            console.warn("401 Unauthorized in updateGDriveFile, attempting silent refresh...");
+            let refreshResult = await refreshAuthToken(false);
+            if (refreshResult && refreshResult.pass) {
+                tokenData = refreshResult.tokenData;
+                response = await sendRequest(tokenData.access_token);
+            }
+            // If silent refresh failed or still 401, try with popup
+            if (response.status === 401) {
+                console.warn("Silent refresh failed or insufficient, attempting refresh with popup...");
+                refreshResult = await refreshAuthToken(true);
+                if (refreshResult && refreshResult.pass) {
+                    tokenData = refreshResult.tokenData;
+                    response = await sendRequest(tokenData.access_token);
+                }
+            }
+            if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
+        }
         return response.ok;
     } catch (error) {
         console.error("GDrive update failed:", error);
@@ -1004,15 +1007,34 @@ async function updateGDriveFile(fileId, content) {
 }
 async function deleteGDriveFile(fileId) {
     if (!fileId) return false;
-    try {
-        const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        const tokenData = JSON.parse(storedTokenString);
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    const sendRequest = async (token) => {
+        return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
             method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+            headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (response.status === 401) throw new Error("401 Unauthorized - " + _('errorTokenMissing'));
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        let tokenData = JSON.parse(storedTokenString);
+        let response = await sendRequest(tokenData.access_token);
+        if (response.status === 401) {
+            console.warn("401 Unauthorized in deleteGDriveFile, attempting silent refresh...");
+            let refreshResult = await refreshAuthToken(false);
+            if (refreshResult && refreshResult.pass) {
+                tokenData = refreshResult.tokenData;
+                response = await sendRequest(tokenData.access_token);
+            }
+            if (response.status === 401) {
+                console.warn("Silent refresh failed, attempting refresh with popup...");
+                refreshResult = await refreshAuthToken(true);
+                if (refreshResult && refreshResult.pass) {
+                    tokenData = refreshResult.tokenData;
+                    response = await sendRequest(tokenData.access_token);
+                }
+            }
+            if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
+        }
         if (response.status === 404) return false;
         if (!response.ok && response.status !== 204) throw new Error(`HTTP Error ${response.status}`);
         return true;
@@ -1040,29 +1062,43 @@ function trackMaxIds(notes) {
  * Създава нов файл в Google Drive в указаната папка.
  */
 async function createGDriveFile(folderId, filename, content) {
-    try {
-        const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        const tokenData = JSON.parse(storedTokenString);
-
+    const sendRequest = async (token) => {
         const metadata = {
             name: filename,
             parents: [folderId],
             mimeType: 'text/plain'
         };
-
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         form.append('file', new Blob([content], { type: 'text/plain' }));
-
-        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${tokenData.access_token}`
-            },
+            headers: { 'Authorization': `Bearer ${token}` },
             body: form
         });
-
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        let tokenData = JSON.parse(storedTokenString);
+        let response = await sendRequest(tokenData.access_token);
+        if (response.status === 401) {
+            console.warn("401 Unauthorized in createGDriveFile, attempting silent refresh...");
+            let refreshResult = await refreshAuthToken(false);
+            if (refreshResult && refreshResult.pass) {
+                tokenData = refreshResult.tokenData;
+                response = await sendRequest(tokenData.access_token);
+            }
+            if (response.status === 401) {
+                console.warn("Silent refresh failed, attempting refresh with popup...");
+                refreshResult = await refreshAuthToken(true);
+                if (refreshResult && refreshResult.pass) {
+                    tokenData = refreshResult.tokenData;
+                    response = await sendRequest(tokenData.access_token);
+                }
+            }
+            if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
+        }
         if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
         const result = await response.json();
         return result.id;
@@ -1993,6 +2029,12 @@ async function moveNoteToTrash(noteGdid, noteId) {
     const boardIdOfNote = noteToUpdate.boardid;
     noteToUpdate.status = 1;
     noteToUpdate.datemod = Date.now();
+
+    const doGDrive = localStorage.getItem('updateGDrive') === 'true';
+    if (doGDrive && noteGdid && !isOffline && typeof updateGDriveFile === 'function') {
+        await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
+    }
+
     if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
         const db = await openNotesDB();
         await new Promise((resolve, reject) => {
@@ -2002,10 +2044,7 @@ async function moveNoteToTrash(noteGdid, noteId) {
             tx.onerror = () => reject(tx.error);
         });
     }
-    const doGDrive = localStorage.getItem('updateGDrive') === 'true';
-    if (doGDrive && noteGdid && !isOffline && typeof updateGDriveFile === 'function') {
-        await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
-    }
+
     const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
     if (doLocal && noteGdid && typeof updateLocalFile === 'function') {
         await updateLocalFile(noteGdid, JSON.stringify(noteToUpdate));
@@ -2028,7 +2067,14 @@ async function moveNoteToTrash(noteGdid, noteId) {
 /**
  * Изтрива бележка окончателно от БД, GDrive, локална папка и паметта.
  */
-async function permanentlyDeleteNote(noteGdid, noteId) {
+async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
+    const doGDrive = localStorage.getItem('updateGDrive') === 'true';
+    let gdriveDeleted = false;
+    if (doGDrive && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
+        await deleteGDriveFile(noteGdid);
+        gdriveDeleted = true;
+    }
+
     if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
         const db = await openNotesDB();
         await new Promise((resolve, reject) => {
@@ -2038,12 +2084,7 @@ async function permanentlyDeleteNote(noteGdid, noteId) {
             tx.onerror = () => reject(tx.error);
         });
     }
-    const doGDrive = localStorage.getItem('updateGDrive') === 'true';
-    let gdriveDeleted = false;
-    if (doGDrive && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
-        await deleteGDriveFile(noteGdid);
-        gdriveDeleted = true;
-    }
+
     const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
     let localDeleted = false;
     if (doLocal && noteGdid && typeof deleteLocalFile === 'function') {
@@ -2055,13 +2096,16 @@ async function permanentlyDeleteNote(noteGdid, noteId) {
     const noteEl = document.querySelector(`.note[data-g="${noteGdid}"]`) ||
         (noteId ? document.querySelector(`.note[data-i="${noteId}"]`) : null);
     if (noteEl) noteEl.remove();
-    updateBoardCounterUI('trash');
-    applyFilters();
-    const cal = document.getElementById('calendar-container');
-    if (cal && cal.style.display !== 'none') renderCalendarView();
-    const week = document.getElementById('weekly-calendar-container');
-    if (week && week.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
-        renderWeeklyCalendarView(currentWeeklyViewDate);
+
+    if (!skipUI) {
+        updateBoardCounterUI('trash');
+        applyFilters();
+        const cal = document.getElementById('calendar-container');
+        if (cal && cal.style.display !== 'none') renderCalendarView();
+        const week = document.getElementById('weekly-calendar-container');
+        if (week && week.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
+            renderWeeklyCalendarView(currentWeeklyViewDate);
+        }
     }
     return { gdriveDeleted, localDeleted };
 }
@@ -2124,33 +2168,10 @@ async function emptyTrash() {
     trashBtn.style.pointerEvents = 'none';
 
     try {
-        const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-        const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-        const db = useIndexedDb ? await openNotesDB() : null;
-
         for (const noteEl of notesInTrash) {
             const noteGdid = noteEl.dataset.g;
             const noteId = noteEl.dataset.i;
-
-            if (db && typeof NOTE_STORE_NAME !== 'undefined') {
-                await new Promise((resolve, reject) => {
-                    const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
-                    tx.objectStore(NOTE_STORE_NAME).delete(noteGdid || Number(noteId));
-                    tx.oncomplete = () => resolve();
-                    tx.onerror = () => reject(tx.error);
-                });
-            }
-            if (updateGDrive && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
-                await deleteGDriveFile(noteGdid);
-            }
-            if (useLocalFolder && noteGdid && typeof deleteLocalFile === 'function') {
-                await deleteLocalFile(noteGdid);
-            }
-
-            const midx = allNotesData.findIndex(n => (noteGdid ? n.gdid === noteGdid : n.id == noteId));
-            if (midx !== -1) allNotesData.splice(midx, 1);
-
-            noteEl.remove();
+            await permanentlyDeleteNote(noteGdid, noteId, true); // Use shared function with skipUI
         }
 
         updateBoardCounterUI('trash');
