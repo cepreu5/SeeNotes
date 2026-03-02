@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.69'; // App version
+const version = 'Beta 1.70'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -7869,7 +7869,40 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
         return numordA - numordB;
     })
-
+    // --- ПОТРЕБИТЕЛСКА ПОДРЕДБА НА БОРДОВЕТЕ ---
+    // Четем запазения ред от localStorage. Ако няма - създаваме го от текущия ред.
+    let savedBoardOrder = null;
+    try {
+        const raw = localStorage.getItem('boardMenuOrder');
+        if (raw) savedBoardOrder = JSON.parse(raw);
+    } catch (e) { /* ignore */ }
+    if (Array.isArray(savedBoardOrder) && savedBoardOrder.length > 0) {
+        // Подреждаме boardsData по запазения ред; нови бордове отиват накрая
+        const orderMap = new Map(savedBoardOrder.map((id, idx) => [String(id), idx]));
+        boardsData.sort((a, b) => {
+            const idA = String(a.gdid || a.id);
+            const idB = String(b.gdid || b.id);
+            const posA = orderMap.has(idA) ? orderMap.get(idA) : Infinity;
+            const posB = orderMap.has(idB) ? orderMap.get(idB) : Infinity;
+            return posA - posB;
+        });
+        // Добавяме нови бордове (които не са в списъка) накрая
+        const currentIds = boardsData.map(b => String(b.gdid || b.id));
+        let orderChanged = false;
+        currentIds.forEach(id => {
+            if (!savedBoardOrder.includes(id)) {
+                savedBoardOrder.push(id);
+                orderChanged = true;
+            }
+        });
+        if (orderChanged) localStorage.setItem('boardMenuOrder', JSON.stringify(savedBoardOrder));
+    } else {
+        // Създаваме масив за ред от текущия ред на бордовете
+        const initialOrder = boardsData
+            .filter(b => (b.gdid || b.id) !== undefined && (b.gdid || b.id) !== null && b.title)
+            .map(b => String(b.gdid || b.id));
+        if (initialOrder.length > 0) localStorage.setItem('boardMenuOrder', JSON.stringify(initialOrder));
+    }
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
     if (localStorage.getItem('showBoardRemind') !== 'false') {
         const reminderNoteCount = reminderCount;
@@ -7967,6 +8000,20 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         addBoardButtonEvents(trashLink, 'trash');
         allButtonLinks.push(trashLink);
     }
+    // --- БУТОН "НАРЕДИ" ---
+    const reorderLink = document.createElement('span');
+    reorderLink.textContent = _('reorderBoards') || 'Нареди';
+    reorderLink.classList.add('board-filter-link', 'reorder-boards-btn');
+    reorderLink.dataset.boardid = 'reorder';
+    reorderLink.style.backgroundColor = '#607D8B';
+    reorderLink.style.color = '#fff';
+    reorderLink.style.cursor = 'pointer';
+    reorderLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showBoardReorderPopup();
+    });
+    allButtonLinks.push(reorderLink);
     maxWidthForButtons = 0;
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
@@ -12492,6 +12539,151 @@ function preEdit(text, formats, targetIndex = -1) {
 let boardIdCounter = parseInt(localStorage.getItem('boardIdCounter')) || 1000000;
 
 /**
+ * Показва попъп за пренареждане на бордовете с влачене (drag-and-drop).
+ * Новият ред се записва в localStorage ('boardMenuOrder').
+ */
+function showBoardReorderPopup() {
+    let currentOrder = [];
+    try {
+        const raw = localStorage.getItem('boardMenuOrder');
+        if (raw) currentOrder = JSON.parse(raw);
+    } catch (e) { /* ignore */ }
+    if (!Array.isArray(currentOrder) || currentOrder.length === 0) {
+        currentOrder = boardsData
+            .filter(b => (b.gdid || b.id) !== undefined && b.title)
+            .map(b => String(b.gdid || b.id));
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay reorder-overlay';
+    overlay.style.cssText = 'display:flex;align-items:center;justify-content:center;z-index:100000;';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    const box = document.createElement('div');
+    box.className = 'modal-content-box';
+    box.style.cssText = `background-image:url('Frame.jpg');background-size:cover;border-radius:12px;padding:50px 20px 20px 20px;width:auto;min-width:300px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.5);position:relative;`;
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.className = 'modal-close';
+    closeBtn.style.cssText = `position:absolute;top:10px;right:10px;background:#d6d6d6;border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:24px;display:flex;align-items:center;justify-content:center;color:#333;`;
+    closeBtn.onclick = () => overlay.remove();
+    box.appendChild(closeBtn);
+    const title = document.createElement('h3');
+    title.textContent = _('reorderBoards') || 'Нареди бордовете';
+    title.style.cssText = 'margin:0 0 15px 0;font-size:1.2em;color:#fff;text-shadow:1px 1px 3px rgba(0,0,0,0.8);text-align:center;';
+    box.appendChild(title);
+    const listContainer = document.createElement('div');
+    listContainer.style.cssText = 'overflow-y:auto;flex:1;padding:4px;display:flex;flex-direction:column;align-items:center;width:100%;';
+    let draggedItem = null;
+    let placeholder = document.createElement('div');
+    placeholder.style.cssText = `height:40px;width:${maxWidthForButtons}px;border:2px dashed #fff;border-radius:4px;margin-bottom:8px;background:rgba(255,255,255,0.2);`;
+    currentOrder.forEach((boardId) => {
+        const board = boardsData.find(b => String(b.gdid || b.id) === String(boardId));
+        if (!board || !board.title) return;
+        const item = document.createElement('div');
+        item.className = 'board-filter-link reorder-item';
+        item.dataset.boardid = String(boardId);
+        item.draggable = true;
+        item.style.width = `${maxWidthForButtons}px`;
+        item.style.marginBottom = '8px';
+        item.style.cursor = 'grab';
+        item.style.flexShrink = '0';
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.justifyContent = 'flex-start';
+        item.style.padding = '0 10px';
+        if (board.color !== undefined && !isNaN(board.color)) {
+            if (board.color >= 0 && board.color <= 6) item.style.backgroundColor = `var(--board-bg-${board.color})`;
+            else if (board.color < 0) item.style.backgroundColor = '#' + (board.color >>> 0).toString(16).slice(-6);
+        }
+        const grip = document.createElement('span');
+        grip.innerHTML = '⠿';
+        grip.style.cssText = 'margin-right:8px;font-size:16px;opacity:0.6;';
+        item.appendChild(grip);
+        const text = document.createElement('span');
+        text.textContent = board.title;
+        text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+        if (board.status === 1) text.style.color = 'red';
+        else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) text.style.color = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+        else text.style.color = 'black';
+        item.appendChild(text);
+        item.addEventListener('dragstart', (e) => {
+            draggedItem = item;
+            e.dataTransfer.effectAllowed = 'move';
+            setTimeout(() => { item.style.opacity = '0'; }, 0);
+        });
+        item.addEventListener('dragend', () => {
+            draggedItem.style.opacity = '1';
+            if (placeholder.parentNode) placeholder.remove();
+            draggedItem = null;
+        });
+        item.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) return;
+            draggedItem = item;
+            item.style.opacity = '0.5';
+        }, { passive: true });
+        item.addEventListener('touchmove', (e) => {
+            if (!draggedItem || draggedItem !== item) return;
+            e.preventDefault();
+            const y = e.touches[0].clientY;
+            const target = document.elementFromPoint(e.touches[0].clientX, y);
+            const scrollItem = target ? target.closest('.reorder-item') : null;
+            if (scrollItem && scrollItem !== item) {
+                const rect = scrollItem.getBoundingClientRect();
+                if (y < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, scrollItem);
+                else listContainer.insertBefore(placeholder, scrollItem.nextSibling);
+            }
+        }, { passive: false });
+        item.addEventListener('touchend', () => {
+            if (!draggedItem) return;
+            item.style.opacity = '1';
+            if (placeholder.parentNode) {
+                listContainer.insertBefore(item, placeholder);
+                placeholder.remove();
+            }
+            draggedItem = null;
+        });
+        listContainer.appendChild(item);
+    });
+    listContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const target = e.target.closest('.reorder-item');
+        if (target && target !== draggedItem) {
+            const rect = target.getBoundingClientRect();
+            if (e.clientY < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, target);
+            else listContainer.insertBefore(placeholder, target.nextSibling);
+        }
+    });
+    listContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (draggedItem && placeholder.parentNode) {
+            listContainer.insertBefore(draggedItem, placeholder);
+            placeholder.remove();
+        }
+    });
+    box.appendChild(listContainer);
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:center;margin-top:15px;';
+    const saveCloseBtn = document.createElement('button');
+    saveCloseBtn.textContent = _('submitButton') || 'Потвърди';
+    saveCloseBtn.className = 'submit-btn';
+    saveCloseBtn.style.cssText = 'padding:10px 30px;background:darkorange;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:1.1em;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.3);';
+    saveCloseBtn.onclick = async () => {
+        const newOrder = [...listContainer.children]
+            .filter(el => el.classList.contains('reorder-item'))
+            .map(el => el.dataset.boardid);
+        localStorage.setItem('boardMenuOrder', JSON.stringify(newOrder));
+        overlay.remove();
+        const boardsNote = document.querySelector('header .boards-note');
+        if (boardsNote) boardsNote.remove();
+        await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        showToast(_('settingSaved') || 'Запазено', 2000);
+    };
+    footer.appendChild(saveCloseBtn);
+    box.appendChild(footer);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.classList.add('visible'), 10);
+}
+/**
  * Търси максималните стойности на id сред бордовете и обновява брояча.
  */
 function trackMaxBoardIds(boards) {
@@ -12699,6 +12891,16 @@ async function showNewBoardModal() {
             }
 
             boardsData.push(newBoard);
+            // Добавяме новия борд в края на запазения ред
+            try {
+                const raw = localStorage.getItem('boardMenuOrder');
+                const order = raw ? JSON.parse(raw) : [];
+                const newId = String(newBoard.gdid || newBoard.id);
+                if (!order.includes(newId)) {
+                    order.push(newId);
+                    localStorage.setItem('boardMenuOrder', JSON.stringify(order));
+                }
+            } catch (e) { /* ignore */ }
 
             // Close existing board menu if any and re-render
             const boardsNote = document.querySelector('header .boards-note');

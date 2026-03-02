@@ -3117,3 +3117,34 @@ body.selection-locked .note.active-selection-note .note-content {
         width: 100%;
     }
 }
+
+/* --- Бутон "Нареди" в менюто с бордове --- */
+.reorder-boards-btn {
+    font-weight: 600 !important;
+    letter-spacing: 0.3px;
+}
+
+@media (hover: hover) {
+    .reorder-boards-btn:hover {
+        background-color: #455A64 !important;
+    }
+}
+
+/* --- Overlay за пренареждане на бордовете --- */
+.reorder-overlay {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.reorder-item {
+    transition: background 0.2s, transform 0.2s;
+}
+
+.reorder-item:hover {
+    filter: brightness(0.95);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.reorder-item:active {
+    cursor: grabbing;
+    transform: scale(1.02);
+}

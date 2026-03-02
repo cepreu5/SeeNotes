@@ -310,5 +310,6 @@ bg: {
         emptyTrashTooltip: "Изпразни кошчето",
         confirmEmptyTrash: "Сигурни ли сте, че искате да изпразните кошчето окончателно? Това действие е необратимо.",
         trashAlreadyEmpty: "Кошчето е вече празно.",
-        trashEmptiedSuccess: "Кошчето е изпразнено успешно."
+        trashEmptiedSuccess: "Кошчето е изпразнено успешно.",
+        reorderBoards: 'Нареди'
     }

@@ -308,5 +308,6 @@ en: {
         emptyTrashTooltip: "Empty Trash",
         confirmEmptyTrash: "Are you sure you want to empty the trash permanently? This action cannot be undone.",
         trashAlreadyEmpty: "Trash is already empty.",
-        trashEmptiedSuccess: "Trash emptied successfully."
+        trashEmptiedSuccess: "Trash emptied successfully.",
+        reorderBoards: 'Reorder'
     }
