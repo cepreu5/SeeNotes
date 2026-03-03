@@ -245,6 +245,29 @@
                 <div class="modal-header-buttons">
                     <button id="prev-note-btn" class="modal-nav-btn" title="Предишна бележка">&lt;</button>
                     <button id="next-note-btn" class="modal-nav-btn" title="Следваща бележка">&gt;</button>
+                    <button id="bullet-list-btn" class="modal-nav-btn" title="Списък с точки" style="display: none;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="8" y1="6" x2="21" y2="6"></line>
+                            <line x1="8" y1="12" x2="21" y2="12"></line>
+                            <line x1="8" y1="18" x2="21" y2="18"></line>
+                            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                        </svg>
+                    </button>
+                    <button id="numbered-list-btn" class="modal-nav-btn" title="Номериран списък"
+                        style="display: none;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="10" y1="6" x2="21" y2="6"></line>
+                            <line x1="10" y1="12" x2="21" y2="12"></line>
+                            <line x1="10" y1="18" x2="21" y2="18"></line>
+                            <path d="M4 6h1v4"></path>
+                            <path d="M4 10h2"></path>
+                            <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path>
+                        </svg>
+                    </button>
                     <button id="calculate-modal-btn" data-key-title="calculateTooltip" title="Изчисли израз">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                             stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -706,10 +729,13 @@
                         data-key="dbManagementTitle">
                         Управление на базата данни
                     </label>
-                    <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
-                        <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
-                        <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;"
-                            data-key="deleteDbButton">Изтрий</button>
+                    <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px;">
+                        <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
+                            <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
+                        </div>
+                        <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
+                            <button id="delete-db-btn" class="zoom-btn" data-key="deleteDbButton">Изтрий</button>
+                        </div>
                     </div>
                 </div>
 
@@ -813,6 +839,17 @@
                                 </div>
                                 <hr style="width: 95%;" color="#000" size="1">
                             </div>
+                        </div>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; border-top: 1px solid #404040; padding-top: 10px;">
+                        <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
+                            <button id="save-settings-btn" class="zoom-btn" data-key="saveSettingsLabel">Запис на
+                                настройките</button>
+                        </div>
+                        <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
+                            <button id="load-settings-btn" class="zoom-btn" data-key="loadSettingsLabel">Зареждане на
+                                настройките</button>
                         </div>
                     </div>
                 </span>

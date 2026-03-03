@@ -825,7 +825,6 @@ code {
 }
 
 /* Стил за "лист хартия" когато няма фоново изображение */
-/* Стил за "лист хартия" когато няма фоново изображение */
 .modal-content-box.no-bg-image {
     border: none;
     /* Inset сянка за лек обем + външна сянка */
@@ -3147,4 +3146,12 @@ body.selection-locked .note.active-selection-note .note-content {
 .reorder-item:active {
     cursor: grabbing;
     transform: scale(1.02);
+}
+
+#create-db-btn {
+    min-width: 180px;
+}
+
+#delete-db-btn {
+    min-width: 180px;
 }

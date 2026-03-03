@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.70'; // App version
+const version = 'Beta 1.71'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -1566,17 +1566,17 @@ function renderCalendarView() {
             document.getElementById('close-month-calendar-btn').click();
             // Background handler for the spinner in the re-opened modal
             (async () => {
-                await new Promise(r => setTimeout(r, 80)); // Wait for modal to re-open
+                await new Promise(r => setTimeout(r, 120)); // Wait for modal to re-open
                 const calendarBtn = document.getElementById('note-calendar-btn');
                 if (calendarBtn) {
-                    const originalHtml = calendarBtn.innerHTML;
                     calendarBtn.style.pointerEvents = 'none';
-                    calendarBtn.innerHTML = `<img src="Refresh.png" class="button-loading" style="width:24px; height:24px; position:absolute; top:50%; left:50%;">`;
+                    calendarBtn.innerHTML = `<img src="Refresh.png" style="width:22px; height:22px; animation: spin 0.8s linear infinite;">`;
                     await syncPromise;
-                    if (document.getElementById('note-calendar-btn') === calendarBtn) {
-                        calendarBtn.style.pointerEvents = 'auto';
-                        calendarBtn.innerHTML = noCalendarIconSvg;
-                        calendarBtn.title = _('removeFromCalendar') || "Remove from calendar";
+                    const finalCalendarBtn = document.getElementById('note-calendar-btn');
+                    if (finalCalendarBtn) {
+                        finalCalendarBtn.style.pointerEvents = 'auto';
+                        finalCalendarBtn.innerHTML = noCalendarIconSvg;
+                        finalCalendarBtn.title = _('removeFromCalendar') || "Remove from calendar";
                     }
                 }
             })();
@@ -3181,6 +3181,10 @@ function initApp() {
     // Set default showWeeklyCalendar to true if not set
     if (localStorage.getItem('showWeeklyCalendar') === null) {
         localStorage.setItem('showWeeklyCalendar', 'true');
+    }
+    // Set default updateGDrive to true if not set
+    if (localStorage.getItem('updateGDrive') === null) {
+        localStorage.setItem('updateGDrive', 'true');
     }
     // Инициализация на DOM елементи
     signoutButton = document.getElementById('signout_button');
@@ -6456,6 +6460,7 @@ function showModal(options, noteElement = null) {
     modalBody.dataset.format = formatString || '';
     modalBody.dataset.titleFormat = titleFormatString || '';
     modalBody.dataset.boardId = (options && options.boardId) ? options.boardId : '';
+    modalBody.dataset.isNewNote = options.isNewNote ? 'true' : 'false';
     modalBody.dataset.color = noteColor || '';
     if (options.maskedLinks) {
         modalBody.dataset.maskedLinks = JSON.stringify(options.maskedLinks);
@@ -6751,12 +6756,15 @@ function showModal(options, noteElement = null) {
         prevBtn.style.display = (currentIndex > 0) ? 'flex' : 'none';
         nextBtn.style.display = (currentIndex < visibleNotes.length - 1) ? 'flex' : 'none';
     } else {
-        // Ако не е подаден елемент на бележка (напр. за системна информация), скриваме бутоните
         prevBtn.style.display = 'none';
         nextBtn.style.display = 'none';
         const boardNameEl = document.getElementById('modal-board-name');
-        if (boardNameEl) boardNameEl.style.left = ''; // Allow CSS to handle it
+        if (boardNameEl) boardNameEl.style.left = '';
     }
+    const bulletBtn = document.getElementById('bullet-list-btn');
+    const numberedBtn = document.getElementById('numbered-list-btn');
+    if (bulletBtn) bulletBtn.style.display = 'none';
+    if (numberedBtn) numberedBtn.style.display = 'none';
 
     // --- Edit Icon for Modal (DB Mode) ---
     // Individual buttons are cleaned up when oldToolbar is removed at the top,
@@ -6814,13 +6822,13 @@ function showModal(options, noteElement = null) {
 
                 // Switch to edit mode automatically
                 setTimeout(() => {
-                    const editBtn = document.getElementById('note-edit-btn');
-                    if (editBtn) {
-                        editBtn.click();
-                        showToast(_('copyNoteMessage') || 'Original note closed, this is the copy', 4000);
+                    const mBody = document.getElementById('modal-body');
+                    if (mBody) {
+                        enableNoteEditing(mBody);
+                        showToast(_('copyNoteMessage'), 4000);
                     }
-                }, 150);
-            }, 300);
+                }, 250);
+            }, 400);
         });
         footerToolbar.appendChild(noteDuplicateBtn);
 
@@ -6837,8 +6845,32 @@ function showModal(options, noteElement = null) {
         moveBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             showAllBoardsModal(async (newBoardId) => {
-                const moved = await moveNoteToBoard(noteGdid, noteId, newBoardId);
-                if (moved) contentModal.classList.remove('visible');
+                const isEditing = modalBody.querySelector('textarea') !== null;
+                const isNewNote = modalBody.dataset.isNewNote === 'true';
+                if (isEditing || isNewNote) {
+                    modalBody.dataset.boardId = newBoardId;
+                    const b = boardsData.find(board => (board.gdid || board.id) == newBoardId);
+                    const currentBoardNameEl = document.getElementById('modal-board-name');
+                    if (currentBoardNameEl && b) {
+                        currentBoardNameEl.textContent = b.title;
+                        currentBoardNameEl.style.display = 'flex';
+                        currentBoardNameEl.style.cursor = 'pointer';
+                        currentBoardNameEl.style.textDecoration = 'underline';
+                        currentBoardNameEl.style.fontWeight = 'bold';
+                        currentBoardNameEl.title = _('goToBoard') || 'Go to board';
+                        // Update click handler to point to new board
+                        const newBoardEl = currentBoardNameEl.cloneNode(true);
+                        currentBoardNameEl.parentNode.replaceChild(newBoardEl, currentBoardNameEl);
+                        newBoardEl.addEventListener('click', () => {
+                            document.getElementById('content-modal').classList.remove('visible');
+                            const bBtn = document.querySelector(`.board-filter-link[data-boardid="${newBoardId}"]`);
+                            if (bBtn) { bBtn.click(); } else { filterNotesByBoard(newBoardId); }
+                        });
+                    }
+                } else {
+                    const moved = await moveNoteToBoard(noteGdid, noteId, newBoardId);
+                    if (moved) contentModal.classList.remove('visible');
+                }
             });
         });
         footerToolbar.appendChild(moveBtn);
@@ -6859,10 +6891,8 @@ function showModal(options, noteElement = null) {
             const isAssigned = currentCalendarDateVal && currentCalendarDateVal !== '0';
 
             if (isAssigned) {
-                const originalHtml = calendarBtn.innerHTML;
                 calendarBtn.style.pointerEvents = 'none';
-                calendarBtn.style.position = 'relative';
-                calendarBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
+                calendarBtn.innerHTML = `<img src="Refresh.png" style="width:22px; height:22px; animation: spin 0.8s linear infinite;">`;
                 await updateNoteCalendarDate({ id: noteId, gdid: noteGdid }, { getTime: () => 0 });
                 calendarBtn.style.pointerEvents = 'auto';
                 calendarBtn.innerHTML = calendarIconSvg;
@@ -8080,8 +8110,83 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     allBoardsBtn.classList.add('visible');
     return boardsNote;
 }
+const appSettingsKeys = [
+    'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast',
+    'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'oneTapLink',
+    'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd',
+    'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
+    'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
+    'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
+    'modalWidth', 'modalHeight', 'startBoard', 'folderId', 'language', 'rememberMe',
+    'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
+    'enableNoteSorting', 'lastSearchTerm'
+];
+async function findGDFileByName(folderId, fileName) {
+    if (isOffline) return null;
+    const query = `'${folderId}' in parents and name = '${fileName}' and trashed = false`;
+    try {
+        const resp = await gapi.client.drive.files.list({ q: query, fields: 'files(id, name)' });
+        return resp.result.files && resp.result.files.length > 0 ? resp.result.files[0] : null;
+    } catch (e) { console.error("findGDFileByName error:", e); return null; }
+}
+async function saveSettingsToGDrive() {
+    const folderId = await getFolderID();
+    if (!folderId) return;
+    const settings = {};
+    appSettingsKeys.forEach(key => {
+        const val = localStorage.getItem(key);
+        if (val !== null) settings[key] = val;
+    });
+    const fileName = 'settings.json';
+    const content = JSON.stringify(settings, null, 2);
+    try {
+        const existingFile = await findGDFileByName(folderId, fileName);
+        if (existingFile) {
+            await updateGDriveFile(existingFile.id, content);
+        } else {
+            await createGDriveFile(folderId, fileName, content);
+        }
+        showToast(_('settingsSavedSuccess'));
+    } catch (err) {
+        console.error("Save settings error:", err);
+        showToast(_('errorSaveSettings'));
+    }
+}
+async function loadSettingsFromGDrive() {
+    const folderId = await getFolderID();
+    if (!folderId) return;
+    const fileName = 'settings.json';
+    try {
+        const existingFile = await findGDFileByName(folderId, fileName);
+        if (!existingFile) {
+            showToast(_('errorLoadSettings'));
+            return;
+        }
+        const content = await fetchGDriveFileContent(existingFile.id);
+        if (content) {
+            const settings = JSON.parse(content);
+            Object.keys(settings).forEach(key => {
+                if (appSettingsKeys.includes(key)) {
+                    localStorage.setItem(key, settings[key]);
+                }
+            });
+            showToast(_('settingsLoadedSuccess'), 6000);
+            setTimeout(() => { if (confirm(_('settingsLoadedSuccess'))) location.reload(); }, 500);
+        }
+    } catch (err) {
+        console.error("Load settings error:", err);
+        showToast(_('errorLoadSettings'));
+    }
+}
 async function createSettingsUI(boardsData, boardParseError) {
     const settingsModalBody = document.getElementById('settings-modal-body');
+    if (!settingsModalBody.dataset.initializedListeners) {
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
+        const loadSettingsBtn = document.getElementById('load-settings-btn');
+        if (saveSettingsBtn) saveSettingsBtn.onclick = saveSettingsToGDrive;
+        if (loadSettingsBtn) loadSettingsBtn.onclick = loadSettingsFromGDrive;
+        settingsModalBody.dataset.initializedListeners = 'true';
+    }
     // --- Get Element References ---
     const scaleSlider = document.getElementById('scaleSlider');
     const scaleInput = document.getElementById('scaleInput');
@@ -10920,6 +11025,39 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     }
 
     // if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
+    const prevBtn = document.getElementById('prev-note-btn');
+    const nextBtn = document.getElementById('next-note-btn');
+    const bulletBtn = document.getElementById('bullet-list-btn');
+    const numberedBtn = document.getElementById('numbered-list-btn');
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'none';
+    if (bulletBtn) bulletBtn.style.display = 'flex';
+    if (numberedBtn) numberedBtn.style.display = 'flex';
+}
+function toggleListFormat(textarea, listType) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    let lineStart = text.lastIndexOf('\n', start - 1) + 1;
+    let lineEnd = text.indexOf('\n', end);
+    if (lineEnd === -1) lineEnd = text.length;
+    const selectedLines = text.substring(lineStart, lineEnd).split('\n');
+    const isBullet = listType === 'bullet';
+    const isRemoving = selectedLines.every(line => {
+        if (isBullet) return line.trim().startsWith('-');
+        return /^\d+\.\s/.test(line.trim());
+    });
+    const newLines = selectedLines.map((line, idx) => {
+        if (isRemoving) {
+            return line.replace(isBullet ? /^\s*-\s*/ : /^\s*\d+\.\s*/, '');
+        } else {
+            const currentMarker = isBullet ? '- ' : `${idx + 1}. `;
+            return currentMarker + line.replace(isBullet ? /^\s*-\s*/ : /^\s*\d+\.\s*/, '');
+        }
+    });
+    const replacement = newLines.join('\n');
+    textarea.setRangeText(replacement, lineStart, lineEnd, 'select');
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function getPreciseCharIndex(container, range) {
@@ -10972,7 +11110,21 @@ document.addEventListener('keydown', (e) => {
             formatKeyboardHotkeys(activeTextarea, backdrop, isB, isI, isU, isD);
         }
     }
-}, true); // Capture phase is crucial for overriding browser defaults
+}, true);
+document.getElementById('bullet-list-btn')?.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const activeTextarea = document.activeElement;
+    if (activeTextarea && (activeTextarea.id === 'note-edit-textarea' || activeTextarea.id === 'note-edit-title-textarea')) {
+        toggleListFormat(activeTextarea, 'bullet');
+    }
+});
+document.getElementById('numbered-list-btn')?.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const activeTextarea = document.activeElement;
+    if (activeTextarea && (activeTextarea.id === 'note-edit-textarea' || activeTextarea.id === 'note-edit-title-textarea')) {
+        toggleListFormat(activeTextarea, 'numbered');
+    }
+});
 
 // --- Escape key to close modals ---
 document.addEventListener('keydown', (e) => {
@@ -11094,9 +11246,9 @@ function handleEditInput(textarea, backdrop) {
 
 function initNoteEditUI() {
     const contentModal = document.getElementById('content-modal');
+    const modalBodyEl = document.getElementById('modal-body');
     const modalContentBox = contentModal?.querySelector('.modal-content-box');
     const footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
-
     // Add save button if not exists
     if (!document.getElementById('note-save-btn')) {
         const saveBtn = document.createElement('div');
@@ -11154,17 +11306,17 @@ function initNoteEditUI() {
     if (saveBtn) { saveBtn.style.display = 'flex'; }
     if (previewBtn) { previewBtn.style.display = 'flex'; }
     if (editBtn) editBtn.style.display = 'none';
-    if (moveBtn) moveBtn.style.display = 'none';
+    const isNewNote = modalBodyEl && modalBodyEl.dataset.isNewNote === 'true';
+    if (moveBtn) moveBtn.style.display = isNewNote ? 'flex' : 'none';
     const duplicateBtn = document.getElementById('note-duplicate-btn');
     if (duplicateBtn) duplicateBtn.style.display = 'none';
     const calendarBtn = document.getElementById('note-calendar-btn');
-    if (calendarBtn) calendarBtn.style.display = 'none';
+    if (calendarBtn) calendarBtn.style.display = 'flex';
     const searchBtn = document.getElementById('note-search-btn');
     if (searchBtn) searchBtn.style.display = 'flex';
     const colorBtn = document.getElementById('modal-color-btn');
     if (colorBtn) colorBtn.style.display = 'flex';
     // Remove graphical background for edit mode
-    const modalBodyEl = document.getElementById('modal-body');
     if (modalContentBox) {
         modalContentBox.style.backgroundImage = 'none';
         modalContentBox.classList.add('no-bg-image');
