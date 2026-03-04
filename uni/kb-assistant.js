@@ -176,7 +176,8 @@ class KBMatcher {
      * @returns {Array}
      */
     tokenize(text) {
-        return text.split(' ').filter(word => word.length > 2); // Игнорираме думи < 3 символа
+        // Игнорираме думи < 3 символа, освен ако не съдържат цифри (напр. "17" получено от "1.7", "v2")
+        return text.split(' ').filter(word => word.length > 2 || /\d/.test(word));
     }
 
     /**
@@ -441,6 +442,8 @@ class KBAssistant {
      * Checks if the app version has changed and triggers sequential guides for skipped versions
      */
     checkVersionUpdates() {
+        const guideFlag = localStorage.getItem('guide');
+        if (!guideFlag || guideFlag === 'true') return;
         const currentVersion = typeof version !== 'undefined' ? version : null;
         if (!currentVersion) return;
 

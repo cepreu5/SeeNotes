@@ -3357,7 +3357,7 @@ async function checkAuth() {
     // --- 🔐 Проверка на лиценз (използва кеширана функция) ---
     const licenseData = await decryptLicenseToken();
     tokenRemainingDays = licenseData.remainingDays;
-    pass = licenseData.pass;
+    pass = licenseData.pass; // @@ прескачаме сертификата
 
     if (licenseData.pass) {
         console.log(`tokenRemainingDays: ${tokenRemainingDays}`);

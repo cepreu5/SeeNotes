@@ -511,13 +511,18 @@
             background: none;
             border: 1px solid var(--text-secondary);
             color: var(--text-secondary);
-            padding: 4px 10px;
+            padding: 4px 14px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
             font-weight: 600;
             transition: all 0.2s;
             margin-left: 8px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
         }
 
         .lang-btn:hover {
@@ -568,17 +573,25 @@
         <div id="lang-switcher-main" style="display: flex; justify-content: center;">
             <button id="lang-bg-main" class="lang-btn">BG</button>
             <button id="lang-en-main" class="lang-btn">EN</button>
-            <a href="index-2.html">
-                <button id="lang-es-main" class="lang-btn" style="background: black;">
-                    <img src="Signin.png" alt="Sign-in">
+            <a href="index-2.html" style="flex-shrink: 0; text-decoration: none;">
+                <button id="lang-es-main" class="lang-btn"
+                    style="background: black; width: auto; min-width: 90px; height: 32px; padding: 0 12px; border: none; color: white;">
+                    <span data-key="s_btn"
+                        style="font-size: 13px; font-weight: 600; white-space: nowrap;">Sign-in</span>
                 </button>
             </a>
         </div>
-        <!-- <a href="index-2.html" class="nav-link">Sign in</a> -->
     </nav>
 
+
     <!-- Section 1: Hero -->
-    <section class="hero" id="hero">
+    <section class="hero" id="hero" style="padding-top: 18vh;">
+        <div id="beta-notice"
+            style="grid-column: 1 / -1; text-align: center; padding: 12px 24px; font-size: 14px; background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.06); border-radius: 100px; width: fit-content; margin: 0 auto 40px; color: var(--text-secondary); line-height: 1.4; display: block;"
+            data-key="logo_text2">
+            Това е тестова (Beta) версия на приложението. Ако желаете да получите достъп, моля, пишете на
+            multinotes.web@gmail.com
+        </div>
         <div class="hero-content">
             <h1 class="hero-title" data-key="hero_title">Вашите бележки,<br>на всяко устройство.</h1>
             <p class="hero-subtitle" data-key="hero_subtitle">Открийте свободата да работите с бележките си от

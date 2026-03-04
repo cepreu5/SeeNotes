@@ -1,6 +1,8 @@
 {
     "app_title": "CX MultiNotes Editor - Your notes, everywhere",
     "logo_text": "CX MultiNotes Viewer",
+    "logo_text2": "This is a test (Beta) version of the application. If you would like to get access, please write to multinotes.web@gmail.com",
+    "s_btn": "Sign-in",
     "hero_title": "Your notes,<br>everywhere",
     "hero_subtitle": "Open, edit, and organize your MultiNotes on any device — no install required.",
     "feature1_title": "A space that feels like yours",
