@@ -8119,30 +8119,70 @@ const appSettingsKeys = [
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
     'modalWidth', 'modalHeight', 'startBoard', 'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
-    'enableNoteSorting', 'lastSearchTerm'
+    'enableNoteSorting', 'lastSearchTerm', 'boardMenuOrder', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken'
 ];
 async function findGDFileByName(folderId, fileName) {
-    if (isOffline) return null;
-    const query = `'${folderId}' in parents and name = '${fileName}' and trashed = false`;
+    if (isOffline || !folderId) return null;
+    const sendRequest = async (token) => {
+        const query = encodeURIComponent(`'${folderId}' in parents and name = '${fileName}' and trashed = false`);
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
     try {
-        const resp = await gapi.client.drive.files.list({ q: query, fields: 'files(id, name)' });
-        return resp.result.files && resp.result.files.length > 0 ? resp.result.files[0] : null;
-    } catch (e) { console.error("findGDFileByName error:", e); return null; }
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return null;
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                resp = await sendRequest(refresh.tokenData.access_token);
+            }
+        }
+        if (!resp.ok) return null;
+        const result = await resp.json();
+        return result.files && result.files.length > 0 ? result.files : null;
+    } catch (e) {
+        console.error("findGDFileByName error:", e);
+        return null;
+    }
 }
 async function saveSettingsToGDrive() {
+    if (typeof showToast === 'function') showToast("Записване на настройките...");
     const folderId = await getFolderID();
-    if (!folderId) return;
+    if (!folderId) {
+        if (typeof showToast === 'function') showToast("Грешка: Не е открита папка 'multinotes_data' в Google Drive.");
+        return;
+    }
     const settings = {};
     appSettingsKeys.forEach(key => {
         const val = localStorage.getItem(key);
         if (val !== null) settings[key] = val;
     });
+    // Добавяме и всички динамични ключове (настройки на бордове, ID-та на папки и др.)
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('board_') || key.startsWith('gdrive_folder_id_'))) {
+            settings[key] = localStorage.getItem(key);
+        }
+    }
     const fileName = 'settings.json';
     const content = JSON.stringify(settings, null, 2);
     try {
-        const existingFile = await findGDFileByName(folderId, fileName);
-        if (existingFile) {
-            await updateGDriveFile(existingFile.id, content);
+        const existingFiles = await findGDFileByName(folderId, fileName);
+        if (existingFiles && existingFiles.length > 0) {
+            // Вече съществува такъв файл (може да са няколко)
+            // Обновяваме първия (най-новия)
+            await updateGDriveFile(existingFiles[0].id, content);
+
+            // Ако има дубликати, ги изтриваме за чистота
+            if (existingFiles.length > 1) {
+                for (let j = 1; j < existingFiles.length; j++) {
+                    await deleteGDriveFile(existingFiles[j].id);
+                }
+            }
         } else {
             await createGDriveFile(folderId, fileName, content);
         }
@@ -8153,25 +8193,30 @@ async function saveSettingsToGDrive() {
     }
 }
 async function loadSettingsFromGDrive() {
+    if (typeof showToast === 'function') showToast("Зареждане на настройките...");
     const folderId = await getFolderID();
-    if (!folderId) return;
+    if (!folderId) {
+        if (typeof showToast === 'function') showToast("Грешка: Не е открита папка 'multinotes_data' в Google Drive.");
+        return;
+    }
     const fileName = 'settings.json';
     try {
-        const existingFile = await findGDFileByName(folderId, fileName);
-        if (!existingFile) {
+        const existingFiles = await findGDFileByName(folderId, fileName);
+        if (!existingFiles || existingFiles.length === 0) {
             showToast(_('errorLoadSettings'));
             return;
         }
-        const content = await fetchGDriveFileContent(existingFile.id);
+        // Използваме първия (най-нов) файл
+        const content = await fetchGDriveFileContent(existingFiles[0].id);
         if (content) {
             const settings = JSON.parse(content);
             Object.keys(settings).forEach(key => {
-                if (appSettingsKeys.includes(key)) {
+                const isDynamicKey = key.startsWith('board_') || key.startsWith('gdrive_folder_id_');
+                if (appSettingsKeys.includes(key) || isDynamicKey) {
                     localStorage.setItem(key, settings[key]);
                 }
             });
-            showToast(_('settingsLoadedSuccess'), 6000);
-            setTimeout(() => { if (confirm(_('settingsLoadedSuccess'))) location.reload(); }, 500);
+            setTimeout(() => { if (confirm(_('settingsLoadedSuccess'))) location.reload(); }, 100);
         }
     } catch (err) {
         console.error("Load settings error:", err);
@@ -8183,8 +8228,18 @@ async function createSettingsUI(boardsData, boardParseError) {
     if (!settingsModalBody.dataset.initializedListeners) {
         const saveSettingsBtn = document.getElementById('save-settings-btn');
         const loadSettingsBtn = document.getElementById('load-settings-btn');
-        if (saveSettingsBtn) saveSettingsBtn.onclick = saveSettingsToGDrive;
-        if (loadSettingsBtn) loadSettingsBtn.onclick = loadSettingsFromGDrive;
+        if (saveSettingsBtn) {
+            saveSettingsBtn.onclick = null;
+            saveSettingsBtn.addEventListener('click', () => {
+                saveSettingsToGDrive();
+            });
+        }
+        if (loadSettingsBtn) {
+            loadSettingsBtn.onclick = null;
+            loadSettingsBtn.addEventListener('click', () => {
+                loadSettingsFromGDrive();
+            });
+        }
         settingsModalBody.dataset.initializedListeners = 'true';
     }
     // --- Get Element References ---
