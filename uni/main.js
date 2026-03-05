@@ -378,13 +378,17 @@ let cachedLicenseData = null;
  * @returns {Promise<{email: string|null, validityDays: number, ageInDays: number, remainingDays: number, pass: boolean}>}
  */
 async function decryptLicenseToken() {
-    // Return cached result if already decrypted
+    const urlToken = localStorage.getItem('urlToken');
+
+    // Return cached result only if it matches current token presence
     if (cachedLicenseData !== null) {
-        return cachedLicenseData;
+        if (!urlToken && !cachedLicenseData.urlTokenUsed) return cachedLicenseData;
+        if (urlToken && cachedLicenseData.urlTokenUsed === urlToken) return cachedLicenseData;
     }
 
     // Initialize with default (no license)
     cachedLicenseData = {
+        urlTokenUsed: urlToken,
         email: null,
         validityDays: 30,
         ageInDays: 0,
@@ -402,7 +406,6 @@ async function decryptLicenseToken() {
         }
     }
 
-    const urlToken = localStorage.getItem('urlToken');
     if (!urlToken) {
         console.log("No license token found.");
         return cachedLicenseData;
