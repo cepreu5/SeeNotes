@@ -347,8 +347,10 @@
                 "assistant",
                 "AI",
                 "AI assistant",
-                "{{assistantNameEN}}"
+                "Noto"
             ],
+            "question": "How can the assistant help me?",
+            "answer": "I'm your assistant, here to guide you through the features of CX MultiNotes Viewer. I can show you around, explain settings, and help you find what you need. Click <b>Show me</b> for a quick introduction!",
             "guide": {
                 "1": {
                     "text": "Hello!<br>👋 I'm your assistant, always ready to help."

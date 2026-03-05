@@ -830,7 +830,8 @@ function gisLoaded() {
                 }
                 sessionStorage.removeItem('logout_flag');
                 // Вместо redirect, скриваме login страницата и продължаваме
-                document.getElementById('login-page').hidden = true;
+                const loginPage = document.getElementById('login-page');
+                if (loginPage) loginPage.hidden = true;
                 // Извикваме startApp за да заредим приложението
                 startApp(true);
             } else {
@@ -851,7 +852,8 @@ function gisLoaded() {
     if (hasToken && !isLogout) {
         // Ако имаме токен и не сме в процес на logout, се опитваме да стартираме директно
         console.log("Existing token found, starting app silently...");
-        document.getElementById('login-page').hidden = true;
+        const loginPage = document.getElementById('login-page');
+        if (loginPage) loginPage.hidden = true;
         startApp();
     } else {
         // Винаги показваме екрана за вход
@@ -3104,8 +3106,10 @@ function renderSavedSearchesPopup() {
 
 // Функция за инициализация на login страницата
 function initLoginPage() {
-    document.getElementById('login-page').hidden = false;
-    document.getElementById('loader-container').style.display = 'none';
+    const loginPage = document.getElementById('login-page');
+    if (loginPage) loginPage.hidden = false;
+    const loaderCont = document.getElementById('loader-container');
+    if (loaderCont) loaderCont.style.display = 'none';
     // document.getElementById("mode_button").style.display = 'none';
     // Language switcher event listeners - комбинирани за всички бутони
     const langBgMain = document.getElementById('lang-bg-main');
@@ -3320,7 +3324,8 @@ async function checkAuth() {
             window.authListenersAdded = true;
         } else {
             // Ако вече е инициализирана, само я показваме
-            document.getElementById('login-page').hidden = false;
+            const loginPage = document.getElementById('login-page');
+            if (loginPage) loginPage.hidden = false;
             const loader = document.getElementById('loader-container');
             if (loader) loader.style.display = 'none';
         }

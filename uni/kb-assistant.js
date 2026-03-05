@@ -139,12 +139,13 @@ class KBMatcher {
             if (normalizedLabel.includes(queryWord)) {
                 score += 2;
             }
-            // Fuzzy match = +1 точка
             if (this.fuzzyMatch(queryWord, normalizedKeywords)) {
                 score += 1;
             }
         });
-
+        // Bonus for having a question/answer (prefer actual content)
+        if (score > 0 && question) score += 1;
+        if (score > 0 && item.answer) score += 1;
         // Бонус за general въпроси (те са по-общи и често търсени)
         if (score > 0 && type === 'general') {
             score += 2;
@@ -1138,7 +1139,9 @@ class KBAssistant {
             if (result.question && normalize(result.question) !== normalizedQuery) {
                 html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.question}</div>`;
             }
-            html += `<div class="kb-answer-text">${result.answer}</div>`;
+            if (result.answer) {
+                html += `<div class="kb-answer-text">${result.answer}</div>`;
+            }
 
             if (this.showLocation && result.location) {
                 html += `<div class="kb-answer-location">📍 ${result.location}</div>`;
@@ -1158,7 +1161,9 @@ class KBAssistant {
             if (result.label && normalize(result.label) !== normalizedQuery) {
                 html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.label}</div>`;
             }
-            html += `<div class="kb-answer-text">${result.description}</div>`;
+            if (result.description) {
+                html += `<div class="kb-answer-text">${result.description}</div>`;
+            }
 
             if (result.guide) {
                 const guideJson = JSON.stringify(result.guide).replace(/'/g, "&#39;");
@@ -1171,7 +1176,9 @@ class KBAssistant {
             if (result.question && normalize(result.question) !== normalizedQuery) {
                 html += `<div class="kb-matched-question" style="font-style: italic; margin-bottom: 5px; opacity: 0.8;">${result.question}</div>`;
             }
-            html += `<div class="kb-answer-text">${result.answer}</div>`;
+            if (result.answer) {
+                html += `<div class="kb-answer-text">${result.answer}</div>`;
+            }
 
             if (result.guide) {
                 const guideJson = JSON.stringify(result.guide).replace(/'/g, "&#39;");
