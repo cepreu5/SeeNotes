@@ -2448,8 +2448,8 @@ code {
 }
 
 .today-row {
-    background-color: var(--note-bg-0);
-    /* #FBFF86 - жълт фон за днешния ден */
+    background-color: #bfc523;
+    /* var(--note-bg-0); - фон за днешния ден */
     border-radius: 5px;
     /* Леко заобляне на ъглите */
 }

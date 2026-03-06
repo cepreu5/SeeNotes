@@ -1250,8 +1250,8 @@
                     "y": 11,
                     "bx": 102,
                     "by": 90,
-                    "bWidth": 267,
-                    "bHeight": 91,
+                    "bWidth": 265,
+                    "bHeight": 180,
                     "target": "#search-box"
                 },
                 "stopAfter": true,

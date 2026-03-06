@@ -611,7 +611,7 @@
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.71<br><br><span align='left'>Calendar is visible when editing<br>updateGDrive default value true<br>Move button when editing a copy of a note<br>Save/Load settings from local memory<br>bullet and numbered lists</span>"
+                    "text": "Beta 1.71<br><br><span align='left'>- Calendar is visible when editing<br>- updateGDrive default value true<br>- Move button when editing a copy of a note<br>- Save/Load settings from local memory<br>- bullet and numbered lists</span>"
                 }
             }
         },

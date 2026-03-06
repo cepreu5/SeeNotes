@@ -553,13 +553,7 @@ async function decryptLicenseToken() {
     if (urlTokenParam) {
         if (urlTokenParam !== localStorage.getItem('urlToken')) localStorage.setItem('urlToken', urlTokenParam);
     }
-    let urlToken = localStorage.getItem('urlToken');
-    if (!urlToken && typeof TRIAL_URL !== 'undefined') {
-        try {
-            urlToken = (new URL(TRIAL_URL)).searchParams.get("token");
-            console.log("Using hardcoded trial token.");
-        } catch (e) { }
-    }
+    const urlToken = localStorage.getItem('urlToken');
     if (!urlToken) {
         console.log("No license token found. Using default 30-day trial check.");
         if (!ts) ts = await getFirstStartEncoded();
@@ -3988,15 +3982,26 @@ function saveSearchTerm(term) {
 // Проверяваме дали има токен преди да стартираме приложението
 // Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
 (async () => {
+    // Проверяваме за записа 's' в кеша
     const cache = await caches.open('app-cache');
     const cachedResponse = await cache.match('s');
     if (!cachedResponse) {
+        // Няма запис 's' - създаваме го и показваме login с trial бутон
+        const nowTs = Date.now();
+        const encoded = btoa(String(nowTs));
+        const response = new Response(encoded, {
+            headers: { 'Content-Type': 'text/plain' }
+        });
+        await cache.put('s', response);
+        // Показваме login страницата с trial бутон
         initLoginPage();
         return;
     }
+    // Има запис 's', проверяваме за токен
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     if (sessionToken || localToken) {
+        // Има токен, стартираме приложението
         startApp();
     } else {
         // Няма токен - показваме login страницата веднага и инициализираме event listeners
@@ -6754,6 +6759,7 @@ function showModal(options, noteElement = null) {
             e.stopPropagation();
             const currentCalendarDateVal = modalBody.dataset.calendarDate;
             const isAssigned = currentCalendarDateVal && currentCalendarDateVal !== '0';
+
             if (isAssigned) {
                 calendarBtn.style.pointerEvents = 'none';
                 calendarBtn.innerHTML = `<img src="Refresh.png" style="width:22px; height:22px; animation: spin 0.8s linear infinite;">`;
@@ -6763,8 +6769,7 @@ function showModal(options, noteElement = null) {
                 calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
                 modalBody.dataset.calendarDate = "0";
             } else {
-                if (modalBody.querySelector('textarea')) await saveEditedNote();
-                noteToAssignDate = { id: modalBody.dataset.id || noteId, gdid: modalBody.dataset.gdid || noteGdid };
+                noteToAssignDate = { id: noteId, gdid: noteGdid };
                 contentModal.classList.remove('visible');
                 renderCalendarView();
             }
