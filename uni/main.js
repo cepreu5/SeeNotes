@@ -5447,9 +5447,15 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         animationStartTime = performance.now();
         modeButton.classList.add('mode-button-loading');
         loadingIcon.classList.add('button-loading');
-        // Използваме setTimeout, за да позволим на браузъра да рендира анимацията
-        // преди да започне тежката операция по филтриране.
-        setTimeout(runFilter, 10);
+        // Използваме Promise и setTimeout, за да позволим на браузъра да рендира анимацията
+        // преди да започне тежката операция по филтриране и да гарантираме, че filterNotesByBoard
+        // няма да приключи преди да е приложен филтърът.
+        await new Promise(resolve => {
+            setTimeout(() => {
+                runFilter();
+                resolve();
+            }, 10);
+        });
     } else {
         runFilter(); // За всички други бутони, изпълняваме веднага
     }
@@ -7247,6 +7253,7 @@ async function createNoteElement(noteContent) {
     const note = document.createElement('div');
     const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
     note.className = 'note';
+    note.style.display = 'none'; // Default to hidden to prevent flicker during load/filter
     if (notesBgrdEnabled) {
         note.classList.add('note-item');
     }
@@ -7796,7 +7803,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     if (isInitialLoad) {
         // --- КОРЕКЦИЯ: Прилагаме филтъра ВЕДНАГА, за да няма премигване ---
-        filterNotesByBoard(currentBoardFilter, false);
+        await filterNotesByBoard(currentBoardFilter, false);
         // Показваме контейнера чак след филтриране
         notesContainer.style.visibility = 'visible';
         // Скролираме менюто към стартовия борд с кратко забавяне (само визуално)
@@ -7826,7 +7833,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             setTimeout(startAssistantGuide, 1500);
         }
     } else {
-        filterNotesByBoard(currentBoardFilter, false);
+        await filterNotesByBoard(currentBoardFilter, false);
         notesContainer.style.visibility = 'visible';
     }
     // След първото зареждане, флагът става false.
@@ -8085,7 +8092,7 @@ if ('serviceWorker' in navigator) {
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (!refreshing) {
-                    window.location.reload();
+                    handleSignoutClick();
                     refreshing = true;
                 }
             });
