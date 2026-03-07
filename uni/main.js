@@ -7,8 +7,8 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.7'; // App version
-const debug = true; // Глобален флаг за дебъг режим
+const version = 'Beta 1.8'; // App version
+let debug = false; // Глобален флаг за дебъг режим
 
 let guide = true;
 guide = localStorage.getItem('guide');
@@ -39,7 +39,6 @@ const DEMO_NOTE_LIMIT = 5;
 // --- Конфигурация и версия ---
 const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email';
-const TRIAL_URL = "http://index.html?token=DtBhz0nmHgisBO7KMIaXaUBp2QFBph4fylvi_uHP-St3CLvu0V69txLgrDO2uJqMRyLI4PtzwKC0v7AbWMacbWrZXTVl"; // days token
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -378,7 +377,18 @@ let cachedLicenseData = null;
  * @returns {Promise<{email: string|null, validityDays: number, ageInDays: number, remainingDays: number, pass: boolean}>}
  */
 async function decryptLicenseToken() {
-    const urlToken = localStorage.getItem('urlToken');
+    let urlToken = localStorage.getItem('urlToken');
+
+    // Check for URL token parameter and save to localStorage
+    const url = new URL(window.location.href);
+    const urlTokenParam = url.searchParams.get("token");
+    if (urlTokenParam) {
+        if (urlTokenParam !== urlToken) {
+            localStorage.setItem('urlToken', urlTokenParam);
+            urlToken = urlTokenParam;
+            cachedLicenseData = null; // Invalidate cache
+        }
+    }
 
     // Return cached result only if it matches current token presence
     if (cachedLicenseData !== null) {
@@ -386,74 +396,60 @@ async function decryptLicenseToken() {
         if (urlToken && cachedLicenseData.urlTokenUsed === urlToken) return cachedLicenseData;
     }
 
-    // Initialize with default (no license)
+    // Ensure ts is available (first start timestamp)
+    if (!ts) {
+        ts = await getFirstStartEncoded();
+    }
+
+    // If no ts exists at all, pretend it started just now (so new users pass the check)
+    const startTs = ts ? parseInt(ts, 10) : Date.now();
+    const ageInDays = (Date.now() - startTs) / (1000 * 60 * 60 * 24);
+
+    let validityInDays = 30;
+    let decryptedEmail = null;
+
+    if (urlToken) {
+        try {
+            const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+            const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
+            const iv = raw.slice(0, 12), data = raw.slice(12);
+            const key = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
+                { name: 'AES-GCM' },
+                false,
+                ['decrypt']
+            );
+            const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+            const parts = new TextDecoder().decode(out).split('|');
+            decryptedEmail = parts[0];
+            const tokenValidity = parts[2];
+
+            if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
+                validityInDays = parseInt(tokenValidity, 10);
+            }
+        } catch (error) {
+            console.log("Error decrypting license token:", error);
+            validityInDays = 0; // Invalidate if decryption fails
+        }
+    } else {
+        console.log("No URL license token found. Using default 30-day trial.");
+    }
+
+    const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
+    const isValid = ageInDays < validityInDays;
+
     cachedLicenseData = {
         urlTokenUsed: urlToken,
-        email: null,
-        validityDays: 30,
-        ageInDays: 0,
-        remainingDays: 0,
-        pass: false
+        email: decryptedEmail,
+        validityDays: validityInDays,
+        ageInDays: ageInDays,
+        remainingDays: remainingDays,
+        pass: isValid
     };
 
-    // Check for URL token parameter and save to localStorage
-    const url = new URL(window.location.href);
-    const urlTokenParam = url.searchParams.get("token");
-    if (urlTokenParam) {
-        const currentStoredToken = localStorage.getItem('urlToken');
-        if (urlTokenParam !== currentStoredToken) {
-            localStorage.setItem('urlToken', urlTokenParam);
-        }
-    }
-
-    if (!urlToken) {
-        console.log("No license token found.");
-        return cachedLicenseData;
-    }
-
-    try {
-        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-        const iv = raw.slice(0, 12), data = raw.slice(12);
-        const key = await crypto.subtle.importKey(
-            'raw',
-            new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-            { name: 'AES-GCM' },
-            false,
-            ['decrypt']
-        );
-        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-
-        // Ensure ts is available (first start timestamp)
-        if (!ts) {
-            ts = await getFirstStartEncoded();
-        }
-
-        const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-        let validityInDays = 30;
-        if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-            validityInDays = parseInt(tokenValidity, 10);
-        }
-
-        const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
-        const isValid = ageInDays < validityInDays;
-
-        cachedLicenseData = {
-            email: decryptedEmail,
-            validityDays: validityInDays,
-            ageInDays: ageInDays,
-            remainingDays: remainingDays,
-            pass: isValid
-        };
-
-        console.log(`License token: Age: ${ageInDays.toFixed(2)} days, Validity: ${validityInDays} days, Remaining: ${remainingDays} days`);
-
-    } catch (error) {
-        console.log("Error decrypting license token:", error);
-        cachedLicenseData.pass = false;
-    }
+    console.log(`License check: Age: ${ageInDays.toFixed(2)} days, Validity: ${validityInDays} days, Remaining: ${remainingDays} days`);
 
     return cachedLicenseData;
 }
@@ -1936,6 +1932,18 @@ async function startApp(isExplicitLogin = false) {
             // checkAuth вече е показал грешка или е пренасочил
             return;
         }
+
+        // --- NEW: Създаваме запис 's' след успешно логване, ако липсва ---
+        const cache = await caches.open('app-cache');
+        let sCache = await cache.match('s');
+        if (!sCache) {
+            const nowTs = Date.now();
+            const encoded = btoa(String(nowTs));
+            const response = new Response(encoded, { headers: { 'Content-Type': 'text/plain' } });
+            await cache.put('s', response);
+            ts = nowTs;
+        }
+
         authToken = authResult.tokenData;
         // --- WHITELIST CHECK (Only on explicit login) ---
         if (isExplicitLogin) {
@@ -1974,42 +1982,23 @@ async function startApp(isExplicitLogin = false) {
             initKbFab();
         };
         initDraggableButtons();
-        await mainLogic();
+        await mainLogic(authResult);
     } catch (err) {
         console.error("Error in startApp:", err);
     }
 }
 
-// Записва timestamp като кодиран низ (Base64), без да пази число в кеша
+// Чете timestamp от кеша, без да генерира нов, ако липсва
 async function getFirstStartEncoded() {
     const cache = await caches.open('app-cache');
     const cachedResponse = await cache.match('s'); // /firstStart.json
     if (cachedResponse) {
-        // Четене от кеша → винаги е низ
-        /*const data = await cachedResponse.json();
-        const encoded = data.value;           // напр. "MTc2NDAyNTk4MTU2NA=="
-        const decodedTs = parseInt(atob(encoded), 10); // превръщаме обратно в число само в паметта
-        return decodedTs;*/
         // Четене на текста от кеша
         const encoded = await cachedResponse.text();
         const decodedTs = parseInt(atob(encoded), 10);
         return decodedTs;
-    } else {
-        // Първо стартиране → генерираме timestamp
-        const nowTs = Date.now();
-        const encoded = btoa(String(nowTs));  // кодиране в Base64 → низ
-        /*  const payload = JSON.stringify({ value: encoded });
-        const response = new Response(payload, {
-            headers: { 'Content-Type': 'application/json' }
-        });
-        await cache.put('/firstStart.json', response); */
-        // Записваме директно като текст, не JSON
-        const response = new Response(encoded, {
-            headers: { 'Content-Type': 'text/plain' }
-        });
-        await cache.put('s', response);
-        return nowTs;
     }
+    return null;
 }
 
 function _(key) {
@@ -3044,22 +3033,81 @@ function renderSavedSearchesPopup() {
 // Проверяваме дали има токен преди да стартираме приложението
 // Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
 (async () => {
-    // Проверяваме за записа 's' в кеша
+    // 1. Проверяваме за параметри 'debug' и 'token' в URL-a
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('debug')) {
+        debug = true;
+    }
+    if (urlParams.has('token')) {
+        const licenseData = await decryptLicenseToken();
+        if (licenseData && cachedLicenseData) {
+            console.log("Декриптиран токен, validityDays:", cachedLicenseData.validityDays);
+        }
+    }
+
+    // 2. Проверяваме за записа 's' в кеша
     const cache = await caches.open('app-cache');
     const cachedResponse = await cache.match('s');
-    if (!cachedResponse) {
-        // Няма запис 's' - създаваме го и показваме login с trial бутон
-        const nowTs = Date.now();
-        const encoded = btoa(String(nowTs));
-        const response = new Response(encoded, {
-            headers: { 'Content-Type': 'text/plain' }
-        });
-        await cache.put('s', response);
-        // Показваме login страницата с trial бутон
+    let hasValidSRecord = false;
+
+    if (cachedResponse) {
+        try {
+            const encoded = await cachedResponse.text();
+            const decodedTs = parseInt(atob(encoded), 10);
+            if (!isNaN(decodedTs) && decodedTs > 0) {
+                hasValidSRecord = true;
+
+                // Проверяваме дали пробният период е изтекъл
+                const licenseData = await decryptLicenseToken();
+                if (!licenseData.pass) {
+                    console.log('Резултат от проверката на s запис: НЕВАЛИДЕН (изтекъл)');
+                    document.body.innerHTML = '';
+                    document.body.style.backgroundColor = '#1a1a1a';
+                    document.body.style.display = 'flex';
+                    document.body.style.flexDirection = 'column';
+                    document.body.style.alignItems = 'center';
+                    document.body.style.justifyContent = 'center';
+                    document.body.style.minHeight = '100vh';
+                    document.body.style.margin = '0';
+                    const logoImg = document.createElement('img');
+                    logoImg.src = 'MNVLogo.png';
+                    logoImg.alt = 'Logo';
+                    logoImg.style.width = '150px';
+                    logoImg.style.marginBottom = '30px';
+                    logoImg.style.userSelect = 'none';
+                    document.body.appendChild(logoImg);
+                    const msg = document.createElement('h1');
+                    msg.style.color = 'yellow';
+                    msg.style.textAlign = 'center';
+                    msg.style.margin = '0';
+                    // Use generic text fallback early on if i18n not yet loaded
+                    msg.innerHTML = typeof _ === 'function' && _('invalidCertificate') !== 'invalidCertificate' ? _('invalidCertificate') : "Trial period has expired.";
+                    document.body.appendChild(msg);
+                    sessionStorage.clear();
+                    return; // Спираме зареждането
+                }
+            } else {
+                throw new Error("Invalid format");
+            }
+        } catch (e) {
+            console.log("Проблем със 's' записа:", e);
+            await cache.delete('s');
+            hasValidSRecord = false;
+        }
+    }
+
+    if (!hasValidSRecord) {
+        // Няма (или е невалиден) запис 's' - показваме login с trial бутон
         initLoginPage();
+        const trialBtn = document.getElementById("trialBtn");
+        const authorizeBtn = document.getElementById("authorize_button");
+        if (trialBtn) trialBtn.style.display = 'inline-block';
+        if (authorizeBtn) authorizeBtn.style.display = 'none';
+        setupSelectionLocking();
         return;
     }
-    // Има запис 's', проверяваме за токен
+
+    // Има валиден запис 's', проверяваме за токен
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     if (sessionToken || localToken) {
@@ -3068,8 +3116,17 @@ function renderSavedSearchesPopup() {
     } else {
         // Няма токен - показваме login страницата веднага и инициализираме event listeners
         initLoginPage();
+        const trialBtn = document.getElementById("trialBtn");
+        const authorizeBtn = document.getElementById("authorize_button");
+        if (trialBtn) trialBtn.style.display = 'none';
+        if (authorizeBtn) authorizeBtn.style.display = 'inline-block';
         // gisLoaded() ще инициализира Google authentication когато се зареди
     }
+
+    setupSelectionLocking();
+})();
+
+function setupSelectionLocking() {
     // --- Selection Locking Logic ---
     // Persistent lock strategy: Lock strictly enforces selection on the active note. 
     // It remains active until the user clicks somewhere else.
@@ -3093,14 +3150,9 @@ function renderSavedSearchesPopup() {
             // This restores default behavior when not interacting with text.
             document.body.classList.remove('selection-locked');
             document.querySelectorAll('.active-selection-note').forEach(n => n.classList.remove('active-selection-note'));
-            // If the user clicked on the note container (but not content), allow selection to clear?
-            // Default browser behavior handles focus handling.
         }
     });
-    // We no longer remove the lock on mouseup, because doing so allows the browser to 
-    // "expand" the selection to the mouse up position if it was outside the note.
-    // By keeping the lock, we force the selection to stay contained.
-})();
+}
 
 // След успешно удостоверяване gisLoaded() ще извика startApp()
 
@@ -3143,15 +3195,8 @@ function initLoginPage() {
         trialBtn.addEventListener("click", (e) => {
             console.log("Trial button clicked");
             e.preventDefault(); // Предотвратяваме стандартното действие
-            // 1. Взимаме токена от TRIAL_URL
-            const url = new URL(TRIAL_URL);
-            const trialToken = url.searchParams.get("token");
-            // 2. Запазваме го в localStorage, за да е наличен след логване
-            if (trialToken) {
-                localStorage.setItem('urlToken', trialToken);
-                sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
-            }
-            // 3. Директно извикваме функцията за авторизация (вместо клик върху скрития бутон)
+            sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
+            // Директно извикваме функцията за авторизация (вместо клик върху скрития бутон)
             console.log("Starting Google authorization...");
             handleAuthClick();
         });
@@ -3394,39 +3439,6 @@ async function checkAuth() {
         logoImg.style.marginBottom = '30px';
         // logoImg.style.cursor = 'pointer';
         logoImg.style.userSelect = 'none';
-        // Добавяме функционалност за Ctrl+click и long-press
-        let longPressTimer;
-        let isLongPress = false;
-        const handleTokenRefresh = () => {
-            const url = new URL(TRIAL_URL);
-            const urlTokenParam = url.searchParams.get("token");
-            if (urlTokenParam) {
-                localStorage.setItem('urlToken', urlTokenParam);
-                window.location.reload();
-            }
-        };
-        const startPress = (e) => {
-            isLongPress = false;
-            longPressTimer = setTimeout(() => {
-                isLongPress = true;
-                handleTokenRefresh();
-            }, 500);
-            if (e.type === 'touchstart') {
-                e.preventDefault();
-            }
-        };
-        const endPress = () => {
-            clearTimeout(longPressTimer);
-        };
-        logoImg.addEventListener('mousedown', startPress);
-        logoImg.addEventListener('mouseup', endPress);
-        logoImg.addEventListener('mouseleave', endPress);
-        logoImg.addEventListener('touchstart', startPress);
-        logoImg.addEventListener('touchend', endPress);
-        logoImg.addEventListener('click', (e) => {
-            if (isLongPress) return;
-            if (e.ctrlKey) handleTokenRefresh();
-        });
         document.body.appendChild(logoImg);
         const errorElement = document.createElement('h1');
         errorElement.innerHTML = _('invalidCertificate');
@@ -3440,125 +3452,6 @@ async function checkAuth() {
     }
     return { tokenData, pass }; // Връщаме обект с данните и резултата от проверката
 }
-
-/*/ --- 🔐 Вградена декрипция ---
-// Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
-const url = new URL(window.location.href);
-const urlTokenParam = url.searchParams.get("token");
-if (urlTokenParam) {
-    // Ако има токен в URL-а, той е с приоритет и презаписва стария
-    localStorage.setItem('urlToken', urlTokenParam);
-}
-let urlToken = localStorage.getItem('urlToken');
-let isUrlTokenValidTime = false;
-let decryptedEmailFromToken = null;
-if (urlToken) {
-    // --- Извличаме валидността от самия токен ---
-    let validityInDays = 365; // 3. Стойност по подразбиране в дни
-    try {
-        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-        const iv = raw.slice(0, 12), data = raw.slice(12);
-        const key = await crypto.subtle.importKey(
-            'raw',
-            new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-            { name: 'AES-GCM' },
-            false,
-            ['decrypt']
-        );
-        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-        // Декодираме токена, който вече съдържа и валидността
-        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-        // 3. Изчисляваме възрастта в дни
-        const ageInDays = (Date.now() - parseInt(timestamp, 10)) / (1000 * 60 * 60 * 24);
-        if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-            validityInDays = parseInt(tokenValidity, 10);
-        }
-        tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
-        updateSignoutTooltip();
-        console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}`);
-        console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
-        if (ageInDays < validityInDays) {
-            isUrlTokenValidTime = true;
-            decryptedEmailFromToken = decryptedEmail;
-            DEMO_MODE = false;
-        } else {
-            console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
-        }
-    } catch (error) {
-        console.log("Грешка при декриптиране на токен:", error);
-    }
-}
-else DEMO_MODE = true;
-*/
-/*/ --- Финална проверка на urlToken срещу логнатия потребител ---
-let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
-if (isUrlTokenValidTime) {
-    // Проверяваме дали имейлът съвпада с логнатия потребител
-    console.log(`Сравняване на имейли: Токен=${decryptedEmailFromToken}, Сесия=${tokenData.email_hint}`);
-    if (decryptedEmailFromToken == tokenData.email_hint) {
-        pass = true;
-    } else {
-        console.log('Резултат от проверката: НЕВАЛИДЕН (грешен имейл)');
-    }
-}
-if (!pass) {
-    document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
-    const errorElement = document.createElement('h1');
-    errorElement.textContent = 'Невалиден token или токенът е изтекъл.';
-    errorElement.style.color = 'yellow';
-    errorElement.style.textAlign = 'center';
-    errorElement.style.marginTop = '50px';
-    document.body.appendChild(errorElement);
-}
-*/
-/*/ --- 🔐 Вградена декрипция (скрита логика) стара ---
-const url = new URL(window.location.href);
-const urlToken = url.searchParams.get("token");
-let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
-if (urlToken) {
-    // --- КОРЕКЦИЯ: Извличаме валидността от самия токен ---
-    let validityInMinutes = 5; // Стойност по подразбиране, ако не е намерена в токена
-    try {
-        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-        const iv = raw.slice(0, 12), data = raw.slice(12);
-        const key = await crypto.subtle.importKey(
-            'raw',
-            new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-            { name: 'AES-GCM' },
-            false,
-            ['decrypt']
-        );
-        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-        // Декодираме токена, който вече съдържа и валидността
-        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-        const ageInMinutes = (Date.now() - parseInt(timestamp, 10)) / 60000;
-        if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-            validityInMinutes = parseInt(tokenValidity, 10);
-        }
-        // Проверяваме дали токенът е изтекъл, дали имейлът съвпада и дали съвпада с логнатия потребител
-        console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}, Имейл от сесия: ${tokenData.email_hint}`);
-        console.log(`Проверка на токен: Възраст: ${ageInMinutes.toFixed(2)} мин, Проверявана валидност: ${validityInMinutes} мин`);
-        if (ageInMinutes < validityInMinutes && decryptedEmail == tokenData.email_hint) pass = true;
-        if (ageInMinutes > validityInMinutes || decryptedEmail !== tokenData.email_hint) {
-            console.log('Резултат от проверката: НЕВАЛИДЕН');
-        }
-    } catch (error) {
-        console.log("Грешка при декриптиране на токен:", error);
-    }
-}
-if (!pass) {
-    document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
-    const errorElement = document.createElement('h1');
-    errorElement.textContent = 'Невалиден token или токенът е изтекъл.';
-    errorElement.style.color = 'yellow';
-    errorElement.style.textAlign = 'center';
-    errorElement.style.marginTop = '50px';
-    document.body.appendChild(errorElement);
-}*/
 
 function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -3958,7 +3851,7 @@ function filterNotesForDemo() {
  * Основна логика за зареждане на данни в приложението.
  * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
  */
-async function mainLogic() {
+async function mainLogic(existingAuthResult) {
     if (isMainLogicRunning) {
         console.log("mainLogic is already running, skipping...");
         return;
@@ -3989,9 +3882,9 @@ async function mainLogic() {
         }
         initializeLoad(); // Resets state and shows the loader screen
         // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-        // Тази логика трябва да е в самото начало, преди да се вземе решение за източника на данни.
-        // Използваме authResult, тъй като checkAuth е асинхронна и връща обект.
-        const authResult = await checkAuth();
+        // Ако вече имаме валиден authResult от startApp(), го ползваме директно.
+        // Иначе извикваме checkAuth() (напр. при reload, смяна на настройки и т.н.).
+        const authResult = existingAuthResult || await checkAuth();
         if (!authResult || !authResult.pass) {
             if (isLoadCancelled) return;
             if (loaderContainer) loaderContainer.style.display = 'none';
@@ -6676,6 +6569,12 @@ async function createSettingsUI(boardsData, boardParseError) {
                 if (success) {
                     showToast(_('dbCreated'), 10000);
                     dbExists = true;
+                    // Слагаме отметка на "База данни" автоматично
+                    const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+                    if (useIndexedDbCheckbox && !useIndexedDbCheckbox.checked) {
+                        useIndexedDbCheckbox.checked = true;
+                        localStorage.setItem('useIndexedDb', 'true');
+                    }
                 }
             }
         });
@@ -7872,6 +7771,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     });
     // Update container
     if (!rerenderOnlyMenu) {
+        // Скриваме контейнера преди добавяне, за да няма премигване с нефилтрирани бележки
+        notesContainer.style.visibility = 'hidden';
         notesContainer.appendChild(fragment);
     }
     // Hide spinner
@@ -7894,15 +7795,19 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     if (isInitialLoad) {
-        // --- КОРЕКЦИЯ: Програмен клик на стартовия борд ---
+        // --- КОРЕКЦИЯ: Прилагаме филтъра ВЕДНАГА, за да няма премигване ---
+        filterNotesByBoard(currentBoardFilter, false);
+        // Показваме контейнера чак след филтриране
+        notesContainer.style.visibility = 'visible';
+        // Скролираме менюто към стартовия борд с кратко забавяне (само визуално)
         setTimeout(() => {
             const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
             if (startBoardBtn) {
-                startBoardBtn.click();
-            } else {
-                filterNotesByBoard(currentBoardFilter, true);
+                startBoardBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                startBoardBtn.classList.add('selected-board', 'active');
+                startBoardBtn.style.height = '39px';
             }
-        }, 300);
+        }, 100);
         // Start Assistant Guide if needed
         if (guide) {
             const startAssistantGuide = () => {
@@ -7922,6 +7827,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         }
     } else {
         filterNotesByBoard(currentBoardFilter, false);
+        notesContainer.style.visibility = 'visible';
     }
     // След първото зареждане, флагът става false.
     isInitialLoad = false;
