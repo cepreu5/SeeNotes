@@ -98,32 +98,8 @@ header h1 {
 }
 
 #search-box:focus {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     outline: none;
-}
-
-.note-save-icon {
-    position: fixed;
-    /* Fixed to viewport as modal scrolls */
-    bottom: 20px;
-    right: 20px;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    background-color: rgba(255, 255, 255, 0.8);
-    border-radius: 50%;
-    padding: 5px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    z-index: 1001;
-    /* Ensure above modal content */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transition: transform 0.2s;
-}
-
-.note-save-icon:hover {
-    transform: scale(1.1);
+    box-shadow: 3px 6px 12px rgba(0, 0, 0, 0.25);
 }
 
 /* Hide native clear button */
@@ -441,6 +417,7 @@ main {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-start;
+    background-image: url('Board.png');
 }
 
 .note {
@@ -480,13 +457,6 @@ main {
     background-repeat: no-repeat;
     background-blend-mode: normal;
     box-shadow: none;
-}
-
-/* Временен клас, докато се генерира фона */
-.note.note-item.loading-bg {
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
 }
 
 .note-background-canvas {
@@ -718,8 +688,8 @@ code {
     font-style: italic;
 }
 
-/* Hide all header info (date and time) when the body has this class */
-.hide-datemod .note-header-info {
+/* Hide datemod in header when the body has this class */
+.hide-datemod .datemod-header-date {
     display: none;
 }
 
@@ -801,11 +771,11 @@ code {
 }
 
 .modal-content-box {
-    padding-top: 55px;
-    /* Ensure space for header buttons */
-    padding-right: 15px;
-    padding-bottom: 0px;
-    padding-left: 15px;
+    padding-top: 50px;
+    padding-right: 10px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-left: 10px;
     border-radius: 2px;
     /* По-остри ръбове за реалистичен вид */
     width: 95%;
@@ -824,6 +794,7 @@ code {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2), 0 20px 50px rgba(0, 0, 0, 0.4);
 }
 
+/* Стил за "лист хартия" когато няма фоново изображение */
 /* Стил за "лист хартия" когато няма фоново изображение */
 .modal-content-box.no-bg-image {
     border: none;
@@ -886,7 +857,6 @@ code {
 
 #modal-body.no-bg-image {
     padding: 0 0;
-    /* Keeps vertical 0, but content-box handles side padding */
 }
 
 /* Custom scrollbar for modal content */
@@ -1058,7 +1028,7 @@ code {
 .popup-menu-btn-floating {
     display: none;
     position: fixed;
-    top: 60px;
+    top: 20px;
     right: 10px;
     z-index: 99;
     border: 2px solid #dddddd;
@@ -1355,17 +1325,11 @@ code {
     padding-top: 60px;
 }
 
-#boards-menu-modal .modal-close {
-    position: absolute !important;
-    right: 10px !important;
-    /* margin-top: 0px !important; @@*/
-}
-
 #boards-menu-modal-body {
     overflow-y: auto !important;
     flex-grow: 1;
     min-height: 0;
-    padding-bottom: 0px;
+    padding-bottom: 20px;
     width: 100%;
 }
 
@@ -1395,19 +1359,6 @@ code {
 .board-filter-link:hover {
     background-color: #e9ecef;
     text-decoration: none;
-}
-
-.board-filter-link.trash-filter-btn {
-    background-color: #c00 !important;
-    color: #fff !important;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-.board-filter-link.trash-filter-btn.active,
-.board-filter-link.trash-filter-btn.selected-board {
-    background-color: #a00 !important;
-    color: #fff !important;
-    border: 1px solid #fff;
 }
 
 .selected-board {
@@ -1575,7 +1526,10 @@ code {
         flex-direction: column;
         align-items: flex-start;
         gap: 5px;
-        margin-top: 5px !important;
+    }
+
+    .zoom-control-wrapper {
+        margin-top: 15px !important;
         /* Reduce space between settings groups */
     }
 
@@ -1611,11 +1565,6 @@ code {
     #max-searches,
     #note-count,
     #one-tap-link,
-    #click-to-edit,
-    #close-after-save,
-    #update-local-folder,
-    #automated-timer,
-    #hide-toast,
     #hide-assistant,
     #show-photos-board,
     #show-videos-board,
@@ -1627,31 +1576,10 @@ code {
     #use-indexeddb-wrapper,
     #db-buttons-wrapper,
     #local-db-wrapper,
-    #arh-db-wrapper,
-    #scale-wrapper,
-    #start-board-wrapper,
-    #force-gdrive-read,
-    #check-empty-boards {
+    #arh-db-wrapper {
         flex-direction: row !important;
         align-items: center !important;
         /* Поддържа вертикално центриране */
-    }
-
-    #scale-wrapper .slider-container {
-        flex-wrap: nowrap;
-    }
-
-    #scale-wrapper #scaleInput {
-        min-width: 55px;
-        width: 55px;
-        -moz-appearance: textfield;
-        appearance: textfield;
-    }
-
-    #scale-wrapper #scaleInput::-webkit-outer-spin-button,
-    #scale-wrapper #scaleInput::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
     }
 
     /* Превключва грида за сортиране в една колона на тесни екрани */
@@ -1758,7 +1686,7 @@ code {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 2000;
+    z-index: 1000;
     visibility: hidden;
     /* Hidden by default */
     opacity: 0;
@@ -1829,34 +1757,13 @@ code {
 .slider-container {
     display: flex;
     align-items: center;
-    flex: 1;
-    min-width: 0;
+    width: 100%;
     padding: 10px;
+    margin-bottom: 10px;
+    /* Add some padding */
+    margin-top: 10px;
+    /* Add some padding */
     box-sizing: border-box;
-    overflow: visible;
-}
-
-.scale-step-btn {
-    width: 24px;
-    height: 24px;
-    border: 1px solid #1f3b52;
-    border-radius: 4px;
-    background-color: #dde8f0;
-    color: #1f3b52;
-    font-size: 1.2em;
-    font-weight: bold;
-    cursor: pointer;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    touch-action: manipulation;
-    padding: 0;
-    line-height: 1;
-}
-
-.scale-step-btn:active {
-    background-color: #b0c4d8;
 }
 
 #scaleSlider {
@@ -1980,9 +1887,7 @@ code {
 }
 
 .zoom-input-number {
-    width: 50px;
-    min-width: 50px;
-    flex-shrink: 0;
+    width: 40px;
     margin: 0 2px 0 10px;
     /* top, right, bottom, left */
     text-align: center;
@@ -1990,9 +1895,9 @@ code {
     border: 1px solid #1f3b52;
     border-radius: 4px;
     background-color: #eef5fb;
-    /* -moz-appearance: textfield;
-    Firefox
-    appearance: none; */
+    -moz-appearance: textfield;
+    /* Firefox */
+    appearance: none;
     /* Standard property to remove default appearance */
 }
 
@@ -2010,11 +1915,12 @@ code {
 }
 
 
-/* .zoom-input-number::-webkit-outer-spin-button,
+.zoom-input-number::-webkit-outer-spin-button,
 .zoom-input-number::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
-} */
+    /* Safari */
+}
 
 .modal-version {
     text-align: center;
@@ -2029,10 +1935,9 @@ code {
 .set-modal {
     background: linear-gradient(135deg, #858585, #E4E4E4);
     border-radius: 3px;
-    padding: 20px;
+    padding: 10px;
     position: relative;
-    height: auto;
-    width: 400px;
+    height: 300px;
 }
 
 .corner-dot {
@@ -2105,7 +2010,7 @@ code {
     /* Ensure the wrapper takes full width to allow alignment */
 }
 
-.start-board-select, .active-folder-select {
+.start-board-select {
     padding: 8px;
     border-radius: 4px;
     border: 1px solid #060606;
@@ -2115,7 +2020,7 @@ code {
     min-width: 200px;
 }
 
-.start-board-select:focus, .active-folder-select:focus {
+.start-board-select:focus {
     outline: 2px solid #4285F4;
 }
 
@@ -2448,8 +2353,8 @@ code {
 }
 
 .today-row {
-    background-color: #bfc523;
-    /* var(--note-bg-0); - фон за днешния ден */
+    background-color: var(--note-bg-0);
+    /* #FBFF86 - жълт фон за днешния ден */
     border-radius: 5px;
     /* Леко заобляне на ъглите */
 }
@@ -2583,7 +2488,11 @@ code {
     /* Гарантира, че фонът е зад съдържанието */
 }
 
-
+#search-wrapper {
+    display: flex;
+    align-items: center;
+    position: relative;
+}
 
 .search-mode-btn {
     position: absolute;
@@ -2682,7 +2591,10 @@ code {
     display: none;
 }
 
-
+.scrolling-menu-wrapper {
+    display: flex;
+    /* Or whatever its default display is */
+}
 
 /* 
    When screen is small (likely forcing header to 3 rows), 
@@ -2853,6 +2765,7 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* Note Header Info & Board Links */
+/* Note Header Info & Board Links */
 .note-header-info {
     display: flex;
     align-items: center;
@@ -2880,24 +2793,22 @@ body.selection-locked .note.active-selection-note .note-content {
     color: #000;
 }
 
-/* Modal Note Footer (inside toolbar) */
+/* Modal Note Footer */
 .modal-note-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    margin-top: 10px;
+    padding-top: 5px;
     display: flex;
     align-items: center;
-    gap: 4px;
-    /* Reduced gap */
+    gap: 10px;
     color: #555;
-    font-size: 0.85em;
-    /* Slightly smaller font */
-    margin-right: auto;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 160px;
-    /* Limit width */
+    font-size: 0.9em;
 }
 
-
+#modal-body {
+    flex-grow: 1;
+    overflow-y: auto;
+}
 
 .modal-note-footer .header-icon svg {
     width: 16px;
@@ -2922,10 +2833,11 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* Remove potential margins from clones to let gap handle spacing */
+/* Remove potential margins from clones to let gap handle spacing */
 .all-boards-modal-container .board-filter-link {
     margin: 0 !important;
     box-sizing: border-box;
-    /* Ensure width calculation matches reality @@*/
+    /* Ensure width calculation matches reality */
 }
 
 /* Override default fixed width for boards modal to allow dynamic calculation */
@@ -2933,7 +2845,6 @@ body.selection-locked .note.active-selection-note .note-content {
     width: auto;
     max-width: 95vw;
     display: block;
-    padding: 45px 0px 0 0;
     /* Override flex display if needed to allow fit-content behavior on children properly? No, flex column is fine */
 }
 
@@ -2948,7 +2859,7 @@ body.selection-locked .note.active-selection-note .note-content {
     padding-bottom: 5px !important;
     margin-left: 20px;
     Центрира я спрямо останалите (250px + 5px margin) */
-    display: none;
+    display: flex;
     flex-direction: column;
     overflow: hidden;
     transition: transform 0.2s;
@@ -2990,168 +2901,4 @@ body.selection-locked .note.active-selection-note .note-content {
     bottom: -8px !important;
     left: -15px !important;
     right: auto !important;
-}
-
-/* --- RESPONSIVE MODAL TOOLBARS --- */
-.modal-header-toolbar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    z-index: 10001;
-    pointer-events: none;
-    padding: 10px 15px;
-    background-color: transparent;
-    min-height: 40px;
-}
-
-.modal-header-buttons {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    pointer-events: auto;
-    flex-wrap: wrap;
-    /* Allow wrapping in header */
-    justify-content: flex-end;
-}
-
-.modal-footer-toolbar {
-    position: relative;
-    /* Change from absolute to relative to stay in flow with body results */
-    margin-top: auto;
-    padding: 5px 10px 10px 0px;
-    /* Reduced top padding to make footer smaller */
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    pointer-events: auto;
-    z-index: 10001;
-    flex-wrap: wrap;
-    border-top: 1px solid rgba(0, 0, 0, 0.05);
-    /* Slight separation */
-}
-
-/* Base styles for individual toolbar components to ensure consistency */
-.modal-header-buttons button,
-.modal-nav-btn,
-.modal-header-btn {
-    position: static !important;
-    /* Override absolute positioning */
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    background-color: transparent;
-    /* Return to transparent */
-    border: 1px solid #aaa;
-    flex-shrink: 0;
-    color: inherit;
-}
-
-.modal-footer-btn {
-    width: 40px;
-    height: 40px;
-    background-color: darkorange;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
-    cursor: pointer;
-    border: 1px solid #ccc;
-    flex-shrink: 0;
-    color: black;
-}
-
-.modal-footer-toolbar .modal-search-bar {
-    position: static !important;
-    width: 100%;
-    background-color: transparent;
-    border: none;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 0;
-    display: flex;
-    align-items: center;
-    padding: 0 0px;
-    height: 32px;
-    box-shadow: none;
-    margin-bottom: 0px;
-}
-
-/* Adjustments for #modal-board-name when in toolbar */
-.modal-header-toolbar #modal-board-name {
-    position: static !important;
-    max-width: 60%;
-    pointer-events: auto;
-    font-size: 1.1em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Media query for very small screens */
-@media (max-width: 400px) {
-    .modal-header-buttons {
-        gap: 4px;
-    }
-
-    .modal-footer-toolbar {
-        gap: 5px;
-    }
-
-    .modal-footer-btn {
-        width: 32px;
-        height: 32px;
-    }
-
-    .modal-footer-toolbar .modal-search-bar {
-        width: 100%;
-    }
-}
-
-/* --- Бутон "Нареди" в менюто с бордове --- */
-.reorder-boards-btn {
-    font-weight: 600 !important;
-    letter-spacing: 0.3px;
-}
-
-@media (hover: hover) {
-    .reorder-boards-btn:hover {
-        background-color: #455A64 !important;
-    }
-}
-
-/* --- Overlay за пренареждане на бордовете --- */
-.reorder-overlay {
-    background: rgba(0, 0, 0, 0.5);
-}
-
-.reorder-item {
-    transition: background 0.2s, transform 0.2s;
-}
-
-.reorder-item:hover {
-    filter: brightness(0.95);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
-}
-
-.reorder-item:active {
-    cursor: grabbing;
-    transform: scale(1.02);
-}
-
-#create-db-btn {
-    min-width: 180px;
-}
-
-#delete-db-btn {
-    min-width: 180px;
 }

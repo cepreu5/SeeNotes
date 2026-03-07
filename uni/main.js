@@ -98,6 +98,7 @@ let localFileMap = new Map(); // Карта за съответствие GDID -
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
+let activeFolderName = localStorage.getItem('active_folder_name') || 'multinotes_data';
 let folderIdPromptPopup, folderIdInput, submitFolderIdBtn;
 
 // --- IndexedDB Конфигурация ---
@@ -1081,6 +1082,42 @@ async function createGDriveFile(folderId, filename, content) {
     }
 }
 
+async function createNewGDriveFolder(folderName) {
+    if (isOffline) return null;
+    const sendRequest = async (token) => {
+        return fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: folderName,
+                mimeType: 'application/vnd.google-apps.folder'
+            })
+        });
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        let tokenData = JSON.parse(storedTokenString);
+        let response = await sendRequest(tokenData.access_token);
+        if (response.status === 401) {
+            let refreshResult = await refreshAuthToken(false);
+            if (refreshResult && refreshResult.pass) {
+                tokenData = refreshResult.tokenData;
+                response = await sendRequest(tokenData.access_token);
+            }
+        }
+        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+        const result = await response.json();
+        return result.id;
+    } catch (e) {
+        console.error("Error creating GDrive folder:", e);
+        throw e;
+    }
+}
+
 /**
  * Създава нова бележка в текущия борд.
  */
@@ -1210,7 +1247,7 @@ async function getMultinotesDataFolderID() {
     if (cachedId) return cachedId;
 
     const listRequest = () => gapi.client.drive.files.list({
-        q: "name='multinotes_data' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        q: `name='${activeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
         fields: 'files(id)',
         pageSize: 1
     });
@@ -7984,7 +8021,8 @@ const appSettingsKeys = [
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
     'modalWidth', 'modalHeight', 'startBoard', 'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
-    'enableNoteSorting', 'lastSearchTerm', 'boardMenuOrder', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken'
+    'enableNoteSorting', 'lastSearchTerm', 'boardMenuOrder', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
+    'active_folder_name', 'gdrive_folder_names'
 ];
 async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
@@ -8018,7 +8056,7 @@ async function saveSettingsToGDrive() {
     if (typeof showToast === 'function') showToast("Записване на настройките...");
     const folderId = await getFolderID();
     if (!folderId) {
-        if (typeof showToast === 'function') showToast("Грешка: Не е открита папка 'multinotes_data' в Google Drive.");
+        if (typeof showToast === 'function') showToast(`Грешка: Не е открита папка '${activeFolderName}' в Google Drive.`);
         return;
     }
     const settings = {};
@@ -8061,7 +8099,7 @@ async function loadSettingsFromGDrive() {
     if (typeof showToast === 'function') showToast("Зареждане на настройките...");
     const folderId = await getFolderID();
     if (!folderId) {
-        if (typeof showToast === 'function') showToast("Грешка: Не е открита папка 'multinotes_data' в Google Drive.");
+        if (typeof showToast === 'function') showToast(`Грешка: Не е открита папка '${activeFolderName}' в Google Drive.`);
         return;
     }
     const fileName = 'settings.json';
@@ -8137,7 +8175,71 @@ async function createSettingsUI(boardsData, boardParseError) {
     const clickToEditCheckbox = document.getElementById('click-to-edit-checkbox');
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
     const hideToastCheckbox = document.getElementById('hide-toast-checkbox');
+    const activeFolderSelect = document.getElementById('active-folder-select');
     if (!settingsModalBody.dataset.initialized) {
+        // Active Folder Logic
+        if (activeFolderSelect) {
+            const defaultFolder = 'multinotes_data';
+            let folderNamesStr = localStorage.getItem('gdrive_folder_names');
+            let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
+            if (!folderNames.includes(defaultFolder)) folderNames.unshift(defaultFolder);
+
+            const currentFolder = localStorage.getItem('active_folder_name') || defaultFolder;
+            if (!folderNames.includes(currentFolder)) folderNames.push(currentFolder);
+
+            activeFolderSelect.innerHTML = '';
+            folderNames.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                if (name === currentFolder) option.selected = true;
+                activeFolderSelect.appendChild(option);
+            });
+
+            const newOption = document.createElement('option');
+            newOption.value = 'new_folder';
+            newOption.textContent = _('newFolderOption');
+            activeFolderSelect.appendChild(newOption);
+
+            activeFolderSelect.addEventListener('change', async () => {
+                const selectedValue = activeFolderSelect.value;
+                if (selectedValue === 'new_folder') {
+                    const folderName = prompt(_('newFolderPrompt'));
+                    if (folderName && folderName.trim()) {
+                        const name = folderName.trim();
+                        try {
+                            if (typeof showToast === 'function') showToast(_('creatingFolder'));
+                            const folderId = await createNewGDriveFolder(name);
+                            if (folderId) {
+                                if (!folderNames.includes(name)) folderNames.push(name);
+                                localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+                                localStorage.setItem('active_folder_name', name);
+                                localStorage.setItem('gdrive_multinotes_data_id', folderId);
+
+                                // Clear cached IDs for subfolders
+                                ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
+
+                                if (typeof showToast === 'function') showToast(_('folderCreated'));
+                                setTimeout(() => location.reload(), 1000);
+                            }
+                        } catch (e) {
+                            if (typeof showToast === 'function') showToast(_('errorCreateFolder'));
+                            activeFolderSelect.value = currentFolder;
+                        }
+                    } else {
+                        activeFolderSelect.value = currentFolder;
+                    }
+                } else {
+                    if (selectedValue !== currentFolder) {
+                        localStorage.setItem('active_folder_name', selectedValue);
+                        localStorage.removeItem('gdrive_multinotes_data_id');
+                        ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
+                        if (typeof showToast === 'function') showToast(_('settingSaved'));
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                }
+            });
+        }
         // Hide Assistant Logic
         if (hideAssistantCheckbox) {
             hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';

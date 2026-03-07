@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CX MultiNotes Viewer - Your notes, everywhere</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #F6F7F9;
+            --bg-dark: #111111;
+            --accent: #FF4D2E;
+            --text-primary: #111111;
+            --text-secondary: #6B6B6B;
+            --card-radius: 28px;
+            --image-radius: 34px;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Typography */
+        .font-heading {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            line-height: 0.95;
+            letter-spacing: -0.02em;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 3vh 8vw;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            transition: background 0.3s, backdrop-filter 0.3s;
+        }
+
+        nav.scrolled {
+            background: rgba(246, 247, 249, 0.85);
+            backdrop-filter: blur(12px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .logo-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Global Improvements */
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 3vh 8vw;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            transition: background 0.3s, backdrop-filter 0.3s;
+        }
+
+        nav.scrolled {
+            background: rgba(246, 247, 249, 0.85);
+            backdrop-filter: blur(12px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .logo-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Sections */
+        section {
+            min-height: 100vh;
+            padding: 12vh 8vw 8vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Hero Section */
+        .hero {
+            display: grid;
+            grid-template-columns: 1fr 1.4fr;
+            gap: 4vw;
+            align-items: center;
+        }
+
+        .hero-content {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .hero-title {
+            font-size: clamp(40px, 5vw, 72px);
+            line-height: 0.95;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeUp 0.8s ease forwards;
+        }
+
+        .hero-subtitle {
+            font-size: 17px;
+            color: var(--text-secondary);
+            max-width: 90%;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeUp 0.8s ease 0.1s forwards;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .btn-primary:hover {
+            background: #E54327;
+            transform: translateY(-1px);
+        }
+
+        .hero-image {
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            height: 70vh;
+            opacity: 0;
+            transform: scale(1.05);
+            animation: fadeScale 1.1s ease forwards;
+        }
+
+        .hero-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Feature Sections */
+        .feature {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6vw;
+            align-items: center;
+        }
+
+        .feature.reverse {
+            direction: rtl;
+        }
+
+        .feature.reverse>* {
+            direction: ltr;
+        }
+
+        .feature-image {
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            height: 65vh;
+            opacity: 0;
+            transform: translateX(-60px);
+            transition: all 0.8s ease;
+        }
+
+        .feature.reverse .feature-image {
+            transform: translateX(60px);
+        }
+
+        .feature-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .feature-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .feature-title {
+            font-size: clamp(32px, 4vw, 48px);
+            opacity: 0;
+            transform: translateX(40px);
+            transition: all 0.7s ease 0.1s;
+        }
+
+        .feature.reverse .feature-title {
+            transform: translateX(-40px);
+        }
+
+        .feature-text {
+            font-size: 17px;
+            color: var(--text-secondary);
+            opacity: 0;
+            transform: translateX(40px);
+            transition: all 0.7s ease 0.15s;
+        }
+
+        .feature.reverse .feature-text {
+            transform: translateX(-40px);
+        }
+
+        /* Note Card */
+        .note-card {
+            background: white;
+            border-radius: var(--card-radius);
+            padding: 28px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(17, 17, 17, 0.06);
+            margin-top: 16px;
+            opacity: 0;
+            transform: translateX(50px) translateY(20px);
+            transition: all 0.7s ease 0.2s;
+        }
+
+        .feature.reverse .note-card {
+            transform: translateX(-50px) translateY(20px);
+        }
+
+        .note-card h4 {
+            font-size: 18px;
+            margin-bottom: 16px;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 14px;
+            background: var(--bg-primary);
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* Speed Section */
+        .speed-section {
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .speed-header {
+            margin-bottom: 48px;
+        }
+
+        .speed-title {
+            font-size: clamp(32px, 4vw, 48px);
+            margin-bottom: 16px;
+            opacity: 0;
+            transform: translateY(-30px);
+            transition: all 0.7s ease;
+        }
+
+        .speed-text {
+            font-size: 17px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+            opacity: 0;
+            transition: all 0.7s ease 0.1s;
+        }
+
+        .speed-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4vw;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .speed-image {
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            height: 50vh;
+            opacity: 0;
+            transform: translateX(-60px);
+            transition: all 0.8s ease 0.15s;
+        }
+
+        .speed-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .info-card {
+            background: white;
+            border-radius: var(--card-radius);
+            padding: 40px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(17, 17, 17, 0.06);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: left;
+            opacity: 0;
+            transform: translateX(60px);
+            transition: all 0.8s ease 0.2s;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            background: var(--bg-dark);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6vw;
+            align-items: center;
+        }
+
+        .cta-content h2 {
+            font-size: clamp(36px, 4.5vw, 56px);
+            color: white;
+            margin-bottom: 20px;
+            opacity: 0;
+            transform: translateX(-40px);
+            transition: all 0.7s ease;
+        }
+
+        .cta-content p {
+            font-size: 17px;
+            color: #9CA3AF;
+            margin-bottom: 28px;
+            opacity: 0;
+            transform: translateX(-40px);
+            transition: all 0.7s ease 0.1s;
+        }
+
+        .cta-content .btn-primary {
+            width: auto;
+            padding: 14px 32px;
+            opacity: 0;
+            transform: translateX(-40px);
+            transition: all 0.7s ease 0.15s;
+        }
+
+        .cta-image {
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+            height: 60vh;
+            opacity: 0;
+            transform: translateX(60px);
+            transition: all 0.8s ease 0.1s;
+        }
+
+        .cta-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Scroll Animation Visibility - Single point of truth */
+        .scroll-animate.visible {
+            opacity: 1 !important;
+            transform: translate(0, 0) scale(1) !important;
+        }
+
+        /* Animations */
+        @keyframes fadeUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeUpScale {
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes fadeScale {
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* Grain overlay */
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.04;
+            mix-blend-mode: multiply;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+
+            .hero,
+            .feature,
+            .cta-section {
+                grid-template-columns: 1fr;
+            }
+
+            .feature.reverse {
+                direction: ltr;
+            }
+
+            .hero-image,
+            .feature-image,
+            .cta-image {
+                height: 40vh;
+                order: -1;
+            }
+
+            .speed-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .speed-image {
+                height: 35vh;
+            }
+
+            .footer-content {
+                grid-template-columns: 1fr;
+                gap: 32px;
+            }
+
+            section {
+                padding: 10vh 6vw 6vh;
+            }
+        }
+
+        .note-card img {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .lang-btn {
+            background: none;
+            border: 1px solid var(--text-secondary);
+            color: var(--text-secondary);
+            padding: 4px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin-left: 8px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+        }
+
+        .lang-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .lang-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .nav-link {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            text-decoration: none;
+            position: relative;
+        }
+
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 1.5px;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .nav-link:hover::after {
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Grain Overlay -->
+    <div class="grain-overlay"></div>
+
+    <!-- Navigation -->
+    <nav id="navbar">
+        <div class="logo">
+            <span class="logo-text" data-key="logo_text">CX MultiNotes Viewer</span>
+        </div>
+        <div id="lang-switcher-main" style="display: flex; justify-content: center;">
+            <button id="lang-bg-main" class="lang-btn">BG</button>
+            <button id="lang-en-main" class="lang-btn">EN</button>
+            <a href="index-2.html" style="flex-shrink: 0; text-decoration: none;">
+                <button id="lang-es-main" class="lang-btn"
+                    style="background: black; width: auto; min-width: 90px; height: 32px; padding: 0 12px; border: none; color: white;">
+                    <span data-key="s_btn"
+                        style="font-size: 13px; font-weight: 600; white-space: nowrap;">Sign-in</span>
+                </button>
+            </a>
+        </div>
+    </nav>
+
+
+    <!-- Section 1: Hero -->
+    <section class="hero" id="hero" style="padding-top: 18vh;">
+        <div id="beta-notice"
+            style="grid-column: 1 / -1; text-align: center; padding: 12px 24px; font-size: 14px; background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.06); border-radius: 100px; width: fit-content; margin: 0 auto 40px; color: var(--text-secondary); line-height: 1.4; display: block;"
+            data-key="logo_text2">
+            Това е тестова (Beta) версия на приложението. Ако желаете да получите достъп, моля, пишете на
+            multinotes.web@gmail.com
+        </div>
+        <div class="hero-content">
+            <h1 class="hero-title" data-key="hero_title">Вашите бележки,<br>на всяко устройство.</h1>
+            <p class="hero-subtitle" data-key="hero_subtitle">Открийте свободата да работите с бележките си от
+                MultiNotes навсякъде — директно в
+                браузъра и без никакви инсталации. Просто стартирате и имате достъп до цялата си информация.</p>
+        </div>
+        <div class="hero-image">
+            <img src="images/hero_desk_workspace.jpg" alt="Modern workspace">
+        </div>
+    </section>
+
+    <!-- Section 2: Feature - Workspace -->
+    <section class="feature" id="feature1">
+        <div class="feature-image scroll-animate">
+            <img src="images/feature_workspace_left.jpg" alt="Workspace">
+        </div>
+        <div class="feature-content">
+            <h2 class="feature-title scroll-animate" data-key="feature1_title">Вашето работно пространство.</h2>
+            <p class="feature-text scroll-animate" data-key="feature1_text">Идеално подредени бележки, перфектни
+                цветове, структурирани за лесен
+                достъп, така че да се концентрирате върху тези, които са ви необходими.</p>
+            <div class="note-card scroll-animate">
+                <img src="images/MN.png" alt="MN">
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 3: Feature - Organized -->
+    <section class="feature reverse" id="feature2">
+        <div class="feature-image scroll-animate">
+            <img src="images/feature_workspace_right.jpg" alt="Organized workspace">
+        </div>
+        <div class="feature-content">
+            <h2 class="feature-title scroll-animate" data-key="feature2_title">Подредени, без излишни усилия.</h2>
+            <p class="feature-text scroll-animate" data-key="feature2_text">В различни тематични бордове, с подходящи
+                цветове и шрифтове, с лесно
+                търсене — вашите бележки са идеално организирани.</p>
+            <div class="note-card scroll-animate">
+                <img src="images/Org.png" alt="Org">
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 4: Sync & Access -->
+    <section class="feature" id="feature3">
+        <div class="feature-image scroll-animate">
+            <img src="images/phone_notes.jpg" alt="Phone with notes">
+        </div>
+        <div class="feature-content">
+            <h2 class="feature-title scroll-animate" data-key="feature3_title">На вашия телефон, таблет или лаптоп.</h2>
+            <p class="feature-text scroll-animate" data-key="feature3_text">Бележките ви са в синхрон, независимо дали
+                работите на Android, iOS,
+                Windows, macOS или Linux.</p>
+        </div>
+    </section>
+
+    <!-- Section 5: Security & Offline -->
+    <section class="feature reverse" id="feature4">
+        <div class="feature-image scroll-animate">
+            <img src="images/laptop_workspace.jpg" alt="Laptop workspace">
+        </div>
+        <div class="feature-content">
+            <h2 class="feature-title scroll-animate" data-key="feature4_title">Информацията си остава ваша.</h2>
+            <p class="feature-text scroll-animate" data-key="feature4_text">Данните се четат от вашия Google акаунт,
+                където са надеждно защитени.
+                Използвайте бележките си дори да нямате връзка с интернет - винаги когато са ви необходими.</p>
+        </div>
+    </section>
+
+    <!-- Section 6: Speed & Caching -->
+    <section class="speed-section" id="speed">
+        <div class="speed-header">
+            <h2 class="speed-title scroll-animate" data-key="speed_title">Без засечки, дори при бавни връзки.</h2>
+            <p class="speed-text scroll-animate" data-key="speed_text">Бележките се запомнят (кешират) след първо
+                стартиране, след това
+                зареждате само добавените и променени.</p>
+        </div>
+        <div class="speed-grid">
+            <div class="speed-image scroll-animate">
+                <img src="images/speed_workspace.jpg" alt="Fast workspace">
+            </div>
+            <div class="info-card scroll-animate">
+                <span class="tag" data-key="cache_tag">Локален кеш</span>
+                <h3 style="font-size: 22px; margin: 16px 0 8px;" data-key="cache_h3">Оптимална комуникация</h3>
+                <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 20px;" data-key="cache_p1">
+                    Бележките се пазят в
+                    паметта на браузъра за бърз достъп. Добавяйте нови и променени когато решите.</p>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-top: 16px;" data-key="cache_p2">Работата
+                    с локална база
+                    данни ви прави независими от интернет връзката.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 7: CTA -->
+    <section class="cta-section" id="cta">
+        <div class="cta-content">
+            <h2 class="scroll-animate" data-key="cta_h2">Готови за стартиране!</h2>
+            <p class="scroll-animate" data-key="cta_p1">Влизате веднъж. Вижте бележките си на всяко устройство, по всяко
+                врмее — с
+                интернет или без.</p>
+            <h3 data-key="cta_h3">Влезте, за да започнете</h3>
+            <p data-key="cta_p2">Използвайте същия Google акаунт, с който работите на Android устройството си.</p>
+            <button class="btn-primary scroll-animate" onclick="window.location.href='index-2.html'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        fill="#4285F4" />
+                    <path
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        fill="#34A853" />
+                    <path
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                        fill="#FBBC05" />
+                    <path
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                        fill="#EA4335" />
+                </svg>
+                <span data-key="cta_btn">Продължи с Google</span>
+            </button>
+        </div>
+        <div class="cta-image scroll-animate">
+            <img src="images/closing_phone.jpg" alt="Ready to start">
+        </div>
+    </section>
+
+    <script>
+        // Navbar scroll effect
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+
+        // Scroll animations using Intersection Observer
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.15
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        // Observe all scroll-animate elements
+        document.querySelectorAll('.scroll-animate').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Parallax effect for hero image
+        window.addEventListener('scroll', () => {
+            const scrolled = window.pageYOffset;
+            const heroImage = document.querySelector('.hero-image img');
+            if (heroImage && scrolled < window.innerHeight) {
+                heroImage.style.transform = `translateY(${scrolled * 0.1}px)`;
+            }
+        });
+
+        // --- I18N Logic ---
+        let currentLang = localStorage.getItem('language') || 'en';
+        let translations = {};
+
+        async function loadTranslations(lang) {
+            try {
+                const response = await fetch(`index-${lang}.json`);
+                translations = await response.json();
+                applyTranslations();
+                updateSwitcherUI(lang);
+                localStorage.setItem('language', lang);
+            } catch (error) {
+                console.error('Error loading translations:', error);
+            }
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-key]').forEach(el => {
+                const key = el.getAttribute('data-key');
+                if (translations[key]) {
+                    el.innerHTML = translations[key];
+                }
+            });
+            // Update page title
+            if (translations['app_title']) {
+                document.title = translations['app_title'].replace('<br>', ' ').replace('<br/>', ' ');
+            }
+        }
+
+        function updateSwitcherUI(lang) {
+            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+            if (lang === 'bg') {
+                document.getElementById('lang-bg-main').classList.add('active');
+            } else {
+                document.getElementById('lang-en-main').classList.add('active');
+            }
+        }
+
+        document.getElementById('lang-bg-main').addEventListener('click', () => loadTranslations('bg'));
+        document.getElementById('lang-en-main').addEventListener('click', () => loadTranslations('en'));
+
+        // Initial load
+        loadTranslations(currentLang);
+    </script>
+</body>
+
+</html>
