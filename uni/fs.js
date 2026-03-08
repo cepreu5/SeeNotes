@@ -103,43 +103,32 @@ async function exportData(dbName, storeName) {
 
 async function exportNotes() {
   let boards, notes, media;
-
   const inMemBoards = (typeof boardsData !== 'undefined' && boardsData.length > 0);
   const inMemNotes = (typeof allNotesData !== 'undefined' && allNotesData.length > 0);
-
-  if (!inMemBoards && !inMemNotes) {
-    if (typeof showToast === 'function') {
-      showToast("No data in memory to export!", 3000);
-    } else {
-      alert("No data in memory to export!");
+  if (inMemBoards || inMemNotes) {
+    console.log("Exporting from in-memory data...");
+    boards = JSON.parse(JSON.stringify(boardsData || []));
+    notes = JSON.parse(JSON.stringify(allNotesData || []));
+    media = JSON.parse(JSON.stringify(mediaData || []));
+  } else {
+    // Fallback: try IndexedDB
+    console.log("No in-memory data, trying IndexedDB...");
+    try {
+      const dbExistsLive = typeof checkDbExists === 'function' ? await checkDbExists('NotesDB') : false;
+      if (dbExistsLive) {
+        boards = await exportData('NotesDB', 'boards');
+        notes = await exportData('NotesDB', 'notes');
+        media = await exportData('NotesDB', 'media');
+      }
+    } catch (e) {
+      console.error("Error reading IndexedDB for export:", e);
     }
-    return;
-  }
-
-  console.log("Exporting from in-memory data...");
-  // Create deep copies to avoid polluting the global state during processing
-  boards = JSON.parse(JSON.stringify(boardsData || []));
-  notes = JSON.parse(JSON.stringify(allNotesData || []));
-  media = JSON.parse(JSON.stringify(mediaData || []));
-
-  await processAndDownloadExport(boards, notes, media);
-}
-
-async function exportNotesFromDB() {
-  console.log("Exporting from IndexedDB...");
-  const boards = await exportData('NotesDB', 'boards');
-  const notes = await exportData('NotesDB', 'notes');
-  const media = await exportData('NotesDB', 'media');
-
-  if (!notes || notes.length === 0) {
-    if (typeof showToast === 'function') {
-      showToast("No notes found in database to export!", 3000);
-    } else {
-      alert("No notes found in database to export!");
+    if (!notes || notes.length === 0) {
+      const msg = typeof _ === 'function' ? _('noDataToExport') || "No data to export!" : "No data to export!";
+      if (typeof showToast === 'function') showToast(msg, 3000); else alert(msg);
+      return;
     }
-    return;
   }
-
   await processAndDownloadExport(boards, notes, media);
 }
 

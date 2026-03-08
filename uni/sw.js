@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cxeditor-b1.71';
+const CACHE_NAME = 'cxeditor-b1.8';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',

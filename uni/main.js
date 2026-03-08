@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.71'; // App version
+const version = 'Beta 1.8'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -99,6 +99,7 @@ let localFileMap = new Map(); // Карта за съответствие GDID -
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
 let activeFolderName = localStorage.getItem('active_folder_name') || 'multinotes_data';
+console.log(`[Startup] Active folder: ${activeFolderName}`);
 let folderIdPromptPopup, folderIdInput, submitFolderIdBtn;
 
 // --- IndexedDB Конфигурация ---
@@ -344,12 +345,14 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     checkIntegrity(mediaData, 'media.txt');
     checkIntegrity(allNotesData, 'note.txt');
     if (boardsData.length === 0) {
-        showToast(_('errorNoBoardFilesFound'), 15000);
-        return { error: 'NO_BOARD_FILES' };
+        showToast(_('errorNoBoardFilesFound'), 10000);
+        // Не връщаме грешка, за да позволим създаването на празна база данни и рендиране на UI
     }
     if (allNotesData.length === 0) {
-        showToast(_('errorNoNoteFilesFound'));
-        return { error: 'NO_NOTE_FILES' };
+        // Показваме съобщението само ако вече не сме показали за липсващи бордове, за да не се трупат
+        if (boardsData.length > 0) {
+            showToast(_('errorNoNoteFilesFound'), 10000);
+        }
     }
     return { boardParseError: boardRes.parseError };
 }
@@ -700,59 +703,52 @@ async function refreshAuthToken(forcePopup = false) {
 async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) {
     let query = `'${folderId}' in parents and name = '${filename}' and mimeType='text/plain' and trashed = false`;
     if (modifiedSince) query += ` and modifiedTime > '${modifiedSince}'`;
-    let allFiles = [], pageToken = null;
+    let allFiles = [];
     if (filename) console.time(`fetchFiles_${filename}_List`);
 
-    const listFiles = async () => {
+    const listFiles = async (token) => {
         let files = [];
-        let token = null;
+        let nextToken = null;
         do {
-            const resp = await gapi.client.drive.files.list({ q: query, fields: 'files(id, name), nextPageToken', pageSize: 1000, pageToken: token });
-            files.push(...resp.result.files);
-            token = resp.result.nextPageToken;
-        } while (token);
+            const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name),nextPageToken&pageSize=1000${nextToken ? `&pageToken=${nextToken}` : ''}`;
+            const resp = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!resp.ok) {
+                const errorData = await resp.json().catch(() => ({}));
+                if (resp.status === 401) throw { status: 401, error: errorData };
+                throw new Error(`Drive API List failed: ${resp.status} ${JSON.stringify(errorData)}`);
+            }
+            const result = await resp.json();
+            files.push(...(result.files || []));
+            nextToken = result.nextPageToken;
+        } while (nextToken);
         return files;
     };
 
-    // Retry logic with counter to prevent infinite loops
     let attempts = 0;
-    const maxAttempts = 3; // Allow retries after token refresh
+    const maxAttempts = 3;
 
     while (attempts < maxAttempts) {
         attempts++;
         try {
-            allFiles = await listFiles();
-            break; // Success, exit loop
-        } catch (e) {
-            // Build robust 401 check
-            const is401 = (e.result && e.result.error && e.result.error.code === 401) ||
-                (e.status === 401) ||
-                (e.result && e.result.error && e.result.error.status === 'UNAUTHENTICATED');
+            let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+            let tokenData = JSON.parse(storedTokenString);
 
-            if (is401) {
-                if (attempts >= maxAttempts) {
-                    console.error("Max retry attempts reached for fetchFiles. Authentication failed.");
-                    throw new Error("Drive API List failed (Auth) after retries.");
-                }
+            allFiles = await listFiles(tokenData.access_token);
+            break;
+        } catch (e) {
+            if (e.status === 401 || (e.result && e.result.error && e.result.error.code === 401)) {
+                if (attempts >= maxAttempts) throw new Error("Drive API List failed (Auth) after retries.");
                 console.warn(`Got 401 during file list (Attempt ${attempts}), attempting token refresh...`);
                 try {
-                    const refreshed = await refreshAuthToken();
-                    if (!refreshed || (refreshed.pass === false)) {
-                        throw new Error("Token refresh failed or user interaction required.");
-                    }
-                    // Small delay to let old connections close
+                    const refreshed = await refreshAuthToken(false);
+                    if (!refreshed || !refreshed.pass) throw new Error("Token refresh failed.");
                     await new Promise(r => setTimeout(r, 500));
-                    // Check if token applied correctly to client
-                    if (gapi.client.getToken() === null && authToken) {
-                        gapi.client.setToken({ access_token: authToken.access_token });
-                    }
                 } catch (refreshError) {
                     console.error("Token refresh failed during retry:", refreshError);
                     throw new Error("Drive API List failed (Auth Refresh Failed).");
                 }
-            } else {
-                throw new Error("Drive API List failed: " + (e.message || "Unknown error"));
-            }
+            } else throw e;
         }
     }
 
@@ -859,9 +855,26 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
 }
 
 async function getFileID(folderId, fileName) {
+    if (isOffline) return null;
     try {
-        const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${fileName}'`, fields: 'files(id, name)', pageSize: 1 });
-        return resp.result.files?.[0]?.id || null;
+        const query = encodeURIComponent(`'${folderId}' in parents and name = '${fileName}'`);
+        const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=1`;
+
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return null;
+        let tokenData = JSON.parse(storedTokenString);
+
+        let resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
+        if (resp.status === 401) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
+            }
+        }
+        if (!resp.ok) return null;
+        const result = await resp.json();
+        return result.files?.[0]?.id || null;
     } catch (e) { return null; }
 }
 async function updateLocalFile(gdid, content) {
@@ -1082,19 +1095,21 @@ async function createGDriveFile(folderId, filename, content) {
     }
 }
 
-async function createNewGDriveFolder(folderName) {
+async function createNewGDriveFolder(folderName, parentId = null) {
     if (isOffline) return null;
     const sendRequest = async (token) => {
+        const body = {
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder'
+        };
+        if (parentId) body.parents = [parentId];
         return fetch('https://www.googleapis.com/drive/v3/files', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                name: folderName,
-                mimeType: 'application/vnd.google-apps.folder'
-            })
+            body: JSON.stringify(body)
         });
     };
     try {
@@ -1121,6 +1136,138 @@ async function createNewGDriveFolder(folderName) {
 /**
  * Създава нова бележка в текущия борд.
  */
+async function isGDriveFolderEmpty(folderId) {
+    if (isOffline || !folderId) return true;
+    const sendRequest = async (token) => {
+        const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&pageSize=1&fields=files(id)`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return true;
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401) {
+            let refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) resp = await sendRequest(refresh.tokenData.access_token);
+        }
+        if (!resp.ok) return true;
+        const result = await resp.json();
+        return !result.files || result.files.length === 0;
+    } catch (e) {
+        console.error("isGDriveFolderEmpty error:", e);
+        return true;
+    }
+}
+
+async function copyGDriveFile(fileId, newParentId, newName) {
+    if (isOffline || !fileId || !newParentId) return null;
+    const sendRequest = async (token) => {
+        const body = { parents: [newParentId] };
+        if (newName) body.name = newName;
+        return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/copy`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401) {
+            let refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                resp = await sendRequest(tokenData.access_token);
+            }
+        }
+        if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
+        const result = await resp.json();
+        return result.id;
+    } catch (e) {
+        console.error("copyGDriveFile error:", e);
+        return null;
+    }
+}
+
+async function migrateDataToNewFolder(targetFolderId) {
+    try {
+        if (typeof showToast === 'function') showToast(_('migratingData'));
+        const subfolderNames = ["Other", "Sound", "Video", "Images"];
+        const newSubfolderIds = {};
+        for (const name of subfolderNames) {
+            newSubfolderIds[name] = await createNewGDriveFolder(name, targetFolderId);
+        }
+        for (const board of (boardsData || [])) {
+            await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(board));
+        }
+        for (const note of (allNotesData || [])) {
+            await createGDriveFile(targetFolderId, 'note.txt', JSON.stringify(note));
+        }
+        const newMediaData = [];
+        for (const item of (mediaData || [])) {
+            const newItem = { ...item };
+            const typeFolderName = (item.type === 1 ? "Images" : (item.type === 2 ? "Sound" : (item.type === 4 ? "Video" : "Other")));
+            const targetSubfolderId = newSubfolderIds[typeFolderName];
+            if (item.pathGD && targetSubfolderId) {
+                const newId = await copyGDriveFile(item.pathGD, targetSubfolderId, item.filename);
+                if (newId) newItem.pathGD = newId;
+            }
+            newMediaData.push(newItem);
+        }
+        if (newMediaData.length > 0) {
+            await createGDriveFile(targetFolderId, 'media.txt', JSON.stringify(newMediaData));
+        }
+        if (typeof showToast === 'function') showToast(_('migrationSuccess'));
+        return true;
+    } catch (e) {
+        console.error("Migration error:", e);
+        if (typeof showToast === 'function') showToast(_('migrationError'));
+        return false;
+    }
+}
+
+async function getFolderIDByName(name) {
+    if (isOffline) return null;
+    const sendRequest = async (token) => {
+        const query = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return null;
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401) {
+            let refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                resp = await sendRequest(tokenData.access_token);
+            }
+        }
+        if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
+        const result = await resp.json();
+        return result.files?.[0]?.id || null;
+    } catch (e) {
+        console.error("getFolderIDByName error:", e);
+        return null;
+    }
+}
+
+/**
+ * Създава нова бележка в текущия борд.
+ */
 async function createNewNote() {
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
     const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
@@ -1129,6 +1276,14 @@ async function createNewNote() {
         // Проверяваме за етикета и ако го няма, ползваме стандартно съобщение
         const label = _('updateGDriveLabel') || "Update Google Drive";
         showToast(label + " " + (_('required') || "required"), 5000);
+        return;
+    }
+
+    if (boardsData.length === 0) {
+        showToast(_('errorNoBoards') || "Моля, създайте първо поне един борд, преди да добавяте бележки.", 3000);
+        if (typeof showNewBoardModal === 'function') {
+            setTimeout(showNewBoardModal, 100);
+        }
         return;
     }
 
@@ -1207,34 +1362,44 @@ async function createNewNote() {
 }
 
 async function getFolderID() {
+    if (isOffline) return null;
     try {
         const multinotesDataId = await getMultinotesDataFolderID();
         if (!multinotesDataId) return null;
 
         const listFolders = async () => {
             const folderNames = ["Other", "Sound", "Video", "Images"];
+            const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!storedTokenString) return;
+            let tokenData = JSON.parse(storedTokenString);
+
             await Promise.all(folderNames.map(async (name) => {
                 const cachedId = localStorage.getItem(`gdrive_folder_id_${name}`);
                 if (cachedId) { folderIds[name] = cachedId; return; }
-                const resp = await gapi.client.drive.files.list({ q: `'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`, fields: 'files(id)', pageSize: 1 });
-                const id = resp.result.files?.[0]?.id || "";
-                folderIds[name] = id;
-                if (id) localStorage.setItem(`gdrive_folder_id_${name}`, id);
+
+                const query = encodeURIComponent(`'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+                const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1`;
+
+                let resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
+
+                if (resp.status === 401) {
+                    const refresh = await refreshAuthToken(false);
+                    if (refresh && refresh.pass) {
+                        tokenData = refresh.tokenData;
+                        resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
+                    }
+                }
+
+                if (resp.ok) {
+                    const result = await resp.json();
+                    const id = result.files?.[0]?.id || "";
+                    folderIds[name] = id;
+                    if (id) localStorage.setItem(`gdrive_folder_id_${name}`, id);
+                }
             }));
         };
 
-        try {
-            await listFolders();
-        } catch (error) {
-            const is401 = (error.result?.error?.code === 401) || (error.status === 401) || (error.result?.error?.status === 'UNAUTHENTICATED');
-            if (is401) {
-                console.warn("Got 401 in getFolderID, attempting refresh...");
-                await refreshAuthToken();
-                await listFolders();
-            } else {
-                throw error;
-            }
-        }
+        await listFolders();
         return multinotesDataId;
     } catch (e) {
         console.error("Error in getFolderID:", e);
@@ -1243,39 +1408,40 @@ async function getFolderID() {
 }
 
 async function getMultinotesDataFolderID() {
+    if (isOffline) return null;
     const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
     if (cachedId) return cachedId;
 
-    const listRequest = () => gapi.client.drive.files.list({
-        q: `name='${activeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        fields: 'files(id)',
-        pageSize: 1
-    });
+    const sendRequest = async (token) => {
+        const query = encodeURIComponent(`name='${activeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
 
     try {
-        const resp = await listRequest();
-        const id = resp.result.files?.[0]?.id || null;
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return null;
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+
+        if (resp.status === 401) {
+            console.warn("Got 401 in getMultinotesDataFolderID, attempting refresh...");
+            let refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                resp = await sendRequest(tokenData.access_token);
+            }
+        }
+
+        if (!resp.ok) return null;
+        const result = await resp.json();
+        const id = result.files?.[0]?.id || null;
         if (id) localStorage.setItem('gdrive_multinotes_data_id', id);
         return id;
-    } catch (error) {
-        const is401 = (error.result?.error?.code === 401) || (error.status === 401) || (error.result?.error?.status === 'UNAUTHENTICATED');
-        if (is401) {
-            console.warn("Got 401 in getMultinotesDataFolderID, attempting refresh...");
-            try {
-                const refreshResult = await refreshAuthToken();
-                if (refreshResult && refreshResult.pass) {
-                    const resp = await listRequest();
-                    const id = resp.result.files?.[0]?.id || null;
-                    if (id) localStorage.setItem('gdrive_multinotes_data_id', id);
-                    return id;
-                }
-            } catch (refreshError) {
-                console.error("Token refresh failed in getMultinotesDataFolderID:", refreshError);
-            }
-            showToast(_('errorSessionExpired'));
-            handleSignoutClick();
-            throw new Error("Google Drive Unauthorized");
-        }
+    } catch (e) {
+        console.error("Error in getMultinotesDataFolderID:", e);
         return null;
     }
 }
@@ -3196,6 +3362,10 @@ function initApp() {
     if (localStorage.getItem('updateGDrive') === null) {
         localStorage.setItem('updateGDrive', 'true');
     }
+    // Set default useIndexedDb to true if not set
+    if (localStorage.getItem('useIndexedDb') === null) {
+        localStorage.setItem('useIndexedDb', 'true');
+    }
     // Инициализация на DOM елементи
     signoutButton = document.getElementById('signout_button');
     if (signoutButton) {
@@ -3344,31 +3514,80 @@ function initApp() {
                     advancedSettingsSpan.removeAttribute('hidden');
                     localStorage.setItem('showAdvancedSettings', 'true');
                 }
-            }
-            // Expand accordion if not already expanded (check for active class if you used it, or just click if content is hidden)
-            // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
-            // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
-            setTimeout(() => {
-                // Check state via class on accordion wrapper
-                const accordionHeader = document.querySelector('.accordion-header');
-                if (accordionHeader) {
-                    const accordion = accordionHeader.parentElement;
-                    const isActive = accordion.classList.contains('active');
-
-                    if (!isActive) {
-                        // Closed -> Open it (this triggers scroll in listener)
-                        accordionHeader.click();
-                    } else {
-                        // Already Open -> Just scroll to it/bottom
-                        const settingsModalBody = document.getElementById('settings-modal-body');
-                        if (settingsModalBody) {
-                            settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
-                        } else {
-                            accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Попълваме dropdown-а от localStorage при отваряне на Разширени настройки
+                const afsEl = document.getElementById('active-folder-select');
+                if (afsEl) {
+                    const defaultF = 'multinotes_data';
+                    let fns = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]');
+                    if (!fns.includes(defaultF)) fns.unshift(defaultF);
+                    const curF = localStorage.getItem('active_folder_name') || defaultF;
+                    if (!fns.includes(curF)) fns.push(curF);
+                    Array.from(afsEl.options).forEach(opt => {
+                        if (opt.value !== 'select_folder' && opt.value !== 'new_folder') opt.remove();
+                    });
+                    const insertBefore = afsEl.querySelector('option[value="select_folder"]') || afsEl.firstChild;
+                    fns.forEach(name => {
+                        if (!afsEl.querySelector(`option[value="${name}"]`)) {
+                            const opt = document.createElement('option');
+                            opt.value = name;
+                            opt.textContent = name;
+                            if (name === curF) opt.selected = true;
+                            afsEl.insertBefore(opt, insertBefore);
+                        }
+                    });
+                }
+                // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
+                loadGlobalFoldersJson().then(changed => {
+                    if (changed) {
+                        const afs = document.getElementById('active-folder-select');
+                        if (afs) {
+                            const defaultF = 'multinotes_data';
+                            let fns = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]');
+                            if (!fns.includes(defaultF)) fns.unshift(defaultF);
+                            const curF = localStorage.getItem('active_folder_name') || defaultF;
+                            if (!fns.includes(curF)) fns.push(curF);
+                            // Премахваме старите опции (без select_folder и new_folder)
+                            Array.from(afs.options).forEach(opt => {
+                                if (opt.value !== 'select_folder' && opt.value !== 'new_folder') opt.remove();
+                            });
+                            const insertBefore = afs.querySelector('option[value="select_folder"]') || afs.firstChild;
+                            fns.forEach(name => {
+                                if (!afs.querySelector(`option[value="${name}"]`)) {
+                                    const opt = document.createElement('option');
+                                    opt.value = name;
+                                    opt.textContent = name;
+                                    if (name === curF) opt.selected = true;
+                                    afs.insertBefore(opt, insertBefore);
+                                }
+                            });
                         }
                     }
-                }
-            }, 100);
+                });
+                // Expand accordion if not already expanded (check for active class if you used it, or just click if content is hidden)
+                // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
+                // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
+                setTimeout(() => {
+                    // Check state via class on accordion wrapper
+                    const accordionHeader = document.querySelector('.accordion-header');
+                    if (accordionHeader) {
+                        const accordion = accordionHeader.parentElement;
+                        const isActive = accordion.classList.contains('active');
+
+                        if (!isActive) {
+                            // Closed -> Open it (this triggers scroll in listener)
+                            accordionHeader.click();
+                        } else {
+                            // Already Open -> Just scroll to it/bottom
+                            const settingsModalBody = document.getElementById('settings-modal-body');
+                            if (settingsModalBody) {
+                                settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
+                            } else {
+                                accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }
+                    }
+                }, 100);
+            }
         }
 
         // Запомняме началното състояние на чекбоксовете при отваряне на настройките
@@ -3876,8 +4095,9 @@ function initApp() {
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
                     await loadGoogleApis();
                 }
-                if (!authToken) return; // Прекратяваме, ако няма валиден токен
-                gapi.client.setToken({ access_token: authToken.access_token });
+                if (typeof gapi !== 'undefined' && gapi.client) {
+                    gapi.client.setToken({ access_token: authToken.access_token });
+                }
             } catch (error) {
                 throw new Error(_('errorGoogleLibs'));
             }
@@ -3892,7 +4112,9 @@ function initApp() {
                 if (refreshResult && refreshResult.pass) {
                     authToken = refreshResult.tokenData;
                     // Update gapi client with new token
-                    gapi.client.setToken({ access_token: authToken.access_token });
+                    if (typeof gapi !== 'undefined' && gapi.client) {
+                        gapi.client.setToken({ access_token: authToken.access_token });
+                    }
                     updatedCount = await runGoogleDriveSync();
                 } else {
                     showToast(_('errorSessionExpired'));
@@ -3967,6 +4189,7 @@ function initApp() {
                 dbSourceText = _('sourceArchive');
             }
             const dbCreatedTimestamp = await getConfig('dbCreatedTimestamp');
+            const dbCreatedFolderName = await getConfig('dbCreatedFolderName') || '';
             const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
             const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
             const dbCreatedDate = dbCreatedTimestamp ? formatDateTime(dbCreatedTimestamp) : '';
@@ -3975,9 +4198,10 @@ function initApp() {
             // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
             const content = [
                 `${_('sysInfoUser')}: ${currentUserEmail}`,
+                `${_('activeFolderLabel')}: ${activeFolderName}`,
                 `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
                 `${_('sysInfoLoadTime')}: ${initialLoadTime ? initialLoadTime + ' s' + (loadTimeDate ? ' (' + loadTimeDate + ')' : '') : _('noData')}`,
-                `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
+                `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedFolderName ? ' (' + dbCreatedFolderName + ')' : ''}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
                 `${_('sysInfoLastLocalSync')}: ${localDate}`,
                 `${_('sysInfoLastGDSync')}: ${gdDate}`,
                 `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
@@ -4726,6 +4950,7 @@ async function createDatabaseFromMemory() {
             await saveConfig('lastLocalTimestamp', now);
         }
         await saveConfig('dbSource', dbSource);
+        await saveConfig('dbCreatedFolderName', activeFolderName);
         // Записваме кога е създадена базата
         await saveConfig('dbCreatedTimestamp', now);
         // --- IMMEDIATELY UPDATE GLOBALS FOR CURRENT SESSION ---
@@ -4880,7 +5105,7 @@ function updateGlobalStateFlags() {
     useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
     useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
     useArhDb = localStorage.getItem('useArhDb') === 'true';
-    useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+    useIndexedDb = localStorage.getItem('useIndexedDb') !== 'false'; // true по подразбиране
     automatedTimer = localStorage.getItem('automatedTimer') !== 'false'; // true по подразбиране
     updateLocalFolder = localStorage.getItem('updateLocalFolder') === 'true';
 }
@@ -5170,8 +5395,9 @@ async function mainLogic() {
             // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
             // Зареждаме API-то само ако ще работим с Google Drive.
             if (useGoogleDb) {
-                await loadGoogleApis();
-                gapi.client.setToken({ access_token: authToken.access_token });
+                if (typeof gapi !== 'undefined' && gapi.client) {
+                    gapi.client.setToken({ access_token: authToken.access_token });
+                }
             }
             if (useArhDb) {
                 // --- РЕЖИМ 0: Зареждане от Архив ---
@@ -5351,6 +5577,12 @@ async function mainLogic() {
             document.querySelector('#search-wrapper').style.display = 'flex';
             notesContainer.style.visibility = 'visible';
             isMainLogicRunning = false;
+
+            // Показваме бутона за добавяне, дори и при липсващи бордове
+            if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
+                const addNoteFab = document.getElementById('add-note-fab');
+                if (addNoteFab) addNoteFab.style.display = 'flex';
+            }
 
             // Показваме бутона за инсталиране, ако има такъв
             if (window.showInstallButton) window.showInstallButton();
@@ -5754,12 +5986,39 @@ function showImageVideoOverlay(src, isVideo = false) {
  */
 async function showGdrivePreview(fileId, isVideo = false) {
     if (!fileId) throw new Error("No file ID provided for Google Drive preview.");
-    const fileMetadata = await gapi.client.drive.files.get({ fileId: fileId, fields: 'thumbnailLink, webContentLink' });
-    const thumbnailUrl = fileMetadata.result.thumbnailLink;
-    if (thumbnailUrl) {
-        showImageVideoOverlay(thumbnailUrl.replace(/=s\d+/, '=s1600'), isVideo);
-    } else {
-        throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+
+    const sendRequest = async (token) => {
+        return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink,webContentLink`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
+
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        let tokenData = JSON.parse(storedTokenString);
+
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401) {
+            let refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                resp = await sendRequest(tokenData.access_token);
+            }
+        }
+
+        if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
+        const result = await resp.json();
+        const thumbnailUrl = result.thumbnailLink;
+
+        if (thumbnailUrl) {
+            showImageVideoOverlay(thumbnailUrl.replace(/=s\d+/, '=s1600'), isVideo);
+        } else {
+            throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+        }
+    } catch (e) {
+        console.error("showGdrivePreview error:", e);
+        throw e;
     }
 }
 
@@ -5905,10 +6164,11 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                     if (newToken) {
                         authToken = newToken;
                         // Update gapi client if needed
-                        if (gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
+                        if (typeof gapi !== 'undefined' && gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
                     }
                 }
-                const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : gapi.auth.getToken();
+                const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken :
+                    ((typeof gapi !== 'undefined' && gapi.auth) ? gapi.auth.getToken() : null);
                 if (!tokenObj) throw new Error(_('errorTokenMissing'));
                 if (isActuallyVideo || isActuallySound) {
                     try {
@@ -6549,7 +6809,7 @@ function showModal(options, noteElement = null) {
     const oldSearchBar = modalContentBox.querySelector('.modal-search-bar');
     if (oldSearchBar) oldSearchBar.remove();
 
-    const canEdit = (useIndexedDb || (updateGDrive && options.gdid) || useLocalFolder) && !isPromo;
+    const canEdit = (useIndexedDb || (updateGDrive && (options.gdid || options.isNewNote)) || useLocalFolder) && !isPromo;
     let footerToolbar = modalContentBox.querySelector('.modal-footer-toolbar');
     if (!footerToolbar && (canEdit || isPromo)) { // Create toolbar if needed or for date
         footerToolbar = document.createElement('div');
@@ -7876,10 +8136,18 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         link.style.color = 'black'; // Default
         if (board.status === 1) {
             link.style.color = 'red';
-        } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
-            // Custom цвят на шрифта (отрицателно число)
-            const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-            link.style.color = hexFontColor;
+        } else if (board.colorfont !== undefined && !isNaN(board.colorfont)) {
+            if (board.colorfont === 1) {
+                link.style.color = '#FFFFFF';
+            } else if (board.colorfont === 2) {
+                link.style.color = '#FF0000';
+            } else if (board.colorfont === 3) {
+                link.style.color = '#0000FF';
+            } else if (board.colorfont < 0) {
+                // Custom цвят на шрифта (отрицателно число)
+                const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+                link.style.color = hexFontColor;
+            }
         }
         addBoardButtonEvents(link, boardId);
         allButtonLinks.push(link);
@@ -8052,78 +8320,156 @@ async function findGDFileByName(folderId, fileName) {
         return null;
     }
 }
+
+async function syncGlobalFoldersJson() {
+    if (isOffline) return;
+    try {
+        const folderNamesStr = localStorage.getItem('gdrive_folder_names');
+        if (!folderNamesStr) return;
+        const folderNames = JSON.parse(folderNamesStr);
+        if (!Array.isArray(folderNames)) return;
+
+        const content = JSON.stringify(folderNames, null, 2);
+
+        // Push to all known folders
+        folderNames.forEach(async (fName) => {
+            try {
+                const fID = await getFolderIDByName(fName);
+                if (fID) {
+                    const existingFiles = await findGDFileByName(fID, 'folders.json');
+                    if (existingFiles && existingFiles.length > 0) {
+                        await updateGDriveFile(existingFiles[0].id, content);
+                    } else {
+                        await createGDriveFile(fID, 'folders.json', content);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to sync folders.json to " + fName, e);
+            }
+        });
+    } catch (e) {
+        console.error("syncGlobalFoldersJson error:", e);
+    }
+}
+
+async function loadGlobalFoldersJson() {
+    if (isOffline) return false;
+    try {
+        const folderId = await getFolderID();
+        if (!folderId) return false;
+        const existingFiles = await findGDFileByName(folderId, 'folders.json');
+        if (existingFiles && existingFiles.length > 0) {
+            const content = await fetchGDriveFileContent(existingFiles[0].id);
+            if (content) {
+                const remoteFolders = JSON.parse(content);
+                if (Array.isArray(remoteFolders) && remoteFolders.length > 0) {
+                    const localFolderNamesStr = localStorage.getItem('gdrive_folder_names');
+                    const localFolderNames = localFolderNamesStr ? JSON.parse(localFolderNamesStr) : ['multinotes_data'];
+                    const merged = [...new Set([...localFolderNames, ...remoteFolders])];
+                    if (merged.length !== localFolderNames.length) {
+                        localStorage.setItem('gdrive_folder_names', JSON.stringify(merged));
+                        return true; // Changes were made
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error("loadGlobalFoldersJson error:", e);
+    }
+    return false;
+}
 async function saveSettingsToGDrive() {
     if (typeof showToast === 'function') showToast("Записване на настройките...");
-    const folderId = await getFolderID();
-    if (!folderId) {
-        if (typeof showToast === 'function') showToast(`Грешка: Не е открита папка '${activeFolderName}' в Google Drive.`);
-        return;
-    }
+
     const settings = {};
     appSettingsKeys.forEach(key => {
         const val = localStorage.getItem(key);
         if (val !== null) settings[key] = val;
     });
-    // Добавяме и всички динамични ключове (настройки на бордове, ID-та на папки и др.)
+    // Добавяме и всички динамични ключове (настройки на бордове), пропускаме системни ключове като папки
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith('board_') || key.startsWith('gdrive_folder_id_'))) {
+        if (key && key.startsWith('board_')) {
             settings[key] = localStorage.getItem(key);
         }
     }
-    const fileName = 'settings.json';
-    const content = JSON.stringify(settings, null, 2);
-    try {
-        const existingFiles = await findGDFileByName(folderId, fileName);
-        if (existingFiles && existingFiles.length > 0) {
-            // Вече съществува такъв файл (може да са няколко)
-            // Обновяваме първия (най-новия)
-            await updateGDriveFile(existingFiles[0].id, content);
 
-            // Ако има дубликати, ги изтриваме за чистота
-            if (existingFiles.length > 1) {
-                for (let j = 1; j < existingFiles.length; j++) {
-                    await deleteGDriveFile(existingFiles[j].id);
-                }
-            }
-        } else {
-            await createGDriveFile(folderId, fileName, content);
-        }
-        showToast(_('settingsSavedSuccess'));
-    } catch (err) {
-        console.error("Save settings error:", err);
-        showToast(_('errorSaveSettings'));
+    const content = JSON.stringify(settings, null, 2);
+
+    // Запис в localStorage под ключ с името на активната папка (ключова промяна)
+    if (typeof activeFolderName !== 'undefined' && activeFolderName) {
+        localStorage.setItem('settings_' + activeFolderName, content);
     }
+
+    if (!isOffline) {
+        const folderId = await getFolderID();
+        if (folderId) {
+            const fileName = 'settings.json';
+            try {
+                const existingFiles = await findGDFileByName(folderId, fileName);
+                if (existingFiles && existingFiles.length > 0) {
+                    await updateGDriveFile(existingFiles[0].id, content);
+                    if (existingFiles.length > 1) {
+                        for (let j = 1; j < existingFiles.length; j++) {
+                            await deleteGDriveFile(existingFiles[j].id);
+                        }
+                    }
+                } else {
+                    await createGDriveFile(folderId, fileName, content);
+                }
+            } catch (err) {
+                console.error("Save settings to GDrive error:", err);
+                // Продължаваме, тъй като локалният запис е успешен
+            }
+        }
+    }
+    showToast(_('settingsSavedSuccess'));
 }
+
 async function loadSettingsFromGDrive() {
     if (typeof showToast === 'function') showToast("Зареждане на настройките...");
-    const folderId = await getFolderID();
-    if (!folderId) {
-        if (typeof showToast === 'function') showToast(`Грешка: Не е открита папка '${activeFolderName}' в Google Drive.`);
-        return;
+
+    let content = null;
+
+    // Първо опитваме да заредим локално
+    if (typeof activeFolderName !== 'undefined' && activeFolderName) {
+        content = localStorage.getItem('settings_' + activeFolderName);
     }
-    const fileName = 'settings.json';
-    try {
-        const existingFiles = await findGDFileByName(folderId, fileName);
-        if (!existingFiles || existingFiles.length === 0) {
-            showToast(_('errorLoadSettings'));
-            return;
+
+    // Ако няма локално записани настройки (или се свали от друго устройство), дърпаме от GDrive
+    if (!content && !isOffline) {
+        const folderId = await getFolderID();
+        if (folderId) {
+            try {
+                const existingFiles = await findGDFileByName(folderId, 'settings.json');
+                if (existingFiles && existingFiles.length > 0) {
+                    content = await fetchGDriveFileContent(existingFiles[0].id);
+                }
+            } catch (err) {
+                console.error("Load settings from GDrive error:", err);
+            }
         }
-        // Използваме първия (най-нов) файл
-        const content = await fetchGDriveFileContent(existingFiles[0].id);
-        if (content) {
+    }
+
+    if (content) {
+        try {
             const settings = JSON.parse(content);
             Object.keys(settings).forEach(key => {
-                const isDynamicKey = key.startsWith('board_') || key.startsWith('gdrive_folder_id_');
+                const isDynamicKey = key.startsWith('board_');
                 if (appSettingsKeys.includes(key) || isDynamicKey) {
-                    localStorage.setItem(key, settings[key]);
+                    // Пропускаме глобалните ключове за папки, за да не се презаписват при мулти-папки разположения
+                    if (key !== 'active_folder_name' && key !== 'gdrive_folder_names') {
+                        localStorage.setItem(key, settings[key]);
+                    }
                 }
             });
             setTimeout(() => { if (confirm(_('settingsLoadedSuccess'))) location.reload(); }, 100);
+        } catch (err) {
+            console.error("Parse settings error:", err);
+            showToast(_('errorLoadSettings'));
         }
-    } catch (err) {
-        console.error("Load settings error:", err);
-        showToast(_('errorLoadSettings'));
+    } else {
+        showToast(_('errorLoadSettings') || "Няма намерени настройки за тази папка.");
     }
 }
 async function createSettingsUI(boardsData, boardParseError) {
@@ -8180,63 +8526,136 @@ async function createSettingsUI(boardsData, boardParseError) {
         // Active Folder Logic
         if (activeFolderSelect) {
             const defaultFolder = 'multinotes_data';
-            let folderNamesStr = localStorage.getItem('gdrive_folder_names');
-            let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
-            if (!folderNames.includes(defaultFolder)) folderNames.unshift(defaultFolder);
+            const populateFoldersDropdown = () => {
+                let folderNamesStr = localStorage.getItem('gdrive_folder_names');
+                let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
+                if (!folderNames.includes(defaultFolder)) folderNames.unshift(defaultFolder);
 
-            const currentFolder = localStorage.getItem('active_folder_name') || defaultFolder;
-            if (!folderNames.includes(currentFolder)) folderNames.push(currentFolder);
+                const currentFolder = localStorage.getItem('active_folder_name') || defaultFolder;
+                if (!folderNames.includes(currentFolder)) folderNames.push(currentFolder);
 
-            activeFolderSelect.innerHTML = '';
-            folderNames.forEach(name => {
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                if (name === currentFolder) option.selected = true;
-                activeFolderSelect.appendChild(option);
-            });
+                Array.from(activeFolderSelect.options).forEach(opt => {
+                    if (opt.value !== 'select_folder' && opt.value !== 'new_folder') {
+                        opt.remove();
+                    }
+                });
+
+                // Вмъкваме опциите за папките ПРЕДИ стационарните опции "Избор на папка..." и "Нова папка..."
+                const insertBeforeNode = activeFolderSelect.querySelector('option[value="select_folder"]') || activeFolderSelect.firstChild;
+
+                folderNames.forEach(name => {
+                    // Проверяваме да не го добавим два пъти, ако функцията се извика пак
+                    if (!activeFolderSelect.querySelector(`option[value="${name}"]`)) {
+                        const option = document.createElement('option');
+                        option.value = name;
+                        option.textContent = name;
+                        if (name === currentFolder) option.selected = true;
+                        activeFolderSelect.insertBefore(option, insertBeforeNode);
+                    }
+                });
+            };
+
+            const selectOption = document.createElement('option');
+            selectOption.value = 'select_folder';
+            selectOption.textContent = _('selectFolderOption') || 'Избор на папка...';
+            activeFolderSelect.appendChild(selectOption);
 
             const newOption = document.createElement('option');
             newOption.value = 'new_folder';
             newOption.textContent = _('newFolderOption');
             activeFolderSelect.appendChild(newOption);
 
+            // Попълването на dropdown-а се прави при Ctrl+click/long press (Разширени настройки)
+
             activeFolderSelect.addEventListener('change', async () => {
                 const selectedValue = activeFolderSelect.value;
-                if (selectedValue === 'new_folder') {
-                    const folderName = prompt(_('newFolderPrompt'));
-                    if (folderName && folderName.trim()) {
-                        const name = folderName.trim();
+                let targetFolderName = null;
+                let targetFolderId = null;
+                const folderNamesStr = localStorage.getItem('gdrive_folder_names');
+                const folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : ['multinotes_data'];
+
+                if (selectedValue === 'new_folder' || selectedValue === 'select_folder') {
+                    const isNew = selectedValue === 'new_folder';
+                    const promptMsg = isNew ? _('newFolderPrompt') : (_('selectFolderPrompt') || 'Въведете име на съществуваща папка:');
+                    const folderNameInput = prompt(promptMsg);
+                    if (folderNameInput && folderNameInput.trim()) {
+                        targetFolderName = folderNameInput.trim();
                         try {
-                            if (typeof showToast === 'function') showToast(_('creatingFolder'));
-                            const folderId = await createNewGDriveFolder(name);
-                            if (folderId) {
-                                if (!folderNames.includes(name)) folderNames.push(name);
-                                localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-                                localStorage.setItem('active_folder_name', name);
-                                localStorage.setItem('gdrive_multinotes_data_id', folderId);
-
-                                // Clear cached IDs for subfolders
-                                ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
-
-                                if (typeof showToast === 'function') showToast(_('folderCreated'));
-                                setTimeout(() => location.reload(), 1000);
+                            if (isNew) {
+                                if (typeof showToast === 'function') showToast(_('creatingFolder'));
+                                targetFolderId = await createNewGDriveFolder(targetFolderName);
+                            } else {
+                                targetFolderId = await getFolderIDByName(targetFolderName);
+                                if (!targetFolderId) {
+                                    if (typeof showToast === 'function') showToast(_('errorFolderNotFoundDrive') || 'Папката не е намерена.');
+                                    activeFolderSelect.value = currentFolder;
+                                    return;
+                                }
                             }
                         } catch (e) {
-                            if (typeof showToast === 'function') showToast(_('errorCreateFolder'));
+                            if (typeof showToast === 'function') showToast(isNew ? _('errorCreateFolder') : (_('errorFolderNotFoundDrive') || 'Папката не е намерена.'));
                             activeFolderSelect.value = currentFolder;
+                            return;
                         }
                     } else {
                         activeFolderSelect.value = currentFolder;
+                        return;
                     }
                 } else {
-                    if (selectedValue !== currentFolder) {
-                        localStorage.setItem('active_folder_name', selectedValue);
-                        localStorage.removeItem('gdrive_multinotes_data_id');
-                        ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
-                        if (typeof showToast === 'function') showToast(_('settingSaved'));
-                        setTimeout(() => location.reload(), 1000);
+                    targetFolderName = selectedValue;
+                }
+
+                if (targetFolderName === currentFolder) return;
+
+                try {
+                    if (!targetFolderId) {
+                        targetFolderId = await getFolderIDByName(targetFolderName);
                     }
+
+                    if (targetFolderId) {
+                        console.log(`[Folder-Switch] Changing folder to: "${targetFolderName}" (ID: ${targetFolderId})`);
+                        const isEmpty = await isGDriveFolderEmpty(targetFolderId);
+                        if (isEmpty) {
+                            if (confirm(_('confirmMigration'))) {
+                                await migrateDataToNewFolder(targetFolderId);
+                            }
+                        }
+
+                        localStorage.setItem('active_folder_name', targetFolderName);
+                        localStorage.setItem('gdrive_multinotes_data_id', targetFolderId);
+
+                        let shouldSyncJson = false;
+                        if ((selectedValue === 'new_folder' || selectedValue === 'select_folder') && !folderNames.includes(targetFolderName)) {
+                            folderNames.push(targetFolderName);
+                            localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+                            shouldSyncJson = true;
+                        }
+
+                        // Force Google Drive mode when folder is switched
+                        localStorage.setItem('useGoogleDb', 'true');
+                        localStorage.setItem('useIndexedDb', 'false');
+                        localStorage.setItem('useLocalDb', 'false');
+                        localStorage.setItem('useArhDb', 'false');
+
+                        // Clear cached subfolder IDs
+                        ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
+
+                        if (shouldSyncJson) {
+                            if (typeof showToast === 'function') showToast(_('settingSaved') + ' Синхронизиране...');
+                            // Стартираме синхронизацията и чакаме малко, за да започне поне мрежовата заявка
+                            syncGlobalFoldersJson();
+                            setTimeout(() => location.reload(), 1500);
+                        } else {
+                            if (typeof showToast === 'function') showToast(_('settingSaved'));
+                            setTimeout(() => location.reload(), 1000);
+                        }
+                    } else {
+                        throw new Error("Folder ID not found");
+                    }
+                } catch (err) {
+                    console.error("Error switching folder:", err);
+                    showToast(_('errorLoadSettings'));
+                    activeFolderSelect.value = currentFolder;
                 }
             });
         }
@@ -10718,14 +11137,6 @@ function navigateBoard(direction) {
             else console.error('exportNotes function not found');
         });
     }
-    const saveDbBtn = document.getElementById('save-db-btn');
-    if (saveDbBtn) {
-        saveDbBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (typeof exportNotesFromDB === 'function') exportNotesFromDB();
-            else console.error('exportNotesFromDB function not found');
-        });
-    }
     const saveIndividualBtn = document.getElementById('save-individual-btn');
     if (saveIndividualBtn) {
         saveIndividualBtn.addEventListener('click', () => {
@@ -10740,7 +11151,6 @@ function navigateBoard(direction) {
  * Updates the visibility of elements in Advanced Settings based on application state.
  */
 async function updateAdvancedSettingsVisibility() {
-    const saveDbWrapper = document.getElementById('save-db-wrapper');
     const saveIndividualWrapper = document.getElementById('save-individual-wrapper');
 
     // Sync checkboxes
@@ -10752,48 +11162,11 @@ async function updateAdvancedSettingsVisibility() {
     if (useArhDbCheckbox) useArhDbCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
     if (useLocalDbCheckbox) useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
     if (useGoogleDbCheckbox) useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
-    if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-
-    // Manage visibility of export buttons
-    const useIndexedDbLive = localStorage.getItem('useIndexedDb') === 'true';
+    if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') !== 'false';
 
     // Individual save is always visible if supported by browser
     if (saveIndividualWrapper) {
         saveIndividualWrapper.style.display = (window.showDirectoryPicker) ? 'block' : 'none';
-    }
-
-    if (!saveDbWrapper) return;
-
-    // The button "Save from DB" makes sense ONLY if DB mode is OFF and DB is NOT empty.
-    if (useIndexedDbLive) {
-        saveDbWrapper.style.display = 'none';
-        return;
-    }
-
-    try {
-        const dbExistsLive = await checkDbExists(NOTES_DB_NAME);
-        if (!dbExistsLive) {
-            saveDbWrapper.style.display = 'none';
-            return;
-        }
-
-        const db = await openNotesDB();
-        const transaction = db.transaction([BOARD_STORE_NAME], 'readonly');
-        const store = transaction.objectStore(BOARD_STORE_NAME);
-        const countRequest = store.count();
-
-        countRequest.onsuccess = () => {
-            const count = countRequest.result;
-            saveDbWrapper.style.display = (count > 0) ? 'block' : 'none';
-            db.close();
-        };
-        countRequest.onerror = () => {
-            saveDbWrapper.style.display = 'none';
-            db.close();
-        };
-    } catch (e) {
-        console.warn("Failed to check DB count for Settings2 visibility:", e);
-        saveDbWrapper.style.display = 'none';
     }
 }
 
@@ -11948,9 +12321,10 @@ async function saveEditedNote() {
     const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
 
     if (newText === undefined) return; // Nothing to save
-    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+    const updateGDriveNow = localStorage.getItem('updateGDrive') !== 'false';
     const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
     const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
     // Show spinner on save button
     const saveBtnElem = document.getElementById('note-save-btn');
     const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
@@ -11964,7 +12338,7 @@ async function saveEditedNote() {
             position: 'absolute', bottom: '60px', right: '20px', display: 'flex', gap: '8px', zIndex: '10001',
             pointerEvents: 'none', background: 'transparent', padding: '4px', borderRadius: '8px'
         });
-        if (useIndexedDb) indicators.innerHTML += `<img src="Database.png" style="width:28px; height:28px;">`;
+        if (useIndexedDbNow) indicators.innerHTML += `<img src="Database.png" style="width:28px; height:28px;">`;
         if (updateGDriveNow && !isOffline) indicators.innerHTML += `<img src="GDrive.png" style="width:28px; height:28px;">`;
         if (useLocalFolder) indicators.innerHTML += `<img src="Folder.png" style="width:28px; height:28px;">`;
 
@@ -12194,7 +12568,7 @@ async function saveEditedNote() {
             }
         }
 
-        if (updateLocalFolderNow) {
+        if (useLocalFolder) {
             try {
                 // Ако бележката е нова и няма gdid (или е временен id), генерираме локален такъв
                 const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
@@ -12210,14 +12584,23 @@ async function saveEditedNote() {
                 showToast(_('errorSaveLocalFolder') || "Грешка при запис в локалната папка");
             }
         }
-        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+        if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+
         const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
         const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
 
-        let msgKey = 'noteSavedInDb';
-        if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll';
-        else if (updateGDriveNow) msgKey = 'noteSavedInBoth';
-        else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
+        let msgKey = '';
+        if (useIndexedDbNow && updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll'; // БД, GD и локална папка
+        else if (useIndexedDbNow && updateGDriveNow) msgKey = 'noteSavedInBoth'; // БД и GD
+        else if (useIndexedDbNow && updateLocalFolderNow) msgKey = 'noteSavedInLocal'; // БД и локална папка
+        else if (useIndexedDbNow) msgKey = 'noteSavedInDb'; // БД
+        else {
+            // Само външни източници без БД (режим без кеширане)
+            if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll'; // Ще каже БД, но е най-близко
+            else if (updateGDriveNow) msgKey = 'noteSavedInBoth'; // Ще каже БД, но е най-близко
+            else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal'; // Ще каже БД, но е най-близко
+            else msgKey = 'noteSavedInBoard';
+        }
 
         showToast(_(msgKey).replace('{boardName}', boardTitle));
     }
@@ -12779,9 +13162,17 @@ function showBoardReorderPopup() {
         const text = document.createElement('span');
         text.textContent = board.title;
         text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
-        if (board.status === 1) text.style.color = 'red';
-        else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) text.style.color = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-        else text.style.color = 'black';
+        if (board.status === 1) {
+            text.style.color = 'red';
+        } else if (board.colorfont !== undefined && !isNaN(board.colorfont)) {
+            if (board.colorfont === 1) text.style.color = '#FFFFFF';
+            else if (board.colorfont === 2) text.style.color = '#FF0000';
+            else if (board.colorfont === 3) text.style.color = '#0000FF';
+            else if (board.colorfont < 0) text.style.color = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+            else text.style.color = 'black';
+        } else {
+            text.style.color = 'black';
+        }
         item.appendChild(text);
         item.addEventListener('dragstart', (e) => {
             draggedItem = item;
