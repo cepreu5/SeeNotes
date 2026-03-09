@@ -320,20 +320,30 @@
                         style="margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
                         Нов борд</h2>
                     <div style="margin-bottom: 5px; margin-left: 15px; display: flex; align-items: center; gap: 10px;">
-                        <!--label data-key="boardPreviewLabel"
-                            style="flex: 0 0 80px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Преглед:</label-->
                         <div id="new-board-preview"
                             style="flex-direction: column; align-items: center; gap: 4px; margin-top: 5px; padding: 4px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); width: fit-content; align-self: flex-start;">
                             <span id="preview-tab" class="board-filter-link"
-                                style="display: inline-block; pointer-events: none; margin: 0; text-align: center; width: 60px; white-space: nowrap; border-radius: 8px 8px 0 0;"></span>
+                                style="display: inline-block; pointer-events: none; margin: 0; text-align: center; width: 126px; white-space: nowrap; border-radius: 8px 8px 0 0;"></span>
                             <div id="preview-bg"
-                                style="width: 85px; height: 60px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background-size: cover; background-position: center;">
+                                style="width: 140px; height: 60px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background-size: cover; background-position: center;">
                             </div>
                         </div>
                     </div>
                     <button class="modal-close"
                         style="position: static; font-size: 28px; background: none; border: none; cursor: pointer; color: white;">&times;</button>
                 </div>
+            </div>
+            <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                <label data-key="boardSelectLabel"
+                    style="flex: 0 0 80px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Редактиране:</label>
+                <select id="board-edit-select"
+                    style="flex: 1; height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 5px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
+                    <option value="" data-key="newBoardOption" style="background:#2c2c2c;">[Нов борд]</option>
+                </select>
+                <button id="board-reorder-btn" class="zoom-btn"
+                    style="padding: 0 10px; height: 36px; background: #607D8B; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 5px;">
+                    <span data-key="reorderBoards">Нареди</span>
+                </button>
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
                 <label data-key="boardTitleLabel"

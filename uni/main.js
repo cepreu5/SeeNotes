@@ -130,6 +130,9 @@ const attachmentIcons = [
     { type: 5, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>` },
     { type: 6, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="10" r="2"/><path d="M8 16c0-1.33 2.67-2 4-2s4 .67 4 2"/></svg>` }
 ];
+const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
+const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
+
 
 let currentLang = localStorage.getItem('language') || 'en';
 
@@ -8259,18 +8262,22 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         addBoardButtonEvents(trashLink, 'trash');
         allButtonLinks.push(trashLink);
     }
-    // --- БУТОН "НАРЕДИ" ---
+    // --- БУТОН "РЕДАКТИРАНЕ" (Предишен Нареди) ---
     const reorderLink = document.createElement('span');
-    reorderLink.textContent = _('reorderBoards') || 'Нареди';
+    reorderLink.innerHTML = pencilIconSvg; // Използваме иконата на моливче
     reorderLink.classList.add('board-filter-link', 'reorder-boards-btn');
     reorderLink.dataset.boardid = 'reorder';
     reorderLink.style.backgroundColor = '#607D8B';
     reorderLink.style.color = '#fff';
     reorderLink.style.cursor = 'pointer';
+    reorderLink.style.display = 'flex';
+    reorderLink.style.alignItems = 'center';
+    reorderLink.style.justifyContent = 'center';
+    reorderLink.title = _('reorderBoards') || 'Редактиране на бордове';
     reorderLink.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        showBoardReorderPopup();
+        showNewBoardModal(); // Вече отваряме модала за нов/редактиране на борд
     });
     allButtonLinks.push(reorderLink);
     maxWidthForButtons = 0;
@@ -8280,13 +8287,21 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     document.body.appendChild(tempContainer);
     allButtonLinks.forEach(link => {
         tempContainer.appendChild(link);
-        maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
+        if (link.dataset.boardid !== 'reorder') {
+            maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
+        }
     });
 
     document.body.removeChild(tempContainer);
     maxWidthForButtons += 10;
     allButtonLinks.forEach(link => {
-        link.style.width = `${maxWidthForButtons}px`;
+        if (link.dataset.boardid !== 'reorder') {
+            link.style.width = `${maxWidthForButtons}px`;
+        } else {
+            link.style.width = 'auto';
+            link.style.minWidth = '40px';
+            link.style.padding = '0 10px';
+        }
         contentEl.appendChild(link);
     });
 
@@ -11205,8 +11220,6 @@ async function updateAdvancedSettingsVisibility() {
 }
 
 // --- Edit Note on Ctrl+Click (DB Mode) ---
-const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
-const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
 const noCalendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><line x1="3" y1="3" x2="21" y2="21" /></svg>`;
 
 // Helper to parse format string into array of objects
@@ -13309,12 +13322,13 @@ async function showNewBoardModal() {
     const modal = document.getElementById('new-board-modal');
     if (!modal) return;
 
+    const editSelect = document.getElementById('board-edit-select');
+    const reorderBtn = document.getElementById('board-reorder-btn');
     const titleInput = document.getElementById('new-board-title');
     const colorsContainer = document.getElementById('new-board-colors');
     const fontColorsContainer = document.getElementById('new-board-font-colors');
     const backgroundsContainer = document.getElementById('new-board-backgrounds');
     const saveBtn = document.getElementById('save-new-board-btn');
-    const previewContainer = document.getElementById('new-board-preview');
     const previewTab = document.getElementById('preview-tab');
     const previewBg = document.getElementById('preview-bg');
 
@@ -13325,15 +13339,23 @@ async function showNewBoardModal() {
         closeBtn.style.right = '15px';
     }
 
-    titleInput.value = '';
-    colorsContainer.innerHTML = '';
-    fontColorsContainer.innerHTML = '';
-    backgroundsContainer.innerHTML = '';
-    //previewContainer.style.display = 'none';
+    // Попълване на dropdown-а с текущите бордове
+    if (editSelect) {
+        while (editSelect.options.length > 1) editSelect.remove(1);
+        boardsData.forEach(board => {
+            const opt = document.createElement('option');
+            opt.value = board.gdid || board.id;
+            opt.textContent = board.title;
+            opt.style.background = '#2c2c2c';
+            editSelect.appendChild(opt);
+        });
+        editSelect.value = "";
+    }
 
     let selectedColor = 0;
-    let selectedFontColor = 0; // 0 = Black, 1 = White
+    let selectedFontColor = 0;
     let selectedBackground = 0;
+    let currentEditingBoard = null;
 
     const bgNames = ['Board.png', 'Board1.png', 'Board2.png', 'Board3.png'];
     const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
@@ -13345,180 +13367,186 @@ async function showNewBoardModal() {
         previewTab.style.color = fontColors[selectedFontColor];
         previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
     }
+
+    function resetInputs(board = null) {
+        if (board) {
+            currentEditingBoard = board;
+            titleInput.value = board.title || "";
+            selectedColor = (typeof board.color === 'number') ? board.color : 0;
+            selectedFontColor = (typeof board.colorfont === 'number') ? board.colorfont : 0;
+            selectedBackground = (typeof board.backnum === 'number') ? board.backnum : 0;
+            saveBtn.textContent = _('updateButton') || "Обнови";
+        } else {
+            currentEditingBoard = null;
+            titleInput.value = "";
+            selectedColor = 0;
+            selectedFontColor = 0;
+            selectedBackground = 0;
+            saveBtn.textContent = _('submitButton') || "Потвърди";
+        }
+        renderColorOptions();
+        renderFontColorOptions();
+        renderBackgroundOptions();
+        updatePreview();
+    }
+
+    if (editSelect) {
+        editSelect.onchange = () => {
+            if (editSelect.value === "") {
+                resetInputs(null);
+            } else {
+                const board = boardsData.find(b => (b.gdid || b.id).toString() === editSelect.value.toString());
+                resetInputs(board);
+            }
+        };
+    }
+
+    if (reorderBtn) {
+        reorderBtn.onclick = () => {
+            modal.classList.remove('visible');
+            showBoardReorderPopup();
+        };
+    }
+    function renderColorOptions() {
+        colorsContainer.innerHTML = '';
+        for (let i = 0; i <= 6; i++) {
+            const colorDiv = document.createElement('div');
+            Object.assign(colorDiv.style, {
+                width: '24px', height: '24px', borderRadius: '50%',
+                backgroundColor: `var(--board-bg-${i})`, cursor: 'pointer',
+                border: (i === selectedColor) ? '2px solid #555' : '1px solid #ccc',
+                boxShadow: (i === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
+                transition: 'transform 0.1s', margin: 'auto'
+            });
+            colorDiv.onclick = () => {
+                selectedColor = i;
+                Array.from(colorsContainer.children).forEach((child, idx) => {
+                    child.style.border = (idx === selectedColor) ? '2px solid #555' : '1px solid #ccc';
+                    child.style.boxShadow = (idx === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
+                    child.style.transform = (idx === selectedColor) ? 'scale(1.1)' : 'scale(1)';
+                });
+                updatePreview();
+            };
+            if (i === selectedColor) colorDiv.style.transform = 'scale(1.1)';
+            colorsContainer.appendChild(colorDiv);
+        }
+    }
+
+    function renderFontColorOptions() {
+        fontColorsContainer.innerHTML = '';
+        fontColors.forEach((color, i) => {
+            const fcDiv = document.createElement('div');
+            Object.assign(fcDiv.style, {
+                width: '100%', maxWidth: '24px', aspectRatio: '1/1', borderRadius: '4px',
+                backgroundColor: color, cursor: 'pointer',
+                border: (i === selectedFontColor) ? '2px solid #555' : '1px solid #ccc',
+                boxShadow: (i === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
+                transition: 'transform 0.1s', margin: 'auto'
+            });
+            fcDiv.onclick = () => {
+                selectedFontColor = i;
+                Array.from(fontColorsContainer.children).forEach((child, idx) => {
+                    child.style.border = (idx === selectedFontColor) ? '2px solid #555' : '1px solid #ccc';
+                    child.style.boxShadow = (idx === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
+                    child.style.transform = (idx === selectedFontColor) ? 'scale(1.1)' : 'scale(1)';
+                });
+                updatePreview();
+            };
+            if (i === selectedFontColor) fcDiv.style.transform = 'scale(1.1)';
+            fontColorsContainer.appendChild(fcDiv);
+        });
+    }
+
+    function renderBackgroundOptions() {
+        backgroundsContainer.innerHTML = '';
+        for (let i = 0; i <= 3; i++) {
+            const bgDiv = document.createElement('div');
+            Object.assign(bgDiv.style, {
+                width: '100%', aspectRatio: '16/10', backgroundImage: `url('${bgNames[i]}')`,
+                backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', borderRadius: '4px',
+                border: (i === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc',
+                boxShadow: (i === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none',
+                transition: 'transform 0.1s'
+            });
+            bgDiv.onclick = () => {
+                selectedBackground = i;
+                Array.from(backgroundsContainer.children).forEach((child, idx) => {
+                    child.style.border = (idx === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc';
+                    child.style.boxShadow = (idx === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none';
+                    child.style.transform = (idx === selectedBackground) ? 'scale(1.05)' : 'scale(1)';
+                });
+                updatePreview();
+            };
+            if (i === selectedBackground) bgDiv.style.transform = 'scale(1.05)';
+            backgroundsContainer.appendChild(bgDiv);
+        }
+    }
+
     titleInput.oninput = updatePreview;
-
-    // Standard colors 0-6
-    for (let i = 0; i <= 6; i++) {
-        const colorDiv = document.createElement('div');
-        Object.assign(colorDiv.style, {
-            width: '24px',
-            height: '24px',
-            borderRadius: '50%',
-            backgroundColor: `var(--board-bg-${i})`,
-            cursor: 'pointer',
-            border: (i === selectedColor) ? '2px solid #555' : '1px solid #ccc',
-            boxShadow: (i === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
-            transition: 'transform 0.1s',
-            margin: 'auto'
-        });
-
-        colorDiv.onclick = () => {
-            selectedColor = i;
-            Array.from(colorsContainer.children).forEach((child, idx) => {
-                child.style.border = (idx === selectedColor) ? '2px solid #555' : '1px solid #ccc';
-                child.style.boxShadow = (idx === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
-                child.style.transform = (idx === selectedColor) ? 'scale(1.1)' : 'scale(1)';
-            });
-            updatePreview();
-        };
-        if (i === selectedColor) colorDiv.style.transform = 'scale(1.1)';
-        colorsContainer.appendChild(colorDiv);
-    }
-
-    // Font colors: Black, White, Red, Blue
-    fontColors.forEach((color, i) => {
-        const fcDiv = document.createElement('div');
-        Object.assign(fcDiv.style, {
-            width: '100%',
-            maxWidth: '24px',
-            aspectRatio: '1/1',
-            borderRadius: '4px',
-            backgroundColor: color,
-            cursor: 'pointer',
-            border: (i === selectedFontColor) ? '2px solid #555' : '1px solid #ccc',
-            boxShadow: (i === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
-            transition: 'transform 0.1s',
-            margin: 'auto'
-        });
-
-        fcDiv.onclick = () => {
-            selectedFontColor = i;
-            Array.from(fontColorsContainer.children).forEach((child, idx) => {
-                child.style.border = (idx === selectedFontColor) ? '2px solid #555' : '1px solid #ccc';
-                child.style.boxShadow = (idx === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
-                child.style.transform = (idx === selectedFontColor) ? 'scale(1.1)' : 'scale(1)';
-            });
-            updatePreview();
-        };
-        if (i === selectedFontColor) fcDiv.style.transform = 'scale(1.1)';
-        fontColorsContainer.appendChild(fcDiv);
-    });
-
-    // Standard backgrounds 0-3
-    for (let i = 0; i <= 3; i++) {
-        const bgDiv = document.createElement('div');
-        Object.assign(bgDiv.style, {
-            width: '100%',
-            aspectRatio: '16/10',
-            backgroundImage: `url('${bgNames[i]}')`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            cursor: 'pointer',
-            borderRadius: '4px',
-            border: (i === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc',
-            boxShadow: (i === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none',
-            transition: 'transform 0.1s'
-        });
-
-        bgDiv.onclick = () => {
-            selectedBackground = i;
-            Array.from(backgroundsContainer.children).forEach((child, idx) => {
-                child.style.border = (idx === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc';
-                child.style.boxShadow = (idx === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none';
-                child.style.transform = (idx === selectedBackground) ? 'scale(1.05)' : 'scale(1)';
-            });
-            updatePreview();
-        };
-        if (i === selectedBackground) bgDiv.style.transform = 'scale(1.05)';
-        backgroundsContainer.appendChild(bgDiv);
-    }
+    resetInputs();
 
     saveBtn.onclick = async () => {
         const title = titleInput.value.trim();
-        if (!title) {
-            showToast(_('errorEmptyTitle') || "Моля, въведете заглавие", 3000);
-            return;
-        }
-
-        trackMaxBoardIds(boardsData); // Ensure we have the latest max
-        boardIdCounter++;
-        localStorage.setItem('boardIdCounter', boardIdCounter.toString());
-
-        const now = Date.now();
-        const newBoard = {
-            "backcolor": 0,
-            "backnum": selectedBackground,
-            "backpath": "",
-            "color": selectedColor,
-            "colorfont": selectedFontColor,
-            "datemod": now,
-            "gdid": "",
-            "id": boardIdCounter,
-            "numord": boardIdCounter,
-            "status": 0,
-            "title": title
-        };
+        if (!title) { showToast(_('errorEmptyTitle') || "Моля, въведете заглавие", 3000); return; }
 
         modal.classList.remove('visible');
-        showToast(_('savingBoard') || "Записване на борд...", 2000);
+        showToast((currentEditingBoard ? (_('updatingBoard') || "Обновяване на борд...") : (_('savingBoard') || "Записване на борд...")), 2000);
+
+        const now = Date.now();
+        let boardToSave;
+
+        if (currentEditingBoard) {
+            boardToSave = { ...currentEditingBoard, "backnum": selectedBackground, "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "title": title };
+        } else {
+            trackMaxBoardIds(boardsData);
+            boardIdCounter++;
+            localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+            boardToSave = { "backcolor": 0, "backnum": selectedBackground, "backpath": "", "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "gdid": "", "id": boardIdCounter, "numord": boardIdCounter, "status": 0, "title": title };
+        }
 
         try {
             const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
-            const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
-
             if (updateGDriveNow) {
-                const folderId = await getFolderID();
-                if (folderId) {
-                    const fileName = `board.txt`;
-                    const gdid = await createGDriveFile(folderId, fileName, JSON.stringify(newBoard));
-                    newBoard.gdid = gdid;
-                    // Update with gdid included
-                    await updateGDriveFile(gdid, JSON.stringify(newBoard));
+                if (currentEditingBoard && currentEditingBoard.gdid) {
+                    await updateGDriveFile(currentEditingBoard.gdid, JSON.stringify(boardToSave));
+                } else {
+                    const folderId = await getFolderID();
+                    if (folderId) {
+                        const fileName = `board.txt`;
+                        const gdid = await createGDriveFile(folderId, fileName, JSON.stringify(boardToSave));
+                        boardToSave.gdid = gdid;
+                        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+                    }
                 }
             }
 
-            if (!newBoard.gdid && updateLocalFolderNow) {
-                newBoard.gdid = `LB${Date.now()}`;
+            if (currentEditingBoard) {
+                const idx = boardsData.findIndex(b => b.id === boardToSave.id);
+                if (idx !== -1) boardsData[idx] = boardToSave;
+            } else {
+                boardsData.push(boardToSave);
+                try {
+                    const raw = localStorage.getItem('boardMenuOrder');
+                    const order = raw ? JSON.parse(raw) : [];
+                    const newId = String(boardToSave.gdid || boardToSave.id);
+                    if (!order.includes(newId)) { order.push(newId); localStorage.setItem('boardMenuOrder', JSON.stringify(order)); }
+                } catch (e) { }
             }
 
-            if (!newBoard.gdid) {
-                newBoard.gdid = newBoard.id.toString();
-            }
+            if (useIndexedDb) await bulkPutDB(BOARD_STORE_NAME, boardToSave, true);
 
-            if (updateLocalFolderNow && newBoard.gdid) {
-                await updateLocalFile(newBoard.gdid, JSON.stringify(newBoard));
-            }
-
-            if (useIndexedDb) {
-                await bulkPutDB(BOARD_STORE_NAME, newBoard, true);
-            }
-
-            boardsData.push(newBoard);
-            // Добавяме новия борд в края на запазения ред
-            try {
-                const raw = localStorage.getItem('boardMenuOrder');
-                const order = raw ? JSON.parse(raw) : [];
-                const newId = String(newBoard.gdid || newBoard.id);
-                if (!order.includes(newId)) {
-                    order.push(newId);
-                    localStorage.setItem('boardMenuOrder', JSON.stringify(order));
-                }
-            } catch (e) { /* ignore */ }
-
-            // Close existing board menu if any and re-render
             const boardsNote = document.querySelector('header .boards-note');
             if (boardsNote) boardsNote.remove();
 
             await renderUI({ boardParseError: false });
-            showToast(_('boardSaved') || "Бордът е записан успешно", 3000);
+            showToast(_('settingsSavedSuccess'));
 
         } catch (error) {
-            console.error("Failed to create board:", error);
-            showToast(_('errorSaveBoard') || "Грешка при запис на борд", 5000);
+            console.error("Board operation failed:", error);
+            showToast("Error: " + error.message, 5000);
         }
     };
 
-    updatePreview();
     modal.classList.add('visible');
 }
 
