@@ -4319,28 +4319,37 @@ async function initLoginPage() {
         console.warn("Error checking cache in initLoginPage:", e);
     }
 
+    const licenseData = await decryptLicenseToken();
+    const isLicenseExpired = hasS && !licenseData.pass;
+
+    // --- UI Messaging Logic ---
+    if (isLicenseExpired) {
+        const loginPrompt = document.querySelector('[data-key="loginPrompt"]');
+        if (loginPrompt) {
+            loginPrompt.setAttribute('data-key', 'invalidCertificate');
+            loginPrompt.innerHTML = _('invalidCertificate');
+        }
+    }
+
     if (isOffline) {
-        // Offline Mode: Show "Start Offline" if we have data ('s')
+        // Offline Mode: Show "Start Offline" only if we have data ('s') and license is still OK
         if (authBtn) {
             authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
-            authBtn.style.display = hasS ? 'inline-block' : 'none'; // Only show if we have 's'
+            authBtn.style.display = (hasS && !isLicenseExpired) ? 'inline-block' : 'none';
             authBtn.disabled = false;
-            // Remove old listener to avoid duplicates if called multiple times? 
-            // Better: relying on handleAuthClick which handles isOffline check.
         }
         if (trialBtn) trialBtn.style.display = 'none'; // No trial in offline mode
     } else {
-        // Online Mode: Restore original logic
+        // Online Mode
         if (authBtn) {
             authBtn.textContent = (typeof _ === 'function') ? _('authorizeButton') : "Authorize with Google";
-            // If we have 's', show Auth. Else hide.
-            authBtn.style.display = hasS ? 'inline-block' : 'none';
+            // Show Auth if we have trial started and it's not expired
+            authBtn.style.display = (hasS && !isLicenseExpired) ? 'inline-block' : 'none';
             authBtn.disabled = false;
         }
         if (trialBtn) {
-            // If we DO NOT have 's', show Trial. Else hide.
+            // Show Trial button only if we haven't started one yet
             trialBtn.style.display = !hasS ? 'inline-block' : 'none';
-            // Ensure text is correct (might have been changed by goOffline previously)
             trialBtn.textContent = (typeof _ === 'function') ? _('trialButton') : "Start 30-day trial period";
         }
     }
