@@ -331,5 +331,10 @@ bg: {
         errorNoBoards: 'Моля, създайте първо борд, преди да добавяте бележки.',
         selectFolderOption: 'Избор на папка...',
         selectFolderPrompt: 'Въведете име на съществуваща папка в Google Drive:',
-        errorFolderNotFoundDrive: 'Папката не е намерена в Google Drive.'
+        errorFolderNotFoundDrive: 'Папката не е намерена в Google Drive.',
+        deleteFolderLabel: 'Изтрий',
+        confirmDeleteFolder: 'Сигурни ли сте, че искате да изтриете папка "{folderName}" и цялото ѝ съдържание?',
+        folderDeletedSuccess: 'Папката е изтрита успешно.',
+        errorDeleteFolder: 'Грешка при изтриване на папката.',
+        selectFolderToDelete: 'Изберете папка за изтриване:'
     }

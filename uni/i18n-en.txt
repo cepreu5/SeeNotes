@@ -131,6 +131,7 @@ en: {
         sysInfoUser: 'User',
         sysInfoLastGDSync: 'Last Google Drive Sync',
         sysInfoLastLocalSync: 'Last Local Sync',
+        sysInfoLoadTime: 'Initial load time (GDrive)',
         sysInfoAttachmentLinks: 'Attachment Links',
         sysInfoDbCreatedFrom: 'DB created from',
         sysInfoDbOwner: 'DB Owner',
@@ -329,6 +330,10 @@ en: {
         migrationError: 'Error copying data.',
         errorNoBoards: 'Please create a board first before adding notes.',
         selectFolderOption: 'Select folder...',
-        selectFolderPrompt: 'Enter the name of an existing folder in Google Drive:',
-        errorFolderNotFoundDrive: 'Folder not found in Google Drive.'
+        errorFolderNotFoundDrive: 'Folder not found in Google Drive.',
+        deleteFolderLabel: 'Delete',
+        confirmDeleteFolder: 'Are you sure you want to delete folder "{folderName}" and all its contents?',
+        folderDeletedSuccess: 'Folder deleted successfully.',
+        errorDeleteFolder: 'Error deleting folder.',
+        selectFolderToDelete: 'Select a folder to delete:'
     }

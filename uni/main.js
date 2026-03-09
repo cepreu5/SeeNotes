@@ -57,6 +57,7 @@ let authToken = null;
 let token;
 let ts; // Време на първо стартиране на приложението
 let tokenRemainingDays = null; // Остават дни валидност на токена
+let activeFolderName = localStorage.getItem('active_folder_name') || 'multinotes_data'; // Текуща папка в Google Drive
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
@@ -98,7 +99,6 @@ let localFileMap = new Map(); // Карта за съответствие GDID -
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
-let activeFolderName = localStorage.getItem('active_folder_name') || 'multinotes_data';
 console.log(`[Startup] Active folder: ${activeFolderName}`);
 let folderIdPromptPopup, folderIdInput, submitFolderIdBtn;
 
@@ -3175,6 +3175,52 @@ function showConfirmation(message, options = {}) {
         popup.classList.add('show');
     });
 }
+function showPrompt(message, defaultValue = '') {
+    return new Promise(resolve => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        const messagePara = popup.querySelector('p');
+        const okButton = document.getElementById('submitFolderIdBtn');
+        const folderIdInput = document.getElementById('folderIdInput');
+        let noButton = document.getElementById('prompt-no-btn');
+        if (!noButton) {
+            noButton = document.createElement('button');
+            noButton.id = 'prompt-no-btn';
+            noButton.className = 'zoom-btn settings-close-btn';
+            noButton.style.marginLeft = '10px';
+            okButton.parentNode.appendChild(noButton);
+        }
+
+        messagePara.textContent = message;
+        folderIdInput.style.display = 'block';
+        folderIdInput.value = defaultValue;
+        okButton.textContent = _('submitButton');
+        noButton.textContent = _('cancel') || 'Cancel';
+        noButton.style.display = 'inline-block';
+
+        const cleanup = () => {
+            popup.classList.remove('show');
+            okButton.removeEventListener('click', onOk);
+            noButton.removeEventListener('click', onCancel);
+            noButton.style.display = 'none';
+            okButton.addEventListener('click', handleSubmitFolderId);
+        };
+        const onOk = () => {
+            const val = folderIdInput.value;
+            cleanup();
+            resolve(val);
+        };
+        const onCancel = () => {
+            cleanup();
+            resolve(null);
+        };
+
+        okButton.removeEventListener('click', handleSubmitFolderId);
+        okButton.addEventListener('click', onOk);
+        noButton.addEventListener('click', onCancel);
+        popup.classList.add('show');
+        folderIdInput.focus();
+    });
+}
 
 /**
  * Добавя event listeners към елемент за разпознаване на "long press" или Ctrl+клик.
@@ -4198,7 +4244,7 @@ function initApp() {
             // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
             const content = [
                 `${_('sysInfoUser')}: ${currentUserEmail}`,
-                `${_('activeFolderLabel')}: ${activeFolderName}`,
+                `${_('activeFolderLabel')} ${activeFolderName}`,
                 `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
                 `${_('sysInfoLoadTime')}: ${initialLoadTime ? initialLoadTime + ' s' + (loadTimeDate ? ' (' + loadTimeDate + ')' : '') : _('noData')}`,
                 `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedFolderName ? ' (' + dbCreatedFolderName + ')' : ''}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
@@ -8533,46 +8579,9 @@ async function createSettingsUI(boardsData, boardParseError) {
     const activeFolderSelect = document.getElementById('active-folder-select');
     if (!settingsModalBody.dataset.initialized) {
         // Active Folder Logic
+        // Active Folder Logic
         if (activeFolderSelect) {
-            const defaultFolder = 'multinotes_data';
-            const populateFoldersDropdown = () => {
-                let folderNamesStr = localStorage.getItem('gdrive_folder_names');
-                let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
-                if (!folderNames.includes(defaultFolder)) folderNames.unshift(defaultFolder);
-
-                const currentFolder = localStorage.getItem('active_folder_name') || defaultFolder;
-                if (!folderNames.includes(currentFolder)) folderNames.push(currentFolder);
-
-                Array.from(activeFolderSelect.options).forEach(opt => {
-                    if (opt.value !== 'select_folder' && opt.value !== 'new_folder') {
-                        opt.remove();
-                    }
-                });
-
-                // Вмъкваме опциите за папките ПРЕДИ стационарните опции "Избор на папка..." и "Нова папка..."
-                const insertBeforeNode = activeFolderSelect.querySelector('option[value="select_folder"]') || activeFolderSelect.firstChild;
-
-                folderNames.forEach(name => {
-                    // Проверяваме да не го добавим два пъти, ако функцията се извика пак
-                    if (!activeFolderSelect.querySelector(`option[value="${name}"]`)) {
-                        const option = document.createElement('option');
-                        option.value = name;
-                        option.textContent = name;
-                        if (name === currentFolder) option.selected = true;
-                        activeFolderSelect.insertBefore(option, insertBeforeNode);
-                    }
-                });
-            };
-
-            const selectOption = document.createElement('option');
-            selectOption.value = 'select_folder';
-            selectOption.textContent = _('selectFolderOption') || 'Избор на папка...';
-            activeFolderSelect.appendChild(selectOption);
-
-            const newOption = document.createElement('option');
-            newOption.value = 'new_folder';
-            newOption.textContent = _('newFolderOption');
-            activeFolderSelect.appendChild(newOption);
+            populateFoldersDropdown();
 
             // Попълването на dropdown-а се прави при Ctrl+click/long press (Разширени настройки)
 
@@ -8586,7 +8595,10 @@ async function createSettingsUI(boardsData, boardParseError) {
                 if (selectedValue === 'new_folder' || selectedValue === 'select_folder') {
                     const isNew = selectedValue === 'new_folder';
                     const promptMsg = isNew ? _('newFolderPrompt') : (_('selectFolderPrompt') || 'Въведете име на съществуваща папка:');
-                    const folderNameInput = prompt(promptMsg);
+
+                    // Използваме нашия нов асинхронен prompt
+                    const folderNameInput = await showPrompt(promptMsg);
+
                     if (folderNameInput && folderNameInput.trim()) {
                         targetFolderName = folderNameInput.trim();
                         try {
@@ -8597,24 +8609,24 @@ async function createSettingsUI(boardsData, boardParseError) {
                                 targetFolderId = await getFolderIDByName(targetFolderName);
                                 if (!targetFolderId) {
                                     if (typeof showToast === 'function') showToast(_('errorFolderNotFoundDrive') || 'Папката не е намерена.');
-                                    activeFolderSelect.value = currentFolder;
+                                    activeFolderSelect.value = activeFolderName;
                                     return;
                                 }
                             }
                         } catch (e) {
                             if (typeof showToast === 'function') showToast(isNew ? _('errorCreateFolder') : (_('errorFolderNotFoundDrive') || 'Папката не е намерена.'));
-                            activeFolderSelect.value = currentFolder;
+                            activeFolderSelect.value = activeFolderName;
                             return;
                         }
                     } else {
-                        activeFolderSelect.value = currentFolder;
+                        activeFolderSelect.value = activeFolderName;
                         return;
                     }
                 } else {
                     targetFolderName = selectedValue;
                 }
 
-                if (targetFolderName === currentFolder) return;
+                if (targetFolderName === activeFolderName) return;
 
                 try {
                     if (!targetFolderId) {
@@ -8625,7 +8637,9 @@ async function createSettingsUI(boardsData, boardParseError) {
                         console.log(`[Folder-Switch] Changing folder to: "${targetFolderName}" (ID: ${targetFolderId})`);
                         const isEmpty = await isGDriveFolderEmpty(targetFolderId);
                         if (isEmpty) {
-                            if (confirm(_('confirmMigration'))) {
+                            // Използваме нашето асинхронно потвърждение
+                            const confirmed = await showConfirmation(_('confirmMigration'));
+                            if (confirmed) {
                                 await migrateDataToNewFolder(targetFolderId);
                             }
                         }
@@ -8664,833 +8678,839 @@ async function createSettingsUI(boardsData, boardParseError) {
                 } catch (err) {
                     console.error("Error switching folder:", err);
                     showToast(_('errorLoadSettings'));
-                    activeFolderSelect.value = currentFolder;
+                    activeFolderSelect.value = activeFolderName;
                 }
             });
         }
-        // Hide Assistant Logic
-        if (hideAssistantCheckbox) {
-            hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
-            hideAssistantCheckbox.addEventListener('change', () => {
-                const isChecked = hideAssistantCheckbox.checked;
-                localStorage.setItem('hideAssistant', isChecked);
-                const fabButton = document.getElementById('kb-fab');
-                if (fabButton) {
-                    fabButton.style.display = isChecked ? 'none' : 'block';
-                }
-                // Ако скрием асистента, скриваме и промо бележката веднага
-                if (isChecked) {
-                    if (promoNoteElement) {
-                        promoNoteElement.style.display = 'none';
-                    }
-                    // Изчистваме флаговете за затворени промо бележки, за да се покажат отново при включване
-                    Object.keys(localStorage).forEach(key => {
-                        if (key.startsWith('dismissedPromo_')) {
-                            localStorage.removeItem(key);
-                        }
-                    });
-                }
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        // Zooom
-        const updateZoom = (value) => {
-            value = Math.max(25, Math.min(175, parseInt(value, 10)));
-            if (isNaN(value)) value = 100;
-            notesContainer.style.zoom = value / 100;
-            scaleSlider.value = value;
-            scaleInput.value = value;
-        };
-        let savedZoom = localStorage.getItem('zoomLevel');
-        if (savedZoom) {
-            scaleSlider.value = savedZoom;
-            updateZoom(savedZoom);
-        } else {
-            updateZoom(scaleSlider.value);
-        }
-        let opacityTimeout;
-        const settingsModal = document.getElementById('settings-modal');
-        const startOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '0.7';
-        };
-        const endOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '1';
-        };
-        const scaleDecBtn = document.getElementById('scaleDecBtn');
-        const scaleIncBtn = document.getElementById('scaleIncBtn');
-        const stepBtnOpacity = () => {
-            startOpacityChange();
-            if (opacityTimeout) clearTimeout(opacityTimeout);
-            opacityTimeout = setTimeout(endOpacityChange, 1500);
-        };
-        if (scaleDecBtn) {
-            scaleDecBtn.addEventListener('click', () => {
-                let val = parseInt(scaleInput.value, 10) || 100;
-                val = Math.max(25, val - 1);
-                updateZoom(val);
-                localStorage.setItem('zoomLevel', val);
-                stepBtnOpacity();
-            });
-        }
-        if (scaleIncBtn) {
-            scaleIncBtn.addEventListener('click', () => {
-                let val = parseInt(scaleInput.value, 10) || 100;
-                val = Math.min(175, val + 1);
-                updateZoom(val);
-                localStorage.setItem('zoomLevel', val);
-                stepBtnOpacity();
-            });
-        }
-        const applyBtn = document.getElementById('applyZoomBtn');
-        // Listeners for migrated settings
-        const closeAfterSaveCheckbox = document.getElementById('close-after-save-checkbox');
-        if (closeAfterSaveCheckbox) {
-            closeAfterSaveCheckbox.checked = localStorage.getItem('closeAfterSave') === 'true';
-            closeAfterSaveCheckbox.addEventListener('change', () => {
-                localStorage.setItem('closeAfterSave', closeAfterSaveCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const updateGDriveCheckbox = document.getElementById('update-gdrive-checkbox');
-        if (updateGDriveCheckbox) {
-            updateGDriveCheckbox.checked = localStorage.getItem('updateGDrive') === 'true';
-            updateGDriveCheckbox.addEventListener('change', () => {
-                localStorage.setItem('updateGDrive', updateGDriveCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const updateLocalFolderCheckbox = document.getElementById('update-local-folder-checkbox');
-        if (updateLocalFolderCheckbox) {
-            updateLocalFolderCheckbox.checked = localStorage.getItem('updateLocalFolder') === 'true';
-            updateLocalFolderCheckbox.addEventListener('change', () => {
-                localStorage.setItem('updateLocalFolder', updateLocalFolderCheckbox.checked);
-                updateLocalFolder = updateLocalFolderCheckbox.checked;
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const forceGDriveReadCheckbox = document.getElementById('force-gdrive-read-checkbox');
-        if (forceGDriveReadCheckbox) {
-            forceGDriveReadCheckbox.checked = localStorage.getItem('forceGDriveRead') === 'true';
-            forceGDriveReadCheckbox.addEventListener('change', () => {
-                localStorage.setItem('forceGDriveRead', forceGDriveReadCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const checkEmptyBoardsCheckbox = document.getElementById('check-empty-boards-checkbox');
-        if (checkEmptyBoardsCheckbox) {
-            checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
-            checkEmptyBoardsCheckbox.addEventListener('change', () => {
-                localStorage.setItem('checkEmptyBoards', checkEmptyBoardsCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        const automatedTimerCheckbox = document.getElementById('automated-timer-checkbox');
-        if (automatedTimerCheckbox) {
-            automatedTimerCheckbox.checked = localStorage.getItem('automatedTimer') !== 'false';
-            automatedTimerCheckbox.addEventListener('change', () => {
-                localStorage.setItem('automatedTimer', automatedTimerCheckbox.checked);
-                automatedTimer = automatedTimerCheckbox.checked;
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        // --- Markdown Symbols Settings ---
-        const mdBoldInput = document.getElementById('md-bold-input');
-        const mdItalicInput = document.getElementById('md-italic-input');
-        const mdStrikeInput = document.getElementById('md-strike-input');
-        const mdUnderlineInput = document.getElementById('md-underline-input');
-        const mdClearInput = document.getElementById('md-clear-input');
-
-        const setupMdInput = (input, storageKey, defaultValue) => {
-            if (input) {
-                input.value = localStorage.getItem(storageKey) || defaultValue;
-                input.addEventListener('change', () => {
-                    localStorage.setItem(storageKey, input.value);
-                    showToast(_('settingSaved'), 2000);
-                });
+    }
+    // Hide Assistant Logic
+    if (hideAssistantCheckbox) {
+        hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
+        hideAssistantCheckbox.addEventListener('change', () => {
+            const isChecked = hideAssistantCheckbox.checked;
+            localStorage.setItem('hideAssistant', isChecked);
+            const fabButton = document.getElementById('kb-fab');
+            if (fabButton) {
+                fabButton.style.display = isChecked ? 'none' : 'block';
             }
-        };
-
-        setupMdInput(mdBoldInput, 'mdBold', '**');
-        setupMdInput(mdItalicInput, 'mdItalic', '*');
-        setupMdInput(mdStrikeInput, 'mdStrike', '~~');
-        setupMdInput(mdUnderlineInput, 'mdUnderline', '_');
-        setupMdInput(mdClearInput, 'mdClear', '--');
-
-        applyBtn.addEventListener('click', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-            showToast(_('settingSaved'), 2000);
-            // Keep transparency for 5 seconds
-            if (typeof startOpacityChange === 'function') {
-                startOpacityChange();
-                if (opacityTimeout) clearTimeout(opacityTimeout);
-                opacityTimeout = setTimeout(() => {
-                    endOpacityChange();
-                }, 5000);
-            }
-        });
-        scaleInput.addEventListener('change', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-        });
-        scaleSlider.addEventListener('input', () => {
-            const zoomValue = scaleSlider.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-        });
-        // --- Прозрачност при използване на плъзгача ---
-        scaleSlider.addEventListener('mousedown', startOpacityChange);
-        scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
-        scaleSlider.addEventListener('mouseup', endOpacityChange);
-        scaleSlider.addEventListener('touchend', endOpacityChange);
-        scaleSlider.addEventListener('mouseleave', endOpacityChange); // За всеки случай
-        scaleSlider.addEventListener('click', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                let currentValue = parseInt(scaleSlider.value, 10);
-                let newValue;
-                if (currentValue % 10 === 0) {
-                    newValue = currentValue + 10;
-                } else {
-                    newValue = Math.round(currentValue / 10) * 10;
-                }
-                const max = parseInt(scaleSlider.max, 10);
-                const min = parseInt(scaleSlider.min, 10);
-                if (newValue > max) newValue = max;
-                if (newValue < min) newValue = min;
-                scaleSlider.value = newValue;
-                updateZoom(newValue);
-                localStorage.setItem('zoomLevel', newValue);
-            }
-        });
-        // Make modal transparent when typing in scaleInput
-        scaleInput.addEventListener('focus', () => {
-            startOpacityChange();
-            if (opacityTimeout) clearTimeout(opacityTimeout);
-        });
-        scaleInput.addEventListener('blur', endOpacityChange);
-        // Fonts
-        const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
-            const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
-            fontSizes.forEach(size => {
-                const option = document.createElement('option');
-                option.value = size;
-                option.textContent = `${size}px`;
-                selectElement.appendChild(option);
-            });
-            selectElement.value = localStorage.getItem(storageKey) || defaultValue;
-            // Apply initial value
-            targetUpdate(selectElement.value);
-            selectElement.addEventListener('change', () => {
-                const value = selectElement.value;
-                localStorage.setItem(storageKey, value);
-                targetUpdate(value);
-                showToast(_('settingSaved'), 2000);
-            });
-        };
-        setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
-        setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
-        // Date
-        showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
-        showDatemodCheckbox.addEventListener('change', () => {
-            const isChecked = showDatemodCheckbox.checked;
-            localStorage.setItem('showDatemod', isChecked);
-            document.body.classList.toggle('hide-datemod', !isChecked);
-            showToast(_('settingSaved'), 2000);
-        });
-        // One-tap links
-        oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
-        oneTapLinkCheckbox.addEventListener('change', () => {
-            const isChecked = oneTapLinkCheckbox.checked;
-            localStorage.setItem('oneTapLink', isChecked);
-            showToast(_('settingSaved'), 2000);
-            // Затваряме настройките, за да се вижда презареждането
-            document.getElementById('settings-modal').classList.remove('visible');
-            // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
-            renderUI({ boardParseError: false });
-        });
-        // Click to edit
-        if (clickToEditCheckbox) {
-            clickToEditCheckbox.checked = localStorage.getItem('clickToEdit') !== 'false'; // Default to true
-            clickToEditCheckbox.addEventListener('change', () => {
-                localStorage.setItem('clickToEdit', clickToEditCheckbox.checked);
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        // Hide Toast info messages
-        isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
-        if (hideToastCheckbox) {
-            hideToastCheckbox.checked = isToastHidden;
-            hideToastCheckbox.addEventListener('change', () => {
-                isToastHidden = hideToastCheckbox.checked;
-                localStorage.setItem('hideToast', isToastHidden.toString());
-                if (!isToastHidden) {
-                    showToast(_('settingSaved'), 2000);
-                }
-            });
-        }
-        // Graphical background
-        const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
-        imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
-        imgBgrdCheckbox.addEventListener('change', () => {
-            const isChecked = imgBgrdCheckbox.checked;
-            localStorage.setItem('imgBgrd', isChecked);
-            showToast(_('settingSaved'), 2000);
-        });
-        // Graphical background (notes list)
-        const notesBgrdCheckbox = document.getElementById('notes-bgrd-checkbox');
-        notesBgrdCheckbox.checked = localStorage.getItem('notesBgrd') !== 'false'; // Default to true
-        notesBgrdCheckbox.addEventListener('change', () => {
-            const isChecked = notesBgrdCheckbox.checked;
-            localStorage.setItem('notesBgrd', isChecked);
-            showToast(_('settingSaved'), 2000);
-            notesBgrdChanged = true;
-        });
-        // Board Note Count
-        if (showBoardNoteCountCheckbox) {
-            showBoardNoteCountCheckbox.checked = localStorage.getItem('showBoardNoteCount') === 'true';
-            showBoardNoteCountCheckbox.addEventListener('change', async () => {
-                localStorage.setItem('showBoardNoteCount', showBoardNoteCountCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                // Просто презареждаме менюто. renderUI ще се погрижи за показването/скриването.
-                await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'All' Board Checkbox
-        if (showBoardAllCheckbox) {
-            showBoardAllCheckbox.checked = localStorage.getItem('showBoardAll') !== 'false'; // Default to true
-            showBoardAllCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showBoardAll', showBoardAllCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Reminders' Board Checkbox
-        if (showBoardRemindCheckbox) {
-            showBoardRemindCheckbox.checked = localStorage.getItem('showBoardRemind') !== 'false'; // Default to true
-            showBoardRemindCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showBoardRemind', showBoardRemindCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Photos' Board Checkbox
-        if (showPhotosBoardCheckbox) {
-            showPhotosBoardCheckbox.checked = localStorage.getItem('showPhotosBoard') === 'true';
-            showPhotosBoardCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showPhotosBoard', showPhotosBoardCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Videos' Board Checkbox
-        if (showVideosBoardCheckbox) {
-            showVideosBoardCheckbox.checked = localStorage.getItem('showVideosBoard') === 'true';
-            showVideosBoardCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showVideosBoard', showVideosBoardCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Sounds' Board Checkbox
-        if (showSoundsBoardCheckbox) {
-            showSoundsBoardCheckbox.checked = localStorage.getItem('showSoundsBoard') === 'true';
-            showSoundsBoardCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showSoundsBoard', showSoundsBoardCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Show 'Other' Board Checkbox
-        if (showOtherBoardCheckbox) {
-            showOtherBoardCheckbox.checked = localStorage.getItem('showOtherBoard') === 'true';
-            showOtherBoardCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showOtherBoard', showOtherBoardCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            });
-        }
-        // Weekly Calendar Checkbox
-        if (weeklyCalendarCheckbox) {
-            weeklyCalendarCheckbox.checked = localStorage.getItem('showWeeklyCalendar') === 'true';
-            weeklyCalendarCheckbox.addEventListener('change', () => {
-                localStorage.setItem('showWeeklyCalendar', weeklyCalendarCheckbox.checked.toString());
-                showToast(_('settingSaved'), 2000);
-                // No need to rerender, it's checked on calendar view open
-            });
-        }
-        // Order checkbox
-        orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
-        const sortingOptionsSection = document.getElementById('sorting-options-section');
-        const sortingArrow = document.getElementById('sorting-arrow');
-        const boardsOptionsSection = document.getElementById('boards-options-section');
-        const boardsArrow = document.getElementById('boards-arrow');
-        // Event listener for the checkbox itself
-        orderCheckbox.addEventListener('change', () => {
-            localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
-            applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
-            showToast(_('settingSaved'), 2000);
-        });
-        // Event listener for the arrow ONLY
-        sortingArrow.addEventListener('click', () => {
-            const isActive = sortingOptionsSection.style.display === 'block';
-            sortingOptionsSection.style.display = isActive ? 'none' : 'block';
-            // Animate arrow rotation
-            sortingArrow.style.transition = 'transform 0.3s ease';
-            sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
-        });
-        // Event listener for the arrow ONLY
-        boardsArrow.addEventListener('click', () => {
-            const isActive = boardsOptionsSection.style.display === 'block';
-            boardsOptionsSection.style.display = isActive ? 'none' : 'block';
-            // Animate arrow rotation
-            boardsArrow.style.transition = 'transform 0.3s ease';
-            boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
-        });
-        // Sorting options
-        const sortCriteriaRadios = document.querySelectorAll('input[name="sort-criteria"]');
-        const savedSortCriteria = localStorage.getItem('sortCriteria') || 'numord';
-        sortCriteriaRadios.forEach(radio => {
-            if (radio.value === savedSortCriteria) {
-                radio.checked = true;
-            }
-            radio.addEventListener('change', () => {
-                if (radio.checked) {
-                    // Автоматично активиране на сортирането при избор на критерий
-                    if (!orderCheckbox.checked) {
-                        orderCheckbox.checked = true;
-                        localStorage.setItem('enableNoteSorting', 'true');
-                    }
-                    localStorage.setItem('sortCriteria', radio.value);
-                    applyFilters();
-                    showToast(_('settingSaved'), 2000);
-                }
-            });
-        });
-        const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
-        sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
-        sortReverseCheckbox.addEventListener('change', () => {
-            // Автоматично активиране на сортирането
-            if (!orderCheckbox.checked) {
-                orderCheckbox.checked = true;
-                localStorage.setItem('enableNoteSorting', 'true');
-            }
-            localStorage.setItem('sortInReverse', sortReverseCheckbox.checked);
-            applyFilters();
-            showToast(_('settingSaved'), 2000);
-        });
-        const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
-        sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
-        sortRemindersTopCheckbox.addEventListener('change', () => {
-            // Автоматично активиране на сортирането
-            if (!orderCheckbox.checked) {
-                orderCheckbox.checked = true;
-                localStorage.setItem('enableNoteSorting', 'true');
-            }
-            localStorage.setItem('sortRemindersTop', sortRemindersTopCheckbox.checked);
-            applyFilters();
-            showToast(_('settingSaved'), 2000);
-        });
-        // Start Board
-        let startBoardSelect; // Declare here to be accessible in the whole function
-        startBoardSelect = document.getElementById('start-board-select');
-        startBoardSelect.value = localStorage.getItem('startBoard') || 'Main';
-        startBoardSelect.addEventListener('change', () => {
-            localStorage.setItem('startBoard', startBoardSelect.value);
-            showToast(_('settingSaved'), 2000);
-        });
-        // Max Searches
-        // let maxSearchesInput; // Declare here as well
-        maxSearchesInput.value = maxSavedSearches;
-        maxSearchesInput.addEventListener('change', () => {
-            let newValue = parseInt(maxSearchesInput.value, 10);
-            if (isNaN(newValue) || newValue < 0) newValue = 0;
-            if (newValue > 20) newValue = 20;
-            maxSavedSearches = newValue;
-            localStorage.setItem('maxSavedSearches', newValue);
-            // Trim existing searches if new limit is smaller
-            if (savedSearches.length > maxSavedSearches) {
-                savedSearches.length = maxSavedSearches;
-                localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-            }
-            showToast(_('settingSaved'), 2000);
-        });
-        // --- New Data Source Selection Logic ---
-        const dataSources = [
-            { checkbox: useGoogleDbCheckbox, key: 'useGoogleDb' },
-            { checkbox: useLocalDbCheckbox, key: 'useLocalDb' },
-            { checkbox: useArhDbCheckbox, key: 'useArhDb' }
-        ];
-        const handleDataSourceChange = (changedCheckbox, changedKey) => {
-            // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
-            if (!changedCheckbox.checked && !dbExists) {
-                showToast(_('errorNoDataSourceSelected'), 5000);
-                // Не позволяваме премахването, като връщаме отметката
-                changedCheckbox.checked = true;
-                return;
-            }
-            if (changedCheckbox.checked) {
-                // Преди да запишем в localStorage, проверяваме дали имаме избрана папка
-                if (changedKey === 'useLocalDb' || changedKey === 'useArhDb') {
-                    const display = (changedKey === 'useLocalDb') ?
-                        document.getElementById('local-sync-folder-name') :
-                        document.getElementById('arh-folder-name');
-
-                    if (!display || display.textContent === _('folderNotSelected')) {
-                        // Не записваме в localStorage, махаме отметката и отваряме избора на папка
-                        changedCheckbox.checked = false;
-                        const btnId = (changedKey === 'useLocalDb') ? 'select-folder-btn' : 'select-arh-btn';
-                        document.getElementById(btnId).click();
-                        return;
-                    }
-                }
-                // Uncheck all other data sources
-                dataSources.forEach(({ checkbox, key }) => {
-                    if (key !== changedKey) {
-                        checkbox.checked = false;
-                        localStorage.setItem(key, 'false');
-                    }
-                });
-            }
-            // Save the state of the changed checkbox
-            localStorage.setItem(changedKey, changedCheckbox.checked);
-            showToast(_('settingSaved'), 2000);
-            updateModeButton();
-        };
-        dataSources.forEach(({ checkbox, key }) => {
-            checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key));
-        });
-        // indexedDB
-        const dbSectionWrapper = document.getElementById('db-section-wrapper');
-        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-        // Задаваме първоначалното състояние на чекбокса от localStorage
-        useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-        // Add event listeners
-        useIndexedDbCheckbox.addEventListener('change', async (e) => {
-            const isChecked = e.target.checked;
-            localStorage.setItem('useIndexedDb', isChecked);
-            // --- КОРЕКЦИЯ: Само ако базата НЕ съществува, симулираме клик на "Създай" ---
+            // Ако скрием асистента, скриваме и промо бележката веднага
             if (isChecked) {
-                if (!dbExists) {
-                    document.getElementById('create-db-btn').click();
-                } else {
-                    updateGlobalStateFlags();
-                    updateModeButton();
-                    showToast(_('settingSaved'), 2000);
+                if (promoNoteElement) {
+                    promoNoteElement.style.display = 'none';
                 }
+                // Изчистваме флаговете за затворени промо бележки, за да се покажат отново при включване
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith('dismissedPromo_')) {
+                        localStorage.removeItem(key);
+                    }
+                });
+            }
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    // Zooom
+    const updateZoom = (value) => {
+        value = Math.max(25, Math.min(175, parseInt(value, 10)));
+        if (isNaN(value)) value = 100;
+        notesContainer.style.zoom = value / 100;
+        scaleSlider.value = value;
+        scaleInput.value = value;
+    };
+    let savedZoom = localStorage.getItem('zoomLevel');
+    if (savedZoom) {
+        scaleSlider.value = savedZoom;
+        updateZoom(savedZoom);
+    } else {
+        updateZoom(scaleSlider.value);
+    }
+    let opacityTimeout;
+    const settingsModal = document.getElementById('settings-modal');
+    const startOpacityChange = () => {
+        if (settingsModal) settingsModal.style.opacity = '0.7';
+    };
+    const endOpacityChange = () => {
+        if (settingsModal) settingsModal.style.opacity = '1';
+    };
+    const scaleDecBtn = document.getElementById('scaleDecBtn');
+    const scaleIncBtn = document.getElementById('scaleIncBtn');
+    const stepBtnOpacity = () => {
+        startOpacityChange();
+        if (opacityTimeout) clearTimeout(opacityTimeout);
+        opacityTimeout = setTimeout(endOpacityChange, 1500);
+    };
+    if (scaleDecBtn) {
+        scaleDecBtn.addEventListener('click', () => {
+            let val = parseInt(scaleInput.value, 10) || 100;
+            val = Math.max(25, val - 1);
+            updateZoom(val);
+            localStorage.setItem('zoomLevel', val);
+            stepBtnOpacity();
+        });
+    }
+    if (scaleIncBtn) {
+        scaleIncBtn.addEventListener('click', () => {
+            let val = parseInt(scaleInput.value, 10) || 100;
+            val = Math.min(175, val + 1);
+            updateZoom(val);
+            localStorage.setItem('zoomLevel', val);
+            stepBtnOpacity();
+        });
+    }
+    const applyBtn = document.getElementById('applyZoomBtn');
+    // Listeners for migrated settings
+    const closeAfterSaveCheckbox = document.getElementById('close-after-save-checkbox');
+    if (closeAfterSaveCheckbox) {
+        closeAfterSaveCheckbox.checked = localStorage.getItem('closeAfterSave') === 'true';
+        closeAfterSaveCheckbox.addEventListener('change', () => {
+            localStorage.setItem('closeAfterSave', closeAfterSaveCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    const updateGDriveCheckbox = document.getElementById('update-gdrive-checkbox');
+    if (updateGDriveCheckbox) {
+        updateGDriveCheckbox.checked = localStorage.getItem('updateGDrive') === 'true';
+        updateGDriveCheckbox.addEventListener('change', () => {
+            localStorage.setItem('updateGDrive', updateGDriveCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    const updateLocalFolderCheckbox = document.getElementById('update-local-folder-checkbox');
+    if (updateLocalFolderCheckbox) {
+        updateLocalFolderCheckbox.checked = localStorage.getItem('updateLocalFolder') === 'true';
+        updateLocalFolderCheckbox.addEventListener('change', () => {
+            localStorage.setItem('updateLocalFolder', updateLocalFolderCheckbox.checked);
+            updateLocalFolder = updateLocalFolderCheckbox.checked;
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    const forceGDriveReadCheckbox = document.getElementById('force-gdrive-read-checkbox');
+    if (forceGDriveReadCheckbox) {
+        forceGDriveReadCheckbox.checked = localStorage.getItem('forceGDriveRead') === 'true';
+        forceGDriveReadCheckbox.addEventListener('change', () => {
+            localStorage.setItem('forceGDriveRead', forceGDriveReadCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    const checkEmptyBoardsCheckbox = document.getElementById('check-empty-boards-checkbox');
+    if (checkEmptyBoardsCheckbox) {
+        checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
+        checkEmptyBoardsCheckbox.addEventListener('change', () => {
+            localStorage.setItem('checkEmptyBoards', checkEmptyBoardsCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    const automatedTimerCheckbox = document.getElementById('automated-timer-checkbox');
+    if (automatedTimerCheckbox) {
+        automatedTimerCheckbox.checked = localStorage.getItem('automatedTimer') !== 'false';
+        automatedTimerCheckbox.addEventListener('change', () => {
+            localStorage.setItem('automatedTimer', automatedTimerCheckbox.checked);
+            automatedTimer = automatedTimerCheckbox.checked;
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    // --- Markdown Symbols Settings ---
+    const mdBoldInput = document.getElementById('md-bold-input');
+    const mdItalicInput = document.getElementById('md-italic-input');
+    const mdStrikeInput = document.getElementById('md-strike-input');
+    const mdUnderlineInput = document.getElementById('md-underline-input');
+    const mdClearInput = document.getElementById('md-clear-input');
+
+    const setupMdInput = (input, storageKey, defaultValue) => {
+        if (input) {
+            input.value = localStorage.getItem(storageKey) || defaultValue;
+            input.addEventListener('change', () => {
+                localStorage.setItem(storageKey, input.value);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
+    };
+
+    setupMdInput(mdBoldInput, 'mdBold', '**');
+    setupMdInput(mdItalicInput, 'mdItalic', '*');
+    setupMdInput(mdStrikeInput, 'mdStrike', '~~');
+    setupMdInput(mdUnderlineInput, 'mdUnderline', '_');
+    setupMdInput(mdClearInput, 'mdClear', '--');
+
+    applyBtn.addEventListener('click', () => {
+        const zoomValue = scaleInput.value;
+        updateZoom(zoomValue);
+        localStorage.setItem('zoomLevel', zoomValue);
+        showToast(_('settingSaved'), 2000);
+        // Keep transparency for 5 seconds
+        if (typeof startOpacityChange === 'function') {
+            startOpacityChange();
+            if (opacityTimeout) clearTimeout(opacityTimeout);
+            opacityTimeout = setTimeout(() => {
+                endOpacityChange();
+            }, 5000);
+        }
+    });
+    scaleInput.addEventListener('change', () => {
+        const zoomValue = scaleInput.value;
+        updateZoom(zoomValue);
+        localStorage.setItem('zoomLevel', zoomValue);
+    });
+    scaleSlider.addEventListener('input', () => {
+        const zoomValue = scaleSlider.value;
+        updateZoom(zoomValue);
+        localStorage.setItem('zoomLevel', zoomValue);
+    });
+    // --- Прозрачност при използване на плъзгача ---
+    scaleSlider.addEventListener('mousedown', startOpacityChange);
+    scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
+    scaleSlider.addEventListener('mouseup', endOpacityChange);
+    scaleSlider.addEventListener('touchend', endOpacityChange);
+    scaleSlider.addEventListener('mouseleave', endOpacityChange); // За всеки случай
+    scaleSlider.addEventListener('click', (e) => {
+        if (e.ctrlKey) {
+            e.preventDefault();
+            let currentValue = parseInt(scaleSlider.value, 10);
+            let newValue;
+            if (currentValue % 10 === 0) {
+                newValue = currentValue + 10;
+            } else {
+                newValue = Math.round(currentValue / 10) * 10;
+            }
+            const max = parseInt(scaleSlider.max, 10);
+            const min = parseInt(scaleSlider.min, 10);
+            if (newValue > max) newValue = max;
+            if (newValue < min) newValue = min;
+            scaleSlider.value = newValue;
+            updateZoom(newValue);
+            localStorage.setItem('zoomLevel', newValue);
+        }
+    });
+    // Make modal transparent when typing in scaleInput
+    scaleInput.addEventListener('focus', () => {
+        startOpacityChange();
+        if (opacityTimeout) clearTimeout(opacityTimeout);
+    });
+    scaleInput.addEventListener('blur', endOpacityChange);
+    // Fonts
+    const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
+        const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
+        fontSizes.forEach(size => {
+            const option = document.createElement('option');
+            option.value = size;
+            option.textContent = `${size}px`;
+            selectElement.appendChild(option);
+        });
+        selectElement.value = localStorage.getItem(storageKey) || defaultValue;
+        // Apply initial value
+        targetUpdate(selectElement.value);
+        selectElement.addEventListener('change', () => {
+            const value = selectElement.value;
+            localStorage.setItem(storageKey, value);
+            targetUpdate(value);
+            showToast(_('settingSaved'), 2000);
+        });
+    };
+    setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
+    setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
+    // Date
+    showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
+    showDatemodCheckbox.addEventListener('change', () => {
+        const isChecked = showDatemodCheckbox.checked;
+        localStorage.setItem('showDatemod', isChecked);
+        document.body.classList.toggle('hide-datemod', !isChecked);
+        showToast(_('settingSaved'), 2000);
+    });
+    // One-tap links
+    oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
+    oneTapLinkCheckbox.addEventListener('change', () => {
+        const isChecked = oneTapLinkCheckbox.checked;
+        localStorage.setItem('oneTapLink', isChecked);
+        showToast(_('settingSaved'), 2000);
+        // Затваряме настройките, за да се вижда презареждането
+        document.getElementById('settings-modal').classList.remove('visible');
+        // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
+        renderUI({ boardParseError: false });
+    });
+    // Click to edit
+    if (clickToEditCheckbox) {
+        clickToEditCheckbox.checked = localStorage.getItem('clickToEdit') !== 'false'; // Default to true
+        clickToEditCheckbox.addEventListener('change', () => {
+            localStorage.setItem('clickToEdit', clickToEditCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    // Hide Toast info messages
+    isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
+    if (hideToastCheckbox) {
+        hideToastCheckbox.checked = isToastHidden;
+        hideToastCheckbox.addEventListener('change', () => {
+            isToastHidden = hideToastCheckbox.checked;
+            localStorage.setItem('hideToast', isToastHidden.toString());
+            if (!isToastHidden) {
+                showToast(_('settingSaved'), 2000);
+            }
+        });
+    }
+    // Graphical background
+    const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
+    imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+    imgBgrdCheckbox.addEventListener('change', () => {
+        const isChecked = imgBgrdCheckbox.checked;
+        localStorage.setItem('imgBgrd', isChecked);
+        showToast(_('settingSaved'), 2000);
+    });
+    // Graphical background (notes list)
+    const notesBgrdCheckbox = document.getElementById('notes-bgrd-checkbox');
+    notesBgrdCheckbox.checked = localStorage.getItem('notesBgrd') !== 'false'; // Default to true
+    notesBgrdCheckbox.addEventListener('change', () => {
+        const isChecked = notesBgrdCheckbox.checked;
+        localStorage.setItem('notesBgrd', isChecked);
+        showToast(_('settingSaved'), 2000);
+        notesBgrdChanged = true;
+    });
+    // Board Note Count
+    if (showBoardNoteCountCheckbox) {
+        showBoardNoteCountCheckbox.checked = localStorage.getItem('showBoardNoteCount') === 'true';
+        showBoardNoteCountCheckbox.addEventListener('change', async () => {
+            localStorage.setItem('showBoardNoteCount', showBoardNoteCountCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            // Просто презареждаме менюто. renderUI ще се погрижи за показването/скриването.
+            await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        });
+    }
+    // Show 'All' Board Checkbox
+    if (showBoardAllCheckbox) {
+        showBoardAllCheckbox.checked = localStorage.getItem('showBoardAll') !== 'false'; // Default to true
+        showBoardAllCheckbox.addEventListener('change', () => {
+            localStorage.setItem('showBoardAll', showBoardAllCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        });
+    }
+    // Show 'Reminders' Board Checkbox
+    if (showBoardRemindCheckbox) {
+        showBoardRemindCheckbox.checked = localStorage.getItem('showBoardRemind') !== 'false'; // Default to true
+        showBoardRemindCheckbox.addEventListener('change', () => {
+            localStorage.setItem('showBoardRemind', showBoardRemindCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        });
+    }
+    // Show 'Photos' Board Checkbox
+    if (showPhotosBoardCheckbox) {
+        showPhotosBoardCheckbox.checked = localStorage.getItem('showPhotosBoard') === 'true';
+        showPhotosBoardCheckbox.addEventListener('change', () => {
+            localStorage.setItem('showPhotosBoard', showPhotosBoardCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        });
+    }
+    // Show 'Videos' Board Checkbox
+    if (showVideosBoardCheckbox) {
+        showVideosBoardCheckbox.checked = localStorage.getItem('showVideosBoard') === 'true';
+        showVideosBoardCheckbox.addEventListener('change', () => {
+            localStorage.setItem('showVideosBoard', showVideosBoardCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        });
+    }
+    // Show 'Sounds' Board Checkbox
+    if (showSoundsBoardCheckbox) {
+        showSoundsBoardCheckbox.checked = localStorage.getItem('showSoundsBoard') === 'true';
+        showSoundsBoardCheckbox.addEventListener('change', () => {
+            localStorage.setItem('showSoundsBoard', showSoundsBoardCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        });
+    }
+    // Show 'Other' Board Checkbox
+    if (showOtherBoardCheckbox) {
+        showOtherBoardCheckbox.checked = localStorage.getItem('showOtherBoard') === 'true';
+        showOtherBoardCheckbox.addEventListener('change', () => {
+            localStorage.setItem('showOtherBoard', showOtherBoardCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        });
+    }
+    // Weekly Calendar Checkbox
+    if (weeklyCalendarCheckbox) {
+        weeklyCalendarCheckbox.checked = localStorage.getItem('showWeeklyCalendar') === 'true';
+        weeklyCalendarCheckbox.addEventListener('change', () => {
+            localStorage.setItem('showWeeklyCalendar', weeklyCalendarCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            // No need to rerender, it's checked on calendar view open
+        });
+    }
+    // Order checkbox
+    orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
+    const sortingOptionsSection = document.getElementById('sorting-options-section');
+    const sortingArrow = document.getElementById('sorting-arrow');
+    const boardsOptionsSection = document.getElementById('boards-options-section');
+    const boardsArrow = document.getElementById('boards-arrow');
+    // Event listener for the checkbox itself
+    orderCheckbox.addEventListener('change', () => {
+        localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
+        applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
+        showToast(_('settingSaved'), 2000);
+    });
+    // Event listener for the arrow ONLY
+    sortingArrow.addEventListener('click', () => {
+        const isActive = sortingOptionsSection.style.display === 'block';
+        sortingOptionsSection.style.display = isActive ? 'none' : 'block';
+        // Animate arrow rotation
+        sortingArrow.style.transition = 'transform 0.3s ease';
+        sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+    });
+    // Event listener for the arrow ONLY
+    boardsArrow.addEventListener('click', () => {
+        const isActive = boardsOptionsSection.style.display === 'block';
+        boardsOptionsSection.style.display = isActive ? 'none' : 'block';
+        // Animate arrow rotation
+        boardsArrow.style.transition = 'transform 0.3s ease';
+        boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
+    });
+    // Sorting options
+    const sortCriteriaRadios = document.querySelectorAll('input[name="sort-criteria"]');
+    const savedSortCriteria = localStorage.getItem('sortCriteria') || 'numord';
+    sortCriteriaRadios.forEach(radio => {
+        if (radio.value === savedSortCriteria) {
+            radio.checked = true;
+        }
+        radio.addEventListener('change', () => {
+            if (radio.checked) {
+                // Автоматично активиране на сортирането при избор на критерий
+                if (!orderCheckbox.checked) {
+                    orderCheckbox.checked = true;
+                    localStorage.setItem('enableNoteSorting', 'true');
+                }
+                localStorage.setItem('sortCriteria', radio.value);
+                applyFilters();
+                showToast(_('settingSaved'), 2000);
+            }
+        });
+    });
+    const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
+    sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
+    sortReverseCheckbox.addEventListener('change', () => {
+        // Автоматично активиране на сортирането
+        if (!orderCheckbox.checked) {
+            orderCheckbox.checked = true;
+            localStorage.setItem('enableNoteSorting', 'true');
+        }
+        localStorage.setItem('sortInReverse', sortReverseCheckbox.checked);
+        applyFilters();
+        showToast(_('settingSaved'), 2000);
+    });
+    const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
+    sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
+    sortRemindersTopCheckbox.addEventListener('change', () => {
+        // Автоматично активиране на сортирането
+        if (!orderCheckbox.checked) {
+            orderCheckbox.checked = true;
+            localStorage.setItem('enableNoteSorting', 'true');
+        }
+        localStorage.setItem('sortRemindersTop', sortRemindersTopCheckbox.checked);
+        applyFilters();
+        showToast(_('settingSaved'), 2000);
+    });
+    // Start Board
+    let startBoardSelect; // Declare here to be accessible in the whole function
+    startBoardSelect = document.getElementById('start-board-select');
+    startBoardSelect.value = localStorage.getItem('startBoard') || 'Main';
+    startBoardSelect.addEventListener('change', () => {
+        localStorage.setItem('startBoard', startBoardSelect.value);
+        showToast(_('settingSaved'), 2000);
+    });
+    // Max Searches
+    // let maxSearchesInput; // Declare here as well
+    maxSearchesInput.value = maxSavedSearches;
+    maxSearchesInput.addEventListener('change', () => {
+        let newValue = parseInt(maxSearchesInput.value, 10);
+        if (isNaN(newValue) || newValue < 0) newValue = 0;
+        if (newValue > 20) newValue = 20;
+        maxSavedSearches = newValue;
+        localStorage.setItem('maxSavedSearches', newValue);
+        // Trim existing searches if new limit is smaller
+        if (savedSearches.length > maxSavedSearches) {
+            savedSearches.length = maxSavedSearches;
+            localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+        }
+        showToast(_('settingSaved'), 2000);
+    });
+    // --- New Data Source Selection Logic ---
+    const dataSources = [
+        { checkbox: useGoogleDbCheckbox, key: 'useGoogleDb' },
+        { checkbox: useLocalDbCheckbox, key: 'useLocalDb' },
+        { checkbox: useArhDbCheckbox, key: 'useArhDb' }
+    ];
+    const handleDataSourceChange = (changedCheckbox, changedKey) => {
+        // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
+        if (!changedCheckbox.checked && !dbExists) {
+            showToast(_('errorNoDataSourceSelected'), 5000);
+            // Не позволяваме премахването, като връщаме отметката
+            changedCheckbox.checked = true;
+            return;
+        }
+        if (changedCheckbox.checked) {
+            // Преди да запишем в localStorage, проверяваме дали имаме избрана папка
+            if (changedKey === 'useLocalDb' || changedKey === 'useArhDb') {
+                const display = (changedKey === 'useLocalDb') ?
+                    document.getElementById('local-sync-folder-name') :
+                    document.getElementById('arh-folder-name');
+
+                if (!display || display.textContent === _('folderNotSelected')) {
+                    // Не записваме в localStorage, махаме отметката и отваряме избора на папка
+                    changedCheckbox.checked = false;
+                    const btnId = (changedKey === 'useLocalDb') ? 'select-folder-btn' : 'select-arh-btn';
+                    document.getElementById(btnId).click();
+                    return;
+                }
+            }
+            // Uncheck all other data sources
+            dataSources.forEach(({ checkbox, key }) => {
+                if (key !== changedKey) {
+                    checkbox.checked = false;
+                    localStorage.setItem(key, 'false');
+                }
+            });
+        }
+        // Save the state of the changed checkbox
+        localStorage.setItem(changedKey, changedCheckbox.checked);
+        showToast(_('settingSaved'), 2000);
+        updateModeButton();
+    };
+    dataSources.forEach(({ checkbox, key }) => {
+        checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key));
+    });
+    // indexedDB
+    // Задаваме първоначалното състояние на чекбокса от localStorage
+    useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+    // Add event listeners
+    useIndexedDbCheckbox.addEventListener('change', async (e) => {
+        const isChecked = e.target.checked;
+        localStorage.setItem('useIndexedDb', isChecked);
+        // --- КОРЕКЦИЯ: Само ако базата НЕ съществува, симулираме клик на "Създай" ---
+        if (isChecked) {
+            if (!dbExists) {
+                document.getElementById('create-db-btn').click();
             } else {
                 updateGlobalStateFlags();
                 updateModeButton();
                 showToast(_('settingSaved'), 2000);
             }
-        });
-        // Accordion logic
-        const accordionHeader = document.querySelector('.accordion-header');
-        if (accordionHeader) {
-            accordionHeader.addEventListener('click', () => {
-                const accordion = accordionHeader.parentElement;
-                accordion.classList.toggle('active');
-                const content = accordion.querySelector('.accordion-content');
-                const advancedSettingsDiv = document.getElementById('advanced-settings');
-                const dataFoldersDiv = document.getElementById('data-folders');
-                const settingsModalBody = document.getElementById('settings-modal-body');
-
-                if (content.style.maxHeight) {
-                    content.style.maxHeight = null;
-                    if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'none'; // Hide content when collapsed
-                    if (dataFoldersDiv) {
-                        dataFoldersDiv.style.maxHeight = null;
-                        dataFoldersDiv.style.display = 'none';
-                    }
-                    if (settingsModalBody) {
-                        settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара, ако е бил скрит
-                    }
-                } else {
-                    if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'block'; // Show content before calculating height
-                    if (dataFoldersDiv) {
-                        dataFoldersDiv.style.display = 'block';
-                        dataFoldersDiv.style.maxHeight = dataFoldersDiv.scrollHeight + "px";
-                    }
-                    content.style.maxHeight = content.scrollHeight + "px";
-
-                    // Скролираме модала надолу, за да видим отворената секция
-                    if (settingsModalBody) {
-                        // Временно скриваме скролбара, докато се скролира
-                        settingsModalBody.style.overflowY = 'hidden';
-                        // Изчакваме анимацията на акордеона да завърши (300ms)
-                        setTimeout(() => {
-                            settingsModalBody.scrollTo({
-                                top: settingsModalBody.scrollHeight,
-                                behavior: 'smooth'
-                            });
-                            // Изчакваме и скролирането да приключи (още около 500ms)
-                            setTimeout(() => {
-                                settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара
-                            }, 500);
-                        }, 300);
-                    }
-                }
-            });
-        }
-        // --- End of DB Section ---
-        // DB delete
-        const createDbBtn = document.getElementById('create-db-btn');
-        createDbBtn.addEventListener('click', async () => {
-            let confirmed = false;
-            // Проверяваме дали базата съществува И дали не е празна.
-            const boardsInDb = dbExists ? await getAllFromDB(BOARD_STORE_NAME) : [];
-            if (dbExists && boardsInDb.length > 0) {
-                // Показваме диалог за потвърждение само ако базата съществува и има данни.
-                document.getElementById('settings-modal').classList.remove('visible');
-                updateModeButton();
-                await new Promise(resolve => setTimeout(resolve, 150));
-                confirmed = await showConfirmation(_('confirmDbRecreate'));
-
-                if (!confirmed) {
-                    // Ако потребителят откаже презапис, проверяваме дали данните съвпадат
-                    const memBoards = (typeof boardsData !== 'undefined') ? boardsData : [];
-                    if (!areBoardsIdentical(memBoards, boardsInDb)) {
-                        // Вече само предупреждаваме, без да блокираме
-                        console.warn("DB Identity Check: Some boards in DB not found in current memory. This might be normal during state transitions.");
-                        dbExists = true;
-                        updateGlobalStateFlags();
-                        updateModeButton();
-                        return; // Спираме процеса тук, но не махаме отметката
-                    }
-                    // Ако са идентични, позволяваме включването без презапис
-                    dbExists = true;
-                    updateGlobalStateFlags();
-                    updateModeButton();
-                    return;
-                }
-            } else {
-                // Ако базата не съществува или е празна, продължаваме директно със създаването.
-                confirmed = true;
-            }
-            if (confirmed) {
-                const success = await createDatabaseFromMemory();
-                if (success) {
-                    showToast(_('dbCreated'), 10000);
-                    dbExists = true;
-                    // --- КОРЕКЦИЯ: Автоматично включваме отметката при успешно създаване ---
-                    const cb = document.getElementById('use-indexeddb-checkbox');
-                    if (cb) {
-                        cb.checked = true;
-                        localStorage.setItem('useIndexedDb', 'true');
-                        updateGlobalStateFlags();
-                        updateModeButton();
-                    }
-                }
-            }
-        });
-        const deleteDbBtn = document.getElementById('delete-db-btn');
-        deleteDbBtn.addEventListener('click', async () => {
-            // --- КОРЕКЦИЯ: Запомняме дали сме в режим "Само база данни" ПРЕДИ изтриването ---
-            const isDbOnlyMode =
-                document.getElementById('use-indexeddb-checkbox').checked &&
-                !document.getElementById('use-google-db-checkbox').checked &&
-                !document.getElementById('use-local-db-checkbox').checked &&
-                !document.getElementById('use-arh-db-checkbox').checked;
-            // Затваряме настройките, за да се видят диалозите за потвърждение
-            document.getElementById('settings-modal').classList.remove('visible');
-            // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
-            await new Promise(resolve => setTimeout(resolve, 150));
-            const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
-            if (confirmedDataDelete) {
-                const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
-                    backgroundColor: '#lightgreen', // Light red background for warning
-                    width: '450px'
-                });
-                if (confirmedConfigDelete) {
-                    // Потребителят иска да изтрие всичко, включително настройките
-                    await deleteNotesDB();
-                    // Нулираме UI елементите за избраните папки
-                    const folderNameDisplay = document.getElementById('local-sync-folder-name');
-                    const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-                    if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
-                    if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
-                    dbExists = false; // Актуализираме глобалния флаг
-                    // --- НОВА ЛОГИКА: Премахваме отметките за локални източници ---
-                    const localCheckbox = document.getElementById('use-local-db-checkbox');
-                    const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                    if (localCheckbox) localCheckbox.checked = false;
-                    if (arhCheckbox) arhCheckbox.checked = false;
-                    localStorage.setItem('useLocalDb', 'false');
-                    localStorage.setItem('useArhDb', 'false');
-                    dirHandle = null; // Нулираме и handle-a в паметта
-                } else {
-                    // Потребителят иска да изтрие само данните, но да запази настройките
-                    await clearDbStores();
-                }
-                // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
-                localStorage.removeItem('startBoard');
-                // --- НОВА МИНИМАЛНА КОРЕКЦИЯ ---
-                // След успешно изтриване, ВИНАГИ премахваме отметката и обновяваме localStorage.
-                showToast(_('dbDeleted'), 5000);
-                const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-                useIndexedDbCheckbox.checked = false;
-                localStorage.setItem('useIndexedDb', 'false');
-                // Ако сме били в режим "Само база данни", автоматично включваме Google Drive
-                if (isDbOnlyMode) {
-                    localStorage.setItem('useGoogleDb', 'true');
-                    document.getElementById('use-google-db-checkbox').checked = true;
-                    updateGlobalStateFlags();
-                }
-                // --- КОРЕКЦИЯ: Актуализираме иконата за режим веднага ---
-                updateModeButton();
-            } else {
-                // Ако потребителят откаже изтриването, отваряме настройките отново, за да не остава празен екран.
-                document.getElementById('settings-modal').classList.add('visible');
-            }
-            // Активираме контролите, в случай че са били деактивирани от userCheck
-            enableSettingsControls();
-        });
-        // --- Local Sync Folder ---
-        const selectFolderBtn = document.getElementById('select-folder-btn');
-        const folderNameDisplay = document.getElementById('local-sync-folder-name');
-        selectFolderBtn.addEventListener('click', async () => {
-            try {
-                const handle = await window.showDirectoryPicker();
-                if (handle) {
-                    const validationResult = await validateFolderContent(handle);
-                    if (!validationResult.isValid) {
-                        let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
-                        if (validationResult.reason === 'criteria_not_met') {
-                            warningMessage += " " + _('requiredFilesForLocalFolder');
-                        }
-                        showToast(warningMessage, 15000);
-                        return;
-                    }
-                    await saveConfig('directoryHandle', handle);
-                    dirHandle = handle;
-                    folderNameDisplay.textContent = handle.name;
-                    folderNameDisplay.title = handle.name;
-                    showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-
-                    // Актуализираме отметката и localStorage
-                    const localCheckbox = document.getElementById('use-local-db-checkbox');
-                    if (localCheckbox) localCheckbox.checked = true;
-                    localStorage.setItem('useLocalDb', 'true');
-
-                    // Изключваме другите източници
-                    localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('useArhDb', 'false');
-                    const googleCheckbox = document.getElementById('use-google-db-checkbox');
-                    const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                    if (googleCheckbox) googleCheckbox.checked = false;
-                    if (arhCheckbox) arhCheckbox.checked = false;
-
-                    const settingsModal = document.getElementById('settings-modal');
-                    const settings2Modal = document.getElementById('settings2-modal');
-                    if (settingsModal) settingsModal.classList.remove('visible');
-                    if (settings2Modal) settings2Modal.classList.remove('visible');
-
-                    updateModeButton();
-                    mainLogic();
-                }
-            } catch (error) {
-                if (error.name !== 'AbortError') {
-                    console.log("Error selecting directory:", error);
-                }
-            }
-        });
-        // --- Archive Folder Setting ---
-        const selectArhBtn = document.getElementById('select-arh-btn');
-        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-        selectArhBtn.addEventListener('click', async () => {
-            try {
-                const handle = await window.showDirectoryPicker(); // Prompt user to select
-                if (handle) {
-                    const validationArh = await validateArhFolderContent(handle);
-                    if (!validationArh.isValid) {
-                        let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
-                        if (validationArh.reason === 'criteria_not_met') {
-                            warningMessage += " " + _('requiredFilesForLocalFolder');
-                        }
-                        showToast(warningMessage, 15000);
-                        return;
-                    }
-                    arhFolderNameDisplay.textContent = handle.name;
-                    arhFolderNameDisplay.title = handle.name;
-                    dirHandle = handle; // <--- ДОБАВЕН РЕД
-                    await saveConfig('arhHandle', handle); // Запазваме избраната папка
-
-                    // Актуализираме отметката и localStorage
-                    const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                    if (arhCheckbox) arhCheckbox.checked = true;
-                    localStorage.setItem('useArhDb', 'true');
-
-                    // Изключваме другите източници
-                    localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('useLocalDb', 'false');
-                    const googleCheckbox = document.getElementById('use-google-db-checkbox');
-                    const localCheckbox = document.getElementById('use-local-db-checkbox');
-                    if (googleCheckbox) googleCheckbox.checked = false;
-                    if (localCheckbox) localCheckbox.checked = false;
-
-                    const settingsModal = document.getElementById('settings-modal');
-                    const settings2Modal = document.getElementById('settings2-modal');
-                    if (settingsModal) settingsModal.classList.remove('visible');
-                    if (settings2Modal) settings2Modal.classList.remove('visible');
-
-                    showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
-                    // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
-                    updateGlobalStateFlags();
-
-                    updateModeButton();
-                    // След избор, просто презареждаме основната логика,
-                    // която вече ще види, че е избран режим "Архив".
-                    mainLogic();
-                }
-            } catch (error) {
-                if (error.name !== 'AbortError') {
-                    console.log("Error selecting directory:", error);
-                }
-            }
-        });
-        // Close
-        /*const settingsCloseBtn = */
-        document.getElementById('settings-close-btn').addEventListener('click', async () => {
-            /* const configData = await exportConfig();
-            console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
-            const currentState = {
-                useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
-                useLocalDb: document.getElementById('use-local-db-checkbox').checked,
-                useArhDb: document.getElementById('use-arh-db-checkbox').checked,
-                useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
-            };
-
-            // --- STRICT VALIDATION FIRST ---
+        } else {
             updateGlobalStateFlags();
-            if (!validateDataSourceSelection()) {
-                // If validation fails, DO NOT close the modal.
-                // toast is shown by validateDataSourceSelection
+            updateModeButton();
+            showToast(_('settingSaved'), 2000);
+        }
+    });
+    // Accordion logic
+    const accordionHeader = document.querySelector('.accordion-header');
+    if (accordionHeader) {
+        accordionHeader.addEventListener('click', () => {
+            const accordion = accordionHeader.parentElement;
+            accordion.classList.toggle('active');
+            const content = accordion.querySelector('.accordion-content');
+            const advancedSettingsDiv = document.getElementById('advanced-settings');
+            const dataFoldersDiv = document.getElementById('data-folders');
+            const settingsModalBody = document.getElementById('settings-modal-body');
+
+            if (content.style.maxHeight) {
+                content.style.maxHeight = null;
+                if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'none'; // Hide content when collapsed
+                if (dataFoldersDiv) {
+                    dataFoldersDiv.style.maxHeight = null;
+                    dataFoldersDiv.style.display = 'none';
+                }
+                if (settingsModalBody) {
+                    settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара, ако е бил скрит
+                }
+            } else {
+                if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'block'; // Show content before calculating height
+                if (dataFoldersDiv) {
+                    dataFoldersDiv.style.display = 'block';
+                    dataFoldersDiv.style.maxHeight = dataFoldersDiv.scrollHeight + "px";
+                }
+                content.style.maxHeight = content.scrollHeight + "px";
+
+                // Скролираме модала надолу, за да видим отворената секция
+                if (settingsModalBody) {
+                    // Временно скриваме скролбара, докато се скролира
+                    settingsModalBody.style.overflowY = 'hidden';
+                    // Изчакваме анимацията на акордеона да завърши (300ms)
+                    setTimeout(() => {
+                        settingsModalBody.scrollTo({
+                            top: settingsModalBody.scrollHeight,
+                            behavior: 'smooth'
+                        });
+                        // Изчакваме и скролирането да приключи (още около 500ms)
+                        setTimeout(() => {
+                            settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара
+                        }, 500);
+                    }, 300);
+                }
+            }
+        });
+    }
+    // --- End of DB Section ---
+    // DB delete
+    const createDbBtn = document.getElementById('create-db-btn');
+    createDbBtn.addEventListener('click', async () => {
+        let confirmed = false;
+        // Проверяваме дали базата съществува И дали не е празна.
+        const boardsInDb = dbExists ? await getAllFromDB(BOARD_STORE_NAME) : [];
+        if (dbExists && boardsInDb.length > 0) {
+            // Показваме диалог за потвърждение само ако базата съществува и има данни.
+            document.getElementById('settings-modal').classList.remove('visible');
+            updateModeButton();
+            await new Promise(resolve => setTimeout(resolve, 150));
+            confirmed = await showConfirmation(_('confirmDbRecreate'));
+
+            if (!confirmed) {
+                // Ако потребителят откаже презапис, проверяваме дали данните съвпадат
+                const memBoards = (typeof boardsData !== 'undefined') ? boardsData : [];
+                if (!areBoardsIdentical(memBoards, boardsInDb)) {
+                    // Вече само предупреждаваме, без да блокираме
+                    console.warn("DB Identity Check: Some boards in DB not found in current memory. This might be normal during state transitions.");
+                    dbExists = true;
+                    updateGlobalStateFlags();
+                    updateModeButton();
+                    return; // Спираме процеса тук, но не махаме отметката
+                }
+                // Ако са идентични, позволяваме включването без презапис
+                dbExists = true;
+                updateGlobalStateFlags();
+                updateModeButton();
                 return;
             }
-
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (window.kbAssistant) window.kbAssistant.terminateGuide();
-            // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
-            updateModeButton();
-            const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
-            if (window.wasOpenedForMissingFolder) {
-                window.wasOpenedForMissingFolder = false; // Нулираме флага
-                mainLogic(); // Извикваме основната логика отново
-            } else if (hasChanged) {
-                mainLogic(); // Извикваме основната логика отново
+        } else {
+            // Ако базата не съществува или е празна, продължаваме директно със създаването.
+            confirmed = true;
+        }
+        if (confirmed) {
+            const success = await createDatabaseFromMemory();
+            if (success) {
+                showToast(_('dbCreated'), 10000);
+                dbExists = true;
+                // --- КОРЕКЦИЯ: Автоматично включваме отметката при успешно създаване ---
+                const cb = document.getElementById('use-indexeddb-checkbox');
+                if (cb) {
+                    cb.checked = true;
+                    localStorage.setItem('useIndexedDb', 'true');
+                    updateGlobalStateFlags();
+                    updateModeButton();
+                }
             }
-        });
-        settingsModalBody.dataset.initialized = true;
-    }
-    // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
-    // Разширените настройки вече са част от settings2-modal и са винаги видими
-    const advancedSettings = document.getElementById('advanced-settings');
-    if (advancedSettings) {
-        // Вече не се скриват
-        advancedSettings.removeAttribute('hidden');
-    }
+        }
+    });
+    const deleteDbBtn = document.getElementById('delete-db-btn');
+    deleteDbBtn.addEventListener('click', async () => {
+        // --- КОРЕКЦИЯ: Запомняме дали сме в режим "Само база данни" ПРЕДИ изтриването ---
+        const isDbOnlyMode =
+            document.getElementById('use-indexeddb-checkbox').checked &&
+            !document.getElementById('use-google-db-checkbox').checked &&
+            !document.getElementById('use-local-db-checkbox').checked &&
+            !document.getElementById('use-arh-db-checkbox').checked;
+        // Затваряме настройките, за да се видят диалозите за потвърждение
+        document.getElementById('settings-modal').classList.remove('visible');
+        // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
+        if (confirmedDataDelete) {
+            const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
+                backgroundColor: '#lightgreen', // Light red background for warning
+                width: '450px'
+            });
+            if (confirmedConfigDelete) {
+                // Потребителят иска да изтрие всичко, включително настройките
+                await deleteNotesDB();
+                // Нулираме UI елементите за избраните папки
+                const folderNameDisplay = document.getElementById('local-sync-folder-name');
+                const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+                if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
+                if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
+                dbExists = false; // Актуализираме глобалния флаг
+                // --- НОВА ЛОГИКА: Премахваме отметките за локални източници ---
+                const localCheckbox = document.getElementById('use-local-db-checkbox');
+                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                if (localCheckbox) localCheckbox.checked = false;
+                if (arhCheckbox) arhCheckbox.checked = false;
+                localStorage.setItem('useLocalDb', 'false');
+                localStorage.setItem('useArhDb', 'false');
+                dirHandle = null; // Нулираме и handle-a в паметта
+            } else {
+                // Потребителят иска да изтрие само данните, но да запази настройките
+                await clearDbStores();
+            }
+            // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
+            localStorage.removeItem('startBoard');
+            // --- НОВА МИНИМАЛНА КОРЕКЦИЯ ---
+            // След успешно изтриване, ВИНАГИ премахваме отметката и обновяваме localStorage.
+            showToast(_('dbDeleted'), 5000);
+            const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
+            useIndexedDbCheckbox.checked = false;
+            localStorage.setItem('useIndexedDb', 'false');
+            // Ако сме били в режим "Само база данни", автоматично включваме Google Drive
+            if (isDbOnlyMode) {
+                localStorage.setItem('useGoogleDb', 'true');
+                document.getElementById('use-google-db-checkbox').checked = true;
+                updateGlobalStateFlags();
+            }
+            // --- КОРЕКЦИЯ: Актуализираме иконата за режим веднага ---
+            updateModeButton();
+        } else {
+            // Ако потребителят откаже изтриването, отваряме настройките отново, за да не остава празен екран.
+            document.getElementById('settings-modal').classList.add('visible');
+        }
+        // Активираме контролите, в случай че са били деактивирани от userCheck
+        enableSettingsControls();
+    });
+    // --- Local Sync Folder ---
+    selectFolderBtn.addEventListener('click', async () => {
+        try {
+            const handle = await window.showDirectoryPicker();
+            if (handle) {
+                const validationResult = await validateFolderContent(handle);
+                if (!validationResult.isValid) {
+                    let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
+                    if (validationResult.reason === 'criteria_not_met') {
+                        warningMessage += " " + _('requiredFilesForLocalFolder');
+                    }
+                    showToast(warningMessage, 15000);
+                    return;
+                }
+                await saveConfig('directoryHandle', handle);
+                dirHandle = handle;
+                folderNameDisplay.textContent = handle.name;
+                folderNameDisplay.title = handle.name;
+                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
+
+                // Актуализираме отметката и localStorage
+                const localCheckbox = document.getElementById('use-local-db-checkbox');
+                if (localCheckbox) localCheckbox.checked = true;
+                localStorage.setItem('useLocalDb', 'true');
+
+                // Изключваме другите източници
+                localStorage.setItem('useGoogleDb', 'false');
+                localStorage.setItem('useArhDb', 'false');
+                const googleCheckbox = document.getElementById('use-google-db-checkbox');
+                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                if (googleCheckbox) googleCheckbox.checked = false;
+                if (arhCheckbox) arhCheckbox.checked = false;
+
+                const settingsModal = document.getElementById('settings-modal');
+                const settings2Modal = document.getElementById('settings2-modal');
+                if (settingsModal) settingsModal.classList.remove('visible');
+                if (settings2Modal) settings2Modal.classList.remove('visible');
+
+                updateModeButton();
+                mainLogic();
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.log("Error selecting directory:", error);
+            }
+        }
+    });
+    // --- Archive Folder Setting ---
+    const selectArhBtn = document.getElementById('select-arh-btn');
+    const arhFolderNameDisplay = document.getElementById('arh-folder-name');
+    selectArhBtn.addEventListener('click', async () => {
+        try {
+            const handle = await window.showDirectoryPicker(); // Prompt user to select
+            if (handle) {
+                const validationArh = await validateArhFolderContent(handle);
+                if (!validationArh.isValid) {
+                    let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
+                    if (validationArh.reason === 'criteria_not_met') {
+                        warningMessage += " " + _('requiredFilesForLocalFolder');
+                    }
+                    showToast(warningMessage, 15000);
+                    return;
+                }
+                arhFolderNameDisplay.textContent = handle.name;
+                arhFolderNameDisplay.title = handle.name;
+                dirHandle = handle; // <--- ДОБАВЕН РЕД
+                await saveConfig('arhHandle', handle); // Запазваме избраната папка
+
+                // Актуализираме отметката и localStorage
+                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                if (arhCheckbox) arhCheckbox.checked = true;
+                localStorage.setItem('useArhDb', 'true');
+
+                // Изключваме другите източници
+                localStorage.setItem('useGoogleDb', 'false');
+                localStorage.setItem('useLocalDb', 'false');
+                const googleCheckbox = document.getElementById('use-google-db-checkbox');
+                const localCheckbox = document.getElementById('use-local-db-checkbox');
+                if (googleCheckbox) googleCheckbox.checked = false;
+                if (localCheckbox) localCheckbox.checked = false;
+
+                const settingsModal = document.getElementById('settings-modal');
+                const settings2Modal = document.getElementById('settings2-modal');
+                if (settingsModal) settingsModal.classList.remove('visible');
+                if (settings2Modal) settings2Modal.classList.remove('visible');
+
+                showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
+                // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
+                updateGlobalStateFlags();
+
+                updateModeButton();
+                // След избор, просто презареждаме основната логика,
+                // която вече ще види, че е избран режим "Архив".
+                mainLogic();
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.log("Error selecting directory:", error);
+            }
+        }
+    });
+    // Close
+    /*const settingsCloseBtn = */
+    document.getElementById('settings-close-btn').addEventListener('click', async () => {
+        /* const configData = await exportConfig();
+        console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
+        const currentState = {
+            useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
+            useLocalDb: document.getElementById('use-local-db-checkbox').checked,
+            useArhDb: document.getElementById('use-arh-db-checkbox').checked,
+            useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
+        };
+
+        // --- STRICT VALIDATION FIRST ---
+        updateGlobalStateFlags();
+        if (!validateDataSourceSelection()) {
+            // If validation fails, DO NOT close the modal.
+            // toast is shown by validateDataSourceSelection
+            return;
+        }
+
+        document.getElementById('settings-modal').classList.remove('visible');
+        if (window.kbAssistant) window.kbAssistant.terminateGuide();
+        // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
+        updateModeButton();
+        const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
+        if (window.wasOpenedForMissingFolder) {
+            window.wasOpenedForMissingFolder = false; // Нулираме флага
+            mainLogic(); // Извикваме основната логика отново
+        } else if (hasChanged) {
+            mainLogic(); // Извикваме основната логика отново
+        }
+    });
+    settingsModalBody.dataset.initialized = true;
+}
+// Always ensure the delete folder button has a listener (outside the initialization guard)
+const deleteFolderBtn = document.getElementById('delete-folder-btn');
+if (deleteFolderBtn) {
+    deleteFolderBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showFolderDeletePopup();
+    };
+}
+
+// При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
+// Разширените настройки вече са част от settings2-modal и са винаги видими
+const advancedSettings = document.getElementById('advanced-settings');
+if (advancedSettings) {
+    // Вече не се скриват
+    advancedSettings.removeAttribute('hidden');
 }
 
 // Асинхронно зареждане на името на папката за архив
@@ -13588,5 +13608,138 @@ function initFABDragging() {
                 if (typeof createNewNote === 'function') createNewNote();
             }
         }
+    });
+}
+
+/**
+ * Показва попъп за изтриване на папки от Google Drive.
+ */
+function showFolderDeletePopup() {
+    console.log('Deleting folder...');
+    const defaultFolder = 'multinotes_data';
+    let folderNamesStr = localStorage.getItem('gdrive_folder_names');
+    let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
+
+    // Филтрираме активната папка - тя не може да се трие докато е активна
+    const currentActive = (typeof activeFolderName !== 'undefined') ? activeFolderName : localStorage.getItem('activeFolderName');
+    const otherFolders = folderNames.filter(name => name !== currentActive);
+
+    if (otherFolders.length === 0) {
+        showToast(_('noData') || "Няма други папки за изтриване.");
+        return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:flex !important;align-items:center;justify-content:center;z-index:999999 !important;opacity:1 !important;visibility:visible !important;pointer-events:auto !important;';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+    const box = document.createElement('div');
+    box.className = 'modal-content-box';
+    box.style.cssText = `background-color:#2c2c2c;background-image:url('Frame.jpg');background-size:cover;border-radius:12px;padding:50px 20px 20px 20px;width:320px;max-width:95vw;max-height:80vh;display:flex !important;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.6);position:relative;border:1px solid rgba(255,255,255,0.3);opacity:1 !important;visibility:visible !important;transform:none !important;`;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.className = 'modal-close';
+    closeBtn.style.cssText = `position:absolute;top:10px;right:10px;background:#eee;border:none;border-radius:6px;width:40px;height:40px;cursor:pointer;font-size:32px;display:flex;align-items:center;justify-content:center;color:#333;box-shadow:0 2px 5px rgba(0,0,0,0.4);z-index:10;`;
+    closeBtn.onclick = () => overlay.remove();
+    box.appendChild(closeBtn);
+
+    const title = document.createElement('h3');
+    title.textContent = _('selectFolderToDelete') || 'Изберете папка за изтриване:';
+    title.style.cssText = 'margin:0 0 20px 0;font-size:1.2em;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,0.9);text-align:center;font-weight:bold;';
+    box.appendChild(title);
+
+    const listContainer = document.createElement('div');
+    listContainer.style.cssText = 'overflow-y:auto;flex:1;padding:4px;display:flex;flex-direction:column;gap:10px;width:100%;';
+
+    otherFolders.forEach(name => {
+        const btn = document.createElement('button');
+        btn.className = 'zoom-btn';
+        btn.style.cssText = 'width:100%; padding:10px; text-align:center; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);';
+        btn.textContent = name;
+        btn.onclick = async () => {
+            const confirmMsg = (_('confirmDeleteFolder') || 'Сигурни ли сте, че искате да изтриете папка "{folderName}"?').replace('{folderName}', name);
+
+            // Затваряме попъпа с избора, преди да покажем въпроса
+            overlay.remove();
+
+            const confirmed = await showConfirmation(confirmMsg);
+            if (confirmed) {
+                try {
+                    if (typeof showToast === 'function') showToast(_('loadingFile') || 'Изтриване...');
+                    const folderId = await getFolderIDByName(name);
+                    if (folderId) {
+                        await deleteGDriveFile(folderId);
+                    }
+
+                    // Обновяваме локалния списък
+                    let newFolderNames = folderNames.filter(f => f !== name);
+                    localStorage.setItem('gdrive_folder_names', JSON.stringify(newFolderNames));
+
+                    // Синхронизираме промяната в останалите папки
+                    await syncGlobalFoldersJson();
+
+                    showToast(_('folderDeletedSuccess'));
+
+                    // Обновяваме dropdown-а в настройките без презареждане
+                    if (typeof populateFoldersDropdown === 'function') populateFoldersDropdown();
+                } catch (err) {
+                    console.error("Error deleting folder:", err);
+                    showToast(_('errorDeleteFolder'));
+                }
+            }
+        };
+        listContainer.appendChild(btn);
+    });
+
+    box.appendChild(listContainer);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+}
+
+/**
+ * Попълва падащото меню за папки в настройките.
+ */
+function populateFoldersDropdown() {
+    const activeFolderSelect = document.getElementById('active-folder-select');
+    if (!activeFolderSelect) return;
+
+    // Гарантираме, че стационарните опции съществуват
+    if (!activeFolderSelect.querySelector('option[value="select_folder"]')) {
+        const selectOption = document.createElement('option');
+        selectOption.value = 'select_folder';
+        selectOption.textContent = _('selectFolderOption') || 'Избор на папка...';
+        activeFolderSelect.appendChild(selectOption);
+    }
+    if (!activeFolderSelect.querySelector('option[value="new_folder"]')) {
+        const newOption = document.createElement('option');
+        newOption.value = 'new_folder';
+        newOption.textContent = _('newFolderOption');
+        activeFolderSelect.appendChild(newOption);
+    }
+
+    const defaultFolder = 'multinotes_data';
+    let folderNamesStr = localStorage.getItem('gdrive_folder_names');
+    let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
+    if (!folderNames.includes(defaultFolder)) folderNames.unshift(defaultFolder);
+    if (typeof activeFolderName !== 'undefined' && activeFolderName && !folderNames.includes(activeFolderName)) folderNames.push(activeFolderName);
+
+    // Изчистваме старите опции за данни
+    Array.from(activeFolderSelect.options).forEach(opt => {
+        if (opt.value !== 'select_folder' && opt.value !== 'new_folder') {
+            opt.remove();
+        }
+    });
+
+    // Вмъкваме опциите за папките ПРЕДИ стационарните опции
+    const insertBeforeNode = activeFolderSelect.querySelector('option[value="select_folder"]') || activeFolderSelect.firstChild;
+
+    folderNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        if (typeof activeFolderName !== 'undefined' && name === activeFolderName) option.selected = true;
+        activeFolderSelect.insertBefore(option, insertBeforeNode);
     });
 }
