@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.8'; // App version
+const version = 'Beta 1.81'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -8451,13 +8451,12 @@ async function saveSettingsToGDrive() {
 
     const content = JSON.stringify(settings, null, 2);
 
-    // Запис в localStorage под ключ с името на активната папка (ключова промяна)
-    if (typeof activeFolderName !== 'undefined' && activeFolderName) {
-        localStorage.setItem('settings_' + activeFolderName, content);
-    }
+    // Запис в localStorage под фиксиран ключ (вече не е по активна папка)
+    localStorage.setItem('settings_multinotes_data', content);
 
     if (!isOffline) {
-        const folderId = await getFolderID();
+        // Настройките винаги се пазят в основната папка
+        const folderId = await getFolderIDByName('multinotes_data');
         if (folderId) {
             const fileName = 'settings.json';
             try {
@@ -8474,7 +8473,6 @@ async function saveSettingsToGDrive() {
                 }
             } catch (err) {
                 console.error("Save settings to GDrive error:", err);
-                // Продължаваме, тъй като локалният запис е успешен
             }
         }
     }
@@ -8486,14 +8484,12 @@ async function loadSettingsFromGDrive() {
 
     let content = null;
 
-    // Първо опитваме да заредим локално
-    if (typeof activeFolderName !== 'undefined' && activeFolderName) {
-        content = localStorage.getItem('settings_' + activeFolderName);
-    }
+    // Първо опитваме да заредим от фиксирания локален ключ
+    content = localStorage.getItem('settings_multinotes_data');
 
-    // Ако няма локално записани настройки (или се свали от друго устройство), дърпаме от GDrive
+    // Ако няма локално записани настройки, дърпаме от GDrive от основната папка
     if (!content && !isOffline) {
-        const folderId = await getFolderID();
+        const folderId = await getFolderIDByName('multinotes_data');
         if (folderId) {
             try {
                 const existingFiles = await findGDFileByName(folderId, 'settings.json');
@@ -8509,22 +8505,31 @@ async function loadSettingsFromGDrive() {
     if (content) {
         try {
             const settings = JSON.parse(content);
+            const preservedKeys = [
+                'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb',
+                'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id',
+                'folderId', 'gdrive_multinotes_data_id'
+            ];
+
             Object.keys(settings).forEach(key => {
                 const isDynamicKey = key.startsWith('board_');
                 if (appSettingsKeys.includes(key) || isDynamicKey) {
-                    // Пропускаме глобалните ключове за папки, за да не се презаписват при мулти-папки разположения
-                    if (key !== 'active_folder_name' && key !== 'gdrive_folder_names') {
+                    // Пропускаме архитектурните настройки за връзка, за да не се превключва режима
+                    if (!preservedKeys.includes(key)) {
                         localStorage.setItem(key, settings[key]);
                     }
                 }
             });
-            setTimeout(() => { if (confirm(_('settingsLoadedSuccess'))) location.reload(); }, 100);
+            setTimeout(async () => {
+                const confirmed = await showConfirmation(_('settingsLoadedSuccess'));
+                if (confirmed) location.reload();
+            }, 100);
         } catch (err) {
             console.error("Parse settings error:", err);
             showToast(_('errorLoadSettings'));
         }
     } else {
-        showToast(_('errorLoadSettings') || "Няма намерени настройки за тази папка.");
+        showToast(_('errorLoadSettings') || "Няма намерени настройки в основната папка.");
     }
 }
 async function createSettingsUI(boardsData, boardParseError) {
@@ -13620,9 +13625,9 @@ function showFolderDeletePopup() {
     let folderNamesStr = localStorage.getItem('gdrive_folder_names');
     let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
 
-    // Филтрираме активната папка - тя не може да се трие докато е активна
+    // Филтрираме активната папка и основната папка - те не могат да се трият
     const currentActive = (typeof activeFolderName !== 'undefined') ? activeFolderName : localStorage.getItem('activeFolderName');
-    const otherFolders = folderNames.filter(name => name !== currentActive);
+    const otherFolders = folderNames.filter(name => name !== currentActive && name !== defaultFolder);
 
     if (otherFolders.length === 0) {
         showToast(_('noData') || "Няма други папки за изтриване.");
