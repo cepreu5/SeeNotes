@@ -2429,6 +2429,7 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
         const targetBoardTitle = targetBoard.title;
         // Update memory
         noteToMove.boardid = newBoardId;
+        if (noteToMove.status === 1) noteToMove.status = 0; // Restore from trash
         noteToMove.datemod = Date.now();
 
         // Update DB
@@ -2497,7 +2498,9 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
         const noteElementInDom = document.querySelector(`.note[data-g="${noteGdid}"]`) || document.querySelector(`.note[data-i="${noteId}"]`);
         if (noteElementInDom) {
             noteElementInDom.dataset.b = newBoardId;
+            noteElementInDom.dataset.s = noteToMove.status;
         }
+        updateBoardCounterUI('trash');
         filterNotesByBoard(currentBoardFilter, false);
         return true;
     }
@@ -4246,17 +4249,19 @@ function initApp() {
 
             // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
             const content = [
-                `${_('sysInfoUser')}: ${currentUserEmail}`,
                 `${_('activeFolderLabel')} ${activeFolderName}`,
-                `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
                 `${_('sysInfoLoadTime')}: ${initialLoadTime ? initialLoadTime + ' s' + (loadTimeDate ? ' (' + loadTimeDate + ')' : '') : _('noData')}`,
+                ``,
+                `${_('sysInfoUser')}: ${currentUserEmail}`,
+                `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
                 `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedFolderName ? ' (' + dbCreatedFolderName + ')' : ''}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
                 `${_('sysInfoLastLocalSync')}: ${localDate}`,
                 `${_('sysInfoLastGDSync')}: ${gdDate}`,
                 `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
+                ``,
                 ...(tokenRemainingDays !== null ? [`${_('remainingDays')}: ${tokenRemainingDays}`] : []),
             ].join('\n');
-            showModal({ raw: content, color: '#f0f0f0' });
+            showModal({ raw: content, color: '#f0f0f0', readonly: true });
         } catch (error) {
             console.log("Error fetching system info:", error);
             showToast(_('errorSysInfo'));
@@ -6657,7 +6662,7 @@ function showModal(options, noteElement = null) {
         }
 
         const clickToEditEnabled = localStorage.getItem('clickToEdit') !== 'false'; // Default true
-        if (!clickToEditEnabled) return;
+        if (!clickToEditEnabled || options.readonly) return;
 
         // Calculate character index from click position
         let charIndex = -1;
@@ -6728,7 +6733,7 @@ function showModal(options, noteElement = null) {
     const oldPalette = document.getElementById('color-palette-dropdown');
     if (oldPalette) oldPalette.remove();
 
-    if (!isPromo) {
+    if (!isPromo && !options.readonly) {
         const closeBtn = modalContentBox.querySelector('.modal-close');
         if (closeBtn) {
             const colorBtn = document.createElement('div');
@@ -6867,9 +6872,9 @@ function showModal(options, noteElement = null) {
     const oldSearchBar = modalContentBox.querySelector('.modal-search-bar');
     if (oldSearchBar) oldSearchBar.remove();
 
-    const canEdit = (useIndexedDb || (updateGDrive && (options.gdid || options.isNewNote)) || useLocalFolder) && !isPromo;
+    const canEdit = (useIndexedDb || (updateGDrive && (options.gdid || options.isNewNote)) || useLocalFolder) && !isPromo && !options.readonly;
     let footerToolbar = modalContentBox.querySelector('.modal-footer-toolbar');
-    if (!footerToolbar && (canEdit || isPromo)) { // Create toolbar if needed or for date
+    if (!footerToolbar && (canEdit || isPromo) && !options.readonly) { // Create toolbar if needed or for date
         footerToolbar = document.createElement('div');
         footerToolbar.className = 'modal-footer-toolbar';
         modalContentBox.appendChild(footerToolbar);
@@ -6945,7 +6950,7 @@ function showModal(options, noteElement = null) {
 
     // Показваме/скриваме бутона за изтриване
     // --- КОРЕКЦИЯ: Разрешаваме изтриване и в режим "Локална папка" ---
-    if ((useIndexedDb || updateGDrive || useLocalFolder) && (currentNoteObj || noteElement) && !isPromo) {
+    if ((useIndexedDb || updateGDrive || useLocalFolder) && (currentNoteObj || noteElement) && !isPromo && !options.readonly) {
         deleteBtn.style.display = 'flex';
         // Премахваме стари event listeners и добавяме нов
         const newDeleteBtn = deleteBtn.cloneNode(true);
@@ -6959,7 +6964,7 @@ function showModal(options, noteElement = null) {
     } else {
         deleteBtn.style.display = 'none';
     }
-    if (noteElement) {
+    if (noteElement && !options.readonly) {
         const visibleNotes = Array.from(notesContainer.querySelectorAll('.note-item[style*="display: flex"]'));
         const currentIndex = visibleNotes.indexOf(noteElement);
         const navigate = (direction) => {
@@ -12662,7 +12667,12 @@ async function saveEditedNote() {
 
     // Exit edit mode and refresh view
     disableNoteEditing(modalBodyElem);
-    const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
+
+    const weekCal = document.getElementById('weekly-calendar-container');
+    const isWeeklyView = weekCal && weekCal.style.display !== 'none';
+    const removedFromWeekly = isWeeklyView && (noteObj && noteObj.calendarDate === 0);
+
+    const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true' || removedFromWeekly;
     if (closeAfterSave) {
         const contentModal = document.getElementById('content-modal');
         if (contentModal) contentModal.classList.remove('visible');
@@ -12682,7 +12692,12 @@ async function saveEditedNote() {
             }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`));
         }
     }
-    applyFilters();
+
+    if (removedFromWeekly) {
+        if (typeof renderWeeklyCalendarView === 'function') renderWeeklyCalendarView(currentWeeklyViewDate);
+    } else {
+        applyFilters();
+    }
 }
 
 async function updateNoteCalendarDate(noteRef, selectedDate) {
@@ -12771,7 +12786,16 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
     else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
 
     showToast(_(msgKey).replace('{boardName}', boardTitle));
-    applyFilters();
+
+    const weekCal = document.getElementById('weekly-calendar-container');
+    const isWeeklyView = weekCal && weekCal.style.display !== 'none';
+    if (isWeeklyView && newCalendarDate === 0) {
+        const contentModal = document.getElementById('content-modal');
+        if (contentModal) contentModal.classList.remove('visible');
+        if (typeof renderWeeklyCalendarView === 'function') renderWeeklyCalendarView(currentWeeklyViewDate);
+    } else {
+        applyFilters();
+    }
 }
 
 // Unified Preview Logic
