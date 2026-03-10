@@ -546,6 +546,7 @@ async function runGoogleDriveSync() {
  * Prevents multiple expensive crypto operations.
  */
 let cachedLicenseData = null;
+let cachedLicenseEmailHint = null;
 
 /**
  * Decrypts the URL license token and caches the result.
@@ -553,12 +554,19 @@ let cachedLicenseData = null;
  * @returns {Promise<{email: string|null, validityDays: number, ageInDays: number, remainingDays: number, pass: boolean}>}
  */
 async function decryptLicenseToken() {
+    const currentEmail = sessionStorage.getItem('google_auth_email_hint');
+    if (cachedLicenseData !== null && cachedLicenseEmailHint !== currentEmail) {
+        cachedLicenseData = null; // Bust cache on account switch to allow re-validation
+    }
     if (cachedLicenseData !== null) return cachedLicenseData;
+
     cachedLicenseData = { email: null, validityDays: 30, ageInDays: 0, remainingDays: 0, pass: false };
     const url = new URL(window.location.href);
     const urlTokenParam = url.searchParams.get("token");
     if (urlTokenParam) {
-        if (urlTokenParam !== localStorage.getItem('urlToken')) localStorage.setItem('urlToken', urlTokenParam);
+        if (urlTokenParam !== localStorage.getItem('urlToken')) {
+            localStorage.setItem('urlToken', urlTokenParam);
+        }
     }
     let urlToken = localStorage.getItem('urlToken');
     if (!urlToken && typeof TRIAL_URL !== 'undefined') {
@@ -576,6 +584,7 @@ async function decryptLicenseToken() {
         cachedLicenseData.ageInDays = ageInDays;
         cachedLicenseData.remainingDays = remainingDays;
         cachedLicenseData.pass = ageInDays < validityInDays;
+        cachedLicenseEmailHint = currentEmail;
         return cachedLicenseData;
     }
     try {
@@ -586,20 +595,32 @@ async function decryptLicenseToken() {
         const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]), { name: 'AES-GCM' }, false, ['decrypt']);
         const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
         const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
+
+        const isDeviceValidated = (localStorage.getItem('validatedTokenForDevice') === urlToken);
+        if (!isDeviceValidated) {
+            const localPart = decryptedEmail.split('@')[0];
+            if (localPart !== 'all' && currentEmail && decryptedEmail !== currentEmail) {
+                // Do not remove the token, so it consistently fails instead of reverting to the trial on reload
+                throw new Error(`Token email (${decryptedEmail}) mismatch for user (${currentEmail})`);
+            }
+            if (currentEmail) {
+                localStorage.setItem('validatedTokenForDevice', urlToken);
+            }
+        }
+
         if (!ts) ts = await getFirstStartEncoded();
         const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
         let validityInDays = 30;
         if (tokenValidity && !isNaN(parseInt(tokenValidity))) validityInDays = parseInt(tokenValidity, 10);
         const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
         cachedLicenseData = { urlTokenUsed: urlToken, email: decryptedEmail, validityDays: validityInDays, ageInDays, remainingDays, pass: ageInDays < validityInDays };
+        cachedLicenseEmailHint = currentEmail;
         console.log(`License token: Age: ${ageInDays.toFixed(2)} days, Remaining: ${remainingDays} days`);
     } catch (error) {
-        console.warn("Error decrypting license token. Using trial check.", error);
-        if (!ts) ts = await getFirstStartEncoded();
-        const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-        const remainingDays = Math.max(0, Math.floor(30 - ageInDays)) + 1;
-        cachedLicenseData.pass = ageInDays < 30;
-        cachedLicenseData.remainingDays = remainingDays;
+        console.warn("Error decrypting license token.", error);
+        cachedLicenseData.pass = false;
+        cachedLicenseData.remainingDays = 0;
+        cachedLicenseEmailHint = currentEmail;
     }
     return cachedLicenseData;
 }
@@ -4377,11 +4398,19 @@ async function initLoginPage() {
     const isLicenseExpired = hasS && !licenseData.pass;
 
     // --- UI Messaging Logic ---
+    const rememberMeCheck = document.getElementById('rememberMe');
     if (isLicenseExpired) {
         const loginPrompt = document.querySelector('[data-key="loginPrompt"]');
         if (loginPrompt) {
             loginPrompt.setAttribute('data-key', 'invalidCertificate');
             loginPrompt.innerHTML = _('invalidCertificate');
+        }
+        if (rememberMeCheck && rememberMeCheck.parentElement) {
+            rememberMeCheck.parentElement.style.display = 'none';
+        }
+    } else {
+        if (rememberMeCheck && rememberMeCheck.parentElement) {
+            rememberMeCheck.parentElement.style.display = 'block';
         }
     }
 
