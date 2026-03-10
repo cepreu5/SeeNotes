@@ -4006,6 +4006,13 @@ function initApp() {
             mainLogic();
             notesBgrdChanged = false;
         }
+        if (!isOffline) {
+            saveSettingsToGDrive(true).catch(e => console.warn('Auto-save settings error:', e));
+            const advSpan = document.getElementById('advanced-settings-span');
+            if (advSpan && !advSpan.hasAttribute('hidden')) {
+                syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
+            }
+        }
     });
 
     document.querySelectorAll('.modal-overlay').forEach(modal => {
@@ -4033,6 +4040,13 @@ function initApp() {
                     if (notesBgrdChanged) {
                         mainLogic();
                         notesBgrdChanged = false;
+                    }
+                    if (!isOffline) {
+                        saveSettingsToGDrive(true).catch(e => console.warn('Auto-save settings error:', e));
+                        const advSpan = document.getElementById('advanced-settings-span');
+                        if (advSpan && !advSpan.hasAttribute('hidden')) {
+                            syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
+                        }
                     }
                 }
             }
@@ -8432,68 +8446,121 @@ async function syncGlobalFoldersJson() {
         if (!folderNamesStr) return;
         const folderNames = JSON.parse(folderNamesStr);
         if (!Array.isArray(folderNames)) return;
-
-        const content = JSON.stringify(folderNames, null, 2);
-
-        // Push to all known folders
-        folderNames.forEach(async (fName) => {
-            try {
-                const fID = await getFolderIDByName(fName);
-                if (fID) {
-                    const existingFiles = await findGDFileByName(fID, 'folders.json');
-                    if (existingFiles && existingFiles.length > 0) {
-                        await updateGDriveFile(existingFiles[0].id, content);
-                    } else {
-                        await createGDriveFile(fID, 'folders.json', content);
-                    }
-                }
-            } catch (e) {
-                console.error("Failed to sync folders.json to " + fName, e);
+        const currentEmail = sessionStorage.getItem('google_auth_email_hint') || '';
+        const activeFolderCurrent = localStorage.getItem('active_folder_name') || 'multinotes_data';
+        const folders = folderNames.map(name => {
+            const entry = { name };
+            // Per-folder start board: use the dedicated key, or for the active folder use the global startBoard
+            const perFolderSB = localStorage.getItem('startBoard_' + name);
+            if (perFolderSB) {
+                entry.startBoard = perFolderSB;
+            } else if (name === activeFolderCurrent) {
+                const globalSB = localStorage.getItem('startBoard');
+                if (globalSB) entry.startBoard = globalSB;
             }
+            return entry;
         });
+        const data = {
+            email: currentEmail,
+            activeFolder: activeFolderCurrent,
+            folders
+        };
+        const content = JSON.stringify(data, null, 2);
+        // Push only to the main 'multinotes_data' folder
+        try {
+            const fID = await getFolderIDByName('multinotes_data');
+            if (fID) {
+                const existingFiles = await findGDFileByName(fID, 'folders.json');
+                if (existingFiles && existingFiles.length > 0) {
+                    await updateGDriveFile(existingFiles[0].id, content);
+                } else {
+                    await createGDriveFile(fID, 'folders.json', content);
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to sync folders.json to multinotes_data", e);
+        }
     } catch (e) {
-        console.error("syncGlobalFoldersJson error:", e);
+        console.warn("syncGlobalFoldersJson error:", e);
     }
 }
 
 async function loadGlobalFoldersJson() {
     if (isOffline) return false;
     try {
-        const folderId = await getFolderID();
+        const folderId = await getFolderIDByName('multinotes_data');
         if (!folderId) return false;
         const existingFiles = await findGDFileByName(folderId, 'folders.json');
-        if (existingFiles && existingFiles.length > 0) {
-            const content = await fetchGDriveFileContent(existingFiles[0].id);
-            if (content) {
-                const remoteFolders = JSON.parse(content);
-                if (Array.isArray(remoteFolders) && remoteFolders.length > 0) {
-                    const localFolderNamesStr = localStorage.getItem('gdrive_folder_names');
-                    const localFolderNames = localFolderNamesStr ? JSON.parse(localFolderNamesStr) : ['multinotes_data'];
-                    const merged = [...new Set([...localFolderNames, ...remoteFolders])];
-                    if (merged.length !== localFolderNames.length) {
-                        localStorage.setItem('gdrive_folder_names', JSON.stringify(merged));
-                        return true; // Changes were made
-                    }
-                }
-            }
+        if (!existingFiles || existingFiles.length === 0) return false;
+        const content = await fetchGDriveFileContent(existingFiles[0].id);
+        if (!content) return false;
+        const parsed = JSON.parse(content);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            console.warn('folders.json has unexpected format, skipping.');
+            return false;
         }
+        let remoteFolderNames = [];
+        let remoteActiveFolder = null;
+        let remoteFolderStartBoards = {};
+        // Validate email ownership
+        const currentEmail = sessionStorage.getItem('google_auth_email_hint') || '';
+        if (parsed.email && currentEmail && parsed.email !== currentEmail) {
+            console.log('folders.json belongs to another user (' + parsed.email + '), skipping.');
+            return false;
+        }
+        if (Array.isArray(parsed.folders)) {
+            remoteFolderNames = parsed.folders.map(f => f && f.name).filter(Boolean);
+            parsed.folders.forEach(f => {
+                if (f && f.name && f.startBoard) {
+                    remoteFolderStartBoards[f.name] = f.startBoard;
+                }
+            });
+        }
+        if (parsed.activeFolder) {
+            remoteActiveFolder = parsed.activeFolder;
+        }
+        if (remoteFolderNames.length === 0) return false;
+        let changed = false;
+        // Merge folder names
+        const localFolderNamesStr = localStorage.getItem('gdrive_folder_names');
+        const localFolderNames = localFolderNamesStr ? JSON.parse(localFolderNamesStr) : ['multinotes_data'];
+        const merged = [...new Set([...localFolderNames, ...remoteFolderNames])];
+        if (merged.length !== localFolderNames.length) {
+            localStorage.setItem('gdrive_folder_names', JSON.stringify(merged));
+            changed = true;
+        }
+        // Apply per-folder start boards
+        Object.entries(remoteFolderStartBoards).forEach(([folderName, startBoard]) => {
+            const key = 'startBoard_' + folderName;
+            if (!localStorage.getItem(key)) {
+                localStorage.setItem(key, startBoard);
+                changed = true;
+            }
+        });
+        // Apply active folder if no local value is set
+        if (remoteActiveFolder && !localStorage.getItem('active_folder_name')) {
+            localStorage.setItem('active_folder_name', remoteActiveFolder);
+            activeFolderName = remoteActiveFolder;
+            changed = true;
+        }
+        return changed;
     } catch (e) {
-        console.error("loadGlobalFoldersJson error:", e);
+        console.warn("loadGlobalFoldersJson error:", e);
     }
     return false;
 }
-async function saveSettingsToGDrive() {
-    if (typeof showToast === 'function') showToast("Записване на настройките...");
+async function saveSettingsToGDrive(silent = false) {
+    if (!silent && typeof showToast === 'function') showToast("Записване на настройките...");
 
     const settings = {};
     appSettingsKeys.forEach(key => {
         const val = localStorage.getItem(key);
         if (val !== null) settings[key] = val;
     });
-    // Добавяме и всички динамични ключове (настройки на бордове), пропускаме системни ключове като папки
+    // Добавяме и всички динамични ключове (настройки на бордове и per-folder start boards)
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith('board_')) {
+        if (key && (key.startsWith('board_') || key.startsWith('startBoard_'))) {
             settings[key] = localStorage.getItem(key);
         }
     }
@@ -8525,7 +8592,7 @@ async function saveSettingsToGDrive() {
             }
         }
     }
-    showToast(_('settingsSavedSuccess'));
+    if (!silent) showToast(_('settingsSavedSuccess'));
 }
 
 async function loadSettingsFromGDrive() {
@@ -8561,7 +8628,7 @@ async function loadSettingsFromGDrive() {
             ];
 
             Object.keys(settings).forEach(key => {
-                const isDynamicKey = key.startsWith('board_');
+                const isDynamicKey = key.startsWith('board_') || key.startsWith('startBoard_');
                 if (appSettingsKeys.includes(key) || isDynamicKey) {
                     // Пропускаме архитектурните настройки за връзка, за да не се превключва режима
                     if (!preservedKeys.includes(key)) {
@@ -8700,6 +8767,11 @@ async function createSettingsUI(boardsData, boardParseError) {
 
                         localStorage.setItem('active_folder_name', targetFolderName);
                         localStorage.setItem('gdrive_multinotes_data_id', targetFolderId);
+                        // Apply per-folder start board if available
+                        const folderStartBoard = localStorage.getItem('startBoard_' + targetFolderName);
+                        if (folderStartBoard) {
+                            localStorage.setItem('startBoard', folderStartBoard);
+                        }
 
                         let shouldSyncJson = false;
                         if ((selectedValue === 'new_folder' || selectedValue === 'select_folder') && !folderNames.includes(targetFolderName)) {
@@ -9165,9 +9237,12 @@ async function createSettingsUI(boardsData, boardParseError) {
     // Start Board
     let startBoardSelect; // Declare here to be accessible in the whole function
     startBoardSelect = document.getElementById('start-board-select');
+    const currentFolder = localStorage.getItem('active_folder_name') || 'multinotes_data';
     startBoardSelect.value = localStorage.getItem('startBoard') || 'Main';
     startBoardSelect.addEventListener('change', () => {
         localStorage.setItem('startBoard', startBoardSelect.value);
+        const af = localStorage.getItem('active_folder_name') || 'multinotes_data';
+        localStorage.setItem('startBoard_' + af, startBoardSelect.value);
         showToast(_('settingSaved'), 2000);
     });
     // Max Searches
