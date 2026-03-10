@@ -801,6 +801,7 @@ code {
 }
 
 .modal-content-box {
+    box-sizing: border-box;
     padding-top: 55px;
     /* Ensure space for header buttons */
     padding-right: 15px;
@@ -1631,6 +1632,7 @@ code {
     #scale-wrapper,
     #start-board-wrapper,
     #force-gdrive-read,
+    #device-name-wrapper,
     #check-empty-boards {
         flex-direction: row !important;
         align-items: center !important;
@@ -2026,13 +2028,14 @@ code {
     align-self: center;
 }
 
-.set-modal {
+#settings-modal .modal-content-box.set-modal {
     background: linear-gradient(135deg, #858585, #E4E4E4);
     border-radius: 3px;
-    padding: 20px;
+    padding: 5px;
     position: relative;
     height: auto;
-    width: 400px;
+    max-width: 400px;
+    width: 100%;
 }
 
 .corner-dot {
@@ -3151,9 +3154,9 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 #create-db-btn {
-    min-width: 180px;
+    min-width: 160px;
 }
 
 #delete-db-btn {
-    min-width: 180px;
+    min-width: 160px;
 }

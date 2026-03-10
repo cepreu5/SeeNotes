@@ -630,10 +630,10 @@
                     "height": 100,
                     "x": 0,
                     "y": 11,
-                    "bx": 196,
-                    "by": -25,
-                    "bWidth": 282,
-                    "bHeight": 120,
+                    "bx": 169,
+                    "by": -13,
+                    "bWidth": 220,
+                    "bHeight": 180,
                     "target": "#search-box"
                 },
                 "7": {

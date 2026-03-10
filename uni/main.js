@@ -8179,30 +8179,33 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         if (raw) savedBoardOrder = JSON.parse(raw);
     } catch (e) { /* ignore */ }
     if (Array.isArray(savedBoardOrder) && savedBoardOrder.length > 0) {
-        // Подреждаме boardsData по запазения ред; нови бордове отиват накрая
-        const orderMap = new Map(savedBoardOrder.map((id, idx) => [String(id), idx]));
-        boardsData.sort((a, b) => {
-            const idA = String(a.gdid || a.id);
-            const idB = String(b.gdid || b.id);
-            const posA = orderMap.has(idA) ? orderMap.get(idA) : Infinity;
-            const posB = orderMap.has(idB) ? orderMap.get(idB) : Infinity;
-            return posA - posB;
-        });
-        // Добавяме нови бордове (които не са в списъка) накрая
-        const currentIds = boardsData.map(b => String(b.gdid || b.id));
-        let orderChanged = false;
-        currentIds.forEach(id => {
-            if (!savedBoardOrder.includes(id)) {
-                savedBoardOrder.push(id);
+        const currentTitles = boardsData.filter(b => b.title).map(b => String(b.title));
+        // Пречистваме запазения ред: оставяме само заглавия, които реално съществуват в момента
+        let finalOrder = savedBoardOrder.filter(title => currentTitles.includes(String(title)));
+        let orderChanged = (finalOrder.length !== savedBoardOrder.length);
+        // Добавяме новите бордове, които липсват в запазения ред накрая
+        currentTitles.forEach(title => {
+            if (!finalOrder.includes(title)) {
+                finalOrder.push(title);
                 orderChanged = true;
             }
         });
-        if (orderChanged) localStorage.setItem('boardMenuOrder', JSON.stringify(savedBoardOrder));
+        if (orderChanged) localStorage.setItem('boardMenuOrder', JSON.stringify(finalOrder));
+        savedBoardOrder = finalOrder;
+        // Подреждаме boardsData по финалния ред
+        const orderMap = new Map(savedBoardOrder.map((title, idx) => [String(title), idx]));
+        boardsData.sort((a, b) => {
+            const titleA = String(a.title || '');
+            const titleB = String(b.title || '');
+            const posA = orderMap.has(titleA) ? orderMap.get(titleA) : Infinity;
+            const posB = orderMap.has(titleB) ? orderMap.get(titleB) : Infinity;
+            return posA - posB;
+        });
     } else {
         // Създаваме масив за ред от текущия ред на бордовете
         const initialOrder = boardsData
-            .filter(b => (b.gdid || b.id) !== undefined && (b.gdid || b.id) !== null && b.title)
-            .map(b => String(b.gdid || b.id));
+            .filter(b => b.title)
+            .map(b => String(b.title));
         if (initialOrder.length > 0) localStorage.setItem('boardMenuOrder', JSON.stringify(initialOrder));
     }
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
@@ -8408,7 +8411,7 @@ const appSettingsKeys = [
     'modalWidth', 'modalHeight', 'startBoard', 'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'lastSearchTerm', 'boardMenuOrder', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
-    'active_folder_name', 'gdrive_folder_names'
+    'active_folder_name', 'gdrive_folder_names', 'deviceName'
 ];
 async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
@@ -8552,40 +8555,64 @@ async function loadGlobalFoldersJson() {
 async function saveSettingsToGDrive(silent = false) {
     if (!silent && typeof showToast === 'function') showToast("Записване на настройките...");
 
+    const currentDevice = localStorage.getItem('deviceName') || 'Default';
+
     const settings = {};
     appSettingsKeys.forEach(key => {
         const val = localStorage.getItem(key);
         if (val !== null) settings[key] = val;
     });
-    // Добавяме и всички динамични ключове (настройки на бордове и per-folder start boards)
+    // Добавяме и всички динамични ключове (но без startBoard_<folder>, защото те са във folders.json)
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith('board_') || key.startsWith('startBoard_'))) {
+        if (key && key.startsWith('board_')) {
             settings[key] = localStorage.getItem(key);
         }
     }
 
-    const content = JSON.stringify(settings, null, 2);
-
-    // Запис в localStorage под фиксиран ключ (вече не е по активна папка)
-    localStorage.setItem('settings_multinotes_data', content);
+    const contentLocal = JSON.stringify(settings, null, 2);
+    localStorage.setItem('settings_multinotes_data', contentLocal);
 
     if (!isOffline) {
-        // Настройките винаги се пазят в основната папка
         const folderId = await getFolderIDByName('multinotes_data');
         if (folderId) {
             const fileName = 'settings.json';
             try {
                 const existingFiles = await findGDFileByName(folderId, fileName);
+                let finalObject = {};
+
                 if (existingFiles && existingFiles.length > 0) {
-                    await updateGDriveFile(existingFiles[0].id, content);
-                    if (existingFiles.length > 1) {
-                        for (let j = 1; j < existingFiles.length; j++) {
-                            await deleteGDriveFile(existingFiles[j].id);
+                    const existingContent = await fetchGDriveFileContent(existingFiles[0].id);
+                    try {
+                        const parsed = JSON.parse(existingContent);
+                        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                            // Check if it's the new format (keyed by device)
+                            // A simple heuristic: if any key is an object, it's likely the new format.
+                            // Or we check if it has a specific marker, but let's just assume if it has the current device or other standard keys at top level it's OLD format.
+                            const topLevelKeys = Object.keys(parsed);
+                            const looksOld = topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
+
+                            if (looksOld) {
+                                finalObject = { 'Default': parsed };
+                            } else {
+                                finalObject = parsed;
+                            }
                         }
+                    } catch (e) {
+                        console.warn("Could not parse existing settings.json, starting fresh.");
+                    }
+                }
+
+                finalObject[currentDevice] = settings;
+                const finalContent = JSON.stringify(finalObject, null, 2);
+
+                if (existingFiles && existingFiles.length > 0) {
+                    await updateGDriveFile(existingFiles[0].id, finalContent);
+                    for (let j = 1; j < existingFiles.length; j++) {
+                        await deleteGDriveFile(existingFiles[j].id);
                     }
                 } else {
-                    await createGDriveFile(folderId, fileName, content);
+                    await createGDriveFile(folderId, fileName, finalContent);
                 }
             } catch (err) {
                 console.error("Save settings to GDrive error:", err);
@@ -8600,11 +8627,8 @@ async function loadSettingsFromGDrive() {
 
     let content = null;
 
-    // Първо опитваме да заредим от фиксирания локален ключ
-    content = localStorage.getItem('settings_multinotes_data');
-
-    // Ако няма локално записани настройки, дърпаме от GDrive от основната папка
-    if (!content && !isOffline) {
+    // Ако сме онлайн, опитваме първо от GDrive
+    if (!isOffline) {
         const folderId = await getFolderIDByName('multinotes_data');
         if (folderId) {
             try {
@@ -8618,18 +8642,47 @@ async function loadSettingsFromGDrive() {
         }
     }
 
+    // Ако все още нямаме съдържание (офлайн сме или няма файл в GDrive), опитваме от локалния ключ
+    if (!content) {
+        content = localStorage.getItem('settings_multinotes_data');
+    }
+
     if (content) {
         try {
-            const settings = JSON.parse(content);
+            let settings = JSON.parse(content);
+            const currentDevice = localStorage.getItem('deviceName') || 'Default';
+
+            // Check if it's the keyed format
+            if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
+                const topLevelKeys = Object.keys(settings);
+                const looksOld = topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
+
+                if (looksOld) {
+                    // Old format, apply directly if current device is Default or we just apply old format as-is
+                    // If the user hasn't set a device name yet, they likely want these.
+                } else {
+                    // New format, pick current device
+                    if (settings[currentDevice]) {
+                        settings = settings[currentDevice];
+                    } else if (settings['Default']) {
+                        settings = settings['Default'];
+                    } else {
+                        // Current device not found in GDrive settings file
+                        showToast("Settings for device '" + currentDevice + "' not found in Cloud.");
+                        return;
+                    }
+                }
+            }
+
             const preservedKeys = [
                 'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb',
                 'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id',
-                'folderId', 'gdrive_multinotes_data_id'
+                'folderId', 'gdrive_multinotes_data_id', 'deviceName'
             ];
 
             Object.keys(settings).forEach(key => {
-                const isDynamicKey = key.startsWith('board_') || key.startsWith('startBoard_');
-                if (appSettingsKeys.includes(key) || isDynamicKey) {
+                const isBoardKey = key.startsWith('board_');
+                if (appSettingsKeys.includes(key) || isBoardKey) {
                     // Пропускаме архитектурните настройки за връзка, за да не се превключва режима
                     if (!preservedKeys.includes(key)) {
                         localStorage.setItem(key, settings[key]);
@@ -8665,6 +8718,36 @@ async function createSettingsUI(boardsData, boardParseError) {
                 loadSettingsFromGDrive();
             });
         }
+        const showSettingsBtn = document.getElementById('show-settings-btn');
+        if (showSettingsBtn) {
+            showSettingsBtn.onclick = null;
+            showSettingsBtn.addEventListener('click', async () => {
+                showToast("Зареждане на облачните настройки...");
+                let content = null;
+                if (!isOffline) {
+                    const folderId = await getFolderIDByName('multinotes_data');
+                    if (folderId) {
+                        try {
+                            const existingFiles = await findGDFileByName(folderId, 'settings.json');
+                            if (existingFiles && existingFiles.length > 0) {
+                                content = await fetchGDriveFileContent(existingFiles[0].id);
+                            }
+                        } catch (err) {
+                            console.error("Fetch full settings.json error:", err);
+                        }
+                    }
+                }
+                if (!content) content = localStorage.getItem('settings_multinotes_data');
+                if (content) {
+                    sessionStorage.setItem('full_settings_json', content);
+                    sessionStorage.setItem('boardMenuOrder', localStorage.getItem('boardMenuOrder') || '[]');
+                    sessionStorage.setItem('boardsData', JSON.stringify(boardsData));
+                    window.open('set.html', '_blank');
+                } else {
+                    showToast("Няма данни за показване.");
+                }
+            });
+        }
         settingsModalBody.dataset.initializedListeners = 'true';
     }
     // --- Get Element References ---
@@ -8698,6 +8781,14 @@ async function createSettingsUI(boardsData, boardParseError) {
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
     const hideToastCheckbox = document.getElementById('hide-toast-checkbox');
     const activeFolderSelect = document.getElementById('active-folder-select');
+    const deviceNameInput = document.getElementById('device-name-input');
+    if (deviceNameInput) {
+        deviceNameInput.value = localStorage.getItem('deviceName') || '';
+        deviceNameInput.addEventListener('change', () => {
+            localStorage.setItem('deviceName', deviceNameInput.value);
+            showToast(_('settingSaved'), 2000);
+        });
+    }
     if (!settingsModalBody.dataset.initialized) {
         // Active Folder Logic
         // Active Folder Logic
@@ -9050,7 +9141,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         // Затваряме настройките, за да се вижда презареждането
         document.getElementById('settings-modal').classList.remove('visible');
         // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
-        renderUI({ boardParseError: false });
+        renderUI({ boardParseError: false, rerenderOnlyMenu: true });
     });
     // Click to edit
     if (clickToEditCheckbox) {
@@ -13286,8 +13377,8 @@ function showBoardReorderPopup() {
     } catch (e) { /* ignore */ }
     if (!Array.isArray(currentOrder) || currentOrder.length === 0) {
         currentOrder = boardsData
-            .filter(b => (b.gdid || b.id) !== undefined && b.title)
-            .map(b => String(b.gdid || b.id));
+            .filter(b => b.title)
+            .map(b => String(b.title));
     }
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay reorder-overlay';
@@ -13311,12 +13402,12 @@ function showBoardReorderPopup() {
     let draggedItem = null;
     let placeholder = document.createElement('div');
     placeholder.style.cssText = `height:40px;width:${maxWidthForButtons}px;border:2px dashed #fff;border-radius:4px;margin-bottom:8px;background:rgba(255,255,255,0.2);`;
-    currentOrder.forEach((boardId) => {
-        const board = boardsData.find(b => String(b.gdid || b.id) === String(boardId));
+    currentOrder.forEach((boardTitle) => {
+        const board = boardsData.find(b => String(b.title) === String(boardTitle));
         if (!board || !board.title) return;
         const item = document.createElement('div');
         item.className = 'board-filter-link reorder-item';
-        item.dataset.boardid = String(boardId);
+        item.dataset.boardtitle = String(boardTitle);
         item.draggable = true;
         item.style.width = `${maxWidthForButtons}px`;
         item.style.marginBottom = '8px';
@@ -13413,7 +13504,7 @@ function showBoardReorderPopup() {
     saveCloseBtn.onclick = async () => {
         const newOrder = [...listContainer.children]
             .filter(el => el.classList.contains('reorder-item'))
-            .map(el => el.dataset.boardid);
+            .map(el => el.dataset.boardtitle);
         localStorage.setItem('boardMenuOrder', JSON.stringify(newOrder));
         overlay.remove();
         const boardsNote = document.querySelector('header .boards-note');
@@ -13656,8 +13747,8 @@ async function showNewBoardModal() {
                 try {
                     const raw = localStorage.getItem('boardMenuOrder');
                     const order = raw ? JSON.parse(raw) : [];
-                    const newId = String(boardToSave.gdid || boardToSave.id);
-                    if (!order.includes(newId)) { order.push(newId); localStorage.setItem('boardMenuOrder', JSON.stringify(order)); }
+                    const newTitle = String(boardToSave.title);
+                    if (!order.includes(newTitle)) { order.push(newTitle); localStorage.setItem('boardMenuOrder', JSON.stringify(order)); }
                 } catch (e) { }
             }
 

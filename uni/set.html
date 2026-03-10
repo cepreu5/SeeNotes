@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="bg">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Settings & Board Menu Viewer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #1f3b52;
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            background: #e3f2fd;
+            padding: 10px 15px;
+            border-radius: 6px;
+            color: #1565c0;
+            font-size: 1.2em;
+            margin-top: 30px;
+        }
+
+        .device-section {
+            margin-bottom: 40px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .device-header {
+            background-color: #4285F4;
+            color: white;
+            padding: 12px 20px;
+            font-size: 1.1em;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .device-content {
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            width: 35%;
+            color: #666;
+            font-size: 0.85em;
+            text-transform: uppercase;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background-color: #f9f9f9;
+        }
+
+        .list-container {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+
+        ol {
+            margin: 0;
+            padding-left: 25px;
+        }
+
+        li {
+            padding: 4px 0;
+            border-bottom: 1px dashed #eee;
+        }
+
+        li:last-child {
+            border-bottom: none;
+        }
+
+        .error-msg {
+            color: #d93025;
+            background: #fce8e6;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            width: 100%;
+        }
+
+        .json-raw {
+            display: none;
+            background: #272822;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85em;
+            margin: 10px;
+        }
+
+        .toggle-btn {
+            background: none;
+            border: 1px solid white;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75em;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-left: 10px;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" id="main-container">
+        <h1>Cloud Settings & Menu Order</h1>
+
+        <div id="content">Зареждане на данни...</div>
+
+        <h2 id="current-menu-title" style="display:none;">Текущо меню на бордовете (Current Rendered Order)</h2>
+        <div id="current-menu-list" class="list-container" style="display:none;"></div>
+
+        <h2 id="saved-order-title" style="display:none;">Запазен ред в облака/локално (boardMenuOrder)</h2>
+        <div id="saved-order-list" class="list-container" style="display:none;"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const contentDiv = document.getElementById('content');
+
+            const rawSettings = sessionStorage.getItem('full_settings_json');
+            const rawOrder = sessionStorage.getItem('boardMenuOrder');
+            const rawBoards = sessionStorage.getItem('boardsData');
+
+            if (!rawSettings) {
+                contentDiv.innerHTML = '<div class="error-msg">Няма намерени данни в сесията. Моля, отворете настройките от главното приложение отново.</div>';
+                return;
+            }
+
+            // 1. Показване на настройките по устройства
+            try {
+                const settings = JSON.parse(rawSettings);
+                contentDiv.innerHTML = '';
+
+                const topLevelKeys = Object.keys(settings);
+                const looksOld = topLevelKeys.some(k =>
+                    ['zoomLevel', 'noteFontSize', 'modalFontSize', 'startBoard'].includes(k) ||
+                    k.startsWith('board_')
+                );
+
+                const devices = looksOld ? { 'По подразбиране (Стар формат)': settings } : settings;
+
+                for (const [deviceName, deviceSettings] of Object.entries(devices)) {
+                    const section = document.createElement('div');
+                    section.className = 'device-section';
+
+                    const header = document.createElement('div');
+                    header.className = 'device-header';
+                    header.innerHTML = `
+                        <span>Устройство: ${deviceName}</span>
+                        <button class="toggle-btn" onclick="toggleRaw('${deviceName.replace(/\s+/g, '-')}')">JSON</button>
+                    `;
+
+                    const content = document.createElement('div');
+                    content.className = 'device-content';
+                    const table = document.createElement('table');
+
+                    const keys = Object.keys(deviceSettings).sort((a, b) => {
+                        const isDynamicA = a.startsWith('board_') || a.startsWith('startBoard_');
+                        const isDynamicB = b.startsWith('board_') || b.startsWith('startBoard_');
+                        if (isDynamicA && !isDynamicB) return 1;
+                        if (!isDynamicA && isDynamicB) return -1;
+                        return a.localeCompare(b);
+                    });
+
+                    keys.forEach(key => {
+                        const tr = document.createElement('tr');
+                        const value = deviceSettings[key];
+                        let displayValue = (typeof value === 'object') ? JSON.stringify(value) : String(value);
+
+                        tr.innerHTML = `<th>${key}</th><td>${displayValue}</td>`;
+                        table.appendChild(tr);
+                    });
+
+                    const rawPre = document.createElement('pre');
+                    rawPre.className = 'json-raw';
+                    rawPre.id = `raw-${deviceName.replace(/\s+/g, '-')}`;
+                    rawPre.textContent = JSON.stringify(deviceSettings, null, 2);
+
+                    content.appendChild(table);
+                    content.appendChild(rawPre);
+                    section.appendChild(header);
+                    section.appendChild(content);
+                    contentDiv.appendChild(section);
+                }
+            } catch (err) {
+                console.error(err);
+                contentDiv.innerHTML = `<div class="error-msg">Грешка при четене на настройките: ${err.message}</div>`;
+            }
+
+            // 2. Показване на текущото меню (Current Menu)
+            try {
+                if (rawBoards) {
+                    const boardsData = JSON.parse(rawBoards);
+                    const currentMenuDiv = document.getElementById('current-menu-list');
+                    document.getElementById('current-menu-title').style.display = 'block';
+                    currentMenuDiv.style.display = 'block';
+
+                    if (boardsData && boardsData.length > 0) {
+                        const ol = document.createElement('ol');
+                        boardsData.forEach(board => {
+                            if (board.title) {
+                                const li = document.createElement('li');
+                                li.textContent = board.title;
+                                if (board.color !== undefined) {
+                                    const colorBadge = document.createElement('span');
+                                    colorBadge.className = 'badge';
+                                    colorBadge.style.backgroundColor = getBoardColor(board.color);
+                                    colorBadge.textContent = 'Цвят: ' + board.color;
+                                    li.appendChild(colorBadge);
+                                }
+                                ol.appendChild(li);
+                            }
+                        });
+                        currentMenuDiv.appendChild(ol);
+                    } else {
+                        currentMenuDiv.textContent = 'Няма заредени бордове.';
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+            }
+
+            // 3. Показване на boardMenuOrder
+            try {
+                if (rawOrder) {
+                    const order = JSON.parse(rawOrder);
+                    const savedOrderDiv = document.getElementById('saved-order-list');
+                    document.getElementById('saved-order-title').style.display = 'block';
+                    savedOrderDiv.style.display = 'block';
+
+                    if (Array.isArray(order) && order.length > 0) {
+                        const ol = document.createElement('ol');
+                        order.forEach(item => {
+                            const li = document.createElement('li');
+                            li.textContent = item;
+                            ol.appendChild(li);
+                        });
+                        savedOrderDiv.appendChild(ol);
+                    } else {
+                        savedOrderDiv.textContent = 'Няма запазен ред (празен списък).';
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        });
+
+        function toggleRaw(id) {
+            const el = document.getElementById(`raw-${id}`);
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function getBoardColor(color) {
+            const colors = ['#00FF00', '#FF0000', '#FF4500', '#FFFF00', '#00FFFF', '#FF00FF', '#3355FF'];
+            if (color >= 0 && color < colors.length) return colors[color];
+            if (color < 0) return '#' + (color >>> 0).toString(16).slice(-6);
+            return '#ccc';
+        }
+    </script>
+</body>
+
+</html>

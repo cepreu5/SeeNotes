@@ -739,7 +739,8 @@
                         data-key="dbManagementTitle">
                         Управление на базата данни
                     </label>
-                    <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px;">
+                    <div
+                        style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; margin-bottom: 10px;">
                         <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
                             <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
                         </div>
@@ -748,8 +749,17 @@
                         </div>
                     </div>
                 </div>
-                <div
-                    style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; border-top: 1px solid #404040; padding-top: 10px;">
+                <div class="zoom-control-wrapper" id="device-name-wrapper"
+                    style="border-top: 1px solid #404040; padding-top: 10px; margin-bottom: 10px;">
+                    <label for="device-name-input" style="margin-right: 10px; white-space: nowrap;"
+                        data-key="deviceNameLabel">Име на устройство:</label>
+                    <input type="text" id="device-name-input" class="zoom-input-text" style="width: 100px;">
+                </div>
+                <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
+                    <button id="show-settings-btn" class="zoom-btn" data-key="showSettingsLabel">Покажи
+                        настройките</button>
+                </div>
+                <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px;">
                     <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
                         <button id="save-settings-btn" class="zoom-btn" data-key="saveSettingsLabel">Запис на
                             настройките</button>
