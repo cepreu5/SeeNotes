@@ -8408,7 +8408,7 @@ const appSettingsKeys = [
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
-    'modalWidth', 'modalHeight', 'startBoard', 'folderId', 'language', 'rememberMe',
+    'modalWidth', 'modalHeight', 'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'lastSearchTerm', 'boardMenuOrder', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
     'active_folder_name', 'gdrive_folder_names', 'deviceName'
@@ -8741,7 +8741,16 @@ async function createSettingsUI(boardsData, boardParseError) {
                 if (content) {
                     sessionStorage.setItem('full_settings_json', content);
                     sessionStorage.setItem('boardMenuOrder', localStorage.getItem('boardMenuOrder') || '[]');
-                    sessionStorage.setItem('boardsData', JSON.stringify(boardsData));
+                    // Подготвяме масив с всички бордове
+                    const boardsToStore = (typeof boardsData !== 'undefined' && boardsData.length > 0) ? boardsData : [];
+                    sessionStorage.setItem('boardsData', JSON.stringify(boardsToStore));
+                    // Специално предаваме мап с имена на бордове за бързо търсене
+                    const titlesMap = {};
+                    boardsToStore.forEach(b => {
+                        const bid = String(b.gdid || b.id);
+                        if (bid && bid !== 'undefined' && b.title) titlesMap[bid] = b.title;
+                    });
+                    sessionStorage.setItem('boardTitlesMap', JSON.stringify(titlesMap));
                     window.open('set.html', '_blank');
                 } else {
                     showToast("Няма данни за показване.");

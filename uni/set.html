@@ -167,9 +167,6 @@
 
         <div id="content">Зареждане на данни...</div>
 
-        <h2 id="current-menu-title" style="display:none;">Текущо меню на бордовете (Current Rendered Order)</h2>
-        <div id="current-menu-list" class="list-container" style="display:none;"></div>
-
         <h2 id="saved-order-title" style="display:none;">Запазен ред в облака/локално (boardMenuOrder)</h2>
         <div id="saved-order-list" class="list-container" style="display:none;"></div>
     </div>
@@ -228,6 +225,12 @@
                         const value = deviceSettings[key];
                         let displayValue = (typeof value === 'object') ? JSON.stringify(value) : String(value);
 
+                        /* 
+                           startBoard вече не се пази в settings.json,
+                           а само във folders.json, затова премахваме 
+                           логиката за визуализацията му тук.
+                        */
+
                         tr.innerHTML = `<th>${key}</th><td>${displayValue}</td>`;
                         table.appendChild(tr);
                     });
@@ -248,38 +251,7 @@
                 contentDiv.innerHTML = `<div class="error-msg">Грешка при четене на настройките: ${err.message}</div>`;
             }
 
-            // 2. Показване на текущото меню (Current Menu)
-            try {
-                if (rawBoards) {
-                    const boardsData = JSON.parse(rawBoards);
-                    const currentMenuDiv = document.getElementById('current-menu-list');
-                    document.getElementById('current-menu-title').style.display = 'block';
-                    currentMenuDiv.style.display = 'block';
-
-                    if (boardsData && boardsData.length > 0) {
-                        const ol = document.createElement('ol');
-                        boardsData.forEach(board => {
-                            if (board.title) {
-                                const li = document.createElement('li');
-                                li.textContent = board.title;
-                                if (board.color !== undefined) {
-                                    const colorBadge = document.createElement('span');
-                                    colorBadge.className = 'badge';
-                                    colorBadge.style.backgroundColor = getBoardColor(board.color);
-                                    colorBadge.textContent = 'Цвят: ' + board.color;
-                                    li.appendChild(colorBadge);
-                                }
-                                ol.appendChild(li);
-                            }
-                        });
-                        currentMenuDiv.appendChild(ol);
-                    } else {
-                        currentMenuDiv.textContent = 'Няма заредени бордове.';
-                    }
-                }
-            } catch (err) {
-                console.error(err);
-            }
+            /* Секцията за текущо меню е премахната, тъй като е излишна тук */
 
             // 3. Показване на boardMenuOrder
             try {
