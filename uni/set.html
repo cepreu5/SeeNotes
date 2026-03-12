@@ -158,12 +158,91 @@
             margin-left: 10px;
             color: white;
         }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .delete-btn:hover {
+            opacity: 1;
+        }
+
+        .device-section.marked-for-delete {
+            opacity: 0.5;
+            filter: grayscale(1);
+        }
+
+        .device-section.marked-for-delete .device-header {
+            background-color: #666 !important;
+            text-decoration: line-through;
+        }
+
+        .save-container {
+            position: sticky;
+            top: 20px;
+            z-index: 100;
+            margin-bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .save-btn {
+            pointer-events: auto;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .save-btn:hover {
+            background-color: #2ecc71;
+            transform: translateY(-2px);
+        }
+
+        .save-btn:active {
+            transform: translateY(0);
+        }
+
+        .json-edit {
+            width: calc(100% - 20px);
+            height: 300px;
+            margin: 10px;
+            background: #272822;
+            color: #f8f8f2;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9em;
+            border: 1px solid #444;
+            display: none;
+            resize: vertical;
+        }
     </style>
 </head>
 
 <body>
     <div class="container" id="main-container">
         <h1>Cloud Settings & Menu Order</h1>
+
+        <div class="save-container">
+            <button id="save-all-btn" class="save-btn" style="display:none;">Запази промените</button>
+        </div>
 
         <div id="content">Зареждане на данни...</div>
 
@@ -188,24 +267,35 @@
             try {
                 const settings = JSON.parse(rawSettings);
                 contentDiv.innerHTML = '';
-
                 const topLevelKeys = Object.keys(settings);
                 const looksOld = topLevelKeys.some(k =>
                     ['zoomLevel', 'noteFontSize', 'modalFontSize', 'startBoard'].includes(k) ||
                     k.startsWith('board_')
                 );
+                const devices = looksOld ? { 'Default': settings } : settings;
+                const deviceNames = Object.keys(devices);
+                if (deviceNames.length > 0) {
+                    document.getElementById('save-all-btn').style.display = 'block';
+                }
 
-                const devices = looksOld ? { 'По подразбиране (Стар формат)': settings } : settings;
-
-                for (const [deviceName, deviceSettings] of Object.entries(devices)) {
+                deviceNames.forEach(deviceName => {
+                    const deviceSettings = devices[deviceName];
+                    const safeId = deviceName.replace(/[^\w-]/g, '-');
                     const section = document.createElement('div');
                     section.className = 'device-section';
+                    section.dataset.deviceName = deviceName;
+                    section.id = `section-${safeId}`;
 
                     const header = document.createElement('div');
                     header.className = 'device-header';
                     header.innerHTML = `
-                        <span>Устройство: ${deviceName}</span>
-                        <button class="toggle-btn" onclick="toggleRaw('${deviceName.replace(/\s+/g, '-')}')">JSON</button>
+                        <div style="display:flex; align-items:center;">
+                            <button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий устройството">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                            </button>
+                            <span style="margin-left:10px;">Устройство: ${deviceName}</span>
+                        </div>
+                        <button class="toggle-btn" onclick="toggleRaw('${safeId}')">Редактирай JSON</button>
                     `;
 
                     const content = document.createElement('div');
@@ -224,32 +314,27 @@
                         const tr = document.createElement('tr');
                         const value = deviceSettings[key];
                         let displayValue = (typeof value === 'object') ? JSON.stringify(value) : String(value);
-
-                        /* 
-                           startBoard вече не се пази в settings.json,
-                           а само във folders.json, затова премахваме 
-                           логиката за визуализацията му тук.
-                        */
-
                         tr.innerHTML = `<th>${key}</th><td>${displayValue}</td>`;
                         table.appendChild(tr);
                     });
 
-                    const rawPre = document.createElement('pre');
-                    rawPre.className = 'json-raw';
-                    rawPre.id = `raw-${deviceName.replace(/\s+/g, '-')}`;
-                    rawPre.textContent = JSON.stringify(deviceSettings, null, 2);
+                    const rawEdit = document.createElement('textarea');
+                    rawEdit.className = 'json-edit';
+                    rawEdit.id = `edit-${safeId}`;
+                    rawEdit.value = JSON.stringify(deviceSettings, null, 2);
 
                     content.appendChild(table);
-                    content.appendChild(rawPre);
+                    content.appendChild(rawEdit);
                     section.appendChild(header);
                     section.appendChild(content);
                     contentDiv.appendChild(section);
-                }
+                });
             } catch (err) {
                 console.error(err);
                 contentDiv.innerHTML = `<div class="error-msg">Грешка при четене на настройките: ${err.message}</div>`;
             }
+
+            document.getElementById('save-all-btn').addEventListener('click', saveAll);
 
             /* Секцията за текущо меню е премахната, тъй като е излишна тук */
 
@@ -279,8 +364,63 @@
         });
 
         function toggleRaw(id) {
-            const el = document.getElementById(`raw-${id}`);
+            const el = document.getElementById(`edit-${id}`);
             el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function toggleDelete(id) {
+            const section = document.getElementById(`section-${id}`);
+            section.classList.toggle('marked-for-delete');
+        }
+
+        async function saveAll() {
+            const sections = document.querySelectorAll('.device-section');
+            const finalSettings = {};
+            let hasError = false;
+            sections.forEach(section => {
+                if (section.classList.contains('marked-for-delete')) return;
+                const deviceName = section.dataset.deviceName;
+                const safeId = section.id.replace('section-', '');
+                const textarea = document.getElementById(`edit-${safeId}`);
+                try {
+                    const editedJson = JSON.parse(textarea.value);
+                    finalSettings[deviceName] = editedJson;
+                } catch (e) {
+                    alert(`Грешка в JSON за устройство "${deviceName}": ${e.message}`);
+                    hasError = true;
+                }
+            });
+            if (hasError) return;
+            const finalContent = JSON.stringify(finalSettings, null, 2);
+            sessionStorage.setItem('full_settings_json', finalContent);
+            let successMsg = "Промените са запазени локално в сесията.";
+            let gdriveSaved = false;
+            if (window.opener && !window.opener.closed) {
+                try {
+                    if (typeof window.opener.updateGDriveFile === 'function') {
+                        const folderId = await window.opener.getFolderIDByName('multinotes_data');
+                        if (folderId) {
+                            const fileName = 'settings.json';
+                            const existingFiles = await window.opener.findGDFileByName(folderId, fileName);
+                            if (existingFiles && existingFiles.length > 0) {
+                                await window.opener.updateGDriveFile(existingFiles[0].id, finalContent);
+                                successMsg = "Промените са запазени успешно в Google Drive!";
+                                gdriveSaved = true;
+                            }
+                        }
+                    } else if (typeof window.opener.saveSettingsToGDrive === 'function') {
+                        console.log("Found saveSettingsToGDrive but using manual update if possible.");
+                    }
+                } catch (err) {
+                    console.error("GDrive save error from set.html:", err);
+                    successMsg += "\nГрешка при запис в Google Drive: " + err.message;
+                }
+            }
+            if (!gdriveSaved) {
+                localStorage.setItem('settings_json_full_override', finalContent);
+                successMsg += "\nМоля, рестартирайте основното приложение, за да се приложат промените.";
+            }
+            alert(successMsg);
         }
 
         function getBoardColor(color) {
