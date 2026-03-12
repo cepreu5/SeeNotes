@@ -154,8 +154,8 @@ window.msmFlipImage = function () {
           // X: W -> W. NewX = OldX + OldW - NewW
           xChange = oldWidth - newWidth;
         }
-        currentActiveStep.x = (currentActiveStep.x || 0) + xChange;
-        currentActiveStep.y = (currentActiveStep.y || 0) + yChange;
+        currentActiveStep.x = Math.round((currentActiveStep.x || 0) + xChange);
+        currentActiveStep.y = Math.round((currentActiveStep.y || 0) + yChange);
         const debugOverlay = document.getElementById('msm-debug-overlay');
         if (debugOverlay) {
           debugOverlay.innerText = `Flipped: ${transition}\nNew x: ${Math.round(currentActiveStep.x)}\nNew y: ${Math.round(currentActiveStep.y)}`;
@@ -424,12 +424,12 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
-      const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}, "target": "${step.target || ''}"`;
+      const clipboardText = `x: ${Math.round(step.x || 0)}, y: ${Math.round(step.y || 0)}, bx: ${Math.round(currentBx)}, by: ${Math.round(currentBy)}, bWidth: ${Math.round(newWidth)}, bHeight: ${Math.round(newHeight)}, "target": "${step.target || ''}"`;
       navigator.clipboard.writeText(clipboardText);
       debugOverlay.innerText = `Copied: ${clipboardText}`;
 
-      step.bWidth = newWidth;
-      step.bHeight = newHeight;
+      step.bWidth = Math.round(newWidth);
+      step.bHeight = Math.round(newHeight);
     };
   };
   resizeHandle.ontouchstart = (e) => {
@@ -467,12 +467,12 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
-      const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}, "target": "${step.target || ''}"`;
+      const clipboardText = `x: ${Math.round(step.x || 0)}, y: ${Math.round(step.y || 0)}, bx: ${Math.round(currentBx)}, by: ${Math.round(currentBy)}, bWidth: ${Math.round(newWidth)}, bHeight: ${Math.round(newHeight)}, "target": "${step.target || ''}"`;
       navigator.clipboard.writeText(clipboardText);
       debugOverlay.innerText = `Copied: ${clipboardText}`;
 
-      step.bWidth = newWidth;
-      step.bHeight = newHeight;
+      step.bWidth = Math.round(newWidth);
+      step.bHeight = Math.round(newHeight);
     };
   };
   // --- BUBBLE DRAG LOGIC ---
@@ -513,9 +513,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       isBubbleInteracting = false;
       if (bubbleWasDragged) {
         // Copy to clipboard
-        const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
-        const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
-        const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${step.target || ''}"`;
+        const currentBWidth = step.bWidth || parseInt(bubble.style.width, 10) || 0;
+        const currentBHeight = step.bHeight || parseInt(bubble.style.height, 10) || 0;
+        const clipboardText = `x: ${Math.round(step.x || 0)}, y: ${Math.round(step.y || 0)}, bx: ${finalBx}, by: ${finalBy}, bWidth: ${Math.round(currentBWidth)}, bHeight: ${Math.round(currentBHeight)}, "target": "${step.target || ''}"`;
         navigator.clipboard.writeText(clipboardText);
         debugOverlay.innerText = `Copied: ${clipboardText}`;
         step.bx = finalBx;
@@ -586,9 +586,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       isBubbleInteracting = false;
       if (bubbleWasDragged) {
         // Copy to clipboard
-        const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
-        const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
-        const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${step.target || ''}"`;
+        const currentBWidth = step.bWidth || parseInt(bubble.style.width, 10) || 0;
+        const currentBHeight = step.bHeight || parseInt(bubble.style.height, 10) || 0;
+        const clipboardText = `x: ${Math.round(step.x || 0)}, y: ${Math.round(step.y || 0)}, bx: ${finalBx}, by: ${finalBy}, bWidth: ${Math.round(currentBWidth)}, bHeight: ${Math.round(currentBHeight)}, "target": "${step.target || ''}"`;
         navigator.clipboard.writeText(clipboardText);
         debugOverlay.innerText = `Copied: ${clipboardText}`;
         step.bx = finalBx;
@@ -909,10 +909,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
               const newTarget = document.querySelector(elId);
               if (newTarget) targetEl = newTarget;
             }
-            const currentBx = step.bx || 0;
-            const currentBy = step.by || 0;
-            const currentBWidth = step.bWidth || 0;
-            const currentBHeight = step.bHeight || 0;
+            const currentBx = Math.round(step.bx || 0);
+            const currentBy = Math.round(step.by || 0);
+            const currentBWidth = Math.round(step.bWidth || 0);
+            const currentBHeight = Math.round(step.bHeight || 0);
             const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${elId}"`;
             navigator.clipboard.writeText(clipboardText);
             debugOverlay.innerText = `Copied: ${clipboardText}`;
@@ -1025,10 +1025,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
               const newTarget = document.querySelector(elId);
               if (newTarget) targetEl = newTarget;
             }
-            const currentBx = step.bx || 0;
-            const currentBy = step.by || 0;
-            const currentBWidth = step.bWidth || 0;
-            const currentBHeight = step.bHeight || 0;
+            const currentBx = Math.round(step.bx || 0);
+            const currentBy = Math.round(step.by || 0);
+            const currentBWidth = Math.round(step.bWidth || 0);
+            const currentBHeight = Math.round(step.bHeight || 0);
             const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${elId}"`;
             navigator.clipboard.writeText(clipboardText);
             debugOverlay.innerText = `Copied: ${clipboardText}`;

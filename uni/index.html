@@ -429,14 +429,6 @@
                     </select>
                 </div>
 
-                <div class="zoom-control-wrapper" id="max-searches" style="margin-top: 10px;">
-                    <label for="max-searches-input"
-                        style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="maxSearchesLabel">
-                        Запазени търсения:</label>
-                    <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
-                </div>
-
                 <div class="zoom-control-wrapper" id="note-font-size" style="margin-top: 10px;">
                     <label for="note-font-size-input"
                         style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
@@ -453,6 +445,21 @@
                         Размер шрифт (преглед):</label>
                     <select id="modal-font-size-input" class="zoom-input-select"
                         style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
+                </div>
+
+                <div class="zoom-control-wrapper" id="max-searches" style="margin-top: 10px;">
+                    <label for="max-searches-input"
+                        style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
+                        data-key="maxSearchesLabel">
+                        Запазени търсения:</label>
+                    <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
+                </div>
+                <div class="zoom-control-wrapper" id="trash-search" style="margin-top: 10px;">
+                    <label for="trash-search-checkbox"
+                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                        data-key="trashSearchLabel">
+                        Търсене в кошчето:</label>
+                    <input type="checkbox" id="trash-search-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="hide-assistant" style="margin-top: 10px;">
@@ -657,10 +664,12 @@
                             Google Drive:
                         </label>
                         <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
-                        <label for="update-gdrive-checkbox"
+                        <!--label for="update-gdrive-checkbox"
                             style="margin-right: 10px; margin-left: 10px; flex-shrink: 0; text-align: left;"
                             data-key="updateGDriveLabel">
-                            Актуализирай:</label>
+                            Актуализирай:</label-->
+                        <img src="Refresh.png" alt="Update"
+                            style="width:24px; height:24px; margin-right: 5px; margin-left: 30px;">
                         <input type="checkbox" id="update-gdrive-checkbox" class="settings-checkbox">
                     </div>
 
@@ -900,13 +909,6 @@
         opacity: 0.8;
     " onmouseover="this.style.transform='scale(1.1)'; this.style.opacity='1'"
         onmouseout="this.style.transform='scale(1)'; this.style.opacity='0.8'">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            <line x1="10" y1="11" x2="14" y2="17"></line>
-            <line x1="14" y1="11" x2="10" y2="17"></line>
-        </svg>
     </button>
     <button id="add-note-fab" title="Нова бележка" data-key-title="addNoteTooltip" style="
         position: fixed;

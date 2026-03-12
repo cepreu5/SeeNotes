@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.84'; // App version
+const version = 'Beta 1.85'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -132,6 +132,7 @@ const attachmentIcons = [
 ];
 const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
 const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
+const emptyTrashIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="14" y2="17"></line><line x1="14" y1="11" x2="10" y2="17"></line></svg>`;
 
 
 let currentLang = localStorage.getItem('language') || 'en';
@@ -1558,6 +1559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const emptyTrashFab = document.getElementById('empty-trash-fab');
     if (emptyTrashFab) {
+        emptyTrashFab.innerHTML = emptyTrashIconSvg;
         emptyTrashFab.addEventListener('click', emptyTrash);
     }
 });
@@ -2441,16 +2443,22 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
     }
     if (noteToMove) {
         const oldBoardId = noteToMove.boardid;
-        if (String(oldBoardId) === String(newBoardId)) {
-            showToast(_('noteAlreadyInBoard'), 3000);
-            return false;
-        }
         const targetBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
         if (!targetBoard) return;
+
+        if (String(oldBoardId) === String(newBoardId)) {
+            if (noteToMove.status === 1) {
+                noteToMove.status = 0; // Възстановяване от кошчето в същия борд
+            } else {
+                showToast(_('noteAlreadyInBoard'), 3000);
+                return false;
+            }
+        } else {
+            noteToMove.boardid = newBoardId;
+            if (noteToMove.status === 1) noteToMove.status = 0; // Възстановяване от кошчето в нов борд
+        }
+
         const targetBoardTitle = targetBoard.title;
-        // Update memory
-        noteToMove.boardid = newBoardId;
-        if (noteToMove.status === 1) noteToMove.status = 0; // Restore from trash
         noteToMove.datemod = Date.now();
 
         // Update DB
@@ -7228,16 +7236,41 @@ function showModal(options, noteElement = null) {
         });
         footerToolbar.appendChild(searchBtn);
 
-        // --- Edit Button ---
+        // --- Edit / Restore Button ---
         const editBtn = document.createElement('div');
         editBtn.id = 'note-edit-btn';
         editBtn.className = 'modal-footer-btn';
-        editBtn.innerHTML = pencilIconSvg;
-        editBtn.title = "Edit note";
-        editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            enableNoteEditing(modalBody);
-        });
+
+        if (currentNoteObj && currentNoteObj.status === 1) {
+            // Restore button for notes in trash
+            editBtn.innerHTML = emptyTrashIconSvg;
+            // Override styles for the smaller modal button context
+            const editSvg = editBtn.querySelector('svg');
+            if (editSvg) {
+                editSvg.style.width = '22px';
+                editSvg.style.height = '22px';
+                editSvg.setAttribute('stroke', 'black');
+            }
+            editBtn.title = _('restoreNoteTooltip') || "Възстанови бележката";
+            editBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                // Move note back to its original board
+                const moved = await moveNoteToBoard(noteGdid, noteId, currentNoteObj.boardid);
+                if (moved !== false) {
+                    contentModal.classList.remove('visible');
+                    // showToast(_('noteRestoredSuccess') || "Бележката е възстановена.", 3000);
+                }
+            });
+        } else {
+            // Standard edit button
+            editBtn.innerHTML = pencilIconSvg;
+            editBtn.title = "Edit note";
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                enableNoteEditing(modalBody);
+            });
+        }
+
         footerToolbar.appendChild(editBtn);
     }
 }
@@ -7834,6 +7867,8 @@ function applyFilters() {
             if (board.id) validBoardIds.push(board.id);
         }
     }
+    const trashSearch = localStorage.getItem('trashSearch') === 'true';
+
     for (const note of notes) {
         if (note.classList.contains('boards-note') || note.classList.contains('promo-note')) {
             continue;
@@ -7874,7 +7909,7 @@ function applyFilters() {
             const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
             matchesSearch = noteText.toLowerCase().includes(searchTerm);
         }
-        if ((searchTerm !== '' ? matchesSearch : isVisibleByBoard)) {
+        if ((searchTerm !== '' ? (matchesSearch && (!isDeleted || trashSearch)) : isVisibleByBoard)) {
             note.style.display = 'flex';
             visibleCount++;
         } else {
@@ -8419,7 +8454,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     return boardsNote;
 }
 const appSettingsKeys = [
-    'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast',
+    'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
     'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd',
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
@@ -8922,6 +8957,15 @@ async function createSettingsUI(boardsData, boardParseError) {
                 });
             }
             showToast(_('settingSaved'), 2000);
+        });
+    }
+    const trashSearchCheckbox = document.getElementById('trash-search-checkbox');
+    if (trashSearchCheckbox) {
+        trashSearchCheckbox.checked = localStorage.getItem('trashSearch') === 'true';
+        trashSearchCheckbox.addEventListener('change', () => {
+            localStorage.setItem('trashSearch', trashSearchCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+            applyFilters();
         });
     }
     // Zooom
