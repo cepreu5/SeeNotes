@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.87'; // App version
+const version = 'Beta 1.88'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -11279,6 +11279,10 @@ async function setLanguage(lang) {
         const key = element.getAttribute('data-key');
         element.innerHTML = _(key);
     });
+    const appTitleEl = document.getElementById('app-title');
+    if (appTitleEl) {
+        appTitleEl.innerHTML += ` <span style="font-size: 0.4em; opacity: 0.7; font-weight: normal; vertical-align: middle; margin-left: 8px;">${version}</span>`;
+    }
     document.querySelectorAll('[data-key-placeholder]').forEach(element => {
 
         const key = element.getAttribute('data-key-placeholder');
@@ -13695,18 +13699,40 @@ async function showNewBoardModal() {
     function updatePreview() {
         const title = titleInput.value.trim() || _('addBoardTitle') || "Нов борд";
         previewTab.textContent = title;
-        previewTab.style.backgroundColor = `var(--board-bg-${selectedColor})`;
-        previewTab.style.color = fontColors[selectedFontColor];
-        previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
+
+        // Background color logic matching createBoardsUI
+        if (selectedColor >= 0 && selectedColor <= 6) {
+            previewTab.style.backgroundColor = `var(--board-bg-${selectedColor})`;
+        } else if (selectedColor < 0) {
+            const hexColor = '#' + (selectedColor >>> 0).toString(16).slice(-6);
+            previewTab.style.backgroundColor = hexColor;
+        }
+
+        // Font color logic matching createBoardsUI
+        if (selectedFontColor >= 0 && selectedFontColor < fontColors.length) {
+            // In createBoardsUI, 1 is white, 2 is red, 3 is blue, default is black (0)
+            previewTab.style.color = fontColors[selectedFontColor];
+        } else if (selectedFontColor < 0) {
+            const hexFontColor = '#' + (selectedFontColor >>> 0).toString(16).slice(-6);
+            previewTab.style.color = hexFontColor;
+        } else {
+            // Default logic if font color not explicitly set or not custom
+            previewTab.style.color = (selectedColor == 1 || selectedColor == 5) ? '#000000' : '#FFFFFF';
+        }
+
+        if (bgNames[selectedBackground]) {
+            previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
+        }
     }
 
     function resetInputs(board = null) {
         if (board) {
             currentEditingBoard = board;
             titleInput.value = board.title || "";
-            selectedColor = (typeof board.color === 'number') ? board.color : 0;
-            selectedFontColor = (typeof board.colorfont === 'number') ? board.colorfont : 0;
-            selectedBackground = (typeof board.backnum === 'number') ? board.backnum : 0;
+            // Използваме Number(), за да сме сигурни, че работим с числа, дори ако идват като низове
+            selectedColor = (board.color !== undefined) ? Number(board.color) : 0;
+            selectedFontColor = (board.colorfont !== undefined) ? Number(board.colorfont) : 0;
+            selectedBackground = (board.backnum !== undefined) ? Number(board.backnum) : 0;
             saveBtn.textContent = _('updateButton') || "Обнови";
         } else {
             currentEditingBoard = null;
@@ -13825,7 +13851,7 @@ async function showNewBoardModal() {
             if (confirmed) {
                 try {
                     showToast(_('loadingFile') || 'Изтриване...', 2000);
-                    
+
                     // Първо изтриваме всички бележки от този борд
                     const notesToDelete = allNotesData.filter(n => n.boardid == currentEditingBoard.id);
                     for (const note of notesToDelete) {

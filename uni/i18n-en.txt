@@ -52,6 +52,7 @@ en: {
         deviceNameLabel: 'Device Name:',
         settingSaved: 'Setting saved',
         submitButton: 'Confirm',
+        updateButton: 'Update',
         searchSaved: 'Search saved',
         allBoardsCtrlClickTooltip: 'Ctrl-click - menu',
         maxSearchesLabel: 'Saved Searches:',

@@ -46,6 +46,7 @@ bg: {
         calendarButtonTooltip: 'Месечен календар',
         settingsTitle: 'Настройки',
         submitButton: 'Потвърди',
+        updateButton: 'Обнови',
         startBoardLabel: 'Стартов борд:',
         deviceNameLabel: 'Име на устройство:',
         settingSaved: 'Настройката е запазена',
