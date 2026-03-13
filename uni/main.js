@@ -13665,6 +13665,7 @@ async function showNewBoardModal() {
     const fontColorsContainer = document.getElementById('new-board-font-colors');
     const backgroundsContainer = document.getElementById('new-board-backgrounds');
     const saveBtn = document.getElementById('save-new-board-btn');
+    const delBtn = document.getElementById('board-del-btn');
     const previewTab = document.getElementById('preview-tab');
     const previewBg = document.getElementById('preview-bg');
 
@@ -13715,6 +13716,7 @@ async function showNewBoardModal() {
             selectedBackground = 0;
             saveBtn.textContent = _('submitButton') || "Потвърди";
         }
+        if (delBtn) delBtn.style.display = board ? 'flex' : 'none';
         renderColorOptions();
         renderFontColorOptions();
         renderBackgroundOptions();
@@ -13814,6 +13816,72 @@ async function showNewBoardModal() {
     }
 
     titleInput.oninput = updatePreview;
+
+    if (delBtn) {
+        delBtn.onclick = async () => {
+            if (!currentEditingBoard) return;
+            const confirmMsg = (_('confirmDeleteBoard') || "Наистина ли искате да изтриете борд \"{boardTitle}\" и ВСИЧКИ бележки в него? Таза операция е необратима!").replace('{boardTitle}', currentEditingBoard.title);
+            const confirmed = await showConfirmation(confirmMsg);
+            if (confirmed) {
+                try {
+                    showToast(_('loadingFile') || 'Изтриване...', 2000);
+                    
+                    // Първо изтриваме всички бележки от този борд
+                    const notesToDelete = allNotesData.filter(n => n.boardid == currentEditingBoard.id);
+                    for (const note of notesToDelete) {
+                        await permanentlyDeleteNote(note.gdid, note.id, true); // skipUI=true за бързина
+                    }
+
+                    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+                    if (updateGDriveNow && currentEditingBoard.gdid) {
+                        await deleteGDriveFile(currentEditingBoard.gdid);
+                    }
+                    // Премахваме от локалния списък
+                    boardsData = boardsData.filter(b => b.id !== currentEditingBoard.id && (b.gdid !== currentEditingBoard.gdid || !b.gdid));
+                    // Премахваме от IndexedDB
+                    if (useIndexedDb) {
+                        await deleteFromDB(BOARD_STORE_NAME, currentEditingBoard.gdid || currentEditingBoard.id);
+                    }
+                    // Премахваме от подредбата на менюто
+                    try {
+                        const raw = localStorage.getItem('boardMenuOrder');
+                        if (raw) {
+                            let order = JSON.parse(raw);
+                            order = order.filter(title => title !== currentEditingBoard.title);
+                            localStorage.setItem('boardMenuOrder', JSON.stringify(order));
+                        }
+                    } catch (e) { }
+                    const boardId = (currentEditingBoard.gdid || currentEditingBoard.id).toString();
+                    // Изчистваме стартовия борд, ако е изтритият
+                    if (localStorage.getItem('startBoard') === boardId) {
+                        localStorage.removeItem('startBoard');
+                    }
+
+                    // Ако изтриваме активния борд, превключваме на друг
+                    if (currentBoardFilter === boardId) {
+                        if (boardsData.length > 0) {
+                            const firstBoard = boardsData[0];
+                            currentBoardFilter = (firstBoard.gdid || firstBoard.id).toString();
+                        } else {
+                            currentBoardFilter = 'all';
+                        }
+                        boardBeforeSearch = currentBoardFilter;
+                    }
+
+                    modal.classList.remove('visible');
+                    // Опресняваме UI
+                    const boardsNote = document.querySelector('header .boards-note');
+                    if (boardsNote) boardsNote.remove();
+                    await renderUI({ boardParseError: false });
+                    showToast(_('settingsSavedSuccess'));
+                } catch (error) {
+                    console.error("Board deletion failed:", error);
+                    showToast("Error: " + error.message, 5000);
+                }
+            }
+        };
+    }
+
     resetInputs();
 
     saveBtn.onclick = async () => {

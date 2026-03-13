@@ -51,6 +51,8 @@ bg: {
         settingSaved: 'Настройката е запазена',
         searchSaved: 'Търсенето е запазено',
         saveTokenTooltip: 'Обнови токена',
+        delBoard: 'Изтрий',
+        confirmDeleteBoard: 'Наистина ли искате да изтриете борд "{boardTitle}" и ВСИЧКИ бележки в него? Тази операция е необратима!',
         closeButton: 'Затвори',
         clearButton: 'Изчисти',
         allBoardsCtrlClickTooltip: 'Ctrl-клик - меню',

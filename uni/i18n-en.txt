@@ -45,6 +45,8 @@ en: {
         settingsTitle: 'Settings',
         searchSavedTip: 'Save search',
         saveTokenTooltip: 'Process token',
+        delBoard: 'Delete',
+        confirmDeleteBoard: 'Are you sure you want to delete board "{boardTitle}" and ALL notes in it? This operation is irreversible!',
         trashSearchLabel: 'Search in trash:',
         startBoardLabel: 'Start Board:',
         deviceNameLabel: 'Device Name:',
