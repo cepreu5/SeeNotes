@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.86'; // App version
+const version = 'Beta 1.87'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -1509,6 +1509,7 @@ function gisLoaded() {
                 sessionStorage.removeItem('logout_flag');
                 // Вместо redirect, скриваме login страницата и продължаваме
                 document.getElementById('login-page').hidden = true;
+                document.getElementById('login-page').style.display = 'none';
                 // Извикваме startApp за да заредим приложението
                 startApp(true);
             } else {
@@ -1526,14 +1527,14 @@ function gisLoaded() {
     const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
     const isLogout = sessionStorage.getItem('logout_flag') === 'true';
 
+    // ВИНАГИ стартираме приложението, за да се инициализира UI-а (вкл. полето за търсене за токени)
+    // checkAuth ще се погрижи да покаже login страницата, ако няма токен.
+    startApp();
+
     if (hasToken && !isLogout) {
-        // Ако имаме токен и не сме в процес на logout, се опитваме да стартираме директно
-        console.log("Existing token found in GIS callback, starting app silently...");
-        // document.getElementById('login-page').hidden = true; // No need here, startApp handles it
-        startApp();
+        console.log("Existing token found in GIS callback, silente mode handled by startApp...");
     } else {
         // Винаги показваме екрана за вход
-        // Автоматичното влизане ще се случи при клик на бутона, ако rememberMe е активно
         if (loginBox) loginBox.style.visibility = 'visible';
         const authBtn = document.getElementById('authorize_button');
         if (authBtn) authBtn.disabled = false;
@@ -2973,6 +2974,9 @@ async function startApp(isExplicitLogin = false) {
             return;
         }
         authToken = authResult.tokenData;
+        // Скриваме логин страницата, ако е била показана
+        document.getElementById('login-page').hidden = true;
+        document.getElementById('login-page').style.display = 'none';
         // --- WHITELIST CHECK (Only on explicit login) ---
         if (isExplicitLogin) {
             checkWhitelist();
@@ -3422,7 +3426,10 @@ async function handleCalculateClick(checkList) {
     }
 }
 
+let isUIInitialized = false;
 function initApp() {
+    if (isUIInitialized) return;
+    isUIInitialized = true;
     // Inject custom styles dynamically to fix UI issues
     const style = document.createElement('style');
     style.textContent = `
@@ -3858,10 +3865,18 @@ function initApp() {
     let searchDebounceTimeout;
     searchBox.addEventListener('input', (event) => {
         // Immediate UI update for buttons (no debounce needed for visibility)
-        const hasText = searchBox.value.length > 0;
+        const val = searchBox.value.trim();
+        const hasText = val.length > 0;
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         // Save button might wait for debounce, but usually safer to show immediately too
-        saveSearchBtn.style.display = searchBox.value.trim().length > 0 ? 'flex' : 'none';
+        saveSearchBtn.style.display = hasText ? 'flex' : 'none';
+
+        // По-толерантна проверка за токен в реално време
+        if (val.match(/^\??token=/)) {
+            saveSearchBtn.title = (typeof _ === 'function') ? _('saveTokenTooltip') : "Update token";
+        } else {
+            saveSearchBtn.title = (typeof _ === 'function') ? _('searchSavedTip') : "Save search term";
+        }
         if (!event.isTrusted) return;
         clearTimeout(searchDebounceTimeout);
         searchDebounceTimeout = setTimeout(() => {
@@ -3893,9 +3908,24 @@ function initApp() {
     searchBox.addEventListener('focus', () => {
         renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
     });
-    saveSearchBtn.addEventListener('click', (e) => {
+    saveSearchBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const searchTerm = searchBox.value.trim();
+        // Обработка на токен за лиценз
+        const tokenMatch = searchTerm.match(/^\??token=(.+)$/);
+        if (tokenMatch) {
+            const tokenValue = tokenMatch[1].trim();
+            if (tokenValue) {
+                localStorage.setItem('urlToken', tokenValue);
+                searchBox.value = '';
+                saveSearchBtn.style.display = 'none';
+                clearSearchBtn.style.display = 'none';
+                cachedLicenseData = null; // Изчистваме кеша за лиценза
+                isAppStarted = false; // Позволяваме рестартиране на приложението
+                startApp(true);
+            }
+            return;
+        }
         if (searchTerm && !savedSearches.includes(searchTerm)) {
             saveSearchTerm(searchTerm);
             // Animate the save button instead of showing a toast
@@ -4397,6 +4427,13 @@ function saveSearchTerm(term) {
 // Функция за инициализация на login страницата
 async function initLoginPage() {
     document.getElementById('login-page').hidden = false;
+    document.getElementById('login-page').style.display = 'block';
+
+    // Показваме заглавието и полето за търсене, за да може да се въведе токен
+    document.querySelector('header').style.visibility = 'visible';
+    document.querySelector('#search-wrapper').style.display = 'flex';
+    document.querySelector('header').style.display = 'flex';
+
     document.getElementById('loader-container').style.display = 'none';
 
     // --- Button Visibility Logic (Restored & Consolidated) ---
@@ -4430,6 +4467,11 @@ async function initLoginPage() {
             rememberMeCheck.parentElement.style.display = 'none';
         }
     } else {
+        const loginPrompt = document.querySelector('[data-key="loginPrompt"], [data-key="invalidCertificate"]');
+        if (loginPrompt) {
+            loginPrompt.setAttribute('data-key', 'loginPrompt');
+            loginPrompt.innerHTML = _('loginPrompt');
+        }
         if (rememberMeCheck && rememberMeCheck.parentElement) {
             rememberMeCheck.parentElement.style.display = 'block';
         }
@@ -4604,6 +4646,7 @@ async function silentLoginWithIframe(loginHint) {
 async function handleAuthClick() {
     if (isOffline) {
         document.getElementById('login-page').hidden = true;
+        document.getElementById('login-page').style.display = 'none';
         startApp(true);
         return;
     }
@@ -4644,6 +4687,7 @@ async function handleAuthClick() {
             if (confirm("Google services could not be loaded (likely due to connection issues).\n\nDo you want to start in Offline Mode?")) {
                 isOffline = true;
                 document.getElementById('login-page').hidden = true;
+                document.getElementById('login-page').style.display = 'none';
                 startApp(true);
                 return;
             }
@@ -4687,20 +4731,29 @@ function checkWhitelist() {
 
 async function checkAuth(isExplicitLogin = false) {
     console.log("checkAuth");
+    const searchInput = document.getElementById('search-box');
+    if (searchInput) {
+        const val = searchInput.value.trim();
+        // По-толерантен regex: приема ?token= или само token=
+        const tokenMatch = val.match(/^\??token=(.+)$/);
+        if (tokenMatch) {
+            const tokenValue = tokenMatch[1].trim();
+            if (tokenValue) {
+                localStorage.setItem('urlToken', tokenValue);
+                searchInput.value = '';
+                cachedLicenseData = null; // Изчистваме кеша за лиценза
+                if (saveSearchBtn) saveSearchBtn.style.display = 'none';
+            }
+        }
+    }
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     const storedTokenString = sessionToken || localToken;
     if (isOffline && (storedTokenString || isExplicitLogin)) return { pass: true };
     if (!storedTokenString) {
-        if (!window.authListenersAdded) {
-            initLoginPage();
-            window.authListenersAdded = true;
-        } else {
-            document.getElementById('login-page').hidden = false;
-            const loader = document.getElementById('loader-container');
-            if (loader) loader.style.display = 'none';
-        }
-        return null;
+        await initLoginPage();
+        window.authListenersAdded = true;
+        return { pass: false };
     }
     const tokenData = JSON.parse(storedTokenString);
     if (window.gapi && window.gapi.client && tokenData.access_token) window.gapi.client.setToken(tokenData);
@@ -5719,8 +5772,10 @@ async function mainLogic() {
             loaderText.textContent = ''; // Изчистваме текста за прогреса
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
-            // Скриваме лоудъра
+            // Скриваме лоудъра и логин страницата
             loaderContainer.style.display = 'none';
+            document.getElementById('login-page').style.display = 'none';
+            document.getElementById('login-page').hidden = true;
             // Показваме основните елементи, след като всичко е заредено
             document.querySelector('header').style.visibility = 'visible';
             document.querySelector('#search-wrapper').style.display = 'flex';
