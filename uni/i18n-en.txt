@@ -274,7 +274,7 @@ en: {
         "saveSettingsLabel": "Save settings",
         "loadSettingsLabel": "Load settings",
         "settingsSavedSuccess": "Settings saved successfully!",
-        "showSettingsLabel": "View Cloud Settings",
+        "showSettingsLabel": "View Saved Settings",
         "settingsLoadedSuccess": "Settings loaded successfully! Please reload the page.",
         "errorSaveSettings": "Error saving settings.",
         "errorLoadSettings": "Error loading settings.",

@@ -313,8 +313,11 @@
     <!-- Модал за добавяне на нов борд -->
     <div id="new-board-modal" class="modal-overlay">
         <div class="modal-content-box"
-            style="width: 320px; padding: 20px; border-radius: 15px; background: url('Frame.jpg') center/cover no-repeat; box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px;">
+            style="width: 100%; max-width: 380px; padding: 20px; border-radius: 15px; background: url('Frame.jpg') center/cover no-repeat; box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); box-sizing: border-box; position: relative;">
+            <button class="modal-close"
+                style="position: absolute; top: 10px; right: 10px; font-size: 28px; background: none; border: none; cursor: pointer; color: white; z-index: 2;">&times;</button>
+            <div
+                style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; padding-right: 30px;">
                 <div style="display: flex; flex-direction: row; gap: 5px;">
                     <h2 data-key="addBoardTitle"
                         style="margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
@@ -329,8 +332,6 @@
                             </div>
                         </div>
                     </div>
-                    <button class="modal-close"
-                        style="position: static; font-size: 28px; background: none; border: none; cursor: pointer; color: white;">&times;</button>
                 </div>
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
@@ -340,16 +341,20 @@
                     style="flex: 1; height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 5px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
                     <option value="" data-key="newBoardOption" style="background:#2c2c2c;">[Нов борд]</option>
                 </select>
-                <button id="board-reorder-btn" class="zoom-btn"
+                <button id="board-del-btn" class="zoom-btn"
                     style="padding: 0 10px; height: 36px; background: #607D8B; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 5px;">
-                    <span data-key="reorderBoards">Нареди</span>
+                    <span data-key="delBoard">Изтрий</span>
                 </button>
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
                 <label data-key="boardTitleLabel"
                     style="flex: 0 0 80px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Заглавие:</label>
                 <input type="text" id="new-board-title"
-                    style="flex: 1; height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 10px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
+                    style="flex: 1; width: 40%;height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 10px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
+                <button id="board-reorder-btn" class="zoom-btn"
+                    style="padding: 0 10px; height: 36px; background: #607D8B; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 5px;">
+                    <span data-key="reorderBoards">Подреди</span>
+                </button>
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px;">
                 <label data-key="boardColorLabel"
@@ -764,8 +769,9 @@
                         data-key="deviceNameLabel">Име на устройство:</label>
                     <input type="text" id="device-name-input" class="zoom-input-text" style="width: 100px;">
                 </div>
-                <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
-                    <button id="show-settings-btn" class="zoom-btn" data-key="showSettingsLabel">Покажи
+                <div class="zoom-control-wrapper"
+                    style="margin-top:0; margin-bottom:0; display:flex; justify-content:center;">
+                    <button id="show-settings-btn" class="zoom-btn" data-key="showSettingsLabel">Преглед на
                         настройките</button>
                 </div>
                 <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px;">

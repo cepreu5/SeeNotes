@@ -631,6 +631,23 @@ code {
     stroke-width: 1.5;
 }
 
+.trash-icon-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    color: rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+}
+
+.trash-icon-overlay svg {
+    width: 100px;
+    height: 100px;
+    stroke: rgba(0, 0, 0, 0.2);
+    stroke-width: 1.5;
+}
+
 
 /* Specific styles for the boards note to make it a full-width panel */
 .boards-note,
@@ -813,7 +830,7 @@ code {
     /* Задаваме ширината да е 90% от екрана */
     max-width: 90%;
     min-height: 10%;
-    max-height: 80vh;
+    max-height: 95vh;
     position: relative;
     display: flex;
     flex-direction: column;

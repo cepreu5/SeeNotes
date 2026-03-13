@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.85'; // App version
+const version = 'Beta 1.86'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -133,6 +133,7 @@ const attachmentIcons = [
 const diskIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
 const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
 const emptyTrashIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="14" y2="17"></line><line x1="14" y1="11" x2="10" y2="17"></line></svg>`;
+const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 
 
 let currentLang = localStorage.getItem('language') || 'en';
@@ -160,9 +161,6 @@ const noteColorMap = [
     '#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF',
     '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'
 ];
-
-const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
-
 const noteBgCache = new Map();
 
 window.getPipeIndex = function (text) {
@@ -1274,7 +1272,7 @@ async function getFolderIDByName(name) {
         if (!storedTokenString) return null;
         let tokenData = JSON.parse(storedTokenString);
         let resp = await sendRequest(tokenData.access_token);
-        if (resp.status === 401) {
+        if (resp.status === 401 || resp.status === 403) {
             let refresh = await refreshAuthToken(false);
             if (refresh && refresh.pass) {
                 tokenData = refresh.tokenData;
@@ -2232,9 +2230,10 @@ async function moveNoteToTrash(noteGdid, noteId) {
     noteToUpdate.status = 1;
     noteToUpdate.datemod = Date.now();
 
-    const doGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const doGDrive = localStorage.getItem('updateGDrive') !== 'false';
     if (doGDrive && noteGdid && !isOffline && typeof updateGDriveFile === 'function') {
         await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
+        console.log("Updating GD")
     }
 
     if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
@@ -2270,7 +2269,7 @@ async function moveNoteToTrash(noteGdid, noteId) {
  * Изтрива бележка окончателно от БД, GDrive, локална папка и паметта.
  */
 async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
-    const doGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const doGDrive = localStorage.getItem('updateGDrive') !== 'false';
     let gdriveDeleted = false;
     if (doGDrive && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
         await deleteGDriveFile(noteGdid);
@@ -2318,7 +2317,7 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
  * @param {boolean} fromModal - Дали се извиква от модалния прозорец.
  */
 async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
-    const doGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const doGDrive = localStorage.getItem('updateGDrive') !== 'false';
     const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
     if (!useIndexedDb && !doGDrive && !doLocal) return;
     if (fromModal) {
@@ -2466,7 +2465,7 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
             await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
         }
 
-        const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+        const updateGDriveNow = localStorage.getItem('updateGDrive') !== 'false';
         const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
 
         // --- GDrive Sync ---
@@ -4090,8 +4089,8 @@ function initApp() {
         e.stopPropagation();
         const currentX = e.touches ? e.touches[0].clientX : e.clientX;
         const currentY = e.touches ? e.touches[0].clientY : e.clientY;
-        const newWidth = startWidth + currentX - startX;
-        const newHeight = startHeight + currentY - startY;
+        const newWidth = Math.round(startWidth + currentX - startX);
+        const newHeight = Math.round(startHeight + currentY - startY);
         modalContentBox.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px'; // Limited by screen width
         modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
         modalContentBox.style.maxWidth = '100vw';
@@ -7879,6 +7878,9 @@ function applyFilters() {
         // Optimized Branching
         if (isTrash) {
             isVisibleByBoard = isDeleted;
+        } else if (isNewUpdates) {
+            const noteStatus = parseInt(note.dataset.s || '0', 10);
+            isVisibleByBoard = (noteStatus === 2 || note.classList.contains('new-update'));
         } else if (isDeleted) {
             isVisibleByBoard = false;
         } else if (isAll) {
@@ -7888,9 +7890,6 @@ function applyFilters() {
             isVisibleByBoard = validBoardIds.some(id => note.dataset.b == id);
         } else if (isReminder) {
             isVisibleByBoard = (note.dataset.tm === '1');
-        } else if (isNewUpdates) {
-            const noteStatus = parseInt(note.dataset.s || '0', 10);
-            isVisibleByBoard = (noteStatus === 2 || note.classList.contains('new-update'));
         } else if (isWithPhotos) {
             isVisibleByBoard = (note.dataset.hp === '1');
         } else if (isWithVideos) {
@@ -7912,8 +7911,21 @@ function applyFilters() {
         if ((searchTerm !== '' ? (matchesSearch && (!isDeleted || trashSearch)) : isVisibleByBoard)) {
             note.style.display = 'flex';
             visibleCount++;
+            if (isNewUpdates && isDeleted) {
+                if (!note.querySelector('.trash-icon-overlay')) {
+                    const trashIconOverlay = document.createElement('div');
+                    trashIconOverlay.className = 'trash-icon-overlay';
+                    trashIconOverlay.innerHTML = emptyTrashIconSvg;
+                    const wrapper = note.querySelector('.note-content-wrapper');
+                    if (wrapper) wrapper.appendChild(trashIconOverlay);
+                }
+            }
         } else {
             note.style.display = 'none';
+        }
+        if (!isNewUpdates) {
+            const trashOverlay = note.querySelector('.trash-icon-overlay');
+            if (trashOverlay) trashOverlay.remove();
         }
     }
     // --- Sorting Logic ---
@@ -13602,11 +13614,6 @@ async function showNewBoardModal() {
     const previewBg = document.getElementById('preview-bg');
 
     const closeBtn = modal.querySelector('.modal-close');
-    if (closeBtn) {
-        closeBtn.style.position = 'absolute';
-        closeBtn.style.top = '10px';
-        closeBtn.style.right = '15px';
-    }
 
     // Попълване на dropdown-а с текущите бордове
     if (editSelect) {
