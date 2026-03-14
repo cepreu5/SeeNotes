@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.88'; // App version
+const version = 'Beta 1.89'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -611,7 +611,7 @@ async function decryptLicenseToken() {
         const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
         let validityInDays = 30;
         if (tokenValidity && !isNaN(parseInt(tokenValidity))) validityInDays = parseInt(tokenValidity, 10);
-        const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
+        const remainingDays = Math.max(0, Math.ceil(validityInDays - ageInDays));
         cachedLicenseData = { urlTokenUsed: urlToken, email: decryptedEmail, validityDays: validityInDays, ageInDays, remainingDays, pass: ageInDays < validityInDays };
         cachedLicenseEmailHint = currentEmail;
         console.log(`License token: Age: ${ageInDays.toFixed(2)} days, Remaining: ${remainingDays} days`);
@@ -2809,11 +2809,11 @@ function deleteNotesDB() {
         deleteFinished = true;
         showToast(_('dbDeleted'), 3000);
     };
-    deleteRequest.onerror = (event) => { 
+    deleteRequest.onerror = (event) => {
         deleteFinished = true;
-        showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000); 
+        showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000);
     };
-    deleteRequest.onblocked = (event) => { 
+    deleteRequest.onblocked = (event) => {
         console.log('Database deletion is blocked unexpectedly:', event);
         // Показваме съобщението само ако изтриването не завърши до 1.5 секунди
         setTimeout(() => {
@@ -9565,7 +9565,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     // Add event listeners
     useIndexedDbCheckbox.addEventListener('change', async (e) => {
         const isChecked = e.target.checked;
-        
+
         // --- ПРОВЕРКИ ЗА ВАЛИДНОСТ НА БАЗАТА ДАННИ ---
         if (isChecked && dbExists) {
             try {
@@ -9577,13 +9577,13 @@ async function createSettingsUI(boardsData, boardParseError) {
                         e.target.checked = false;
                         localStorage.setItem('useIndexedDb', 'false');
                         const msg = (_('dbFolderMismatch') || 'Грешка: БД е създадена за папка "{dbFolder}", а текущата е "{activeFolder}".')
-                                    .replace('{dbFolder}', dbCreatedFolderName)
-                                    .replace('{activeFolder}', activeFolder);
+                            .replace('{dbFolder}', dbCreatedFolderName)
+                            .replace('{activeFolder}', activeFolder);
                         showToast(msg, 5000);
                         return;
                     }
                 }
-                
+
                 // 2. Проверка на потребителя (собственика)
                 const dbOwnerEmail = await getConfig('userEmail');
                 if (dbOwnerEmail) {
@@ -9593,8 +9593,8 @@ async function createSettingsUI(boardsData, boardParseError) {
                         e.target.checked = false;
                         localStorage.setItem('useIndexedDb', 'false');
                         const msg = (_('dbOwnerMismatch') || 'Грешка: БД принадлежи на {dbOwner}, а текущият потребител е {currentUser}.')
-                                    .replace('{dbOwner}', dbOwnerEmail)
-                                    .replace('{currentUser}', currentUserEmail);
+                            .replace('{dbOwner}', dbOwnerEmail)
+                            .replace('{currentUser}', currentUserEmail);
                         showToast(msg, 5000);
                         return;
                     }
