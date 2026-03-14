@@ -2715,10 +2715,19 @@ async function saveConfig(key, value) {
             const transaction = db.transaction(CONFIG_STORE_NAME, 'readwrite');
             const store = transaction.objectStore(CONFIG_STORE_NAME);
             const request = store.put(value, key);
-            request.onsuccess = () => resolve();
             request.onerror = (event) => reject('Error saving to config: ' + event.target.error);
-            transaction.oncomplete = () => db.close();
-            transaction.onerror = () => db.close();
+            transaction.oncomplete = () => {
+                db.close();
+                resolve();
+            };
+            transaction.onerror = () => {
+                db.close();
+                reject('Transaction error saving to config');
+            };
+            transaction.onabort = () => {
+                db.close();
+                reject('Transaction aborted saving to config');
+            };
         } catch (error) {
             db.close();
             reject(error);
@@ -2738,10 +2747,21 @@ async function getConfig(key) {
             const transaction = db.transaction(CONFIG_STORE_NAME, 'readonly');
             const store = transaction.objectStore(CONFIG_STORE_NAME);
             const request = store.get(key);
-            request.onsuccess = () => resolve(request.result);
+            let result;
+            request.onsuccess = () => { result = request.result; };
             request.onerror = (event) => reject('Error getting from config: ' + event.target.error);
-            transaction.oncomplete = () => db.close();
-            transaction.onerror = () => db.close();
+            transaction.oncomplete = () => {
+                db.close();
+                resolve(result);
+            };
+            transaction.onerror = () => {
+                db.close();
+                reject('Transaction error getting from config');
+            };
+            transaction.onabort = () => {
+                db.close();
+                reject('Transaction aborted getting from config');
+            };
         } catch (error) {
             db.close();
             reject(error);
@@ -2783,15 +2803,25 @@ async function checkDbExists(dbName) {
 
 function deleteNotesDB() {
     // --- ОКОНЧАТЕЛНА КОРЕКЦИЯ: Директно изтриване ---
-    // Тъй като вече не поддържаме постоянна отворена връзка,
-    // можем директно да извикаме изтриването.
+    let deleteFinished = false;
     const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
     deleteRequest.onsuccess = () => {
+        deleteFinished = true;
         showToast(_('dbDeleted'), 3000);
     };
-
-    deleteRequest.onerror = (event) => { showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000); };
-    deleteRequest.onblocked = (event) => { showToast(_('errorDbDeletionBlocked'), 10000); console.log('Database deletion is blocked unexpectedly:', event); };
+    deleteRequest.onerror = (event) => { 
+        deleteFinished = true;
+        showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000); 
+    };
+    deleteRequest.onblocked = (event) => { 
+        console.log('Database deletion is blocked unexpectedly:', event);
+        // Показваме съобщението само ако изтриването не завърши до 1.5 секунди
+        setTimeout(() => {
+            if (!deleteFinished) {
+                showToast(_('errorDbDeletionBlocked'), 15000);
+            }
+        }, 1500);
+    };
 }
 
 /**
@@ -2811,6 +2841,7 @@ async function clearDbStores() {
             });
         });
         await Promise.all(clearPromises);
+        db.close(); // ВИНАГИ затваряме връзката след приключване
         console.log('Data stores cleared, config preserved.');
     } catch (error) {
         console.log('Failed to clear data stores:', error);
@@ -2831,10 +2862,19 @@ async function deleteFromDB(storeName, key) {
             const transaction = db.transaction([storeName], 'readwrite');
             const store = transaction.objectStore(storeName);
             const request = store.delete(key);
-            request.onsuccess = () => resolve();
             request.onerror = (event) => reject(`Error deleting from ${storeName}: ` + event.target.error);
-            transaction.oncomplete = () => db.close();
-            transaction.onerror = () => db.close();
+            transaction.oncomplete = () => {
+                db.close();
+                resolve();
+            };
+            transaction.onerror = () => {
+                db.close();
+                reject(`Transaction error deleting from ${storeName}`);
+            };
+            transaction.onabort = () => {
+                db.close();
+                reject(`Transaction aborted deleting from ${storeName}`);
+            };
         } catch (error) {
             db.close();
             reject(error);
@@ -9693,10 +9733,18 @@ async function createSettingsUI(boardsData, boardParseError) {
         await new Promise(resolve => setTimeout(resolve, 150));
         const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
         if (confirmedDataDelete) {
-            const confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
-                backgroundColor: '#lightgreen', // Light red background for warning
-                width: '450px'
-            });
+            const dirH = await getConfig('directoryHandle');
+            const arH = await getConfig('arhHandle');
+            const hasFolderHandles = !!(dirH || arH);
+            let confirmedConfigDelete = false;
+            if (hasFolderHandles) {
+                confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
+                    backgroundColor: '#lightgreen',
+                    width: '450px'
+                });
+            } else {
+                confirmedConfigDelete = true;
+            }
             if (confirmedConfigDelete) {
                 // Потребителят иска да изтрие всичко, включително настройките
                 await deleteNotesDB();
@@ -9731,6 +9779,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 localStorage.setItem('useGoogleDb', 'true');
                 document.getElementById('use-google-db-checkbox').checked = true;
                 updateGlobalStateFlags();
+                await mainLogic(); // ПРЕЗАРЕЖДАМЕ ЛОГИКАТА
             }
             // --- КОРЕКЦИЯ: Актуализираме иконата за режим веднага ---
             updateModeButton();
