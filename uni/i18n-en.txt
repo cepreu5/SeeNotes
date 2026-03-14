@@ -142,6 +142,8 @@ en: {
         sysInfoAttachmentLinks: 'Attachment Links',
         sysInfoDbCreatedFrom: 'DB created from',
         sysInfoDbOwner: 'DB Owner',
+        dbFolderMismatch: 'Error: DB was created for folder "{dbFolder}", but current is "{activeFolder}".',
+        dbOwnerMismatch: 'Error: DB belongs to {dbOwner}, but current user is {currentUser}.',
         errorSysInfo: 'Error fetching system info.',
         errorNoDataSourceSelected: 'At least one data source must be selected when the database is not used.',
         errorNoArchiveFolderSelected: 'No archive folder selected.',

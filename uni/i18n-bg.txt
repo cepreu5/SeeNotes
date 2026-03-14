@@ -143,6 +143,8 @@ bg: {
         sysInfoAttachmentLinks: 'Връзка към приложенията',
         sysInfoDbCreatedFrom: 'Базата е създадена от',
         sysInfoDbOwner: 'Собственик на базата',
+        dbFolderMismatch: 'Грешка: БД е създадена за папка "{dbFolder}", а текущата е "{activeFolder}".',
+        dbOwnerMismatch: 'Грешка: БД принадлежи на {dbOwner}, а текущият потребител е {currentUser}.',
         errorSysInfo: 'Грешка при извличане на системна информация.',
         errorNoDataSourceSelected: 'Трябва да има избран поне един източник на данни, когато не се използва База данни.',
         errorNoArchiveFolderSelected: 'Не е избрана папка за архив.',

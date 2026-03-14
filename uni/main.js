@@ -6793,8 +6793,13 @@ function showModal(options, noteElement = null) {
     modalBody.innerHTML = displayContent;
     modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
 
+    // Remove previous click listener if it exists to prevent accumulation
+    if (modalBody._clickListener) {
+        modalBody.removeEventListener('click', modalBody._clickListener, { capture: true });
+    }
+
     // Add click-to-edit functionality
-    modalBody.addEventListener('click', (e) => {
+    modalBody._clickListener = (e) => {
         // Do not trigger if a link was clicked, if already editing, or if setting is disabled
         if (e.target.closest('a') || modalBody.querySelector('textarea')) {
             return;
@@ -6812,7 +6817,8 @@ function showModal(options, noteElement = null) {
         }
 
         enableNoteEditing(modalBody, charIndex);
-    }, { capture: true }); // Use capture to handle event before other listeners if needed
+    };
+    modalBody.addEventListener('click', modalBody._clickListener, { capture: true }); // Use capture to handle event before other listeners if needed
 
     // Store metadata for editing and rendering identification
     modalBody.dataset.id = noteId || '';
@@ -6820,6 +6826,8 @@ function showModal(options, noteElement = null) {
     modalBody.dataset.baseDatemod = options.datemod || '0';
     if (options.originalNote) {
         modalBody.dataset.baseNote = JSON.stringify(options.originalNote);
+    } else {
+        delete modalBody.dataset.baseNote;
     }
     modalBody.dataset.format = formatString || '';
     modalBody.dataset.titleFormat = titleFormatString || '';
@@ -6828,6 +6836,8 @@ function showModal(options, noteElement = null) {
     modalBody.dataset.color = noteColor || '';
     if (options.maskedLinks) {
         modalBody.dataset.maskedLinks = JSON.stringify(options.maskedLinks);
+    } else {
+        delete modalBody.dataset.maskedLinks;
     }
     const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     modalBody.dataset.calendarDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? noteObjForCalendar.calendarDate : '0';
@@ -8963,6 +8973,8 @@ async function createSettingsUI(boardsData, boardParseError) {
                         const folderStartBoard = localStorage.getItem('startBoard_' + targetFolderName);
                         if (folderStartBoard) {
                             localStorage.setItem('startBoard', folderStartBoard);
+                        } else {
+                            localStorage.removeItem('startBoard'); // Clear it so it doesn't carry over from the previous folder
                         }
 
                         let shouldSyncJson = false;
@@ -9513,6 +9525,45 @@ async function createSettingsUI(boardsData, boardParseError) {
     // Add event listeners
     useIndexedDbCheckbox.addEventListener('change', async (e) => {
         const isChecked = e.target.checked;
+        
+        // --- ПРОВЕРКИ ЗА ВАЛИДНОСТ НА БАЗАТА ДАННИ ---
+        if (isChecked && dbExists) {
+            try {
+                // 1. Проверка на папката
+                const dbCreatedFolderName = await getConfig('dbCreatedFolderName');
+                if (dbCreatedFolderName) {
+                    const activeFolder = localStorage.getItem('active_folder_name') || 'multinotes_data';
+                    if (dbCreatedFolderName !== activeFolder) {
+                        e.target.checked = false;
+                        localStorage.setItem('useIndexedDb', 'false');
+                        const msg = (_('dbFolderMismatch') || 'Грешка: БД е създадена за папка "{dbFolder}", а текущата е "{activeFolder}".')
+                                    .replace('{dbFolder}', dbCreatedFolderName)
+                                    .replace('{activeFolder}', activeFolder);
+                        showToast(msg, 5000);
+                        return;
+                    }
+                }
+                
+                // 2. Проверка на потребителя (собственика)
+                const dbOwnerEmail = await getConfig('userEmail');
+                if (dbOwnerEmail) {
+                    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint');
+                    // Сравняваме само ако имаме и двата имейла. 
+                    if (currentUserEmail && dbOwnerEmail !== currentUserEmail) {
+                        e.target.checked = false;
+                        localStorage.setItem('useIndexedDb', 'false');
+                        const msg = (_('dbOwnerMismatch') || 'Грешка: БД принадлежи на {dbOwner}, а текущият потребител е {currentUser}.')
+                                    .replace('{dbOwner}', dbOwnerEmail)
+                                    .replace('{currentUser}', currentUserEmail);
+                        showToast(msg, 5000);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error("Error validating DB config:", err);
+            }
+        }
+
         localStorage.setItem('useIndexedDb', isChecked);
         // --- КОРЕКЦИЯ: Само ако базата НЕ съществува, симулираме клик на "Създай" ---
         if (isChecked) {
@@ -9843,47 +9894,48 @@ if (advancedSettings) {
     advancedSettings.removeAttribute('hidden');
 }
 
-// Асинхронно зареждане на името на папката за архив
-(async () => {
+// Асинхронно зареждане на името на папката за архив и локална синхронизация
+async function updateSpecialFolderNames() {
     try {
         const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-        if (!arhFolderNameDisplay) return;
-        const arhHandle = await getConfig('arhHandle'); // Опитваме да вземем handle от базата
-        if (arhHandle) {
-            // Проверяваме дали имаме разрешение, без да питаме потребителя отново
-            const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
-            if (permission === 'granted') {
-                arhFolderNameDisplay.textContent = arhHandle.name;
-                arhFolderNameDisplay.title = arhHandle.name;
-            } else {
-                arhFolderNameDisplay.textContent = _('permissionDenied'); // Показваме новото съобщение
-                arhFolderNameDisplay.style.color = 'red';
-            }
-        } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+        if (arhFolderNameDisplay) {
+            const arhHandle = await getConfig('arhHandle');
+            if (arhHandle) {
+                const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
+                if (permission === 'granted') {
+                    arhFolderNameDisplay.textContent = arhHandle.name;
+                    arhFolderNameDisplay.title = arhHandle.name;
+                } else {
+                    arhFolderNameDisplay.textContent = _('permissionDenied');
+                    arhFolderNameDisplay.style.color = 'red';
+                }
+            } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
+        }
     } catch (err) {
         console.warn("Could not load archive folder name:", err);
     }
-})();
 
-// Асинхронно зареждане на името на папката за локална синхронизация
-(async () => {
     try {
         const folderNameDisplay = document.getElementById('local-sync-folder-name');
-        if (!folderNameDisplay) return;
-        const syncHandle = await getConfig('directoryHandle'); // Четем директно handle-a за синхронизация
-        if (syncHandle) {
-            const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
-            if (permission === 'granted') {
-                folderNameDisplay.textContent = syncHandle.name;
-                folderNameDisplay.title = syncHandle.name;
-            } else {
-                folderNameDisplay.textContent = _('permissionDenied');
-            }
-        } else { folderNameDisplay.textContent = _('folderNotSelected'); }
+        if (folderNameDisplay) {
+            const syncHandle = await getConfig('directoryHandle');
+            if (syncHandle) {
+                const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
+                if (permission === 'granted') {
+                    folderNameDisplay.textContent = syncHandle.name;
+                    folderNameDisplay.title = syncHandle.name;
+                } else {
+                    folderNameDisplay.textContent = _('permissionDenied');
+                }
+            } else { folderNameDisplay.textContent = _('folderNotSelected'); }
+        }
     } catch (err) {
         console.warn("Could not load local sync folder name:", err);
     }
-})();
+}
+
+// Извикваме веднага за първоначално инициализиране, ако базата ги има
+updateSpecialFolderNames();
 
 /**
  * Попълва падащото меню за избор на стартов борд в настройките.
@@ -10909,6 +10961,42 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         calendarCount: 0,
         trashCount: 0
     };
+
+    // --- OWNER CHECK ---
+    // If the user is not the owner, force 'all' boards view instead of saved startup board.
+    // Exception: Archive and Local Folder modes often involve shared data, so we don't force 'all' if these modes are active.
+    if (!isDbOwner && !useArhDb && !useLocalFolder) {
+        currentBoardFilter = 'all';
+    }
+
+    // Обработка на стартов борд 'Main' (вече и регистронезависимо)
+    if (currentBoardFilter === 'Main') {
+        const mainBoard = boardsData.find(b => b.title && b.title.trim().toLowerCase() === 'main');
+        if (mainBoard) {
+            currentBoardFilter = (mainBoard.gdid || mainBoard.id).toString();
+        } else if (boardsData.length > 0) {
+            currentBoardFilter = (boardsData[0].gdid || boardsData[0].id).toString();
+        } else {
+            currentBoardFilter = 'all';
+        }
+    }
+
+    // Проверка за валидност на текущия филтър (ако е останало старо ID от друга папка)
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'trash'];
+    if (!specialBoards.includes(currentBoardFilter)) {
+        const boardExists = boardsData.some(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
+        if (!boardExists) {
+            console.warn(`[renderUI] Saved board filter '${currentBoardFilter}' not found. Falling back to 'Main' or first board.`);
+            const mainBoard = boardsData.find(b => b.title && b.title.trim().toLowerCase() === 'main');
+            if (mainBoard) {
+                currentBoardFilter = (mainBoard.gdid || mainBoard.id).toString();
+            } else if (boardsData.length > 0) {
+                currentBoardFilter = (boardsData[0].gdid || boardsData[0].id).toString();
+            } else {
+                currentBoardFilter = 'all';
+            }
+        }
+    }
     if (boardsData.length > 0 || boardParseError) {
         const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
         allNotesData.forEach(note => {
@@ -11020,16 +11108,6 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     if (boardsNoteElement && !delayMenuRender) {
         document.querySelector('header').appendChild(boardsNoteElement);
     }
-    // --- OWNER CHECK ---
-    // If the user is not the owner, force 'all' boards view instead of saved startup board.
-    if (!isDbOwner) {
-        currentBoardFilter = 'all';
-    }
-    // Обработка на стартов борд 'Main'
-    if (currentBoardFilter === 'Main') {
-        const mainBoard = boardsData.find(b => b.title === 'Main');
-        currentBoardFilter = mainBoard ? (mainBoard.gdid || mainBoard.id) : 'all';
-    }
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     if (isInitialLoad && localStorage.getItem('checkEmptyBoards') === 'true') {
         // Check for empty boards and offer deletion individually
@@ -11085,7 +11163,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 setTimeout(() => {
                     const startBoardBtn = document.querySelector(`.board-menu-container .board-filter-link[data-boardid="${currentBoardFilter}"]`);
                     if (startBoardBtn) {
-                        startBoardBtn.classList.add('active-board');
+                        startBoardBtn.classList.add('selected-board', 'active');
+                        startBoardBtn.style.height = '39px';
                         startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
                     }
                 }, 100);
@@ -11104,7 +11183,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 startBoardBtn.click();
             }, 50);
         } else {
-            startBoardBtn.classList.add('active-board');
+            startBoardBtn.classList.add('selected-board', 'active');
+            startBoardBtn.style.height = '39px';
             startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
         }
     } else if (isInitialLoad && (currentBoardFilter === 'calendar' || currentBoardFilter === 'calendar_monthly' || currentBoardFilter === 'calendar_weekly')) {
@@ -11304,6 +11384,10 @@ async function setLanguage(lang) {
     // Update KB Assistant Language
     if (window.kbAssistant && typeof window.kbAssistant.updateLanguage === 'function') {
         window.kbAssistant.updateLanguage();
+    }
+    // Update dynamic text that relies on database reads
+    if (typeof updateSpecialFolderNames === 'function') {
+        updateSpecialFolderNames();
     }
 }
 
