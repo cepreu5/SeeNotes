@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="bg">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Тест на Google Script API</title>
+
+    <style>
+        body {
+            background: #f0f2f5;
+            font-family: "Segoe UI", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            width: 380px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h2 {
+            margin-top: 0;
+            text-align: center;
+            color: #333;
+        }
+
+        label {
+            font-weight: 600;
+            margin-top: 12px;
+            display: block;
+            color: #444;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px;
+            margin-top: 6px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 15px;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 20px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: #1e4fcf;
+        }
+
+        .note {
+            margin-top: 15px;
+            font-size: 13px;
+            color: #666;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="card">
+        <h2>POST тест към API</h2>
+
+        <!-- ВАЖНО: Тук поставяш твоя Web App URL -->
+        <form
+            action="https://script.google.com/macros/s/AKfycbyrqw5v5M75BfNlhcGX1btyOGL17kzQdgYJwnTDy2tRs8PccfrD_au9AYHRde_Q4EoGbQ/exec"
+            method="POST">
+
+            <label>Имейл:</label>
+            <input type="email" name="email" placeholder="test@example.com" required>
+
+            <label>Действие:</label>
+            <select name="action">
+                <option value="check">check</option>
+                <option value="log">log</option>
+            </select>
+
+            <button type="submit">Изпрати POST</button>
+
+            <div class="note">
+                Резултатът ще се покаже в нов таб.
+            </div>
+        </form>
+    </div>
+
+</body>
+
+</html>

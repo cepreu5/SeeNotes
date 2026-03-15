@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="bg">
+
+<head>
+    <meta charset="UTF-8">
+    <title>POST тест към Apps Script</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+
+        .box {
+            background: white;
+            padding: 25px;
+            max-width: 400px;
+            margin: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            padding: 12px 20px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        pre {
+            background: #eee;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="box">
+        <h2>POST тест към Apps Script</h2>
+
+        <label>Имейл:</label>
+        <input type="email" id="email" placeholder="test@example.com">
+
+        <label>Действие:</label>
+        <select id="action">
+            <option value="check">check</option>
+            <option value="log">log</option>
+        </select>
+
+        <label>API URL:</label>
+        <input type="text" id="url"
+            placeholder="https://script.google.com/macros/s/AKfycbyrqw5v5M75BfNlhcGX1btyOGL17kzQdgYJwnTDy2tRs8PccfrD_au9AYHRde_Q4EoGbQ/exec">
+
+        <button onclick="sendPost()">Изпрати POST</button>
+
+        <h3>Отговор:</h3>
+        <pre id="response"></pre>
+    </div>
+
+    <script>
+        function sendPost() {
+            const email = document.getElementById("email").value;
+            const action = document.getElementById("action").value;
+            const url = document.getElementById("url").value;
+
+            fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, action })
+            })
+                .then(res => res.text())
+                .then(text => {
+                    document.getElementById("response").textContent = text;
+                })
+                .catch(err => {
+                    document.getElementById("response").textContent = "Грешка: " + err;
+                });
+        }
+    </script>
+
+</body>
+
+</html>

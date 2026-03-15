@@ -4748,17 +4748,19 @@ function checkWhitelist() {
         const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
         console.log('Email for whitelist:', currentUserEmail);
         if (currentUserEmail) {
-            fetch('https://script.google.com/macros/s/AKfycbyD-Y_qPdLOkowGv_pmYnIIjRsazSuWWJpDNMb2idxuW5_KfAn7sJZJZ1_wKuFQbM5fqQ/exec', {
+            // fetch('https://script.google.com/macros/s/AKfycbz6ECWaGJf4F3lPiPW3La5_QxR6jMgrlwbOMruD202h-mgUhyiF2lwPNUjASX2-NzbJiA/exec', {
+            // fetch('https://script.google.com/macros/s/AKfycbyplTmfQTT3SirJUTtl-3EKZ2_x0iTrP5DY4lbLud49aUMRTEQh1w4RBdl-bLnv-Oi4NA/exec', {
+            fetch('https://script.google.com/macros/s/AKfycbymxrrIXy9ULL8CBOP06yaVVoDqHzjhvFgb1bPdRK-nZ3nLKAciIyExnn_InAYBBcXDFQ/exec', {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({
                     email: currentUserEmail,
-                    action: 'log'
+                    action: 'check'
                 })
             })
                 .then(response => response.json())
                 .then(data => {
-                    console.log('Whitelist log response:', data);
+                    console.log('Whitelist response:', data);
                     if (isTrialStart) {
                         sessionStorage.removeItem('isTrialStart');
                         console.log('Trial registered for:', currentUserEmail);
