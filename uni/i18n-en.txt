@@ -347,5 +347,6 @@ en: {
         confirmDeleteFolder: 'Are you sure you want to delete folder "{folderName}" and all its contents?',
         folderDeletedSuccess: 'Folder deleted successfully.',
         errorDeleteFolder: 'Error deleting folder.',
-        selectFolderToDelete: 'Select a folder to delete:'
+        selectFolderToDelete: 'Select a folder to delete:',
+        offlineStartPrompt: "Network connection is unavailable. Do you want to start in Offline Mode?"
     }

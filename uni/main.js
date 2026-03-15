@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.89'; // App version
+const version = 'Beta 1.90'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -575,19 +575,7 @@ async function decryptLicenseToken() {
         } catch (e) { }
     }
     if (!urlToken) {
-        if (isOffline) {
-            console.log("Offline mode: Using local 30-day trial check.");
-            if (!ts) ts = await getFirstStartEncoded();
-            const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-            const validityInDays = 30;
-            const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
-            cachedLicenseData.ageInDays = ageInDays;
-            cachedLicenseData.remainingDays = remainingDays;
-            cachedLicenseData.pass = ageInDays < validityInDays;
-            cachedLicenseEmailHint = currentEmail;
-            return cachedLicenseData;
-        }
-        console.log("No license token found. Using server whitelist check.");
+        console.log("No license token found. Will use server whitelist check or local trial fallback.");
     }
 
     // --- НОВА ЛОГИКА ЧРЕЗ WHITELIST (Authorize trials and check for termination) ---
@@ -596,7 +584,7 @@ async function decryptLicenseToken() {
     if (!isOffline) {
         whitelistData = await checkWhitelist();
     }
-    
+
     if (whitelistData) {
         // 1. Първостепенна проверка за прекратен достъп (Hard Block)
         if (whitelistData.terminated === true || whitelistData.terminated === "YES") {
@@ -610,11 +598,11 @@ async function decryptLicenseToken() {
 
         // 2. Проверка за достъп (success)
         cachedLicenseData.pass = whitelistData.success === true;
-        
+
         // 3. Изчисляване на оставащи дни
         const term = whitelistData.term || whitelistData.newTerm || 30;
         const daysPassed = whitelistData.daysPassed || 0;
-        
+
         if (whitelistData.success === true) {
             cachedLicenseData.remainingDays = Math.max(0, term - daysPassed);
         } else if ((whitelistData.extended === true || whitelistData.extended === "YES") && whitelistData.newTerm > 0) {
@@ -638,7 +626,26 @@ async function decryptLicenseToken() {
     // Ако сме офлайн или нямаме отговор от сървъра, или сървърът е отказал (success: false), 
     // но имаме физически токен, опитваме декрипция като последен вариант (за платени потребители)
     if (!urlToken) {
+        // --- FALLBACK TO LOCAL TRIAL ---
+        // If we reached here, it means we have no server response and no URL token.
+        // We use the first start timestamp to provide a local trial.
+        if (!ts) {
+            ts = await getFirstStartEncoded(true); // Persist if it's the very first start
+        }
+        const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+        const validityInDays = 30;
+        const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
+        cachedLicenseData.ageInDays = ageInDays;
+        cachedLicenseData.remainingDays = remainingDays;
+        cachedLicenseData.pass = ageInDays < validityInDays;
         cachedLicenseEmailHint = currentEmail;
+
+        if (!cachedLicenseData.pass) {
+            console.warn("Trial period has expired. License required.");
+        } else if (!whitelistData) {
+            console.log(`Working in offline trial mode (${remainingDays} days remaining).`);
+        }
+
         return cachedLicenseData;
     }
     try {
@@ -1338,7 +1345,12 @@ async function getFolderIDByName(name) {
         const result = await resp.json();
         return result.files?.[0]?.id || null;
     } catch (e) {
-        console.error("getFolderIDByName error:", e);
+        if (e instanceof TypeError || (e.message && e.message.includes('Failed to fetch'))) {
+            console.log(`getFolderIDByName('${name}'): Network unavailable, switching to offline mode.`);
+            isOffline = true;
+        } else {
+            console.error("getFolderIDByName error:", e);
+        }
         return null;
     }
 }
@@ -1480,6 +1492,11 @@ async function getFolderID() {
         await listFolders();
         return multinotesDataId;
     } catch (e) {
+        if (e instanceof TypeError || (e.message && e.message.includes('Failed to fetch'))) {
+            console.log('getFolderID: Network unavailable, switching to offline mode.');
+            isOffline = true;
+            return null;
+        }
         console.error("Error in getFolderID:", e);
         throw e;
     }
@@ -1519,16 +1536,21 @@ async function getMultinotesDataFolderID() {
         if (id) localStorage.setItem('gdrive_multinotes_data_id', id);
         return id;
     } catch (e) {
-        console.error("Error in getMultinotesDataFolderID:", e);
+        if (e instanceof TypeError || (e.message && e.message.includes('Failed to fetch'))) {
+            console.log('getMultinotesDataFolderID: Network unavailable, switching to offline mode.');
+            isOffline = true;
+        } else {
+            console.error("Error in getMultinotesDataFolderID:", e);
+        }
         return null;
     }
 }
 
 // =================================================================================
 
-function gisLoaded() {
+async function gisLoaded() {
     // Задаваме езика преди да се покаже login box-а
-    setLanguage(currentLang);
+    await setLanguage(currentLang);
     // Ако вече има токен
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
@@ -1584,7 +1606,7 @@ function gisLoaded() {
 
     // ВИНАГИ стартираме приложението, за да се инициализира UI-а (вкл. полето за търсене за токени)
     // checkAuth ще се погрижи да покаже login страницата, ако няма токен.
-    startApp();
+    await startApp();
 
     if (hasToken && !isLogout) {
         console.log("Existing token found in GIS callback, silente mode handled by startApp...");
@@ -3002,13 +3024,26 @@ async function startApp(isExplicitLogin = false) {
     if (isAppStarted) return;
     isAppStarted = true;
 
-    // --- DEBUG: Forced Offline Prompt ---
-    // if (confirm("Искате ли да работите offline? / Do you want to work offline?")) {
-    //     isOffline = true;
-    //     isExplicitLogin = true; // Force bypass of auth check
-    // } else {
-    //     await goOffline();
-    // }
+    // --- Автоматична проверка за режим Online/Offline ---
+    if (!navigator.onLine) {
+        isOffline = true;
+        isExplicitLogin = true; // Позволява влизане без Google Auth в офлайн режим
+    } else {
+        await goOffline();
+        if (isOffline) isExplicitLogin = true;
+    }
+    // --- Активна проверка за реална мрежова свързаност ---
+    // navigator.onLine може да върне true дори без реален интернет (напр. WiFi без интернет).
+    // Правим бърза HEAD заявка, за да проверим дали Google е достъпен.
+    if (!isOffline) {
+        try {
+            await fetch('https://www.googleapis.com/generate_204', { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+        } catch (e) {
+            console.log('Network probe failed — switching to offline mode.');
+            isOffline = true;
+            isExplicitLogin = true;
+        }
+    }
 
     // --- NEW: Graceful fallback for KB Assistant ---
     // If the assistant script failed to load or has errors, create a dummy object
@@ -3024,13 +3059,12 @@ async function startApp(isExplicitLogin = false) {
         };
     }
     try {
-        // Първо инициализираме UI, за да се покаже веднага и да имаме достъп до елементите
-        document.body.style.display = 'block';
+        // ts = await getFirstStartEncoded(); // Move to after UI prep if needed, but it's fine here
         console.log('First start:', Date.now());
         ts = await getFirstStartEncoded();
         console.log('First start in cache:', ts);
         // Първо зареждаме преводите, за да избегнем синхронни XHR заявки и предупреждения за preload
-        await loadTranslations(currentLang);
+        await setLanguage(currentLang);
 
         // --- Предварително изчисляване на оставащите дни за UI (използва кеширана функция) ---
         const licenseData = await decryptLicenseToken();
@@ -3119,19 +3153,29 @@ async function startApp(isExplicitLogin = false) {
         handleShareTarget();
     } catch (err) {
         console.error("Error in startApp:", err);
+        // Fallback for network errors during mainLogic
+        if (err.message === 'Failed to fetch' || err instanceof TypeError || (err.message && err.message.includes('Google libraries'))) {
+            const hasS = await checkDbExists(NOTES_DB_NAME) || await caches.open('app-cache').then(c => c.match('s'));
+            if (hasS) {
+                const promptMsg = (typeof _ === 'function' ? (_('errorGoogleLibs') + "\n\n" + (_('offlineStartPrompt') || "Do you want to start in Offline Mode?")) : "Network error. Do you want to start in Offline Mode?");
+                if (confirm(promptMsg)) {
+                    isOffline = true;
+                    // Reset UI and restart
+                    if (loaderContainer) loaderContainer.style.display = 'none';
+                    isAppStarted = false;
+                    startApp();
+                    return;
+                }
+            }
+        }
     }
 }
 
-// Записва timestamp като кодиран низ (Base64), без да пази число в кеша
-async function getFirstStartEncoded() {
+// Записва timestamp като кодиран низ (Base64) при поискване
+async function getFirstStartEncoded(shouldSave = false) {
     const cache = await caches.open('app-cache');
     const cachedResponse = await cache.match('s'); // /firstStart.json
     if (cachedResponse) {
-        // Четене от кеша → винаги е низ
-        /*const data = await cachedResponse.json();
-        const encoded = data.value;           // напр. "MTc2NDAyNTk4MTU2NA=="
-        const decodedTs = parseInt(atob(encoded), 10); // превръщаме обратно в число само в паметта
-        return decodedTs;*/
         // Четене на текста от кеша
         const encoded = await cachedResponse.text();
         const decodedTs = parseInt(atob(encoded), 10);
@@ -3139,17 +3183,13 @@ async function getFirstStartEncoded() {
     } else {
         // Първо стартиране → генерираме timestamp
         const nowTs = Date.now();
-        const encoded = btoa(String(nowTs));  // кодиране в Base64 → низ
-        /*  const payload = JSON.stringify({ value: encoded });
-        const response = new Response(payload, {
-            headers: { 'Content-Type': 'application/json' }
-        });
-        await cache.put('/firstStart.json', response); */
-        // Записваме директно като текст, не JSON
-        const response = new Response(encoded, {
-            headers: { 'Content-Type': 'text/plain' }
-        });
-        await cache.put('s', response);
+        if (shouldSave) {
+            const encoded = btoa(String(nowTs));  // кодиране в Base64 → низ
+            const response = new Response(encoded, {
+                headers: { 'Content-Type': 'text/plain' }
+            });
+            await cache.put('s', response);
+        }
         return nowTs;
     }
 }
@@ -3160,6 +3200,21 @@ async function getFirstStartEncoded() {
 //     }
 //     return key;
 // }
+
+/**
+ * Показва основния интерфейс на приложението и скрива лоудъра.
+ * Извиква се, когато всичко е готово (преводи, данни, състояние).
+ */
+function showAppUI() {
+    // Малък delay, за да сме сигурни, че DOM е обновен и готов за показване
+    requestAnimationFrame(() => {
+        document.body.classList.add('app-ready');
+        const loader = document.getElementById('loader-container');
+        if (loader) {
+            loader.style.display = 'none';
+        }
+    });
+}
 
 function _(key) {
     if (!appTranslations[currentLang]) {
@@ -4522,12 +4577,8 @@ async function initLoginPage() {
     document.getElementById('login-page').hidden = false;
     document.getElementById('login-page').style.display = 'block';
 
-    // Показваме заглавието и полето за търсене, за да може да се въведе токен
-    document.querySelector('header').style.visibility = 'visible';
-    document.querySelector('#search-wrapper').style.display = 'flex';
-    document.querySelector('header').style.display = 'flex';
-
-    document.getElementById('loader-container').style.display = 'none';
+    // Header и search се показват чрез класа app-ready
+    updateSearchPlaceholder(); // Обновяваме placeholder-а с преложения език
 
     // --- Button Visibility Logic (Restored & Consolidated) ---
     const loginBox = document.querySelector('.login-box');
@@ -4629,7 +4680,7 @@ async function initLoginPage() {
         // Cloning to remove any previous event listeners (simple way to avoid dupes)
         const newTrialBtn = trialBtn.cloneNode(true);
         trialBtn.parentNode.replaceChild(newTrialBtn, trialBtn);
-        newTrialBtn.addEventListener("click", (e) => {
+        newTrialBtn.addEventListener("click", async (e) => {
             console.log("Trial button clicked");
             e.preventDefault(); // Предотвратяваме стандартното действие
             // 1. Взимаме токена от TRIAL_URL
@@ -4639,6 +4690,8 @@ async function initLoginPage() {
             if (trialToken) {
                 localStorage.setItem('urlToken', trialToken);
                 sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
+                // --- НОВО: Записваме 's' в кеша веднага, за да се знае, че е стартиран пробния период ---
+                await getFirstStartEncoded(true);
             }
             // 3. Директно извикваме функцията за авторизация (вместо клик върху скрития бутон)
             console.log("Starting Google authorization...");
@@ -4657,6 +4710,7 @@ async function initLoginPage() {
     if (authorizeBtn) {
         authorizeBtn.addEventListener('click', handleAuthClick);
     }
+    showAppUI();
 }
 
 function updateSignoutTooltip() {
@@ -4826,7 +4880,11 @@ async function checkWhitelist(delayed = false) {
         }
         return data;
     } catch (err) {
-        console.log('>>> Whitelist check fail:', err);
+        if (err.name === 'TypeError' || err.message === 'Failed to fetch') {
+            console.log('>>> Whitelist check: Service unavailable (likely offline).');
+        } else {
+            console.log('>>> Whitelist check fail:', err);
+        }
         return null;
     }
 }
@@ -5455,10 +5513,7 @@ async function mainLogic() {
         }
 
         // --- КОРЕКЦИЯ: Осигуряваме видимост на UI елементите ---
-        loaderContainer.style.display = 'none';
-        document.querySelector('header').style.visibility = 'visible';
-        document.querySelector('#search-wrapper').style.display = 'flex';
-        notesContainer.style.visibility = 'visible';
+        showAppUI();
 
         if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
             const addNoteFab = document.getElementById('add-note-fab');
@@ -5504,7 +5559,7 @@ async function mainLogic() {
             const authResult = await checkAuth(isExplicitLogin);
             if (!authResult || !authResult.pass) {
                 if (isLoadCancelled) return;
-                if (loaderContainer) loaderContainer.style.display = 'none';
+                showAppUI();
                 return;
             }
             authToken = authResult.tokenData;
@@ -8741,12 +8796,19 @@ async function loadSettingsFromGDrive(silent = false) {
     if (!silent && typeof showToast === 'function') showToast("Зареждане на настройките...");
     let content = null;
     if (!isOffline) {
-        const folderId = await getFolderIDByName('multinotes_data');
-        if (folderId) {
-            try {
+        try {
+            const folderId = await getFolderIDByName('multinotes_data');
+            if (folderId) {
                 const existingFiles = await findGDFileByName(folderId, 'settings.json');
                 if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
-            } catch (err) { console.error("Load settings error:", err); }
+            }
+        } catch (err) {
+            if (err instanceof TypeError || (err.message && err.message.includes('Failed to fetch'))) {
+                console.log('loadSettingsFromGDrive: Network unavailable, using local settings.');
+                isOffline = true;
+            } else {
+                console.error("Load settings error:", err);
+            }
         }
     }
     if (!content) content = localStorage.getItem('settings_multinotes_data');
@@ -11083,7 +11145,6 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     if (!rerenderOnlyMenu && loaderContainer) {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                loaderContainer.style.display = 'none';
                 if (loaderText) loaderText.textContent = '';
             });
         });
@@ -11214,6 +11275,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         counterEl.textContent = notesCount;
     }
     populateStartBoardSelect();
+    showAppUI();
 }
 
 /**
@@ -11335,6 +11397,12 @@ async function loadTranslations(lang) {
                 appTranslations[lang]['trialButton'] = 'Start 30-day trial period';
                 appTranslations[lang]['sessionExpired'] = 'Session expired. Please login again.';
             }
+            // Добавяме и loginPrompt към фълбека
+            if (!appTranslations[lang]['loginPrompt']) {
+                appTranslations[lang]['loginPrompt'] = lang === 'bg' ?
+                    'Моля, влезте с Google акаунта, с който сте синхронизирали бележките си в MultiNotes.' :
+                    'Please sign in with Google account you used to sync MultiNotes.';
+            }
         }
     }
 }
@@ -11347,9 +11415,11 @@ async function setLanguage(lang) {
     currentLang = lang;
     localStorage.setItem('language', lang);
     document.documentElement.lang = lang;
+    const translations = appTranslations[lang];
+
     document.querySelectorAll('[data-key]').forEach(element => {
         const key = element.getAttribute('data-key');
-        element.innerHTML = _(key);
+        element.innerHTML = translations[key] || key;
     });
     const appTitleEl = document.getElementById('app-title');
     if (appTitleEl) {
@@ -11358,11 +11428,11 @@ async function setLanguage(lang) {
     document.querySelectorAll('[data-key-placeholder]').forEach(element => {
 
         const key = element.getAttribute('data-key-placeholder');
-        element.placeholder = _(key);
+        element.placeholder = translations[key] || key;
     });
     document.querySelectorAll('[data-key-title]').forEach(element => {
         const key = element.getAttribute('data-key-title');
-        element.title = _(key);
+        element.title = translations[key] || key;
     });
     // Update active button
     const langBg = document.getElementById('lang-bg');

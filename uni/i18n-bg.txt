@@ -348,5 +348,6 @@ bg: {
         confirmDeleteFolder: 'Сигурни ли сте, че искате да изтриете папка "{folderName}" и цялото ѝ съдържание?',
         folderDeletedSuccess: 'Папката е изтрита успешно.',
         errorDeleteFolder: 'Грешка при изтриване на папката.',
-        selectFolderToDelete: 'Изберете папка за изтриване:'
+        selectFolderToDelete: 'Изберете папка за изтриване:',
+        offlineStartPrompt: "Няма връзка с интернет. Желаете ли да стартирате в офлайн режим?"
     }
