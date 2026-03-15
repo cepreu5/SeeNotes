@@ -575,14 +575,69 @@ async function decryptLicenseToken() {
         } catch (e) { }
     }
     if (!urlToken) {
-        console.log("No license token found. Using default 30-day trial check.");
-        if (!ts) ts = await getFirstStartEncoded();
-        const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-        const validityInDays = 30;
-        const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
-        cachedLicenseData.ageInDays = ageInDays;
-        cachedLicenseData.remainingDays = remainingDays;
-        cachedLicenseData.pass = ageInDays < validityInDays;
+        if (isOffline) {
+            console.log("Offline mode: Using local 30-day trial check.");
+            if (!ts) ts = await getFirstStartEncoded();
+            const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
+            const validityInDays = 30;
+            const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
+            cachedLicenseData.ageInDays = ageInDays;
+            cachedLicenseData.remainingDays = remainingDays;
+            cachedLicenseData.pass = ageInDays < validityInDays;
+            cachedLicenseEmailHint = currentEmail;
+            return cachedLicenseData;
+        }
+        console.log("No license token found. Using server whitelist check.");
+    }
+
+    // --- НОВА ЛОГИКА ЧРЕЗ WHITELIST (Authorize trials and check for termination) ---
+    // Винаги проверяваме сървъра, ако сме онлайн, дори и да имаме токен (за да хванем terminated)
+    let whitelistData = null;
+    if (!isOffline) {
+        whitelistData = await checkWhitelist();
+    }
+    
+    if (whitelistData) {
+        // 1. Първостепенна проверка за прекратен достъп (Hard Block)
+        if (whitelistData.terminated === true || whitelistData.terminated === "YES") {
+            console.warn("Access terminated by server administrator.");
+            cachedLicenseData.pass = false;
+            cachedLicenseData.remainingDays = 0;
+            cachedLicenseData.email = whitelistData.email;
+            cachedLicenseEmailHint = currentEmail;
+            return cachedLicenseData;
+        }
+
+        // 2. Проверка за достъп (success)
+        cachedLicenseData.pass = whitelistData.success === true;
+        
+        // 3. Изчисляване на оставащи дни
+        const term = whitelistData.term || whitelistData.newTerm || 30;
+        const daysPassed = whitelistData.daysPassed || 0;
+        
+        if (whitelistData.success === true) {
+            cachedLicenseData.remainingDays = Math.max(0, term - daysPassed);
+        } else if ((whitelistData.extended === true || whitelistData.extended === "YES") && whitelistData.newTerm > 0) {
+            // Ако не е success (според сървъра е изтекъл), но е удължен (extended)
+            cachedLicenseData.pass = true;
+            cachedLicenseData.remainingDays = whitelistData.newTerm;
+        } else {
+            cachedLicenseData.remainingDays = 0;
+        }
+        cachedLicenseData.email = whitelistData.email;
+
+        // Ако сървърът е дал достъп, не ни трябва локален AES токен
+        if (cachedLicenseData.pass) {
+            cachedLicenseEmailHint = currentEmail;
+            return cachedLicenseData;
+        }
+    } else if (!isOffline) {
+        console.warn("Whitelist check failed.");
+    }
+
+    // Ако сме офлайн или нямаме отговор от сървъра, или сървърът е отказал (success: false), 
+    // но имаме физически токен, опитваме декрипция като последен вариант (за платени потребители)
+    if (!urlToken) {
         cachedLicenseEmailHint = currentEmail;
         return cachedLicenseData;
     }
@@ -3017,10 +3072,8 @@ async function startApp(isExplicitLogin = false) {
         // Скриваме логин страницата, ако е била показана
         document.getElementById('login-page').hidden = true;
         document.getElementById('login-page').style.display = 'none';
-        // --- WHITELIST CHECK (Only on explicit login) ---
-        if (isExplicitLogin) {
-            checkWhitelist();
-        }
+        // --- WHITELIST CHECK (On every login) ---
+        checkWhitelist(true); // Delayed background check to log session and update state
         // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
         updateGlobalStateFlags();
 
@@ -4738,37 +4791,44 @@ async function handleAuthClick() {
     }
 }
 
-function checkWhitelist() {
+async function checkWhitelist(delayed = false) {
+    if (isOffline) return null;
+    if (delayed) {
+        // Изчакваме 2 секунди, за да не пречим на началната синхронизация 
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
     const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
     const action = isTrialStart ? 'log' : 'check';
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
 
-    // Изчакваме 2 секунди, за да не пречим на началната синхронизация 
-    setTimeout(() => {
-        console.log('Executing delayed whitelist check...');
-        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-        console.log('Email for whitelist:', currentUserEmail);
-        if (currentUserEmail) {
-            // fetch('https://script.google.com/macros/s/AKfycbz6ECWaGJf4F3lPiPW3La5_QxR6jMgrlwbOMruD202h-mgUhyiF2lwPNUjASX2-NzbJiA/exec', {
-            // fetch('https://script.google.com/macros/s/AKfycbyplTmfQTT3SirJUTtl-3EKZ2_x0iTrP5DY4lbLud49aUMRTEQh1w4RBdl-bLnv-Oi4NA/exec', {
-            fetch('https://script.google.com/macros/s/AKfycbymxrrIXy9ULL8CBOP06yaVVoDqHzjhvFgb1bPdRK-nZ3nLKAciIyExnn_InAYBBcXDFQ/exec', {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({
-                    email: currentUserEmail,
-                    action: 'check'
-                })
+    console.log('>>> Executing whitelist check (action: ' + action + ')...');
+    console.log('>>> Email for whitelist:', currentUserEmail);
+
+    if (!currentUserEmail) return null;
+
+    try {
+        // проверка без extended - const response = await fetch('https://script.google.com/macros/s/AKfycbymxrrIXy9ULL8CBOP06yaVVoDqHzjhvFgb1bPdRK-nZ3nLKAciIyExnn_InAYBBcXDFQ/exec', {
+        const response = await fetch('https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                email: currentUserEmail,
+                action: action
             })
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Whitelist response:', data);
-                    if (isTrialStart) {
-                        sessionStorage.removeItem('isTrialStart');
-                        console.log('Trial registered for:', currentUserEmail);
-                    }
-                })
-                .catch(err => console.log('Whitelist check delayed fail:', err));
+        });
+        const data = await response.json();
+        console.log('>>> Whitelist response:', data);
+
+        if (isTrialStart) {
+            sessionStorage.removeItem('isTrialStart');
+            console.log('>>> Trial registered for:', currentUserEmail);
         }
-    }, 2000);
+        return data;
+    } catch (err) {
+        console.log('>>> Whitelist check fail:', err);
+        return null;
+    }
 }
 
 async function checkAuth(isExplicitLogin = false) {
@@ -4826,125 +4886,6 @@ async function checkAuth(isExplicitLogin = false) {
     }
     return { tokenData, pass };
 }
-
-/*/ --- 🔐 Вградена декрипция ---
-// Първо проверяваме за urlToken, за да видим дали можем да изключим Demo Mode
-const url = new URL(window.location.href);
-const urlTokenParam = url.searchParams.get("token");
-if (urlTokenParam) {
-    // Ако има токен в URL-а, той е с приоритет и презаписва стария
-    localStorage.setItem('urlToken', urlTokenParam);
-}
-let urlToken = localStorage.getItem('urlToken');
-let isUrlTokenValidTime = false;
-let decryptedEmailFromToken = null;
-if (urlToken) {
-    // --- Извличаме валидността от самия токен ---
-    let validityInDays = 365; // 3. Стойност по подразбиране в дни
-    try {
-        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-        const iv = raw.slice(0, 12), data = raw.slice(12);
-        const key = await crypto.subtle.importKey(
-            'raw',
-            new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-            { name: 'AES-GCM' },
-            false,
-            ['decrypt']
-        );
-        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-        // Декодираме токена, който вече съдържа и валидността
-        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-        // 3. Изчисляваме възрастта в дни
-        const ageInDays = (Date.now() - parseInt(timestamp, 10)) / (1000 * 60 * 60 * 24);
-        if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-            validityInDays = parseInt(tokenValidity, 10);
-        }
-        tokenRemainingDays = Math.max(0, Math.floor(validityInDays - ageInDays));
-        updateSignoutTooltip();
-        console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}`);
-        console.log(`Проверка на токен: Възраст: ${ageInDays.toFixed(2)} дни, Проверявана валидност: ${validityInDays} дни`);
-        if (ageInDays < validityInDays) {
-            isUrlTokenValidTime = true;
-            decryptedEmailFromToken = decryptedEmail;
-            DEMO_MODE = false;
-        } else {
-            console.log('Резултат от проверката: НЕВАЛИДЕН (изтекъл)');
-        }
-    } catch (error) {
-        console.log("Грешка при декриптиране на токен:", error);
-    }
-}
-else DEMO_MODE = true;
-*/
-/*/ --- Финална проверка на urlToken срещу логнатия потребител ---
-let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
-if (isUrlTokenValidTime) {
-    // Проверяваме дали имейлът съвпада с логнатия потребител
-    console.log(`Сравняване на имейли: Токен=${decryptedEmailFromToken}, Сесия=${tokenData.email_hint}`);
-    if (decryptedEmailFromToken == tokenData.email_hint) {
-        pass = true;
-    } else {
-        console.log('Резултат от проверката: НЕВАЛИДЕН (грешен имейл)');
-    }
-}
-if (!pass) {
-    document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
-    const errorElement = document.createElement('h1');
-    errorElement.textContent = 'Невалиден token или токенът е изтекъл.';
-    errorElement.style.color = 'yellow';
-    errorElement.style.textAlign = 'center';
-    errorElement.style.marginTop = '50px';
-    document.body.appendChild(errorElement);
-}
-*/
-/*/ --- 🔐 Вградена декрипция (скрита логика) стара ---
-const url = new URL(window.location.href);
-const urlToken = url.searchParams.get("token");
-let isTokenValid = true; // Приемаме, че токенът е валиден, освен ако проверката не се провали
-if (urlToken) {
-    // --- КОРЕКЦИЯ: Извличаме валидността от самия токен ---
-    let validityInMinutes = 5; // Стойност по подразбиране, ако не е намерена в токена
-    try {
-        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-        const iv = raw.slice(0, 12), data = raw.slice(12);
-        const key = await crypto.subtle.importKey(
-            'raw',
-            new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]),
-            { name: 'AES-GCM' },
-            false,
-            ['decrypt']
-        );
-        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-        // Декодираме токена, който вече съдържа и валидността
-        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-        const ageInMinutes = (Date.now() - parseInt(timestamp, 10)) / 60000;
-        if (tokenValidity && !isNaN(parseInt(tokenValidity))) {
-            validityInMinutes = parseInt(tokenValidity, 10);
-        }
-        // Проверяваме дали токенът е изтекъл, дали имейлът съвпада и дали съвпада с логнатия потребител
-        console.log(`Проверка на токен: Декриптиран имейл: ${decryptedEmail}, Имейл от сесия: ${tokenData.email_hint}`);
-        console.log(`Проверка на токен: Възраст: ${ageInMinutes.toFixed(2)} мин, Проверявана валидност: ${validityInMinutes} мин`);
-        if (ageInMinutes < validityInMinutes && decryptedEmail == tokenData.email_hint) pass = true;
-        if (ageInMinutes > validityInMinutes || decryptedEmail !== tokenData.email_hint) {
-            console.log('Резултат от проверката: НЕВАЛИДЕН');
-        }
-    } catch (error) {
-        console.log("Грешка при декриптиране на токен:", error);
-    }
-}
-if (!pass) {
-    document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
-    const errorElement = document.createElement('h1');
-    errorElement.textContent = 'Невалиден token или токенът е изтекъл.';
-    errorElement.style.color = 'yellow';
-    errorElement.style.textAlign = 'center';
-    errorElement.style.marginTop = '50px';
-    document.body.appendChild(errorElement);
-}*/
 
 function loadScript(src) {
     return new Promise((resolve, reject) => {
