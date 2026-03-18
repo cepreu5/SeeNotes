@@ -1651,6 +1651,8 @@ code {
     #start-board-wrapper,
     #force-gdrive-read,
     #device-name-wrapper,
+    #active-folder-wrapper,
+    #delete-folder-wrapper,
     #trash-search,
     #check-empty-boards {
         flex-direction: row !important;
