@@ -199,6 +199,7 @@ en: {
         showSoundsBoardLabel: 'Board <strong><i>With Sounds</i></strong>:',
         soundsBoardTitle: 'With Sounds',
         showOtherBoardLabel: 'Board <strong><i>Other Attachments</i></strong>:',
+        showNewBoardLabel: 'Board <strong><i>New</i></strong>:',
         otherBoardTitle: 'Other Attachments',
         oneTapLinkLabel: 'One-click links:',
         hideAssistantLabel: 'Hide Assistant:',

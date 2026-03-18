@@ -200,6 +200,7 @@ bg: {
         showSoundsBoardLabel: 'Борд <strong><i>Със звук</i></strong>:',
         soundsBoardTitle: 'Със звук',
         showOtherBoardLabel: 'Борд <strong><i>Други приложения</i></strong>:',
+        showNewBoardLabel: 'Борд <strong><i>Нови</i></strong>:',
         otherBoardTitle: 'Други приложения',
         oneTapLinkLabel: 'Линкове с един клик:',
         hideAssistantLabel: 'Скриване на асистента:',

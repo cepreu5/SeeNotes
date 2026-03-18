@@ -7766,15 +7766,47 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
     const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
     currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid == boardId || b.id == boardId)?.id : boardId);
+    // --- Скриваме контейнера с бележки преди смяна на борда, за да избегнем мигане ---
+    notesContainer.style.visibility = 'hidden';
+    // --- Маркираме избрания бутон и задаваме визуалното състояние (active + height). ---
+    document.querySelectorAll('.board-filter-link').forEach(link => {
+        const isSelected = link.dataset.boardid === String(buttonBoardId);
+        link.classList.toggle('selected-board', isSelected);
+        link.classList.toggle('active', isSelected);
+        link.style.height = isSelected ? '39px' : '35px';
+    });
+    // --- Сменяме фона на body ПРЕДИ филтрирането ---
+    if (boardId === 'all') {
+        if (currentBackground !== 'Board.png') {
+            document.body.style.backgroundImage = '';
+        }
+        currentBackground = 'Board.png';
+    } else {
+        let newBackground = 'Board.png';
+        const board = boardsData.find(b => b.gdid === boardId);
+        if (board && board.backnum) {
+            switch (board.backnum) {
+                case 1: newBackground = 'Board1.png'; break;
+                case 2: newBackground = 'Board2.png'; break;
+                case 3: newBackground = 'Board3.png'; break;
+            }
+        }
+        document.body.style.backgroundImage = `url('${newBackground}')`;
+        currentBackground = newBackground;
+    }
     // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
     const modeButton = document.getElementById('mode_button');
     const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
     let animationStartTime = 0;
     const runFilter = () => {
         applyFilters();
+        // Показваме контейнера след като филтрирането е приключило
+        // Използваме requestAnimationFrame, за да сме сигурни, че браузърът е готов за рисуване
+        requestAnimationFrame(() => {
+            notesContainer.style.visibility = '';
+        });
         // Спираме анимацията СЛЕД като браузърът е прерисувал екрана
         if (modeButton && loadingIcon) {
-            // Update UI immediately (Stop spinner, show image)
             modeButton.classList.remove('mode-button-loading');
             loadingIcon.classList.remove('button-loading');
             if (typeof debug !== 'undefined' && debug) {
@@ -7785,7 +7817,6 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
                         const b = boardsData.find(b => b.gdid === boardId || b.id === boardId);
                         if (b) logName = b.title;
                     }
-                    // Get note count from the UI counter which is updated in applyFilters
                     const noteCounter = document.getElementById('note-counter');
                     const count = noteCounter ? noteCounter.textContent : '0';
                     console.log(`Board "${logName}" (${count} notes) render duration: ${duration.toFixed(0)}ms`);
@@ -7801,38 +7832,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         // преди да започне тежката операция по филтриране.
         setTimeout(runFilter, 10);
     } else {
-        runFilter(); // За всички други бутони, изпълняваме веднага
-    }
-    // Маркираме избрания бутон и задаваме визуалното състояние (active + height).
-    document.querySelectorAll('.board-filter-link').forEach(link => {
-        const isSelected = link.dataset.boardid === String(buttonBoardId);
-        link.classList.toggle('selected-board', isSelected);
-        link.classList.toggle('active', isSelected);
-        link.style.height = isSelected ? '39px' : '35px';
-    });
-    // Placeholder-ът вече не включва името на борда, тъй като търсенето е във всички бележки
-    // updateSearchPlaceholder() ще зададе общ placeholder
-    if (boardId === 'all') {
-        // For the 'all' view, clear the inline style to let the default CSS background apply.
-        // This prevents flickering on initial load.
-        if (currentBackground !== 'Board.png') {
-            document.body.style.backgroundImage = '';
-        }
-        currentBackground = 'Board.png';
-    } else {
-        // For a specific board, set the background via inline style.
-        let newBackground = 'Board.png';
-        // Търсим по gdid, за да вземем фона
-        const board = boardsData.find(b => b.gdid === boardId);
-        if (board && board.backnum) {
-            switch (board.backnum) {
-                case 1: newBackground = 'Board1.png'; break;
-                case 2: newBackground = 'Board2.png'; break;
-                case 3: newBackground = 'Board3.png'; break;
-            }
-        }
-        document.body.style.backgroundImage = `url('${newBackground}')`;
-        currentBackground = newBackground;
+        runFilter();
     }
     updateSearchPlaceholder();
     window.dispatchEvent(new Event('scroll'));
@@ -8332,7 +8332,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     }
     const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
     // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
-    if (updatedNoteGdims.length > 0) {
+    if (updatedNoteGdims.length > 0 && localStorage.getItem('showNewBoard') === 'true') {
         const newUpdatesLink = document.createElement('span');
         newUpdatesLink.textContent = _('newUpdates');
         newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
@@ -8570,7 +8570,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
 }
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
-    'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'oneTapLink',
+    'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'showNewBoard', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd',
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
@@ -8912,6 +8912,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const noteFontSizeInput = document.getElementById('note-font-size-input');
     const modalFontSizeInput = document.getElementById('modal-font-size-input');
     const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
+    const showNewBoardCheckbox = document.getElementById('show-new-board-checkbox');
     const orderCheckbox = document.getElementById('order-checkbox');
     const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
     const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
@@ -9299,6 +9300,14 @@ async function createSettingsUI(boardsData, boardParseError) {
         document.body.classList.toggle('hide-datemod', !isChecked);
         showToast(_('settingSaved'), 2000);
     });
+    // Show 'New' Board Checkbox
+    if (showNewBoardCheckbox) {
+        showNewBoardCheckbox.checked = localStorage.getItem('showNewBoard') === 'true'; // Default to false
+        showNewBoardCheckbox.addEventListener('change', () => {
+            localStorage.setItem('showNewBoard', showNewBoardCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+        });
+    }
     // One-tap links
     oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
     oneTapLinkCheckbox.addEventListener('change', () => {
