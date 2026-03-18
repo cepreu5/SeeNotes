@@ -68,6 +68,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
         }
 
         th,
@@ -75,6 +76,8 @@
             text-align: left;
             padding: 10px 15px;
             border-bottom: 1px solid #eee;
+            word-break: break-all;
+            overflow-wrap: break-word;
         }
 
         th {
@@ -83,6 +86,27 @@
             color: #666;
             font-size: 0.85em;
             text-transform: uppercase;
+            word-break: break-word;
+        }
+
+        @media (max-width: 500px) {
+            table {
+                table-layout: auto;
+            }
+            th,
+            td {
+                display: block;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            th {
+                border-bottom: none;
+                padding-bottom: 2px;
+                font-weight: bold;
+            }
+            td {
+                padding-top: 2px;
+            }
         }
 
         tr:last-child td {
@@ -290,12 +314,12 @@
                     header.className = 'device-header';
                     header.innerHTML = `
                         <div style="display:flex; align-items:center;">
-                            <button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий устройството">
+                            <button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий настройката">
                                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                             </button>
-                            <span style="margin-left:10px;">Устройство: ${deviceName}</span>
+                            <span style="margin-left:10px;">Настройка: ${deviceName}</span>
                         </div>
-                        <button class="toggle-btn" onclick="toggleRaw('${safeId}')">Редактирай JSON</button>
+                        <button class="toggle-btn" onclick="toggleRaw('${safeId}')">JSON</button>
                     `;
 
                     const content = document.createElement('div');
@@ -323,8 +347,8 @@
                     rawEdit.id = `edit-${safeId}`;
                     rawEdit.value = JSON.stringify(deviceSettings, null, 2);
 
-                    content.appendChild(table);
                     content.appendChild(rawEdit);
+                    content.appendChild(table);
                     section.appendChild(header);
                     section.appendChild(content);
                     contentDiv.appendChild(section);
@@ -386,7 +410,7 @@
                     const editedJson = JSON.parse(textarea.value);
                     finalSettings[deviceName] = editedJson;
                 } catch (e) {
-                    alert(`Грешка в JSON за устройство "${deviceName}": ${e.message}`);
+                    alert(`Грешка в JSON за настройка "${deviceName}": ${e.message}`);
                     hasError = true;
                 }
             });

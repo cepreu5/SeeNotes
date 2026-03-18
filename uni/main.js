@@ -8867,6 +8867,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
         const showSettingsBtn = document.getElementById('show-settings-btn');
         if (showSettingsBtn) {
+            showSettingsBtn.style.display = (typeof debug !== 'undefined' && debug) ? '' : 'none';
             showSettingsBtn.onclick = null;
             showSettingsBtn.addEventListener('click', async () => {
                 showToast("Зареждане на облачните настройки...");
