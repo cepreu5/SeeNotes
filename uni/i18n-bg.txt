@@ -173,6 +173,7 @@ bg: {
         soundsBoardTitle: 'Със звук',
         showOtherBoardLabel: 'Борд <strong><i>Други приложения</i></strong>:',
         otherBoardTitle: 'Други приложения',
+        showNewBoardLabel: 'Борд <strong><i>Нови</i></strong>:',
         oneTapLinkLabel: 'Линкове с един клик:',
         hideAssistantLabel: 'Скриване на асистента:',
         notesBgrdLabel: 'Графичен фон (бележки в борда):',

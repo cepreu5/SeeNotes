@@ -171,6 +171,7 @@ en: {
         soundsBoardTitle: 'With Sounds',
         showOtherBoardLabel: 'Board <strong><i>Other Attachments</i></strong>:',
         otherBoardTitle: 'Other Attachments',
+        showNewBoardLabel: 'Board <strong><i>New</i></strong>:',
         oneTapLinkLabel: 'One-click links:',
         hideAssistantLabel: 'Hide Assistant:',
         notesBgrdLabel: 'Graphical background (board notes):',

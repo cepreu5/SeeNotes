@@ -587,6 +587,21 @@
                 }
             }
         },
+        "Beta 1.9": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "1.9"
+            ],
+            "question": "What new features and changes are in the app?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.9<br><br><span align='left'>The display of the <b>New</b> board, which shows new and changed notes after the last check, is managed by <b><i>Settings</i></b>.<br><br>By default, the setting is disabled.</span>"
+                }
+            }
+        },
         "offline-mode": {
             "keywords": [
                 "offline",

@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.8'; // App version
+const version = 'Beta 1.9'; // App version
 let debug = false; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -5941,7 +5941,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     }
     const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
     // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "НОВИ" ---
-    if (updatedNoteGdims.length > 0) {
+    if (updatedNoteGdims.length > 0 && localStorage.getItem('showNewBoard') === 'true') {
         const newUpdatesLink = document.createElement('span');
         newUpdatesLink.textContent = _('newUpdates');
         newUpdatesLink.classList.add('board-filter-link', 'new-updates-filter-btn');
@@ -6118,6 +6118,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const showVideosBoardCheckbox = document.getElementById('show-videos-board-checkbox');
     const showSoundsBoardCheckbox = document.getElementById('show-sounds-board-checkbox');
     const showOtherBoardCheckbox = document.getElementById('show-other-board-checkbox');
+    const showNewBoardCheckbox = document.getElementById('show-new-board-checkbox');
     // const startBoardSelect = document.getElementById('start-board-select');
     const maxSearchesInput = document.getElementById('max-searches-input');
     const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
@@ -6300,6 +6301,14 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
                 // Просто презареждаме менюто. renderUI ще се погрижи за показването/скриването.
                 await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+            });
+        }
+        // Show 'New' Board Checkbox
+        if (showNewBoardCheckbox) {
+            showNewBoardCheckbox.checked = localStorage.getItem('showNewBoard') === 'true';
+            showNewBoardCheckbox.addEventListener('change', () => {
+                localStorage.setItem('showNewBoard', showNewBoardCheckbox.checked.toString());
+                showToast(_('settingSaved'), 2000);
             });
         }
         // Show 'All' Board Checkbox
