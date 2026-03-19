@@ -6117,6 +6117,8 @@ async function createSettingsUI(boardsData, boardParseError) {
     const scaleInput = document.getElementById('scaleInput');
     const noteFontSizeInput = document.getElementById('note-font-size-input');
     const modalFontSizeInput = document.getElementById('modal-font-size-input');
+    const scaleIncBtn = document.getElementById('scaleIncBtn');
+    const scaleDecBtn = document.getElementById('scaleDecBtn');
     const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
     const orderCheckbox = document.getElementById('order-checkbox');
     const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
@@ -6184,6 +6186,23 @@ async function createSettingsUI(boardsData, boardParseError) {
             updateZoom(savedZoom);
         } else {
             updateZoom(scaleSlider.value);
+        }
+        // Scale Buttons
+        if (scaleIncBtn) {
+            scaleIncBtn.addEventListener('click', () => {
+                let value = parseInt(scaleInput.value, 10) + 1;
+                updateZoom(value);
+                localStorage.setItem('zoomLevel', value);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
+        if (scaleDecBtn) {
+            scaleDecBtn.addEventListener('click', () => {
+                let value = parseInt(scaleInput.value, 10) - 1;
+                updateZoom(value);
+                localStorage.setItem('zoomLevel', value);
+                showToast(_('settingSaved'), 2000);
+            });
         }
         let opacityTimeout;
         const applyBtn = document.getElementById('applyZoomBtn');
