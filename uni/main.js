@@ -6068,17 +6068,17 @@ async function createBoardsUI(boardsData, boardParseError) {
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
     // scrollWrapper.appendChild(allBoardsBtn); // Redundant stationary button removal - kept removed
-    
+
     // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container --- @@
     const boardsMenuContainer = document.getElementById('boards-menu-container');
     if (boardsMenuContainer) {
         const allBoardsMenuBtn = document.createElement('button');
         allBoardsMenuBtn.className = 'popup-menu-btn-floating'; // The single floating button class
         allBoardsMenuBtn.innerHTML = boardIconSvg;
-        
+
         // Add event listeners (draggable and click)
         makeElementDraggable(allBoardsMenuBtn, 'popupMenuBtnPosition');
-        
+
         let clickTimer;
         allBoardsMenuBtn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -8099,6 +8099,8 @@ if ('serviceWorker' in navigator) {
                 refreshBtn.onmouseover = () => refreshBtn.style.transform = 'scale(1.05)';
                 refreshBtn.onmouseout = () => refreshBtn.style.transform = 'scale(1)';
                 refreshBtn.onclick = () => {
+                    // Forcing the assistant to show the update info after reload
+                    localStorage.removeItem('app_version_seen');
                     waitingSW.postMessage({ type: 'SKIP_WAITING' });
                 };
 
