@@ -6067,32 +6067,20 @@ async function createBoardsUI(boardsData, boardParseError) {
 
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
-    const allBoardsBtn = document.createElement('button');
-    allBoardsBtn.className = 'board-menu-button popup-menu-btn'; // Ново, по-семантично име на класовете
-    allBoardsBtn.innerHTML = boardIconSvg; // Use the board icon
-    // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
-    addAllBoardsModalEvents(allBoardsBtn, () => { showAllBoardsModal(); });
-    scrollWrapper.appendChild(allBoardsBtn);
-
+    // scrollWrapper.appendChild(allBoardsBtn); // Redundant stationary button removal - kept removed
+    
     // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container --- @@
     const boardsMenuContainer = document.getElementById('boards-menu-container');
     if (boardsMenuContainer) {
-        // Клонираме бутона, за да го имаме и на двете места, или го местим.
-        const allBoardsBtnForContainer = document.createElement('button');
-        allBoardsBtnForContainer.className = 'popup-menu-btn-floating'; // Използваме floating стил, за да стои над страницата
-        allBoardsBtnForContainer.innerHTML = boardIconSvg;
-        // --- DRAGGABLE FUNCTIONALITY ---
-        // Използваме новата функция за drag-and-drop
-        makeElementDraggable(allBoardsBtnForContainer, 'popupMenuBtnPosition');
-        // Long press logic remains for specific actions if needed, but for now standard draggable covers the move.
-        // The original code had specific long press interaction which we preserve via showAllBoardsModal call logic below if needed.
-        // But here we just need to attach the click handler. makeElementDraggable blocks click if dragged.
-        // Click event - отваря менюто с малко забавяне, за да има време за drag (ако не е преместен)
+        const allBoardsMenuBtn = document.createElement('button');
+        allBoardsMenuBtn.className = 'popup-menu-btn-floating'; // The single floating button class
+        allBoardsMenuBtn.innerHTML = boardIconSvg;
+        
+        // Add event listeners (draggable and click)
+        makeElementDraggable(allBoardsMenuBtn, 'popupMenuBtnPosition');
+        
         let clickTimer;
-        allBoardsBtnForContainer.addEventListener('click', (e) => {
-            // makeElementDraggable already handles stopping propagation if moved.
-            // If we are here, it wasn't a drag.
-            // Малко забавяне преди отваряне на менюто
+        allBoardsMenuBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             clearTimeout(clickTimer);
@@ -6101,13 +6089,14 @@ async function createBoardsUI(boardsData, boardParseError) {
             }, 200);
         });
 
-        // Изчистваме контейнера преди да добавим (ако се презарежда UI)
         boardsMenuContainer.innerHTML = '';
-        boardsMenuContainer.appendChild(allBoardsBtnForContainer);
+        boardsMenuContainer.appendChild(allBoardsMenuBtn);
     }
+
+
     scrollWrapper.appendChild(contentEl);
     contentWrapper.appendChild(scrollWrapper);
-    allBoardsBtn.classList.add('visible');
+    // allBoardsBtn.classList.add('visible'); //Redundant - removed
     return boardsNote;
 }
 async function createSettingsUI(boardsData, boardParseError) {

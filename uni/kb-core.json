@@ -1230,7 +1230,7 @@
                     "bx": 182,
                     "by": 85,
                     "bWidth": 278,
-                    "bHeight": 250,
+                    "bHeight": 300,
                     "target": "#search-box"
                 },
                 "stopAfter": true,

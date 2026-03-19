@@ -1024,13 +1024,13 @@ code {
     opacity: 1;
 }
 
-/* Floating button for popup menu in boards-menu-container */
+/* Single consolidated board menu button - always floating and draggable */
 .popup-menu-btn-floating {
-    display: none;
-    position: fixed;
-    top: 20px;
-    right: 10px;
-    z-index: 99;
+    display: flex;
+    position: fixed; /* Always fixed as requested */
+    top: 65px;      /* Default desktop position (matches old stationary spot) */
+    left: 15px;
+    z-index: 10000; /* High z-index to fly above everything */
     border: 2px solid #dddddd;
     outline: none;
     background-color: yellow;
@@ -1044,7 +1044,24 @@ code {
     height: 46px;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+    transition: background-color 0.2s, box-shadow 0.2s;
 }
+
+.popup-menu-btn-floating:hover {
+    background-color: #ffd700;
+    box-shadow: 4px 6px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* On narrow screens, default to top-right if not moved */
+@media (max-width: 1220px) {
+    .popup-menu-btn-floating {
+        top: 20px;
+        left: auto;
+        right: 15px;
+    }
+}
+
 
 @media (hover: hover) {
     .popup-menu-btn-floating:hover {
@@ -1064,12 +1081,7 @@ code {
     cursor: grabbing;
 }
 
-/* Show floating button on narrow screens */
-@media (max-width: 1220px) {
-    .popup-menu-btn-floating {
-        display: flex;
-    }
-}
+
 
 #loader-container {
     text-align: center;
@@ -2594,7 +2606,7 @@ code {
 
 /* Default state: Hide the header button container, show the scrolling wrapper */
 #boards-menu-container {
-    display: none;
+    display: block;
 }
 
 .scrolling-menu-wrapper {

@@ -320,10 +320,11 @@
                 "how to",
                 "how to use",
                 "functions",
+                "menu",
                 "how it works"
             ],
             "question": "What do you see on the main screen and why is it important?",
-            "answer": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place. On a mobile device, you can switch to the next or previous board by swiping right or left. Tap the button for more information:",
+            "answer": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. The button is floating and can be placed in a convenient place. On a mobile device, you can switch to the next or previous board by swiping right or left. Tap the button for more information:",
             "guide": {
                 "1": {
                     "text": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> → <b><i>Zoom</i></b>."
@@ -598,7 +599,7 @@
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.9<br><br><span align='left'>The display of the <b>New</b> board, which shows new and changed notes after the last check, is managed by <b><i>Settings</i></b>.<br>By default, the setting is disabled.<br><br>Saving and reading the current settings to/from a file. This way you won't have to set them again if they are deleted and you can transfer them between different browsers.<br><br>Changes in the Settings panel.</span>"
+                    "text": "Beta 1.9<br><br><span align='left'>The display of the <b>New</b> board, which shows new and changed notes after the last check, is managed by <b><i>Settings</i></b>.<br>By default, the setting is disabled.<br><br>Saving and reading the current settings to/from a file. This way you won't have to set them again if they are deleted and you can transfer them between different browsers.<br><br>The button for the pop-up menu with boards can be moved around the screen.<br><br>Changes in the Settings panel.</span>"
                 }
             }
         },
