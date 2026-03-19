@@ -17,7 +17,8 @@ const appSettingsKeys = [
     'showOtherBoard', 'showWeeklyCalendar', 'enableNoteSorting', 'sortCriteria',
     'sortInReverse', 'sortRemindersTop', 'startBoard', 'maxSavedSearches',
     'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'hideAssistant',
-    'language', 'showAdvancedSettings', 'savedSearches'
+    'language', 'showAdvancedSettings', 'savedSearches', 'modalWidth', 'modalHeight',
+    'popupMenuBtnPosition', 'kbFabPosition', 'scrollTopBtnPosition'
 ];
 
 let guide = true;
@@ -4979,16 +4980,19 @@ function showModal(options, noteElement = null) {
         modalContentBox.style.maxWidth = 'none';
         modalContentBox.style.maxHeight = 'none';
     } else {
-        // Прилагаме запазените размери, ако съществуват
         const savedWidth = localStorage.getItem('modalWidth');
         const savedHeight = localStorage.getItem('modalHeight');
         if (savedWidth && savedHeight) {
-            modalContentBox.style.width = savedWidth;
+            const widthValue = parseInt(savedWidth, 10);
+            if (!isNaN(widthValue) && widthValue > window.innerWidth) {
+                modalContentBox.style.width = '100%';
+            } else {
+                modalContentBox.style.width = savedWidth;
+            }
             modalContentBox.style.height = savedHeight;
             modalContentBox.style.maxWidth = 'none';
             modalContentBox.style.maxHeight = 'none';
         } else {
-            // Задаваме размер по подразбиране 400x300px, ако няма запазен размер
             modalContentBox.style.width = '400px';
             modalContentBox.style.height = '300px';
             modalContentBox.style.maxWidth = 'none';
