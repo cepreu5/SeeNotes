@@ -443,8 +443,6 @@ class KBAssistant {
      * Checks if the app version has changed and triggers sequential guides for skipped versions
      */
     checkVersionUpdates() {
-        const guideFlag = localStorage.getItem('guide');
-        if (!guideFlag || guideFlag === 'true') return;
         const currentVersion = typeof version !== 'undefined' ? version : null;
         if (!currentVersion) return;
 
