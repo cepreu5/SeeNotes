@@ -18,7 +18,7 @@ const appSettingsKeys = [
     'sortInReverse', 'sortRemindersTop', 'startBoard', 'maxSavedSearches',
     'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'hideAssistant',
     'language', 'showAdvancedSettings', 'savedSearches', 'modalWidth', 'modalHeight',
-    'popupMenuBtnPosition', 'kbFabPosition', 'scrollTopBtnPosition'
+    'popupMenuBtnPosition', 'kbFabPosition', 'scrollTopBtnPosition', 'boardMenuOrder'
 ];
 
 let guide = true;
@@ -57,6 +57,7 @@ let boardsData = []; // Съхранява данните за бордовет�
 let mediaData = []; // Съхранява данните за медия
 let folderIds = {}; // Съхранява ID-тата на папките за медия
 let currentBoardFilter = 'all';
+let previousBoardFilter = 'all'; // Запомняме борда преди търсенето
 let currentBackground = 'Board.png';
 let currentCalendarDate = new Date();
 let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
@@ -118,6 +119,9 @@ const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
 const weeklyViewIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>`;
 const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
 const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
+const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
+const emptyTrashIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="14" y2="17"></line><line x1="14" y1="11" x2="10" y2="17"></line></svg>`;
+const restoreIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>`;
 const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
@@ -1491,104 +1495,69 @@ function renderWeeklyCalendarView(dateForWeek) {
 async function handleNoteDelete(noteEl, e = null, fromModal = false) {
     if (e) e.stopPropagation();
     if (e) e.preventDefault();
-    if (!useIndexedDb) return; // Изтриването работи само с база данни
-    // --- SUPPORT FOR NEW DATASET ATTRIBUTES (g/b) ---
-    // Try to get gdid from dataset.g, fallback to extraInfo (legacy)
+    if (!useIndexedDb) return;
     let noteGdid = noteEl.dataset ? noteEl.dataset.g : null;
     let extraInfo = {};
     if (!noteGdid) {
-        // Fallback for mock objects that might not have dataset structured exactly as DOM element or strictly for safety
-        if (noteEl.gdid) noteGdid = noteEl.gdid; // Direct property fallback
+        if (noteEl.gdid) noteGdid = noteEl.gdid;
         else {
-            extraInfo = JSON.parse((noteEl.dataset && noteEl.dataset.extraInfo) ? noteEl.dataset.extraInfo : '{}');
-            noteGdid = extraInfo.gdid;
+            try {
+                extraInfo = JSON.parse((noteEl.dataset && noteEl.dataset.extraInfo) ? noteEl.dataset.extraInfo : '{}');
+                noteGdid = extraInfo.gdid;
+            } catch (ex) { }
         }
     }
     if (!noteGdid) return;
-    // --- BOARD ID retrieval ---
-    let boardIdOfDeletedNote = noteEl.dataset ? noteEl.dataset.b : null;
-    if (!boardIdOfDeletedNote) {
-        boardIdOfDeletedNote = extraInfo.boardid;
-        // As a last fallback, find it in allNotesData (slow, but reliable)
-        if (!boardIdOfDeletedNote) {
-            const found = allNotesData.find(n => n.gdid == noteGdid);
-            if (found) boardIdOfDeletedNote = found.boardid;
-        }
-    }
-    // Ако е извикано от модала, първо го затваряме.
+    const noteData = allNotesData.find(n => n.gdid == noteGdid);
+    if (!noteData) return;
+    const isTrashBoard = currentBoardFilter === 'trash' || noteData.status === 1;
+    const msgKey = isTrashBoard ? 'confirmNoteDelete' : 'confirmNoteMoveToTrash';
     if (fromModal) {
         document.getElementById('content-modal').classList.remove('visible');
-        // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
         await new Promise(resolve => setTimeout(resolve, 150));
     }
-    const confirmed = await showConfirmation(_('confirmNoteDelete'));
+    const confirmed = await showConfirmation(_(msgKey) || _('confirmNoteDelete'));
     if (confirmed) {
         try {
-            await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-            // Remove from DOM if method exists (it might be a mock object)
+            const db = await openNotesDB();
+            if (!isTrashBoard) {
+                noteData.status = 1;
+                noteData.datemod = Date.now();
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
+                    tx.objectStore(NOTE_STORE_NAME).put(noteData);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                });
+                if (localStorage.getItem('updateGDrive') === 'true') { // && !isOffline
+                    // await updateGDriveFile(noteGdid, JSON.stringify(noteData));
+                }
+                showToast(_('noteMovedToTrash') || "Бележката е преместена в Кошче", 3000);
+            } else {
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
+                    tx.objectStore(NOTE_STORE_NAME).delete(noteGdid);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                });
+                if (localStorage.getItem('updateGDrive') === 'true') { // && !isOffline
+                    await deleteGDriveFile(noteGdid);
+                }
+                allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
+                showToast(_('noteDeletedSuccess'), 3000);
+            }
             if (noteEl.remove) noteEl.remove();
-            allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
-            // Актуализираме общия брояч
-            const noteCounter = document.getElementById('note-counter');
-            let newTotalCount = 0;
-            if (noteCounter) {
-                newTotalCount = parseInt(noteCounter.textContent, 10) - 1;
-                noteCounter.textContent = Math.max(0, newTotalCount);
-            }
-            // Актуализираме брояча на борда
-            // В режим Архив, boardid е число. В другите режими е gdid.
-            const boardGdidToUpdate = useArhDb ? boardsData.find(b => b.id == boardIdOfDeletedNote)?.gdid : boardIdOfDeletedNote;
-            if (boardGdidToUpdate) {
-                const boardData = boardsData.find(b => b.gdid == boardGdidToUpdate);
-                let realBoardCount = 0;
-
-                if (boardData) {
-                    // Намаляваме вътрешния брояч на борда
-                    if (typeof boardData.noteCount === 'number') {
-                        boardData.noteCount = Math.max(0, boardData.noteCount - 1);
-                    }
-                    realBoardCount = boardData.noteCount || 0;
-                }
-
-                // Проверяваме настройката за показване на бройки
-                const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-
-                const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardGdidToUpdate}"]`);
-                if (boardButton) {
-                    // Взимаме само името на борда (ако вече има скоби, ги махаме) или използваме title от boardData
-                    let boardName = boardData ? boardData.title : boardButton.textContent.replace(/\s\(\d+\)$/, '');
-
-                    // Обновяваме текста само ако настройката е включена и има бележки, ИЛИ ако трябва да махнем стара бройка
-                    if (showCount && realBoardCount > 0) {
-                        boardButton.textContent = `${boardName} (${realBoardCount})`;
-                    } else {
-                        boardButton.textContent = boardName;
-                    }
-                }
-            }
-            // --- REFRESH CALENDARS ---
-            // Monthly calendar view
+            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+            applyFilters();
             const calendarContainer = document.getElementById('calendar-container');
-            if (calendarContainer && calendarContainer.style.display !== 'none') {
-                renderCalendarView();
-            }
-            // Weekly calendar view
+            if (calendarContainer && calendarContainer.style.display !== 'none') renderCalendarView();
             const weeklyContainer = document.getElementById('weekly-calendar-container');
             if (weeklyContainer && weeklyContainer.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
                 renderWeeklyCalendarView(currentWeeklyViewDate);
             }
-            // --- REFRESH BOARD ---
-            // If we deleted a note from the calendar modal, we should also remove its element from the notes container if it exists there
-            if (!noteEl.remove || noteEl.remove.name === '') {
-                const realNoteEl = document.querySelector(`.note[data-g="${noteGdid}"]`);
-                if (realNoteEl) {
-                    realNoteEl.remove();
-                }
-            }
-            showToast(_('noteDeletedSuccess'), 3000);
         } catch (error) {
-            console.log("Failed to delete note:", error);
-            showToast(_('noteDeletedError') + " - " + error.message, 15000);
+            console.error("Failed to delete note:", error);
+            showToast((_('noteDeletedError') || "Грешка при изтриване") + " - " + error.message, 5000);
         }
     }
 }
@@ -2494,17 +2463,46 @@ function initApp() {
     searchWrapper.appendChild(saveSearchBtn);
     searchWrapper.appendChild(savedSearchesPopup);
     // This function will be the single point for applying search and UI updates
-    const triggerSearch = (isUserTyping = false) => {
+    window.triggerSearch = (isUserTyping = false) => {
+        let hasText = searchBox.value.trim().length > 0;
+        const searchResultsBtn = document.getElementById('search-results-board-btn');
+        if (searchResultsBtn) {
+            searchResultsBtn.style.display = hasText ? 'flex' : 'none';
+            if (hasText) {
+                if (currentBoardFilter !== 'search-results') {
+                    previousBoardFilter = currentBoardFilter;
+                }
+                currentBoardFilter = 'search-results';
+                document.querySelectorAll('.board-filter-link').forEach(link => {
+                    const isSelected = link.dataset.boardid === 'search-results';
+                    link.classList.toggle('selected-board', isSelected);
+                    link.classList.toggle('active', isSelected);
+                    link.style.height = isSelected ? '39px' : '35px';
+                    if (isSelected) {
+                        link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                    }
+                });
+            } else if (currentBoardFilter === 'search-results') {
+                currentBoardFilter = previousBoardFilter || 'all';
+                document.querySelectorAll('.board-filter-link').forEach(link => {
+                    const isSelected = String(link.dataset.boardid) === String(currentBoardFilter);
+                    link.classList.toggle('selected-board', isSelected);
+                    link.classList.toggle('active', isSelected);
+                    link.style.height = isSelected ? '39px' : '35px';
+                    if (isSelected) {
+                        link.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                    }
+                });
+            }
+        }
         if (isUserTyping) {
-            // Only update the "last search" if the input is not empty
             if (searchBox.value.trim() !== '') {
                 lastSearchTerm = searchBox.value;
                 localStorage.setItem('lastSearchTerm', lastSearchTerm);
             }
         }
-        applyFilters(); // This just filters the notes
-        // Show/Hide buttons
-        const hasText = searchBox.value.length > 0;
+        applyFilters();
+        hasText = searchBox.value.length > 0;
         const hasTextTrimmed = searchBox.value.trim().length > 0;
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
@@ -2535,11 +2533,12 @@ function initApp() {
         }
     });
 
-    // Clear Button Logic
     clearSearchBtn.addEventListener('click', () => {
         searchBox.value = '';
-        triggerSearch(true); // Clear results
+        triggerSearch(true);
         searchBox.focus();
+        const popup = document.getElementById('saved-searches-popup');
+        if (popup) popup.style.display = 'none';
     });
 
     searchBox.addEventListener('focus', () => {
@@ -3028,16 +3027,11 @@ function renderSavedSearchesPopup() {
         item.textContent = term;
         item.addEventListener('click', () => {
             searchBox.value = term;
-            // Directly call applyFilters to ensure the search runs.
-            applyFilters();
-            // Find buttons dynamically as they might be local in other scopes
-            const clearBtn = document.querySelector('.search-btn-clear');
-            const saveBtn = document.getElementById('save-search-btn'); // ID logic used before
-            if (clearBtn) clearBtn.style.display = 'flex';
-            if (saveBtn) saveBtn.style.display = 'flex';
+            if (window.triggerSearch) window.triggerSearch();
+            else applyFilters();
             popup.style.display = 'none';
         });
-        contentContainer.appendChild(item); // Add items to the new container
+        contentContainer.appendChild(item);
     });
 }
 
@@ -5365,7 +5359,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     // --- Проверка за съществуващ борд ---
     // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
     // и не съществува в boardsData, превключваме към 'all'.
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'trash', 'search-results'];
     if (!specialBoards.includes(boardId)) {
         // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
         // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
@@ -5423,10 +5417,12 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     }
     searchInput.value = ''; // Clear the search box
     saveSearchBtn.style.display = 'none';
-    // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
-    // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
     const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
-    currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid == boardId || b.id == boardId)?.id : boardId);
+    const newBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid == boardId || b.id == boardId)?.id : boardId);
+    if (newBoardFilter !== 'search-results') {
+        previousBoardFilter = newBoardFilter;
+    }
+    currentBoardFilter = newBoardFilter;
     // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
     const modeButton = document.getElementById('mode_button');
     const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
@@ -5617,10 +5613,9 @@ function applyFilters() {
     const isWithVideos = currentBoardFilter === 'with-videos';
     const isWithSounds = currentBoardFilter === 'with-sounds';
     const isWithOther = currentBoardFilter === 'with-other';
-    // If none of the above special modes, it's a standard board filter (by ID)
-    const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther;
-    // --- ENHANCED ID FILTERING (Pre-calc) ---
-    // Handle scenarios where notes use legacy ID but filter uses GDID (or vice versa)
+    const isTrash = currentBoardFilter === 'trash';
+    const isSearchResults = currentBoardFilter === 'search-results';
+    const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther && !isTrash && !isSearchResults;
     let validBoardIds = [currentBoardFilter];
     if (isStandard && typeof boardsData !== 'undefined') {
         const board = boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
@@ -5633,12 +5628,15 @@ function applyFilters() {
         if (note.classList.contains('boards-note') || note.classList.contains('promo-note')) {
             continue;
         }
+        const isDeleted = (parseInt(note.dataset.s || '0', 10) === 1);
         let isVisibleByBoard = false;
-        // Optimized Branching
-        if (isAll) {
+        if (isTrash) {
+            isVisibleByBoard = isDeleted;
+        } else if (isDeleted) {
+            isVisibleByBoard = false;
+        } else if (isAll) {
             isVisibleByBoard = true;
         } else if (isStandard) {
-            // Standard board check: Check against all valid IDs for the board (loose equality)
             isVisibleByBoard = validBoardIds.some(id => note.dataset.b == id);
         } else if (isReminder) {
             isVisibleByBoard = (note.dataset.tm === '1');
@@ -5653,6 +5651,8 @@ function applyFilters() {
             isVisibleByBoard = (note.dataset.hs === '1');
         } else if (isWithOther) {
             isVisibleByBoard = (note.dataset.ho === '1');
+        } else if (isSearchResults) {
+            isVisibleByBoard = true;
         }
         // Filter by Search Term
         let matchesSearch = true;
@@ -5958,6 +5958,19 @@ async function createBoardsUI(boardsData, boardParseError) {
         addBoardButtonEvents(newUpdatesLink, 'new-updates');
         allButtonLinks.push(newUpdatesLink);
     }
+    // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "РЕЗУЛТАТИ" ---
+    const searchResultsLink = document.createElement('span');
+    searchResultsLink.id = 'search-results-board-btn';
+    searchResultsLink.textContent = _('searchResultTitle');
+    searchResultsLink.classList.add('board-filter-link', 'search-results-filter-btn');
+    searchResultsLink.dataset.boardid = 'search-results';
+    searchResultsLink.style.display = 'none';
+    searchResultsLink.style.backgroundColor = '#ffeb3b';
+    searchResultsLink.style.color = '#000';
+    searchResultsLink.style.justifyContent = 'center';
+    searchResultsLink.style.alignItems = 'center';
+    addBoardButtonEvents(searchResultsLink, 'search-results');
+    allButtonLinks.push(searchResultsLink);
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "НАПОМНЯНИЯ" ---
     if (localStorage.getItem('showBoardRemind') !== 'false') {
         const reminderNoteCount = boardsData.reminderNoteCount || 0;
@@ -5968,6 +5981,54 @@ async function createBoardsUI(boardsData, boardParseError) {
         addBoardButtonEvents(reminderLink, 'reminder');
         allButtonLinks.push(reminderLink);
     }
+    // Сортираме бордовете по полето numord и потребителска подредба
+    boardsData.sort((a, b) => {
+        const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+        const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+        return numordA - numordB;
+    });
+    try {
+        const raw = localStorage.getItem('boardMenuOrder');
+        if (raw) {
+            const savedBoardOrder = JSON.parse(raw);
+            if (Array.isArray(savedBoardOrder) && savedBoardOrder.length > 0) {
+                const orderMap = new Map(savedBoardOrder.map((t, i) => [String(t), i]));
+                boardsData.sort((a, b) => {
+                    const posA = orderMap.has(String(a.title)) ? orderMap.get(String(a.title)) : 9999;
+                    const posB = orderMap.has(String(b.title)) ? orderMap.get(String(b.title)) : 9999;
+                    return posA - posB;
+                });
+            }
+        }
+    } catch (e) {
+        console.error("Error sorting boards:", e);
+    }
+    boardsData.forEach(board => {
+        const boardId = board.gdid || board.id;
+        if (!board.title || boardId === undefined || boardId === null) return;
+        const noteCount = board.noteCount || 0;
+        const link = document.createElement('span');
+        link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
+        link.classList.add('board-filter-link');
+        link.dataset.boardid = boardId;
+        if (board.color !== undefined && !isNaN(board.color)) {
+            if (board.color >= 0 && board.color <= 6) {
+                link.style.backgroundColor = `var(--board-bg-${board.color})`;
+            } else if (board.color < 0) {
+                const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
+                link.style.backgroundColor = hexColor;
+            }
+        }
+        link.style.color = 'black';
+        if (board.status === 1) {
+            link.style.color = 'red';
+        } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
+            const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+            link.style.color = hexFontColor;
+        }
+        addBoardButtonEvents(link, boardId);
+        allButtonLinks.push(link);
+    });
     // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "СЪС СНИМКИ" ---
     if (localStorage.getItem('showPhotosBoard') === 'true') {
         const photosLink = document.createElement('span');
@@ -6005,48 +6066,35 @@ async function createBoardsUI(boardsData, boardParseError) {
         addBoardButtonEvents(otherLink, 'with-other');
         allButtonLinks.push(otherLink);
     }
-    // Сортираме бордовете по полето numord, преди да създадем бутоните
-    boardsData.sort((a, b) => {
-        const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
-        const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
-        return numordA - numordB;
-    })
-
-    boardsData.forEach(board => {
-        const boardId = board.gdid || board.id;
-        if (!board.title || boardId === undefined || boardId === null) return;
-        const noteCount = board.noteCount || 0;
-        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-        const link = document.createElement('span');
-        link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
-        link.classList.add('board-filter-link');
-        link.dataset.boardid = boardId;
-        // Обработка на цвят на фона
-        if (board.color !== undefined && !isNaN(board.color)) {
-            if (board.color >= 0 && board.color <= 6) {
-                // Стандартни цветове (0-6)
-                link.style.backgroundColor = `var(--board-bg-${board.color})`;
-            } else if (board.color < 0) {
-                // Custom цвят (отрицателно число)
-                // Преобразуваме signed int в hex color string (RRGGBB)
-                // Използваме >>> 0 за да го третираме като unsigned 32-bit int,
-                // след това toString(16) и взимаме последните 6 символа.
-                const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
-                link.style.backgroundColor = hexColor;
-            }
+    // --- УСЛОВНО ДОБАВЯНЕ НА БОРД "КОШЧЕ" ---
+    if (localStorage.getItem('showTrashBoard') !== 'false') {
+        const trashCount = boardsData.trashCount || 0;
+        const trashLink = document.createElement('span');
+        trashLink.textContent = (showCount && trashCount > 0) ? `${_('trashBoardTitle') || "Кошче"} (${trashCount})` : (_('trashBoardTitle') || "Кошче");
+        trashLink.classList.add('board-filter-link', 'trash-filter-btn');
+        trashLink.dataset.boardid = 'trash';
+        trashLink.style.backgroundColor = '#c00';
+        trashLink.style.color = '#fff';
+        if (trashCount === 0 && currentBoardFilter !== 'trash') {
+            trashLink.style.display = 'none';
         }
-        // Обработка на цвят на шрифта
-        link.style.color = 'black'; // Default
-        if (board.status === 1) {
-            link.style.color = 'red';
-        } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
-            // Custom цвят на шрифта (отрицателно число)
-            const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-            link.style.color = hexFontColor;
-        }
-        addBoardButtonEvents(link, boardId);
-        allButtonLinks.push(link);
+        addBoardButtonEvents(trashLink, 'trash');
+        allButtonLinks.push(trashLink);
+    }
+    const reorderLink = document.createElement('span');
+    reorderLink.innerHTML = pencilIconSvg;
+    reorderLink.classList.add('board-filter-link', 'reorder-boards-btn');
+    reorderLink.dataset.boardid = 'reorder-boards';
+    reorderLink.title = _('reorderBoards') || "Нареди бордовете";
+    reorderLink.style.display = 'flex';
+    reorderLink.style.justifyContent = 'center';
+    reorderLink.style.alignItems = 'center';
+    reorderLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showBoardReorderPopup();
     });
+    allButtonLinks.push(reorderLink);
     maxWidthForButtons = 0;
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
@@ -6054,13 +6102,20 @@ async function createBoardsUI(boardsData, boardParseError) {
     document.body.appendChild(tempContainer);
     allButtonLinks.forEach(link => {
         tempContainer.appendChild(link);
-        maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
+        if (link.dataset.boardid !== 'reorder-boards') {
+            maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
+        }
     });
 
     document.body.removeChild(tempContainer);
     maxWidthForButtons += 10;
     allButtonLinks.forEach(link => {
-        link.style.width = `${maxWidthForButtons}px`;
+        if (link.dataset.boardid === 'reorder-boards') {
+            link.style.width = '44px';
+            link.style.minWidth = '44px';
+        } else {
+            link.style.width = `${maxWidthForButtons}px`;
+        }
         contentEl.appendChild(link);
     });
 
@@ -7357,9 +7412,6 @@ async function createNoteElement(noteContent) {
             if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
                 // Color will be handled by canvas background
             }
-            if (extraData.status === 1) {
-                return null; // Skip this note if status is 1
-            }
         } else { throw new Error(_('errorNoteFieldMissing')); }
     } catch (e) { fileContent = _('errorNoteParse'); }
     const isHiddenNote = extraData.pass === true;
@@ -7606,73 +7658,15 @@ async function createNoteElement(noteContent) {
     // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
     let longPressTimer;
     let isLongPress = false;
-    const handleNoteDelete = async (noteEl, e, fromModal = false) => {
-        e.stopPropagation();
-        e.preventDefault();
-        isLongPress = false;
-        clearTimeout(longPressTimer); // Спираме таймера, ако е бил стартиран
-        if (!useIndexedDb) return; // Изтриването работи само с база данни
-        // Ако е извикано от модала, първо го затваряме.
-        if (fromModal) {
-            document.getElementById('content-modal').classList.remove('visible');
-            // Изчакваме анимацията на затваряне да приключи, преди да покажем потвърждението.
-            await new Promise(resolve => setTimeout(resolve, 150));
-        }
-        const confirmed = await showConfirmation(_('confirmNoteDelete'));
-        if (confirmed) {
-            try {
-                let totalNotes;
-                await deleteFromDB(NOTE_STORE_NAME, noteGdid);
-                // Стъпка 1: Премахване от DOM и allNotesData
-                noteEl.remove();
-                allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
-                // Стъпка 2: Намиране на борда
-                const deletedNoteBoardId = extraData.boardid;
-                const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-                const boardToUpdate = boardsData.find(b => (isArh ? b.id : b.gdid) == deletedNoteBoardId);
-                // Стъпка 3: Намаляване на брояча в хедъра
-                const noteCounter = document.getElementById('note-counter');
-                if (noteCounter) {
-                    noteCounter.textContent = parseInt(noteCounter.textContent, 10) - 1;
-                    totalNotes = parseInt(noteCounter.textContent, 10);
-                }
-                if (boardToUpdate) {
-                    // Стъпка 4: Актуализация на boardsData
-                    boardToUpdate.noteCount = totalNotes;
-                    // Стъпка 5: Актуализация на UI (винаги използваме новата стойност от noteCounter)
-                    const boardButton = document.querySelector(`.board-filter-link[data-boardid="${boardToUpdate.gdid}"]`);
-                    if (boardButton) {
-                        const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
-                        const newText = (showCount && boardToUpdate.noteCount > 0) ? `${boardToUpdate.title} (${totalNotes})` : boardToUpdate.title;
-                        boardButton.textContent = newText;
-                    }
-                }
-                showToast(_('noteDeletedSuccess'), 3000);
-            } catch (error) {
-                console.log("Failed to delete note:", error);
-                showToast(_('noteDeletedError') + " - " + error.message, 15000);
-            }
-        }
-    };
-
-    // Обработва клик върху цялата бележка (с изключение на хедъра)
     const handleNoteClick = (e) => {
-        // Check if text is selected. If so, prevent opening the modal.
         const selection = window.getSelection();
-        if (selection.toString().length > 0) {
-            return;
-        }
-        // Отваряме модала, само ако не е long press и кликът не е върху футъра
+        if (selection.toString().length > 0) return;
         if (!isLongPress && !e.target.closest('.note-footer')) {
             const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
             showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
         }
     };
-
-    // Обработва клик върху хедъра (за изтриване)
     const handleHeaderClick = (e) => { if (e.ctrlKey) handleNoteDelete(note, e); };
-    // Закачаме събитията за изтриване само за хедъра
-
     titleWrapper.addEventListener('click', handleHeaderClick);
     addLongPressOrCtrlClick(titleWrapper, (e) => handleNoteDelete(note, e));
 
@@ -7682,71 +7676,95 @@ async function createNoteElement(noteContent) {
     contentWrapper.appendChild(titleWrapper);
     contentWrapper.appendChild(contentEl);
     // --- Създаване на футър с икони за прикачени файлове ---
-    // Проверяваме дали има прикачени файлове (масивът `attachments` вече е попълнен правилно по-горе)
-    // и дали бележката има идентификатор.
-    if (!isHiddenNote && (noteGdid || noteID) && attachments.length > 0) {
-        const uniqueTypes = [...new Set(attachments.map(att => att.type))];
-        // --- Set explicit SHORT dataset attributes for attachment types ---
-        if (uniqueTypes.includes(1)) note.dataset.hp = '1'; // data-hp = hasPhoto
-        if (uniqueTypes.includes(4)) note.dataset.hv = '1'; // data-hv = hasVideo
-        if (uniqueTypes.includes(2)) note.dataset.hs = '1'; // data-hs = hasSound
-        if (uniqueTypes.includes(3)) note.dataset.ho = '1'; // data-ho = hasOther
-        if (uniqueTypes.length > 0) {
+    if (!isHiddenNote && (noteGdid || noteID)) {
+        if (extraData.status === 1 || attachments.length > 0) {
             const footerEl = document.createElement('div');
             footerEl.className = 'note-footer';
-            uniqueTypes.sort((a, b) => a - b).forEach(type => {
-                const iconData = attachmentIcons.find(icon => icon.type === type);
-                if (iconData) {
-                    const iconDiv = document.createElement('div');
-                    iconDiv.className = 'footer-icon';
-                    iconDiv.innerHTML = iconData.svg;
-                    iconDiv.style.borderRadius = '5px'; // Добавяме заобляне на ъглите
-                    iconDiv.style.backgroundColor = noteBgColor;
-                    iconDiv.dataset.type = type; // Add type for easier selection
-                    // Calculate count of attachments of this type
-                    const typeCount = attachments.filter(att => att.type === type).length;
-                    if (typeCount > 1) {
-                        const plusSpan = document.createElement('span');
-                        plusSpan.textContent = '+';
-                        plusSpan.style.marginLeft = '2px';
-                        plusSpan.style.fontWeight = 'bold';
-                        plusSpan.style.fontSize = '14px'; // Adjust size as needed
-                        plusSpan.style.color = '#333'; // Make sure it's visible
-                        // Use inline-flex to align SVG and text
-                        iconDiv.style.display = 'inline-flex';
-                        iconDiv.style.alignItems = 'center';
-                        iconDiv.style.justifyContent = 'center';
-                        iconDiv.style.paddingRight = '4px'; // Add some padding
-                        iconDiv.appendChild(plusSpan);
+            if (extraData.status === 1) {
+                const restoreBtn = document.createElement('div');
+                restoreBtn.className = 'footer-icon restore-btn';
+                restoreBtn.innerHTML = restoreIconSvg;
+                restoreBtn.title = _('restoreNote') || "Възстанови";
+                restoreBtn.style.borderRadius = '5px';
+                restoreBtn.style.backgroundColor = 'rgba(255,255,255,0.7)';
+                restoreBtn.style.padding = '2px';
+                restoreBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    try {
+                        noteContent.status = 0;
+                        noteContent.datemod = Date.now();
+                        note.dataset.s = '0';
+                        note.dataset.dm = noteContent.datemod;
+                        const db = await openNotesDB();
+                        await new Promise((resolve, reject) => {
+                            const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
+                            tx.objectStore(NOTE_STORE_NAME).put(noteContent);
+                            tx.oncomplete = () => resolve();
+                            tx.onerror = () => reject(tx.error);
+                        });
+                        if (localStorage.getItem('updateGDrive') === 'true') { // && !isOffline
+                            // await updateGDriveFile(noteGdid, JSON.stringify(noteContent));
+                        }
+                        showToast(_('noteRestoredSuccess') || "Бележката е възстановена", 3000);
+                        renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+                        applyFilters();
+                    } catch (err) {
+                        console.error("Failed to restore note:", err);
                     }
-                    // Добавяме preview само за снимки (type 1) и видео (type 4),
-                    // и само ако текущият режим на работа е Google Drive.
-                    if (type === 1 || type === 4) {
-                        const firstAttachmentOfType = attachments.find(att => att.type === type);
-                        if (firstAttachmentOfType) {
-                            let sourceMode = 'gdrive'; // По подразбиране
-                            if (useArhDb) sourceMode = 'archive'; // Ако е архив, източникът е архив
-                            else if (useLocalFolder) sourceMode = 'local'; // Ако е локална папка, източникът е локален
-                            else if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb) { // Ако е само IndexedDB
-                                if (dbSourceGlobal === 3) sourceMode = 'archive'; // И базата е от архив
-                                else if (dbSourceGlobal === 2) sourceMode = 'local'; // Или базата е от локална папка
-                                // Ако dbSourceGlobal е 1 (Google Drive), sourceMode остава 'gdrive'
-                            }
-                            // Активираме превюто, ако източникът е Google Drive, Локална папка или Архив
-                            // Only add preview listener if we actually found the attachment
-                            if (sourceMode === 'gdrive' || sourceMode === 'local' || sourceMode === 'archive') {
-                                // Filter attachments of this type (already filtered above for counting, but let's be explicit or reuse)
-                                const attachmentsOfType = attachments.filter(att => att.type === type);
-                                const isVideo = type === 4;
-                                addInNotePreviewListener(iconDiv, attachmentsOfType, 0, sourceMode, isVideo);
+                };
+                footerEl.appendChild(restoreBtn);
+            }
+            if (attachments.length > 0) {
+                const uniqueTypes = [...new Set(attachments.map(att => att.type))];
+                if (uniqueTypes.includes(1)) note.dataset.hp = '1';
+                if (uniqueTypes.includes(4)) note.dataset.hv = '1';
+                if (uniqueTypes.includes(2)) note.dataset.hs = '1';
+                if (uniqueTypes.includes(3)) note.dataset.ho = '1';
+                uniqueTypes.sort((a, b) => a - b).forEach(type => {
+                    const iconData = attachmentIcons.find(icon => icon.type === type);
+                    if (iconData) {
+                        const iconDiv = document.createElement('div');
+                        iconDiv.className = 'footer-icon';
+                        iconDiv.innerHTML = iconData.svg;
+                        iconDiv.style.borderRadius = '5px';
+                        iconDiv.style.backgroundColor = noteBgColor;
+                        iconDiv.dataset.type = type;
+                        const typeCount = attachments.filter(att => att.type === type).length;
+                        if (typeCount > 1) {
+                            const plusSpan = document.createElement('span');
+                            plusSpan.textContent = '+';
+                            plusSpan.style.marginLeft = '2px';
+                            plusSpan.style.fontWeight = 'bold';
+                            plusSpan.style.fontSize = '14px';
+                            plusSpan.style.color = '#333';
+                            iconDiv.style.display = 'inline-flex';
+                            iconDiv.style.alignItems = 'center';
+                            iconDiv.style.justifyContent = 'center';
+                            iconDiv.style.paddingRight = '4px';
+                            iconDiv.appendChild(plusSpan);
+                        }
+                        if (type === 1 || type === 4) {
+                            const firstAttachmentOfType = attachments.find(att => att.type === type);
+                            if (firstAttachmentOfType) {
+                                let sourceMode = 'gdrive';
+                                if (useArhDb) sourceMode = 'archive';
+                                else if (useLocalFolder) sourceMode = 'local';
+                                else if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb) {
+                                    if (dbSourceGlobal === 3) sourceMode = 'archive';
+                                    else if (dbSourceGlobal === 2) sourceMode = 'local';
+                                }
+                                if (sourceMode === 'gdrive' || sourceMode === 'local' || sourceMode === 'archive') {
+                                    const attachmentsOfType = attachments.filter(att => att.type === type);
+                                    const isVideo = type === 4;
+                                    addInNotePreviewListener(iconDiv, attachmentsOfType, 0, sourceMode, isVideo);
+                                }
                             }
                         }
+                        footerEl.appendChild(iconDiv);
                     }
-                    footerEl.appendChild(iconDiv);
-                }
-            });
-
-            note.appendChild(footerEl); // Преместваме футъра да е директен наследник на .note
+                });
+            }
+            note.appendChild(footerEl);
         }
     }
     return note;
@@ -7769,6 +7787,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             // ВИНАГИ изчисляваме броячите за напомняния и календар.
             boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1).length;
             boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate && note.status !== 1).length;
+            boardsData.trashCount = allNotesData.filter(note => note.status === 1).length;
         }
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
@@ -8272,4 +8291,147 @@ function navigateBoard(direction) {
     if (targetBtn) {
         targetBtn.click();
     }
+}
+async function showBoardReorderPopup() {
+    let currentOrder = [];
+    try {
+        const raw = localStorage.getItem('boardMenuOrder');
+        if (raw) currentOrder = JSON.parse(raw);
+    } catch (e) { }
+    if (!Array.isArray(currentOrder) || currentOrder.length === 0) {
+        currentOrder = boardsData.filter(b => b.title).map(b => String(b.title));
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay reorder-overlay';
+    overlay.style.cssText = 'display:flex;align-items:center;justify-content:center;z-index:100000;';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    const box = document.createElement('div');
+    box.className = 'modal-content-box';
+    box.style.cssText = "background-image:url('Frame.jpg');background-size:cover;border-radius:12px;padding:50px 20px 20px 20px;width:auto;min-width:300px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.5);position:relative;";
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.className = 'modal-close';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:10px;background:#d6d6d6;border:none;border-radius:6px;width:44px;height:32px;cursor:pointer;font-size:28px;display:flex;align-items:center;justify-content:center;color:#333;box-shadow:0 2px 5px rgba(0,0,0,0.2);';
+    closeBtn.onclick = () => overlay.remove();
+    box.appendChild(closeBtn);
+    const title = document.createElement('h3');
+    title.textContent = _('reorderBoards') || 'Нареди бордовете';
+    title.style.cssText = 'margin:0 0 15px 0;font-size:1.2em;color:#fff;text-shadow:1px 1px 3px rgba(0,0,0,0.8);text-align:center;';
+    box.appendChild(title);
+    const listContainer = document.createElement('div');
+    listContainer.style.cssText = 'overflow-y:auto;flex:1;padding:4px;display:flex;flex-direction:column;align-items:center;width:100%;';
+    let draggedItem = null;
+    let placeholder = document.createElement('div');
+    placeholder.style.cssText = `height:40px;width:${maxWidthForButtons}px;border:2px dashed #fff;border-radius:4px;margin-bottom:8px;background:rgba(255,255,255,0.2);`;
+    currentOrder.forEach((boardTitle) => {
+        const board = boardsData.find(b => String(b.title) === String(boardTitle));
+        if (!board || !board.title) return;
+        const item = document.createElement('div');
+        item.className = 'board-filter-link reorder-item';
+        item.dataset.boardtitle = String(boardTitle);
+        item.draggable = true;
+        item.style.width = `${maxWidthForButtons}px`;
+        item.style.marginBottom = '8px';
+        item.style.cursor = 'grab';
+        item.style.flexShrink = '0';
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.justifyContent = 'flex-start';
+        item.style.padding = '0 10px';
+        if (board.color !== undefined && !isNaN(board.color)) {
+            if (board.color >= 0 && board.color <= 6) item.style.backgroundColor = `var(--board-bg-${board.color})`;
+            else if (board.color < 0) item.style.backgroundColor = '#' + (board.color >>> 0).toString(16).slice(-6);
+        }
+        const grip = document.createElement('span');
+        grip.innerHTML = '&#9776;';
+        grip.style.cssText = 'margin-right:8px;font-size:16px;opacity:0.6;';
+        item.appendChild(grip);
+        const text = document.createElement('span');
+        text.textContent = board.title;
+        text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+        if (board.status === 1) {
+            text.style.color = 'red';
+        } else if (board.colorfont !== undefined && !isNaN(board.colorfont)) {
+            if (board.colorfont < 0) text.style.color = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+            else text.style.color = 'black';
+        } else {
+            text.style.color = 'black';
+        }
+        item.appendChild(text);
+        item.addEventListener('dragstart', (e) => {
+            draggedItem = item;
+            e.dataTransfer.effectAllowed = 'move';
+            setTimeout(() => { item.style.opacity = '0'; }, 0);
+        });
+        item.addEventListener('dragend', () => {
+            draggedItem.style.opacity = '1';
+            if (placeholder.parentNode) placeholder.remove();
+            draggedItem = null;
+        });
+        item.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) return;
+            draggedItem = item;
+            item.style.opacity = '0.5';
+        }, { passive: true });
+        item.addEventListener('touchmove', (e) => {
+            if (!draggedItem || draggedItem !== item) return;
+            e.preventDefault();
+            const y = e.touches[0].clientY;
+            const target = document.elementFromPoint(e.touches[0].clientX, y);
+            const scrollItem = target ? target.closest('.reorder-item') : null;
+            if (scrollItem && scrollItem !== item) {
+                const rect = scrollItem.getBoundingClientRect();
+                if (y < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, scrollItem);
+                else listContainer.insertBefore(placeholder, scrollItem.nextSibling);
+            }
+        }, { passive: false });
+        item.addEventListener('touchend', () => {
+            if (!draggedItem) return;
+            item.style.opacity = '1';
+            if (placeholder.parentNode) {
+                listContainer.insertBefore(item, placeholder);
+                placeholder.remove();
+            }
+            draggedItem = null;
+        });
+        listContainer.appendChild(item);
+    });
+    listContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const target = e.target.closest('.reorder-item');
+        if (target && target !== draggedItem) {
+            const rect = target.getBoundingClientRect();
+            if (e.clientY < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, target);
+            else listContainer.insertBefore(placeholder, target.nextSibling);
+        }
+    });
+    listContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (draggedItem && placeholder.parentNode) {
+            listContainer.insertBefore(draggedItem, placeholder);
+            placeholder.remove();
+        }
+    });
+    box.appendChild(listContainer);
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:center;margin-top:15px;';
+    const saveCloseBtn = document.createElement('button');
+    saveCloseBtn.textContent = _('submitButton') || 'Потвърди';
+    saveCloseBtn.className = 'zoom-btn';
+    saveCloseBtn.style.cssText = 'padding:10px 30px;background:darkorange;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:1.1em;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.3);';
+    saveCloseBtn.onclick = async () => {
+        const newOrder = [...listContainer.children].filter(el => el.classList.contains('reorder-item')).map(el => el.dataset.boardtitle);
+        localStorage.setItem('boardMenuOrder', JSON.stringify(newOrder));
+        overlay.remove();
+        const boardsNote = document.querySelector('header .boards-note');
+        if (boardsNote) boardsNote.remove();
+        await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        if (typeof saveSettingsToGDrive === 'function') saveSettingsToGDrive(true);
+        showToast(_('settingSaved'));
+    };
+    footer.appendChild(saveCloseBtn);
+    box.appendChild(footer);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.classList.add('visible'), 10);
 }
