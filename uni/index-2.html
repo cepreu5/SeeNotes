@@ -316,24 +316,26 @@
             <div class="corner-dot bottom-left"></div>
             <div class="corner-dot bottom-right"></div>
             <div id="settings-modal-body">
-                <div class="zoom-control-wrapper">
-                    <label for="scaleSlider" style="margin-right: 10px;" data-key="zoomLabel">Мащаб:</label>
-                    <div class="slider-container">
-                        <input type="range" id="scaleSlider" min="25" max="175" value="100">
-                        <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number">
-                        <span>%</span>
-                    </div>
-                    <button id="scaleDecBtn" class="zoom-btn" style="padding: 2px 10px; margin-right: 2px;">-</button>
-                    <button id="scaleIncBtn" class="zoom-btn" style="padding: 2px 8px; margin-right: 10px;">+</button>
+                <div class="zoom-control-wrapper"
+                    style="display: flex; flex-direction: row !important; align-items: center; gap: 5px;">
+                    <label for="scaleSlider" style="margin-right: 5px; flex-shrink: 0;"
+                        data-key="zoomLabel">Мащаб:</label>
+                    <input type="range" id="scaleSlider" min="25" max="175" value="100"
+                        style="flex-grow: 1; min-width: 50px;">
+                    <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number"
+                        style="width: 45px; flex-shrink: 0;">
+                    <span style="flex-shrink: 0;">%</span>
+                    <button id="scaleDecBtn" class="zoom-btn" style="padding: 2px 10px; flex-shrink: 0;">-</button>
+                    <button id="scaleIncBtn" class="zoom-btn" style="padding: 2px 8px; flex-shrink: 0;">+</button>
                 </div>
-                <div style="text-align: center; margin-top: 0px; margin-bottom: 10px;">
+                <div style="text-align: center; margin-top: 10px; margin-bottom: 10px;">
                     <button id="applyZoomBtn" class="zoom-btn" data-key="submitButton">Потвърди</button>
                 </div>
 
-                <div class="zoom-control-wrapper" style="margin-top: 0px;">
-                    <label for="start-board-select" style="margin-right: 10px;" data-key="startBoardLabel">
+                <div class="zoom-control-wrapper" style="margin-top: 0px; display: flex; flex-direction: row !important; align-items: center;">
+                    <label for="start-board-select" style="margin-right: 10px; flex-grow: 1;" data-key="startBoardLabel">
                         Стартов борд:</label>
-                    <select id="start-board-select" class="start-board-select">
+                    <select id="start-board-select" class="start-board-select" style="flex-shrink: 0; width: auto;">
                         <!-- Options will be populated by JS -->
                     </select>
                 </div>
@@ -494,11 +496,9 @@
                 </div>
 
                 <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
-                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;"
-                        data-key="orderLabel">
+                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">
                         Подреждане на бележките:</label>
-                    <span id="sorting-arrow" class="accordion-arrow"
-                        style="margin-left: 5px; cursor: pointer;">▼</span>
+                    <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
                 <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
