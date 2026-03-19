@@ -10,6 +10,16 @@
 const version = 'Beta 1.9'; // App version
 let debug = false; // Глобален флаг за дебъг режим
 
+const appSettingsKeys = [
+    'zoomLevel', 'noteFontSize', 'modalFontSize', 'showDatemod', 'oneTapLink',
+    'imgBgrd', 'notesBgrd', 'showBoardNoteCount', 'showNewBoard', 'showBoardAll',
+    'showBoardRemind', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard',
+    'showOtherBoard', 'showWeeklyCalendar', 'enableNoteSorting', 'sortCriteria',
+    'sortInReverse', 'sortRemindersTop', 'startBoard', 'maxSavedSearches',
+    'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'hideAssistant',
+    'language', 'showAdvancedSettings', 'savedSearches'
+];
+
 let guide = true;
 guide = localStorage.getItem('guide');
 if (guide === 'false') {
@@ -6131,6 +6141,9 @@ async function createSettingsUI(boardsData, boardParseError) {
     const selectFolderBtn = document.getElementById('select-folder-btn');
     const folderNameDisplay = document.getElementById('local-sync-folder-name');
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
+    const settingsExportBtn = document.getElementById('settings-export-btn');
+    const settingsImportBtn = document.getElementById('settings-import-btn');
+    const settingsImportInput = document.getElementById('settings-import-input');
     if (!settingsModalBody.dataset.initialized) {
         // Hide Assistant Logic
         if (hideAssistantCheckbox) {
@@ -6685,6 +6698,50 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             }
         });
+        // --- Settings Export/Import ---
+        if (settingsExportBtn) {
+            settingsExportBtn.addEventListener('click', () => {
+                const settings = {};
+                appSettingsKeys.forEach(key => {
+                    const value = localStorage.getItem(key);
+                    if (value !== null) settings[key] = value;
+                });
+                const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `multinotes_settings_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
+        if (settingsImportBtn && settingsImportInput) {
+            settingsImportBtn.addEventListener('click', () => settingsImportInput.click());
+            settingsImportInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const settings = JSON.parse(event.target.result);
+                        Object.keys(settings).forEach(key => {
+                            if (appSettingsKeys.includes(key)) {
+                                localStorage.setItem(key, settings[key]);
+                            }
+                        });
+                        showToast(_('dbCreated'), 2000); // Use a generic success message
+                        setTimeout(() => window.location.reload(), 1000);
+                    } catch (err) {
+                        console.error("Error importing settings:", err);
+                        showToast("Error importing settings", 5000);
+                    }
+                };
+                reader.readAsText(file);
+            });
+        }
         // --- Archive Folder Setting ---
         const selectArhBtn = document.getElementById('select-arh-btn');
         const arhFolderNameDisplay = document.getElementById('arh-folder-name');

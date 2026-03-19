@@ -568,6 +568,14 @@
                         <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;"
                             data-key="deleteDbButton">Изтрий</button>
                     </div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 15px;"
+                        data-key="settingsFileManagementTitle">Локален архив на настройките</label>
+                    <div class="zoom-control-wrapper" id="settings-file-buttons-wrapper" style="margin-top: 10px;">
+                        <button id="settings-export-btn" class="zoom-btn" data-key="exportSettingsBtn">Запис на настройка</button>
+                        <button id="settings-import-btn" class="zoom-btn" style="margin-left: 10px;"
+                            data-key="importSettingsBtn">Четене на настройка</button>
+                        <input type="file" id="settings-import-input" style="display: none;" accept=".json">
+                    </div>
                 </div>
 
                 <span id="advanced-settings-span" hidden>
