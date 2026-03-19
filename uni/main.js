@@ -4146,10 +4146,7 @@ async function mainLogic(existingAuthResult) {
             loaderText.textContent = ''; // Изчистваме текста за прогреса
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
-            notesContainer.style.backgroundImage = `url('Board.png')`; // Reset background
-            // Скриваме лоудъра
-            loaderContainer.style.display = 'none';
-            // Показваме основните елементи, след като всичко е заредено
+            loaderContainer.style.display = 'none'; // Скриваме лоудъра
             document.querySelector('header').style.visibility = 'visible';
             document.querySelector('#search-wrapper').style.display = 'flex';
             notesContainer.style.visibility = 'visible';
@@ -5483,7 +5480,6 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         // This prevents flickering on initial load.
         if (currentBackground !== 'Board.png') {
             document.body.style.backgroundImage = '';
-            notesContainer.style.backgroundImage = '';
         }
         currentBackground = 'Board.png';
     } else {
@@ -5499,7 +5495,6 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
             }
         }
         document.body.style.backgroundImage = `url('${newBackground}')`;
-        notesContainer.style.backgroundImage = `url('${newBackground}')`;
         currentBackground = newBackground;
     }
     updateSearchPlaceholder();
@@ -6136,31 +6131,41 @@ async function createSettingsUI(boardsData, boardParseError) {
     const settingsImportInput = document.getElementById('settings-import-input');
     if (!settingsModalBody.dataset.initialized) {
         // Hide Assistant Logic
-        if (hideAssistantCheckbox) {
-            hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
-            hideAssistantCheckbox.addEventListener('change', () => {
-                const isChecked = hideAssistantCheckbox.checked;
-                localStorage.setItem('hideAssistant', isChecked);
-                const fabButton = document.getElementById('kb-fab');
-                if (fabButton) {
-                    fabButton.style.display = isChecked ? 'none' : 'block';
-                }
-                // Ако скрием асистента, скриваме и промо бележката веднага
-                if (isChecked) {
-                    if (promoNoteElement) {
-                        promoNoteElement.style.display = 'none';
+            if (hideAssistantCheckbox) {
+                hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
+                hideAssistantCheckbox.addEventListener('change', () => {
+                    const isChecked = hideAssistantCheckbox.checked;
+                    localStorage.setItem('hideAssistant', isChecked);
+                    const fabButton = document.getElementById('kb-fab');
+                    if (fabButton) {
+                        fabButton.style.display = isChecked ? 'none' : 'block';
                     }
-                    // Изчистваме флаговете за затворени промо бележки, за да се покажат отново при включване
-                    Object.keys(localStorage).forEach(key => {
-                        if (key.startsWith('dismissedPromo_')) {
-                            localStorage.removeItem(key);
+                    if (isChecked) {
+                        if (promoNoteElement) {
+                            promoNoteElement.style.display = 'none';
                         }
-                    });
-                }
-                showToast(_('settingSaved'), 2000);
-            });
-        }
-        // Zooom
+                        Object.keys(localStorage).forEach(key => {
+                            if (key.startsWith('dismissedPromo_')) {
+                                localStorage.removeItem(key);
+                            }
+                        });
+                    }
+                    showToast(_('settingSaved'), 2000);
+                });
+            }
+        // Zooom/Opacity Helpers
+        let opacityTimeout;
+        const settingsModal = document.getElementById('settings-modal');
+        const startOpacityChange = () => {
+            if (opacityTimeout) clearTimeout(opacityTimeout);
+            if (settingsModal) settingsModal.style.opacity = '0.7';
+        };
+        const endOpacityChange = (delay = 0) => {
+            if (opacityTimeout) clearTimeout(opacityTimeout);
+            if (typeof delay === 'number' && delay > 0) {
+                opacityTimeout = setTimeout(() => { if (settingsModal) settingsModal.style.opacity = '1'; }, delay);
+            } else { if (settingsModal) settingsModal.style.opacity = '1'; }
+        };
         const updateZoom = (value) => {
             value = Math.max(25, Math.min(175, parseInt(value, 10)));
             if (isNaN(value)) value = 100;
@@ -6172,11 +6177,14 @@ async function createSettingsUI(boardsData, boardParseError) {
         if (savedZoom) {
             scaleSlider.value = savedZoom;
             updateZoom(savedZoom);
-        } else {
-            updateZoom(scaleSlider.value);
-        }
+        } else { updateZoom(scaleSlider.value); }
         // Scale Buttons
         if (scaleIncBtn) {
+            scaleIncBtn.addEventListener('mousedown', startOpacityChange);
+            scaleIncBtn.addEventListener('touchstart', startOpacityChange, { passive: true });
+            scaleIncBtn.addEventListener('mouseup', () => endOpacityChange(2000));
+            scaleIncBtn.addEventListener('touchend', () => endOpacityChange(2000));
+            scaleIncBtn.addEventListener('mouseleave', () => endOpacityChange(2000));
             scaleIncBtn.addEventListener('click', () => {
                 let value = parseInt(scaleInput.value, 10) + 1;
                 updateZoom(value);
@@ -6185,6 +6193,11 @@ async function createSettingsUI(boardsData, boardParseError) {
             });
         }
         if (scaleDecBtn) {
+            scaleDecBtn.addEventListener('mousedown', startOpacityChange);
+            scaleDecBtn.addEventListener('touchstart', startOpacityChange, { passive: true });
+            scaleDecBtn.addEventListener('mouseup', () => endOpacityChange(2000));
+            scaleDecBtn.addEventListener('touchend', () => endOpacityChange(2000));
+            scaleDecBtn.addEventListener('mouseleave', () => endOpacityChange(2000));
             scaleDecBtn.addEventListener('click', () => {
                 let value = parseInt(scaleInput.value, 10) - 1;
                 updateZoom(value);
@@ -6192,21 +6205,14 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         }
-        let opacityTimeout;
         const applyBtn = document.getElementById('applyZoomBtn');
         applyBtn.addEventListener('click', () => {
             const zoomValue = scaleInput.value;
             updateZoom(zoomValue);
             localStorage.setItem('zoomLevel', zoomValue);
             showToast(_('settingSaved'), 2000);
-            // Keep transparency for 5 seconds
-            if (typeof startOpacityChange === 'function') {
-                startOpacityChange();
-                if (opacityTimeout) clearTimeout(opacityTimeout);
-                opacityTimeout = setTimeout(() => {
-                    endOpacityChange();
-                }, 5000);
-            }
+            startOpacityChange();
+            endOpacityChange(5000);
         });
         scaleInput.addEventListener('change', () => {
             const zoomValue = scaleInput.value;
@@ -6218,19 +6224,11 @@ async function createSettingsUI(boardsData, boardParseError) {
             updateZoom(zoomValue);
             localStorage.setItem('zoomLevel', zoomValue);
         });
-        // --- Прозрачност при използване на плъзгача ---
-        const settingsModal = document.getElementById('settings-modal');
-        const startOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '0.7';
-        };
-        const endOpacityChange = () => {
-            if (settingsModal) settingsModal.style.opacity = '1';
-        };
         scaleSlider.addEventListener('mousedown', startOpacityChange);
         scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
-        scaleSlider.addEventListener('mouseup', endOpacityChange);
-        scaleSlider.addEventListener('touchend', endOpacityChange);
-        scaleSlider.addEventListener('mouseleave', endOpacityChange); // За всеки случай
+        scaleSlider.addEventListener('mouseup', () => endOpacityChange(0));
+        scaleSlider.addEventListener('touchend', () => endOpacityChange(0));
+        scaleSlider.addEventListener('mouseleave', () => endOpacityChange(0));
         scaleSlider.addEventListener('click', (e) => {
             if (e.ctrlKey) {
                 e.preventDefault();

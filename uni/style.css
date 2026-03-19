@@ -417,7 +417,6 @@ main {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-start;
-    background-image: url('Board.png');
 }
 
 .note {
