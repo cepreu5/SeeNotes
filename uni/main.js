@@ -6135,28 +6135,28 @@ async function createSettingsUI(boardsData, boardParseError) {
     const settingsImportInput = document.getElementById('settings-import-input');
     if (!settingsModalBody.dataset.initialized) {
         // Hide Assistant Logic
-            if (hideAssistantCheckbox) {
-                hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
-                hideAssistantCheckbox.addEventListener('change', () => {
-                    const isChecked = hideAssistantCheckbox.checked;
-                    localStorage.setItem('hideAssistant', isChecked);
-                    const fabButton = document.getElementById('kb-fab');
-                    if (fabButton) {
-                        fabButton.style.display = isChecked ? 'none' : 'block';
+        if (hideAssistantCheckbox) {
+            hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
+            hideAssistantCheckbox.addEventListener('change', () => {
+                const isChecked = hideAssistantCheckbox.checked;
+                localStorage.setItem('hideAssistant', isChecked);
+                const fabButton = document.getElementById('kb-fab');
+                if (fabButton) {
+                    fabButton.style.display = isChecked ? 'none' : 'block';
+                }
+                if (isChecked) {
+                    if (promoNoteElement) {
+                        promoNoteElement.style.display = 'none';
                     }
-                    if (isChecked) {
-                        if (promoNoteElement) {
-                            promoNoteElement.style.display = 'none';
+                    Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('dismissedPromo_')) {
+                            localStorage.removeItem(key);
                         }
-                        Object.keys(localStorage).forEach(key => {
-                            if (key.startsWith('dismissedPromo_')) {
-                                localStorage.removeItem(key);
-                            }
-                        });
-                    }
-                    showToast(_('settingSaved'), 2000);
-                });
-            }
+                    });
+                }
+                showToast(_('settingSaved'), 2000);
+            });
+        }
         // Zooom/Opacity Helpers
         let opacityTimeout;
         const settingsModal = document.getElementById('settings-modal');
@@ -6696,7 +6696,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `multinotes_settings_${new Date().toISOString().slice(0, 10)}.json`;
+                a.download = `multinotes_settings.json`; // _${new Date().toISOString().slice(0, 10)}
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
