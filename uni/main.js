@@ -5672,7 +5672,7 @@ function applyFilters() {
         }
     }
     // --- Sorting Logic ---
-    if (localStorage.getItem('enableNoteSorting') === 'true') {
+    if (true) { // Sorting is now always active if settings are present
         const sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
         const sortReverse = localStorage.getItem('sortInReverse') === 'true';
         const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
@@ -6120,7 +6120,6 @@ async function createSettingsUI(boardsData, boardParseError) {
     const scaleIncBtn = document.getElementById('scaleIncBtn');
     const scaleDecBtn = document.getElementById('scaleDecBtn');
     const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
-    const orderCheckbox = document.getElementById('order-checkbox');
     const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
     const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
     const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
@@ -6406,18 +6405,10 @@ async function createSettingsUI(boardsData, boardParseError) {
                 // No need to rerender, it's checked on calendar view open
             });
         }
-        // Order checkbox
-        orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
         const sortingOptionsSection = document.getElementById('sorting-options-section');
         const sortingArrow = document.getElementById('sorting-arrow');
         const boardsOptionsSection = document.getElementById('boards-options-section');
         const boardsArrow = document.getElementById('boards-arrow');
-        // Event listener for the checkbox itself
-        orderCheckbox.addEventListener('change', () => {
-            localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
-            applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
-            showToast(_('settingSaved'), 2000);
-        });
         // Event listener for the arrow ONLY
         sortingArrow.addEventListener('click', () => {
             const isActive = sortingOptionsSection.style.display === 'block';
@@ -6443,11 +6434,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             }
             radio.addEventListener('change', () => {
                 if (radio.checked) {
-                    // Автоматично активиране на сортирането при избор на критерий
-                    if (!orderCheckbox.checked) {
-                        orderCheckbox.checked = true;
-                        localStorage.setItem('enableNoteSorting', 'true');
-                    }
                     localStorage.setItem('sortCriteria', radio.value);
                     applyFilters();
                     showToast(_('settingSaved'), 2000);
@@ -6457,11 +6443,6 @@ async function createSettingsUI(boardsData, boardParseError) {
         const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
         sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
         sortReverseCheckbox.addEventListener('change', () => {
-            // Автоматично активиране на сортирането
-            if (!orderCheckbox.checked) {
-                orderCheckbox.checked = true;
-                localStorage.setItem('enableNoteSorting', 'true');
-            }
             localStorage.setItem('sortInReverse', sortReverseCheckbox.checked);
             applyFilters();
             showToast(_('settingSaved'), 2000);
@@ -6469,11 +6450,6 @@ async function createSettingsUI(boardsData, boardParseError) {
         const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
         sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
         sortRemindersTopCheckbox.addEventListener('change', () => {
-            // Автоматично активиране на сортирането
-            if (!orderCheckbox.checked) {
-                orderCheckbox.checked = true;
-                localStorage.setItem('enableNoteSorting', 'true');
-            }
             localStorage.setItem('sortRemindersTop', sortRemindersTopCheckbox.checked);
             applyFilters();
             showToast(_('settingSaved'), 2000);
