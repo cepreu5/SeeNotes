@@ -1529,9 +1529,11 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                     tx.oncomplete = () => resolve();
                     tx.onerror = () => reject(tx.error);
                 });
-                if (localStorage.getItem('updateGDrive') === 'true') { // && !isOffline
+                if (localStorage.getItem('updateGDrive') === 'true') {
                     // await updateGDriveFile(noteGdid, JSON.stringify(noteData));
                 }
+                const newNoteEl = await createNoteElement(noteData);
+                noteEl.replaceWith(newNoteEl);
                 showToast(_('noteMovedToTrash') || "Бележката е преместена в Кошче", 3000);
             } else {
                 await new Promise((resolve, reject) => {
@@ -1540,13 +1542,13 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                     tx.oncomplete = () => resolve();
                     tx.onerror = () => reject(tx.error);
                 });
-                if (localStorage.getItem('updateGDrive') === 'true') { // && !isOffline
+                if (localStorage.getItem('updateGDrive') === 'true') {
                     await deleteGDriveFile(noteGdid);
                 }
                 allNotesData = allNotesData.filter(n => n.gdid !== noteGdid);
+                if (noteEl.remove) noteEl.remove();
                 showToast(_('noteDeletedSuccess'), 3000);
             }
-            if (noteEl.remove) noteEl.remove();
             renderUI({ boardParseError: false, rerenderOnlyMenu: true });
             applyFilters();
             const calendarContainer = document.getElementById('calendar-container');
@@ -5663,7 +5665,7 @@ function applyFilters() {
             const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
             matchesSearch = noteText.toLowerCase().includes(searchTerm);
         }
-        if ((searchTerm !== '' ? matchesSearch : isVisibleByBoard)) {
+        if ((searchTerm !== '' ? (matchesSearch && !isDeleted) : isVisibleByBoard)) {
             note.style.display = 'flex';
             visibleCount++;
         } else {
@@ -7776,19 +7778,17 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     } */
     let boardsNoteElement = null;
     if (boardsData.length > 0 || boardParseError) {
-        // Изчисляваме броячите само при пълно презареждане, не и когато се сменя само менюто.
-        if (!rerenderOnlyMenu) {
+        const calculateCounters = () => {
             boardsData.forEach(board => {
                 const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
                 const boardIdToMatch = String(isArh ? board.id : board.gdid);
-                // ВИНАГИ изчисляваме броячите. Настройката контролира само показването.
                 board.noteCount = allNotesData.filter(note => String(note.boardid) === boardIdToMatch && note.status !== 1).length;
             });
-            // ВИНАГИ изчисляваме броячите за напомняния и календар.
             boardsData.reminderNoteCount = allNotesData.filter(note => note.timer && note.timer > 0 && note.status !== 1).length;
             boardsData.calendarNoteCount = allNotesData.filter(note => note.calendarDate && note.status !== 1).length;
             boardsData.trashCount = allNotesData.filter(note => note.status === 1).length;
-        }
+        };
+        calculateCounters();
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError);
     }
     // Винаги премахваме старото меню, за да го заменим с новото

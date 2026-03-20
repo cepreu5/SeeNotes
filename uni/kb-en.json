@@ -599,7 +599,7 @@
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.9<br><br><span align='left'>The display of the <b>New</b> board, which shows new and changed notes after the last check, is managed by <b><i>Settings</i></b>.<br>By default, the setting is disabled.<br><br>Saving and reading the current settings to/from a file. This way you won't have to set them again if they are deleted and you can transfer them between different browsers.<br><br>The button for the pop-up menu with boards can be moved around the screen.<br><br>Changes in the Settings panel.</span>"
+                    "text": "Beta 1.9<br><br><span align='left'>The display of the <b>New</b> board, which shows new and changed notes after the last check, is managed by <b><i>Settings</i></b>.<br>By default, the setting is disabled.<br><br>Saving and reading the current settings to/from a file. This way you won't have to set them again if they are deleted and you can transfer them between different browsers.<br><br>The button for the pop-up menu with boards can be moved around the screen.<br><br>Changes in the Settings panel.<br><br><b>Trash</b> board<br><br>Ordering of boards</span>"
                 }
             }
         },

@@ -417,7 +417,6 @@ main {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-start;
-    background-image: url('Board.png');
 }
 
 .note {
@@ -1024,13 +1023,16 @@ code {
     opacity: 1;
 }
 
-/* Floating button for popup menu in boards-menu-container */
+/* Single consolidated board menu button - always floating and draggable */
 .popup-menu-btn-floating {
-    display: none;
+    display: flex;
     position: fixed;
-    top: 20px;
-    right: 10px;
-    z-index: 99;
+    /* Always fixed as requested */
+    top: 65px;
+    /* Default desktop position (matches old stationary spot) */
+    left: 15px;
+    z-index: 10000;
+    /* High z-index to fly above everything */
     border: 2px solid #dddddd;
     outline: none;
     background-color: yellow;
@@ -1044,7 +1046,24 @@ code {
     height: 46px;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+    transition: background-color 0.2s, box-shadow 0.2s;
 }
+
+.popup-menu-btn-floating:hover {
+    background-color: #ffd700;
+    box-shadow: 4px 6px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* On narrow screens, default to top-right if not moved */
+@media (max-width: 1220px) {
+    .popup-menu-btn-floating {
+        top: 20px;
+        left: auto;
+        right: 15px;
+    }
+}
+
 
 @media (hover: hover) {
     .popup-menu-btn-floating:hover {
@@ -1064,12 +1083,7 @@ code {
     cursor: grabbing;
 }
 
-/* Show floating button on narrow screens */
-@media (max-width: 1220px) {
-    .popup-menu-btn-floating {
-        display: flex;
-    }
-}
+
 
 #loader-container {
     text-align: center;
@@ -1550,7 +1564,10 @@ code {
         max-width: 100% !important;
         max-height: 100% !important;
         border-radius: 0 !important;
-        margin: 10px 0 0px 0 !important;
+        margin: 10px 0 0 0 !important;
+        box-sizing: border-box !important;
+        padding: 5px 10px 20px 10px !important;
+        overflow-x: hidden !important;
     }
 
     /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
@@ -1570,10 +1587,13 @@ code {
     #show-videos-board,
     #show-sounds-board,
     #show-other-board,
+    #show-new-board,
     #all-board,
     #remind-board,
     #weekly-calendar,
     #use-indexeddb-wrapper,
+    #additional-boards-header,
+    #settings-file-buttons-wrapper,
     #db-buttons-wrapper,
     #local-db-wrapper,
     #arh-db-wrapper {
@@ -1737,8 +1757,6 @@ code {
     background-color: #357ae8;
 }
 
-
-
 .boards-note-footer {
     padding-top: 5px;
     margin-top: auto;
@@ -1759,7 +1777,7 @@ code {
     align-items: center;
     width: 100%;
     padding: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 0px;
     /* Add some padding */
     margin-top: 10px;
     /* Add some padding */
@@ -1842,7 +1860,8 @@ code {
     background-color: #cfe6f8;
     width: 70%;
     max-width: 480px;
-    padding: 10px;
+    padding: 15px 20px;
+    box-sizing: border-box;
     height: auto;
     max-height: 90vh;
     display: flex;
@@ -1870,6 +1889,8 @@ code {
 #settings-modal-body {
     flex-grow: 1;
     overflow-y: auto;
+    padding-left: 5px;
+    padding-right: 5px;
 }
 
 .zoom-btn {
@@ -2004,7 +2025,7 @@ code {
     display: flex;
     justify-content: center;
     margin-top: 5px;
-    margin-bottom: 10px;
+    margin-bottom: 0px;
     /* Increased margin `for better separation */
     width: 100%;
     /* Ensure the wrapper takes full width to allow alignment */
@@ -2588,7 +2609,7 @@ code {
 
 /* Default state: Hide the header button container, show the scrolling wrapper */
 #boards-menu-container {
-    display: none;
+    display: block;
 }
 
 .scrolling-menu-wrapper {

@@ -316,21 +316,28 @@
             <div class="corner-dot bottom-left"></div>
             <div class="corner-dot bottom-right"></div>
             <div id="settings-modal-body">
-                <div class="zoom-control-wrapper">
-                    <label for="scaleSlider" style="margin-right: 10px;" data-key="zoomLabel">Мащаб:</label>
-                    <div class="slider-container">
-                        <input type="range" id="scaleSlider" min="25" max="175" value="100">
-                        <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number">
-                        <span>%</span>
-                    </div>
-                    <button id="applyZoomBtn" class="zoom-btn" style="margin-left: 0px;"
-                        data-key="submitButton">Потвърди</button>
+                <div class="zoom-control-wrapper"
+                    style="display: flex; flex-direction: row !important; align-items: center; gap: 5px;">
+                    <label for="scaleSlider" style="margin-right: 5px; flex-shrink: 0;"
+                        data-key="zoomLabel">Мащаб:</label>
+                    <input type="range" id="scaleSlider" min="25" max="175" value="100"
+                        style="flex-grow: 1; min-width: 50px;">
+                    <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number"
+                        style="width: 45px; flex-shrink: 0;">
+                    <span style="flex-shrink: 0;">%</span>
+                    <button id="scaleDecBtn" class="zoom-btn" style="padding: 2px 10px; flex-shrink: 0;">-</button>
+                    <button id="scaleIncBtn" class="zoom-btn" style="padding: 2px 8px; flex-shrink: 0;">+</button>
+                </div>
+                <div style="text-align: center; margin-top: 10px; margin-bottom: 10px;">
+                    <button id="applyZoomBtn" class="zoom-btn" data-key="submitButton">Потвърди</button>
                 </div>
 
-                <div class="zoom-control-wrapper" style="margin-top: 0px;">
-                    <label for="start-board-select" style="margin-right: 10px;" data-key="startBoardLabel">
+                <div class="zoom-control-wrapper"
+                    style="margin-top: 0px; display: flex; flex-direction: row !important; align-items: center;">
+                    <label for="start-board-select" style="margin-right: 10px; flex-grow: 1;"
+                        data-key="startBoardLabel">
                         Стартов борд:</label>
-                    <select id="start-board-select" class="start-board-select">
+                    <select id="start-board-select" class="start-board-select" style="flex-shrink: 0; width: auto;">
                         <!-- Options will be populated by JS -->
                     </select>
                 </div>
@@ -417,13 +424,11 @@
                     <input type="checkbox" id="weekly-calendar-checkbox" class="settings-checkbox">
                 </div>
 
-                <div class="zoom-control-wrapper" id="remind-board" style="margin-top: 10px;">
-                    <label for="remind-board-checkbox"
-                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showBoardRemind">
-                        Покажи борд Напомняния:</label>
-                    <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
-                    <span id="boards-arrow" class="accordion-arrow" style="margin-left: 10px; cursor: pointer;">▼</span>
+                <div class="zoom-control-wrapper" id="additional-boards-header" style="margin-top: 10px;">
+                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                        data-key="additionalBoardsLabel">
+                        Допълнителни бордове:</label>
+                    <span id="boards-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
                 <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
@@ -432,11 +437,19 @@
                 <div id="boards-options-section" style="display: none;">
                     <!-- Нов, опростен flex контейнер за опциите за бордове -->
                     <div class="boards-options-container" style="background-color: #909090;">
+                        <div class="zoom-control-wrapper" id="remind-board" style="margin-top: 0px;">
+                            <label for="remind-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showBoardRemind">
+                                Борд Напомняния:</label>
+                            <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
+                        </div>
+
                         <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
                             <label for="all-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                                 data-key="showBoardAll">
-                                Покажи борд Всички:</label>
+                                Борд Всички:</label>
                             <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -471,16 +484,23 @@
                                 Борд Други приложения:</label>
                             <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
                         </div>
+
+                        <div class="zoom-control-wrapper" id="show-new-board"
+                            style="margin-top: 10px; padding-bottom: 5px; border-bottom: 1px solid #000000;">
+                            <label for="show-new-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="showNewBoardLabel">
+                                Борд Нови</label>
+                            <input type="checkbox" id="show-new-board-checkbox" class="settings-checkbox">
+                        </div>
                     </div>
+                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
                 </div>
 
                 <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
-                    <label for="order-checkbox" style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;"
-                        data-key="orderLabel">
+                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">
                         Подреждане на бележките:</label>
-                    <input type="checkbox" id="order-checkbox" class="settings-checkbox">
-                    <span id="sorting-arrow" class="accordion-arrow"
-                        style="margin-left: 10px; cursor: pointer;">▼</span>
+                    <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
                 <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
@@ -559,6 +579,15 @@
                         <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
                         <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;"
                             data-key="deleteDbButton">Изтрий</button>
+                    </div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 15px;"
+                        data-key="settingsFileManagementTitle">Локален архив на настройките</label>
+                    <div class="zoom-control-wrapper" id="settings-file-buttons-wrapper" style="margin-top: 10px;">
+                        <button id="settings-export-btn" class="zoom-btn" data-key="exportSettingsBtn">Запис на
+                            настройка</button>
+                        <button id="settings-import-btn" class="zoom-btn" style="margin-left: 10px;"
+                            data-key="importSettingsBtn">Четене на настройка</button>
+                        <input type="file" id="settings-import-input" style="display: none;" accept=".json">
                     </div>
                 </div>
 
