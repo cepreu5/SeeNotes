@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.9'; // App version
+const version = 'Beta 1.90'; // App version
 let debug = false; // Глобален флаг за дебъг режим
 
 const appSettingsKeys = [
@@ -8068,8 +8068,9 @@ if ('serviceWorker' in navigator) {
                     await registration.unregister();
                 }
             }
-            // Регистрираме версията с флаг, за да принудим браузъра да я презареди
-            const registration = await navigator.serviceWorker.register('sw.js');
+            // Регистрираме версията с флаг, за да принудим браузъра да я презаредиq версиите на sw и main трябва да съвпадат
+            const registration = await navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(version)}`);
+
             if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
 
             // Force an update check to bypass HTTP cache for sw.js

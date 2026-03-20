@@ -3,6 +3,8 @@ const ASSETS_TO_CACHE = [
   './',
   './index-2.html',
   './style.css',
+  './i18n-bg.txt',
+  './i18n-en.txt',
   './msmstyle.css',
   './kb-assistant.css',
   './kb-assistantt.js',
@@ -52,15 +54,15 @@ const ASSETS_TO_CACHE = [
   './msm-ex/1764554407319.jpg',
   './msm-ex/1764554540104.jpg',
 ];
-
 self.addEventListener('install', (event) => {
-  // Don't call skipWaiting() here - wait for user confirmation via SKIP_WAITING message
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Cache assets individually for better error reporting and resilience
       return Promise.allSettled(
         ASSETS_TO_CACHE.map(url =>
-          cache.add(url).catch(err => console.warn(`Failed to cache ${url}:`, err))
+          fetch(url, { cache: 'reload' }).then(response => {
+            if (!response.ok) throw new Error(`Network response was not ok for ${url}`);
+            return cache.put(url, response);
+          }).catch(err => console.warn(`Failed to cache ${url}:`, err))
         )
       );
     })
@@ -94,12 +96,14 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      // Return cached response if found, otherwise fetch from network
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request);
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.match(event.request).then((cachedResponse) => {
+        // Return cached response if found, otherwise fetch from network
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(event.request);
+      });
     })
   );
 });
