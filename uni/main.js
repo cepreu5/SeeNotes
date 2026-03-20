@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.90'; // App version
+const version = 'Beta 1.91'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 
 let guide = true;
@@ -4192,7 +4192,6 @@ function initApp() {
             notesBgrdChanged = false;
         }
         if (!isOffline) {
-            saveSettingsToGDrive(true).catch(e => console.warn('Auto-save settings error:', e));
             const advSpan = document.getElementById('advanced-settings-span');
             if (advSpan && !advSpan.hasAttribute('hidden')) {
                 syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
@@ -4227,7 +4226,6 @@ function initApp() {
                         notesBgrdChanged = false;
                     }
                     if (!isOffline) {
-                        saveSettingsToGDrive(true).catch(e => console.warn('Auto-save settings error:', e));
                         const advSpan = document.getElementById('advanced-settings-span');
                         if (advSpan && !advSpan.hasAttribute('hidden')) {
                             syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
@@ -8720,7 +8718,7 @@ async function loadGlobalFoldersJson() {
     return false;
 }
 async function saveSettingsToGDrive(silent = false) {
-    if (!silent && typeof showToast === 'function') showToast("Записване на настройките...");
+    if (!silent && typeof showToast === 'function') showToast(_('savingProfile'));
     const currentDevice = localStorage.getItem('deviceName') || 'Default';
     const settings = {};
     appSettingsKeys.forEach(key => {
@@ -8793,7 +8791,7 @@ async function saveSettingsToGDrive(silent = false) {
 }
 
 async function loadSettingsFromGDrive(silent = false) {
-    if (!silent && typeof showToast === 'function') showToast("Зареждане на настройките...");
+    if (!silent && typeof showToast === 'function') showToast(_('loadingProfiles'));
     let content = null;
     if (!isOffline) {
         try {
@@ -8870,7 +8868,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             showSettingsBtn.style.display = (typeof debug !== 'undefined' && debug) ? '' : 'none';
             showSettingsBtn.onclick = null;
             showSettingsBtn.addEventListener('click', async () => {
-                showToast("Зареждане на облачните настройки...");
+                showToast(_('loadingProfiles'));
                 let content = null;
                 if (!isOffline) {
                     const folderId = await getFolderIDByName('multinotes_data');
@@ -8914,7 +8912,6 @@ async function createSettingsUI(boardsData, boardParseError) {
     const modalFontSizeInput = document.getElementById('modal-font-size-input');
     const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
     const showNewBoardCheckbox = document.getElementById('show-new-board-checkbox');
-    const orderCheckbox = document.getElementById('order-checkbox');
     const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
     const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
     const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
@@ -8939,12 +8936,115 @@ async function createSettingsUI(boardsData, boardParseError) {
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
     const hideToastCheckbox = document.getElementById('hide-toast-checkbox');
     const activeFolderSelect = document.getElementById('active-folder-select');
-    const deviceNameInput = document.getElementById('device-name-input');
-    if (deviceNameInput) {
-        deviceNameInput.value = localStorage.getItem('deviceName') || '';
-        deviceNameInput.addEventListener('change', () => {
-            localStorage.setItem('deviceName', deviceNameInput.value);
+    const deviceNameSelect = document.getElementById('device-name-select');
+    const addDeviceBtn = document.getElementById('add-device-btn');
+    const deleteDeviceBtn = document.getElementById('delete-device-btn');
+    async function loadDeviceProfiles(forceRefresh = false) {
+        if (!deviceNameSelect) return;
+        let devices = ['Default'];
+        let cachedProfiles = localStorage.getItem('deviceProfilesList');
+
+        if (cachedProfiles && !forceRefresh) {
+            try {
+                devices = JSON.parse(cachedProfiles);
+            } catch (e) { }
+        } else {
+            let content = null;
+            if (!isOffline) {
+                try {
+                    const folderId = await getFolderIDByName('multinotes_data');
+                    if (folderId) {
+                        const existingFiles = await findGDFileByName(folderId, 'settings.json');
+                        if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
+                    }
+                } catch (err) { console.error("Error loading profiles:", err); }
+            }
+            if (!content) content = localStorage.getItem('settings_multinotes_data');
+
+            if (content) {
+                try {
+                    const parsed = JSON.parse(content);
+                    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                        const topLevelKeys = Object.keys(parsed);
+                        const isNewFormat = !topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
+                        if (isNewFormat) devices = topLevelKeys;
+                    }
+                } catch (e) { }
+            }
+            localStorage.setItem('deviceProfilesList', JSON.stringify(devices));
+        }
+
+        const currentDevice = localStorage.getItem('deviceName') || 'Default';
+        if (!devices.includes(currentDevice)) {
+            devices.push(currentDevice);
+            localStorage.setItem('deviceProfilesList', JSON.stringify(devices));
+        }
+
+        deviceNameSelect.innerHTML = '';
+        devices.sort((a, b) => {
+            if (a === 'Default') return -1;
+            if (b === 'Default') return 1;
+            return a.localeCompare(b);
+        }).forEach(dev => {
+            const opt = document.createElement('option');
+            opt.value = dev;
+            opt.textContent = dev;
+            if (dev === currentDevice) opt.selected = true;
+            deviceNameSelect.appendChild(opt);
+        });
+    }
+    if (deviceNameSelect) {
+        loadDeviceProfiles();
+        deviceNameSelect.addEventListener('change', () => {
+            localStorage.setItem('deviceName', deviceNameSelect.value);
             showToast(_('settingSaved'), 2000);
+        });
+    }
+    if (addDeviceBtn) {
+        addDeviceBtn.addEventListener('click', () => {
+            const newName = prompt("Въведете име за новото устройство / профил:");
+            if (newName && newName.trim()) {
+                localStorage.setItem('deviceName', newName.trim());
+                loadDeviceProfiles();
+                showToast(_('settingSaved'), 2000);
+            }
+        });
+    }
+    if (deleteDeviceBtn) {
+        deleteDeviceBtn.addEventListener('click', async () => {
+            const currentDevice = deviceNameSelect.value;
+            if (currentDevice === 'Default') {
+                showToast("Не може да изтриете профила Default.");
+                return;
+            }
+            if (!await showConfirmation(`Сигурни ли сте, че искате да изтриете профила '${currentDevice}' от облака?`)) return;
+            showToast("Изтриване на профила...");
+            try {
+                const folderId = await getFolderIDByName('multinotes_data');
+                if (folderId) {
+                    const existingFiles = await findGDFileByName(folderId, 'settings.json');
+                    if (existingFiles && existingFiles.length > 0) {
+                        const content = await fetchGDriveFileContent(existingFiles[0].id);
+                        const parsed = JSON.parse(content);
+                        if (parsed && parsed[currentDevice]) {
+                            delete parsed[currentDevice];
+                            await updateGDriveFile(existingFiles[0].id, JSON.stringify(parsed, null, 2));
+                            localStorage.setItem('deviceName', 'Default');
+
+                            // Актуализираме кеша веднага щом изтрием файл
+                            const newDevicesList = Object.keys(parsed);
+                            if (!newDevicesList.includes('Default')) newDevicesList.push('Default');
+                            localStorage.setItem('deviceProfilesList', JSON.stringify(newDevicesList));
+
+                            await loadDeviceProfiles();
+                            showToast("Профилът е изтрит.");
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Delete profile error:", err);
+                showToast("Грешка при изтриване.");
+            }
         });
     }
     if (!settingsModalBody.dataset.initialized) {
@@ -9430,31 +9530,22 @@ async function createSettingsUI(boardsData, boardParseError) {
             // No need to rerender, it's checked on calendar view open
         });
     }
-    // Order checkbox
-    orderCheckbox.checked = localStorage.getItem('enableNoteSorting') === 'true';
+    // Sorting and Boards accordions
     const sortingOptionsSection = document.getElementById('sorting-options-section');
     const sortingArrow = document.getElementById('sorting-arrow');
     const boardsOptionsSection = document.getElementById('boards-options-section');
     const boardsArrow = document.getElementById('boards-arrow');
-    // Event listener for the checkbox itself
-    orderCheckbox.addEventListener('change', () => {
-        localStorage.setItem('enableNoteSorting', orderCheckbox.checked);
-        applyFilters(); // Прилагаме филтрите, за да се отрази сортирането веднага
-        showToast(_('settingSaved'), 2000);
-    });
-    // Event listener for the arrow ONLY
+    // Event listener for the sorting arrow
     sortingArrow.addEventListener('click', () => {
         const isActive = sortingOptionsSection.style.display === 'block';
         sortingOptionsSection.style.display = isActive ? 'none' : 'block';
-        // Animate arrow rotation
         sortingArrow.style.transition = 'transform 0.3s ease';
         sortingArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
     });
-    // Event listener for the arrow ONLY
+    // Event listener for the boards arrow
     boardsArrow.addEventListener('click', () => {
         const isActive = boardsOptionsSection.style.display === 'block';
         boardsOptionsSection.style.display = isActive ? 'none' : 'block';
-        // Animate arrow rotation
         boardsArrow.style.transition = 'transform 0.3s ease';
         boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
     });
@@ -9467,11 +9558,8 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
         radio.addEventListener('change', () => {
             if (radio.checked) {
-                // Автоматично активиране на сортирането при избор на критерий
-                if (!orderCheckbox.checked) {
-                    orderCheckbox.checked = true;
-                    localStorage.setItem('enableNoteSorting', 'true');
-                }
+                // Всеки избор на критерий автоматично активира сортирането
+                localStorage.setItem('enableNoteSorting', 'true');
                 localStorage.setItem('sortCriteria', radio.value);
                 applyFilters();
                 showToast(_('settingSaved'), 2000);
@@ -9481,11 +9569,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const sortReverseCheckbox = document.getElementById('sort-reverse-checkbox');
     sortReverseCheckbox.checked = localStorage.getItem('sortInReverse') === 'true';
     sortReverseCheckbox.addEventListener('change', () => {
-        // Автоматично активиране на сортирането
-        if (!orderCheckbox.checked) {
-            orderCheckbox.checked = true;
-            localStorage.setItem('enableNoteSorting', 'true');
-        }
+        localStorage.setItem('enableNoteSorting', 'true');
         localStorage.setItem('sortInReverse', sortReverseCheckbox.checked);
         applyFilters();
         showToast(_('settingSaved'), 2000);
@@ -9493,11 +9577,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const sortRemindersTopCheckbox = document.getElementById('sort-reminders-top-checkbox');
     sortRemindersTopCheckbox.checked = localStorage.getItem('sortRemindersTop') === 'true';
     sortRemindersTopCheckbox.addEventListener('change', () => {
-        // Автоматично активиране на сортирането
-        if (!orderCheckbox.checked) {
-            orderCheckbox.checked = true;
-            localStorage.setItem('enableNoteSorting', 'true');
-        }
+        localStorage.setItem('enableNoteSorting', 'true');
         localStorage.setItem('sortRemindersTop', sortRemindersTopCheckbox.checked);
         applyFilters();
         showToast(_('settingSaved'), 2000);
@@ -11518,6 +11598,7 @@ if ('serviceWorker' in navigator) {
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (!refreshing) {
+                    localStorage.removeItem('app_version_seen');
                     window.location.reload();
                     refreshing = true;
                 }

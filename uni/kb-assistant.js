@@ -572,6 +572,60 @@ class KBAssistant {
         const formattedResults = results.map(r => this.matcher.formatResult(r));
         const topResult = formattedResults[0];
 
+        // --- BETA/VERSION SEQUENTIAL TOUR LOGIC ---
+        if (topResult && topResult.item && /^(Beta|Version)/i.test(topResult.item.id)) {
+            const item = topResult.item;
+            const queryWords = this.matcher.tokenize(this.matcher.normalizeText(query));
+            const keywords = item.keywords || [];
+            // "по първите три keywords"
+            const firstThree = keywords.slice(0, 3).map(k => this.matcher.normalizeText(k));
+            
+            let matchesFirstThree = false;
+            for (const qw of queryWords) {
+                if (firstThree.some(kw => this.matcher.fuzzyMatch(qw, [kw]))) {
+                    matchesFirstThree = true;
+                    break;
+                }
+            }
+
+            if (matchesFirstThree) {
+                const allItems = [...(this.matcher.kbData.general || []), ...(this.matcher.kbData.settings || []), ...(this.matcher.kbData.ui || [])];
+                const parseV = (v) => { if (!v) return 0; const match = v.match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
+                
+                const versionScenarios = allItems.filter(i =>
+                    i.guide && /^(Beta|Version)/i.test(i.id)
+                );
+                
+                if (versionScenarios.length > 0) {
+                    // Sort descending by version number
+                    versionScenarios.sort((a, b) => parseV(b.id) - parseV(a.id));
+                    
+                    const virtualGuide = {
+                        id: 'AllVersionsTour',
+                        context: versionScenarios[0].guide.context || 'general'
+                    };
+                    
+                    let globalStepIdx = 1;
+                    versionScenarios.forEach(scenario => {
+                        let i = 1;
+                        while (scenario.guide[i]) {
+                            const stepData = { ...scenario.guide[i] };
+                            if (typeof stepData.context === 'undefined' && scenario.guide.context) stepData.context = scenario.guide.context;
+                            if (typeof stepData.action === 'undefined' && scenario.guide.action) stepData.action = scenario.guide.action;
+                            if (typeof stepData.time === 'undefined' || stepData.time > 15000) stepData.time = 15000;
+                            virtualGuide[globalStepIdx] = stepData;
+                            globalStepIdx++;
+                            i++;
+                        }
+                    });
+                    
+                    if (globalStepIdx > 1) {
+                        topResult.guide = virtualGuide;
+                    }
+                }
+            }
+        }
+
         // Save to history the actual matched question/label
         if (query.trim() !== '?' && topResult) {
             const questionText = topResult.question || topResult.label || topResult.term || query;
