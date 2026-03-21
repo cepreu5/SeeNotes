@@ -5,10 +5,11 @@
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
 // node -e "const fs=require('fs'); const T=require('terser'); (async()=>{ const code=fs.readFileSync('main.js','utf8'); const result=await T.minify(code,{ compress:{ arrows:true, booleans:true, collapse_vars:true, comparisons:true, dead_code:true, drop_console:true, hoist_funs:true, if_return:true, passes:3, pure_funcs:['console.log'] }, mangle:{ reserved:['gisLoaded'], keep_fnames: /^gisLoaded$/ }, toplevel:true, ecma:2020, module:true, format:{ wrap_iife:true } }); fs.writeFileSync('mainn.js',result.code); })();"
 
-// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
+// terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.90'; // App version
+const version = 'Beta 1.95'; // App version
 let debug = false; // Глобален флаг за дебъг режим
+window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'showDatemod', 'oneTapLink',
@@ -16,7 +17,7 @@ const appSettingsKeys = [
     'showBoardRemind', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard',
     'showOtherBoard', 'showWeeklyCalendar', 'enableNoteSorting', 'sortCriteria',
     'sortInReverse', 'sortRemindersTop', 'startBoard', 'maxSavedSearches',
-    'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'hideAssistant',
+    'hideAssistant', // 'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 
     'language', 'showAdvancedSettings', 'savedSearches', 'modalWidth', 'modalHeight',
     'popupMenuBtnPosition', 'kbFabPosition', 'scrollTopBtnPosition', 'boardMenuOrder'
 ];
@@ -1939,7 +1940,7 @@ async function startApp(isExplicitLogin = false) {
         // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
         // само ако е необходимо.
         // --- Инициализация на KB Assistant след успешно логване ---
-        window.kbAssistant.init();
+        if (!window.isAppErrorState) window.kbAssistant.init();
         // Инициализация на draggable бутони
         const initDraggableButtons = () => {
             // ScrollTop Button
@@ -2361,15 +2362,9 @@ function initApp() {
             e.stopPropagation();
             console.log("Load operation cancelled by user.");
             isLoadCancelled = true;
-            // Hide loader and show settings
-            loaderContainer.style.display = 'none';
             document.getElementById('settings-modal').classList.add('visible');
         });
     }
-    // Инициализираме KB Assistant - ще се инициализира от startApp след логване
-    // if (window.kbAssistant && !window.kbAssistant.isInitialized) {
-    //     window.kbAssistant.init();
-    // }
     // Настройване на UI и езикови настройки
     const toast = document.getElementById('toastNotification');
     toast.addEventListener('click', hideToast);
@@ -3037,6 +3032,9 @@ function renderSavedSearchesPopup() {
     });
 }
 
+// Флаг за предотвратяване на двойна нотификация за Service Worker
+window.swUpdateNotificationShown = false;
+
 // Проверяваме дали има токен преди да стартираме приложението
 // Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
 (async () => {
@@ -3068,6 +3066,7 @@ function renderSavedSearchesPopup() {
                 const licenseData = await decryptLicenseToken();
                 if (!licenseData.pass) {
                     console.log('Резултат от проверката на s запис: НЕВАЛИДЕН (изтекъл)');
+                    window.isAppErrorState = true;
                     document.body.innerHTML = '';
                     document.body.style.backgroundColor = '#1a1a1a';
                     document.body.style.display = 'flex';
@@ -3165,6 +3164,10 @@ function setupSelectionLocking() {
 
 // Функция за инициализация на login страницата
 function initLoginPage() {
+    // Инициализираме KB Assistant веднага, за да следим версията (само ако не сме в състояние на грешка)
+    if (window.kbAssistant && !window.kbAssistant.isInitialized && !window.isAppErrorState) {
+        window.kbAssistant.init();
+    }
     const loginPage = document.getElementById('login-page');
     if (loginPage) loginPage.hidden = false;
     const loaderCont = document.getElementById('loader-container');
@@ -3430,6 +3433,7 @@ async function checkAuth() {
         sessionStorage.clear();
     }
     if (!pass) {
+        window.isAppErrorState = true;
         document.body.innerHTML = ''; // Изчистваме само съдържанието на body, не и самия body
         document.body.style.backgroundColor = '#1a1a1a';
         document.body.style.display = 'flex';
@@ -8068,18 +8072,32 @@ if ('serviceWorker' in navigator) {
                     await registration.unregister();
                 }
             }
-            // Регистрираме версията с флаг, за да принудим браузъра да я презаредиq версиите на sw и main трябва да съвпадат
+            // Регистрираме версията с флаг, за да принудим браузъра да я презареди, версиите на sw и main трябва да съвпадат
             const registration = await navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(version)}`);
 
             if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
 
-            // Force an update check to bypass HTTP cache for sw.js
-            await registration.update();
+            // Global set to track which SW versions we've already notified about
+            window.swNotifiedWorkers = window.swNotifiedWorkers || new Set();
 
             // Function to show update notification as a persistent floating bar
             const showUpdateNotification = (waitingSW) => {
-                // Don't show if already showing
-                if (document.getElementById('sw-update-bar')) return;
+                if (!waitingSW) return;
+                const swUrl = waitingSW.scriptURL;
+
+                // Extract version from SW URL if possible
+                const swVersionMatch = swUrl.match(/[?&]v=([^&]+)/);
+                const swVersion = swVersionMatch ? decodeURIComponent(swVersionMatch[1]) : null;
+
+                // Don't show if the version is the same as current (redundant notification)
+                if (swVersion && swVersion === version) {
+                    console.log(`[SW] Worker version ${swVersion} is already current. Skipping notification.`);
+                    return;
+                }
+
+                // Don't show if already showed for THIS worker or if a refresh is already pending or if bar exists
+                if (window.swNotifiedWorkers.has(swUrl) || document.getElementById('sw-update-bar') || sessionStorage.getItem('swUpdateRefreshPending')) return;
+                window.swNotifiedWorkers.add(swUrl);
 
                 // Create update notification bar
                 const updateBar = document.createElement('div');
@@ -8121,9 +8139,12 @@ if ('serviceWorker' in navigator) {
                 refreshBtn.onmouseover = () => refreshBtn.style.transform = 'scale(1.05)';
                 refreshBtn.onmouseout = () => refreshBtn.style.transform = 'scale(1)';
                 refreshBtn.onclick = () => {
-                    // Forcing the assistant to show the update info after reload
+                    // Mark as pending refresh to avoid duplicate prompts in this session
+                    sessionStorage.setItem('swUpdateRefreshPending', 'true');
+                    // Forcing the assistant to show the update info after reload by removing seen version
                     localStorage.removeItem('app_version_seen');
                     waitingSW.postMessage({ type: 'SKIP_WAITING' });
+                    setTimeout(() => updateBar.remove(), 100);
                 };
 
                 updateBar.appendChild(textSpan);
@@ -8166,7 +8187,10 @@ if ('serviceWorker' in navigator) {
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (!refreshing) {
-                    handleSignoutClick();
+                    // Clear the refresh flag once the new worker takes control
+                    sessionStorage.removeItem('swUpdateRefreshPending');
+                    // Use simple reload instead of handleSignoutClick to preserve session
+                    window.location.reload();
                     refreshing = true;
                 }
             });

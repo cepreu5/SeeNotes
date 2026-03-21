@@ -346,6 +346,7 @@ class KBAssistant {
      * Инициализация - зарежда KB данните
      */
     async init() {
+        if (window.isAppErrorState) return false;
         try {
             const corePath = 'kb-core.json';
             const langPath = `kb-${this.currentLang}.json`;
@@ -1242,6 +1243,7 @@ class KBUI {
      * Създава FAB (Floating Action Button)
      */
     createFAB() {
+        if (window.isAppErrorState) return;
         this.fabButton = document.createElement('button');
         this.fabButton.id = 'kb-fab';
         this.fabButton.className = 'kb-fab';
@@ -1262,6 +1264,7 @@ class KBUI {
      * Създава чат прозорец
      */
     createChatBox() {
+        if (window.isAppErrorState) return;
         this.container = document.createElement('div');
         this.container.id = 'kb-assistant-container';
         this.container.className = 'kb-assistant-container kb-hidden';
