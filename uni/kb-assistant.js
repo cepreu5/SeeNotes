@@ -30,7 +30,7 @@ class KBMatcher {
         const queryWords = this.tokenize(normalizedQuery);
 
         // Търсим във всички секции
-        const allResults = [];
+        let allResults = [];
 
         // Търсене в settings
         if (this.kbData.settings) {
@@ -90,7 +90,18 @@ class KBMatcher {
         }
 
         // Сортираме по score (най-високи първи)
-        allResults.sort((a, b) => b.score - a.score);
+        allResults = allResults
+            .filter(res => res.score > 0)
+            .sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                // При равни точки, ако са версии, предпочитаме ПО-НОВАТА версия
+                const parseV = (v) => { if (!v) return 0; const match = String(v).match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
+                const isVersionHeader = (id) => id && /^(Beta|Version)/i.test(id);
+                if (isVersionHeader(a.item.id) && isVersionHeader(b.item.id)) {
+                    return parseV(b.item.id) - parseV(a.item.id);
+                }
+                return 0;
+            });
 
         // Връщаме топ N резултата
         return allResults.slice(0, maxResults);
@@ -139,8 +150,15 @@ class KBMatcher {
             if (normalizedLabel.includes(queryWord)) {
                 score += 2;
             }
+            // Fuzzy match = +1 точка
             if (this.fuzzyMatch(queryWord, normalizedKeywords)) {
                 score += 1;
+            }
+            
+            // Бонус за съвпадение с ID (особено важно за версии)
+            const normalizedId = this.normalizeText(item.id || '');
+            if (normalizedId === queryWord || normalizedId.includes(queryWord)) {
+                score += 5;
             }
         });
         // Bonus for having a question/answer (prefer actual content)
@@ -161,12 +179,10 @@ class KBMatcher {
      */
     normalizeText(text) {
         if (!text) return '';
-
-        return text
-            .toLowerCase()
+        return text.toLowerCase()
             .trim()
-            // Премахваме пунктуация
-            .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '')
+            // Запазваме точките, ако са част от число (напр. версия 1.93), иначе премахваме пунктуация
+            .replace(/(?<!\d)\.|\.(?!\d)|[,\/#!$%\^&\*;:{}=\-_`~()]/g, '')
             // Премахваме множество spaces
             .replace(/\s+/g, ' ');
     }
@@ -177,8 +193,9 @@ class KBMatcher {
      * @returns {Array}
      */
     tokenize(text) {
-        // Игнорираме думи < 3 символа, освен ако не съдържат цифри (напр. "17" получено от "1.7", "v2")
-        return text.split(' ').filter(word => word.length > 2 || /\d/.test(word));
+        if (!text) return [];
+        // Използваме регулярен израз за думи и числа (вкл. версии с точки)
+        return text.match(/\d+(\.\d+)*|[a-zа-я]+/gi) || [];
     }
 
     /**
@@ -465,7 +482,8 @@ class KBAssistant {
             if (versionScenarios.length > 0) {
                 versionScenarios.sort((a, b) => parseV(b.id) - parseV(a.id));
                 const latest = versionScenarios[0];
-                console.log(`[KB Assistant] Fresh install. Showing latest update guide: ${latest.id}`);
+                // Show the latest available record if we have no lastSeenVersion (fresh/forced)
+                console.log(`[KB Assistant] Fresh install/Force. Showing news for: ${latest.id} (Current App: ${currentVersion})`);
                 this.showGuide({ ...latest.guide, id: latest.id });
             }
             return;
@@ -506,9 +524,10 @@ class KBAssistant {
     _buildCombinedVersionTour(scenarios, guideId = 'CombinedVersionTour') {
         if (!scenarios || scenarios.length === 0) return null;
 
-        const parseV = (v) => { if (!v) return 0; const match = v.match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
+        const parseV = (v) => { if (!v) return 0; const match = String(v).match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
         // Sort ascending (chronological history)
         scenarios.sort((a, b) => parseV(a.id) - parseV(b.id));
+        console.log(`[KB Assistant] Final tour sequence:`, scenarios.map(s => s.id));
 
         const virtualGuide = {
             id: guideId,
@@ -517,16 +536,22 @@ class KBAssistant {
 
         let globalStepIdx = 1;
         scenarios.forEach(scenario => {
+            if (!scenario.guide) return;
             let i = 1;
             while (scenario.guide[i]) {
                 const stepData = { ...scenario.guide[i] };
-                if (typeof stepData.context === 'undefined' && scenario.guide.context) stepData.context = scenario.guide.context;
-                if (typeof stepData.action === 'undefined' && scenario.guide.action) stepData.action = scenario.guide.action;
-                // Limit long steps for tours
-                if (typeof stepData.time === 'undefined' || stepData.time > 15000) stepData.time = 15000;
+                // Skip steps without text
+                if (stepData.text) {
+                    if (typeof stepData.context === 'undefined' && scenario.guide.context) stepData.context = scenario.guide.context;
+                    if (typeof stepData.action === 'undefined' && scenario.guide.action) stepData.action = scenario.guide.action;
+                    // Default to 'general' context for version history to stay centered
+                    if (typeof stepData.context === 'undefined') stepData.context = 'general';
+                    // Limit long steps for tours
+                    if (typeof stepData.time === 'undefined' || stepData.time > 15000) stepData.time = 15000;
 
-                virtualGuide[globalStepIdx] = stepData;
-                globalStepIdx++;
+                    virtualGuide[globalStepIdx] = stepData;
+                    globalStepIdx++;
+                }
                 i++;
             }
         });
@@ -614,6 +639,7 @@ class KBAssistant {
             if (matchesFirstThree) {
                 const allItems = [...(this.kbData.general || []), ...(this.kbData.settings || []), ...(this.kbData.ui || [])];
                 const versionScenarios = allItems.filter(i => isVersionRecord(i.id) && i.guide);
+                console.log(`[KB Assistant] Combined scenarios found for query "${query}":`, versionScenarios.map(s => s.id));
                 
                 if (versionScenarios.length > 0) {
                     const virtualGuide = this._buildCombinedVersionTour(versionScenarios, 'FullVersionHistoryTour');

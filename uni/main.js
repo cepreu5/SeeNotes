@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.95'; // App version
+const version = 'Beta 1.97'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -11054,25 +11054,21 @@ async function createNoteElement(noteContent) {
                     if (typeCount > 1) {
                         const plusSpan = document.createElement('span');
                         plusSpan.textContent = '+';
-                        plusSpan.style.marginLeft = '2px';
                         plusSpan.style.fontWeight = 'bold';
-                        plusSpan.style.fontSize = '14px'; // Adjust size as needed
-                        plusSpan.style.color = '#333'; // Make sure it's visible
-                        // Use inline-flex to align SVG and text
+                        plusSpan.style.fontSize = '14px';
+                        plusSpan.style.color = '#333';
                         iconDiv.style.display = 'inline-flex';
                         iconDiv.style.alignItems = 'center';
                         iconDiv.style.justifyContent = 'center';
-                        iconDiv.style.paddingRight = '4px'; // Add some padding
+                        iconDiv.style.paddingRight = '4px';
                         iconDiv.appendChild(plusSpan);
                     }
-                    // Добавяме preview само за снимки (type 1) и видео (type 4),
-                    // и само ако текущият режим на работа е Google Drive.
                     if (type === 1 || type === 4) {
                         const firstAttachmentOfType = attachments.find(att => att.type === type);
                         if (firstAttachmentOfType) {
-                            let sourceMode = 'gdrive'; // По подразбиране
-                            if (useArhDb) sourceMode = 'archive'; // Ако е архив, източникът е архив
-                            else if (useLocalFolder) sourceMode = 'local'; // Ако е локална папка, източникът е локален
+                            let sourceMode = 'gdrive';
+                            if (useArhDb) sourceMode = 'archive';
+                            else if (useLocalFolder) sourceMode = 'local';
                             else if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb) { // Ако е само IndexedDB
                                 if (dbSourceGlobal === 3) sourceMode = 'archive'; // И базата е от архив
                                 else if (dbSourceGlobal === 2) sourceMode = 'local'; // Или базата е от локална папка
@@ -11566,7 +11562,7 @@ if ('serviceWorker' in navigator) {
             }
             // Регистрираме версията с флаг, за да принудим браузъра да я презареди, версиите на sw и main трябва да съвпадат
             const registration = await navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(version)}`);
-            if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
+            console.log(`[SW] Registration successful. Scope: ${registration.scope}. Active: ${!!registration.active}, Waiting: ${!!registration.waiting}, Installing: ${!!registration.installing}`);
 
             // Global set to track which SW versions we've already notified about
             window.swNotifiedWorkers = window.swNotifiedWorkers || new Set();
@@ -11665,10 +11661,12 @@ if ('serviceWorker' in navigator) {
             // Listen for new SW installing
             registration.addEventListener('updatefound', () => {
                 const newWorker = registration.installing;
+                console.log('[SW] New worker found installation starting...', newWorker?.scriptURL);
                 if (newWorker) {
                     newWorker.addEventListener('statechange', () => {
+                        console.log(`[SW] New worker state changed: ${newWorker.state}`);
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            // New SW is installed and waiting
+                            console.log('[SW] New worker installed and waiting. Showing notification bar.');
                             showUpdateNotification(newWorker);
                         }
                     });
@@ -11678,7 +11676,9 @@ if ('serviceWorker' in navigator) {
             // Reload when the new Service Worker takes control, but only IF there was a previous controller (actual update)
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
+                console.log(`[SW] Controller changed. hadController: ${hadController}, refreshing: ${refreshing}`);
                 if (!refreshing && hadController) {
+                    console.log('[SW] Reloading page due to controller change...');
                     // Clear the refresh flag once the new worker takes control
                     sessionStorage.removeItem('swUpdateRefreshPending');
                     // Use simple reload instead of handleSignoutClick to preserve session
