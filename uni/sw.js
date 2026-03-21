@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.91';
+const CACHE_NAME = 'cx-notes-b1.95';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -89,7 +89,7 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Force activation to recover from broken main.js
+  // skipWaiting removed to allow application to prompt user before activation
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // Cache assets individually for better error reporting and resilience

@@ -273,7 +273,8 @@ class KBMatcher {
         let formattedResult = {
             type: result.type,
             score: result.score,
-            id: item.id
+            id: item.id,
+            item: item // Keep reference to original item for metadata checks
         };
 
         if (result.type === 'setting') {
@@ -346,6 +347,7 @@ class KBAssistant {
      * Инициализация - зарежда KB данните
      */
     async init() {
+        if (window.isAppErrorState) return false;
         try {
             const corePath = 'kb-core.json';
             const langPath = `kb-${this.currentLang}.json`;
@@ -485,39 +487,51 @@ class KBAssistant {
 
         if (updateScenarios.length > 0) {
             console.log(`[KB Assistant] Found ${updateScenarios.length} update scenarios. Building combined tour for ${currentVersion}...`);
-
-            // Build a single "virtual" guideData object that combines all steps
-            const virtualGuide = {
-                id: currentVersion, // Use the actual version string (e.g. 'Beta 1.69')
-                context: updateScenarios[0].guide.context || 'general'
-            };
-
-            let globalStepIdx = 1;
-            updateScenarios.forEach(scenario => {
-                let i = 1;
-                while (scenario.guide[i]) {
-                    // Extract step data and merge with scenario-level defaults (like context/action)
-                    const stepData = { ...scenario.guide[i] };
-
-                    // Inherit context/action/etc if not present in the step config itself
-                    if (typeof stepData.context === 'undefined' && scenario.guide.context) stepData.context = scenario.guide.context;
-                    if (typeof stepData.action === 'undefined' && scenario.guide.action) stepData.action = scenario.guide.action;
-
-                    virtualGuide[globalStepIdx] = stepData;
-                    globalStepIdx++;
-                    i++;
-                }
-            });
-
-            if (globalStepIdx > 1) {
-                console.log(`[KB Assistant] Starting combined version update tour with ${globalStepIdx - 1} steps.`);
-                // Use the internal showGuide to benefit from context/settings/action logic
+            const virtualGuide = this._buildCombinedVersionTour(updateScenarios, currentVersion);
+            if (virtualGuide) {
                 this.showGuide(virtualGuide);
             }
         }
 
         // Update stored version
         localStorage.setItem('app_version_seen', currentVersion);
+    }
+
+    /**
+     * Builds a single multi-step guide from multiple version-specific scenarios.
+     * @param {Array} scenarios - Array of KB items with .guide property
+     * @param {string} guideId - ID for the generated guide
+     * @returns {Object|null}
+     */
+    _buildCombinedVersionTour(scenarios, guideId = 'CombinedVersionTour') {
+        if (!scenarios || scenarios.length === 0) return null;
+
+        const parseV = (v) => { if (!v) return 0; const match = v.match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
+        // Sort ascending (chronological history)
+        scenarios.sort((a, b) => parseV(a.id) - parseV(b.id));
+
+        const virtualGuide = {
+            id: guideId,
+            context: scenarios[0].guide.context || 'general'
+        };
+
+        let globalStepIdx = 1;
+        scenarios.forEach(scenario => {
+            let i = 1;
+            while (scenario.guide[i]) {
+                const stepData = { ...scenario.guide[i] };
+                if (typeof stepData.context === 'undefined' && scenario.guide.context) stepData.context = scenario.guide.context;
+                if (typeof stepData.action === 'undefined' && scenario.guide.action) stepData.action = scenario.guide.action;
+                // Limit long steps for tours
+                if (typeof stepData.time === 'undefined' || stepData.time > 15000) stepData.time = 15000;
+
+                virtualGuide[globalStepIdx] = stepData;
+                globalStepIdx++;
+                i++;
+            }
+        });
+
+        return globalStepIdx > 1 ? virtualGuide : null;
     }
 
     /**
@@ -573,13 +587,22 @@ class KBAssistant {
         const topResult = formattedResults[0];
 
         // --- BETA/VERSION SEQUENTIAL TOUR LOGIC ---
-        if (topResult && topResult.item && /^(Beta|Version)/i.test(topResult.item.id)) {
+        const isVersionRecord = (id) => /^(Beta|Version)/i.test(id);
+        if (topResult && topResult.item && isVersionRecord(topResult.item.id)) {
             const item = topResult.item;
             const queryWords = this.matcher.tokenize(this.matcher.normalizeText(query));
-            const keywords = item.keywords || [];
-            // "по първите три keywords"
-            const firstThree = keywords.slice(0, 3).map(k => this.matcher.normalizeText(k));
             
+            // Safe keyword extraction (handles both flat array and multi-lang object)
+            const getVal = (val) => (typeof val === 'object' && val !== null) ? (val[this.currentLang] || val['en'] || '') : (val || '');
+            const getArr = (val) => {
+                if (Array.isArray(val)) return val;
+                if (typeof val === 'object' && val !== null) return (val[this.currentLang] || val['en'] || []);
+                return [];
+            };
+            const keywords = getArr(item.keywords);
+            
+            // "по първите три keywords" - Match against first 3 tags
+            const firstThree = keywords.slice(0, 3).map(k => this.matcher.normalizeText(k));
             let matchesFirstThree = false;
             for (const qw of queryWords) {
                 if (firstThree.some(kw => this.matcher.fuzzyMatch(qw, [kw]))) {
@@ -589,38 +612,16 @@ class KBAssistant {
             }
 
             if (matchesFirstThree) {
-                const allItems = [...(this.matcher.kbData.general || []), ...(this.matcher.kbData.settings || []), ...(this.matcher.kbData.ui || [])];
-                const parseV = (v) => { if (!v) return 0; const match = v.match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
-                
-                const versionScenarios = allItems.filter(i =>
-                    i.guide && /^(Beta|Version)/i.test(i.id)
-                );
+                const allItems = [...(this.kbData.general || []), ...(this.kbData.settings || []), ...(this.kbData.ui || [])];
+                const versionScenarios = allItems.filter(i => isVersionRecord(i.id) && i.guide);
                 
                 if (versionScenarios.length > 0) {
-                    // Sort descending by version number
-                    versionScenarios.sort((a, b) => parseV(b.id) - parseV(a.id));
-                    
-                    const virtualGuide = {
-                        id: 'AllVersionsTour',
-                        context: versionScenarios[0].guide.context || 'general'
-                    };
-                    
-                    let globalStepIdx = 1;
-                    versionScenarios.forEach(scenario => {
-                        let i = 1;
-                        while (scenario.guide[i]) {
-                            const stepData = { ...scenario.guide[i] };
-                            if (typeof stepData.context === 'undefined' && scenario.guide.context) stepData.context = scenario.guide.context;
-                            if (typeof stepData.action === 'undefined' && scenario.guide.action) stepData.action = scenario.guide.action;
-                            if (typeof stepData.time === 'undefined' || stepData.time > 15000) stepData.time = 15000;
-                            virtualGuide[globalStepIdx] = stepData;
-                            globalStepIdx++;
-                            i++;
-                        }
-                    });
-                    
-                    if (globalStepIdx > 1) {
+                    const virtualGuide = this._buildCombinedVersionTour(versionScenarios, 'FullVersionHistoryTour');
+                    if (virtualGuide) {
                         topResult.guide = virtualGuide;
+                        topResult.answer = (this.currentLang === 'bg')
+                            ? "Подготвих пълен преглед на новостите от последните версии. Натиснете <b>Покажи ми</b> за старт!"
+                            : "I've prepared a full overview of recent version updates. Click <b>Show me</b> to start the tour!";
                     }
                 }
             }
@@ -1298,6 +1299,7 @@ class KBUI {
      * Създава FAB (Floating Action Button)
      */
     createFAB() {
+        if (window.isAppErrorState) return;
         this.fabButton = document.createElement('button');
         this.fabButton.id = 'kb-fab';
         this.fabButton.className = 'kb-fab';
@@ -1318,6 +1320,7 @@ class KBUI {
      * Създава чат прозорец
      */
     createChatBox() {
+        if (window.isAppErrorState) return;
         this.container = document.createElement('div');
         this.container.id = 'kb-assistant-container';
         this.container.className = 'kb-assistant-container kb-hidden';

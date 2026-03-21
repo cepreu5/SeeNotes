@@ -7,8 +7,9 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.91'; // App version
+const version = 'Beta 1.95'; // App version
 const debug = true; // Глобален флаг за дебъг режим
+window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
 let guide = true;
 guide = localStorage.getItem('guide');
@@ -3147,6 +3148,7 @@ async function startApp(isExplicitLogin = false) {
                 }
             };
             initKbFab();
+            if (window.kbAssistant) window.kbAssistant.init();
         };
         initDraggableButtons();
         await mainLogic();
@@ -4596,6 +4598,7 @@ async function initLoginPage() {
 
     const licenseData = await decryptLicenseToken();
     const isLicenseExpired = hasS && !licenseData.pass;
+    window.isAppErrorState = isLicenseExpired; // Mark as error state to hide assistant if needed
 
     // --- UI Messaging Logic ---
     const rememberMeCheck = document.getElementById('rememberMe');
@@ -4696,6 +4699,7 @@ async function initLoginPage() {
             handleAuthClick();
         });
     }
+    if (window.kbAssistant) window.kbAssistant.init();
     // Запазваме състоянието на "Запомни ме" при промяна
     const rememberMeCheckbox = document.getElementById('rememberMe');
     if (rememberMeCheckbox) {
@@ -11547,33 +11551,110 @@ async function setLanguage(lang) {
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', async () => {
         try {
-            // КОРЕКЦИЯ: Изчистваме старите или дублиращи се Service Workers
+            const hadController = !!navigator.serviceWorker.controller;
+            // КОРЕКЦИЯ: Изчистваме САМО ако имаме дублиращи се или грешни Service Workers
             const registrations = await navigator.serviceWorker.getRegistrations();
-            for (let registration of registrations) {
-                // Ако имаме множество регистрации, това може да причини забавяния (timeouts)
-                if (registrations.length > 1 || !registration.active || !registration.active.scriptURL.includes('sw.js')) {
-                    console.log('Unregistering stagnant/duplicate service worker:', registration.active?.scriptURL);
-                    await registration.unregister();
+            if (registrations.length > 1) {
+                for (let registration of registrations) {
+                    const swUrl = registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL;
+                    // Keep only one active sw.js registration
+                    if (!swUrl || !swUrl.includes('sw.js')) {
+                        console.log('Unregistering stale service worker:', swUrl);
+                        await registration.unregister();
+                    }
                 }
             }
-            // Регистрираме версията с флаг, за да принудим браузъра да я презареди
-            const registration = await navigator.serviceWorker.register('sw.js');
+            // Регистрираме версията с флаг, за да принудим браузъра да я презареди, версиите на sw и main трябва да съвпадат
+            const registration = await navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(version)}`);
             if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
 
-            // Force an update check to bypass HTTP cache for sw.js
-            // await registration.update();
+            // Global set to track which SW versions we've already notified about
+            window.swNotifiedWorkers = window.swNotifiedWorkers || new Set();
 
-            // Function to show update notification using a blocking confirm dialog
+            // Function to show update notification as a persistent floating bar
             const showUpdateNotification = (waitingSW) => {
-                const msg = (typeof _ === 'function') ? _('newVersionAvailable') : "New version available.";
-                const refresh = (typeof _ === 'function') ? _('refreshNow') : "Refresh now";
+                if (!waitingSW) return;
+                const swUrl = waitingSW.scriptURL;
 
-                // Use setTimeout to allow the browser to render any pending UI updates before blocking
-                setTimeout(() => {
-                    if (confirm(`${msg}\n\n${refresh}?`)) {
-                        waitingSW.postMessage({ type: 'SKIP_WAITING' });
-                    }
-                }, 100);
+                // Extract version from SW URL if possible
+                const swVersionMatch = swUrl.match(/[?&]v=([^&]+)/);
+                const swVersion = swVersionMatch ? decodeURIComponent(swVersionMatch[1]) : null;
+
+                // Don't show if the version is the same as current (redundant notification)
+                if (swVersion && swVersion === version) {
+                    console.log(`[SW] Worker version ${swVersion} is already current. Skipping notification.`);
+                    return;
+                }
+
+                // Don't show if already showed for THIS worker or if a refresh is already pending or if bar exists
+                if (window.swNotifiedWorkers.has(swUrl) || document.getElementById('sw-update-bar') || sessionStorage.getItem('swUpdateRefreshPending')) return;
+                window.swNotifiedWorkers.add(swUrl);
+
+                // Create update notification bar
+                const updateBar = document.createElement('div');
+                updateBar.id = 'sw-update-bar';
+                updateBar.style.cssText = `
+                    position: fixed;
+                    bottom: 15px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                    z-index: 100000;
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    white-space: nowrap;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    animation: swSlideUp 0.3s ease;
+                `;
+
+                const textSpan = document.createElement('span');
+                textSpan.textContent = typeof _ === 'function' ? _('newVersionAvailable') : "New version available!";
+                textSpan.style.fontWeight = '500';
+
+                const refreshBtn = document.createElement('button');
+                refreshBtn.textContent = typeof _ === 'function' ? _('refreshNow') : "Refresh now";
+                refreshBtn.style.cssText = `
+                    background: white;
+                    color: #667eea;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    transition: all 0.2s;
+                `;
+                refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
+                refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
+                refreshBtn.onclick = () => {
+                    // Mark as pending refresh to avoid duplicate prompts in this session
+                    sessionStorage.setItem('swUpdateRefreshPending', 'true');
+                    // Forcing the assistant to show the update info after reload by removing seen version
+                    localStorage.removeItem('app_version_seen');
+                    waitingSW.postMessage({ type: 'SKIP_WAITING' });
+                    setTimeout(() => updateBar.remove(), 100);
+                };
+
+                updateBar.appendChild(textSpan);
+                updateBar.appendChild(refreshBtn);
+                document.body.appendChild(updateBar);
+
+                // Add animation style if not exists
+                if (!document.getElementById('sw-update-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'sw-update-style';
+                    style.textContent = `
+                        @keyframes swSlideUp {
+                            from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+                            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
             };
 
             // Check if there's already a waiting SW
@@ -11594,11 +11675,13 @@ if ('serviceWorker' in navigator) {
                 }
             });
 
-            // Reload when the new Service Worker takes control
+            // Reload when the new Service Worker takes control, but only IF there was a previous controller (actual update)
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (!refreshing) {
-                    localStorage.removeItem('app_version_seen');
+                if (!refreshing && hadController) {
+                    // Clear the refresh flag once the new worker takes control
+                    sessionStorage.removeItem('swUpdateRefreshPending');
+                    // Use simple reload instead of handleSignoutClick to preserve session
                     window.location.reload();
                     refreshing = true;
                 }

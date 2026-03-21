@@ -93,17 +93,20 @@
             table {
                 table-layout: auto;
             }
+
             th,
             td {
                 display: block;
                 width: 100%;
                 box-sizing: border-box;
             }
+
             th {
                 border-bottom: none;
                 padding-bottom: 2px;
                 font-weight: bold;
             }
+
             td {
                 padding-top: 2px;
             }
@@ -314,10 +317,10 @@
                     header.className = 'device-header';
                     header.innerHTML = `
                         <div style="display:flex; align-items:center;">
-                            <button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий настройката">
+                            <button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий профила">
                                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                             </button>
-                            <span style="margin-left:10px;">Настройка: ${deviceName}</span>
+                            <span style="margin-left:10px;">Профил: ${deviceName}</span>
                         </div>
                         <button class="toggle-btn" onclick="toggleRaw('${safeId}')">JSON</button>
                     `;

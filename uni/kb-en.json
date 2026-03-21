@@ -615,19 +615,19 @@
                 }
             }
         },
-        "Beta 1.91": {
+        "Beta 1.93": {
             "keywords": [
                 "new",
                 "news",
                 "version",
                 "last",
-                "1.91"
+                "1.93"
             ],
             "question": "What new features and changes are in the application?",
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.91<br><br><span align='left'>- Profiles<br><br>- Changes in <b>Settings</b><br><br>- Show versions info</span>"
+                    "text": "Beta 1.93<br><br><span align='left'>- Profiles<br><br>- Changes in <b>Settings</b><br><br>- Show complete versions info</span>"
                 }
             }
         },
