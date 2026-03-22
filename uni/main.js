@@ -11,6 +11,11 @@ const version = 'Beta 1.95'; // App version
 let debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
+const SUPPORTED_LANGUAGES = [
+    { id: 'en', label: 'EN' },
+    { id: 'bg', label: 'BG' }
+];
+
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'showDatemod', 'oneTapLink',
     'imgBgrd', 'notesBgrd', 'showBoardNoteCount', 'showNewBoard', 'showBoardAll',
@@ -2407,7 +2412,7 @@ function initApp() {
             useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
         };
         document.getElementById('settings-modal').classList.add('visible');
-        // if (guide) showStep(4); // Настройки
+        renderLanguageSwitchers();
     });
 
     const scrollHandler = function () {
@@ -3173,32 +3178,7 @@ function initLoginPage() {
     const loaderCont = document.getElementById('loader-container');
     if (loaderCont) loaderCont.style.display = 'none';
     // document.getElementById("mode_button").style.display = 'none';
-    // Language switcher event listeners - комбинирани за всички бутони
-    const langBgMain = document.getElementById('lang-bg-main');
-    const langEnMain = document.getElementById('lang-en-main');
-    const langBgBox = document.getElementById('lang-bg-box');
-    const langEnBox = document.getElementById('lang-en-box');
-    // Функция за смяна на език, която актуализира всички бутони
-    const switchLanguage = (lang) => {
-        setLanguage(lang);
-        // Актуализираме активното състояние на всички бутони
-        const isBg = lang === 'bg';
-        if (langBgMain) langBgMain.classList.toggle('active', isBg);
-        if (langEnMain) langEnMain.classList.toggle('active', !isBg);
-        if (langBgBox) langBgBox.classList.toggle('active', isBg);
-        if (langEnBox) langEnBox.classList.toggle('active', !isBg);
-    };
-    // Добавяме event listeners към всички бутони
-    if (langBgMain) langBgMain.onclick = () => switchLanguage('bg');
-    if (langEnMain) langEnMain.onclick = () => switchLanguage('en');
-    if (langBgBox) langBgBox.onclick = () => switchLanguage('bg');
-    if (langEnBox) langEnBox.onclick = () => switchLanguage('en');
-    // Set initial active state за всички бутони
-    const isBg = currentLang === 'bg';
-    if (langBgMain) langBgMain.classList.toggle('active', isBg);
-    if (langEnMain) langEnMain.classList.toggle('active', !isBg);
-    if (langBgBox) langBgBox.classList.toggle('active', isBg);
-    if (langEnBox) langEnBox.classList.toggle('active', !isBg);
+    renderLanguageSwitchers();
     // Добавяне на действие при натискане на trial бутона
     const trialBtn = document.getElementById("trialBtn");
     if (trialBtn) {
@@ -6271,56 +6251,69 @@ async function createSettingsUI(boardsData, boardParseError) {
             });
         }
         const applyBtn = document.getElementById('applyZoomBtn');
-        applyBtn.addEventListener('click', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-            showToast(_('settingSaved'), 2000);
-            startOpacityChange();
-            endOpacityChange(5000);
-        });
-        scaleInput.addEventListener('change', () => {
-            const zoomValue = scaleInput.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-        });
-        scaleSlider.addEventListener('input', () => {
-            const zoomValue = scaleSlider.value;
-            updateZoom(zoomValue);
-            localStorage.setItem('zoomLevel', zoomValue);
-        });
-        scaleSlider.addEventListener('mousedown', startOpacityChange);
-        scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
-        scaleSlider.addEventListener('mouseup', () => endOpacityChange(0));
-        scaleSlider.addEventListener('touchend', () => endOpacityChange(0));
-        scaleSlider.addEventListener('mouseleave', () => endOpacityChange(0));
-        scaleSlider.addEventListener('click', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                let currentValue = parseInt(scaleSlider.value, 10);
-                let newValue;
-                if (currentValue % 10 === 0) {
-                    newValue = currentValue + 10;
-                } else {
-                    newValue = Math.round(currentValue / 10) * 10;
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+                const zoomValue = scaleInput.value;
+                updateZoom(zoomValue);
+                localStorage.setItem('zoomLevel', zoomValue);
+                showToast(_('settingSaved'), 2000);
+                startOpacityChange();
+                endOpacityChange(5000);
+            });
+        }
+        if (scaleInput) {
+            scaleInput.addEventListener('change', () => {
+                const zoomValue = scaleInput.value;
+                updateZoom(zoomValue);
+                localStorage.setItem('zoomLevel', zoomValue);
+            });
+        }
+        if (scaleSlider) {
+            scaleSlider.addEventListener('input', () => {
+                const zoomValue = scaleSlider.value;
+                updateZoom(zoomValue);
+                localStorage.setItem('zoomLevel', zoomValue);
+            });
+        }
+        if (scaleSlider) {
+            scaleSlider.addEventListener('mousedown', startOpacityChange);
+            scaleSlider.addEventListener('touchstart', startOpacityChange, { passive: true });
+            scaleSlider.addEventListener('mouseup', () => endOpacityChange(0));
+            scaleSlider.addEventListener('touchend', () => endOpacityChange(0));
+            scaleSlider.addEventListener('mouseleave', () => endOpacityChange(0));
+            scaleSlider.addEventListener('click', (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    let currentValue = parseInt(scaleSlider.value, 10);
+                    let newValue;
+                    if (currentValue % 10 === 0) {
+                        newValue = currentValue + 10;
+                    } else {
+                        newValue = Math.round(currentValue / 10) * 10;
+                    }
+                    const max = parseInt(scaleSlider.max, 10);
+                    const min = parseInt(scaleSlider.min, 10);
+                    if (newValue > max) newValue = max;
+                    if (newValue < min) newValue = min;
+                    scaleSlider.value = newValue;
+                    updateZoom(newValue);
+                    localStorage.setItem('zoomLevel', newValue);
                 }
-                const max = parseInt(scaleSlider.max, 10);
-                const min = parseInt(scaleSlider.min, 10);
-                if (newValue > max) newValue = max;
-                if (newValue < min) newValue = min;
-                scaleSlider.value = newValue;
-                updateZoom(newValue);
-                localStorage.setItem('zoomLevel', newValue);
-            }
-        });
+            });
+        }
         // Make modal transparent when typing in scaleInput
-        scaleInput.addEventListener('focus', () => {
-            startOpacityChange();
-            if (opacityTimeout) clearTimeout(opacityTimeout);
-        });
-        scaleInput.addEventListener('blur', endOpacityChange);
+        if (scaleInput) {
+            scaleInput.addEventListener('focus', () => {
+                startOpacityChange();
+                if (opacityTimeout) clearTimeout(opacityTimeout);
+            });
+        }
+        if (scaleInput) {
+            scaleInput.addEventListener('blur', endOpacityChange);
+        }
         // Fonts
         const setupFontSizeInput = (selectElement, storageKey, defaultValue, targetUpdate) => {
+            if (!selectElement) return;
             const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
             fontSizes.forEach(size => {
                 const option = document.createElement('option');
@@ -6341,41 +6334,49 @@ async function createSettingsUI(boardsData, boardParseError) {
         setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
         setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
         // Date
-        showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
-        showDatemodCheckbox.addEventListener('change', () => {
-            const isChecked = showDatemodCheckbox.checked;
-            localStorage.setItem('showDatemod', isChecked);
-            document.body.classList.toggle('hide-datemod', !isChecked);
-            showToast(_('settingSaved'), 2000);
-        });
+        if (showDatemodCheckbox) {
+            showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
+            showDatemodCheckbox.addEventListener('change', () => {
+                const isChecked = showDatemodCheckbox.checked;
+                localStorage.setItem('showDatemod', isChecked);
+                document.body.classList.toggle('hide-datemod', !isChecked);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
         // One-tap links
-        oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
-        oneTapLinkCheckbox.addEventListener('change', () => {
-            const isChecked = oneTapLinkCheckbox.checked;
-            localStorage.setItem('oneTapLink', isChecked);
-            showToast(_('settingSaved'), 2000);
-            // Затваряме настройките, за да се вижда презареждането
-            document.getElementById('settings-modal').classList.remove('visible');
-            // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
-            renderUI({ boardParseError: false });
-        });
+        if (oneTapLinkCheckbox) {
+            oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
+            oneTapLinkCheckbox.addEventListener('change', () => {
+                const isChecked = oneTapLinkCheckbox.checked;
+                localStorage.setItem('oneTapLink', isChecked);
+                showToast(_('settingSaved'), 2000);
+                // Затваряме настройките, за да се вижда презареждането
+                document.getElementById('settings-modal').classList.remove('visible');
+                // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
+                renderUI({ boardParseError: false });
+            });
+        }
         // Graphical background
         const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
-        imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
-        imgBgrdCheckbox.addEventListener('change', () => {
-            const isChecked = imgBgrdCheckbox.checked;
-            localStorage.setItem('imgBgrd', isChecked);
-            showToast(_('settingSaved'), 2000);
-        });
+        if (imgBgrdCheckbox) {
+            imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+            imgBgrdCheckbox.addEventListener('change', () => {
+                const isChecked = imgBgrdCheckbox.checked;
+                localStorage.setItem('imgBgrd', isChecked);
+                showToast(_('settingSaved'), 2000);
+            });
+        }
         // Graphical background (notes list)
         const notesBgrdCheckbox = document.getElementById('notes-bgrd-checkbox');
-        notesBgrdCheckbox.checked = localStorage.getItem('notesBgrd') !== 'false'; // Default to true
-        notesBgrdCheckbox.addEventListener('change', () => {
-            const isChecked = notesBgrdCheckbox.checked;
-            localStorage.setItem('notesBgrd', isChecked);
-            showToast(_('settingSaved'), 2000);
-            notesBgrdChanged = true;
-        });
+        if (notesBgrdCheckbox) {
+            notesBgrdCheckbox.checked = localStorage.getItem('notesBgrd') !== 'false'; // Default to true
+            notesBgrdCheckbox.addEventListener('change', () => {
+                const isChecked = notesBgrdCheckbox.checked;
+                localStorage.setItem('notesBgrd', isChecked);
+                showToast(_('settingSaved'), 2000);
+                notesBgrdChanged = true;
+            });
+        }
         // Board Note Count
         if (showBoardNoteCountCheckbox) {
             showBoardNoteCountCheckbox.checked = localStorage.getItem('showBoardNoteCount') === 'true';
@@ -8046,17 +8047,35 @@ async function setLanguage(lang) {
         const key = element.getAttribute('data-key-title');
         element.title = _(key);
     });
-    // Update active button
-    const langBg = document.getElementById('lang-bg');
-    const langEn = document.getElementById('lang-en');
-    if (langBg) langBg.classList.toggle('active', lang === 'bg');
-    if (langEn) langEn.classList.toggle('active', lang === 'en');
+    // Update all language switchers in the UI
+    renderLanguageSwitchers();
     // Check if updateSignoutTooltip exists before calling it
     if (typeof updateSignoutTooltip === 'function') {
         updateSignoutTooltip();
     }
     // Update KB Assistant Language
-    window.kbAssistant.updateLanguage();
+    if (window.kbAssistant && window.kbAssistant.updateLanguage) {
+        window.kbAssistant.updateLanguage();
+    }
+}
+function renderLanguageSwitchers() {
+    const containers = document.querySelectorAll('.lang-switcher-container');
+    containers.forEach(container => {
+        container.innerHTML = '';
+        const select = document.createElement('select');
+        select.className = 'lang-select';
+        SUPPORTED_LANGUAGES.forEach(lang => {
+            const opt = document.createElement('option');
+            opt.value = lang.id;
+            opt.textContent = lang.label;
+            if (currentLang === lang.id) opt.selected = true;
+            select.appendChild(opt);
+        });
+        select.onchange = (e) => {
+            setLanguage(e.target.value);
+        };
+        container.appendChild(select);
+    });
 }
 
 // --- Service Worker Registration ---

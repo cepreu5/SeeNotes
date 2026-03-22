@@ -83,17 +83,9 @@
     </header>
 
     <div id="login-page" class="login-div" hidden>
-        <!-- Language switcher извън login-box, винаги видим -->
-        <div id="lang-switcher-main" style="display: flex; justify-content: center;">
-            <button id="lang-bg-main" class="lang-btn">BG</button>
-            <button id="lang-en-main" class="lang-btn">EN</button>
-        </div>
+        <div class="login-box" style="margin-bottom: 10px; max-width: 350px; padding: 25px; display: none;">
+            <div class="lang-switcher-container" style="display: flex; justify-content: flex-end; margin-bottom: 10px;"></div>
 
-        <div class="login-box" style="margin-bottom: 10px; max-width: 350px; display: none;">
-            <!--div id="lang-switcher">
-                <button id="lang-bg-box" class="lang-btn">BG</button>
-                <button id="lang-en-box" class="lang-btn">EN</button>
-            </div-->
             <p data-key="loginPrompt">Please sign in with Google account you used to sync <i>MultiNotes</i>.</p>
             <p id="app-title2" data-key="appTitle2" style="margin-top: 10px;"></p>
             <button id="authorize_button" data-key="authorizeButton" style="display:none" disabled>Authorize with
@@ -297,7 +289,10 @@
 
     <div id="settings-modal" class="modal-overlay">
         <div class="modal-content-box set-modal">
-            <h2 data-key="settingsTitle">Настройки</h2>
+            <div style="display: flex; justify-content: center; align-items: center; position: relative; margin-bottom: 5px; min-height: 35px;">
+                <h2 data-key="settingsTitle" style="margin: 0;">Настройки</h2>
+                <div class="lang-switcher-container" style="position: absolute; right: 40px; top: 50%; transform: translateY(-50%);"></div>
+            </div>
             <h3 class="modal-version">CX MultiNotes Viewer ver. </h3>
             <div style="text-align: center; margin-bottom: 3px;">
                 <a href="mailto:multinotes.web@gmail.com"
@@ -328,6 +323,7 @@
                     <button id="scaleDecBtn" class="zoom-btn" style="padding: 2px 10px; flex-shrink: 0;">-</button>
                     <button id="scaleIncBtn" class="zoom-btn" style="padding: 2px 8px; flex-shrink: 0;">+</button>
                 </div>
+
                 <div style="text-align: center; margin-top: 10px; margin-bottom: 10px;">
                     <button id="applyZoomBtn" class="zoom-btn" data-key="submitButton">Потвърди</button>
                 </div>
@@ -750,7 +746,7 @@
     <script src="kb-assistantt.js"></script>
     <script src="msmrtt.js"></script>
 
-    <script src="mainn.js"></script>
+    <script src="main.js"></script>
 </body>
 
 </html>

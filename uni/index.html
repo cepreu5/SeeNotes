@@ -507,11 +507,11 @@
             margin: 0 auto;
         }
 
-        .lang-btn {
+        .lang-select {
             background: none;
             border: 1px solid var(--text-secondary);
             color: var(--text-secondary);
-            padding: 4px 14px;
+            padding: 4px 5px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
@@ -519,21 +519,12 @@
             transition: all 0.2s;
             margin-left: 8px;
             flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 44px;
+            outline: none;
         }
 
-        .lang-btn:hover {
+        .lang-select:hover {
             border-color: var(--accent);
             color: var(--accent);
-        }
-
-        .lang-btn.active {
-            background: var(--accent);
-            border-color: var(--accent);
-            color: white;
         }
 
         .nav-link {
@@ -570,14 +561,12 @@
         <div class="logo">
             <span class="logo-text" data-key="logo_text">CX MultiNotes Viewer</span>
         </div>
-        <div id="lang-switcher-main" style="display: flex; justify-content: center;">
-            <button id="lang-bg-main" class="lang-btn">BG</button>
-            <button id="lang-en-main" class="lang-btn">EN</button>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div class="lang-switcher-container"></div>
             <a href="index-2.html" style="flex-shrink: 0; text-decoration: none;">
-                <button id="lang-es-main" class="lang-btn"
+                <button class="lang-btn"
                     style="background: black; width: auto; min-width: 90px; height: 32px; padding: 0 12px; border: none; color: white;">
-                    <span data-key="s_btn"
-                        style="font-size: 13px; font-weight: 600; white-space: nowrap;">Sign-in</span>
+                    <span data-key="s_btn" style="font-size: 13px; font-weight: 600; white-space: nowrap;">Sign-in</span>
                 </button>
             </a>
         </div>
@@ -773,6 +762,11 @@
         });
 
         // --- I18N Logic ---
+        const SUPPORTED_LANGUAGES = [
+            { id: 'en', label: 'EN' },
+            { id: 'bg', label: 'BG' }
+        ];
+
         let currentLang = localStorage.getItem('language') || 'en';
         let translations = {};
 
@@ -781,8 +775,9 @@
                 const response = await fetch(`index-${lang}.json`);
                 translations = await response.json();
                 applyTranslations();
-                updateSwitcherUI(lang);
+                renderLanguageSwitchers(lang);
                 localStorage.setItem('language', lang);
+                currentLang = lang;
             } catch (error) {
                 console.error('Error loading translations:', error);
             }
@@ -801,20 +796,31 @@
             }
         }
 
-        function updateSwitcherUI(lang) {
-            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
-            if (lang === 'bg') {
-                document.getElementById('lang-bg-main').classList.add('active');
-            } else {
-                document.getElementById('lang-en-main').classList.add('active');
-            }
+        function renderLanguageSwitchers(activeLang) {
+            const containers = document.querySelectorAll('.lang-switcher-container');
+            containers.forEach(container => {
+                container.innerHTML = '';
+                const select = document.createElement('select');
+                select.className = 'lang-select';
+                SUPPORTED_LANGUAGES.forEach(lang => {
+                    const opt = document.createElement('option');
+                    opt.value = lang.id;
+                    opt.textContent = lang.label;
+                    if (activeLang === lang.id) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                select.onchange = (e) => {
+                    loadTranslations(e.target.value);
+                };
+                container.appendChild(select);
+            });
         }
 
-        document.getElementById('lang-bg-main').addEventListener('click', () => loadTranslations('bg'));
-        document.getElementById('lang-en-main').addEventListener('click', () => loadTranslations('en'));
-
-        // Initial load
-        loadTranslations(currentLang);
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            renderLanguageSwitchers(currentLang);
+            loadTranslations(currentLang);
+        });
     </script>
 </body>
 
