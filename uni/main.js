@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.97'; // App version
+const version = 'Beta 1.98'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -136,7 +136,74 @@ const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
 const emptyTrashIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="14" y2="17"></line><line x1="14" y1="11" x2="10" y2="17"></line></svg>`;
 const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 
+let SUPPORTED_LANGUAGES = [
+    { id: 'en', label: 'EN' },
+    { id: 'bg', label: 'BG' }
+];
 
+function renderLanguageSwitchers(onChangeCallback) {
+    const build = (languages) => {
+        let container = document.getElementById('lang-switcher-main');
+        if (!container) return;
+
+        // Ако браузърът е кеширал стар HTML, в който контейнерът е select (а не div):
+        if (container.tagName.toLowerCase() === 'select') {
+            container.innerHTML = '';
+            container.style.cssText = 'font-size: 16px; padding: 6px 30px 6px 12px; border-radius: 6px; background: #afbac6; border: 1px solid #ccc; cursor: pointer; outline: none; margin-bottom: 15px; color: #333;';
+            languages.forEach(lang => {
+                const option = document.createElement('option');
+                option.value = lang.id;
+                option.textContent = lang.label;
+                if (lang.id === currentLang) option.selected = true;
+                container.appendChild(option);
+            });
+            // Remove old listeners by cloning
+            const newSelect = container.cloneNode(true);
+            container.parentNode.replaceChild(newSelect, container);
+            if (typeof onChangeCallback === 'function') {
+                newSelect.addEventListener('change', (e) => onChangeCallback(e.target.value));
+            }
+            return;
+        }
+
+        // Стандартно рендиране в div контейнер
+        container.innerHTML = '';
+        const select = document.createElement('select');
+        select.id = 'main-lang-select';
+        select.className = 'lang-select';
+        select.style.cssText = 'font-size: 16px; padding: 6px 30px 6px 12px; border-radius: 6px; background: #afbac6; border: 1px solid #ccc; cursor: pointer; outline: none; margin-bottom: 0px; color: #333;';
+
+        languages.forEach(lang => {
+            const option = document.createElement('option');
+            option.value = lang.id;
+            option.textContent = lang.label;
+            if (lang.id === currentLang) option.selected = true;
+            select.appendChild(option);
+        });
+
+        if (typeof onChangeCallback === 'function') {
+            select.addEventListener('change', (e) => onChangeCallback(e.target.value));
+        }
+        container.appendChild(select);
+    };
+
+    // Предварително рисуване
+    build(SUPPORTED_LANGUAGES);
+
+    // Фонов ъпдейт
+    fetch('languages.json', { cache: 'no-store' })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+            if (data && Array.isArray(data) && data.length > 0) {
+                const isDifferent = JSON.stringify(data) !== JSON.stringify(SUPPORTED_LANGUAGES);
+                if (isDifferent) {
+                    SUPPORTED_LANGUAGES = data;
+                    build(SUPPORTED_LANGUAGES);
+                }
+            }
+        })
+        .catch(err => console.warn('languages.json fallback to default', err));
+}
 let currentLang = localStorage.getItem('language') || 'en';
 
 let appTranslations = {};
@@ -4645,37 +4712,12 @@ async function initLoginPage() {
         }
     }
 
-    // Language switcher event listeners - комбинирани за всички бутони
-    const langBgMain = document.getElementById('lang-bg-main');
-    const langEnMain = document.getElementById('lang-en-main');
-    const langBgBox = document.getElementById('lang-bg-box');
-    const langEnBox = document.getElementById('lang-en-box');
-    // Функция за смяна на език, която актуализира всички бутони
+    // Language switcher event listeners
     const switchLanguage = (lang) => {
-        setLanguage(lang);
-        // Актуализираме текстовете на бутоните след смяна на езика
-        if (isOffline && authBtn) authBtn.textContent = _('offlineStartButton');
-        else if (!isOffline && authBtn) authBtn.textContent = _('authorizeButton');
-        if (!isOffline && trialBtn) trialBtn.textContent = _('trialButton');
-
-        // Актуализираме активното състояние на всички бутони
-        const isBg = lang === 'bg';
-        if (langBgMain) langBgMain.classList.toggle('active', isBg);
-        if (langEnMain) langEnMain.classList.toggle('active', !isBg);
-        if (langBgBox) langBgBox.classList.toggle('active', isBg);
-        if (langEnBox) langEnBox.classList.toggle('active', !isBg);
+        localStorage.setItem('language', lang);
+        location.reload();
     };
-    // Добавяме event listeners към всички бутони
-    if (langBgMain) langBgMain.onclick = () => switchLanguage('bg');
-    if (langEnMain) langEnMain.onclick = () => switchLanguage('en');
-    if (langBgBox) langBgBox.onclick = () => switchLanguage('bg');
-    if (langEnBox) langEnBox.onclick = () => switchLanguage('en');
-    // Set initial active state за всички бутони
-    const isBg = currentLang === 'bg';
-    if (langBgMain) langBgMain.classList.toggle('active', isBg);
-    if (langEnMain) langEnMain.classList.toggle('active', !isBg);
-    if (langBgBox) langBgBox.classList.toggle('active', isBg);
-    if (langEnBox) langEnBox.classList.toggle('active', !isBg);
+    if (typeof renderLanguageSwitchers === 'function') renderLanguageSwitchers(switchLanguage);
     // Добавяне на действие при натискане на trial бутона
     if (trialBtn) {
         // Cloning to remove any previous event listeners (simple way to avoid dupes)
@@ -11524,11 +11566,8 @@ async function setLanguage(lang) {
         const key = element.getAttribute('data-key-title');
         element.title = translations[key] || key;
     });
-    // Update active button
-    const langBg = document.getElementById('lang-bg');
-    const langEn = document.getElementById('lang-en');
-    if (langBg) langBg.classList.toggle('active', lang === 'bg');
-    if (langEn) langEn.classList.toggle('active', lang === 'en');
+    const mainLangSelect = document.getElementById('main-lang-select');
+    if (mainLangSelect) mainLangSelect.value = lang;
     // Check if updateSignoutTooltip exists before calling it
     if (typeof updateSignoutTooltip === 'function') {
         updateSignoutTooltip();
@@ -11834,6 +11873,15 @@ function navigateBoard(direction) {
         });
     }
 })();
+
+// --- Settings Close (×) Button ---
+const settingsCloseX = document.getElementById('settings-close-x');
+if (settingsCloseX) {
+    settingsCloseX.addEventListener('click', () => {
+        const mainCloseBtn = document.getElementById('settings-close-btn');
+        if (mainCloseBtn) mainCloseBtn.click();
+    });
+}
 
 /**
  * Updates the visibility of elements in Advanced Settings based on application state.

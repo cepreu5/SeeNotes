@@ -354,5 +354,7 @@ en: {
         folderDeletedSuccess: 'Folder deleted successfully.',
         errorDeleteFolder: 'Error deleting folder.',
         selectFolderToDelete: 'Select a folder to delete:',
-        offlineStartPrompt: "Network connection is unavailable. Do you want to start in Offline Mode?"
+        offlineStartPrompt: "Network connection is unavailable. Do you want to start in Offline Mode?",
+        betaVersionText: "This is a test (Beta) version of the application.",
+        betaAccessText: "If you wish to get access, please write to"
     }

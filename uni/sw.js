@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.97';
+const CACHE_NAME = 'cx-notes-b1.98';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -7,6 +7,7 @@ const ASSETS_TO_CACHE = [
   './style.css',
   './main.js',
   './fs.js',
+  './languages.json',
   './i18n-bg.txt',
   './i18n-en.txt',
   './MNVLogo.png',
