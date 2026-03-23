@@ -1698,6 +1698,42 @@ class KBUI {
 
         if (!query) return;
 
+        // --- Translate Mode Commands ---
+        if (query === '#translate' || query === '#trans' || query === '%5' || query === '#3') {
+            window.isTranslateMode = true; // Always turn ON
+            this.inputField.value = '';
+            this.addMessage('user', query);
+            const msg = (this.currentLang === 'bg' ? 'Режим на превод активиран. Преместете асистента върху елемент за редактиране.' : 'Translate mode activated. Move the assistant over an element to edit.');
+            this.addMessage('assistant', msg);
+
+            if (window.isTranslateMode) {
+                // Close chat window
+                this.close();
+
+                // Center the hero icon
+                if (typeof window.centerHero === 'function') {
+                    window.centerHero();
+                }
+                if (typeof window.initTranslateOverlay === 'function') {
+                    window.initTranslateOverlay();
+                }
+            }
+            return;
+        }
+
+        if (query === '#save' || query === '#4' || query === '%6') {
+            this.inputField.value = '';
+            this.addMessage('user', query);
+            if (typeof window.saveTranslationsFile === 'function') {
+                window.saveTranslationsFile();
+                const saveMsg = this.currentLang === 'bg' ? 'Файлът е записан в Downloads.' : 'Saved in Downloads.';
+                this.addMessage('assistant', saveMsg);
+            } else {
+                this.addMessage('assistant', 'Error: saveTranslationsFile function not found.');
+            }
+            return;
+        }
+
         // Добавяме въпроса на потребителя (скриваме командата ?)
         if (query !== '?') {
             this.addMessage('user', query);

@@ -23,10 +23,17 @@ window.toggleHero = function () {
   if (container && document.body.contains(container)) {
     container.remove();
     container = null;
-    let dbg = document.getElementById('msm-debug-overlay');
     if (dbg) dbg.remove();
     if (stepTimer) clearTimeout(stepTimer);
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+    // Deactivate Translate Mode if active
+    if (window.isTranslateMode) {
+      window.isTranslateMode = false;
+      if (typeof window.removeTranslateOverlay === 'function') {
+        window.removeTranslateOverlay();
+      }
+    }
     return false;
   } else {
     if (activeSteps.length === 0) {
@@ -66,6 +73,8 @@ window.removeGuide = function () {
   }
   let dbg = document.getElementById('msm-debug-overlay');
   if (dbg) dbg.remove();
+  let trOverlay = document.getElementById('msm-translate-overlay');
+  if (trOverlay) trOverlay.remove();
   if (stepTimer) clearTimeout(stepTimer);
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
   if (isTempNoteOpen) {
@@ -73,6 +82,180 @@ window.removeGuide = function () {
     if (modal) modal.classList.remove('visible');
     isTempNoteOpen = false;
   }
+};
+
+window.centerHero = function () {
+  if (!container) {
+    toggleHero();
+  }
+  if (!container) return;
+
+  // Stop automatic positioning permanently for this mode
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+
+  // Detach from current target to prevent snapping back
+  targetEl = document.body;
+
+  container.style.visibility = 'hidden';
+  container.style.opacity = '0';
+  container.style.transition = 'none';
+
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const containerRect = container.getBoundingClientRect();
+  const centerX = (viewportWidth - containerRect.width) / 2;
+  const centerY = (viewportHeight - containerRect.height) / 2;
+
+  container.style.left = centerX + window.scrollX + 'px';
+  container.style.top = centerY + window.scrollY + 'px';
+  container.style.position = 'fixed';
+  container.style.visibility = 'visible';
+  container.style.opacity = '1';
+
+  // Hide speech bubble in translate mode
+  const bubble = container.querySelector('.speech-bubble');
+  if (bubble) bubble.style.display = 'none';
+};
+
+window.initTranslateOverlay = function () {
+  if (container) {
+    container.style.zIndex = '200000'; // Even higher than board reorder overlay (100000)
+  }
+  let trOverlay = document.getElementById('msm-translate-overlay');
+  if (!trOverlay) {
+    trOverlay = document.createElement('div');
+    trOverlay.id = 'msm-translate-overlay';
+    trOverlay.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.92); color:white; padding:15px; border-radius:12px; z-index:200001; width:360px; font-family:sans-serif; box-shadow:0 10px 40px rgba(0,0,0,0.8); border:1px solid #666; display:flex; flex-direction:column; gap:8px; transition: top 0.3s ease, bottom 0.3s ease;';
+    trOverlay.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size:11px; font-weight:bold; color:#00ff00; letter-spacing:1px; text-transform:uppercase;">Translate Mode</div>
+        <div style="font-size:10px; opacity:0.6;"><span id="msm-tr-lang">--</span></div>
+      </div>
+      <div id="msm-tr-key" style="font-family:monospace; color:#00ff00; word-break:break-all; background:rgba(0,255,0,0.1); padding:6px 10px; border-radius:6px; font-size:13px; border:1px solid rgba(0,255,0,0.2);">No data-key found</div>
+      <textarea id="msm-tr-val" placeholder="Type translation here..." style="width:100%; height:80px; background:#111; color:#fff; border:1px solid #444; border-radius:8px; padding:10px; font-size:14px; resize:none; outline:none; transition:border-color 0.2s; box-sizing:border-box;"></textarea>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div style="font-size:10px; color:#888;"><b>Enter</b> to apply</div>
+        <button id="msm-tr-apply" style="background:#00ff00; color:#000; border:none; border-radius:6px; padding:6px 15px; font-weight:bold; cursor:pointer; font-size:12px; transition:transform 0.1s;">APPLY</button>
+      </div>
+    `;
+    document.body.appendChild(trOverlay);
+
+    const textarea = trOverlay.querySelector('#msm-tr-val');
+    const applyBtn = trOverlay.querySelector('#msm-tr-apply');
+
+    const applyTranslation = () => {
+      const keyEl = document.getElementById('msm-tr-key');
+      const key = keyEl ? keyEl.innerText : '';
+      const isDynamic = key.includes('No data-key');
+      const val = textarea.value;
+      const lang = (localStorage.getItem('language') || 'en').toLowerCase();
+      const allTranslations = typeof appTranslations !== 'undefined' ? appTranslations : window.appTranslations;
+
+      if (!isDynamic && key && key !== 'No data-key found' && allTranslations && allTranslations[lang]) {
+        allTranslations[lang][key] = val;
+        
+        // Update all UI elements with this data-key
+        const elements = document.querySelectorAll(`[data-key="${key}"], [data-key-placeholder="${key}"], [data-key-title="${key}"]`);
+        elements.forEach(el => {
+          if (el.getAttribute('data-key') === key) {
+              if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = val;
+              else el.innerHTML = val;
+          }
+          if (el.getAttribute('data-key-placeholder') === key) el.placeholder = val;
+          if (el.getAttribute('data-key-title') === key) el.title = val;
+        });
+
+        // Feedback and release focus
+        applyBtn.style.background = '#fff';
+        applyBtn.innerText = 'SAVED!';
+        textarea.blur(); 
+        
+        setTimeout(() => {
+            applyBtn.style.background = '#00ff00';
+            applyBtn.innerText = 'APPLY';
+        }, 800);
+      } else if (isDynamic && lastIdentifiedEl) {
+        // Dynamic update only for the current element
+        if (lastIdentifiedEl.tagName === 'INPUT' || lastIdentifiedEl.tagName === 'TEXTAREA') {
+            if (lastIdentifiedEl.placeholder) lastIdentifiedEl.placeholder = val;
+            else lastIdentifiedEl.value = val;
+        } else {
+            lastIdentifiedEl.innerHTML = val;
+        }
+        
+        // FeedBack
+        applyBtn.style.background = '#ffaa00';
+        applyBtn.innerText = 'APPLIED!';
+        textarea.blur(); 
+        setTimeout(() => {
+            applyBtn.style.background = '#00ff00';
+            applyBtn.innerText = 'APPLY';
+        }, 800);
+      }
+    };
+
+    applyBtn.addEventListener('click', applyTranslation);
+    applyBtn.addEventListener('mousedown', () => applyBtn.style.transform = 'scale(0.95)');
+    applyBtn.addEventListener('mouseup', () => applyBtn.style.transform = 'scale(1)');
+
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        applyTranslation();
+      }
+    });
+
+    textarea.addEventListener('focus', () => textarea.style.borderColor = '#00ff00');
+    textarea.addEventListener('blur', () => textarea.style.borderColor = '#444');
+  }
+
+  window.updateTranslateOverlayPosition = function (pY) {
+    const trOverlay = document.getElementById('msm-translate-overlay');
+    if (!trOverlay) return;
+
+    // If assistant is in the bottom half of the screen, move modal to top
+    if (pY > window.innerHeight / 2) {
+      trOverlay.style.bottom = 'auto';
+      trOverlay.style.top = '20px';
+    } else {
+      trOverlay.style.top = 'auto';
+      trOverlay.style.bottom = '20px';
+    }
+  };
+
+  const langSpan = document.getElementById('msm-tr-lang');
+  if (langSpan) langSpan.innerText = (localStorage.getItem('language') || 'en').toUpperCase();
+};
+
+window.removeTranslateOverlay = function () {
+  const trOverlay = document.getElementById('msm-translate-overlay');
+  if (trOverlay) trOverlay.remove();
+  if (container) {
+    container.style.zIndex = '12000'; // Reset to default from CSS
+    const bubble = container.querySelector('.speech-bubble');
+    if (bubble) bubble.style.display = 'block';
+  }
+};
+
+window.saveTranslationsFile = function () {
+  const lang = localStorage.getItem('language') || 'en';
+  const allTranslations = typeof appTranslations !== 'undefined' ? appTranslations : window.appTranslations;
+
+  if (!allTranslations || !allTranslations[lang]) {
+    alert('No translations found to save.');
+    return;
+  }
+  const data = JSON.stringify(allTranslations[lang], null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `i18n-${lang}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 };
 
 // Global function to flip image
@@ -720,8 +903,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       }
       // Removed strict offsetParent check to avoid deadlock
 
-      // Ако влачим, не обновяваме автоматично, за да не пречим на потребителя
-      if (!isDragging && !isBubbleInteracting && !isResizing) {
+      // Ако влачим или сме в режим на превод, не обновяваме автоматично, за да не пречим на потребителя
+      if (!isDragging && !isBubbleInteracting && !isResizing && !window.isTranslateMode) {
         const imgOffsetLeft = img.offsetLeft;
         const imgOffsetTop = img.offsetTop;
         const rect = targetEl.getBoundingClientRect();
@@ -729,12 +912,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         // Check if target has 0 dimensions (hidden), unless it's body/html
         const isBodyOrHtml = targetEl.tagName === 'BODY' || targetEl.tagName === 'HTML';
         if (!isBodyOrHtml && rect.width === 0 && rect.height === 0) {
-          // Fallback: If target is hidden but we want to show it, center on screen
-          container.style.left = "50%";
-          container.style.top = "50%";
-          container.style.transform = "translate(-50%, -50%)";
-          container.style.opacity = '1';
-          console.warn("[MSM] Target element hidden, centering assistant.", targetEl);
+          // Fallback: If target is hidden, center on screen but don't flood the console
+          if (container.style.left !== "50%") {
+            container.style.left = "50%";
+            container.style.top = "50%";
+            container.style.transform = "translate(-50%, -50%)";
+            container.style.opacity = '1';
+          }
           animationFrameId = requestAnimationFrame(updatePosition);
           return;
         }
@@ -858,7 +1042,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             pY = currentImgRect.bottom - 10;
           }
           container.style.visibility = 'hidden';
-          lastIdentifiedEl = document.elementFromPoint(pX, pY);
+          let elAtPoint = document.elementFromPoint(pX, pY);
+          // Ignore hidden elements (rect width/height 0)
+          if (elAtPoint) {
+            const r = elAtPoint.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) elAtPoint = null;
+          }
+          lastIdentifiedEl = elAtPoint;
           container.style.visibility = 'visible';
           let elId = '';
           const currentImgRectForCalc = img.getBoundingClientRect();
@@ -875,6 +1065,65 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
           finalRelX = Math.round(currentImgRectForCalc.left - currentTargetRectForCalc.left);
           finalRelY = Math.round(currentImgRectForCalc.top - currentTargetRectForCalc.top);
           debugOverlay.innerText = `Target: ${elId || 'None'} | x: ${finalRelX}, y: ${finalRelY}`;
+
+          // --- TRANSLATE MODE LOGIC ---
+          if (window.isTranslateMode) {
+            const trKeyEl = document.getElementById('msm-tr-key');
+            const trValEl = document.getElementById('msm-tr-val');
+            if (trKeyEl && trValEl && lastIdentifiedEl) {
+              // Position the overlay dynamically based on assistant position
+              if (typeof window.updateTranslateOverlayPosition === 'function') {
+                window.updateTranslateOverlayPosition(pY);
+              }
+              const trEl = lastIdentifiedEl.closest('[data-key], [data-key-placeholder], [data-key-title]');
+              const dataKey = trEl ? (trEl.getAttribute('data-key') ||
+                trEl.getAttribute('data-key-placeholder') ||
+                trEl.getAttribute('data-key-title')) : null;
+              if (trEl) lastIdentifiedEl = trEl; // Use the closest translatable parent
+              if (dataKey) {
+                // ... (trKeyEl.innerText update moved down)
+                const lang = window.currentLang || localStorage.getItem('language') || 'en';
+                const allTranslations = typeof appTranslations !== 'undefined' ? appTranslations : window.appTranslations;
+                const translations = (allTranslations && allTranslations[lang]) ? allTranslations[lang] : allTranslations;
+
+                // console.log(`[MSM-TR] Lang: ${lang}, Key: ${dataKey}`);
+                // console.log(`[MSM-TR] appTranslations:`, allTranslations);
+                // console.log(`[MSM-TR] Resolved translations (lang: ${lang}):`, translations);
+
+                let val = '';
+                if (translations) {
+                  if (translations[dataKey]) {
+                    val = translations[dataKey];
+                  } else {
+                    // Case-insensitive fallback
+                    const lowerKey = dataKey.toLowerCase();
+                    const exactKey = Object.keys(translations).find(k => k.toLowerCase() === lowerKey);
+                    if (exactKey) val = translations[exactKey];
+                  }
+                }
+                console.log(`[MSM-TR] Found value: "${val}"`);
+
+                const isNewKey = trKeyEl.innerText !== dataKey;
+
+                if (isNewKey || (trValEl.value !== val && !trValEl.matches(':focus'))) {
+                  trValEl.value = val;
+                }
+                trKeyEl.innerText = dataKey;
+                trKeyEl.style.color = '#00ff00';
+                trKeyEl.style.background = 'rgba(0,255,0,0.1)';
+              } else {
+                // FALLBACK for elements without data-key
+                trKeyEl.innerText = 'No data-key';
+                trKeyEl.style.color = '#ffaa00';
+                trKeyEl.style.background = 'rgba(255,170,0,0.1)';
+                
+                const val = (lastIdentifiedEl.children.length === 0 ? (lastIdentifiedEl.innerText || lastIdentifiedEl.textContent || '').trim() : Array.from(lastIdentifiedEl.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent.trim()).filter(s => s).join(' ')) || lastIdentifiedEl.placeholder || lastIdentifiedEl.title || '';
+                if (trValEl.value !== val && !trValEl.matches(':focus')) {
+                    trValEl.value = val;
+                }
+              }
+            }
+          }
         }
       };
       document.onmouseup = () => {
@@ -975,7 +1224,13 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             pY = currentImgRect.bottom - 10;
           }
           container.style.visibility = 'hidden';
-          lastIdentifiedEl = document.elementFromPoint(pX, pY);
+          let elAtPoint = document.elementFromPoint(pX, pY);
+          // Ignore hidden elements
+          if (elAtPoint) {
+            const r = elAtPoint.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) elAtPoint = null;
+          }
+          lastIdentifiedEl = elAtPoint;
           container.style.visibility = 'visible';
           if (lastIdentifiedEl) {
             const el = lastIdentifiedEl;
@@ -990,6 +1245,62 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             const finalRelY = Math.round(currentImgRectForCalc.top - currentTargetRectForCalc.top);
             const debugOverlay = document.getElementById('msm-debug-overlay');
             if (debugOverlay) debugOverlay.innerText = `Target: ${elId || 'None'} | x: ${finalRelX}, y: ${finalRelY}`;
+
+            // --- TRANSLATE MODE LOGIC (TOUCH) ---
+            if (window.isTranslateMode) {
+              const trKeyEl = document.getElementById('msm-tr-key');
+              const trValEl = document.getElementById('msm-tr-val');
+              if (trKeyEl && trValEl) {
+                // Dynamic position for touch
+                if (typeof window.updateTranslateOverlayPosition === 'function') {
+                  window.updateTranslateOverlayPosition(pY);
+                }
+                const trEl = el.closest('[data-key], [data-key-placeholder], [data-key-title]');
+                const dataKey = trEl ? (trEl.getAttribute('data-key') ||
+                  trEl.getAttribute('data-key-placeholder') ||
+                  trEl.getAttribute('data-key-title')) : null;
+                if (trEl) {
+                   el = trEl;
+                   lastIdentifiedEl = trEl; // Ensure mouseup also uses this
+                }
+                if (dataKey) {
+                  trKeyEl.innerText = dataKey;
+                  const lang = window.currentLang || localStorage.getItem('language') || 'en';
+                  const allTranslations = typeof appTranslations !== 'undefined' ? appTranslations : window.appTranslations;
+                  const translations = (allTranslations && allTranslations[lang]) ? allTranslations[lang] : allTranslations;
+
+                  let val = '';
+                  if (translations) {
+                    if (translations[dataKey]) {
+                      val = translations[dataKey];
+                    } else {
+                      // Case-insensitive fallback
+                      const lowerKey = dataKey.toLowerCase();
+                      const exactKey = Object.keys(translations).find(k => k.toLowerCase() === lowerKey);
+                      if (exactKey) val = translations[exactKey];
+                    }
+                  }
+
+                  const isNewKey = trKeyEl.innerText !== dataKey;
+
+                  if (isNewKey || (trValEl.value !== val && !trValEl.matches(':focus'))) {
+                    trValEl.value = val;
+                  }
+                  trKeyEl.innerText = dataKey;
+                  trKeyEl.style.color = '#00ff00';
+                  trKeyEl.style.background = 'rgba(0,255,0,0.1)';
+                } else {
+                  // Fallback for touch
+                  trKeyEl.innerText = 'No data-key';
+                  trKeyEl.style.color = '#ffaa00';
+                  trKeyEl.style.background = 'rgba(255,170,0,0.1)';
+                  const val = (el.children.length === 0 ? (el.innerText || el.textContent || '').trim() : Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent.trim()).filter(s => s).join(' ')) || el.placeholder || el.title || '';
+                  if (trValEl.value !== val && !trValEl.matches(':focus')) {
+                      trValEl.value = val;
+                  }
+                }
+              }
+            }
           }
         }
       };

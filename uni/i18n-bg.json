@@ -232,5 +232,19 @@
     "remainingDays": "Оставащи дни",
     "supportMessage": "Ако харесвате това приложение и го намирате за полезно, подкрепете автора с малка сума.",
     "newVersionAvailable": "Налична е нова версия!",
-    "refreshNow": "Обнови"
+    "refreshNow": "Обнови",
+    "day_monday": "Понеделник",
+    "day_tuesday": "Вторник",
+    "day_wednesday": "Сряда",
+    "day_thursday": "Четвъртък",
+    "day_friday": "Петък",
+    "day_saturday": "Събота",
+    "day_sunday": "Неделя",
+    "day_monday_short": "Пон",
+    "day_tuesday_short": "Вто",
+    "day_wednesday_short": "Сря",
+    "day_thursday_short": "Чет",
+    "day_friday_short": "Пет",
+    "day_saturday_short": "Съб",
+    "day_sunday_short": "Нед"
 }

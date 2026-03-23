@@ -13,7 +13,9 @@ window.isAppErrorState = false; // Флаг за грешки (изтекъл с
 
 const SUPPORTED_LANGUAGES = [
     { id: 'en', label: 'EN' },
-    { id: 'bg', label: 'BG' }
+    { id: 'ru', label: 'RU' },
+    { id: 'bg', label: 'BG' },
+    { id: 'xx', label: 'XX' }
 ];
 
 const appSettingsKeys = [
@@ -967,16 +969,18 @@ function renderCalendarView() {
     // Day names header
     const daysHeader = document.createElement('div');
     daysHeader.className = 'calendar-days-header';
-    const days = currentLang === 'bg' ? ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    days.forEach((day, index) => {
+    const dayKeys = ['day_monday', 'day_tuesday', 'day_wednesday', 'day_thursday', 'day_friday', 'day_saturday', 'day_sunday'];
+    dayKeys.forEach((key, index) => {
         const dayEl = document.createElement('div');
         dayEl.className = 'calendar-day-name';
         const longName = document.createElement('span');
         longName.className = 'day-name-long';
-        longName.textContent = day;
+        longName.textContent = _(key);
         const shortName = document.createElement('span');
         shortName.className = 'day-name-short';
-        shortName.textContent = day.substring(0, 3);
+        const shortKey = key + '_short';
+        shortName.textContent = _(shortKey);
+        shortName.dataset.key = shortKey;
         dayEl.appendChild(longName);
         dayEl.appendChild(shortName);
         if (index >= 5) {
@@ -1416,9 +1420,11 @@ function renderWeeklyCalendarView(dateForWeek) {
         if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Неделя, 6 = Събота
             dateInfo.classList.add('weekend-day');
         }
+        const weeklyDayKeys = ['day_sunday', 'day_monday', 'day_tuesday', 'day_wednesday', 'day_thursday', 'day_friday', 'day_saturday'];
+        const currentDayKey = weeklyDayKeys[date.getDay()];
         dateInfo.innerHTML = `
                 <div class="weekly-date-number">${date.getDate()}</div>
-                <div class="weekly-day-name">${date.toLocaleString(currentLang, { weekday: 'long' })}</div>
+                <div class="weekly-day-name" data-key="${currentDayKey}">${_(currentDayKey)}</div>
             `;
         dayRow.appendChild(dateInfo);
         const notesContainerForRow = document.createElement('div');
@@ -2367,6 +2373,7 @@ function initApp() {
     if (!loaderTitle) {
         loaderTitle = document.createElement('h3');
         loaderTitle.id = 'loader-title';
+        loaderTitle.setAttribute('data-key', 'appTitle');
         loaderTitle.style.marginTop = '0';
         loaderTitle.style.marginBottom = '20px';
         loaderContainer.prepend(loaderTitle);
@@ -6087,13 +6094,14 @@ async function createBoardsUI(boardsData, boardParseError) {
         allButtonLinks.push(trashLink);
     }
     const reorderLink = document.createElement('span');
-    reorderLink.innerHTML = pencilIconSvg;
+    reorderLink.innerHTML = pencilIconSvg.replace('stroke="black"', 'stroke="white"');
     reorderLink.classList.add('board-filter-link', 'reorder-boards-btn');
     reorderLink.dataset.boardid = 'reorder-boards';
     reorderLink.title = _('reorderBoards') || "Нареди бордовете";
     reorderLink.style.display = 'flex';
     reorderLink.style.justifyContent = 'center';
     reorderLink.style.alignItems = 'center';
+    reorderLink.style.backgroundColor = 'darkorange';
     reorderLink.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -8031,23 +8039,49 @@ async function readArh(dirHandle) {
     }
     return success;
 }
-/*
-async function loadTranslations(lang) {
-    if (appTranslations[lang]) return;
-    try {
-        const response = await fetch(`i18n-${lang}.txt`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-        const text = await response.text();
-        const data = new Function('return {' + text + '}')();
-        appTranslations[lang] = data[lang];
-    } catch (e) {
-        console.error("Failed to load translations:", e);
-    }
+async function loadCustomTranslation() {
+    return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) {
+                resolve(null);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const json = JSON.parse(event.target.result);
+                    resolve(json);
+                } catch (err) {
+                    console.error("Invalid JSON:", err);
+                    showToast("Invalid JSON file structure.", 5000);
+                    resolve(null);
+                }
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsText(file);
+        };
+        input.click();
+    });
 }
-*/
+
 async function loadTranslations(lang) {
-    if (appTranslations[lang]) return;
+    if (appTranslations[lang]) {
+        // За 'xx' позволяваме презареждане на нов файл при всяко повикване, ако се поиска
+        // Но за сега спазваме стандартната логика: ако има зареден, не правим нищо.
+        return;
+    }
+    if (lang === 'xx') {
+        const customJson = await loadCustomTranslation();
+        if (customJson) {
+            appTranslations[lang] = customJson;
+        }
+        return;
+    }
     try {
         const response = await fetch(`i18n-${lang}.json`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -8378,7 +8412,7 @@ async function showBoardReorderPopup() {
     }
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay reorder-overlay';
-    overlay.style.cssText = 'display:flex;align-items:center;justify-content:center;z-index:100000;';
+    overlay.style.cssText = 'display:flex;align-items:center;justify-content:center;z-index:1000;';
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     const box = document.createElement('div');
     box.className = 'modal-content-box';
@@ -8391,6 +8425,7 @@ async function showBoardReorderPopup() {
     box.appendChild(closeBtn);
     const title = document.createElement('h3');
     title.textContent = _('reorderBoards') || 'Нареди бордовете';
+    title.setAttribute('data-key', 'reorderBoards');
     title.style.cssText = 'margin:0 0 15px 0;font-size:1.2em;color:#fff;text-shadow:1px 1px 3px rgba(0,0,0,0.8);text-align:center;';
     box.appendChild(title);
     const listContainer = document.createElement('div');
@@ -8492,6 +8527,7 @@ async function showBoardReorderPopup() {
     footer.style.cssText = 'display:flex;justify-content:center;margin-top:15px;';
     const saveCloseBtn = document.createElement('button');
     saveCloseBtn.textContent = _('submitButton') || 'Потвърди';
+    saveCloseBtn.setAttribute('data-key', 'submitButton');
     saveCloseBtn.className = 'zoom-btn';
     saveCloseBtn.style.cssText = 'padding:10px 30px;background:darkorange;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:1.1em;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.3);';
     saveCloseBtn.onclick = async () => {

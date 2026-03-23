@@ -231,5 +231,19 @@
     "remainingDays": "Remaining Days",
     "supportMessage": "If you like this app and find it useful, support the developer with a small amount.",
     "newVersionAvailable": "New version available!",
-    "refreshNow": "Refresh"
+    "refreshNow": "Refresh",
+    "day_monday": "Monday",
+    "day_tuesday": "Tuesday",
+    "day_wednesday": "Wednesday",
+    "day_thursday": "Thursday",
+    "day_friday": "Friday",
+    "day_saturday": "Saturday",
+    "day_sunday": "Sunday",
+    "day_monday_short": "Mon",
+    "day_tuesday_short": "Tue",
+    "day_wednesday_short": "Wed",
+    "day_thursday_short": "Thu",
+    "day_friday_short": "Fri",
+    "day_saturday_short": "Sat",
+    "day_sunday_short": "Sun"
 }

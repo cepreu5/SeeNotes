@@ -537,13 +537,7 @@ function esc(s) {
 downloadBtn.addEventListener('click', () => {
   if (!translatedJson) return;
   const tgtLang = targetSel.value;
-  let outName;
-  const match = sourceFileName.match(/^(.+?)(-[a-z]{2,5})?\.json$/i);
-  if (match) {
-    outName = `${match[1]}-${tgtLang}.json`;
-  } else {
-    outName = `translated-${tgtLang}.json`;
-  }
+  const outName = sourceFileName || `translated-${targetSel.value}.json`;
   const jsonStr = JSON.stringify(translatedJson, null, 4);
   const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
   const a = document.createElement('a');
