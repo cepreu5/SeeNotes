@@ -16,7 +16,7 @@
     "speed_text": "Notes are remembered (cached) after the first launch, then only new and changed ones are loaded.",
     "cache_tag": "Local cache",
     "cache_h3": "Optimal communication",
-    "cache_p1": "Notes are kept in the browser's memory for quick access. Add new and changed ones whenever you decide.",
+    "cache_p1": "Notes are kept in the browser's memory for quick access.",
     "cache_p2": "Working with a local database makes you independent of an internet connection.",
     "cta_h2": "Ready to start?",
     "cta_p1": "Sign in once. Access your notes on any device, anytime — online or off.",

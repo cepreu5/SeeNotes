@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i18n JSON Translator</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--surface3:#2e3345;
+  --border:#363b4e;--border-focus:#6366f1;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+  --accent:#6366f1;--accent-hover:#818cf8;--accent-glow:rgba(99,102,241,.25);
+  --success:#22c55e;--success-bg:rgba(34,197,94,.12);
+  --error:#ef4444;--error-bg:rgba(239,68,68,.12);
+  --warning:#f59e0b;--warning-bg:rgba(245,158,11,.12);
+  --radius:12px;--radius-sm:8px;
+  --shadow:0 4px 24px rgba(0,0,0,.35);
+  --transition:all .2s cubic-bezier(.4,0,.2,1);
+}
+html{font-size:15px}
+body{
+  font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  padding:2rem 1rem;line-height:1.6;
+}
+.container{width:100%;max-width:820px}
+h1{
+  font-size:1.75rem;font-weight:700;text-align:center;
+  background:linear-gradient(135deg,#818cf8,#6366f1,#a78bfa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  margin-bottom:.35rem;letter-spacing:-.02em;
+}
+.subtitle{text-align:center;color:var(--text2);font-size:.875rem;margin-bottom:2rem}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1.5rem;margin-bottom:1.25rem;box-shadow:var(--shadow);
+  transition:var(--transition);
+}
+.card:hover{border-color:var(--surface3)}
+.card-title{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:1rem}
+.row{display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:180px}
+.field label{font-size:.8rem;font-weight:500;color:var(--text2)}
+input[type="text"],select{
+  background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text);padding:.6rem .85rem;font-size:.9rem;font-family:inherit;
+  outline:none;transition:var(--transition);width:100%;
+}
+input[type="text"]:focus,select:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-glow)}
+select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8'%3E%3Cpath d='M6 8.5L1 3.5h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .75rem center}
+.file-drop{
+  border:2px dashed var(--border);border-radius:var(--radius);
+  padding:2rem;text-align:center;cursor:pointer;transition:var(--transition);
+  position:relative;overflow:hidden;
+}
+.file-drop:hover,.file-drop.drag-over{border-color:var(--accent);background:var(--accent-glow)}
+.file-drop input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.file-drop .icon{font-size:2rem;margin-bottom:.5rem;opacity:.6}
+.file-drop .label{color:var(--text2);font-size:.875rem}
+.file-drop .filename{color:var(--accent);font-weight:500;margin-top:.35rem;font-size:.9rem}
+.btn{
+  display:inline-flex;align-items:center;gap:.5rem;justify-content:center;
+  padding:.7rem 1.5rem;border:none;border-radius:var(--radius-sm);
+  font-family:inherit;font-size:.9rem;font-weight:600;cursor:pointer;
+  transition:var(--transition);min-width:140px;
+}
+.btn-primary{
+  background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;
+  box-shadow:0 2px 12px var(--accent-glow);
+}
+.btn-primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 20px var(--accent-glow)}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.actions{display:flex;gap:.75rem;justify-content:center;margin-top:.25rem}
+/* progress */
+.progress-wrap{margin-top:1rem;display:none}
+.progress-wrap.visible{display:block}
+.progress-bar-track{background:var(--surface2);border-radius:20px;height:8px;overflow:hidden}
+.progress-bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#6366f1,#a78bfa);width:0;transition:width .3s ease}
+.progress-text{font-size:.8rem;color:var(--text2);margin-top:.4rem;text-align:center}
+/* log area */
+.log-wrap{max-height:260px;overflow-y:auto;margin-top:1rem;display:none}
+.log-wrap.visible{display:block}
+.log{font-family:'Courier New',monospace;font-size:.78rem;line-height:1.7;color:var(--text2);padding:.75rem;background:var(--surface2);border-radius:var(--radius-sm)}
+.log .info{color:var(--text2)}
+.log .ok{color:var(--success)}
+.log .err{color:var(--error)}
+.log .warn{color:var(--warning)}
+/* stats */
+.stats{display:flex;gap:1.25rem;flex-wrap:wrap;margin-top:1rem}
+.stat{background:var(--surface2);border-radius:var(--radius-sm);padding:.65rem 1rem;flex:1;min-width:110px;text-align:center}
+.stat .val{font-size:1.25rem;font-weight:700;color:var(--accent)}
+.stat .lbl{font-size:.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:.15rem}
+/* diff viewer */
+.diff-wrap{display:none;margin-top:1rem}
+.diff-wrap.visible{display:block}
+.diff-table{width:100%;border-collapse:collapse;font-size:.8rem}
+.diff-table th{text-align:left;padding:.5rem .65rem;background:var(--surface3);color:var(--text2);font-weight:600;position:sticky;top:0;z-index:1}
+.diff-table td{padding:.45rem .65rem;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-word}
+.diff-table tr:hover td{background:var(--surface2)}
+.diff-key{color:var(--text3);font-family:monospace;font-size:.78rem;max-width:140px}
+.diff-src{color:var(--text2)}
+.diff-tgt{color:var(--success);cursor:text}
+.diff-tgt[contenteditable]:focus{outline:none;background:var(--surface3);box-shadow:inset 0 0 0 1px var(--accent);border-radius:4px}
+.diff-tgt[contenteditable]:hover{background:rgba(99,102,241,.08)}
+.diff-scroll{max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm)}
+/* batch info */
+.batch-info{font-size:.78rem;color:var(--text3);margin-top:.5rem;text-align:center}
+/* responsive */
+@media(max-width:600px){
+  .row{flex-direction:column}
+  .field{min-width:100%}
+  .stats{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🌐 i18n JSON Translator</h1>
+  <p class="subtitle">Translate JSON localization files using Google Cloud Translation API</p>
+
+  <!-- API Key -->
+  <div class="card">
+    <div class="card-title">🔑 API Configuration</div>
+    <div class="field">
+      <label for="apiKey">Google Cloud Translation API Key</label>
+      <input type="text" id="apiKey" placeholder="Enter your API key..." autocomplete="off">
+    </div>
+  </div>
+
+  <!-- Language + File -->
+  <div class="card">
+    <div class="card-title">📋 Translation Settings</div>
+    <div class="row">
+      <div class="field" style="max-width:200px">
+        <label for="targetLang">Target Language</label>
+        <select id="targetLang"></select>
+      </div>
+      <div class="field" style="max-width:200px">
+        <label for="sourceLang">Source Language</label>
+        <select id="sourceLang"></select>
+      </div>
+    </div>
+    <div style="margin-top:1rem">
+      <div class="file-drop" id="fileDrop">
+        <input type="file" id="fileInput" accept=".json">
+        <div class="icon">📁</div>
+        <div class="label">Drop a JSON file here or click to browse</div>
+        <div class="filename" id="fileName"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="card">
+    <div class="actions">
+      <button class="btn btn-primary" id="translateBtn" disabled>
+        <span id="translateBtnText">Translate</span>
+      </button>
+      <button class="btn btn-secondary" id="downloadBtn" style="display:none">
+        ⬇ Download JSON
+      </button>
+    </div>
+    <!-- Progress -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-track"><div class="progress-bar-fill" id="progressBar"></div></div>
+      <div class="progress-text" id="progressText">0 / 0</div>
+    </div>
+    <!-- Stats -->
+    <div class="stats" id="statsWrap" style="display:none">
+      <div class="stat"><div class="val" id="statTotal">0</div><div class="lbl">Total Keys</div></div>
+      <div class="stat"><div class="val" id="statTranslated">0</div><div class="lbl">Translated</div></div>
+      <div class="stat"><div class="val" id="statSkipped">0</div><div class="lbl">Skipped</div></div>
+      <div class="stat"><div class="val" id="statErrors">0</div><div class="lbl">Errors</div></div>
+    </div>
+    <div class="batch-info" id="batchInfo"></div>
+  </div>
+
+  <!-- Log -->
+  <div class="card">
+    <div class="card-title">📝 Log</div>
+    <div class="log-wrap visible" id="logWrap">
+      <div class="log" id="logArea">Ready.\n</div>
+    </div>
+  </div>
+
+  <!-- Diff viewer -->
+  <div class="card" id="diffCard" style="display:none">
+    <div class="card-title">🔍 Translation Preview</div>
+    <div class="diff-scroll">
+      <table class="diff-table">
+        <thead><tr><th>Key</th><th>Source</th><th>Translation</th></tr></thead>
+        <tbody id="diffBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Language list ──────────────────────────────────────────────
+const LANGUAGES = [
+  ["af","Afrikaans"],["sq","Albanian"],["am","Amharic"],["ar","Arabic"],["hy","Armenian"],
+  ["az","Azerbaijani"],["eu","Basque"],["be","Belarusian"],["bn","Bengali"],["bs","Bosnian"],
+  ["bg","Bulgarian"],["ca","Catalan"],["ceb","Cebuano"],["zh","Chinese"],["co","Corsican"],
+  ["hr","Croatian"],["cs","Czech"],["da","Danish"],["nl","Dutch"],["en","English"],
+  ["eo","Esperanto"],["et","Estonian"],["fi","Finnish"],["fr","French"],["fy","Frisian"],
+  ["gl","Galician"],["ka","Georgian"],["de","German"],["el","Greek"],["gu","Gujarati"],
+  ["ht","Haitian Creole"],["ha","Hausa"],["haw","Hawaiian"],["he","Hebrew"],["hi","Hindi"],
+  ["hmn","Hmong"],["hu","Hungarian"],["is","Icelandic"],["ig","Igbo"],["id","Indonesian"],
+  ["ga","Irish"],["it","Italian"],["ja","Japanese"],["jv","Javanese"],["kn","Kannada"],
+  ["kk","Kazakh"],["km","Khmer"],["rw","Kinyarwanda"],["ko","Korean"],["ku","Kurdish"],
+  ["ky","Kyrgyz"],["lo","Lao"],["la","Latin"],["lv","Latvian"],["lt","Lithuanian"],
+  ["lb","Luxembourgish"],["mk","Macedonian"],["mg","Malagasy"],["ms","Malay"],["ml","Malayalam"],
+  ["mt","Maltese"],["mi","Maori"],["mr","Marathi"],["mn","Mongolian"],["my","Myanmar"],
+  ["ne","Nepali"],["no","Norwegian"],["ny","Nyanja"],["or","Odia"],["ps","Pashto"],
+  ["fa","Persian"],["pl","Polish"],["pt","Portuguese"],["pa","Punjabi"],["ro","Romanian"],
+  ["ru","Russian"],["sm","Samoan"],["gd","Scots Gaelic"],["sr","Serbian"],["st","Sesotho"],
+  ["sn","Shona"],["sd","Sindhi"],["si","Sinhala"],["sk","Slovak"],["sl","Slovenian"],
+  ["so","Somali"],["es","Spanish"],["su","Sundanese"],["sw","Swahili"],["sv","Swedish"],
+  ["tl","Tagalog"],["tg","Tajik"],["ta","Tamil"],["tt","Tatar"],["te","Telugu"],
+  ["th","Thai"],["tr","Turkish"],["tk","Turkmen"],["uk","Ukrainian"],["ur","Urdu"],
+  ["ug","Uyghur"],["uz","Uzbek"],["vi","Vietnamese"],["cy","Welsh"],["xh","Xhosa"],
+  ["yi","Yiddish"],["yo","Yoruba"],["zu","Zulu"]
+];
+
+// ── DOM ────────────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+const apiKeyInput   = $('apiKey');
+const targetSel     = $('targetLang');
+const sourceSel     = $('sourceLang');
+const fileInput     = $('fileInput');
+const fileDrop      = $('fileDrop');
+const fileNameDiv   = $('fileName');
+const translateBtn  = $('translateBtn');
+const translateText = $('translateBtnText');
+const downloadBtn   = $('downloadBtn');
+const progressWrap  = $('progressWrap');
+const progressBar   = $('progressBar');
+const progressText  = $('progressText');
+const logArea       = $('logArea');
+const diffBody      = $('diffBody');
+const diffCard      = $('diffCard');
+const statsWrap     = $('statsWrap');
+const batchInfo     = $('batchInfo');
+
+// ── State ──────────────────────────────────────────────────────
+let sourceJson = null;
+let sourceFileName = '';
+let translatedJson = null;
+let abortController = null;
+
+// ── Init selects ───────────────────────────────────────────────
+function populateSelects() {
+  LANGUAGES.forEach(([code,name])=>{
+    const o1 = new Option(`${code} — ${name}`, code);
+    const o2 = new Option(`${code} — ${name}`, code);
+    targetSel.add(o1);
+    sourceSel.add(o2);
+  });
+  targetSel.value = 'bg';
+  sourceSel.value = 'en';
+}
+populateSelects();
+
+// ── Restore API key from localStorage ──────────────────────────
+const STORED_KEY = 'uitrans_api_key';
+apiKeyInput.value = localStorage.getItem(STORED_KEY) || '';
+apiKeyInput.addEventListener('input', () => {
+  localStorage.setItem(STORED_KEY, apiKeyInput.value.trim());
+  checkReady();
+});
+
+// ── File handling ──────────────────────────────────────────────
+fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.classList.add('drag-over'); });
+fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('drag-over'));
+fileDrop.addEventListener('drop', e => { e.preventDefault(); fileDrop.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(files) {
+  if (!files.length) return;
+  const file = files[0];
+  if (!file.name.endsWith('.json')) { log('Please select a .json file.', 'err'); return; }
+  sourceFileName = file.name;
+  fileNameDiv.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      sourceJson = JSON.parse(e.target.result);
+      const keys = Object.keys(sourceJson);
+      log(`Loaded "${file.name}" — ${keys.length} keys.`, 'ok');
+      checkReady();
+    } catch(err) {
+      log('Invalid JSON: ' + err.message, 'err');
+      sourceJson = null;
+      checkReady();
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function checkReady() {
+  translateBtn.disabled = !(apiKeyInput.value.trim() && sourceJson);
+}
+targetSel.addEventListener('change', checkReady);
+sourceSel.addEventListener('change', checkReady);
+
+// ── Logging ────────────────────────────────────────────────────
+function log(msg, cls='info') {
+  const span = document.createElement('div');
+  span.className = cls;
+  span.textContent = msg;
+  logArea.appendChild(span);
+  logArea.scrollTop = logArea.scrollHeight;
+}
+
+// ── Placeholder protection ─────────────────────────────────────
+function protectPlaceholders(text) {
+  const map = [];
+  let idx = 0;
+  // match {word}, {word.word}, etc — curly-brace placeholders
+  const protectedText = text.replace(/\{[^}]+\}/g, match => {
+    const marker = `__PH${idx}__`;
+    map.push({ marker, original: match });
+    idx++;
+    return `<span class="notranslate">${marker}</span>`;
+  });
+  return { text: protectedText, map };
+}
+
+function restorePlaceholders(text, map) {
+  let result = text;
+  for (const { marker, original } of map) {
+    // Google may wrap marker in tags or add spaces; be flexible
+    const escapedMarker = marker.replace(/([.*+?^${}()|[\]\\])/g, '\\$1');
+    const pattern = new RegExp(`(<span[^>]*>\\s*)?${escapedMarker}(\\s*</span>)?`, 'gi');
+    result = result.replace(pattern, original);
+  }
+  return result;
+}
+
+// ── Batch Translation via Google Cloud Translation API v2 ──────
+const BATCH_SIZE = 80;  // max strings per API call
+const DELAY_BETWEEN_BATCHES = 200;  // ms
+
+async function translateBatch(texts, sourceLang, targetLang, apiKey) {
+  const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`;
+  const body = { q: texts, source: sourceLang, target: targetLang, format: 'html' };
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: abortController?.signal
+  });
+  if (!resp.ok) {
+    const errData = await resp.json().catch(() => null);
+    const errMsg = errData?.error?.message || resp.statusText;
+    throw new Error(`API error ${resp.status}: ${errMsg}`);
+  }
+  const data = await resp.json();
+  return data.data.translations.map(t => t.translatedText);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Main translation flow ──────────────────────────────────────
+translateBtn.addEventListener('click', startTranslation);
+
+async function startTranslation() {
+  if (!sourceJson || !apiKeyInput.value.trim()) return;
+  abortController = new AbortController();
+  translatedJson = null;
+  downloadBtn.style.display = 'none';
+  diffCard.style.display = 'none';
+  statsWrap.style.display = 'none';
+  batchInfo.textContent = '';
+  logArea.innerHTML = '';
+  const apiKey = apiKeyInput.value.trim();
+  const srcLang = sourceSel.value;
+  const tgtLang = targetSel.value;
+  if (srcLang === tgtLang) { log('Source and target languages are the same!', 'err'); return; }
+  translateBtn.disabled = true;
+  translateText.textContent = 'Translating…';
+  progressWrap.classList.add('visible');
+  const entries = Object.entries(sourceJson);
+  const total = entries.length;
+  let translated = 0, skipped = 0, errors = 0;
+  const result = {};
+  // Build work items – protect placeholders
+  const workItems = entries.map(([key, value]) => {
+    if (typeof value !== 'string' || value.trim() === '') {
+      return { key, value, skip: true };
+    }
+    const { text: protectedText, map } = protectPlaceholders(value);
+    return { key, value, skip: false, protectedText, map };
+  });
+  // Split into batches
+  const toTranslate = workItems.filter(w => !w.skip);
+  const batches = [];
+  for (let i = 0; i < toTranslate.length; i += BATCH_SIZE) {
+    batches.push(toTranslate.slice(i, i + BATCH_SIZE));
+  }
+  log(`Starting translation: ${total} keys, ${toTranslate.length} to translate in ${batches.length} batch(es).`);
+  batchInfo.textContent = `Batch size: ${BATCH_SIZE} · ${batches.length} batch(es)`;
+  // Handle skipped
+  for (const w of workItems) {
+    if (w.skip) {
+      result[w.key] = w.value;
+      skipped++;
+    }
+  }
+  // Translate batch by batch
+  let processedCount = skipped;
+  try {
+    for (let bi = 0; bi < batches.length; bi++) {
+      const batch = batches[bi];
+      const texts = batch.map(w => w.protectedText);
+      log(`Batch ${bi + 1}/${batches.length}: translating ${batch.length} strings…`);
+      const results = await translateBatch(texts, srcLang, tgtLang, apiKey);
+      for (let j = 0; j < batch.length; j++) {
+        const w = batch[j];
+        let translatedText = results[j];
+        // Decode HTML entities that API may return
+        translatedText = decodeHtmlEntities(translatedText);
+        translatedText = restorePlaceholders(translatedText, w.map);
+        result[w.key] = translatedText;
+        translated++;
+        processedCount++;
+        updateProgress(processedCount, total);
+      }
+      if (bi < batches.length - 1) await sleep(DELAY_BETWEEN_BATCHES);
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      log('Translation aborted.', 'warn');
+    } else {
+      log('Error: ' + err.message, 'err');
+      errors = toTranslate.length - translated;
+      // fill in untranslated keys with original values
+      for (const w of toTranslate) {
+        if (!(w.key in result)) {
+          result[w.key] = w.value;
+        }
+      }
+    }
+  }
+  updateProgress(total, total);
+  translatedJson = result;
+  // Stats
+  $('statTotal').textContent = total;
+  $('statTranslated').textContent = translated;
+  $('statSkipped').textContent = skipped;
+  $('statErrors').textContent = errors;
+  statsWrap.style.display = 'flex';
+  log(`Done. Translated: ${translated}, Skipped: ${skipped}, Errors: ${errors}.`, translated > 0 ? 'ok' : 'warn');
+  // Build diff table
+  buildDiffTable(entries, result);
+  diffCard.style.display = 'block';
+  // Enable download
+  downloadBtn.style.display = 'inline-flex';
+  translateBtn.disabled = false;
+  translateText.textContent = 'Translate';
+  abortController = null;
+}
+
+function updateProgress(current, total) {
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  progressBar.style.width = pct + '%';
+  progressText.textContent = `${current} / ${total}  (${pct}%)`;
+}
+
+function decodeHtmlEntities(str) {
+  const ta = document.createElement('textarea');
+  ta.innerHTML = str;
+  return ta.value;
+}
+
+// ── Diff table (editable translations) ─────────────────────────
+function buildDiffTable(entries, result) {
+  diffBody.innerHTML = '';
+  for (const [key, srcVal] of entries) {
+    const tgtVal = result[key];
+    if (typeof srcVal !== 'string') continue;
+    const tr = document.createElement('tr');
+    const tdKey = document.createElement('td');
+    tdKey.className = 'diff-key';
+    tdKey.textContent = key;
+    const tdSrc = document.createElement('td');
+    tdSrc.className = 'diff-src';
+    tdSrc.textContent = String(srcVal);
+    const tdTgt = document.createElement('td');
+    tdTgt.className = 'diff-tgt';
+    tdTgt.contentEditable = 'true';
+    tdTgt.spellcheck = false;
+    tdTgt.textContent = String(tgtVal ?? '');
+    tdTgt.dataset.key = key;
+    tdTgt.addEventListener('blur', () => {
+      if (translatedJson) translatedJson[tdTgt.dataset.key] = tdTgt.textContent;
+    });
+    tr.appendChild(tdKey);
+    tr.appendChild(tdSrc);
+    tr.appendChild(tdTgt);
+    diffBody.appendChild(tr);
+  }
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Download ───────────────────────────────────────────────────
+downloadBtn.addEventListener('click', () => {
+  if (!translatedJson) return;
+  const tgtLang = targetSel.value;
+  // Derive output filename: base-XX.json
+  let outName;
+  const match = sourceFileName.match(/^(.+?)(-[a-z]{2,5})?\.json$/i);
+  if (match) {
+    outName = `${match[1]}-${tgtLang}.json`;
+  } else {
+    outName = `translated-${tgtLang}.json`;
+  }
+  const jsonStr = JSON.stringify(translatedJson, null, 4);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = outName;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  log(`Downloaded "${outName}" (${(jsonStr.length / 1024).toFixed(1)} KB).`, 'ok');
+});
+</script>
+</body>
+</html>

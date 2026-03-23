@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>i18n JSON Editor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #242836;
+      --surface3: #2e3345;
+      --border: #363b4e;
+      --border-focus: #6366f1;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --text3: #64748b;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-glow: rgba(99, 102, 241, .25);
+      --success: #22c55e;
+      --error: #ef4444;
+      --warning: #f59e0b;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0, 0, 0, .35);
+      --transition: all .2s cubic-bezier(.4, 0, .2, 1);
+    }
+
+    html {
+      font-size: 15px
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px
+    }
+
+    .top-row {
+      display: flex;
+      gap: 1.25rem;
+      align-items: stretch
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      text-align: center;
+      background: linear-gradient(135deg, #818cf8, #6366f1, #a78bfa);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: .35rem;
+      letter-spacing: -.02em;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: var(--text2);
+      font-size: .875rem;
+      margin-bottom: 2rem
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow);
+      transition: var(--transition);
+    }
+
+    .card:hover {
+      border-color: var(--surface3)
+    }
+
+    .card-title {
+      font-size: .8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text3);
+      margin-bottom: 1rem
+    }
+
+    .file-drop {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .file-drop:hover,
+    .file-drop.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-glow)
+    }
+
+    .file-drop input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer
+    }
+
+    .file-drop .icon {
+      font-size: 2rem;
+      margin-bottom: .5rem;
+      opacity: .6
+    }
+
+    .file-drop .label {
+      color: var(--text2);
+      font-size: .875rem
+    }
+
+    .file-drop .filename {
+      color: var(--accent);
+      font-weight: 500;
+      margin-top: .35rem;
+      font-size: .9rem
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      justify-content: center;
+      padding: .7rem 1.5rem;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      min-width: 140px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #818cf8);
+      color: #fff;
+      box-shadow: 0 2px 12px var(--accent-glow);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px var(--accent-glow)
+    }
+
+    .btn-primary:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      transform: none
+    }
+
+    .actions {
+      display: flex;
+      gap: .75rem;
+      justify-content: center;
+      margin-top: .25rem
+    }
+
+    /* stats */
+    .stats {
+      display: flex;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+      margin-top: 1rem
+    }
+
+    .stat {
+      background: var(--surface2);
+      border-radius: var(--radius-sm);
+      padding: .65rem 1rem;
+      flex: 1;
+      min-width: 110px;
+      text-align: center
+    }
+
+    .stat .val {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--accent)
+    }
+
+    .stat .lbl {
+      font-size: .72rem;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-top: .15rem
+    }
+
+    /* editor table */
+    .diff-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .8rem
+    }
+
+    .diff-table th {
+      text-align: left;
+      padding: .5rem .65rem;
+      background: var(--surface3);
+      color: var(--text2);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 1
+    }
+
+    .diff-table td {
+      padding: .25rem .65rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      word-break: break-word
+    }
+
+    .diff-table tr:hover td {
+      background: var(--surface2)
+    }
+
+    .diff-key {
+      color: var(--text3);
+      font-family: monospace;
+      font-size: .78rem;
+      max-width: 300px;
+      min-width: 200px
+    }
+
+    .diff-val {
+      color: var(--success);
+      cursor: text
+    }
+
+    .diff-val[contenteditable]:focus {
+      outline: none;
+      background: var(--surface3);
+      box-shadow: inset 0 0 0 1px var(--accent);
+      border-radius: 4px
+    }
+
+    .diff-val[contenteditable]:hover {
+      background: rgba(99, 102, 241, .08)
+    }
+
+    .diff-scroll {
+      max-height: 520px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm)
+    }
+
+    /* log */
+    .log-wrap {
+      max-height: 180px;
+      overflow-y: auto;
+      margin-top: 1rem
+    }
+
+    .log {
+      font-family: 'Courier New', monospace;
+      font-size: .78rem;
+      line-height: 1.7;
+      color: var(--text2);
+      padding: .75rem;
+      background: var(--surface2);
+      border-radius: var(--radius-sm)
+    }
+
+    .log .info {
+      color: var(--text2)
+    }
+
+    .log .ok {
+      color: var(--success)
+    }
+
+    .log .err {
+      color: var(--error)
+    }
+
+    .log .warn {
+      color: var(--warning)
+    }
+
+    /* filter */
+    .filter-field {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: .5rem .75rem;
+      font-size: .85rem;
+      font-family: inherit;
+      outline: none;
+      transition: var(--transition);
+      width: 100%;
+      margin-bottom: .75rem;
+    }
+
+    .filter-field:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-glow)
+    }
+
+    .filter-box {
+      display: flex;
+      gap: .5rem;
+      margin-bottom: .75rem;
+    }
+
+    .filter-box .filter-field {
+      margin-bottom: 0;
+    }
+
+    /* dictionary */
+    .dict-textarea {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: .65rem .75rem;
+      font-size: .82rem;
+      font-family: 'Courier New', monospace;
+      outline: none;
+      transition: var(--transition);
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    .dict-textarea:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-glow)
+    }
+
+    .dict-actions {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      margin-top: .75rem;
+      align-items: center
+    }
+
+    .btn-sm {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      justify-content: center;
+      padding: .45rem 1rem;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: .8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .btn-accent {
+      background: linear-gradient(135deg, #6366f1, #818cf8);
+      color: #fff;
+      box-shadow: 0 2px 8px var(--accent-glow)
+    }
+
+    .btn-accent:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 14px var(--accent-glow)
+    }
+
+    .btn-accent:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+      transform: none
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border)
+    }
+
+    .btn-outline:hover {
+      border-color: var(--accent);
+      color: var(--accent)
+    }
+
+    .btn-warn {
+      background: transparent;
+      color: var(--warning);
+      border: 1px solid var(--warning)
+    }
+
+    .btn-warn:hover {
+      background: rgba(245, 158, 11, .1)
+    }
+
+    .dict-row .delete-rule {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      color: var(--text3);
+      font-size: 1rem;
+      transition: var(--transition);
+      opacity: 0;
+    }
+
+    .dict-row:hover .delete-rule { opacity: 1; }
+    .dict-row .delete-rule:hover { background: var(--error); color: #fff; }
+
+    .dict-status {
+      font-size: .78rem;
+      color: var(--text3);
+      margin-top: 0.5rem;
+      width: 100%;
+      text-align: left
+    }
+
+    .dict-list {
+      max-height: 250px;
+      overflow-y: auto;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 0.75rem;
+    }
+
+    .dict-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .dict-row:last-child { border-bottom: none; }
+    .dict-row:hover { background: var(--surface3); }
+    .dict-row.active { background: rgba(99, 102, 241, 0.2); border-left: 3px solid var(--accent); }
+
+    .dict-row input {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 0.82rem;
+      width: 45%;
+      outline: none;
+    }
+
+    .dict-row .sep { color: var(--text3); font-size: 0.7rem; }
+    
+    .dict-row input:focus { background: rgba(255,255,255,0.05); border-radius: 4px; }
+    
+    .dict-bulk-wrap { display: none; margin-bottom: 0.75rem; }
+    .dict-bulk-edit { width: 100%; min-height: 150px; }
+
+    .dict-hint {
+      font-size: .72rem;
+      color: var(--text3);
+      margin-top: .5rem
+    }
+
+    /* highlight active replacement row */
+    tr.dict-highlight td {
+      background: rgba(99, 102, 241, .15) !important
+    }
+
+    tr.dict-highlight .diff-val {
+      outline: 2px solid var(--accent);
+      border-radius: 4px
+    }
+
+    .dict-match {
+      background: rgba(245, 158, 11, .3);
+      border-radius: 2px;
+      padding: 0 1px
+    }
+
+    .search-highlight {
+      background: rgba(99, 102, 241, 0.5);
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    @media(max-width:700px) {
+      .top-row {
+        flex-direction: column
+      }
+
+      .stats {
+        flex-direction: column
+      }
+
+      .dict-actions {
+        flex-direction: column
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>✏️ i18n JSON Editor</h1>
+    <p class="subtitle">Load, edit and save JSON localization files</p>
+
+    <div class="top-row">
+      <!-- File -->
+      <div class="card" style="flex:1;min-width:280px">
+        <div class="card-title">📁 Load JSON File</div>
+        <div class="file-drop" id="fileDrop">
+          <input type="file" id="fileInput" accept=".json">
+          <div class="icon">📁</div>
+          <div class="label">Drop a JSON file here or click to browse</div>
+          <div class="filename" id="fileName"></div>
+        </div>
+        <button class="btn-sm btn-outline" id="loadLastBtn" style="width:100%;margin-top:0.75rem;display:none">↻ Load Last</button>
+      </div>
+
+      <!-- Dictionary -->
+      <div class="card" id="dictCard" style="flex:1.4;min-width:340px">
+        <div class="dict-list" id="dictList"></div>
+        <div class="dict-bulk-wrap" id="dictBulkWrap">
+          <textarea class="dict-textarea dict-bulk-edit" id="dictText"
+            placeholder="One pair per line: apple - orange"></textarea>
+        </div>
+        <div class="dict-actions">
+          <button class="btn-sm btn-outline" id="dictAddBtn" title="Add new rule">➕ Add</button>
+          <button class="btn-sm btn-outline" id="dictBulkBtn">📝 Bulk</button>
+          <button class="btn-sm btn-outline" id="dictLoadBtn">📂 Load</button>
+          <button class="btn-sm btn-outline" id="dictSaveBtn">💾 Save</button>
+          <button class="btn-sm btn-accent" id="dictApplyBtn" disabled>▶ Start <kbd
+              style="font-size:.7rem;opacity:.6;margin-left:2px">Enter</kbd></button>
+          <button class="btn-sm btn-warn" id="dictSkipBtn" style="display:none">⏭ Skip</button>
+          <button class="btn-sm btn-outline" id="dictResetBtn" style="display:none">↺ Reset</button>
+        </div>
+        <span class="dict-status" id="dictStatus"></span>
+        <div class="dict-hint">Format: <code>source_word - replacement_word</code> (one pair per line). Press
+          <strong>Enter</strong> or <strong>Apply Next</strong> to step through matches.
+        </div>
+        <input type="file" id="dictFileInput" accept=".txt,.dict,.csv" style="display:none">
+      </div>
+    </div>
+
+    <!-- Editor -->
+    <div class="card" id="editorCard" style="display:none">
+      <div class="card-title">🔍 Editor</div>
+    <div class="filter-box">
+      <input type="text" class="filter-field" id="filterInput" placeholder="Filter by key or value…">
+      <button class="btn-sm btn-outline" id="filterNextBtn">Next</button>
+    </div>
+      <div class="diff-scroll">
+        <table class="diff-table">
+          <thead>
+            <tr>
+              <th>Key Path</th>
+              <th>Value (click to edit)</th>
+            </tr>
+          </thead>
+          <tbody id="editorBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="card" id="actionsCard" style="display:none">
+      <div class="actions">
+        <button class="btn btn-primary" id="downloadBtn">⬇ Save JSON</button>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="val" id="statTotal">0</div>
+          <div class="lbl">Total Strings</div>
+        </div>
+        <div class="stat">
+          <div class="val" id="statEdited">0</div>
+          <div class="lbl">Edited</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+      <div class="card-title">📝 Log</div>
+      <div class="log-wrap">
+        <div class="log" id="logArea">Ready.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const fileDrop = $('fileDrop'), fileInput = $('fileInput'), fileNameDiv = $('fileName');
+    const downloadBtn = $('downloadBtn'), actionsCard = $('actionsCard');
+    const editorCard = $('editorCard'), editorBody = $('editorBody');
+    const filterInput = $('filterInput'), logArea = $('logArea');
+
+    const filterNextBtn = $('filterNextBtn');
+
+    let sourceFileName = '';
+    let editedJson = null;
+    let allStringItems = [];  // {path, value, originalValue, td}
+    let editedCount = 0;
+    let currentFilterRowIdx = -1;
+    let prevSearchMatchTd = null;
+
+    // ── Deep helpers ──────────────────────────────────────────────
+    function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+
+    function collectStrings(obj, path, list) {
+      if (typeof obj === 'string') {
+        list.push({ path: [...path], value: obj });
+      } else if (Array.isArray(obj)) {
+        obj.forEach((item, i) => collectStrings(item, [...path, i], list));
+      } else if (obj && typeof obj === 'object') {
+        for (const key of Object.keys(obj)) {
+          collectStrings(obj[key], [...path, key], list);
+        }
+      }
+    }
+
+    function deepSet(obj, path, val) {
+      let cur = obj;
+      for (let i = 0; i < path.length - 1; i++) cur = cur[path[i]];
+      cur[path[path.length - 1]] = val;
+    }
+
+    // ── Logging ───────────────────────────────────────────────────
+    function log(msg, cls = 'info') {
+      const d = document.createElement('div');
+      d.className = cls;
+      d.textContent = msg;
+      logArea.appendChild(d);
+      logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    // ── File handling ─────────────────────────────────────────────
+    fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.classList.add('drag-over'); });
+    fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('drag-over'));
+    fileDrop.addEventListener('drop', e => { e.preventDefault(); fileDrop.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+    fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+    function handleFiles(files) {
+      if (!files.length) return;
+      const file = files[0];
+      if (!file.name.endsWith('.json')) { log('Please select a .json file.', 'err'); return; }
+      sourceFileName = file.name;
+      fileNameDiv.textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          editedJson = deepClone(parsed);
+          allStringItems = [];
+          collectStrings(parsed, [], allStringItems);
+          log(`Loaded "${file.name}" — ${allStringItems.length} string values.`, 'ok');
+          buildEditor();
+          actionsCard.style.display = 'block';
+          editorCard.style.display = 'block';
+          editedCount = 0;
+          updateStats();
+          updateDictBtnState();
+        } catch (err) {
+          log('Invalid JSON: ' + err.message, 'err');
+          editedJson = null;
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    // ── Build editor table ────────────────────────────────────────
+    function clearSearchHighlight() {
+      if (prevSearchMatchTd) {
+        prevSearchMatchTd.textContent = prevSearchMatchTd.textContent;
+        prevSearchMatchTd = null;
+      }
+    }
+
+    function searchHighlightCell(td, q) {
+      clearSearchHighlight();
+      if (!q) return;
+      const text = td.textContent;
+      const idx = text.toLowerCase().indexOf(q.toLowerCase());
+      if (idx === -1) return;
+      
+      const before = text.substring(0, idx);
+      const matched = text.substring(idx, idx + q.length);
+      const after = text.substring(idx + q.length);
+      
+      td.innerHTML = '';
+      td.appendChild(document.createTextNode(before));
+      const span = document.createElement('span');
+      span.className = 'search-highlight';
+      span.textContent = matched;
+      td.appendChild(span);
+      td.appendChild(document.createTextNode(after));
+      prevSearchMatchTd = td;
+    }
+
+    function buildEditor() {
+      editorBody.innerHTML = '';
+      filterInput.value = '';
+      for (const item of allStringItems) {
+        const pathStr = item.path.join('.');
+        item.originalValue = item.value;
+        const tr = document.createElement('tr');
+        tr.dataset.pathStr = pathStr.toLowerCase();
+        tr.dataset.valLower = item.value.toLowerCase();
+        const tdKey = document.createElement('td');
+        tdKey.className = 'diff-key';
+        tdKey.textContent = pathStr;
+        tdKey.title = pathStr;
+        const tdVal = document.createElement('td');
+        tdVal.className = 'diff-val';
+        tdVal.contentEditable = 'true';
+        tdVal.spellcheck = false;
+        tdVal.textContent = item.value;
+        item.td = tdVal;
+        const pathCopy = [...item.path];
+        tdVal.addEventListener('blur', () => {
+          const newVal = tdVal.textContent;
+          if (newVal !== item.originalValue) {
+            deepSet(editedJson, pathCopy, newVal);
+            item.value = newVal;
+            tr.dataset.valLower = newVal.toLowerCase();
+            recountEdited();
+          }
+        });
+        tr.appendChild(tdKey);
+        tr.appendChild(tdVal);
+        editorBody.appendChild(tr);
+      }
+      $('statTotal').textContent = allStringItems.length;
+    }
+
+    function recountEdited() {
+      editedCount = 0;
+      for (const item of allStringItems) {
+        if (item.td.textContent !== item.originalValue) editedCount++;
+      }
+      updateStats();
+    }
+
+    function updateStats() {
+      $('statTotal').textContent = allStringItems.length;
+      $('statEdited').textContent = editedCount;
+    }
+
+    // ── Filter ────────────────────────────────────────────────────
+    filterInput.addEventListener('input', () => {
+      const q = filterInput.value.toLowerCase().trim();
+      const rows = Array.from(editorBody.querySelectorAll('tr'));
+      currentFilterRowIdx = -1;
+      clearSearchHighlight();
+      let firstVisible = null;
+      for (const row of rows) {
+        let isVisible = true;
+        if (q) {
+          const matchKey = row.dataset.pathStr.includes(q);
+          const matchVal = row.dataset.valLower.includes(q);
+          isVisible = matchKey || matchVal;
+        }
+        row.style.display = isVisible ? '' : 'none';
+        if (isVisible && !firstVisible && q) firstVisible = row;
+      }
+      if (firstVisible) {
+        currentFilterRowIdx = rows.filter(r => r.style.display !== 'none').indexOf(firstVisible);
+        searchHighlightCell(firstVisible.querySelector('.diff-val'), q);
+      }
+    });
+
+    filterNextBtn.addEventListener('click', () => {
+      const q = filterInput.value.toLowerCase().trim();
+      const rows = Array.from(editorBody.querySelectorAll('tr')).filter(r => r.style.display !== 'none');
+      if (!rows.length) return;
+      currentFilterRowIdx = (currentFilterRowIdx + 1) % rows.length;
+      const tr = rows[currentFilterRowIdx];
+      
+      if (q) searchHighlightCell(tr.querySelector('.diff-val'), q);
+
+      const scrollBox = tr.closest('.diff-scroll');
+      if (scrollBox) {
+        const rowTop = tr.getBoundingClientRect().top - scrollBox.getBoundingClientRect().top + scrollBox.scrollTop;
+        scrollBox.scrollTop = Math.max(0, rowTop - 32);
+      }
+      // Brief highlight
+      tr.style.background = 'rgba(99,102,241,0.2)';
+      setTimeout(() => tr.style.background = '', 400);
+    });
+
+    // ── Download ──────────────────────────────────────────────────
+    async function saveFile() {
+      if (!editedJson) return;
+      const jsonStr = JSON.stringify(editedJson, null, 4);
+      const lastFile = localStorage.getItem('jsonEditor_lastFile') || sourceFileName || 'edited.json';
+
+      // Use File System Access API if available
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: lastFile,
+            types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(jsonStr);
+          await writable.close();
+          localStorage.setItem('jsonEditor_lastFile', handle.name);
+          log(`Saved "${handle.name}" (${(jsonStr.length / 1024).toFixed(1)} KB).`, 'ok');
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          console.error(err);
+        }
+      }
+
+      // Fallback
+      const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = lastFile;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      log(`Triggered download as "${lastFile}".`, 'ok');
+    }
+
+    downloadBtn.addEventListener('click', saveFile);
+
+    // ── Dictionary ────────────────────────────────────────────────
+    const dictText = $('dictText');
+    const dictApplyBtn = $('dictApplyBtn');
+    const dictSkipBtn = $('dictSkipBtn');
+    const dictResetBtn = $('dictResetBtn');
+    const dictStatus = $('dictStatus');
+    const dictFileInput = $('dictFileInput');
+
+    const dictList = $('dictList');
+    const dictBulkBtn = $('dictBulkBtn');
+    const dictBulkWrap = $('dictBulkWrap');
+
+    let dictPairs = [];       // [{find, replace}]
+    let dictQueue = [];       // [{itemIndex, charIndex, find, replace}]
+    let dictQueuePos = -1;
+    let prevHighlightedRow = null;
+    let dictAppliedCount = 0;
+    let dictSkippedCount = 0;
+    let activePairIdx = -1;
+
+    const dictAddBtn = $('dictAddBtn');
+    const dictAddRule = () => {
+      dictPairs.push({ find: '', replace: '' });
+      renderDictList();
+      selectRule(dictPairs.length - 1);
+      // Focus the first input of the new row
+      const inputs = dictList.lastElementChild.querySelectorAll('input');
+      if (inputs.length) inputs[0].focus();
+    };
+    dictAddBtn.addEventListener('click', dictAddRule);
+
+    // Render pairs into the interactive list
+    function renderDictList() {
+      dictList.innerHTML = '';
+      dictPairs.forEach((p, i) => {
+        const row = document.createElement('div');
+        row.className = 'dict-row' + (i === activePairIdx ? ' active' : '');
+        row.innerHTML = `
+          <input type="text" data-idx="${i}" data-field="find" value="${p.find}" spellcheck="false" placeholder="find">
+          <span class="sep">→</span>
+          <input type="text" data-idx="${i}" data-field="replace" value="${p.replace}" spellcheck="false" placeholder="replace">
+          <div class="delete-rule" title="Delete rule">×</div>
+        `;
+        row.addEventListener('click', (e) => {
+          if (e.target.classList.contains('delete-rule')) {
+            dictPairs.splice(i, 1);
+            if (activePairIdx === i) activePairIdx = -1;
+            else if (activePairIdx > i) activePairIdx--;
+            syncBulkText();
+            renderDictList();
+            resetDictQueue();
+            return;
+          }
+          if (e.target.tagName !== 'INPUT') {
+            selectRule(i);
+          }
+        });
+        row.querySelectorAll('input').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            const field = e.target.dataset.field;
+            dictPairs[idx][field] = e.target.value;
+            syncBulkText();
+            resetDictQueue();
+          });
+          input.addEventListener('focus', () => selectRule(i));
+        });
+        dictList.appendChild(row);
+      });
+    }
+
+    function selectRule(idx) {
+      if (activePairIdx === idx) return;
+      activePairIdx = idx;
+      renderDictList();
+      resetDictQueue();
+      log(`Selected dictionary rule: "${dictPairs[idx].find}"`, 'info');
+      // Scroll to rule
+      const row = dictList.children[idx];
+      if (row) row.scrollIntoView({ block: 'nearest' });
+    }
+
+    function syncBulkText() {
+      dictText.value = dictPairs.map(p => `${p.find} - ${p.replace}`).join('\n');
+    }
+
+    function resetDictQueue() {
+      dictQueue = [];
+      dictQueuePos = -1;
+      dictStatus.textContent = '';
+      if (dictQueue.length) clearHighlight();
+    }
+
+    function toggleBulkEdit() {
+      const isBulk = dictBulkWrap.style.display === 'block';
+      if (isBulk) {
+        parseDictText();
+        renderDictList();
+        dictBulkWrap.style.display = 'none';
+        dictList.style.display = 'block';
+        dictBulkBtn.textContent = '📝 Bulk';
+      } else {
+        syncBulkText();
+        dictBulkWrap.style.display = 'block';
+        dictList.style.display = 'none';
+        dictBulkBtn.textContent = '✅ Done';
+      }
+    }
+    dictBulkBtn.addEventListener('click', toggleBulkEdit);
+
+    // Parse dictionary text into pairs
+    function parseDictText() {
+      const lines = dictText.value.split('\n');
+      dictPairs = [];
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+        const sepIdx = line.indexOf(' - ');
+        if (sepIdx < 1) continue;
+        const find = line.substring(0, sepIdx).trim();
+        const replace = line.substring(sepIdx + 3).trim();
+        if (find && replace && find !== replace) dictPairs.push({ find, replace });
+      }
+      return dictPairs;
+    }
+
+    // Build queue for current active pair and onwards
+    function buildDictQueue() {
+      dictQueue = [];
+      if (activePairIdx === -1) activePairIdx = 0;
+      
+      // We process rules one by one. Our queue will be the matches for the ACTIVE pair.
+      const pair = dictPairs[activePairIdx];
+      if (!pair) return;
+
+      const findLower = pair.find.toLowerCase();
+      for (let i = 0; i < allStringItems.length; i++) {
+        const text = allStringItems[i].td.textContent;
+        let pos = 0;
+        while (true) {
+          const idx = text.toLowerCase().indexOf(findLower, pos);
+          if (idx === -1) break;
+          dictQueue.push({ itemIndex: i, charIndex: idx, find: pair.find, replace: pair.replace });
+          pos = idx + pair.find.length;
+        }
+      }
+      dictQueuePos = -1;
+    }
+
+    function clearHighlight() {
+      if (prevHighlightedRow) {
+        prevHighlightedRow.classList.remove('dict-highlight');
+        // Remove match highlighting spans
+        const td = prevHighlightedRow.querySelector('.diff-val');
+        if (td && td.querySelector('.dict-match')) {
+          td.textContent = td.textContent; // strips HTML, keeps text
+        }
+        prevHighlightedRow = null;
+      }
+    }
+
+    function highlightMatch(qEntry) {
+      clearHighlight();
+      const item = allStringItems[qEntry.itemIndex];
+      const tr = item.td.parentElement;
+      tr.classList.add('dict-highlight');
+      prevHighlightedRow = tr;
+      // Highlight the matched substring
+      const text = item.td.textContent;
+      const findLower = qEntry.find.toLowerCase();
+      const idx = text.toLowerCase().indexOf(findLower);
+      if (idx !== -1) {
+        const before = text.substring(0, idx);
+        const matched = text.substring(idx, idx + qEntry.find.length);
+        const after = text.substring(idx + qEntry.find.length);
+        item.td.innerHTML = '';
+        item.td.appendChild(document.createTextNode(before));
+        const mark = document.createElement('span');
+        mark.className = 'dict-match';
+        mark.textContent = matched;
+        item.td.appendChild(mark);
+        item.td.appendChild(document.createTextNode(after));
+      }
+      // Scroll the row near the top of the .diff-scroll container (2-3 rows padding)
+      const scrollBox = tr.closest('.diff-scroll');
+      if (scrollBox) {
+        const rowTop = tr.getBoundingClientRect().top - scrollBox.getBoundingClientRect().top + scrollBox.scrollTop;
+        scrollBox.scrollTop = Math.max(0, rowTop - 32);
+      }
+    }
+
+    // Preserve the case of the matched text in the replacement
+    function matchCase(original, replacement) {
+      if (original === original.toUpperCase() && original.length > 1) return replacement.toUpperCase();
+      if (original[0] === original[0].toUpperCase()) return replacement[0].toUpperCase() + replacement.slice(1);
+      return replacement;
+    }
+
+    function applyCurrentReplacement() {
+      if (dictQueuePos < 0 || dictQueuePos >= dictQueue.length) return false;
+      const q = dictQueue[dictQueuePos];
+      const item = allStringItems[q.itemIndex];
+      const text = item.td.textContent;
+      const findLower = q.find.toLowerCase();
+      const idx = text.toLowerCase().indexOf(findLower);
+      if (idx === -1) return false; // already replaced or gone
+      const matched = text.substring(idx, idx + q.find.length);
+      const casedReplace = matchCase(matched, q.replace);
+      const newText = text.substring(0, idx) + casedReplace + text.substring(idx + q.find.length);
+      item.td.textContent = newText;
+      item.value = newText;
+      const pathCopy = [...item.path];
+      deepSet(editedJson, pathCopy, newText);
+      item.td.parentElement.dataset.valLower = newText.toLowerCase();
+      recountEdited();
+      dictAppliedCount++;
+      log(`Replaced "${matched}" → "${casedReplace}" in ${item.path.join('.')}`, 'ok');
+      return true;
+    }
+
+    function stepToNext() {
+      if (!allStringItems.length) { log('Load a JSON file first.', 'warn'); return; }
+      
+      if (!dictQueue.length || dictQueuePos >= dictQueue.length - 1) {
+        // Try to find next rule with matches
+        if (activePairIdx === -1) activePairIdx = 0;
+        else if (dictQueuePos >= dictQueue.length - 1 && dictQueue.length > 0) {
+           // finished current rule's matches, try next rule
+           activePairIdx++;
+        }
+        
+        while (activePairIdx < dictPairs.length) {
+          selectRule(activePairIdx);
+          buildDictQueue();
+          if (dictQueue.length > 0) break;
+          activePairIdx++;
+        }
+
+        if (activePairIdx >= dictPairs.length) {
+          clearHighlight();
+          const msg = `Done — Applied: ${dictAppliedCount}, Skipped: ${dictSkippedCount}, Total rules processed: ${dictPairs.length}`;
+          dictStatus.textContent = msg;
+          log(msg, 'ok');
+          dictSkipBtn.style.display = 'none';
+          activePairIdx = -1;
+          renderDictList();
+          return;
+        }
+        
+        log(`Dictionary rule check: "${dictPairs[activePairIdx].find}" — ${dictQueue.length} match(es).`, 'ok');
+        dictApplyBtn.innerHTML = `▶ Apply Next <kbd style="font-size:.7rem;opacity:.6;margin-left:2px">Enter</kbd>`;
+        dictSkipBtn.style.display = '';
+        dictResetBtn.style.display = '';
+      }
+      // Move to next
+      dictQueuePos++;
+      if (dictQueuePos >= dictQueue.length) {
+        clearHighlight();
+        const msg = `Done — Applied: ${dictAppliedCount}, Skipped: ${dictSkippedCount}, Total: ${dictQueue.length}`;
+        dictStatus.textContent = msg;
+        log(msg, 'ok');
+        dictSkipBtn.style.display = 'none';
+        return;
+      }
+      // Check if current match still exists (may have been removed by prior replacement)
+      const q = dictQueue[dictQueuePos];
+      const text = allStringItems[q.itemIndex].td.textContent;
+      if (text.toLowerCase().indexOf(q.find.toLowerCase()) === -1) {
+        // Match no longer exists, skip silently
+        dictStatus.textContent = `${dictQueuePos + 1}/${dictQueue.length} — skipped (already changed)`;
+        stepToNext();
+        return;
+      }
+      highlightMatch(q);
+      dictStatus.textContent = `${dictQueuePos + 1}/${dictQueue.length}: "${q.find}" → "${q.replace}"`;
+    }
+
+    function applyAndStep() {
+      if (dictQueuePos >= 0 && dictQueuePos < dictQueue.length) {
+        applyCurrentReplacement();
+      }
+      stepToNext();
+    }
+
+    function skipAndStep() {
+      dictSkippedCount++;
+      log(`Skipped "${dictQueue[dictQueuePos]?.find}" in ${allStringItems[dictQueue[dictQueuePos]?.itemIndex]?.path.join('.')}`, 'warn');
+      stepToNext();
+    }
+
+    function resetDict() {
+      clearHighlight();
+      dictQueue = [];
+      dictQueuePos = -1;
+      dictAppliedCount = 0;
+      dictSkippedCount = 0;
+      activePairIdx = -1;
+      renderDictList();
+      dictSkipBtn.style.display = 'none';
+      dictResetBtn.style.display = 'none';
+      dictApplyBtn.innerHTML = `▶ Start <kbd style="font-size:.7rem;opacity:.6;margin-left:2px">Enter</kbd>`;
+      dictStatus.textContent = '';
+      log('Dictionary reset.', 'info');
+    }
+
+    // Enable Apply button when JSON is loaded
+    function updateDictBtnState() {
+      dictApplyBtn.disabled = !editedJson;
+    }
+
+    dictText.addEventListener('input', () => {
+      // Reset queue when dictionary text changes
+      if (dictQueue.length) resetDict();
+    });
+
+    dictApplyBtn.addEventListener('click', applyAndStep);
+    dictSkipBtn.addEventListener('click', skipAndStep);
+    dictResetBtn.addEventListener('click', resetDict);
+
+    // Enter = Apply Next, Esc = Skip (only when not editing)
+    document.addEventListener('keydown', e => {
+      if (e.target.closest('[contenteditable]') || e.target.closest('textarea') || e.target.closest('input')) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applyAndStep();
+      } else if (e.key === 'Escape' && dictQueuePos >= 0 && dictQueuePos < dictQueue.length) {
+        e.preventDefault();
+        skipAndStep();
+      }
+    });
+
+    // ── Dictionary Load / Save ────────────────────────────────────
+    $('dictLoadBtn').addEventListener('click', () => dictFileInput.click());
+    dictFileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        dictText.value = ev.target.result;
+        parseDictText();
+        renderDictList();
+        resetDict();
+        log(`Dictionary loaded from "${file.name}" (${dictPairs.length} rules).`, 'ok');
+      };
+      reader.readAsText(file, 'utf-8');
+      dictFileInput.value = '';
+    });
+
+    $('dictSaveBtn').addEventListener('click', () => {
+      const text = dictText.value.trim();
+      if (!text) { log('Dictionary is empty.', 'warn'); return; }
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'dictionary.txt';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      log('Dictionary saved as "dictionary.txt".', 'ok');
+    });
+
+    // ── Auto-load dictionary.txt on page load ─────────────────────
+    fetch('dictionary.txt')
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(text => {
+        dictText.value = text;
+        parseDictText();
+        renderDictList();
+        log(`Auto-loaded dictionary.txt (${dictPairs.length} rules).`, 'ok');
+      })
+      .catch(() => { /* dictionary.txt not found, that's fine */ });
+
+    // ── Auto-load last JSON on page load ──────────────────────────
+    const loadLastBtn = $('loadLastBtn');
+    async function loadLastJSON() {
+      const last = localStorage.getItem('jsonEditor_lastFile');
+      if (!last) return;
+      fileNameDiv.textContent = last;
+      loadLastBtn.style.display = 'block';
+      loadLastBtn.textContent = `↻ Load ${last}`;
+      try {
+        const r = await fetch(last);
+        if (!r.ok) throw new Error();
+        const text = await r.text();
+        const parsed = JSON.parse(text);
+        sourceFileName = last;
+        editedJson = deepClone(parsed);
+        allStringItems = [];
+        collectStrings(parsed, [], allStringItems);
+        log(`Auto-loaded "${last}" — ${allStringItems.length} strings.`, 'ok');
+        buildEditor();
+        actionsCard.style.display = 'block';
+        editorCard.style.display = 'block';
+        editedCount = 0;
+        updateStats();
+        updateDictBtnState();
+      } catch (err) {
+        // Fallback or silent fail
+      }
+    }
+    loadLastBtn.addEventListener('click', loadLastJSON);
+    loadLastJSON();
+  </script>
+</body>
+
+</html>
