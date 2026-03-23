@@ -1989,7 +1989,7 @@ async function getFirstStartEncoded() {
     return null;
 }
 
-function _(key) {
+/*function _(key) {
     // If translations aren't loaded yet, try to load them synchronously
     if (!appTranslations[currentLang]) {
         try {
@@ -2002,6 +2002,25 @@ function _(key) {
             }
         } catch (e) {
             console.error("Failed to load translations synchronously:", e);
+            return key;
+        }
+    }
+    return appTranslations[currentLang][key] || key;
+}
+*/
+
+function _(key) {
+    // Ако преводите за текущия език още не са заредени
+    if (!appTranslations[currentLang]) {
+        try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `i18n-${currentLang}.json`, false); // синхронно
+            xhr.send();
+            if (xhr.status === 200) {
+                appTranslations[currentLang] = JSON.parse(xhr.responseText);
+            }
+        } catch (e) {
+            console.error("Failed to load translations:", e);
             return key;
         }
     }
@@ -8012,7 +8031,7 @@ async function readArh(dirHandle) {
     }
     return success;
 }
-
+/*
 async function loadTranslations(lang) {
     if (appTranslations[lang]) return;
     try {
@@ -8022,6 +8041,18 @@ async function loadTranslations(lang) {
         const text = await response.text();
         const data = new Function('return {' + text + '}')();
         appTranslations[lang] = data[lang];
+    } catch (e) {
+        console.error("Failed to load translations:", e);
+    }
+}
+*/
+async function loadTranslations(lang) {
+    if (appTranslations[lang]) return;
+    try {
+        const response = await fetch(`i18n-${lang}.json`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const text = await response.text();
+        appTranslations[lang] = JSON.parse(text);
     } catch (e) {
         console.error("Failed to load translations:", e);
     }
