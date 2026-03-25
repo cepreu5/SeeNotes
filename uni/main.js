@@ -516,22 +516,49 @@ async function runGoogleDriveSync() {
                                 const isDirty = lastSyncTimestamp ? (localDm > lastSyncTimestamp) : isDifferent;
 
                                 // Modal Safety: If this note is currently open in the modal, 
-                                // we MUST treat it as a conflict to avoid silent overwrite of user's view.
+                                // we treat it as a conflict ONLY if the user has unsaved changes in the modal.
                                 const modalBodyElem = document.getElementById('modal-body');
                                 const modalGdid = modalBodyElem?.dataset.gdid;
                                 const modalNoteId = modalBodyElem?.dataset.id;
                                 const isOpenInModal = (serverNote.gdid && String(serverNote.gdid) === String(modalGdid)) || (serverNote.id && String(serverNote.id) === String(modalNoteId));
+                                
+                                let hasUnsavedChangesInModal = false;
+                                if (isOpenInModal && modalBodyElem) {
+                                    const textarea = modalBodyElem.querySelector('textarea');
+                                    const titleArea = modalBodyElem.querySelector('#note-edit-title-textarea');
+                                    if (textarea) {
+                                        let currentText = textarea.value;
+                                        if (titleArea) currentText = titleArea.value + '|' + currentText;
+                                        hasUnsavedChangesInModal = (currentText !== localNote.notetxt);
+                                    }
+                                }
+
+                                const isConflict = isDifferent && (isDirty || (isOpenInModal && hasUnsavedChangesInModal));
 
                                 console.log(`[Sync-Debug] Note: ${serverNote.gdid || serverNote.id}`);
                                 console.log(` - Server dm: ${serverNote.datemod}`);
                                 console.log(` - Local dm: ${localNote.datemod}`);
                                 console.log(` - Last sync base: ${lastSyncTimestamp || 'None'}`);
-                                console.log(` - isDifferent: ${isDifferent}, isDirty: ${isDirty}, isOpenInModal: ${isOpenInModal}`);
+                                console.log(` - isDifferent: ${isDifferent}, isDirty: ${isDirty}, isOpenInModal: ${isOpenInModal}, hasUnsavedChanges: ${hasUnsavedChangesInModal}`);
 
-                                if (isDifferent && (isDirty || isOpenInModal)) {
-                                    console.log(`[Sync-Conflict!] Buffering for manual resolution: ${serverNote.gdid}${isOpenInModal ? " (Open in Modal)" : ""}`);
+                                if (isConflict) {
+                                    console.log(`[Sync-Conflict!] Buffering for manual resolution: ${serverNote.gdid}${isOpenInModal ? " (Open in Modal with Changes)" : ""}`);
                                     notesForConflictCheck.push({ serverNote, localNote });
                                     continue;
+                                } else if (isDifferent && !isDirty && isOpenInModal && !hasUnsavedChangesInModal) {
+                                    // Special Case: Open in modal but no changes -> Auto-refresh the modal content
+                                    console.log(`[Sync-Update] Auto-refreshing open note: ${serverNote.gdid}`);
+                                    // We need to refresh the modal after sync finishes or immediately
+                                    setTimeout(() => {
+                                        const activeModalBody = document.getElementById('modal-body');
+                                        const activeGdid = activeModalBody?.dataset.gdid;
+                                        if (activeGdid && String(activeGdid) === String(serverNote.gdid)) {
+                                            // Refresh content if still open
+                                            showToast(_('noteUpdatedFromServer') || 'Note updated from server', 3000);
+                                            // Trigger a refresh of the modal if possible
+                                            // For now, it will be updated in allNotesData, but UI might need a nudge
+                                        }
+                                    }, 500);
                                 } else if (isDifferent && !isDirty) {
                                     console.log(`[Sync-Update] Server version is newer: ${serverNote.gdid}`);
                                 }
@@ -553,6 +580,19 @@ async function runGoogleDriveSync() {
                         }
                     }
                     await bulkPutDB(storeName, dataToPut, true);
+                    
+                    // Update allNotesData in memory to prevent stale data
+                    if (isNote) {
+                        dataToPut.forEach(newNote => {
+                            const mIdx = allNotesData.findIndex(n => n.gdid === newNote.gdid);
+                            if (mIdx !== -1) {
+                                allNotesData[mIdx] = newNote;
+                            } else {
+                                allNotesData.push(newNote);
+                            }
+                        });
+                    }
+                    
                     console.log(`[Sync] Updated ${filename}:`, dataToPut.length, "items.");
                 }
             }
@@ -12680,30 +12720,17 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
             };
 
             btnEdit.onclick = () => {
-                const globalModalBody = modalBody;
-                const oldId = globalModalBody ? globalModalBody.id : '';
-                if (globalModalBody) globalModalBody.id = '';
-
-                bdy.id = 'modal-body';
-                modalBody = bdy;
-                currentModalContent = note.notetxt;
-
+                // Remove the ID collision risk: don't use 'modal-body' here
+                bdy.id = 'conflict-modal-body';
+                // Instead of swapping global modalBody, provide it to enableNoteEditing as local param
                 enableNoteEditing(bdy);
-
                 btnEdit.style.display = 'none'; btnSave.style.right = '50px'; btnEye.style.display = 'flex';
-
-                modalBody = globalModalBody;
-                if (globalModalBody) globalModalBody.id = oldId;
             };
 
             btnEye.onclick = () => {
                 const titleArea = bdy.querySelector('#note-edit-title-textarea');
-                let txtArea;
-                if (titleArea) {
-                    txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
-                } else {
-                    txtArea = bdy.querySelector('textarea');
-                }
+                let txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
+                if (!titleArea) txtArea = bdy.querySelector('textarea');
 
                 if (txtArea) {
                     const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
@@ -12720,12 +12747,8 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
 
             btnSave.onclick = async () => {
                 const titleArea = bdy.querySelector('#note-edit-title-textarea');
-                let txtArea;
-                if (titleArea) {
-                    txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
-                } else {
-                    txtArea = bdy.querySelector('textarea');
-                }
+                let txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
+                if (!titleArea) txtArea = bdy.querySelector('textarea');
 
                 if (txtArea) {
                     const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
@@ -12736,7 +12759,30 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
                         note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
                     }
                 }
-                note.datemod = Date.now(); overlay.remove(); resolve(note);
+                note.datemod = Date.now(); 
+
+                // --- KEY FIX: Update the main modal if it's open for this note ---
+                const mainModalBody = document.getElementById('modal-body');
+                const mainGdid = mainModalBody?.dataset.gdid;
+                if (mainModalBody && mainGdid && String(mainGdid) === String(note.gdid)) {
+                    console.log("[Sync] Updating main modal with resolved version.");
+                    // Update the original modal's object if it has one
+                    if (typeof modalNoteObj !== 'undefined' && modalNoteObj) {
+                        Object.assign(modalNoteObj, note);
+                    }
+                    // Refresh the main modal UI
+                    if (typeof refreshModalContent === 'function') {
+                        refreshModalContent(note);
+                    } else {
+                        // Fallback: manually update textareas in main modal if they exist
+                        const mainTextArea = mainModalBody.querySelector('textarea:not(#note-edit-title-textarea)');
+                        const mainTitleArea = mainModalBody.querySelector('#note-edit-title-textarea');
+                        if (mainTextArea) mainTextArea.value = (note.notetxt.includes('|') ? note.notetxt.split('|')[1] : note.notetxt);
+                        if (mainTitleArea && note.notetxt.includes('|')) mainTitleArea.value = note.notetxt.split('|')[0];
+                    }
+                }
+
+                overlay.remove(); resolve(note);
             };
 
             refreshContent(note);
@@ -13152,13 +13198,24 @@ async function saveEditedNote() {
             "version": 243
         };
 
-        // Add to Global Data
-        allNotesData.push(newNote);
+        // Add to Global Data (with duplicate check)
+        const existingIdx = allNotesData.findIndex(n => (n.id && String(n.id) === String(newNote.id)));
+        if (existingIdx !== -1) {
+            allNotesData[existingIdx] = newNote;
+        } else {
+            allNotesData.push(newNote);
+        }
 
         // Create DOM Element
         const newEl = await createNoteElement(newNote);
         if (newEl) {
-            notesContainer.prepend(newEl);
+            // Check if element already exists (e.g. from a parallel call)
+            const oldEl = document.querySelector(`.note[data-i="${newNote.id}"]`);
+            if (oldEl) {
+                oldEl.replaceWith(newEl);
+            } else {
+                notesContainer.prepend(newEl);
+            }
             // Update dataset for subsequent saves
             modalBodyElem.dataset.id = newNote.id;
             modalBodyElem.dataset.gdid = newNote.gdid;
