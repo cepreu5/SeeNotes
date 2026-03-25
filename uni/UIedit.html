@@ -438,8 +438,14 @@
       opacity: 0;
     }
 
-    .dict-row:hover .delete-rule { opacity: 1; }
-    .dict-row .delete-rule:hover { background: var(--error); color: #fff; }
+    .dict-row:hover .delete-rule {
+      opacity: 1;
+    }
+
+    .dict-row .delete-rule:hover {
+      background: var(--error);
+      color: #fff;
+    }
 
     .dict-status {
       font-size: .78rem;
@@ -468,9 +474,18 @@
       transition: var(--transition);
     }
 
-    .dict-row:last-child { border-bottom: none; }
-    .dict-row:hover { background: var(--surface3); }
-    .dict-row.active { background: rgba(99, 102, 241, 0.2); border-left: 3px solid var(--accent); }
+    .dict-row:last-child {
+      border-bottom: none;
+    }
+
+    .dict-row:hover {
+      background: var(--surface3);
+    }
+
+    .dict-row.active {
+      background: rgba(99, 102, 241, 0.2);
+      border-left: 3px solid var(--accent);
+    }
 
     .dict-row input {
       background: transparent;
@@ -481,12 +496,25 @@
       outline: none;
     }
 
-    .dict-row .sep { color: var(--text3); font-size: 0.7rem; }
-    
-    .dict-row input:focus { background: rgba(255,255,255,0.05); border-radius: 4px; }
-    
-    .dict-bulk-wrap { display: none; margin-bottom: 0.75rem; }
-    .dict-bulk-edit { width: 100%; min-height: 150px; }
+    .dict-row .sep {
+      color: var(--text3);
+      font-size: 0.7rem;
+    }
+
+    .dict-row input:focus {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+    }
+
+    .dict-bulk-wrap {
+      display: none;
+      margin-bottom: 0.75rem;
+    }
+
+    .dict-bulk-edit {
+      width: 100%;
+      min-height: 150px;
+    }
 
     .dict-hint {
       font-size: .72rem;
@@ -578,10 +606,10 @@
     <!-- Editor -->
     <div class="card" id="editorCard" style="display:none">
       <div class="card-title">🔍 Editor</div>
-    <div class="filter-box">
-      <input type="text" class="filter-field" id="filterInput" placeholder="Filter by key or value…">
-      <button class="btn-sm btn-outline" id="filterNextBtn">Next</button>
-    </div>
+      <div class="filter-box">
+        <input type="text" class="filter-field" id="filterInput" placeholder="Filter by key or value…">
+        <button class="btn-sm btn-outline" id="filterNextBtn">Next</button>
+      </div>
       <div class="diff-scroll">
         <table class="diff-table">
           <thead>
@@ -678,6 +706,7 @@
       const file = files[0];
       if (!file.name.endsWith('.json')) { log('Please select a .json file.', 'err'); return; }
       sourceFileName = file.name;
+      localStorage.setItem('jsonEditor_lastFile', file.name);
       fileNameDiv.textContent = file.name;
       const reader = new FileReader();
       reader.onload = e => {
@@ -715,11 +744,11 @@
       const text = td.textContent;
       const idx = text.toLowerCase().indexOf(q.toLowerCase());
       if (idx === -1) return;
-      
+
       const before = text.substring(0, idx);
       const matched = text.substring(idx, idx + q.length);
       const after = text.substring(idx + q.length);
-      
+
       td.innerHTML = '';
       td.appendChild(document.createTextNode(before));
       const span = document.createElement('span');
@@ -808,7 +837,7 @@
       if (!rows.length) return;
       currentFilterRowIdx = (currentFilterRowIdx + 1) % rows.length;
       const tr = rows[currentFilterRowIdx];
-      
+
       if (q) searchHighlightCell(tr.querySelector('.diff-val'), q);
 
       const scrollBox = tr.closest('.diff-scroll');
@@ -988,7 +1017,7 @@
     function buildDictQueue() {
       dictQueue = [];
       if (activePairIdx === -1) activePairIdx = 0;
-      
+
       // We process rules one by one. Our queue will be the matches for the ACTIVE pair.
       const pair = dictPairs[activePairIdx];
       if (!pair) return;
@@ -1080,15 +1109,15 @@
 
     function stepToNext() {
       if (!allStringItems.length) { log('Load a JSON file first.', 'warn'); return; }
-      
+
       if (!dictQueue.length || dictQueuePos >= dictQueue.length - 1) {
         // Try to find next rule with matches
         if (activePairIdx === -1) activePairIdx = 0;
         else if (dictQueuePos >= dictQueue.length - 1 && dictQueue.length > 0) {
-           // finished current rule's matches, try next rule
-           activePairIdx++;
+          // finished current rule's matches, try next rule
+          activePairIdx++;
         }
-        
+
         while (activePairIdx < dictPairs.length) {
           selectRule(activePairIdx);
           buildDictQueue();
@@ -1106,7 +1135,7 @@
           renderDictList();
           return;
         }
-        
+
         log(`Dictionary rule check: "${dictPairs[activePairIdx].find}" — ${dictQueue.length} match(es).`, 'ok');
         dictApplyBtn.innerHTML = `▶ Apply Next <kbd style="font-size:.7rem;opacity:.6;margin-left:2px">Enter</kbd>`;
         dictSkipBtn.style.display = '';
@@ -1228,37 +1257,56 @@
         log(`Auto-loaded dictionary.txt (${dictPairs.length} rules).`, 'ok');
       })
       .catch(() => { /* dictionary.txt not found, that's fine */ });
-
-    // ── Auto-load last JSON on page load ──────────────────────────
+ 
+    // ── Auto-load last JSON logic ──────────────────────────────────
     const loadLastBtn = $('loadLastBtn');
     async function loadLastJSON() {
       const last = localStorage.getItem('jsonEditor_lastFile');
-      if (!last) return;
+      if (!last) {
+        log('No last file record found in storage.', 'info');
+        return;
+      }
+      
+      console.log('loadLastJSON: Found file record in storage:', last);
       fileNameDiv.textContent = last;
       loadLastBtn.style.display = 'block';
       loadLastBtn.textContent = `↻ Load ${last}`;
-      try {
-        const r = await fetch(last);
-        if (!r.ok) throw new Error();
-        const text = await r.text();
-        const parsed = JSON.parse(text);
-        sourceFileName = last;
-        editedJson = deepClone(parsed);
-        allStringItems = [];
-        collectStrings(parsed, [], allStringItems);
-        log(`Auto-loaded "${last}" — ${allStringItems.length} strings.`, 'ok');
-        buildEditor();
-        actionsCard.style.display = 'block';
-        editorCard.style.display = 'block';
-        editedCount = 0;
-        updateStats();
-        updateDictBtnState();
-      } catch (err) {
-        // Fallback or silent fail
-      }
+      
+      loadLastBtn.onclick = async () => {
+        try {
+          // Diagnostic alert
+          // alert(`Attempting to load: ${last}`); 
+          log(`Attempting to load: ${last}...`, 'info');
+          const r = await fetch(last);
+          if (!r.ok) throw new Error(`Fetch failed! Status: ${r.status} ${r.statusText}`);
+          
+          const text = await r.text();
+          if (!text) throw new Error('File content is empty.');
+          
+          const parsed = JSON.parse(text);
+          sourceFileName = last;
+          editedJson = deepClone(parsed);
+          allStringItems = [];
+          collectStrings(parsed, [], allStringItems);
+          
+          log(`Successfully loaded "${last}" — ${allStringItems.length} strings found.`, 'ok');
+          buildEditor();
+          actionsCard.style.display = 'block';
+          editorCard.style.display = 'block';
+          editedCount = 0;
+          updateStats();
+          updateDictBtnState();
+        } catch (err) {
+          console.error('loadLastJSON Error:', err);
+          log(`Error loading "${last}": ${err.message}`, 'err');
+          alert(`Error loading file "${last}": ${err.message}`);
+        }
+      };
     }
-    loadLastBtn.addEventListener('click', loadLastJSON);
+    
+    // Initialize the button visibility and listener
     loadLastJSON();
+
   </script>
 </body>
 

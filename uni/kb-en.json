@@ -143,8 +143,7 @@
                 "graphical",
                 "image",
                 "picture",
-                "visual",
-                "note"
+                "visual"
             ],
             "question": "What does the <b><i>Graphical background</i></b> setting do?",
             "answer": "This setting is enabled by default. When a note is opened, its content is shown on a graphical background. This makes notes visually more appealing. If you prefer a simpler view, you can uncheck it and a plain color background will be used."
@@ -167,7 +166,6 @@
             "keywords": [
                 "font",
                 "size",
-                "note",
                 "text"
             ],
             "question": "How to change the font size in notes?",
@@ -408,7 +406,6 @@
         },
         "temp-note-example": {
             "keywords": [
-                "note",
                 "preview",
                 "open",
                 "click",
@@ -487,7 +484,6 @@
                 "note",
                 "notes",
                 "screenshot",
-                "video",
                 "video",
                 "attached",
                 "attachment",

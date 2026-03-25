@@ -121,30 +121,45 @@ window.centerHero = function () {
 };
 
 window.initTranslateOverlay = function () {
+  if (currentActiveStep) {
+    currentActiveStep.image = 'msm/l-up.png';
+    currentActiveStep.height = 100;
+  }
   if (container) {
     container.style.zIndex = '200000'; // Even higher than board reorder overlay (100000)
+    const img = container.querySelector('.guide-img');
+    if (img) {
+      img.src = 'msm/l-up.png';
+      img.style.height = '100px';
+      img.style.width = 'auto';
+    }
   }
   let trOverlay = document.getElementById('msm-translate-overlay');
   if (!trOverlay) {
     trOverlay = document.createElement('div');
     trOverlay.id = 'msm-translate-overlay';
-    trOverlay.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.92); color:white; padding:15px; border-radius:12px; z-index:200001; width:360px; font-family:sans-serif; box-shadow:0 10px 40px rgba(0,0,0,0.8); border:1px solid #666; display:flex; flex-direction:column; gap:8px; transition: top 0.3s ease, bottom 0.3s ease;';
+    trOverlay.style.cssText = 'position:fixed !important; top:0px !important; left:0px !important; background:rgba(0,0,0,0.9) !important; color:white !important; padding:4px 8px !important; border-radius:6px !important; z-index:200001 !important; display:flex !important; align-items:flex-start !important; gap:8px !important; width:calc(100vw - 10px) !important; box-sizing:border-box !important; font-family:sans-serif !important; box-shadow:0 4px 20px rgba(0,0,0,0.6) !important; border:1px solid #555 !important;';
     trOverlay.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="font-size:11px; font-weight:bold; color:#00ff00; letter-spacing:1px; text-transform:uppercase;">Translate Mode</div>
-        <div style="font-size:10px; opacity:0.6;"><span id="msm-tr-lang">--</span></div>
-      </div>
-      <div id="msm-tr-key" style="font-family:monospace; color:#00ff00; word-break:break-all; background:rgba(0,255,0,0.1); padding:6px 10px; border-radius:6px; font-size:13px; border:1px solid rgba(0,255,0,0.2);">No data-key found</div>
-      <textarea id="msm-tr-val" placeholder="Type translation here..." style="width:100%; height:80px; background:#111; color:#fff; border:1px solid #444; border-radius:8px; padding:10px; font-size:14px; resize:none; outline:none; transition:border-color 0.2s; box-sizing:border-box;"></textarea>
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-        <div style="font-size:10px; color:#888;"><b>Enter</b> to apply</div>
-        <button id="msm-tr-apply" style="background:#00ff00; color:#000; border:none; border-radius:6px; padding:6px 15px; font-weight:bold; cursor:pointer; font-size:12px; transition:transform 0.1s;">APPLY</button>
-      </div>
+      <div id="msm-tr-lang" style="font-size:10px; font-weight:bold; color:#00ff00; opacity:0.8; padding:4px 6px; border-right:1px solid #444; flex-shrink:0;">--</div>
+      <div id="msm-tr-key" style="font-family:monospace; color:#00ff00; font-size:10px; background:rgba(0,255,0,0.1); padding:4px 8px; border-radius:4px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; margin-top:2px;" title="No data-key">No data-key</div>
+      <textarea id="msm-tr-val" rows="1" placeholder="..." style="flex:1 !important; min-width:100px !important; background:#000 !important; color:#fff !important; border:1px solid #444 !important; border-radius:4px !important; padding:4px 8px !important; font-size:14px !important; outline:none !important; resize:none !important; height:28px; line-height:1.4 !important; box-sizing:border-box !important; transition:border-color 0.2s; overflow-y:hidden !important;"></textarea>
+      <button id="msm-tr-apply" style="background:#00ff00 !important; color:#000 !important; border:none !important; border-radius:4px !important; padding:6px 15px !important; font-weight:bold !important; cursor:pointer !important; font-size:11px !important; flex-shrink:0 !important; white-space:nowrap !important;">SAVE</button>
     `;
     document.body.appendChild(trOverlay);
 
+    // Hide debug overlay while translating to avoid overlap
+    const dbgOverlay = document.getElementById('msm-debug-overlay');
+    if (dbgOverlay) dbgOverlay.style.display = 'none';
+
     const textarea = trOverlay.querySelector('#msm-tr-val');
     const applyBtn = trOverlay.querySelector('#msm-tr-apply');
+
+    // Auto-resize logic for dynamic text
+    textarea.addEventListener('input', () => {
+      textarea.style.height = '24px'; // Base height
+      const newHeight = Math.min(textarea.scrollHeight, 200); // Max height 200px
+      textarea.style.height = newHeight + 'px';
+    });
 
     const applyTranslation = () => {
       const keyEl = document.getElementById('msm-tr-key');
@@ -156,13 +171,13 @@ window.initTranslateOverlay = function () {
 
       if (!isDynamic && key && key !== 'No data-key found' && allTranslations && allTranslations[lang]) {
         allTranslations[lang][key] = val;
-        
+
         // Update all UI elements with this data-key
         const elements = document.querySelectorAll(`[data-key="${key}"], [data-key-placeholder="${key}"], [data-key-title="${key}"]`);
         elements.forEach(el => {
           if (el.getAttribute('data-key') === key) {
-              if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = val;
-              else el.innerHTML = val;
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = val;
+            else el.innerHTML = val;
           }
           if (el.getAttribute('data-key-placeholder') === key) el.placeholder = val;
           if (el.getAttribute('data-key-title') === key) el.title = val;
@@ -171,28 +186,28 @@ window.initTranslateOverlay = function () {
         // Feedback and release focus
         applyBtn.style.background = '#fff';
         applyBtn.innerText = 'SAVED!';
-        textarea.blur(); 
-        
+        textarea.blur();
+
         setTimeout(() => {
-            applyBtn.style.background = '#00ff00';
-            applyBtn.innerText = 'APPLY';
+          applyBtn.style.background = '#00ff00';
+          applyBtn.innerText = 'APPLY';
         }, 800);
       } else if (isDynamic && lastIdentifiedEl) {
         // Dynamic update only for the current element
         if (lastIdentifiedEl.tagName === 'INPUT' || lastIdentifiedEl.tagName === 'TEXTAREA') {
-            if (lastIdentifiedEl.placeholder) lastIdentifiedEl.placeholder = val;
-            else lastIdentifiedEl.value = val;
+          if (lastIdentifiedEl.placeholder) lastIdentifiedEl.placeholder = val;
+          else lastIdentifiedEl.value = val;
         } else {
-            lastIdentifiedEl.innerHTML = val;
+          lastIdentifiedEl.innerHTML = val;
         }
-        
+
         // FeedBack
         applyBtn.style.background = '#ffaa00';
         applyBtn.innerText = 'APPLIED!';
-        textarea.blur(); 
+        textarea.blur();
         setTimeout(() => {
-            applyBtn.style.background = '#00ff00';
-            applyBtn.innerText = 'APPLY';
+          applyBtn.style.background = '#00ff00';
+          applyBtn.innerText = 'APPLY';
         }, 800);
       }
     };
@@ -213,17 +228,7 @@ window.initTranslateOverlay = function () {
   }
 
   window.updateTranslateOverlayPosition = function (pY) {
-    const trOverlay = document.getElementById('msm-translate-overlay');
-    if (!trOverlay) return;
-
-    // If assistant is in the bottom half of the screen, move modal to top
-    if (pY > window.innerHeight / 2) {
-      trOverlay.style.bottom = 'auto';
-      trOverlay.style.top = '20px';
-    } else {
-      trOverlay.style.top = 'auto';
-      trOverlay.style.bottom = '20px';
-    }
+    // No longer needed for top-fixed minimalist overlay
   };
 
   const langSpan = document.getElementById('msm-tr-lang');
@@ -233,6 +238,11 @@ window.initTranslateOverlay = function () {
 window.removeTranslateOverlay = function () {
   const trOverlay = document.getElementById('msm-translate-overlay');
   if (trOverlay) trOverlay.remove();
+
+  // Restore debug overlay
+  const dbgOverlay = document.getElementById('msm-debug-overlay');
+  if (dbgOverlay) dbgOverlay.style.display = 'block';
+
   if (container) {
     container.style.zIndex = '12000'; // Reset to default from CSS
     const bubble = container.querySelector('.speech-bubble');
@@ -608,8 +618,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
       const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}, "target": "${step.target || ''}"`;
-      navigator.clipboard.writeText(clipboardText);
-      debugOverlay.innerText = `Copied: ${clipboardText}`;
+      if (!window.isTranslateMode) {
+        navigator.clipboard.writeText(clipboardText);
+        debugOverlay.innerText = `Copied: ${clipboardText}`;
+      }
 
       step.bWidth = newWidth;
       step.bHeight = newHeight;
@@ -651,8 +663,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
       const currentBx = step.bx || 0;
       const currentBy = step.by || 0;
       const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${newWidth}, bHeight: ${newHeight}, "target": "${step.target || ''}"`;
-      navigator.clipboard.writeText(clipboardText);
-      debugOverlay.innerText = `Copied: ${clipboardText}`;
+      if (!window.isTranslateMode) {
+        navigator.clipboard.writeText(clipboardText);
+        debugOverlay.innerText = `Copied: ${clipboardText}`;
+      }
 
       step.bWidth = newWidth;
       step.bHeight = newHeight;
@@ -699,8 +713,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
         const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
         const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${step.target || ''}"`;
-        navigator.clipboard.writeText(clipboardText);
-        debugOverlay.innerText = `Copied: ${clipboardText}`;
+        if (!window.isTranslateMode) {
+          navigator.clipboard.writeText(clipboardText);
+          debugOverlay.innerText = `Copied: ${clipboardText}`;
+        }
         step.bx = finalBx;
         step.by = finalBy;
       } else if (!isResizing) {
@@ -772,8 +788,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         const currentBWidth = step.bWidth || parseInt(bubble.style.width) || 0;
         const currentBHeight = step.bHeight || parseInt(bubble.style.height) || 0;
         const clipboardText = `x: ${step.x || 0}, y: ${step.y || 0}, bx: ${finalBx}, by: ${finalBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${step.target || ''}"`;
-        navigator.clipboard.writeText(clipboardText);
-        debugOverlay.innerText = `Copied: ${clipboardText}`;
+        if (!window.isTranslateMode) {
+          navigator.clipboard.writeText(clipboardText);
+          debugOverlay.innerText = `Copied: ${clipboardText}`;
+        }
         step.bx = finalBx;
         step.by = finalBy;
       } else {
@@ -1101,7 +1119,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
                     if (exactKey) val = translations[exactKey];
                   }
                 }
-                console.log(`[MSM-TR] Found value: "${val}"`);
+                // console.log(`[MSM-TR] Found value: "${val}"`);
 
                 const isNewKey = trKeyEl.innerText !== dataKey;
 
@@ -1116,10 +1134,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
                 trKeyEl.innerText = 'No data-key';
                 trKeyEl.style.color = '#ffaa00';
                 trKeyEl.style.background = 'rgba(255,170,0,0.1)';
-                
+
                 const val = (lastIdentifiedEl.children.length === 0 ? (lastIdentifiedEl.innerText || lastIdentifiedEl.textContent || '').trim() : Array.from(lastIdentifiedEl.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent.trim()).filter(s => s).join(' ')) || lastIdentifiedEl.placeholder || lastIdentifiedEl.title || '';
                 if (trValEl.value !== val && !trValEl.matches(':focus')) {
-                    trValEl.value = val;
+                  trValEl.value = val;
                 }
               }
             }
@@ -1163,8 +1181,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             const currentBWidth = step.bWidth || 0;
             const currentBHeight = step.bHeight || 0;
             const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${elId}"`;
-            navigator.clipboard.writeText(clipboardText);
-            debugOverlay.innerText = `Copied: ${clipboardText}`;
+            if (!window.isTranslateMode) {
+              navigator.clipboard.writeText(clipboardText);
+              debugOverlay.innerText = `Copied: ${clipboardText}`;
+            }
           } else {
             debugOverlay.innerText = `Reverted (Target: ${elId || 'None'})`;
           }
@@ -1260,8 +1280,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
                   trEl.getAttribute('data-key-placeholder') ||
                   trEl.getAttribute('data-key-title')) : null;
                 if (trEl) {
-                   el = trEl;
-                   lastIdentifiedEl = trEl; // Ensure mouseup also uses this
+                  el = trEl;
+                  lastIdentifiedEl = trEl; // Ensure mouseup also uses this
                 }
                 if (dataKey) {
                   trKeyEl.innerText = dataKey;
@@ -1296,7 +1316,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
                   trKeyEl.style.background = 'rgba(255,170,0,0.1)';
                   const val = (el.children.length === 0 ? (el.innerText || el.textContent || '').trim() : Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent.trim()).filter(s => s).join(' ')) || el.placeholder || el.title || '';
                   if (trValEl.value !== val && !trValEl.matches(':focus')) {
-                      trValEl.value = val;
+                    trValEl.value = val;
                   }
                 }
               }
@@ -1341,8 +1361,10 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             const currentBWidth = step.bWidth || 0;
             const currentBHeight = step.bHeight || 0;
             const clipboardText = `x: ${finalRelX}, y: ${finalRelY}, bx: ${currentBx}, by: ${currentBy}, bWidth: ${currentBWidth}, bHeight: ${currentBHeight}, "target": "${elId}"`;
-            navigator.clipboard.writeText(clipboardText);
-            debugOverlay.innerText = `Copied: ${clipboardText}`;
+            if (!window.isTranslateMode) {
+              navigator.clipboard.writeText(clipboardText);
+              debugOverlay.innerText = `Copied: ${clipboardText}`;
+            }
           } else {
             debugOverlay.innerText = `Reverted (Target: ${elId || 'None'})`;
           }
