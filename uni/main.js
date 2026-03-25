@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.98'; // App version
+const version = 'Beta 1.99'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -521,7 +521,7 @@ async function runGoogleDriveSync() {
                                 const modalGdid = modalBodyElem?.dataset.gdid;
                                 const modalNoteId = modalBodyElem?.dataset.id;
                                 const isOpenInModal = (serverNote.gdid && String(serverNote.gdid) === String(modalGdid)) || (serverNote.id && String(serverNote.id) === String(modalNoteId));
-                                
+
                                 let hasUnsavedChangesInModal = false;
                                 if (isOpenInModal && modalBodyElem) {
                                     const textarea = modalBodyElem.querySelector('textarea');
@@ -580,7 +580,7 @@ async function runGoogleDriveSync() {
                         }
                     }
                     await bulkPutDB(storeName, dataToPut, true);
-                    
+
                     // Update allNotesData in memory to prevent stale data
                     if (isNote) {
                         dataToPut.forEach(newNote => {
@@ -592,7 +592,7 @@ async function runGoogleDriveSync() {
                             }
                         });
                     }
-                    
+
                     console.log(`[Sync] Updated ${filename}:`, dataToPut.length, "items.");
                 }
             }
@@ -12759,7 +12759,7 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
                         note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
                     }
                 }
-                note.datemod = Date.now(); 
+                note.datemod = Date.now();
 
                 // --- KEY FIX: Update the main modal if it's open for this note ---
                 const mainModalBody = document.getElementById('modal-body');
