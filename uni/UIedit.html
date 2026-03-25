@@ -557,6 +557,13 @@
         flex-direction: column
       }
     }
+    /* Utility classes to replace inline styles */
+    .file-load-card { flex: 1; min-width: 280px; }
+    .dict-card { flex: 1.4; min-width: 340px; }
+    .w-full { width: 100%; }
+    .mt-3 { margin-top: 0.75rem; }
+    .d-none { display: none; }
+    .kbd-hint { font-size: .7rem; opacity: .6; margin-left: 2px; }
   </style>
 </head>
 
@@ -567,7 +574,7 @@
 
     <div class="top-row">
       <!-- File -->
-      <div class="card" style="flex:1;min-width:280px">
+      <div class="card file-load-card">
         <div class="card-title">📁 Load JSON File</div>
         <div class="file-drop" id="fileDrop">
           <input type="file" id="fileInput" accept=".json">
@@ -575,11 +582,11 @@
           <div class="label">Drop a JSON file here or click to browse</div>
           <div class="filename" id="fileName"></div>
         </div>
-        <button class="btn-sm btn-outline" id="loadLastBtn" style="width:100%;margin-top:0.75rem;display:none">↻ Load Last</button>
+        <button class="btn-sm btn-outline w-full mt-3 d-none" id="loadLastBtn">↻ Load Last</button>
       </div>
 
       <!-- Dictionary -->
-      <div class="card" id="dictCard" style="flex:1.4;min-width:340px">
+      <div class="card dict-card" id="dictCard">
         <div class="dict-list" id="dictList"></div>
         <div class="dict-bulk-wrap" id="dictBulkWrap">
           <textarea class="dict-textarea dict-bulk-edit" id="dictText"
@@ -591,20 +598,20 @@
           <button class="btn-sm btn-outline" id="dictLoadBtn">📂 Load</button>
           <button class="btn-sm btn-outline" id="dictSaveBtn">💾 Save</button>
           <button class="btn-sm btn-accent" id="dictApplyBtn" disabled>▶ Start <kbd
-              style="font-size:.7rem;opacity:.6;margin-left:2px">Enter</kbd></button>
-          <button class="btn-sm btn-warn" id="dictSkipBtn" style="display:none">⏭ Skip</button>
-          <button class="btn-sm btn-outline" id="dictResetBtn" style="display:none">↺ Reset</button>
+              class="kbd-hint">Enter</kbd></button>
+          <button class="btn-sm btn-warn d-none" id="dictSkipBtn">⏭ Skip</button>
+          <button class="btn-sm btn-outline d-none" id="dictResetBtn">↺ Reset</button>
         </div>
         <span class="dict-status" id="dictStatus"></span>
         <div class="dict-hint">Format: <code>source_word - replacement_word</code> (one pair per line). Press
           <strong>Enter</strong> or <strong>Apply Next</strong> to step through matches.
         </div>
-        <input type="file" id="dictFileInput" accept=".txt,.dict,.csv" style="display:none">
+        <input type="file" id="dictFileInput" accept=".txt,.dict,.csv" class="d-none">
       </div>
     </div>
 
     <!-- Editor -->
-    <div class="card" id="editorCard" style="display:none">
+    <div class="card d-none" id="editorCard">
       <div class="card-title">🔍 Editor</div>
       <div class="filter-box">
         <input type="text" class="filter-field" id="filterInput" placeholder="Filter by key or value…">
@@ -624,7 +631,7 @@
     </div>
 
     <!-- Actions -->
-    <div class="card" id="actionsCard" style="display:none">
+    <div class="card d-none" id="actionsCard">
       <div class="actions">
         <button class="btn btn-primary" id="downloadBtn">⬇ Save JSON</button>
       </div>
@@ -1137,7 +1144,7 @@
         }
 
         log(`Dictionary rule check: "${dictPairs[activePairIdx].find}" — ${dictQueue.length} match(es).`, 'ok');
-        dictApplyBtn.innerHTML = `▶ Apply Next <kbd style="font-size:.7rem;opacity:.6;margin-left:2px">Enter</kbd>`;
+        dictApplyBtn.innerHTML = `▶ Apply Next <kbd class="kbd-hint">Enter</kbd>`;
         dictSkipBtn.style.display = '';
         dictResetBtn.style.display = '';
       }
@@ -1187,7 +1194,7 @@
       renderDictList();
       dictSkipBtn.style.display = 'none';
       dictResetBtn.style.display = 'none';
-      dictApplyBtn.innerHTML = `▶ Start <kbd style="font-size:.7rem;opacity:.6;margin-left:2px">Enter</kbd>`;
+      dictApplyBtn.innerHTML = `▶ Start <kbd class="kbd-hint">Enter</kbd>`;
       dictStatus.textContent = '';
       log('Dictionary reset.', 'info');
     }

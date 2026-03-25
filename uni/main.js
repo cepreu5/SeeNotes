@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.95'; // App version
+const version = 'Beta 1.96'; // App version
 let debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -106,6 +106,7 @@ let initialLoadTime = null; // Time taken for initial Google Drive load in secon
 let initialLoadTimestamp = null; // Timestamp when the load finished
 let isAppStarted = false; // Guard for startApp
 let isMainLogicRunning = false; // Guard for mainLogic concurrency
+let isOfflineMode = false; // Глобален флаг за офлайн режим
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
@@ -3069,11 +3070,12 @@ window.swUpdateNotificationShown = false;
 // Проверяваме дали има токен преди да стартираме приложението
 // Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
 (async () => {
-    // 1. Проверяваме за параметри 'debug' и 'token' в URL-a
+    // 1. Проверяваме за параметри 'debug', 'token' и 'offline' в URL-a
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('debug')) {
         debug = true;
     }
+
     if (urlParams.has('token')) {
         const licenseData = await decryptLicenseToken();
         if (licenseData && cachedLicenseData) {
@@ -3141,6 +3143,17 @@ window.swUpdateNotificationShown = false;
         if (trialBtn) trialBtn.style.display = 'inline-block';
         if (authorizeBtn) authorizeBtn.style.display = 'none';
         setupSelectionLocking();
+        return;
+    }
+
+    if (urlParams.has('offline')) {
+        isOfflineMode = true;
+        // Задаваме настройки за офлайн режим
+        localStorage.setItem('useIndexedDb', 'true');
+        localStorage.setItem('useGoogleDb', 'false');
+        localStorage.setItem('mode', 'database');
+        // Стартираме приложението директно без да търсим токен
+        startApp();
         return;
     }
 
@@ -3341,6 +3354,7 @@ function handleAuthClick() {
 }
 
 function checkWhitelist() {
+    if (isOfflineMode) return;
     const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
     const action = isTrialStart ? 'log' : 'check';
 
@@ -3373,6 +3387,10 @@ function checkWhitelist() {
 
 async function checkAuth() {
     console.log("checkAuth");
+    if (isOfflineMode) {
+        console.log("Offline mode active, bypassing authentication checks.");
+        return { tokenData: { access_token: 'offline' }, pass: true };
+    }
     // --- Проверяваме и в двата storage-а за токен ---
     // Това решава проблема с безкрайното презареждане при избрана опция "Запомни ме".
     const sessionToken = sessionStorage.getItem('google_auth_token');
@@ -3782,10 +3800,17 @@ function updateModeButton() {
  * Извиква се, за да се синхронизира състоянието на приложението с настройките.
  */
 function updateGlobalStateFlags() {
-    useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
-    useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-    useArhDb = localStorage.getItem('useArhDb') === 'true';
-    useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+    if (isOfflineMode) {
+        useGoogleDb = false;
+        useLocalFolder = false;
+        useArhDb = false;
+        useIndexedDb = true;
+    } else {
+        useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
+        useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+        useArhDb = localStorage.getItem('useArhDb') === 'true';
+        useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+    }
 }
 
 /**
@@ -6202,6 +6227,22 @@ async function createSettingsUI(boardsData, boardParseError) {
     const settingsImportBtn = document.getElementById('settings-import-btn');
     const settingsImportInput = document.getElementById('settings-import-input');
     if (!settingsModalBody.dataset.initialized) {
+        // --- Offline Mode UI Restrictions ---
+        if (isOfflineMode) {
+            if (useGoogleDbCheckbox) {
+                useGoogleDbCheckbox.disabled = true;
+                const googleDbLabel = useGoogleDbCheckbox.closest('.settings-row') || useGoogleDbCheckbox.parentElement;
+                if (googleDbLabel) {
+                    googleDbLabel.style.opacity = '0.5';
+                    googleDbLabel.title = _('offlineModeDriveDisabled') || "Google Drive is disabled in Offline Mode";
+                }
+            }
+            if (useIndexedDbCheckbox) {
+                useIndexedDbCheckbox.disabled = true;
+                const dbLabel = useIndexedDbCheckbox.closest('.settings-row') || useIndexedDbCheckbox.parentElement;
+                if (dbLabel) dbLabel.style.opacity = '0.5';
+            }
+        }
         // Hide Assistant Logic
         if (hideAssistantCheckbox) {
             hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
@@ -6601,8 +6642,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key)); // Вече е async
         });
         // indexedDB
-        const dbSectionWrapper = document.getElementById('db-section-wrapper');
-        const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
         // Задаваме първоначалното състояние на чекбокса от localStorage
         useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
         // Add event listeners
@@ -6828,7 +6867,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                     if (!validationArh.isValid) {
                         let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
                         if (validationArh.reason === 'criteria_not_met') {
-                            warningMessage += " " + _('requiredFilesForLocalFolder');
+                            warningMessage += " " + (_('requiredFilesForArhFolder') || "Необходимо е да съдържа файловете boards.bcp и notes.bcp.");
                         }
                         showToast(warningMessage, 15000);
                         return;

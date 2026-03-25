@@ -9,20 +9,9 @@
     <link rel="stylesheet" href="style.css">
     <meta http-equiv="Content-Security-Policy"
         content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
-    <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
-        crossorigin="anonymous">
-    </script-->
 </head>
 
 <body>
-    <!-- Вертикална реклама 120х728>
-    <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
-        data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
-    </ins>
-    <script>
-        (adsbygoogle = window.adsbygoogle || []).push({});
-    </script -->
-
     <header>
         <div style="display: flex; align-items: center;">
             <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
@@ -66,15 +55,6 @@
             <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Презареди">
                 <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
             </button>
-            <!-- FEEDBACK BUTTON 
-            <a id="feedback_button" href="mailto:multinotes.web@gmail.com" class="header-btn"
-                data-key-title="feedbackButtonTooltip" title="Обратна връзка">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                    <polyline points="22,6 12,13 2,6"></polyline>
-                </svg>
-            </a> -->
             <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Изход">
                 <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
             </button>
@@ -638,68 +618,13 @@
                                     </div>
                                 </div>
                             </div>
-
-                            <!--div class="zoom-control-wrapper" id="db-export-wrapper" style="margin-top: 15px;">
-                                <button id="db-export1-btn" class="zoom-btn"
-                                    onclick="exportStore('NotesDB', 'config')">Config Export</button>
-                                <button id="db-export2-btn" class="zoom-btn settings-close-btn"
-                                    style="margin-left: 10px;" onclick="exportData('NotesDB', 'boards')">Boards
-                                    Export</button>
-                                <button id="db-export3-btn" class="zoom-btn settings-close-btn"
-                                    style="margin-left: 10px;" onclick="exportNotes()">Export All</button>
-                            </div-->
                         </div>
                     </div>
                 </span>
 
                 <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
-                <!-- <div style="position: relative; z-index: 200; text-align: center; margin-top: -5px; line-height: 0;">
-                    <script type='text/javascript' src='https://storage.ko-fi.com/cdn/widget/Widget_2.js'></script>
-                    <script
-                        type='text/javascript'>kofiwidget2.init('Подкрепете автора • Споделете: ', 'transparent', 'O5O81RA2VZ'); kofiwidget2.draw();</script>
-                    <style>
-                        /* Compact Ko-fi Widget Overrides */
-                        .btn-container {
-                            margin: 0 !important;
-                        }
-
-                        a.kofi-button {
-                            box-shadow: none !important;
-                            min-width: auto !important;
-                            padding: 0 !important;
-                            line-height: normal !important;
-                            /* Restore line-height for text */
-                            display: inline-flex !important;
-                            /* Use flex to align image and text */
-                            align-items: center !important;
-                            gap: 5px !important;
-                            text-decoration: none !important;
-                        }
-
-                        img.kofiimg {
-                            height: 30px !important;
-                            width: auto !important;
-                            display: inline-block !important;
-                            /* Restore inline behavior */
-                            padding: 0 !important;
-                            margin-bottom: 2px !important;
-                            /* Slight tweak for optical alignment */
-                        }
-                    </style>
-                </div> -->
 
                 <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
-                    <!--script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                        data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
-                        data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
-                        data-font-color="#000000" data-coffee-color="#ffffff"></script>
-                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
-                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
-                    </p>
-                    <iframe id='kofiframe'
-                        src='https://ko-fi.com/multinotes/?hidefeed=true&widget=true&embed=true&preview=true'
-                        style='border:none;width:100%;padding:4px;background:#f9f9f9;' height='52'
-                        title='multinotes'></iframe-->
                     <script src='https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'></script>
                     <script>
                         kofiWidgetOverlay.draw('multinotes', {
@@ -710,16 +635,6 @@
                         });
                     </script>
                 </div>
-                <!--div>
-                    <script async src="https://js.stripe.com/v3/buy-button.js">
-                    </script>
-                    <stripe-buy-button buy-button-id="buy_btn_1SZVZdEgnSjbu4vOL2kPcVPj"
-                        publishable-key="pk_live_51SZTDwEgnSjbu4vO1sy0OJLDXVZBd5u1pq5YkvIVfJ7a8cFuhcZGVSKtKnW7sJnBu7olTphWoho3WtVZmMC7v1wz00ukkbubUH">
-                    </stripe-buy-button>
-                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
-                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
-                    </p>
-                </div-->
             </div>
             <div class="settings-close-btn-wrapper">
                 <button id="settings-close-btn" class="zoom-btn settings-close-btn"
@@ -728,20 +643,6 @@
         </div>
     </div>
     <div id="guide-root"></div>
-
-    <!--script src="calendar.js"></script>
-    <script src="db.js"></script>
-    <script src="fs.js"></script>
-    <script src="config.js"></script-->
-    <!--script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script-->
-
-    <!--link rel="stylesheet" href="msmstyle1.css">
-    <script src="msmguide.js"></script>
-    <script src="load.js"></script>
-    <script src="msmguide.js"></script>
-    <script src="kb-ui.js"></script>
-    <script src="kb-matcher.js"></script>
-    <script src="msm1.js"></script-->
 
     <!-- KB Assistant -->
     <link rel="stylesheet" href="msmstyle.css">
