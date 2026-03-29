@@ -5,13 +5,13 @@ const loadJson = (path) => {
 }
 
 const trans = {
-    ...loadJson('c:/Projects/SeeNotes/uni/lang/i18n-en.json'),
-    ...loadJson('c:/Projects/SeeNotes/uni/lang/index-en.json'),
-    ...loadJson('c:/Projects/SeeNotes/uni/lang/kb-en.json'),
-    ...loadJson('c:/Projects/SeeNotes/uni/lang/kb-core.json')
+    ...loadJson('c:/Projects/SeeNotes/multinotes/ui/lang/i18n-en.json'),
+    ...loadJson('c:/Projects/SeeNotes/multinotes/ui/lang/index-en.json'),
+    ...loadJson('c:/Projects/SeeNotes/multinotes/ui/lang/kb-en.json'),
+    ...loadJson('c:/Projects/SeeNotes/multinotes/ui/lang/kb-core.json')
 };
 
-const jsFile = 'c:/Projects/SeeNotes/uni/main.js';
+const jsFile = 'c:/Projects/SeeNotes/multinotes/ui/main.js';
 let content = fs.readFileSync(jsFile, 'utf8');
 
 // _('key') || 'Fallback'

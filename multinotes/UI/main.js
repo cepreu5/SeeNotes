@@ -1547,7 +1547,7 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
                 }
                 const newNoteEl = await createNoteElement(noteData);
                 noteEl.replaceWith(newNoteEl);
-                showToast(_('noteMovedToTrash') || "Бележката е преместена в Кошче", 3000);
+                showToast(_('noteMovedToTrash') || "Note moved to Trash", 3000);
             } else {
                 await new Promise((resolve, reject) => {
                     const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
@@ -1572,7 +1572,7 @@ async function handleNoteDelete(noteEl, e = null, fromModal = false) {
             }
         } catch (error) {
             console.error("Failed to delete note:", error);
-            showToast((_('noteDeletedError') || "Грешка при изтриване") + " - " + error.message, 5000);
+            showToast((_('noteDeletedError') || "Error deleting note from the database.") + " - " + error.message, 5000);
         }
     }
 }
@@ -3008,7 +3008,7 @@ function initApp() {
 function updateSearchPlaceholder() {
     const searchInput = document.getElementById('search-box');
     if (!searchInput) return;
-    searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
+    searchInput.placeholder = _('searchPlaceholder') || "Type text";
 }
 
 function saveSearchTerm(term) {
@@ -3151,9 +3151,9 @@ window.swUpdateNotificationShown = false;
         // Задаваме настройки за офлайн режим
         localStorage.setItem('useGoogleDb', 'false');
         // Ако потребителят няма избран НИТО ЕДИН офлайн източник, активираме "База данни" автоматично.
-        const hasOfflineSource = localStorage.getItem('useIndexedDb') === 'true' || 
-                               localStorage.getItem('useLocalDb') === 'true' || 
-                               localStorage.getItem('useArhDb') === 'true';
+        const hasOfflineSource = localStorage.getItem('useIndexedDb') === 'true' ||
+            localStorage.getItem('useLocalDb') === 'true' ||
+            localStorage.getItem('useArhDb') === 'true';
         if (!hasOfflineSource) {
             localStorage.setItem('useIndexedDb', 'true');
             localStorage.setItem('mode', 'database');
@@ -6113,7 +6113,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     if (localStorage.getItem('showTrashBoard') !== 'false') {
         const trashCount = boardsData.trashCount || 0;
         const trashLink = document.createElement('span');
-        trashLink.textContent = (showCount && trashCount > 0) ? `${_('trashBoardTitle') || "Кошче"} (${trashCount})` : (_('trashBoardTitle') || "Кошче");
+        trashLink.textContent = (showCount && trashCount > 0) ? `${_('trashBoardTitle') || "Trash"} (${trashCount})` : (_('trashBoardTitle') || "Trash");
         trashLink.classList.add('board-filter-link', 'trash-filter-btn');
         trashLink.dataset.boardid = 'trash';
         trashLink.style.backgroundColor = '#c00';
@@ -6128,7 +6128,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     reorderLink.innerHTML = pencilIconSvg.replace('stroke="black"', 'stroke="white"');
     reorderLink.classList.add('board-filter-link', 'reorder-boards-btn');
     reorderLink.dataset.boardid = 'reorder-boards';
-    reorderLink.title = _('reorderBoards') || "Нареди бордовете";
+    reorderLink.title = _('reorderBoards') || "Reorder";
     reorderLink.style.display = 'flex';
     reorderLink.style.justifyContent = 'center';
     reorderLink.style.alignItems = 'center';
@@ -6868,7 +6868,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                     if (!validationArh.isValid) {
                         let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
                         if (validationArh.reason === 'criteria_not_met') {
-                            warningMessage += " " + (_('requiredFilesForArhFolder') || "Необходимо е да съдържа файловете boards.bcp и notes.bcp.");
+                            warningMessage += " " + (_('requiredFilesForArhFolder') || "It must contain the files 'boards.bcp' and 'notes.bcp'.");
                         }
                         showToast(warningMessage, 15000);
                         return;
@@ -7758,7 +7758,7 @@ async function createNoteElement(noteContent) {
                 const restoreBtn = document.createElement('div');
                 restoreBtn.className = 'footer-icon restore-btn';
                 restoreBtn.innerHTML = restoreIconSvg;
-                restoreBtn.title = _('restoreNote') || "Възстанови";
+                restoreBtn.title = _('restoreNote') || "Restore note";
                 restoreBtn.style.borderRadius = '5px';
                 restoreBtn.style.backgroundColor = 'rgba(255,255,255,0.7)';
                 restoreBtn.style.padding = '2px';
@@ -7779,7 +7779,7 @@ async function createNoteElement(noteContent) {
                         if (localStorage.getItem('updateGDrive') === 'true') { // && !isOffline
                             // await updateGDriveFile(noteGdid, JSON.stringify(noteContent));
                         }
-                        showToast(_('noteRestoredSuccess') || "Бележката е възстановена", 3000);
+                        showToast(_('noteRestoredSuccess') || "Note successfully restored.", 3000);
                         renderUI({ boardParseError: false, rerenderOnlyMenu: true });
                         applyFilters();
                     } catch (err) {
@@ -8464,7 +8464,7 @@ async function showBoardReorderPopup() {
     closeBtn.onclick = () => overlay.remove();
     box.appendChild(closeBtn);
     const title = document.createElement('h3');
-    title.textContent = _('reorderBoards') || 'Нареди бордовете';
+    title.textContent = _('reorderBoards') || 'Reorder';
     title.setAttribute('data-key', 'reorderBoards');
     title.style.cssText = 'margin:0 0 15px 0;font-size:1.2em;color:#fff;text-shadow:1px 1px 3px rgba(0,0,0,0.8);text-align:center;';
     box.appendChild(title);
@@ -8566,7 +8566,7 @@ async function showBoardReorderPopup() {
     const footer = document.createElement('div');
     footer.style.cssText = 'display:flex;justify-content:center;margin-top:15px;';
     const saveCloseBtn = document.createElement('button');
-    saveCloseBtn.textContent = _('submitButton') || 'Потвърди';
+    saveCloseBtn.textContent = _('submitButton') || 'Confirm';
     saveCloseBtn.setAttribute('data-key', 'submitButton');
     saveCloseBtn.className = 'zoom-btn';
     saveCloseBtn.style.cssText = 'padding:10px 30px;background:darkorange;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:1.1em;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.3);';
