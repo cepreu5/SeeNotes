@@ -1734,6 +1734,18 @@ class KBUI {
             return;
         }
 
+        if (query === '#restore' || query === '#5' || query === '%7') {
+            this.inputField.value = '';
+            this.addMessage('user', query);
+            if (typeof window.restoreTranslations === 'function') {
+                const response = window.restoreTranslations();
+                this.addMessage('assistant', response.message);
+            } else {
+                this.addMessage('assistant', 'Error: restoreTranslations function not found.');
+            }
+            return;
+        }
+
         // Добавяме въпроса на потребителя (скриваме командата ?)
         if (query !== '?') {
             this.addMessage('user', query);

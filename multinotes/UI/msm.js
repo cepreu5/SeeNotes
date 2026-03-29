@@ -180,6 +180,15 @@ window.initTranslateOverlay = function () {
       }
     });
 
+    // Backup current translations to localStorage if not already present
+    const lang = (localStorage.getItem('language') || 'en').toLowerCase();
+    const backupKey = `i18n_backup_${lang}`;
+    const allTranslations = typeof appTranslations !== 'undefined' ? appTranslations : window.appTranslations;
+    if (!localStorage.getItem(backupKey) && allTranslations && allTranslations[lang]) {
+      console.log(`[msm.js] Creating translation backup for ${lang}`);
+      localStorage.setItem(backupKey, JSON.stringify(allTranslations[lang]));
+    }
+
     // Излагаме функцията глобално, за да може логиката за идентификация да я извиква
     window.syncMsmTranslateHeight = syncHeight;
 
@@ -206,6 +215,10 @@ window.initTranslateOverlay = function () {
       if (!isDynamic && key && key !== 'No data-key found' && allTranslations && allTranslations[lang]) {
         allTranslations[lang][key] = val;
         updateUIElements(key, val);
+
+        // Update localStorage backup
+        const backupKey = `i18n_backup_${lang}`;
+        localStorage.setItem(backupKey, JSON.stringify(allTranslations[lang]));
 
         // Feedback and release focus
         applyBtn.style.background = '#fff';
@@ -299,6 +312,11 @@ window.saveTranslationsFile = function () {
     return;
   }
   const data = JSON.stringify(allTranslations[lang], null, 2);
+
+  // Clear backup on successful intent to save
+  const backupKey = `i18n_backup_${lang}`;
+  localStorage.removeItem(backupKey);
+
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -306,6 +324,58 @@ window.saveTranslationsFile = function () {
   a.download = `i18n-${lang}.json`;
   a.click();
   URL.revokeObjectURL(url);
+};
+
+window.restoreTranslations = function () {
+  const lang = (localStorage.getItem('language') || 'en').toLowerCase();
+  const backupKey = `i18n_backup_${lang}`;
+  const backupData = localStorage.getItem(backupKey);
+  const allTranslations = typeof appTranslations !== 'undefined' ? appTranslations : window.appTranslations;
+
+  if (!backupData) {
+    return {
+      success: false,
+      message: lang === 'bg' ? 'Няма намерен архив за възстановяване.' : 'No backup found to restore.'
+    };
+  }
+
+  try {
+    const backup = JSON.parse(backupData);
+    if (allTranslations && allTranslations[lang]) {
+      // Merge/Overrule current translations with backup
+      Object.assign(allTranslations[lang], backup);
+
+      // Update UI for all restored keys
+      Object.keys(backup).forEach(key => {
+        const val = backup[key];
+        // We need updateUIElements but it is defined inside initTranslateOverlay scope...
+        // Wait, I should make updateUIElements globally accessible or use the one from main.js if exists.
+        // Actually, updateUIElements in initTranslateOverlay is local.
+        // Let's use a global version or redefine it here.
+        const elements = document.querySelectorAll(`[data-key="${key}"], [data-key-placeholder="${key}"], [data-key-title="${key}"]`);
+        elements.forEach(el => {
+          if (el.getAttribute('data-key') === key) {
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = val;
+            else el.innerHTML = val;
+          }
+          if (el.getAttribute('data-key-placeholder') === key) el.placeholder = val;
+          if (el.getAttribute('data-key-title') === key) el.title = val;
+        });
+      });
+
+      return {
+        success: true,
+        message: lang === 'bg' ? 'Преводите са възстановени от архива.' : 'Translations restored from backup.'
+      };
+    }
+  } catch (e) {
+    console.error('Error restoring translations:', e);
+    return {
+      success: false,
+      message: 'Error during restoration.'
+    };
+  }
+  return { success: false, message: 'Restore failed (unexpected state).' };
 };
 
 // Global function to flip image
