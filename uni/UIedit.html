@@ -49,13 +49,13 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 2rem 1rem;
+      padding: 1rem;
       line-height: 1.6;
     }
 
     .container {
       width: 100%;
-      max-width: 1100px
+      max-width: 98%
     }
 
     .top-row {
@@ -252,8 +252,16 @@
       color: var(--text3);
       font-family: monospace;
       font-size: .78rem;
-      max-width: 300px;
-      min-width: 200px
+      max-width: 240px;
+      min-width: 120px
+    }
+
+    .diff-ref {
+      color: var(--text2);
+      opacity: 0.7;
+      font-size: 0.78rem;
+      font-style: italic;
+      background: rgba(255, 255, 255, 0.02);
     }
 
     .diff-val {
@@ -557,19 +565,41 @@
         flex-direction: column
       }
     }
+
     /* Utility classes to replace inline styles */
-    .file-load-card { flex: 1; min-width: 280px; }
-    .dict-card { flex: 1.4; min-width: 340px; }
-    .w-full { width: 100%; }
-    .mt-3 { margin-top: 0.75rem; }
-    .d-none { display: none; }
-    .kbd-hint { font-size: .7rem; opacity: .6; margin-left: 2px; }
+    .file-load-card {
+      flex: 1;
+      min-width: 280px;
+    }
+
+    .dict-card {
+      flex: 1.4;
+      min-width: 340px;
+    }
+
+    .w-full {
+      width: 100%;
+    }
+
+    .mt-3 {
+      margin-top: 0.75rem;
+    }
+
+    .d-none {
+      display: none;
+    }
+
+    .kbd-hint {
+      font-size: .7rem;
+      opacity: .6;
+      margin-left: 2px;
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
-    <h1>✏️ i18n JSON Editor</h1>
+    <h1>✏️ CX UIedit</h1>
     <p class="subtitle">Load, edit and save JSON localization files</p>
 
     <div class="top-row">
@@ -622,6 +652,7 @@
           <thead>
             <tr>
               <th>Key Path</th>
+              <th id="refHeader">English Reference</th>
               <th>Value (click to edit)</th>
             </tr>
           </thead>
@@ -667,10 +698,11 @@
 
     let sourceFileName = '';
     let editedJson = null;
+    let englishRefJson = null;
     let allStringItems = [];  // {path, value, originalValue, td}
     let editedCount = 0;
     let currentFilterRowIdx = -1;
-    let prevSearchMatchTd = null;
+    let prevSearchMatchTds = []; // Array of cells currently highlighted
 
     // ── Deep helpers ──────────────────────────────────────────────
     function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -691,6 +723,41 @@
       let cur = obj;
       for (let i = 0; i < path.length - 1; i++) cur = cur[path[i]];
       cur[path[path.length - 1]] = val;
+    }
+
+    function deepGet(obj, path) {
+      let cur = obj;
+      if (!cur) return undefined;
+      for (const p of path) {
+        if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
+        else return undefined;
+      }
+      return typeof cur === 'string' ? cur : undefined;
+    }
+
+    async function fetchEnglishRef(fileName) {
+      if (!fileName) return null;
+      let enName = fileName.replace(/-(bg|ru|it|xx)\.json$/i, '-en.json');
+      if (enName === fileName) return null; // Already English or no match
+
+      try {
+        log(`Fetching English reference for "${fileName}"...`, 'info');
+        let enName = fileName.replace(/-(bg|ru|it|xx)\.json$/i, '-en.json');
+        
+        let r = await fetch(enName);
+        if (!r.ok && !fileName.includes('/')) {
+            // Try lang/ if direct fetch failed and there's no path
+            const altName = 'lang/' + enName;
+            log(`Not found in root, trying ${altName}...`, 'info');
+            r = await fetch(altName);
+        }
+        
+        if (!r.ok) throw new Error(r.status);
+        return await r.json();
+      } catch (e) {
+        log(`No English reference found for "${fileName}".`, 'warn');
+        return null;
+      }
     }
 
     // ── Logging ───────────────────────────────────────────────────
@@ -716,13 +783,14 @@
       localStorage.setItem('jsonEditor_lastFile', file.name);
       fileNameDiv.textContent = file.name;
       const reader = new FileReader();
-      reader.onload = e => {
+      reader.onload = async e => {
         try {
           const parsed = JSON.parse(e.target.result);
           editedJson = deepClone(parsed);
           allStringItems = [];
           collectStrings(parsed, [], allStringItems);
-          log(`Loaded "${file.name}" — ${allStringItems.length} string values.`, 'ok');
+          fileNameDiv.textContent = file.name;
+          englishRefJson = await fetchEnglishRef(file.name);
           buildEditor();
           actionsCard.style.display = 'block';
           editorCard.style.display = 'block';
@@ -739,14 +807,13 @@
 
     // ── Build editor table ────────────────────────────────────────
     function clearSearchHighlight() {
-      if (prevSearchMatchTd) {
-        prevSearchMatchTd.textContent = prevSearchMatchTd.textContent;
-        prevSearchMatchTd = null;
+      for (const td of prevSearchMatchTds) {
+        td.textContent = td.textContent;
       }
+      prevSearchMatchTds = [];
     }
 
     function searchHighlightCell(td, q) {
-      clearSearchHighlight();
       if (!q) return;
       const text = td.textContent;
       const idx = text.toLowerCase().indexOf(q.toLowerCase());
@@ -763,7 +830,7 @@
       span.textContent = matched;
       td.appendChild(span);
       td.appendChild(document.createTextNode(after));
-      prevSearchMatchTd = td;
+      prevSearchMatchTds.push(td);
     }
 
     function buildEditor() {
@@ -775,16 +842,26 @@
         const tr = document.createElement('tr');
         tr.dataset.pathStr = pathStr.toLowerCase();
         tr.dataset.valLower = item.value.toLowerCase();
+        const refVal = deepGet(englishRefJson, item.path);
+        tr.dataset.refLower = (refVal || '').toLowerCase();
+
         const tdKey = document.createElement('td');
         tdKey.className = 'diff-key';
         tdKey.textContent = pathStr;
         tdKey.title = pathStr;
+
+        const tdRef = document.createElement('td');
+        tdRef.className = 'diff-ref';
+        tdRef.textContent = refVal !== undefined ? refVal : '—';
+        tdRef.title = refVal !== undefined ? refVal : 'No English reference';
+
         const tdVal = document.createElement('td');
         tdVal.className = 'diff-val';
         tdVal.contentEditable = 'true';
         tdVal.spellcheck = false;
         tdVal.textContent = item.value;
         item.td = tdVal;
+
         const pathCopy = [...item.path];
         tdVal.addEventListener('blur', () => {
           const newVal = tdVal.textContent;
@@ -795,11 +872,15 @@
             recountEdited();
           }
         });
+
         tr.appendChild(tdKey);
+        tr.appendChild(tdRef);
         tr.appendChild(tdVal);
         editorBody.appendChild(tr);
       }
       $('statTotal').textContent = allStringItems.length;
+      $('refHeader').style.display = englishRefJson ? '' : 'none';
+      editorBody.querySelectorAll('.diff-ref').forEach(td => td.style.display = englishRefJson ? '' : 'none');
     }
 
     function recountEdited() {
@@ -827,14 +908,16 @@
         if (q) {
           const matchKey = row.dataset.pathStr.includes(q);
           const matchVal = row.dataset.valLower.includes(q);
-          isVisible = matchKey || matchVal;
+          const matchRef = row.dataset.refLower.includes(q);
+          isVisible = matchKey || matchVal || matchRef;
         }
         row.style.display = isVisible ? '' : 'none';
         if (isVisible && !firstVisible && q) firstVisible = row;
       }
       if (firstVisible) {
         currentFilterRowIdx = rows.filter(r => r.style.display !== 'none').indexOf(firstVisible);
-        searchHighlightCell(firstVisible.querySelector('.diff-val'), q);
+        if (firstVisible.dataset.refLower.includes(q)) searchHighlightCell(firstVisible.querySelector('.diff-ref'), q);
+        if (firstVisible.dataset.valLower.includes(q)) searchHighlightCell(firstVisible.querySelector('.diff-val'), q);
       }
     });
 
@@ -845,7 +928,11 @@
       currentFilterRowIdx = (currentFilterRowIdx + 1) % rows.length;
       const tr = rows[currentFilterRowIdx];
 
-      if (q) searchHighlightCell(tr.querySelector('.diff-val'), q);
+      if (q) {
+          clearSearchHighlight();
+          if (tr.dataset.refLower.includes(q)) searchHighlightCell(tr.querySelector('.diff-ref'), q);
+          if (tr.dataset.valLower.includes(q)) searchHighlightCell(tr.querySelector('.diff-val'), q);
+      }
 
       const scrollBox = tr.closest('.diff-scroll');
       if (scrollBox) {
@@ -861,7 +948,8 @@
     async function saveFile() {
       if (!editedJson) return;
       const jsonStr = JSON.stringify(editedJson, null, 4);
-      const lastFile = localStorage.getItem('jsonEditor_lastFile') || sourceFileName || 'edited.json';
+      let lastFile = localStorage.getItem('jsonEditor_lastFile') || sourceFileName || 'edited.json';
+      lastFile = lastFile.split('/').pop().split('\\').pop();
 
       // Use File System Access API if available
       if ('showSaveFilePicker' in window) {
@@ -1264,38 +1352,51 @@
         log(`Auto-loaded dictionary.txt (${dictPairs.length} rules).`, 'ok');
       })
       .catch(() => { /* dictionary.txt not found, that's fine */ });
- 
+
     // ── Auto-load last JSON logic ──────────────────────────────────
     const loadLastBtn = $('loadLastBtn');
     async function loadLastJSON() {
-      const last = localStorage.getItem('jsonEditor_lastFile');
+      let last = localStorage.getItem('jsonEditor_lastFile');
       if (!last) {
         log('No last file record found in storage.', 'info');
         return;
       }
-      
+
       console.log('loadLastJSON: Found file record in storage:', last);
       fileNameDiv.textContent = last;
       loadLastBtn.style.display = 'block';
       loadLastBtn.textContent = `↻ Load ${last}`;
-      
+
       loadLastBtn.onclick = async () => {
         try {
           // Diagnostic alert
           // alert(`Attempting to load: ${last}`); 
           log(`Attempting to load: ${last}...`, 'info');
-          const r = await fetch(last);
-          if (!r.ok) throw new Error(`Fetch failed! Status: ${r.status} ${r.statusText}`);
+          let r = await fetch(last);
           
+          if (!r.ok && !last.includes('/')) {
+            const altPath = 'lang/' + last;
+            log(`Not found in root, trying ${altPath}...`, 'info');
+            r = await fetch(altPath);
+            if (r.ok) {
+                // Update successfully found path
+                localStorage.setItem('jsonEditor_lastFile', altPath);
+                last = altPath;
+            }
+          }
+          
+          if (!r.ok) throw new Error(`Fetch failed! Status: ${r.status} ${r.statusText}`);
+
           const text = await r.text();
           if (!text) throw new Error('File content is empty.');
-          
+
           const parsed = JSON.parse(text);
           sourceFileName = last;
           editedJson = deepClone(parsed);
           allStringItems = [];
           collectStrings(parsed, [], allStringItems);
-          
+
+          englishRefJson = await fetchEnglishRef(last);
           log(`Successfully loaded "${last}" — ${allStringItems.length} strings found.`, 'ok');
           buildEditor();
           actionsCard.style.display = 'block';
@@ -1310,7 +1411,7 @@
         }
       };
     }
-    
+
     // Initialize the button visibility and listener
     loadLastJSON();
 

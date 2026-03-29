@@ -18,7 +18,6 @@ const ASSETS_TO_CACHE = [
   './lang/index-bg.json',
   './lang/index-en.json',
   './lang/index-ru.json',
-  './lang/index-it.json',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',

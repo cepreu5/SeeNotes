@@ -22,5 +22,8 @@
     "cta_p1": "Sign in once. Access your notes on any device, anytime — online or off.",
     "cta_h3": "Log in to begin",
     "cta_p2": "Use the same Google account you use on your Android device.",
-    "cta_btn": "Continue with Google"
+    "cta_btn": "Continue with Google",
+    "popup_info_title": "Information",
+    "popup_info_msg": "You can improve the translation with a convenient interactive tool by starting the application at:",
+    "popup_info_btn": "Got it"
 }
