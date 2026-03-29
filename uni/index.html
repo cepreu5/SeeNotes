@@ -774,7 +774,7 @@
 
         async function loadTranslations(lang) {
             try {
-                const response = await fetch(`index-${lang}.json`);
+                const response = await fetch(`lang/index-${lang}.json`);
                 translations = await response.json();
                 applyTranslations();
                 renderLanguageSwitchers(lang);

@@ -2021,7 +2021,7 @@ function _(key) {
     if (!appTranslations[currentLang]) {
         try {
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', `i18n-${currentLang}.json`, false); // синхронно
+            xhr.open('GET', `lang/i18n-${currentLang}.json`, false); // синхронно
             xhr.send();
             if (xhr.status === 200) {
                 appTranslations[currentLang] = JSON.parse(xhr.responseText);
@@ -8123,7 +8123,7 @@ async function loadTranslations(lang) {
         return;
     }
     try {
-        const response = await fetch(`i18n-${lang}.json`);
+        const response = await fetch(`lang/i18n-${lang}.json`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const text = await response.text();
         appTranslations[lang] = JSON.parse(text);

@@ -26,7 +26,7 @@ try {
     const json = JSON.stringify(sandbox.result, null, 4);
 
     // 5) Записваме резултата
-    fs.writeFileSync("i18n-bg.json", json, "utf8");
+    fs.writeFileSync("lang/i18n-bg.json", json, "utf8");
     console.log("Готово! Файлът i18n-bg.json е създаден.");
 
 } catch (err) {
