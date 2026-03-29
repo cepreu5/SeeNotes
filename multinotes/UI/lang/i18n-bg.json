@@ -131,6 +131,7 @@
   "noteRestoredSuccess": "Бележката е възстановена успешно.",
   "noteDeletedSuccess": "Бележката е изтрита успешно от базата данни.",
   "noteDeletedError": "Грешка при изтриване на бележка от базата данни.",
+  "noteMovedToTrash": "Бележката е преместена в Кошче",
   "showWeeklyCalendar": "Седмичен календар",
   "deleteNoteTooltip": "Изтрий бележката",
   "monthlyViewTooltip": "Месечен изглед",

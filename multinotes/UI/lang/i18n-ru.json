@@ -130,6 +130,7 @@
   "noteRestoredSuccess": "Заметка успешно восстановлена.",
   "noteDeletedSuccess": "Заметка успешно удалена из базы данных.",
   "noteDeletedError": "Ошибка при удалении заметки из базы данных.",
+  "noteMovedToTrash": "Заметка перемещена в Корзину",
   "showWeeklyCalendar": "Еженедельный календарь",
   "deleteNoteTooltip": "Удалить заметку",
   "monthlyViewTooltip": "Месячный вид",

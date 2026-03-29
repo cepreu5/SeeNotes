@@ -130,6 +130,7 @@
   "noteRestoredSuccess": "Note successfully restored.",
   "noteDeletedSuccess": "Note successfully deleted from the database.",
   "noteDeletedError": "Error deleting note from the database.",
+  "noteMovedToTrash": "Note moved to Trash",
   "showWeeklyCalendar": "Weekly calendar",
   "deleteNoteTooltip": "Delete note",
   "monthlyViewTooltip": "Monthly View",
