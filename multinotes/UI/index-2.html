@@ -223,8 +223,10 @@
             </div>
 
             <p data-key="loginPrompt">Please sign in with the Google account you used to sync <i>MultiNotes</i>.</p>
-            <p id="app-title2" data-key="appTitle2" style="margin-top: 10px;">This is a test (Beta) version of the application. If you would like to get access, please write to multinotes.web@gmail.com</p>
-            <button id="authorize_button" data-key="authorizeButton" style="display:none" disabled>Authorize with Google</button>
+            <p id="app-title2" data-key="appTitle2" style="margin-top: 10px;">This is a test (Beta) version of the
+                application. If you would like to get access, please write to multinotes.web@gmail.com</p>
+            <button id="authorize_button" data-key="authorizeButton" style="display:none" disabled>Authorize with
+                Google</button>
             <button id="trialBtn" data-key="trialButton" style="display:none">Start 30-day trial period</button>
             <div style="margin-top: 15px;">
                 <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">Remember me</label>
@@ -250,40 +252,78 @@
         </script>
 
         <section style="max-width: 800px; margin: 0 auto;">
-            <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> is a simple, browser‑based tool that lets you open your <a href="https://play.google.com/store/apps/details?id=monitor.kmv.multinotes" target="_blank"><strong>Multinotes</strong></a> Android notes on any device — your computer, tablet, iPhone, or anything else you use, no matter if you’re on Windows, Android, macOS, iOS, or Linux.</p>
-            <p data-key="intro1a">This feature is currently available exclusively to users of the <b>MultiNotes</b> Android version downloaded from <b>Google Play</b>, with <b>Google Drive</b> sync enabled. Support for the <b>Huawei</b> version is coming soon, so stay tuned for updates.</p>
-            <p data-key="intro2">With <strong>CX MultiNotes Viewer</strong>, you can get to your notes quickly, without installing anything — and it even works offline when you need it. Your browser keeps a local copy of your notes and updates it automatically whenever something new is added or changed, so everything stays fast and smooth.</p>
+            <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> is a simple, browser‑based tool that lets you
+                open your <a href="https://play.google.com/store/apps/details?id=monitor.kmv.multinotes"
+                    target="_blank"><strong>Multinotes</strong></a> Android notes on any device — your computer, tablet,
+                iPhone, or anything else you use, no matter if you’re on Windows, Android, macOS, iOS, or Linux.</p>
+            <p data-key="intro1a">This feature is currently available exclusively to users of the <b>MultiNotes</b>
+                Android version downloaded from <b>Google Play</b>, with <b>Google Drive</b> sync enabled. Support for
+                the <b>Huawei</b> version is coming soon, so stay tuned for updates.</p>
+            <p data-key="intro2">With <strong>CX MultiNotes Viewer</strong>, you can get to your notes quickly, without
+                installing anything — and it even works offline when you need it. Your browser keeps a local copy of
+                your notes and updates it automatically whenever something new is added or changed, so everything stays
+                fast and smooth.</p>
             <h3 data-key="modeDbTitle">Here is how it works:</h3>
             <!--p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
             ефективност и независимост от интернет връзка.</p-->
             <ul>
-                <li data-key="modeDbPoint1">On the first launch, the viewer downloads all your notes from <strong>Google Drive</strong> and stores them in a local database (cache) inside your browser.</li>
-                <li data-key="modeDbPoint2">After that, everything loads directly from this local copy. The app only checks for new or updated notes since your last visit, which makes things much faster.</li>
-                <li data-key="modeDbPoint3">If you turn off <strong>Google Drive</strong> in <strong>Settings</strong> after the initial load, the viewer will use only the local database. This speeds things up even more and even lets you work offline. Just keep in mind that no updates will be checked in this mode, so it’s a good idea to click the <strong>Mode</strong> button from time to time to refresh your notes.</li>
+                <li data-key="modeDbPoint1">On the first launch, the viewer downloads all your notes from <strong>Google
+                        Drive</strong> and stores them in a local database (cache) inside your browser.</li>
+                <li data-key="modeDbPoint2">After that, everything loads directly from this local copy. The app only
+                    checks for new or updated notes since your last visit, which makes things much faster.</li>
+                <li data-key="modeDbPoint3">If you turn off <strong>Google Drive</strong> in <strong>Settings</strong>
+                    after the initial load, the viewer will use only the local database. This speeds things up even more
+                    and even lets you work offline. Just keep in mind that no updates will be checked in this mode, so
+                    it’s a good idea to click the <strong>Mode</strong> button from time to time to refresh your notes.
+                </li>
             </ul>
             <h3 data-key="modeNoDbTitle">Mode without Database</h3>
             <ul>
-                <li data-key="modeNoDbPoint1">If you turn off the <strong>Database</strong> option in <strong>Settings</strong> after the initial load, the viewer will pull your notes directly from <strong>Google Drive</strong> every time you open it.</li>
+                <li data-key="modeNoDbPoint1">If you turn off the <strong>Database</strong> option in
+                    <strong>Settings</strong> after the initial load, the viewer will pull your notes directly from
+                    <strong>Google Drive</strong> every time you open it.</li>
                 <li data-key="modeNoDbPoint2">This way, you’ll always see the most up‑to‑date version of your data.</li>
-                <li data-key="modeNoDbPoint3">Just keep in mind that loading will be slower and you’ll need an internet connection for it to work.</li>
+                <li data-key="modeNoDbPoint3">Just keep in mind that loading will be slower and you’ll need an internet
+                    connection for it to work.</li>
             </ul>
             <span hidden>
                 <h2 data-key="advancedModesTitle">Additional Modes (Advanced Settings)</h2>
-                <p data-key="advancedModesDesc">Through the <em><strong>Advanced Settings</strong></em> menu, you can activate alternative modes of operation suitable for specific cases. These modes can work with or without using a local database, depending on your preferences.</p>
+                <p data-key="advancedModesDesc">Through the <em><strong>Advanced Settings</strong></em> menu, you can
+                    activate alternative modes of operation suitable for specific cases. These modes can work with or
+                    without using a local database, depending on your preferences.</p>
                 <h3 data-key="modeLocalTitle">Mode: Local Folder</h3>
                 <ul>
-                    <li data-key="modeLocalPoint1">A mode suitable for users who prefer to have a local copy of their notes and want faster access to them.</li>
-                    <li data-key="modeLocalPoint2">Data is read from a folder on your computer. You need to set up the <strong>Google Drive for Desktop</strong> application to synchronize <strong>multinotes_data</strong> from <strong>Google Drive</strong> to your computer (you can also make the data available offline) and specify the synchronized folder in <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Local Folder</strong>.</li>
-                    <li data-key="modeLocalPoint3">If you select this mode and check <strong>Database</strong>, all notes will be saved to a local database on the first launch.</li>
-                    <li data-key="modeLocalPoint4">When this mode is used with <strong>Database</strong>, a check will be performed on each launch, and new and edited notes will be added to the database.</li>
-                    <li data-key="modeLocalPoint5">If, after the initial load, you uncheck <strong>Local Folder</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay, but no check for new and changed notes will be performed. In this case, it is useful to periodically re-check the box to update your data.</li>
+                    <li data-key="modeLocalPoint1">A mode suitable for users who prefer to have a local copy of their
+                        notes and want faster access to them.</li>
+                    <li data-key="modeLocalPoint2">Data is read from a folder on your computer. You need to set up the
+                        <strong>Google Drive for Desktop</strong> application to synchronize
+                        <strong>multinotes_data</strong> from <strong>Google Drive</strong> to your computer (you can
+                        also make the data available offline) and specify the synchronized folder in
+                        <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Local
+                            Folder</strong>.</li>
+                    <li data-key="modeLocalPoint3">If you select this mode and check <strong>Database</strong>, all
+                        notes will be saved to a local database on the first launch.</li>
+                    <li data-key="modeLocalPoint4">When this mode is used with <strong>Database</strong>, a check will
+                        be performed on each launch, and new and edited notes will be added to the database.</li>
+                    <li data-key="modeLocalPoint5">If, after the initial load, you uncheck <strong>Local Folder</strong>
+                        in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load
+                        your notes without delay, but no check for new and changed notes will be performed. In this
+                        case, it is useful to periodically re-check the box to update your data.</li>
                 </ul>
                 <h3 data-key="modeArchiveTitle">Mode: Archive</h3>
                 <ul>
-                    <li data-key="modeArchivePoint1">Suitable for offline access to old versions of notes; only notes from the archive are displayed.</li>
-                    <li data-key="modeArchivePoint2">This mode is used when you transfer a zip archive of notes created by the <strong>Multinotes</strong> application with the <strong>Data Storage</strong> -> <strong>Backup Data</strong> option. Unzip it into a folder on your computer and specify it in <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Archive</strong>.</li>
-                    <li data-key="modeArchivePoint3">If you select this mode and check <strong>Database</strong>, all notes will be saved to a local database on the first launch.</li>
-                    <li data-key="modeArchivePoint4">If, after the initial load, you uncheck <strong>Archive</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay.</li>
+                    <li data-key="modeArchivePoint1">Suitable for offline access to old versions of notes; only notes
+                        from the archive are displayed.</li>
+                    <li data-key="modeArchivePoint2">This mode is used when you transfer a zip archive of notes created
+                        by the <strong>Multinotes</strong> application with the <strong>Data Storage</strong> ->
+                        <strong>Backup Data</strong> option. Unzip it into a folder on your computer and specify it in
+                        <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Archive</strong>.
+                    </li>
+                    <li data-key="modeArchivePoint3">If you select this mode and check <strong>Database</strong>, all
+                        notes will be saved to a local database on the first launch.</li>
+                    <li data-key="modeArchivePoint4">If, after the initial load, you uncheck <strong>Archive</strong> in
+                        <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your
+                        notes without delay.</li>
                 </ul>
             </span>
         </section>
@@ -329,8 +369,7 @@
             </button>
             <button id="copy-modal-btn" class="modal-header-btn" data-key-title="Copy content"
                 title="Copy content"></button>
-            <button id="delete-modal-btn" class="modal-header-btn" data-key-title="Delete note"
-                title="Delete note">
+            <button id="delete-modal-btn" class="modal-header-btn" data-key-title="Delete note" title="Delete note">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
                     fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -549,7 +588,8 @@
                 </div>
 
                 <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
-                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">Order notes:</label>
+                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">Order
+                        notes:</label>
                     <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
@@ -563,7 +603,8 @@
                                 id="sort-criteria-numord" class="settings-checkbox" checked> <span
                                 data-key="sortByNumber">by number</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="color"
-                                id="sort-criteria-color" class="settings-checkbox"> <span data-key="sortByColor">by color</span></label>
+                                id="sort-criteria-color" class="settings-checkbox"> <span data-key="sortByColor">by
+                                color</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="date"
                                 id="sort-criteria-date" class="settings-checkbox"> <span
                                 data-key="sortByCreationDate">by creation date</span></label>
@@ -578,9 +619,11 @@
                                 data-key="sortByAlphabetical">alphabetically</span></label>
                         <!-- Преместваме и чекбоксовете тук, за да имат същия стил -->
                         <label class="sort-option-label sort-option-separator"><input type="checkbox"
-                                id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">in reverse order</span></label>
+                                id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">in
+                                reverse order</span></label>
                         <label class="sort-option-label"><input type="checkbox" id="sort-reminders-top-checkbox"
-                                class="settings-checkbox"> <span data-key="sortRemindersTop">reminders on top</span></label>
+                                class="settings-checkbox"> <span data-key="sortRemindersTop">reminders on
+                                top</span></label>
                     </div>
                 </div>
 
@@ -613,7 +656,8 @@
                     <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 15px;"
                         data-key="settingsFileManagementTitle">Settings backup:</label>
                     <div class="zoom-control-wrapper" id="settings-file-buttons-wrapper" style="margin-top: 10px;">
-                        <button id="settings-export-btn" class="zoom-btn" data-key="exportSettingsBtn">Save Settings</button>
+                        <button id="settings-export-btn" class="zoom-btn" data-key="exportSettingsBtn">Save
+                            Settings</button>
                         <button id="settings-import-btn" class="zoom-btn" style="margin-left: 10px;"
                             data-key="importSettingsBtn">Read Settings</button>
                         <input type="file" id="settings-import-input" style="display: none;" accept=".json">
@@ -659,7 +703,8 @@
                                     </div>
                                     <div class="zoom-control-wrapper" id="arh-wrapper"
                                         style="margin-top: 0; margin-bottom: 0;">
-                                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Select archive folder</button>
+                                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Select
+                                            archive folder</button>
                                     </div>
                                 </div>
                             </div>
@@ -696,27 +741,44 @@
                 <h2 data-key="instrTitle">Translation Instruction</h2>
             </div>
             <div class="instr-content">
-                <p class="instr-intro" data-key="instrIntro">We recommend the following steps for improving (machine) translation:</p>
+                <p class="instr-intro" data-key="instrIntro">We recommend the following steps for improving (machine)
+                    translation:</p>
                 <ul>
-                    <li data-key="instrStep3">1. To change UI elements on the fly (including the texts you are currently reading), use the <b>#translate</b> command (or #trans, or #3, or %5). The Assistant will appear on the screen; you can move it, and when you point to an element, its text will be loaded into the edit field.</li>
+                    <li data-key="instrStep3">1. To change UI elements on the fly (including the texts you are currently
+                        reading), use the <b>#translate</b> command (or #trans, or #3, or %5). The Assistant will appear
+                        on the screen; you can move it, and when you point to an element, its text will be loaded into
+                        the edit field.</li>
                 </ul>
                 <img src="1.png" alt="1">
                 <ul>
-                    <li data-key="instrStep4">2. Change the text and press <b>APPLY</b> – the change will take effect immediately.</li>
+                    <li data-key="instrStep4">2. Change the text and press <b>APPLY</b> – the change will take effect
+                        immediately.</li>
                 </ul>
                 <img src="2.png" alt="2">
-                <div data-key="instrStep4a">Please note that changes are made in memory and will disappear if you reload the page, but the app has a mechanism to restore them with the <b>#restore</b> command.</div> <!--class="instr-note" -->
+                <div data-key="instrStep4a">Please note that changes are made in memory and will disappear if you reload
+                    the page, but the app has a mechanism to restore them with the <b>#restore</b> command.</div>
+                <!--class="instr-note" -->
                 <ul>
-                    <li data-key="instrStep5">3. When you want to save the changes made so far, open the chat window and type the <b>#save</b> command (or #4, or %6). Save the file as <b>i18n-LL.json</b>.<br>
-Next time you want to work with your interface edits, select XX in the language selector, and the system will ask which language file to load. Load the saved file from your local storage.</li>
-                    <li data-key="instrStep1">4. Use <b>CX UIedit</b> (<a href="https://multinotes.app/gdviewer/ui/uiedit" target="_blank">https://multinotes.app/gdviewer/ui/uiedit</a>) to review and edit texts contained in files:<br>
-<a href="lang/index-LL.json" download>index-LL.json</a> – introductory page<br>
-<a href="lang/i18n-LL.json" download>i18n-LL.json</a> – main application<br>
-<a href="lang/kb-LL.json" download>kb-LL.json</a> – Assistant texts.<br>
-Download the files from the links above and save them locally on your device.</li>
-                    <li data-key="instrStep2">5. Please send your edited files to <a href="mailto:multinotes.web@gmail.com">multinotes.web@gmail.com</a> so they can be included in the application. We appreciate your effort and time spent (as do all future users of your language).<br><br>
+                    <li data-key="instrStep5">3. When you want to save the changes made so far, open the chat window and
+                        type the <b>#save</b> command (or #4, or %6). Save the file as <b>i18n-LL.json</b>.<br>
+                        Next time you want to work with your interface edits, select XX in the language selector, and
+                        the system will ask which language file to load. Load the saved file from your local storage.
+                    </li>
+                    <li data-key="instrStep1">4. Use <b>CX UIedit</b> (<a
+                            href="https://multinotes.app/gdviewer/ui/uiedit"
+                            target="_blank">https://multinotes.app/gdviewer/ui/uiedit</a>) to review and edit texts
+                        contained in files:<br>
+                        <a href="lang/index-LL.json" download>index-LL.json</a> – introductory page<br>
+                        <a href="lang/i18n-LL.json" download>i18n-LL.json</a> – main application<br>
+                        <a href="lang/kb-LL.json" download>kb-LL.json</a> – Assistant texts.<br>
+                        Download the files from the links above and save them locally on your device.
+                    </li>
+                    <li data-key="instrStep2">5. Please send your edited files to <a
+                            href="mailto:multinotes.web@gmail.com">multinotes.web@gmail.com</a> so they can be included
+                        in the application. We appreciate your effort and time spent (as do all future users of your
+                        language).<br><br>
 
-Editing mode ends when you click the Assistant.</li>
+                        Editing mode ends when you click the Assistant.</li>
                 </ul>
             </div>
             <div class="instr-footer">
@@ -728,13 +790,13 @@ Editing mode ends when you click the Assistant.</li>
     <!-- KB Assistant -->
     <link rel="stylesheet" href="msmstyle.css">
     <link rel="stylesheet" href="kb-assistant.css">
-    <script src="kb-assistant.js"></script>
-    <script src="msm.js"></script>
+    <script src="kb-assistantt.js"></script>
+    <script src="msmm.js"></script>
 
-    <script src="main.js"></script>
+    <script src="mainn.js"></script>
     <script>
         const originalSetLanguage = window.setLanguage;
-        window.setLanguage = async function(lang) {
+        window.setLanguage = async function (lang) {
             if (originalSetLanguage) await originalSetLanguage(lang);
             const instrModal = document.getElementById('instr-modal');
             if (instrModal) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'multinotes-b1.96';
+const CACHE_NAME = 'multinotes-tr1.00';
 const ASSETS_TO_CACHE = [
   './',
   './index-2.html',
@@ -9,7 +9,7 @@ const ASSETS_TO_CACHE = [
   './msmstyle.css',
   './kb-assistant.css',
   './kb-assistantt.js',
-  './msmrtt.js',
+  './msmm.js',
   './mainn.js',
   './lang/kb-core.json',
   './lang/kb-bg.json',

@@ -9,32 +9,21 @@
     <link rel="stylesheet" href="style.css">
     <meta http-equiv="Content-Security-Policy"
         content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
-    <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
-        crossorigin="anonymous">
-    </script-->
 </head>
 
 <body>
-    <!-- Вертикална реклама 120х728>
-    <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
-        data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
-    </ins>
-    <script>
-        (adsbygoogle = window.adsbygoogle || []).push({});
-    </script -->
-
     <header>
         <div style="display: flex; align-items: center;">
             <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
             <h1 ID="app-title">CX MultiNotes Viewer</h1>
         </div>
         <div id="search-wrapper">
-            <input type="search" id="search-box" autocomplete="off" data-key-placeholder="searchPlaceholder"
-                placeholder="Търсене в заглавията...">
+            <input type="search" id="search-box" autocomplete="off" data-key-placeholder="Type text"
+                placeholder="Type text">
         </div>
         <div id="header-buttons">
             <div id="note-counter" class="note-counter">0</div>
-            <button id="mode_button" class="header-btn" title="Режим" data-key-title="modeButtonTooltip">
+            <button id="mode_button" class="header-btn" title="Режим" data-key-title="Mode">
                 <!-- Иконата се вмъква от JS -->
                 <div class="mode-icon-wrapper">
                     <img id="mode-main-icon" src="NoteFav.png" alt="" style="width:24px; height:24px;">
@@ -43,7 +32,7 @@
                     </div>
                 </div>
             </button>
-            <button id="calendar_button" class="header-btn" data-key-title="calendarButtonTooltip" title="Календар">
+            <button id="calendar_button" class="header-btn" data-key-title="Monthly calendar" title="Monthly calendar">
                 <svg width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                     stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -54,7 +43,7 @@
 
                 </svg>
             </button>
-            <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Настройки">
+            <button id="settings_button" class="header-btn" data-key-title="Settings" title="Settings">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
                     fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -63,19 +52,10 @@
                     <circle cx="12" cy="12" r="3" />
                 </svg>
             </button>
-            <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Презареди">
+            <button id="reload_button" class="header-btn" data-key-title="Reload" title="Reload">
                 <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
             </button>
-            <!-- FEEDBACK BUTTON 
-            <a id="feedback_button" href="mailto:multinotes.web@gmail.com" class="header-btn"
-                data-key-title="feedbackButtonTooltip" title="Обратна връзка">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                    <polyline points="22,6 12,13 2,6"></polyline>
-                </svg>
-            </a> -->
-            <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Изход">
+            <button id="signout_button" class="header-btn" data-key-title="Sign Out" title="Sign Out">
                 <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
             </button>
             <div id="boards-menu-container"></div>
@@ -83,25 +63,16 @@
     </header>
 
     <div id="login-page" class="login-div" hidden>
-        <!-- Language switcher извън login-box, винаги видим -->
-        <div id="lang-switcher-main" style="display: flex; justify-content: center;">
-            <button id="lang-bg-main" class="lang-btn">BG</button>
-            <button id="lang-en-main" class="lang-btn">EN</button>
-        </div>
+        <div class="login-box" style="margin-bottom: 10px; max-width: 350px; padding: 25px; display: none;">
+            <div class="lang-switcher-container" style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+            </div>
 
-        <div class="login-box" style="margin-bottom: 10px; max-width: 350px; display: none;">
-            <!--div id="lang-switcher">
-                <button id="lang-bg-box" class="lang-btn">BG</button>
-                <button id="lang-en-box" class="lang-btn">EN</button>
-            </div-->
-            <p data-key="loginPrompt">Please sign in with Google account you used to sync <i>MultiNotes</i>.</p>
-            <p id="app-title2" data-key="appTitle2" style="margin-top: 10px;"></p>
-            <button id="authorize_button" data-key="authorizeButton" style="display:none" disabled>Authorize with
-                Google</button>
+            <p data-key="loginPrompt">Please sign in with the Google account you used to sync <i>MultiNotes</i>.</p>
+            <p id="app-title2" data-key="appTitle2" style="margin-top: 10px;">This is a test (Beta) version of the application. If you would like to get access, please write to multinotes.web@gmail.com</p>
+            <button id="authorize_button" data-key="authorizeButton" style="display:none" disabled>Authorize with Google</button>
             <button id="trialBtn" data-key="trialButton" style="display:none">Start 30-day trial period</button>
             <div style="margin-top: 15px;">
-                <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">
-                    Remember me</label>
+                <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">Remember me</label>
                 <input type="checkbox" id="rememberMe" class="settings-checkbox">
             </div>
         </div>
@@ -124,102 +95,40 @@
         </script>
 
         <section style="max-width: 800px; margin: 0 auto;">
-            <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> е приложение, работещо в браузъра ви, чрез което
-                може да
-                имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за
-                Андроид, от
-                вашия компютър, таблет, iPhone и др. независимо дали работите с Windows, Android, macOS, iOS или Linux.
-            </p>
-            <p data-key="intro1a">Необходимо условие за работа на приложението е да сте включили синхронизация с
-                <strong>Google Drive</strong> в настройките на <strong>Multinotes</strong>.
-            </p>
-            <p data-key="intro2"><strong>CX MultiNotes Viewer</strong> осигурява бърз достъп до вашите бележки, без
-                нужда от инсталация и дори при необходимост дава възможност за работа без връзка с интернет.
-                Основният режим на работа използва локална база данни в браузъра, която се обновява с новите и
-                редактирани
-                бележки от приложението и по този начин осигурява оптимална производителност.</p>
-            <h3 data-key="modeDbTitle">Ето как работи:</h3>
+            <p data-key="intro1"><strong>CX MultiNotes Viewer</strong> is a simple, browser‑based tool that lets you open your <a href="https://play.google.com/store/apps/details?id=monitor.kmv.multinotes" target="_blank"><strong>Multinotes</strong></a> Android notes on any device — your computer, tablet, iPhone, or anything else you use, no matter if you’re on Windows, Android, macOS, iOS, or Linux.</p>
+            <p data-key="intro1a">This feature is currently available exclusively to users of the <b>MultiNotes</b> Android version downloaded from <b>Google Play</b>, with <b>Google Drive</b> sync enabled. Support for the <b>Huawei</b> version is coming soon, so stay tuned for updates.</p>
+            <p data-key="intro2">With <strong>CX MultiNotes Viewer</strong>, you can get to your notes quickly, without installing anything — and it even works offline when you need it. Your browser keeps a local copy of your notes and updates it automatically whenever something new is added or changed, so everything stays fast and smooth.</p>
+            <h3 data-key="modeDbTitle">Here is how it works:</h3>
             <!--p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
             ефективност и независимост от интернет връзка.</p-->
             <ul>
-                <li data-key="modeDbPoint1">При първо стартиране приложението изтегля всички бележки от <strong>Google
-                        Drive</strong> и ги записва в локалната база данни на браузъра.</li>
-                <li data-key="modeDbPoint2">Всяко следващо зареждане става директно от тази база, като се прави проверка
-                    и
-                    се изтеглят само новите и променените бележки след последното стартиране, което съществено ускорява
-                    процеса.
-                </li>
-                <li data-key="modeDbPoint3">Ако, след първоначално зареждане, махнете отметката на <strong>Google
-                        Drive</strong> в <strong>Настройки</strong>, бележките ще се зареждат само от базата данни,
-                    което
-                    съществено
-                    ще ускори процеса и дори ще може да работите без връзка с интернет. В този случай няма да се прави
-                    проверка
-                    за нови и променени бележки, затова ще е полезно периодично да връщате отметката, за да
-                    актуализирате
-                    данните си.</li>
+                <li data-key="modeDbPoint1">On the first launch, the viewer downloads all your notes from <strong>Google Drive</strong> and stores them in a local database (cache) inside your browser.</li>
+                <li data-key="modeDbPoint2">After that, everything loads directly from this local copy. The app only checks for new or updated notes since your last visit, which makes things much faster.</li>
+                <li data-key="modeDbPoint3">If you turn off <strong>Google Drive</strong> in <strong>Settings</strong> after the initial load, the viewer will use only the local database. This speeds things up even more and even lets you work offline. Just keep in mind that no updates will be checked in this mode, so it’s a good idea to click the <strong>Mode</strong> button from time to time to refresh your notes.</li>
             </ul>
-            <h3 data-key="modeNoDbTitle">Режим без база данни</h3>
+            <h3 data-key="modeNoDbTitle">Mode without Database</h3>
             <ul>
-                <li data-key="modeNoDbPoint1">Ако, след първоначално зареждане, махнете отметката от <strong>База
-                        данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google
-                        Drive</strong> при всяко следващо стартиране.</li>
-                <li data-key="modeNoDbPoint2">Винаги се показват най-актуалните данни.</li>
-                <li data-key="modeNoDbPoint3">По-бавно зареждане, изисква интернет връзка.</li>
+                <li data-key="modeNoDbPoint1">If you turn off the <strong>Database</strong> option in <strong>Settings</strong> after the initial load, the viewer will pull your notes directly from <strong>Google Drive</strong> every time you open it.</li>
+                <li data-key="modeNoDbPoint2">This way, you’ll always see the most up‑to‑date version of your data.</li>
+                <li data-key="modeNoDbPoint3">Just keep in mind that loading will be slower and you’ll need an internet connection for it to work.</li>
             </ul>
             <span hidden>
-                <h2 data-key="advancedModesTitle">Допълнителни режими (Разширени настройки)</h2>
-                <p data-key="advancedModesDesc">Чрез менюто <em><strong>Разширени настройки</strong></em> може да
-                    активирате
-                    алтернативни режими на работа, подходящи за специфични случаи. Тези режими могат да работят с или
-                    без
-                    изполване на локална база данни, в зависимост от вашите предпочитания.</p>
-                <h3 data-key="modeLocalTitle">Режим: Локална папка</h3>
+                <h2 data-key="advancedModesTitle">Additional Modes (Advanced Settings)</h2>
+                <p data-key="advancedModesDesc">Through the <em><strong>Advanced Settings</strong></em> menu, you can activate alternative modes of operation suitable for specific cases. These modes can work with or without using a local database, depending on your preferences.</p>
+                <h3 data-key="modeLocalTitle">Mode: Local Folder</h3>
                 <ul>
-                    <li data-key="modeLocalPoint1">Режим, подходящ за потребители, които предпочитат да имат локално
-                        копие
-                        на бележките си и искат по-бърз достъп до тях.</li>
-                    <li data-key="modeLocalPoint2">Данните се четат от папка на вашия компютър. Трябва да настроите
-                        приложението <strong>Google Drive for Desktop</strong> да синхронизира
-                        <strong>multinotes_data</strong> от <strong>Google Drive</strong> на компютъра ви (може да
-                        зададете
-                        наличност на данните и в офлайн режим) и да посочите синхронизираната папка в
-                        <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Локална
-                            папка</strong>.
-                    </li>
-                    <li data-key="modeLocalPoint3">Ако изберете този режим и поставите отметка в <strong>База
-                            данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-                    <li data-key="modeLocalPoint4">Когато се използва този режим заедно с <strong>База данни</strong>,
-                        при
-                        всяко стартиране ще се прави проверка и новите и редактирани бележки ще допълват записаните в
-                        базата
-                        данни.</li>
-                    <li data-key="modeLocalPoint5">Ако, след първоначално зареждане, махнете отметката на
-                        <strong>Локална
-                            папка</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може
-                        да
-                        зареждате бележките си без забавяне, но няма да се прави проверка за нови и променени бележки. В
-                        този случай е полезно периодично да връщате отметката, за да актуализирате данните си.
-                    </li>
+                    <li data-key="modeLocalPoint1">A mode suitable for users who prefer to have a local copy of their notes and want faster access to them.</li>
+                    <li data-key="modeLocalPoint2">Data is read from a folder on your computer. You need to set up the <strong>Google Drive for Desktop</strong> application to synchronize <strong>multinotes_data</strong> from <strong>Google Drive</strong> to your computer (you can also make the data available offline) and specify the synchronized folder in <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Local Folder</strong>.</li>
+                    <li data-key="modeLocalPoint3">If you select this mode and check <strong>Database</strong>, all notes will be saved to a local database on the first launch.</li>
+                    <li data-key="modeLocalPoint4">When this mode is used with <strong>Database</strong>, a check will be performed on each launch, and new and edited notes will be added to the database.</li>
+                    <li data-key="modeLocalPoint5">If, after the initial load, you uncheck <strong>Local Folder</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay, but no check for new and changed notes will be performed. In this case, it is useful to periodically re-check the box to update your data.</li>
                 </ul>
-                <h3 data-key="modeArchiveTitle">Режим: Архив</h3>
+                <h3 data-key="modeArchiveTitle">Mode: Archive</h3>
                 <ul>
-                    <li data-key="modeArchivePoint1">Подходящ за офлайн достъп до стари версии на бележките, показват се
-                        само бележките от архива.</li>
-                    <li data-key="modeArchivePoint2">Този режим се използва, когато прехвърлите zip-архив с бележки,
-                        създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на
-                            данни</strong>
-                        -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я
-                        посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> ->
-                        <strong>Архив</strong>.
-                    </li>
-                    <li data-key="modeArchivePoint3">Ако изберете този режим и поставите отметка в <strong>База
-                            данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-                    <li data-key="modeArchivePoint4">Ако, след първоначално зареждане, махнете отметката на
-                        <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще
-                        може
-                        да зареждате бележките си без забавяне.
-                    </li>
+                    <li data-key="modeArchivePoint1">Suitable for offline access to old versions of notes; only notes from the archive are displayed.</li>
+                    <li data-key="modeArchivePoint2">This mode is used when you transfer a zip archive of notes created by the <strong>Multinotes</strong> application with the <strong>Data Storage</strong> -> <strong>Backup Data</strong> option. Unzip it into a folder on your computer and specify it in <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Archive</strong>.</li>
+                    <li data-key="modeArchivePoint3">If you select this mode and check <strong>Database</strong>, all notes will be saved to a local database on the first launch.</li>
+                    <li data-key="modeArchivePoint4">If, after the initial load, you uncheck <strong>Archive</strong> in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your notes without delay.</li>
                 </ul>
             </span>
         </section>
@@ -239,7 +148,7 @@
         <div class="popup-content">
             <p data-key="promptFolderId"></p>
             <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
-            <button id="submitFolderIdBtn" data-key="submitButton" title=""></button>
+            <button id="submitFolderIdBtn" data-key="submitButton" title="">Confirm</button>
         </div>
     </div>
 
@@ -248,8 +157,8 @@
             <div id="modal-board-name"></div>
             <button id="prev-note-btn" class="modal-header-btn modal-nav-btn" title="Предишна бележка">&lt;</button>
             <button id="next-note-btn" class="modal-header-btn modal-nav-btn" title="Следваща бележка">&gt;</button>
-            <button id="calculate-modal-btn" class="modal-header-btn" data-key-title="calculateTooltip"
-                title="Изчисли израз">
+            <button id="calculate-modal-btn" class="modal-header-btn" data-key-title="Calculate expression"
+                title="Calculate expression">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
                     fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -263,10 +172,10 @@
                     <line x1="16" y1="17" x2="16" y2="17.01" />
                 </svg>
             </button>
-            <button id="copy-modal-btn" class="modal-header-btn" data-key-title="copyTooltip"
-                title="Копирай съдържанието"></button>
-            <button id="delete-modal-btn" class="modal-header-btn" data-key-title="deleteNoteTooltip"
-                title="Изтрий бележката">
+            <button id="copy-modal-btn" class="modal-header-btn" data-key-title="Copy content"
+                title="Copy content"></button>
+            <button id="delete-modal-btn" class="modal-header-btn" data-key-title="Delete note"
+                title="Delete note">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
                     fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -291,13 +200,18 @@
         </div>
     </div>
 
-    <button id="scrollTopBtn" data-key-title="topTooltip" title="Към началото"></button>
+    <button id="scrollTopBtn" data-key-title="Go to top" title="Go to top"></button>
 
     <div id="toastNotification" class="toast-notification"></div>
 
     <div id="settings-modal" class="modal-overlay">
         <div class="modal-content-box set-modal">
-            <h2 data-key="settingsTitle">Настройки</h2>
+            <div
+                style="display: flex; justify-content: center; align-items: center; position: relative; margin-bottom: 5px; min-height: 35px;">
+                <h2 data-key="settingsTitle" style="margin: 0;">Settings</h2>
+                <div class="lang-switcher-container"
+                    style="position: absolute; right: 40px; top: 50%; transform: translateY(-50%);"></div>
+            </div>
             <h3 class="modal-version">CX MultiNotes Viewer ver. </h3>
             <div style="text-align: center; margin-bottom: 3px;">
                 <a href="mailto:multinotes.web@gmail.com"
@@ -307,7 +221,7 @@
                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                         <polyline points="22,6 12,13 2,6"></polyline>
                     </svg>
-                    <span data-key="feedbackButtonTooltip">Обратна връзка</span>
+                    <span data-key="feedbackButtonTooltip">Feedback: multinotes.web@gmail.com</span>
                 </a>
             </div>
             <button class="modal-close modal-header-btn">&times;</button>
@@ -319,7 +233,7 @@
                 <div class="zoom-control-wrapper"
                     style="display: flex; flex-direction: row !important; align-items: center; gap: 5px;">
                     <label for="scaleSlider" style="margin-right: 5px; flex-shrink: 0;"
-                        data-key="zoomLabel">Мащаб:</label>
+                        data-key="zoomLabel">Zoom:</label>
                     <input type="range" id="scaleSlider" min="25" max="175" value="100"
                         style="flex-grow: 1; min-width: 50px;">
                     <input type="number" id="scaleInput" min="25" max="175" class="zoom-input-number"
@@ -328,15 +242,15 @@
                     <button id="scaleDecBtn" class="zoom-btn" style="padding: 2px 10px; flex-shrink: 0;">-</button>
                     <button id="scaleIncBtn" class="zoom-btn" style="padding: 2px 8px; flex-shrink: 0;">+</button>
                 </div>
+
                 <div style="text-align: center; margin-top: 10px; margin-bottom: 10px;">
-                    <button id="applyZoomBtn" class="zoom-btn" data-key="submitButton">Потвърди</button>
+                    <button id="applyZoomBtn" class="zoom-btn" data-key="submitButton">Confirm</button>
                 </div>
 
                 <div class="zoom-control-wrapper"
                     style="margin-top: 0px; display: flex; flex-direction: row !important; align-items: center;">
                     <label for="start-board-select" style="margin-right: 10px; flex-grow: 1;"
-                        data-key="startBoardLabel">
-                        Стартов борд:</label>
+                        data-key="startBoardLabel">Start Board:</label>
                     <select id="start-board-select" class="start-board-select" style="flex-shrink: 0; width: auto;">
                         <!-- Options will be populated by JS -->
                     </select>
@@ -345,16 +259,14 @@
                 <div class="zoom-control-wrapper" id="max-searches" style="margin-top: 10px;">
                     <label for="max-searches-input"
                         style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="maxSearchesLabel">
-                        Запазени търсения:</label>
+                        data-key="maxSearchesLabel">Saved Searches:</label>
                     <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
                 </div>
 
                 <div class="zoom-control-wrapper" id="note-font-size" style="margin-top: 10px;">
                     <label for="note-font-size-input"
                         style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="noteFontSizeLabel">
-                        Размер шрифт (бележка):</label>
+                        data-key="noteFontSizeLabel">Note Font Size:</label>
                     <select id="note-font-size-input" class="zoom-input-select"
                         style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
                 </div>
@@ -362,8 +274,7 @@
                 <div class="zoom-control-wrapper" id="modal-font-size" style="margin-top: 10px;">
                     <label for="modal-font-size-input"
                         style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="modalFontSizeLabel">
-                        Размер шрифт (преглед):</label>
+                        data-key="modalFontSizeLabel">Modal Font Size:</label>
                     <select id="modal-font-size-input" class="zoom-input-select"
                         style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
                 </div>
@@ -371,63 +282,55 @@
                 <div class="zoom-control-wrapper" id="hide-assistant" style="margin-top: 10px;">
                     <label for="hide-assistant-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="hideAssistantLabel">
-                        Скриване на асистента</label>
+                        data-key="hideAssistantLabel">Hide Assistant:</label>
                     <input type="checkbox" id="hide-assistant-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="show-date" style="margin-top: 10px;">
                     <label for="show-datemod-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showDatemodLabel">
-                        Дата</label>
+                        data-key="showDatemodLabel">Show modification/calendar date:</label>
                     <input type="checkbox" id="show-datemod-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="one-tap-link" style="margin-top: 10px;">
                     <label for="one-tap-link-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="oneTapLinkLabel">
-                        Линкове с едно докосване</label>
+                        data-key="oneTapLinkLabel">One-click links:</label>
                     <input type="checkbox" id="one-tap-link-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="notes-bgrd" style="margin-top: 10px;">
                     <label for="notes-bgrd-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="notesBgrdLabel">
-                        Графичен фон (бележки)</label>
+                        data-key="notesBgrdLabel">Graphical background (board notes):</label>
                     <input type="checkbox" id="notes-bgrd-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="img-bgrd" style="margin-top: 10px;">
                     <label for="img-bgrd-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="imgBgrdLabel">
-                        Графичен фон (единична бележка)</label>
+                        data-key="imgBgrdLabel">Graphical background (note):</label>
                     <input type="checkbox" id="img-bgrd-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="note-count" style="margin-top: 10px;">
                     <label for="show-board-note-count-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showBoardNoteCountLabel">
-                        Брой бележки в борда:</label>
+                        data-key="showBoardNoteCountLabel">Notes count in board:</label>
                     <input type="checkbox" id="show-board-note-count-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="weekly-calendar" style="margin-top: 10px;">
                     <label for="weekly-calendar-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showWeeklyCalendar">
-                        Седмичен календар:</label>
+                        data-key="showWeeklyCalendar">Weekly calendar</label>
                     <input type="checkbox" id="weekly-calendar-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="zoom-control-wrapper" id="additional-boards-header" style="margin-top: 10px;">
                     <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="additionalBoardsLabel">
-                        Допълнителни бордове:</label>
+                        data-key="additionalBoardsLabel">Additional boards:</label>
                     <span id="boards-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
@@ -440,48 +343,42 @@
                         <div class="zoom-control-wrapper" id="remind-board" style="margin-top: 0px;">
                             <label for="remind-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showBoardRemind">
-                                Борд Напомняния:</label>
+                                data-key="showBoardRemind">Board <strong><i>Reminders</i></strong>:</label>
                             <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
                         </div>
 
                         <div class="zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
                             <label for="all-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showBoardAll">
-                                Борд Всички:</label>
+                                data-key="showBoardAll">Show board <strong><i>All</i></strong>:</label>
                             <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
                         </div>
 
                         <div class="zoom-control-wrapper" id="show-photos-board" style="margin-top: 10px;">
                             <label for="show-photos-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showPhotosBoardLabel">
-                                Борд съобщения със снимки:</label>
+                                data-key="showPhotosBoardLabel">Board <strong><i>With Photos</i></strong>:</label>
                             <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
                         </div>
 
                         <div class="zoom-control-wrapper" id="show-videos-board" style="margin-top: 10px;">
                             <label for="show-videos-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showVideosBoardLabel">
-                                Борд С видео:</label>
+                                data-key="showVideosBoardLabel">Board <strong><i>With Video</i></strong>:</label>
                             <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
                         </div>
 
                         <div class="zoom-control-wrapper" id="show-sounds-board" style="margin-top: 10px;">
                             <label for="show-sounds-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showSoundsBoardLabel">
-                                Борд Със звук:</label>
+                                data-key="showSoundsBoardLabel">Board <strong><i>With Sounds</i></strong>:</label>
                             <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
                         </div>
 
                         <div class="zoom-control-wrapper" id="show-other-board" style="margin-top: 10px;">
                             <label for="show-other-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showOtherBoardLabel">
-                                Борд Други приложения:</label>
+                                data-key="showOtherBoardLabel">Board <strong><i>Other Attachments</i></strong>:</label>
                             <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -489,8 +386,7 @@
                             style="margin-top: 10px; padding-bottom: 5px; border-bottom: 1px solid #000000;">
                             <label for="show-new-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showNewBoardLabel">
-                                Борд Нови</label>
+                                data-key="showNewBoardLabel">Board <strong><i>New</i></strong>:</label>
                             <input type="checkbox" id="show-new-board-checkbox" class="settings-checkbox">
                         </div>
                     </div>
@@ -498,8 +394,7 @@
                 </div>
 
                 <div class="zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
-                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">
-                        Подреждане на бележките:</label>
+                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">Order notes:</label>
                     <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
@@ -511,46 +406,37 @@
                     <div class="sort-options-container">
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="numord"
                                 id="sort-criteria-numord" class="settings-checkbox" checked> <span
-                                data-key="sortByNumber">по номер</span></label>
+                                data-key="sortByNumber">by number</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="color"
-                                id="sort-criteria-color" class="settings-checkbox"> <span data-key="sortByColor">по
-                                цвят</span></label>
+                                id="sort-criteria-color" class="settings-checkbox"> <span data-key="sortByColor">by color</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="date"
                                 id="sort-criteria-date" class="settings-checkbox"> <span
-                                data-key="sortByCreationDate">по дата на
-                                създаване</span></label>
+                                data-key="sortByCreationDate">by creation date</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="datemod"
                                 id="sort-criteria-datemod" class="settings-checkbox"> <span
-                                data-key="sortByModificationDate">по дата на
-                                редактиране</span></label>
+                                data-key="sortByModificationDate">by modification date</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="calendarDate"
                                 id="sort-criteria-calendarDate" class="settings-checkbox"> <span
-                                data-key="sortByCalendarDate">по дата в
-                                календара</span></label>
+                                data-key="sortByCalendarDate">by calendar date</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="alpha"
                                 id="sort-criteria-alpha" class="settings-checkbox"> <span
-                                data-key="sortByAlphabetical">по азбучен
-                                ред</span></label>
+                                data-key="sortByAlphabetical">alphabetically</span></label>
                         <!-- Преместваме и чекбоксовете тук, за да имат същия стил -->
                         <label class="sort-option-label sort-option-separator"><input type="checkbox"
-                                id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">в
-                                обратен ред</span></label>
+                                id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">in reverse order</span></label>
                         <label class="sort-option-label"><input type="checkbox" id="sort-reminders-top-checkbox"
-                                class="settings-checkbox"> <span data-key="sortRemindersTop">напомняния
-                                най-отгоре</span></label>
+                                class="settings-checkbox"> <span data-key="sortRemindersTop">reminders on top</span></label>
                     </div>
                 </div>
 
                 <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 10px;"
-                        data-key="dataManagementTitle">Четене на данни</label>
+                        data-key="dataManagementTitle">Data Loading</label>
                     <div class="zoom-control-wrapper" style="margin-top: 0px;" id="google-db-wrapper">
                         <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
                         <img src="GDrive.png" alt="Google Drive" style="width:24px; height:24px; margin-right: 10px;">
                         <label for="use-google-db-checkbox" class="settings-icon-label" data-key="useGoogleDbLabel"
-                            id="use-google-db-label" style="flex-basis: 100px; flex-shrink: 0;">
-                            Google Drive:
-                        </label>
+                            id="use-google-db-label" style="flex-basis: 100px; flex-shrink: 0;">Google Drive:</label>
                         <input type="checkbox" id="use-google-db-checkbox" class="settings-checkbox" />
                     </div>
 
@@ -559,34 +445,22 @@
                         <img src="Database.png" alt="Database" style="width:24px; height:24px; margin-right: 10px;">
 
                         <label for="use-indexeddb-checkbox" class="settings-icon-label" data-key="useIndexedDbLabel"
-                            style="flex-basis: 100px; flex-shrink: 0;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
-                            </svg>
-                            База данни:
-                        </label>
+                            style="flex-basis: 100px; flex-shrink: 0;">Database:</label>
                         <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
                     </div>
                     <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;"
-                        data-key="dbManagementTitle">
-                        Управление на базата данни
-                    </label>
+                        data-key="dbManagementTitle">Database Management</label>
                     <div class="zoom-control-wrapper" id="db-buttons-wrapper" style="margin-top: 15px;">
-                        <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
+                        <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Create</button>
                         <button id="delete-db-btn" class="zoom-btn settings-close-btn" style="margin-left: 10px;"
-                            data-key="deleteDbButton">Изтрий</button>
+                            data-key="deleteDbButton">Delete</button>
                     </div>
                     <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 15px;"
-                        data-key="settingsFileManagementTitle">Локален архив на настройките</label>
+                        data-key="settingsFileManagementTitle">Settings backup:</label>
                     <div class="zoom-control-wrapper" id="settings-file-buttons-wrapper" style="margin-top: 10px;">
-                        <button id="settings-export-btn" class="zoom-btn" data-key="exportSettingsBtn">Запис на
-                            настройка</button>
+                        <button id="settings-export-btn" class="zoom-btn" data-key="exportSettingsBtn">Save Settings</button>
                         <button id="settings-import-btn" class="zoom-btn" style="margin-left: 10px;"
-                            data-key="importSettingsBtn">Четене на настройка</button>
+                            data-key="importSettingsBtn">Read Settings</button>
                         <input type="file" id="settings-import-input" style="display: none;" accept=".json">
                     </div>
                 </div>
@@ -595,7 +469,7 @@
                     <!-- Accordion  -->
                     <div class="accordion" style="margin-top: 15px;">
                         <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
-                            <span data-key="advancedSettings">Разширени настройки</span>
+                            <span data-key="advancedSettings">Advanced Settings</span>
                             <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
                             <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
                         </div>
@@ -604,9 +478,7 @@
                                 <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
                                 <label for="use-local-db-checkbox" class="settings-icon-label"
                                     data-key="useLocalDbLabel" id="use-local-db-label"
-                                    style="flex-basis: 120px; flex-shrink: 0;">
-                                    Локална папка:
-                                </label>
+                                    style="flex-basis: 120px; flex-shrink: 0;">Local folder:</label>
                                 <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox"
                                     style="flex-shrink: 0;" />
                                 <span id="local-sync-folder-name"
@@ -617,9 +489,7 @@
                                 id="arh-db-wrapper">
                                 <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
                                 <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel"
-                                    id="use-arh-db-label" style="flex-basis: 120px; flex-shrink: 0;">
-                                    Архив:
-                                </label>
+                                    id="use-arh-db-label" style="flex-basis: 120px; flex-shrink: 0;">Archive:</label>
                                 <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox"
                                     style="flex-shrink: 0;" />
                                 <span id="arh-folder-name"
@@ -630,77 +500,21 @@
                                 <div style="display: flex; justify-content: center; gap: 10px;">
                                     <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
                                         <button id="select-folder-btn" class="zoom-btn"
-                                            data-key="localSyncFolderLabel">Избери локална папка</button>
+                                            data-key="localSyncFolderLabel">Select local folder</button>
                                     </div>
                                     <div class="zoom-control-wrapper" id="arh-wrapper"
                                         style="margin-top: 0; margin-bottom: 0;">
-                                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Избери
-                                            архивна папка</button>
+                                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Select archive folder</button>
                                     </div>
                                 </div>
                             </div>
-
-                            <!--div class="zoom-control-wrapper" id="db-export-wrapper" style="margin-top: 15px;">
-                                <button id="db-export1-btn" class="zoom-btn"
-                                    onclick="exportStore('NotesDB', 'config')">Config Export</button>
-                                <button id="db-export2-btn" class="zoom-btn settings-close-btn"
-                                    style="margin-left: 10px;" onclick="exportData('NotesDB', 'boards')">Boards
-                                    Export</button>
-                                <button id="db-export3-btn" class="zoom-btn settings-close-btn"
-                                    style="margin-left: 10px;" onclick="exportNotes()">Export All</button>
-                            </div-->
                         </div>
                     </div>
                 </span>
 
                 <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
-                <!-- <div style="position: relative; z-index: 200; text-align: center; margin-top: -5px; line-height: 0;">
-                    <script type='text/javascript' src='https://storage.ko-fi.com/cdn/widget/Widget_2.js'></script>
-                    <script
-                        type='text/javascript'>kofiwidget2.init('Подкрепете автора • Споделете: ', 'transparent', 'O5O81RA2VZ'); kofiwidget2.draw();</script>
-                    <style>
-                        /* Compact Ko-fi Widget Overrides */
-                        .btn-container {
-                            margin: 0 !important;
-                        }
-
-                        a.kofi-button {
-                            box-shadow: none !important;
-                            min-width: auto !important;
-                            padding: 0 !important;
-                            line-height: normal !important;
-                            /* Restore line-height for text */
-                            display: inline-flex !important;
-                            /* Use flex to align image and text */
-                            align-items: center !important;
-                            gap: 5px !important;
-                            text-decoration: none !important;
-                        }
-
-                        img.kofiimg {
-                            height: 30px !important;
-                            width: auto !important;
-                            display: inline-block !important;
-                            /* Restore inline behavior */
-                            padding: 0 !important;
-                            margin-bottom: 2px !important;
-                            /* Slight tweak for optical alignment */
-                        }
-                    </style>
-                </div> -->
 
                 <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
-                    <!--script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-                        data-name="bmc-button" data-slug="multinotesi" data-color="#FFDD00" data-emoji="🍵"
-                        data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000"
-                        data-font-color="#000000" data-coffee-color="#ffffff"></script>
-                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
-                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
-                    </p>
-                    <iframe id='kofiframe'
-                        src='https://ko-fi.com/multinotes/?hidefeed=true&widget=true&embed=true&preview=true'
-                        style='border:none;width:100%;padding:4px;background:#f9f9f9;' height='52'
-                        title='multinotes'></iframe-->
                     <script src='https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'></script>
                     <script>
                         kofiWidgetOverlay.draw('multinotes', {
@@ -711,38 +525,14 @@
                         });
                     </script>
                 </div>
-                <!--div>
-                    <script async src="https://js.stripe.com/v3/buy-button.js">
-                    </script>
-                    <stripe-buy-button buy-button-id="buy_btn_1SZVZdEgnSjbu4vOL2kPcVPj"
-                        publishable-key="pk_live_51SZTDwEgnSjbu4vO1sy0OJLDXVZBd5u1pq5YkvIVfJ7a8cFuhcZGVSKtKnW7sJnBu7olTphWoho3WtVZmMC7v1wz00ukkbubUH">
-                    </stripe-buy-button>
-                    <p data-key="supportMessage" style="margin: 0; font-size: 14px; line-height: 1.4; flex: 1;">
-                        Ако харесвате това приложение и го намирате за полезно, подкрепете разработчика с малка сума.
-                    </p>
-                </div-->
             </div>
             <div class="settings-close-btn-wrapper">
                 <button id="settings-close-btn" class="zoom-btn settings-close-btn"
-                    data-key="closeButton">Затвори</button>
+                    data-key="closeButton">Close</button>
             </div>
         </div>
     </div>
     <div id="guide-root"></div>
-
-    <!--script src="calendar.js"></script>
-    <script src="db.js"></script>
-    <script src="fs.js"></script>
-    <script src="config.js"></script-->
-    <!--script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script-->
-
-    <!--link rel="stylesheet" href="msmstyle1.css">
-    <script src="msmguide.js"></script>
-    <script src="load.js"></script>
-    <script src="msmguide.js"></script>
-    <script src="kb-ui.js"></script>
-    <script src="kb-matcher.js"></script>
-    <script src="msm1.js"></script-->
 
     <!-- KB Assistant -->
     <link rel="stylesheet" href="msmstyle.css">

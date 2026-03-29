@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.96'; // App version
+const version = 'Beta 1.00'; // App version
 let debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -29,12 +29,12 @@ const appSettingsKeys = [
     'popupMenuBtnPosition', 'kbFabPosition', 'scrollTopBtnPosition', 'boardMenuOrder'
 ];
 
-let guide = true;
-guide = localStorage.getItem('guide');
+let guide = false; // false = без гайд в режим на превод
+/*guide = localStorage.getItem('guide');
 if (guide === 'false') {
     guide = false;
 }
-else guide = true;
+else guide = true;*/
 
 // --- OAuth Redirect Handler for iframe ---
 // Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
@@ -5266,6 +5266,7 @@ function showModal(options, noteElement = null) {
         if (boardNameEl) boardNameEl.style.left = '15px';
     }
 }
+window.showModal = showModal; // Expose globally for msmrt.js guide steps
 
 function showAllBoardsModal() {
     const modalContent = document.createElement('div');
@@ -5565,15 +5566,7 @@ let isFetchingPromo = false;
 let lastPromoBoardFilter = null;
 let promoImageIndex = parseInt(localStorage.getItem('promoImageIndex') || '0');
 
-const promoImagesList = [
-    "1764551652828.jpg", "1764551676242.jpg", "1764551691209.jpg", "1764551755697.jpg",
-    "1764553894822.jpg", "1764553917946.jpg", "1764553933512.jpg", "1764553941918.jpg",
-    "1764553952897.jpg", "1764553963870.jpg", "1764553974033.jpg", "1764553984943.jpg",
-    "1764553993077.jpg", "1764554001197.jpg", "1764554007494.jpg", "1764554013461.jpg",
-    "1764554019417.jpg", "1764554055674.jpg", "1764554064490.jpg", "1764554083159.jpg",
-    "1764554091671.jpg", "1764554098238.jpg", "1764554106965.jpg", "1764554137382.jpg",
-    "1764554248286.jpg", "1764554317449.jpg", "1764554407319.jpg", "1764554540104.jpg"
-];
+const promoImagesList = ["1764553984943.jpg"];
 
 function updatePromoImage() {
     if (!promoNoteElement) return;

@@ -3151,9 +3151,9 @@ window.swUpdateNotificationShown = false;
         // Задаваме настройки за офлайн режим
         localStorage.setItem('useGoogleDb', 'false');
         // Ако потребителят няма избран НИТО ЕДИН офлайн източник, активираме "База данни" автоматично.
-        const hasOfflineSource = localStorage.getItem('useIndexedDb') === 'true' || 
-                               localStorage.getItem('useLocalDb') === 'true' || 
-                               localStorage.getItem('useArhDb') === 'true';
+        const hasOfflineSource = localStorage.getItem('useIndexedDb') === 'true' ||
+            localStorage.getItem('useLocalDb') === 'true' ||
+            localStorage.getItem('useArhDb') === 'true';
         if (!hasOfflineSource) {
             localStorage.setItem('useIndexedDb', 'true');
             localStorage.setItem('mode', 'database');
@@ -5266,6 +5266,8 @@ function showModal(options, noteElement = null) {
         if (boardNameEl) boardNameEl.style.left = '15px';
     }
 }
+
+window.showModal = showModal;
 
 function showAllBoardsModal() {
     const modalContent = document.createElement('div');

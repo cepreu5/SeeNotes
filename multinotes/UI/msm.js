@@ -1,3 +1,5 @@
+/** terser msm.js -c 'pure_funcs=["console.log"]' --format comments=false --output msm.js */
+
 console.log("msm.js loaded");
 let container;
 let stepTimer;

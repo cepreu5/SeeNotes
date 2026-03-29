@@ -7,6 +7,7 @@
     <title>CX MultiNotes Viewer - Your notes, everywhere</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link
         href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet">
@@ -507,11 +508,11 @@
             margin: 0 auto;
         }
 
-        .lang-btn {
+        .lang-select {
             background: none;
             border: 1px solid var(--text-secondary);
             color: var(--text-secondary);
-            padding: 4px 14px;
+            padding: 4px 5px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
@@ -519,21 +520,14 @@
             transition: all 0.2s;
             margin-left: 8px;
             flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 44px;
+            outline: none;
+            height: 32px;
+            box-sizing: border-box;
         }
 
-        .lang-btn:hover {
+        .lang-select:hover {
             border-color: var(--accent);
             color: var(--accent);
-        }
-
-        .lang-btn.active {
-            background: var(--accent);
-            border-color: var(--accent);
-            color: white;
         }
 
         .nav-link {
@@ -558,6 +552,109 @@
         .nav-link:hover::after {
             width: 100%;
         }
+
+        .signin-btn:hover {
+            transform: scale(1.05);
+            background: #222 !important;
+        }
+
+        /* Premium I18N Popup */
+        .i18n-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 32px;
+            padding: 40px;
+            z-index: 10000;
+            width: 90%;
+            max-width: 480px;
+            text-align: center;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.15);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+
+        .i18n-popup.visible {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+            pointer-events: auto;
+        }
+
+        .i18n-popup h4 {
+            margin-bottom: 16px;
+            color: var(--accent);
+            font-size: 24px;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .i18n-popup p {
+            font-size: 16px;
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .i18n-popup .app-link {
+            display: inline-block;
+            margin-bottom: 30px;
+            background: rgba(255, 77, 46, 0.08);
+            color: var(--accent);
+            padding: 12px 20px;
+            border-radius: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            border: 1px solid rgba(255, 77, 46, 0.1);
+        }
+
+        .i18n-popup .app-link:hover {
+            background: rgba(255, 77, 46, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .i18n-popup .close-btn {
+            background: var(--bg-dark);
+            color: white;
+            border: none;
+            padding: 14px 40px;
+            border-radius: 16px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .i18n-popup .close-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+            filter: brightness(1.1);
+        }
+
+        .i18n-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s;
+        }
+
+        .i18n-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
     </style>
 </head>
 
@@ -570,12 +667,11 @@
         <div class="logo">
             <span class="logo-text" data-key="logo_text">CX MultiNotes Viewer</span>
         </div>
-        <div id="lang-switcher-main" style="display: flex; justify-content: center;">
-            <button id="lang-bg-main" class="lang-btn">BG</button>
-            <button id="lang-en-main" class="lang-btn">EN</button>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div class="lang-switcher-container"></div>
             <a href="index-2.html" style="flex-shrink: 0; text-decoration: none;">
-                <button id="lang-es-main" class="lang-btn"
-                    style="background: black; width: auto; min-width: 90px; height: 32px; padding: 0 12px; border: none; color: white;">
+                <button class="lang-btn signin-btn"
+                    style="background: black; width: auto; min-width: 90px; height: 32px; padding: 0 12px; border: none; color: white; border-radius: 6px; cursor: pointer; transition: transform 0.2s, background 0.2s; box-sizing: border-box;">
                     <span data-key="s_btn"
                         style="font-size: 13px; font-weight: 600; white-space: nowrap;">Sign-in</span>
                 </button>
@@ -589,14 +685,12 @@
         <div id="beta-notice"
             style="grid-column: 1 / -1; text-align: center; padding: 12px 24px; font-size: 14px; background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.06); border-radius: 100px; width: fit-content; margin: 0 auto 40px; color: var(--text-secondary); line-height: 1.4; display: block;"
             data-key="logo_text2">
-            Това е тестова (Beta) версия на приложението. Ако желаете да получите достъп, моля, пишете на
-            multinotes.web@gmail.com
+            This is a Beta version of the app. If you wish to gain access, please write to multinotes.web@gmail.com
         </div>
         <div class="hero-content">
-            <h1 class="hero-title" data-key="hero_title">Вашите бележки,<br>на всяко устройство.</h1>
-            <p class="hero-subtitle" data-key="hero_subtitle">Открийте свободата да работите с бележките си от
-                MultiNotes навсякъде — директно в
-                браузъра и без никакви инсталации. Просто стартирате и имате достъп до цялата си информация.</p>
+            <h1 class="hero-title" data-key="hero_title">Your notes,<br>everywhere.</h1>
+            <p class="hero-subtitle" data-key="hero_subtitle">Open, edit, and organize your MultiNotes on any device —
+                no install required.</p>
         </div>
         <div class="hero-image">
             <img src="images/hero_desk_workspace.jpg" alt="Modern workspace">
@@ -609,10 +703,9 @@
             <img src="images/feature_workspace_left.jpg" alt="Workspace">
         </div>
         <div class="feature-content">
-            <h2 class="feature-title scroll-animate" data-key="feature1_title">Вашето работно пространство.</h2>
-            <p class="feature-text scroll-animate" data-key="feature1_text">Идеално подредени бележки, перфектни
-                цветове, структурирани за лесен
-                достъп, така че да се концентрирате върху тези, които са ви необходими.</p>
+            <h2 class="feature-title scroll-animate" data-key="feature1_title">A space that feels like yours.</h2>
+            <p class="feature-text scroll-animate" data-key="feature1_text">Clean layout, readable typography, and just
+                the right amount of structure — so you can focus on what matters.</p>
             <div class="note-card scroll-animate">
                 <img src="images/MN.png" alt="MN">
             </div>
@@ -625,10 +718,9 @@
             <img src="images/feature_workspace_right.jpg" alt="Organized workspace">
         </div>
         <div class="feature-content">
-            <h2 class="feature-title scroll-animate" data-key="feature2_title">Подредени, без излишни усилия.</h2>
-            <p class="feature-text scroll-animate" data-key="feature2_text">В различни тематични бордове, с подходящи
-                цветове и шрифтове, с лесно
-                търсене — вашите бележки са идеално организирани.</p>
+            <h2 class="feature-title scroll-animate" data-key="feature2_title">Organized workspace.</h2>
+            <p class="feature-text scroll-animate" data-key="feature2_text">Colors, search, and simple formatting — so
+                your notes stay tidy without extra work.</p>
             <div class="note-card scroll-animate">
                 <img src="images/Org.png" alt="Org">
             </div>
@@ -641,10 +733,9 @@
             <img src="images/phone_notes.jpg" alt="Phone with notes">
         </div>
         <div class="feature-content">
-            <h2 class="feature-title scroll-animate" data-key="feature3_title">На вашия телефон, таблет или лаптоп.</h2>
-            <p class="feature-text scroll-animate" data-key="feature3_text">Бележките ви са в синхрон, независимо дали
-                работите на Android, iOS,
-                Windows, macOS или Linux.</p>
+            <h2 class="feature-title scroll-animate" data-key="feature3_title">On your phone, tablet, or laptop.</h2>
+            <p class="feature-text scroll-animate" data-key="feature3_text">Your notes stay in sync across Android, iOS,
+                Windows, macOS, and Linux — wherever you work.</p>
         </div>
     </section>
 
@@ -654,34 +745,31 @@
             <img src="images/laptop_workspace.jpg" alt="Laptop workspace">
         </div>
         <div class="feature-content">
-            <h2 class="feature-title scroll-animate" data-key="feature4_title">Информацията си остава ваша.</h2>
-            <p class="feature-text scroll-animate" data-key="feature4_text">Данните се четат от вашия Google акаунт,
-                където са надеждно защитени.
-                Използвайте бележките си дори да нямате връзка с интернет - винаги когато са ви необходими.</p>
+            <h2 class="feature-title scroll-animate" data-key="feature4_title">Private by default.</h2>
+            <p class="feature-text scroll-animate" data-key="feature4_text">Data is read from your Google account, where
+                it is securely protected. Use your notes even without an internet connection - whenever you need them.
+            </p>
         </div>
     </section>
 
     <!-- Section 6: Speed & Caching -->
     <section class="speed-section" id="speed">
         <div class="speed-header">
-            <h2 class="speed-title scroll-animate" data-key="speed_title">Без засечки, дори при бавни връзки.</h2>
-            <p class="speed-text scroll-animate" data-key="speed_text">Бележките се запомнят (кешират) след първо
-                стартиране, след това
-                зареждате само добавените и променени.</p>
+            <h2 class="speed-title scroll-animate" data-key="speed_title">Fast, even on slow connections.</h2>
+            <p class="speed-text scroll-animate" data-key="speed_text">Notes are remembered (cached) after the first
+                launch, then only new and changed ones are loaded.</p>
         </div>
         <div class="speed-grid">
             <div class="speed-image scroll-animate">
                 <img src="images/speed_workspace.jpg" alt="Fast workspace">
             </div>
             <div class="info-card scroll-animate">
-                <span class="tag" data-key="cache_tag">Локален кеш</span>
-                <h3 style="font-size: 22px; margin: 16px 0 8px;" data-key="cache_h3">Оптимална комуникация</h3>
+                <span class="tag" data-key="cache_tag">Local cache</span>
+                <h3 style="font-size: 22px; margin: 16px 0 8px;" data-key="cache_h3">Optimal communication</h3>
                 <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 20px;" data-key="cache_p1">
-                    Бележките се пазят в
-                    паметта на браузъра за бърз достъп. Добавяйте нови и променени когато решите.</p>
-                <p style="font-size: 12px; color: var(--text-secondary); margin-top: 16px;" data-key="cache_p2">Работата
-                    с локална база
-                    данни ви прави независими от интернет връзката.</p>
+                    Notes are kept in the browser's memory for quick access.</p>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-top: 16px;" data-key="cache_p2">Working
+                    with a local database makes you independent of an internet connection.</p>
             </div>
         </div>
     </section>
@@ -689,12 +777,11 @@
     <!-- Section 7: CTA -->
     <section class="cta-section" id="cta">
         <div class="cta-content">
-            <h2 class="scroll-animate" data-key="cta_h2">Готови за стартиране!</h2>
-            <p class="scroll-animate" data-key="cta_p1">Влизате веднъж. Вижте бележките си на всяко устройство, по всяко
-                врмее — с
-                интернет или без.</p>
-            <h3 data-key="cta_h3">Влезте, за да започнете</h3>
-            <p data-key="cta_p2">Използвайте същия Google акаунт, с който работите на Android устройството си.</p>
+            <h2 class="scroll-animate" data-key="cta_h2">Ready to start?</h2>
+            <p class="scroll-animate" data-key="cta_p1">Sign in once. Access your notes on any device, anytime — online
+                or off.</p>
+            <h3 data-key="cta_h3">Log in to begin</h3>
+            <p data-key="cta_p2">Use the same Google account you use on your Android device.</p>
             <button class="btn-primary scroll-animate" onclick="window.location.href='index-2.html'">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path
@@ -710,7 +797,7 @@
                         d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                         fill="#EA4335" />
                 </svg>
-                <span data-key="cta_btn">Продължи с Google</span>
+                <span data-key="cta_btn">Continue with Google</span>
             </button>
         </div>
         <div class="cta-image scroll-animate">
@@ -773,16 +860,23 @@
         });
 
         // --- I18N Logic ---
+        const SUPPORTED_LANGUAGES = [
+            { id: 'en', label: 'EN' },
+            { id: 'ru', label: 'RU' },
+            { id: 'bg', label: 'BG' }
+        ];
+
         let currentLang = localStorage.getItem('language') || 'en';
         let translations = {};
 
         async function loadTranslations(lang) {
             try {
-                const response = await fetch(`index-${lang}.json`);
+                const response = await fetch(`lang/index-${lang}.json`);
                 translations = await response.json();
                 applyTranslations();
-                updateSwitcherUI(lang);
+                renderLanguageSwitchers(lang);
                 localStorage.setItem('language', lang);
+                currentLang = lang;
             } catch (error) {
                 console.error('Error loading translations:', error);
             }
@@ -801,20 +895,67 @@
             }
         }
 
-        function updateSwitcherUI(lang) {
-            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
-            if (lang === 'bg') {
-                document.getElementById('lang-bg-main').classList.add('active');
-            } else {
-                document.getElementById('lang-en-main').classList.add('active');
-            }
+        function renderLanguageSwitchers(activeLang) {
+            const containers = document.querySelectorAll('.lang-switcher-container');
+            containers.forEach(container => {
+                container.innerHTML = '';
+                const select = document.createElement('select');
+                select.className = 'lang-select';
+                SUPPORTED_LANGUAGES.forEach(lang => {
+                    const opt = document.createElement('option');
+                    opt.value = lang.id;
+                    opt.textContent = lang.label;
+                    if (activeLang === lang.id) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                select.onchange = (e) => {
+                    const newLang = e.target.value;
+                    if (newLang !== currentLang) {
+                        showI18nPopup();
+                    }
+                    loadTranslations(newLang);
+                };
+                container.appendChild(select);
+            });
         }
 
-        document.getElementById('lang-bg-main').addEventListener('click', () => loadTranslations('bg'));
-        document.getElementById('lang-en-main').addEventListener('click', () => loadTranslations('en'));
+        function showI18nPopup() {
+            let overlay = document.querySelector('.i18n-overlay');
+            let popup = document.querySelector('.i18n-popup');
 
-        // Initial load
-        loadTranslations(currentLang);
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'i18n-overlay';
+                document.body.appendChild(overlay);
+
+                popup = document.createElement('div');
+                popup.className = 'i18n-popup';
+                popup.innerHTML = `
+                    <h4 data-key="popup_info_title">${translations['popup_info_title'] || 'Information'}</h4>
+                    <p data-key="popup_info_msg">${translations['popup_info_msg'] || 'You can improve the (machine) translation with a convenient interactive tool by starting the application at:'}</p>
+                    <a href="https://multinotes.app/gdviewer/ui/index-2.html" target="_blank" class="app-link">multinotes.app/gdviewer/ui</a>
+                    <button class="close-btn" data-key="popup_info_btn">${translations['popup_info_btn'] || 'Got it'}</button>
+                `;
+                document.body.appendChild(popup);
+
+                const close = () => {
+                    overlay.classList.remove('visible');
+                    popup.classList.remove('visible');
+                };
+
+                popup.querySelector('.close-btn').onclick = close;
+                overlay.onclick = close;
+            }
+
+            overlay.classList.add('visible');
+            popup.classList.add('visible');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            renderLanguageSwitchers(currentLang);
+            loadTranslations(currentLang);
+        });
     </script>
 </body>
 

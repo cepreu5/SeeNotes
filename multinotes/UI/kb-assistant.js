@@ -1,4 +1,4 @@
-/** terser kb-assistant.js -c 'pure_funcs=["console.log"]' --output kb-assistantt.js
+/** terser kb-assistant.js -c 'pure_funcs=["console.log"]' --format comments=false --output kb-assistantt.js
  * 
  * 
  * KB Matcher - Интелигентен алгоритъм за съпоставяне на въпроси с KB записи
