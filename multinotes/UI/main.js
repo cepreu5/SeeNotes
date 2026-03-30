@@ -8133,17 +8133,18 @@ async function setLanguage(lang) {
     currentLang = lang;
     localStorage.setItem('language', lang);
     document.documentElement.lang = lang;
+    const updateText = (text) => text.includes('LL') ? text.replace(/LL/g, lang) : text;
     document.querySelectorAll('[data-key]').forEach(element => {
         const key = element.getAttribute('data-key');
-        element.innerHTML = _(key);
+        element.innerHTML = updateText(_(key));
     });
     document.querySelectorAll('[data-key-placeholder]').forEach(element => {
         const key = element.getAttribute('data-key-placeholder');
-        element.placeholder = _(key);
+        element.placeholder = updateText(_(key));
     });
     document.querySelectorAll('[data-key-title]').forEach(element => {
         const key = element.getAttribute('data-key-title');
-        element.title = _(key);
+        element.title = updateText(_(key));
     });
     // Update all language switchers in the UI
     renderLanguageSwitchers();
