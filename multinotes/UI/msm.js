@@ -44,7 +44,7 @@ window.toggleHero = function () {
       // Default debug step
       const debugStep = {
         image: 'msm/l-up.png',
-        text: { bg: 'Здравей! Аз съм твоят асистент в Debug режим. 🐛', en: 'Hello! I am your assistant in Debug mode. 🐛' },
+        text: 'Hello! I am your assistant in Debug mode. 🐛',
         x: 20,
         y: 20,
         target: '#search-box',
@@ -1380,7 +1380,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
           lastIdentifiedEl = elAtPoint;
           container.style.visibility = 'visible';
           if (lastIdentifiedEl) {
-            const el = lastIdentifiedEl;
+            let el = lastIdentifiedEl;
             let elId = el.id ? '#' + el.id : el.tagName.toLowerCase();
             if (el.className && typeof el.className === 'string') {
               const classes = el.className.split(' ').filter(c => c !== 'kb-highlight');
