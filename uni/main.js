@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.99'; // App version
+const version = 'Beta 1.910'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -9225,6 +9225,13 @@ async function createSettingsUI(boardsData, boardParseError) {
 
                         // Clear cached subfolder IDs
                         ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
+
+                        // Изчистване на локалната база от старата папка (вкл. таймстамп)
+                        if (typeof NOTES_DB_NAME !== 'undefined') {
+                            indexedDB.deleteDatabase(NOTES_DB_NAME);
+                        } else {
+                            indexedDB.deleteDatabase('multinotes_db');
+                        }
 
                         if (shouldSyncJson) {
                             if (typeof showToast === 'function') showToast(_('settingSaved') + ' Синхронизиране...');
