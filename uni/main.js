@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.910'; // App version
+const version = 'Beta 1.915'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -314,8 +314,8 @@ async function parseFileResults(results, filenameForError) {
             }
 
             for (let item of items) {
-                const key = (item.gdid || item.id);
-                if (key && !tempMap.has(key)) {
+                const key = (item.gdid && item.gdid !== '') ? item.gdid : item.id;
+                if (typeof key !== 'undefined' && key !== null && !tempMap.has(key)) {
                     tempMap.set(key, item);
                 }
             }
@@ -1233,12 +1233,14 @@ async function deleteGDriveFile(fileId) {
  */
 function trackMaxIds(notes) {
     if (!Array.isArray(notes)) return;
+    let changed = false;
     notes.forEach(note => {
         const id = parseInt(note.id, 10);
         const numord = parseInt(note.numord, 10);
-        if (!isNaN(id) && id > noteId) noteId = id;
-        if (!isNaN(numord) && numord > noteNumord) noteNumord = numord;
+        if (!isNaN(id) && id > noteId) { noteId = id; changed = true; }
+        if (!isNaN(numord) && numord > noteNumord) { noteNumord = numord; changed = true; }
     });
+    if (changed) syncFolderDataAsync();
 }
 
 /**
@@ -7312,8 +7314,8 @@ function showModal(options, noteElement = null) {
 
             // Assign new unique IDs using global variables
             // Ensure globals exist and use them
-            window.noteId = (window.noteId || 1000000) + 1;
-            window.noteNumord = (window.noteNumord || 1000000) + 1;
+            window.noteId = (window.noteId || 0) + 1;
+            window.noteNumord = (window.noteNumord || 0) + 1;
             syncFolderDataAsync();
             const newId = window.noteId;
             const newNumord = window.noteNumord;
@@ -8738,20 +8740,20 @@ async function syncGlobalFoldersJson() {
                     const bmo = localStorage.getItem('boardMenuOrder');
                     if (bmo) entry.boardMenuOrder = JSON.parse(bmo);
                 } catch (e) { /* ignore */ }
-                if (typeof noteId !== 'undefined' && noteId > 1000000) entry.lastNoteId = noteId;
-                if (typeof noteNumord !== 'undefined' && noteNumord > 1000000) entry.lastNoteNumord = noteNumord;
+                if (typeof noteId !== 'undefined') entry.lastNoteId = noteId;
+                if (typeof noteNumord !== 'undefined') entry.lastNoteNumord = noteNumord;
                 const bic = localStorage.getItem('boardIdCounter');
-                if (bic) entry.lastBoardId = parseInt(bic, 10);
+                if (bic !== null) entry.lastBoardId = parseInt(bic, 10);
             } else {
                 // Запазваме вече записаните стойности от предишни сесии
                 const perBmo = localStorage.getItem('boardMenuOrder_' + name);
                 if (perBmo) try { entry.boardMenuOrder = JSON.parse(perBmo); } catch (e) { }
                 const perNid = localStorage.getItem('lastNoteId_' + name);
-                if (perNid) entry.lastNoteId = parseInt(perNid, 10);
+                if (perNid !== null) entry.lastNoteId = parseInt(perNid, 10);
                 const perNord = localStorage.getItem('lastNoteNumord_' + name);
-                if (perNord) entry.lastNoteNumord = parseInt(perNord, 10);
+                if (perNord !== null) entry.lastNoteNumord = parseInt(perNord, 10);
                 const perBid = localStorage.getItem('lastBoardId_' + name);
-                if (perBid) entry.lastBoardId = parseInt(perBid, 10);
+                if (perBid !== null) entry.lastBoardId = parseInt(perBid, 10);
             }
             return entry;
         });
@@ -8825,10 +8827,10 @@ async function loadGlobalFoldersJson() {
                 }
                 if (f && f.name) {
                     remoteFolderData[f.name] = {
-                        boardMenuOrder: f.boardMenuOrder || null,
-                        lastNoteId: f.lastNoteId || null,
-                        lastNoteNumord: f.lastNoteNumord || null,
-                        lastBoardId: f.lastBoardId || null
+                        boardMenuOrder: (f.boardMenuOrder && Array.isArray(f.boardMenuOrder)) ? f.boardMenuOrder : null,
+                        lastNoteId: (typeof f.lastNoteId !== 'undefined') ? f.lastNoteId : null,
+                        lastNoteNumord: (typeof f.lastNoteNumord !== 'undefined') ? f.lastNoteNumord : null,
+                        lastBoardId: (typeof f.lastBoardId !== 'undefined') ? f.lastBoardId : null
                     };
                 }
             });
@@ -8873,30 +8875,27 @@ async function loadGlobalFoldersJson() {
                     changed = true;
                 }
             }
-            if (activeFolderData.lastNoteId && activeFolderData.lastNoteId > noteId) {
+            if (activeFolderData.lastNoteId !== null && typeof activeFolderData.lastNoteId !== 'undefined') {
                 noteId = activeFolderData.lastNoteId;
                 changed = true;
             }
-            if (activeFolderData.lastNoteNumord && activeFolderData.lastNoteNumord > noteNumord) {
+            if (activeFolderData.lastNoteNumord !== null && typeof activeFolderData.lastNoteNumord !== 'undefined') {
                 noteNumord = activeFolderData.lastNoteNumord;
                 changed = true;
             }
-            if (activeFolderData.lastBoardId) {
-                const localBic = parseInt(localStorage.getItem('boardIdCounter')) || 1000000;
-                if (activeFolderData.lastBoardId > localBic) {
-                    boardIdCounter = activeFolderData.lastBoardId;
-                    localStorage.setItem('boardIdCounter', boardIdCounter.toString());
-                    changed = true;
-                }
+            if (activeFolderData.lastBoardId !== null && typeof activeFolderData.lastBoardId !== 'undefined') {
+                boardIdCounter = activeFolderData.lastBoardId;
+                localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+                changed = true;
             }
         }
         // Запазваме per-folder данните за всички папки (за бъдещо превключване)
         Object.entries(remoteFolderData).forEach(([folderName, fdata]) => {
             if (folderName === activeF) return; // Вече приложено
             if (fdata.boardMenuOrder) localStorage.setItem('boardMenuOrder_' + folderName, JSON.stringify(fdata.boardMenuOrder));
-            if (fdata.lastNoteId) localStorage.setItem('lastNoteId_' + folderName, fdata.lastNoteId.toString());
-            if (fdata.lastNoteNumord) localStorage.setItem('lastNoteNumord_' + folderName, fdata.lastNoteNumord.toString());
-            if (fdata.lastBoardId) localStorage.setItem('lastBoardId_' + folderName, fdata.lastBoardId.toString());
+            if (fdata.lastNoteId !== null) localStorage.setItem('lastNoteId_' + folderName, fdata.lastNoteId.toString());
+            if (fdata.lastNoteNumord !== null) localStorage.setItem('lastNoteNumord_' + folderName, fdata.lastNoteNumord.toString());
+            if (fdata.lastBoardId !== null) localStorage.setItem('lastBoardId_' + folderName, fdata.lastBoardId.toString());
         });
         return changed;
     } catch (e) {
@@ -9291,6 +9290,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                     }
 
                     if (targetFolderId) {
+                        const oldActiveFolderName = activeFolderName;
                         console.log(`[Folder-Switch] Changing folder to: "${targetFolderName}" (ID: ${targetFolderId})`);
                         const isEmpty = await isGDriveFolderEmpty(targetFolderId);
                         if (isEmpty) {
@@ -9298,7 +9298,24 @@ async function createSettingsUI(boardsData, boardParseError) {
                             const confirmed = await showConfirmation(_('confirmMigration'));
                             if (confirmed) {
                                 await migrateDataToNewFolder(targetFolderId);
+                                // Копираме метаданните в новата папка в локалната памет
+                                const currentBmo = localStorage.getItem('boardMenuOrder');
+                                if (currentBmo) localStorage.setItem('boardMenuOrder_' + targetFolderName, currentBmo);
+                                localStorage.setItem('lastNoteId_' + targetFolderName, noteId.toString());
+                                localStorage.setItem('lastNoteNumord_' + targetFolderName, noteNumord.toString());
+                                const currentBic = localStorage.getItem('boardIdCounter');
+                                if (currentBic) localStorage.setItem('lastBoardId_' + targetFolderName, currentBic);
                             }
+                        }
+
+                        // Запазваме per-folder данните на папката, от която излизаме
+                        if (oldActiveFolderName) {
+                            const currentBmo = localStorage.getItem('boardMenuOrder');
+                            if (currentBmo) localStorage.setItem('boardMenuOrder_' + oldActiveFolderName, currentBmo);
+                            localStorage.setItem('lastNoteId_' + oldActiveFolderName, noteId.toString());
+                            localStorage.setItem('lastNoteNumord_' + oldActiveFolderName, noteNumord.toString());
+                            const currentBic = localStorage.getItem('boardIdCounter');
+                            if (currentBic) localStorage.setItem('lastBoardId_' + oldActiveFolderName, currentBic);
                         }
 
                         activeFolderName = targetFolderName;
@@ -9313,16 +9330,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                         } else {
                             localStorage.removeItem('startBoard'); // Clear it so it doesn't carry over from the previous folder
                         }
-                        // Запазваме per-folder данните на текущата папка преди превключване
-                        const oldFolder = activeFolderName;
-                        if (oldFolder) {
-                            const currentBmo = localStorage.getItem('boardMenuOrder');
-                            if (currentBmo) localStorage.setItem('boardMenuOrder_' + oldFolder, currentBmo);
-                            if (noteId > 1000000) localStorage.setItem('lastNoteId_' + oldFolder, noteId.toString());
-                            if (noteNumord > 1000000) localStorage.setItem('lastNoteNumord_' + oldFolder, noteNumord.toString());
-                            const currentBic = localStorage.getItem('boardIdCounter');
-                            if (currentBic) localStorage.setItem('lastBoardId_' + oldFolder, currentBic);
-                        }
                         // Refresh folders.json before restoring per-folder data
                         if (!isOffline) await loadGlobalFoldersJson();
                         // Възстановяваме per-folder данните на новата папка
@@ -9334,17 +9341,17 @@ async function createSettingsUI(boardsData, boardParseError) {
                         }
                         const newNid = localStorage.getItem('lastNoteId_' + targetFolderName);
                         const newNord = localStorage.getItem('lastNoteNumord_' + targetFolderName);
-                        if (newNid) noteId = parseInt(newNid, 10);
-                        else noteId = 1000000;
-                        if (newNord) noteNumord = parseInt(newNord, 10);
-                        else noteNumord = 1000000;
+                        if (newNid !== null) noteId = parseInt(newNid, 10);
+                        else noteId = (targetFolderName === 'multinotes_data') ? 1000000 : 0;
+                        if (newNord !== null) noteNumord = parseInt(newNord, 10);
+                        else noteNumord = (targetFolderName === 'multinotes_data') ? 1000000 : 0;
                         const newBid = localStorage.getItem('lastBoardId_' + targetFolderName);
-                        if (newBid) {
+                        if (newBid !== null) {
                             boardIdCounter = parseInt(newBid, 10);
                             localStorage.setItem('boardIdCounter', boardIdCounter.toString());
                         } else {
-                            boardIdCounter = 1000000;
-                            localStorage.removeItem('boardIdCounter');
+                            boardIdCounter = (targetFolderName === 'multinotes_data') ? 1000000 : 0;
+                            localStorage.setItem('boardIdCounter', boardIdCounter.toString());
                         }
 
                         let shouldSyncJson = false;
@@ -14051,7 +14058,8 @@ function preEdit(text, formats, targetIndex = -1) {
 // BOARD CREATION MODAL LOGIC
 // =================================================================================
 
-let boardIdCounter = parseInt(localStorage.getItem('boardIdCounter')) || 1000000;
+let bicFromStorage = localStorage.getItem('boardIdCounter');
+let boardIdCounter = bicFromStorage !== null ? parseInt(bicFromStorage, 10) : 1000000;
 
 /**
  * Показва попъп за пренареждане на бордовете с влачене (drag-and-drop).
@@ -14061,11 +14069,27 @@ function showBoardReorderPopup() {
     let currentOrder = [];
     try {
         const raw = localStorage.getItem('boardMenuOrder');
-        if (raw) currentOrder = JSON.parse(raw);
+        if (raw) {
+            currentOrder = JSON.parse(raw);
+            if (!Array.isArray(currentOrder)) currentOrder = [];
+        }
     } catch (e) { /* ignore */ }
-    if (!Array.isArray(currentOrder) || currentOrder.length === 0) {
-        currentOrder = boardsData
+
+    // Премахваме невалидни записи (null, undefined или низовете им)
+    currentOrder = currentOrder.filter(item =>
+        item && typeof item === 'string' &&
+        item !== 'undefined' && item !== 'null' &&
+        item.trim() !== ''
+    );
+
+    if (currentOrder.length === 0) {
+        currentOrder = [...boardsData]
             .filter(b => b.title)
+            .sort((a, b) => {
+                const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+                const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+                return numordA - numordB;
+            })
             .map(b => String(b.title));
     }
     const overlay = document.createElement('div');
@@ -14087,17 +14111,28 @@ function showBoardReorderPopup() {
     box.appendChild(title);
     const listContainer = document.createElement('div');
     listContainer.style.cssText = 'overflow-y:auto;flex:1;padding:4px;display:flex;flex-direction:column;align-items:center;width:100%;';
+
+    // Подсигуряваме ширина за елементите в списъка
+    const itemWidth = Math.max(maxWidthForButtons, 220);
+
     let draggedItem = null;
     let placeholder = document.createElement('div');
-    placeholder.style.cssText = `height:40px;width:${maxWidthForButtons}px;border:2px dashed #fff;border-radius:4px;margin-bottom:8px;background:rgba(255,255,255,0.2);`;
+    placeholder.style.cssText = `height:40px;width:${itemWidth}px;border:2px dashed #fff;border-radius:4px;margin-bottom:8px;background:rgba(255,255,255,0.2);`;
+
+    console.log("[Reorder] currentOrder:", currentOrder);
+    console.log("[Reorder] boardsData count:", boardsData.length);
+
     currentOrder.forEach((boardTitle) => {
         const board = boardsData.find(b => String(b.title) === String(boardTitle));
-        if (!board || !board.title) return;
+        if (!board || !board.title) {
+            console.log("[Reorder] Missed board for title:", boardTitle);
+            return;
+        }
         const item = document.createElement('div');
         item.className = 'board-filter-link reorder-item';
         item.dataset.boardtitle = String(boardTitle);
         item.draggable = true;
-        item.style.width = `${maxWidthForButtons}px`;
+        item.style.width = `${itemWidth}px`;
         item.style.marginBottom = '8px';
         item.style.cursor = 'grab';
         item.style.flexShrink = '0';
@@ -14519,19 +14554,41 @@ async function showNewBoardModal() {
             }
 
             if (currentEditingBoard) {
-                const idx = boardsData.findIndex(b => b.id === boardToSave.id);
+                const bId = (currentEditingBoard.gdid || currentEditingBoard.id).toString();
+                const idx = boardsData.findIndex(b => (b.gdid || b.id).toString() === bId);
                 if (idx !== -1) boardsData[idx] = boardToSave;
             } else {
                 boardsData.push(boardToSave);
-                try {
-                    const raw = localStorage.getItem('boardMenuOrder');
-                    const order = raw ? JSON.parse(raw) : [];
-                    if (!order.includes(newTitle)) {
-                        order.push(newTitle);
-                        localStorage.setItem('boardMenuOrder', JSON.stringify(order));
-                        syncFolderDataAsync();
+            }
+
+            try {
+                const raw = localStorage.getItem('boardMenuOrder');
+                let order = raw ? JSON.parse(raw) : [];
+                if (!Array.isArray(order)) order = [];
+
+                if (currentEditingBoard) {
+                    // Ако редактираме борд, обновяваме заглавието му в списъка за подредба
+                    const oldTitle = currentEditingBoard.title;
+                    const idx = order.indexOf(oldTitle);
+                    if (idx !== -1) {
+                        order[idx] = title;
+                    } else if (!order.includes(title)) {
+                        order.push(title);
                     }
-                } catch (e) { }
+                } else {
+                    // Ако е нов борд
+                    if (!order.includes(title)) {
+                        order.push(title);
+                    }
+                }
+
+                // Изчистваме невалидни записи (null, undefined)
+                order = order.filter(item => item && typeof item === 'string' && item !== 'undefined' && item !== 'null');
+
+                localStorage.setItem('boardMenuOrder', JSON.stringify(order));
+                syncFolderDataAsync();
+            } catch (e) {
+                console.error("Error updating boardMenuOrder:", e);
             }
 
             if (useIndexedDb) await bulkPutDB(BOARD_STORE_NAME, boardToSave, true);
