@@ -99,9 +99,11 @@
         <!-- Language switcher извън login-box, винаги видим -->
         <div style="display: flex; flex-direction: column; align-items: center;">
             <div id="lang-switcher-main" class="lang-switcher-container" style="margin-bottom: 15px;"></div>
-            <div style="text-align: center; max-width: 500px; color: white; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; font-size: 14.5px; line-height: 1.5; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
+            <div
+                style="text-align: center; max-width: 500px; color: white; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; font-size: 14.5px; line-height: 1.5; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
                 <span data-key="betaVersionText">Това е тестова (Beta) версия на приложението.</span><br>
-                <span data-key="betaAccessText">Ако желаете да получите достъп, моля, пишете на</span> <strong style="color: #ffcc00; font-weight: bold; letter-spacing: 0.5px;">multinotes.web@gmail.com</strong>
+                <span data-key="betaAccessText">Ако желаете да получите достъп, моля, пишете на</span> <strong
+                    style="color: #ffcc00; font-weight: bold; letter-spacing: 0.5px;">multinotes.web@gmail.com</strong>
             </div>
         </div>
 
@@ -236,7 +238,7 @@
     <div id="folderIdPromptPopup" class="folder-id-prompt-popup">
         <div class="popup-content">
             <p data-key="promptFolderId"></p>
-            <input type="text" id="folderIdInput" data-key-placeholder="folderIdInputPlaceholder">
+            <input type="text" id="folderIdInput">
             <button id="submitFolderIdBtn" data-key="submitButton" title=""></button>
         </div>
     </div>
@@ -407,7 +409,9 @@
                     <span data-key="feedbackButtonTooltip">Обратна връзка</span>
                 </a>
             </div>
-            <button id="settings-close-x" style="position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 24px; cursor: pointer; color: #555; z-index: 10; line-height: 1; padding: 4px 8px;" title="Close">&times;</button>
+            <button id="settings-close-x"
+                style="position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 24px; cursor: pointer; color: #555; z-index: 10; line-height: 1; padding: 4px 8px;"
+                title="Close">&times;</button>
             <div class="corner-dot top-left"></div>
             <div class="corner-dot top-right"></div>
             <div class="corner-dot bottom-left"></div>
@@ -557,7 +561,8 @@
                     <input type="checkbox" id="img-bgrd-checkbox" class="settings-checkbox">
                 </div>
 
-                <div class="settings-mobile-row zoom-control-wrapper" id="additional-boards-header" style="margin-top: 10px;">
+                <div class="settings-mobile-row zoom-control-wrapper" id="additional-boards-header"
+                    style="margin-top: 10px;">
                     <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                         data-key="additionalBoardsLabel">
                         Допълнителни бордове:</label>
@@ -570,7 +575,8 @@
                 <div id="boards-options-section" style="display: none;">
                     <!-- Нов, опростен flex контейнер за опциите за бордове -->
                     <div class="boards-options-container" style="background-color: #909090;">
-                        <div class="settings-mobile-row zoom-control-wrapper" id="remind-board" style="margin-top: 0px;">
+                        <div class="settings-mobile-row zoom-control-wrapper" id="remind-board"
+                            style="margin-top: 0px;">
                             <label for="remind-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                                 data-key="showBoardRemind">
@@ -586,7 +592,8 @@
                             <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
                         </div>
 
-                        <div class="settings-mobile-row zoom-control-wrapper" id="show-photos-board" style="margin-top: 10px;">
+                        <div class="settings-mobile-row zoom-control-wrapper" id="show-photos-board"
+                            style="margin-top: 10px;">
                             <label for="show-photos-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                                 data-key="showPhotosBoardLabel">
@@ -594,7 +601,8 @@
                             <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
                         </div>
 
-                        <div class="settings-mobile-row zoom-control-wrapper" id="show-videos-board" style="margin-top: 10px;">
+                        <div class="settings-mobile-row zoom-control-wrapper" id="show-videos-board"
+                            style="margin-top: 10px;">
                             <label for="show-videos-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                                 data-key="showVideosBoardLabel">
@@ -602,7 +610,8 @@
                             <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
                         </div>
 
-                        <div class="settings-mobile-row zoom-control-wrapper" id="show-sounds-board" style="margin-top: 10px;">
+                        <div class="settings-mobile-row zoom-control-wrapper" id="show-sounds-board"
+                            style="margin-top: 10px;">
                             <label for="show-sounds-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                                 data-key="showSoundsBoardLabel">
@@ -610,7 +619,8 @@
                             <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
                         </div>
 
-                        <div class="settings-mobile-row zoom-control-wrapper" id="show-other-board" style="margin-top: 10px;">
+                        <div class="settings-mobile-row zoom-control-wrapper" id="show-other-board"
+                            style="margin-top: 10px;">
                             <label for="show-other-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                                 data-key="showOtherBoardLabel">
@@ -677,7 +687,8 @@
                 <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 10px;"
                         data-key="dataManagementTitle">Четене на данни</label>
-                    <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 0px;" id="google-db-wrapper">
+                    <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 0px;"
+                        id="google-db-wrapper">
                         <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
                         <img src="GDrive.png" alt="Google Drive" style="width:24px; height:24px; margin-right: 10px;">
                         <label for="use-google-db-checkbox" class="settings-icon-label" data-key="useGoogleDbLabel"
@@ -714,7 +725,8 @@
                     </div>
 
                     <div class="accordion-content" id="data-folders" style="flex-basis: 100%;">
-                        <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 10px;" id="local-db-wrapper">
+                        <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 10px;"
+                            id="local-db-wrapper">
                             <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
                             <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel"
                                 id="use-local-db-label" style="flex-basis: 122px; flex-shrink: 0;">
@@ -726,7 +738,8 @@
                                 style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                             </span>
                         </div>
-                        <div class="settings-mobile-row zoom-control-wrapper" id="update-local-folder" style="margin-top: 0px;">
+                        <div class="settings-mobile-row zoom-control-wrapper" id="update-local-folder"
+                            style="margin-top: 0px;">
                             <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
                             <label for="update-local-folder-checkbox"
                                 style="margin-right: 10px; flex-basis: 122px; flex-shrink: 0; text-align: left;"
@@ -735,8 +748,8 @@
                             <input type="checkbox" id="update-local-folder-checkbox" class="settings-checkbox">
                         </div>
 
-                        <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 10px; padding-bottom: 10px;"
-                            id="arh-db-wrapper">
+                        <div class="settings-mobile-row zoom-control-wrapper"
+                            style="margin-top: 10px; padding-bottom: 10px;" id="arh-db-wrapper">
                             <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
                             <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel"
                                 id="use-arh-db-label" style="flex-basis: 122px; flex-shrink: 0;">
@@ -784,9 +797,11 @@
                     <label for="device-name-select" style="margin-right: 10px; white-space: nowrap;"
                         data-key="deviceNameLabel">Име на устройство:</label>
                     <div style="display: flex; gap: 5px; flex: 1; align-items: center;">
-                        <select id="device-name-select" class="zoom-input-select" style="flex: 1; height: 32px;"></select>
-                        <button id="add-device-btn" class="scale-step-btn" style="width: 32px; height: 32px; padding: 0;" title="Добави нов профил">+</button>
-                        <button id="delete-device-btn" class="zoom-btn" 
+                        <select id="device-name-select" class="zoom-input-select"
+                            style="flex: 1; height: 32px;"></select>
+                        <button id="add-device-btn" class="scale-step-btn"
+                            style="width: 32px; height: 32px; padding: 0;" title="Добави нов профил">+</button>
+                        <button id="delete-device-btn" class="zoom-btn"
                             style="background: #e74c3c; color: white; border: none; padding: 0 10px; border-radius: 4px; cursor: pointer; height: 32px;">
                             <span data-key="deleteButton">Изтрий</span>
                         </button>
@@ -817,14 +832,16 @@
                             <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
                         </div>
                         <div class="accordion-content">
-                            <div class="settings-mobile-row zoom-control-wrapper" id="active-folder-wrapper" style="margin-top: 0px;">
+                            <div class="settings-mobile-row zoom-control-wrapper" id="active-folder-wrapper"
+                                style="margin-top: 0px;">
                                 <label for="active-folder-select" style="margin-right: 10px; white-space: nowrap;"
                                     data-key="activeFolderLabel">Активна папка:</label>
                                 <select id="active-folder-select" class="active-folder-select">
                                     <!-- Options will be populated by JS -->
                                 </select>
                             </div>
-                            <div class="settings-mobile-row zoom-control-wrapper" id="delete-folder-wrapper" style="margin-top: 10px;">
+                            <div class="settings-mobile-row zoom-control-wrapper" id="delete-folder-wrapper"
+                                style="margin-top: 10px;">
                                 <label for="delete-folder-btn" style="margin-right: 10px; white-space: nowrap;"
                                     data-key="deleteFolderLabel">Изтриване:</label>
                                 <button id="delete-folder-btn" class="zoom-btn"
@@ -834,14 +851,16 @@
                                 </button>
                             </div>
 
-                            <div class="settings-mobile-row zoom-control-wrapper" id="force-gdrive-read" style="margin-top: 10px;">
+                            <div class="settings-mobile-row zoom-control-wrapper" id="force-gdrive-read"
+                                style="margin-top: 10px;">
                                 <label for="force-gdrive-read-checkbox"
                                     style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                                     data-key="forceGDriveReadLabel">
                                     Четене от GD преди редакция:</label>
                                 <input type="checkbox" id="force-gdrive-read-checkbox" class="settings-checkbox">
                             </div>
-                            <div class="settings-mobile-row zoom-control-wrapper" id="check-empty-boards" style="margin-top: 10px;">
+                            <div class="settings-mobile-row zoom-control-wrapper" id="check-empty-boards"
+                                style="margin-top: 10px;">
                                 <label for="check-empty-boards-checkbox"
                                     style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                                     data-key="checkEmptyBoardsLabel">

@@ -416,6 +416,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     checkIntegrity(allNotesData, 'note.txt');
     if (boardsData.length === 0) {
         showToast(_('errorNoBoardFilesFound'), 10000);
+        if (typeof showNewBoardModal === 'function') showNewBoardModal();
         // Не връщаме грешка, за да позволим създаването на празна база данни и рендиране на UI
     }
     if (allNotesData.length === 0) {
@@ -437,6 +438,8 @@ async function runGoogleDriveSync() {
     try {
         console.log("[Sync-Run] runGoogleDriveSync started");
         const loaderTitle = document.getElementById('loader-title');
+        const loaderFolderInfo = document.getElementById('loader-folder-info');
+        if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
         const loaderText = document.getElementById('loader-text');
         if (!useIndexedDb) {
             console.log("[Sync-Run] Exiting: useIndexedDb is false");
@@ -1503,6 +1506,7 @@ async function createNewNote() {
     // Увеличаваме броячите
     noteId++;
     noteNumord++;
+    syncFolderDataAsync();
     const now = Date.now();
 
     // Base note structure
@@ -3094,6 +3098,7 @@ function handleShareTarget() {
     // Подготвяме нова бележка (копирано от createNewNote логиката)
     noteId++;
     noteNumord++;
+    syncFolderDataAsync();
     const now = Date.now();
 
     // Определяме борда: ако сме в системен борд, ползваме 'Main' или първия наличен
@@ -3255,7 +3260,6 @@ async function startApp(isExplicitLogin = false) {
                 }
             };
             initKbFab();
-            if (window.kbAssistant) window.kbAssistant.init();
         };
         initDraggableButtons();
         await mainLogic();
@@ -3760,9 +3764,19 @@ function initApp() {
         loaderTitle = document.createElement('h3');
         loaderTitle.id = 'loader-title';
         loaderTitle.style.marginTop = '0';
-        loaderTitle.style.marginBottom = '20px';
+        loaderTitle.style.marginBottom = '5px';
         loaderContainer.prepend(loaderTitle);
     }
+    let loaderFolderInfo = document.getElementById('loader-folder-info');
+    if (!loaderFolderInfo) {
+        loaderFolderInfo = document.createElement('div');
+        loaderFolderInfo.id = 'loader-folder-info';
+        loaderFolderInfo.style.fontSize = '0.9em';
+        loaderFolderInfo.style.opacity = '0.8';
+        loaderFolderInfo.style.marginBottom = '15px';
+        loaderTitle.after(loaderFolderInfo);
+    }
+    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
     // --- Add Cancel Button to Loader (Idempotent) ---
     let cancelButton = document.getElementById('cancel-load-btn');
     if (!cancelButton) {
@@ -4781,7 +4795,6 @@ async function initLoginPage() {
             handleAuthClick();
         });
     }
-    if (window.kbAssistant) window.kbAssistant.init();
     // Запазваме състоянието на "Запомни ме" при промяна
     const rememberMeCheckbox = document.getElementById('rememberMe');
     if (rememberMeCheckbox) {
@@ -5537,6 +5550,8 @@ function filterNotesForDemo() {
  * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
  */
 async function mainLogic() {
+    const loaderFolderInfo = document.getElementById('loader-folder-info');
+    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
     const settingsOverride = localStorage.getItem('settings_json_full_override'); //@@ прилагане на промени, направени в set.html
     if (settingsOverride) {
         localStorage.removeItem('settings_json_full_override');
@@ -5653,6 +5668,8 @@ async function mainLogic() {
         if (isLoadCancelled) return;
         // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
         updateGlobalStateFlags();
+        // Load folders.json (contains per-folder boardMenuOrder, lastNoteId, lastBoardId)
+        if (!isOffline) await loadGlobalFoldersJson();
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
         updateModeButton(); // Актуализираме иконата за режим веднага
         // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
@@ -5891,6 +5908,8 @@ async function mainLogic() {
             // Изчистваме текстовете в лоудъра, преди да го скрием
             const loaderTitle = document.getElementById('loader-title');
             if (loaderTitle) loaderTitle.textContent = '';
+            const loaderFolderInfo = document.getElementById('loader-folder-info');
+            if (loaderFolderInfo) loaderFolderInfo.textContent = '';
             loaderText.textContent = ''; // Изчистваме текста за прогреса
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
@@ -7295,6 +7314,7 @@ function showModal(options, noteElement = null) {
             // Ensure globals exist and use them
             window.noteId = (window.noteId || 1000000) + 1;
             window.noteNumord = (window.noteNumord || 1000000) + 1;
+            syncFolderDataAsync();
             const newId = window.noteId;
             const newNumord = window.noteNumord;
 
@@ -8661,7 +8681,7 @@ const appSettingsKeys = [
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
     'modalWidth', 'modalHeight', 'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
-    'enableNoteSorting', 'lastSearchTerm', 'boardMenuOrder', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
+    'enableNoteSorting', 'lastSearchTerm', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
     'active_folder_name', 'gdrive_folder_names', 'deviceName'
 ];
 async function findGDFileByName(folderId, fileName) {
@@ -8712,6 +8732,27 @@ async function syncGlobalFoldersJson() {
                 const globalSB = localStorage.getItem('startBoard');
                 if (globalSB) entry.startBoard = globalSB;
             }
+            // Per-folder data: boardMenuOrder, lastNoteId, lastBoardId
+            if (name === activeFolderCurrent) {
+                try {
+                    const bmo = localStorage.getItem('boardMenuOrder');
+                    if (bmo) entry.boardMenuOrder = JSON.parse(bmo);
+                } catch (e) { /* ignore */ }
+                if (typeof noteId !== 'undefined' && noteId > 1000000) entry.lastNoteId = noteId;
+                if (typeof noteNumord !== 'undefined' && noteNumord > 1000000) entry.lastNoteNumord = noteNumord;
+                const bic = localStorage.getItem('boardIdCounter');
+                if (bic) entry.lastBoardId = parseInt(bic, 10);
+            } else {
+                // Запазваме вече записаните стойности от предишни сесии
+                const perBmo = localStorage.getItem('boardMenuOrder_' + name);
+                if (perBmo) try { entry.boardMenuOrder = JSON.parse(perBmo); } catch (e) { }
+                const perNid = localStorage.getItem('lastNoteId_' + name);
+                if (perNid) entry.lastNoteId = parseInt(perNid, 10);
+                const perNord = localStorage.getItem('lastNoteNumord_' + name);
+                if (perNord) entry.lastNoteNumord = parseInt(perNord, 10);
+                const perBid = localStorage.getItem('lastBoardId_' + name);
+                if (perBid) entry.lastBoardId = parseInt(perBid, 10);
+            }
             return entry;
         });
         const data = {
@@ -8739,6 +8780,19 @@ async function syncGlobalFoldersJson() {
     }
 }
 
+/**
+ * Асинхронно записва per-folder данни (boardMenuOrder, noteId, boardIdCounter) във folders.json.
+ * Извиква се след промяна на тези стойности.
+ */
+let _syncFolderDataTimer = null;
+function syncFolderDataAsync() {
+    if (_syncFolderDataTimer) clearTimeout(_syncFolderDataTimer);
+    _syncFolderDataTimer = setTimeout(() => {
+        _syncFolderDataTimer = null;
+        syncGlobalFoldersJson();
+    }, 2000);
+}
+
 async function loadGlobalFoldersJson() {
     if (isOffline) return false;
     try {
@@ -8762,11 +8816,20 @@ async function loadGlobalFoldersJson() {
             console.log('folders.json belongs to another user (' + parsed.email + '), skipping.');
             return false;
         }
+        let remoteFolderData = {}; // Per-folder boardMenuOrder, lastNoteId, lastBoardId
         if (Array.isArray(parsed.folders)) {
             remoteFolderNames = parsed.folders.map(f => f && f.name).filter(Boolean);
             parsed.folders.forEach(f => {
                 if (f && f.name && f.startBoard) {
                     remoteFolderStartBoards[f.name] = f.startBoard;
+                }
+                if (f && f.name) {
+                    remoteFolderData[f.name] = {
+                        boardMenuOrder: f.boardMenuOrder || null,
+                        lastNoteId: f.lastNoteId || null,
+                        lastNoteNumord: f.lastNoteNumord || null,
+                        lastBoardId: f.lastBoardId || null
+                    };
                 }
             });
         }
@@ -8795,8 +8858,46 @@ async function loadGlobalFoldersJson() {
         if (remoteActiveFolder && !localStorage.getItem('active_folder_name')) {
             localStorage.setItem('active_folder_name', remoteActiveFolder);
             activeFolderName = remoteActiveFolder;
+            const loaderFolderInfo = document.getElementById('loader-folder-info');
+            if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
             changed = true;
         }
+        // Apply per-folder data for the active folder
+        const activeF = localStorage.getItem('active_folder_name') || 'multinotes_data';
+        const activeFolderData = remoteFolderData[activeF];
+        if (activeFolderData) {
+            if (activeFolderData.boardMenuOrder && Array.isArray(activeFolderData.boardMenuOrder) && activeFolderData.boardMenuOrder.length > 0) {
+                const localBmo = localStorage.getItem('boardMenuOrder');
+                if (!localBmo || localBmo === '[]') {
+                    localStorage.setItem('boardMenuOrder', JSON.stringify(activeFolderData.boardMenuOrder));
+                    changed = true;
+                }
+            }
+            if (activeFolderData.lastNoteId && activeFolderData.lastNoteId > noteId) {
+                noteId = activeFolderData.lastNoteId;
+                changed = true;
+            }
+            if (activeFolderData.lastNoteNumord && activeFolderData.lastNoteNumord > noteNumord) {
+                noteNumord = activeFolderData.lastNoteNumord;
+                changed = true;
+            }
+            if (activeFolderData.lastBoardId) {
+                const localBic = parseInt(localStorage.getItem('boardIdCounter')) || 1000000;
+                if (activeFolderData.lastBoardId > localBic) {
+                    boardIdCounter = activeFolderData.lastBoardId;
+                    localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+                    changed = true;
+                }
+            }
+        }
+        // Запазваме per-folder данните за всички папки (за бъдещо превключване)
+        Object.entries(remoteFolderData).forEach(([folderName, fdata]) => {
+            if (folderName === activeF) return; // Вече приложено
+            if (fdata.boardMenuOrder) localStorage.setItem('boardMenuOrder_' + folderName, JSON.stringify(fdata.boardMenuOrder));
+            if (fdata.lastNoteId) localStorage.setItem('lastNoteId_' + folderName, fdata.lastNoteId.toString());
+            if (fdata.lastNoteNumord) localStorage.setItem('lastNoteNumord_' + folderName, fdata.lastNoteNumord.toString());
+            if (fdata.lastBoardId) localStorage.setItem('lastBoardId_' + folderName, fdata.lastBoardId.toString());
+        });
         return changed;
     } catch (e) {
         console.warn("loadGlobalFoldersJson error:", e);
@@ -9200,7 +9301,10 @@ async function createSettingsUI(boardsData, boardParseError) {
                             }
                         }
 
+                        activeFolderName = targetFolderName;
                         localStorage.setItem('active_folder_name', targetFolderName);
+                        const loaderFolderInfo = document.getElementById('loader-folder-info');
+                        if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
                         localStorage.setItem('gdrive_multinotes_data_id', targetFolderId);
                         // Apply per-folder start board if available
                         const folderStartBoard = localStorage.getItem('startBoard_' + targetFolderName);
@@ -9208,6 +9312,39 @@ async function createSettingsUI(boardsData, boardParseError) {
                             localStorage.setItem('startBoard', folderStartBoard);
                         } else {
                             localStorage.removeItem('startBoard'); // Clear it so it doesn't carry over from the previous folder
+                        }
+                        // Запазваме per-folder данните на текущата папка преди превключване
+                        const oldFolder = activeFolderName;
+                        if (oldFolder) {
+                            const currentBmo = localStorage.getItem('boardMenuOrder');
+                            if (currentBmo) localStorage.setItem('boardMenuOrder_' + oldFolder, currentBmo);
+                            if (noteId > 1000000) localStorage.setItem('lastNoteId_' + oldFolder, noteId.toString());
+                            if (noteNumord > 1000000) localStorage.setItem('lastNoteNumord_' + oldFolder, noteNumord.toString());
+                            const currentBic = localStorage.getItem('boardIdCounter');
+                            if (currentBic) localStorage.setItem('lastBoardId_' + oldFolder, currentBic);
+                        }
+                        // Refresh folders.json before restoring per-folder data
+                        if (!isOffline) await loadGlobalFoldersJson();
+                        // Възстановяваме per-folder данните на новата папка
+                        const newBmo = localStorage.getItem('boardMenuOrder_' + targetFolderName);
+                        if (newBmo) {
+                            localStorage.setItem('boardMenuOrder', newBmo);
+                        } else {
+                            localStorage.removeItem('boardMenuOrder');
+                        }
+                        const newNid = localStorage.getItem('lastNoteId_' + targetFolderName);
+                        const newNord = localStorage.getItem('lastNoteNumord_' + targetFolderName);
+                        if (newNid) noteId = parseInt(newNid, 10);
+                        else noteId = 1000000;
+                        if (newNord) noteNumord = parseInt(newNord, 10);
+                        else noteNumord = 1000000;
+                        const newBid = localStorage.getItem('lastBoardId_' + targetFolderName);
+                        if (newBid) {
+                            boardIdCounter = parseInt(newBid, 10);
+                            localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+                        } else {
+                            boardIdCounter = 1000000;
+                            localStorage.removeItem('boardIdCounter');
                         }
 
                         let shouldSyncJson = false;
@@ -11554,12 +11691,11 @@ async function readArh(dirHandle) {
 async function loadTranslations(lang) {
     if (appTranslations[lang]) return;
     try {
-        const response = await fetch(`i18n-${lang}.txt`, { credentials: 'omit' });
+        const response = await fetch(`lang/i18n-${lang}.json`, { credentials: 'omit' });
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-        const text = await response.text();
-        const data = new Function('return {' + text + '}')();
-        appTranslations[lang] = data[lang];
+        const data = await response.json();
+        appTranslations[lang] = data;
     } catch (e) {
         console.error("Failed to load translations:", e);
         // Fallback: Populate with critical keys if fetch fails (e.g. offline with old SW)
@@ -11663,10 +11799,10 @@ if ('serviceWorker' in navigator) {
                 const swVersion = swVersionMatch ? decodeURIComponent(swVersionMatch[1]) : null;
 
                 // Don't show if the version is the same as current (redundant notification)
-                if (swVersion && swVersion === version) {
-                    console.log(`[SW] Worker version ${swVersion} is already current. Skipping notification.`);
-                    return;
-                }
+                // if (swVersion && swVersion === version) {
+                //     console.log(`[SW] Worker version ${swVersion} is already current. Skipping notification.`);
+                //     return;
+                // }
 
                 // Don't show if already showed for THIS worker or if a refresh is already pending or if bar exists
                 if (window.swNotifiedWorkers.has(swUrl) || document.getElementById('sw-update-bar') || sessionStorage.getItem('swUpdateRefreshPending')) return;
@@ -13178,6 +13314,7 @@ async function saveEditedNote() {
         if (!noteId || isNaN(noteId)) {
             noteId = ++window.noteId;
             noteNumord++;
+            syncFolderDataAsync();
         }
 
         // Define new note object
@@ -14057,6 +14194,7 @@ function showBoardReorderPopup() {
             .filter(el => el.classList.contains('reorder-item'))
             .map(el => el.dataset.boardtitle);
         localStorage.setItem('boardMenuOrder', JSON.stringify(newOrder));
+        syncFolderDataAsync();
         overlay.remove();
         const boardsNote = document.querySelector('header .boards-note');
         if (boardsNote) boardsNote.remove();
@@ -14084,6 +14222,7 @@ function trackMaxBoardIds(boards) {
     if (currentMax > boardIdCounter) {
         boardIdCounter = currentMax;
         localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+        syncFolderDataAsync();
     }
 }
 
@@ -14307,6 +14446,7 @@ async function showNewBoardModal() {
                             let order = JSON.parse(raw);
                             order = order.filter(title => title !== currentEditingBoard.title);
                             localStorage.setItem('boardMenuOrder', JSON.stringify(order));
+                            syncFolderDataAsync();
                         }
                     } catch (e) { }
                     const boardId = (currentEditingBoard.gdid || currentEditingBoard.id).toString();
@@ -14358,6 +14498,7 @@ async function showNewBoardModal() {
             trackMaxBoardIds(boardsData);
             boardIdCounter++;
             localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+            syncFolderDataAsync();
             boardToSave = { "backcolor": 0, "backnum": selectedBackground, "backpath": "", "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "gdid": "", "id": boardIdCounter, "numord": boardIdCounter, "status": 0, "title": title };
         }
 
@@ -14385,8 +14526,11 @@ async function showNewBoardModal() {
                 try {
                     const raw = localStorage.getItem('boardMenuOrder');
                     const order = raw ? JSON.parse(raw) : [];
-                    const newTitle = String(boardToSave.title);
-                    if (!order.includes(newTitle)) { order.push(newTitle); localStorage.setItem('boardMenuOrder', JSON.stringify(order)); }
+                    if (!order.includes(newTitle)) {
+                        order.push(newTitle);
+                        localStorage.setItem('boardMenuOrder', JSON.stringify(order));
+                        syncFolderDataAsync();
+                    }
                 } catch (e) { }
             }
 

@@ -1,15 +1,16 @@
-const CACHE_NAME = 'cx-notes-b1.910';
+const CACHE_NAME = 'cx-notes-b1.914';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './set.html',
   './manifest.webmanifest',
   './style.css',
   './main.js',
   './fs.js',
   './languages.json',
-  './i18n-bg.txt',
-  './i18n-en.txt',
+  './lang/i18n-bg.json',
+  './lang/i18n-en.json',
   './MNVLogo.png',
   './NoteFav.png',
   './Refresh.png',
@@ -40,9 +41,9 @@ const ASSETS_TO_CACHE = [
   './wb1_1.png',
   './wg1_1.png',
   './wr1_1.png',
-  './kb-core.json',
-  './kb-bg.json',
-  './kb-en.json',
+  './lang/kb-core.json',
+  './lang/kb-bg.json',
+  './lang/kb-en.json',
   './msmstyle.css',
   './kb-assistant.css',
   './kb-assistant.js',

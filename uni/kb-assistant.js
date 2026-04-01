@@ -366,9 +366,9 @@ class KBAssistant {
     async init() {
         if (window.isAppErrorState) return false;
         try {
-            const corePath = 'kb-core.json';
-            const langPath = `kb-${this.currentLang}.json`;
-            const enPath = 'kb-en.json';
+            const corePath = 'lang/kb-core.json';
+            const langPath = `lang/kb-${this.currentLang}.json`;
+            const enPath = 'lang/kb-en.json';
 
             // Fetch core and language-specific files in parallel
             const [coreResponse, langResponse, enResponse] = await Promise.all([
