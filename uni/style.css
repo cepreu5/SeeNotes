@@ -1619,43 +1619,7 @@ code {
     }
 
     /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
-    #google-db-wrapper,
-    #max-searches,
-    #notes-bgrd,
-    #img-bgrd,
-    #order-notes,
-    #modal-font-size,
-    #note-font-size,
-    #max-searches,
-    #note-count,
-    #one-tap-link,
-    #click-to-edit,
-    #close-after-save,
-    #update-local-folder,
-    #automated-timer,
-    #hide-toast,
-    #hide-assistant,
-    #show-date,
-    #show-photos-board,
-    #show-videos-board,
-    #show-sounds-board,
-    #show-other-board,
-    #show-new-board,
-    #all-board,
-    #remind-board,
-    #weekly-calendar,
-    #use-indexeddb-wrapper,
-    #db-buttons-wrapper,
-    #local-db-wrapper,
-    #arh-db-wrapper,
-    #scale-wrapper,
-    #start-board-wrapper,
-    #force-gdrive-read,
-    #device-name-wrapper,
-    #active-folder-wrapper,
-    #delete-folder-wrapper,
-    #trash-search,
-    #check-empty-boards {
+    .settings-mobile-row {
         flex-direction: row !important;
         align-items: center !important;
         /* Поддържа вертикално центриране */
