@@ -293,6 +293,7 @@ if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
  */
 async function parseFileResults(results, filenameForError) {
     const tempMap = new Map();
+    const duplicates = [];
     let parseError = false;
     const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
 
@@ -315,8 +316,20 @@ async function parseFileResults(results, filenameForError) {
 
             for (let item of items) {
                 const key = (item.gdid && item.gdid !== '') ? item.gdid : item.id;
-                if (typeof key !== 'undefined' && key !== null && !tempMap.has(key)) {
-                    tempMap.set(key, item);
+                if (typeof key !== 'undefined' && key !== null) {
+                    const existing = tempMap.get(key);
+                    if (!existing) {
+                        tempMap.set(key, item);
+                    } else if (filenameForError === 'note.txt') {
+                        // Проверяваме дали съдържанието е различно
+                        const isDiff = (item.notetxt !== existing.notetxt || 
+                                        item.color !== existing.color || 
+                                        item.title !== existing.title ||
+                                        item.boardid != existing.boardid);
+                        if (isDiff) {
+                            duplicates.push({ localNote: existing, serverNote: item });
+                        }
+                    }
                 }
             }
         } catch (e) {
@@ -348,7 +361,7 @@ async function parseFileResults(results, filenameForError) {
         const rawItemCount = results.length; // Approximate if 1 item per file
         console.log(`[parseFileResults] ${filenameForError}: Found ${finalData.length} unique items from ${results.length} files.`);
     }
-    return { data: finalData, parseError };
+    return { data: finalData, parseError, duplicates };
 }
 
 async function loadAndParseFile(filename, folderId, modifiedSince = null, onProgress = null) {
@@ -425,7 +438,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
             showToast(_('errorNoNoteFilesFound'), 10000);
         }
     }
-    return { boardParseError: boardRes.parseError };
+    return { boardParseError: boardRes.parseError, duplicates: noteRes.duplicates };
 }
 
 let isSyncing = false;
@@ -475,7 +488,10 @@ async function runGoogleDriveSync() {
             const files = await fetchFiles(filename, folderId, null, since);
             if (files.length > 0) {
                 updatedFilesCount += files.length;
-                const { data } = await parseFileResults(files, filename);
+                const { data, duplicates } = await parseFileResults(files, filename);
+                if (duplicates && duplicates.length > 0 && isNote) {
+                    duplicates.forEach(pair => notesForConflictCheck.push(pair));
+                }
                 if (data.length > 0) {
                     // Integrity check for the batch
                     data.forEach(item => {
@@ -906,7 +922,7 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         let files = [];
         let nextToken = null;
         do {
-            const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name),nextPageToken&pageSize=1000${nextToken ? `&pageToken=${nextToken}` : ''}`;
+            const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name),nextPageToken&pageSize=1000${nextToken ? `&pageToken=${nextToken}` : ''}&t=${Date.now()}`;
             const resp = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             if (!resp.ok) {
                 const errorData = await resp.json().catch(() => ({}));
@@ -973,7 +989,7 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         const controller = new AbortController();
         const kickId = setTimeout(() => { if (attempt === 1) controller.abort(); }, 1200);
         try {
-            const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+            const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&t=${Date.now()}`, {
                 headers: { 'Authorization': `Bearer ${accessToken}` },
                 cache: 'no-store',
                 priority: 'high',
@@ -992,7 +1008,7 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
                     }
 
                     // Retry
-                    const retryResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+                    const retryResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&t=${Date.now()}`, {
                         headers: { 'Authorization': `Bearer ${accessToken}` },
                         cache: 'no-store',
                         priority: 'high'
@@ -1011,6 +1027,9 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
             }
 
             const body = await response.text();
+            if (file.id === '1aQ67KIr7Lv6cLhimAwcznpr3n11z0KmP') {
+                console.warn(`[DEBUG-LOAD] Content of ${file.id}:`, body.substring(0, 200));
+            }
             loadedFiles++;
             if (onProgress && (loadedFiles % UI_STEP === 0 || loadedFiles === totalFiles)) {
                 onProgress(loadedFiles, totalFiles);
@@ -1182,7 +1201,12 @@ async function updateGDriveFile(fileId, content) {
             }
             if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
         }
-        return response.ok;
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[GDrive-Error] Status: ${response.status}, Details: ${errorText}`);
+            throw new Error(`${_('errorSaveGDrive')} (Status: ${response.status})`);
+        }
+        return true;
     } catch (error) {
         console.error("GDrive update failed:", error);
         throw error;
@@ -1397,21 +1421,48 @@ async function copyGDriveFile(fileId, newParentId, newName) {
 }
 
 async function migrateDataToNewFolder(targetFolderId) {
+    const backupOnBeforeUnload = window.onbeforeunload;
+    let reloadBtn = document.getElementById('reload_button');
+    let counterElem = document.getElementById('note-counter');
+    const originalReloadHtml = reloadBtn ? reloadBtn.innerHTML : null;
+    const originalCounterHtml = counterElem ? counterElem.innerHTML : null;
+
     try {
+        window.onbeforeunload = function() { return _('migrationInProgressWarn') || "Migration in progress, please wait..."; };
+        if (reloadBtn) {
+            reloadBtn.style.pointerEvents = 'none';
+            reloadBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
+        }
         if (typeof showToast === 'function') showToast(_('migratingData'));
         const subfolderNames = ["Other", "Sound", "Video", "Images"];
         const newSubfolderIds = {};
         for (const name of subfolderNames) {
             newSubfolderIds[name] = await createNewGDriveFolder(name, targetFolderId);
         }
-        for (const board of (boardsData || [])) {
-            await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(board));
+        const boardsToMigrate = (boardsData || []);
+        const totalBoards = boardsToMigrate.length;
+        for (let i = 0; i < totalBoards; i++) {
+            if (counterElem) counterElem.innerText = `[B] ${i+1}/${totalBoards}`;
+            await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardsToMigrate[i]));
         }
-        for (const note of (allNotesData || [])) {
-            await createGDriveFile(targetFolderId, 'note.txt', JSON.stringify(note));
+        const notesToMigrate = (allNotesData || []);
+        const totalNotes = notesToMigrate.length;
+        for (let i = 0; i < totalNotes; i++) {
+            const note = notesToMigrate[i];
+            if (counterElem) counterElem.innerText = `[N] ${i+1}/${totalNotes}`;
+            delete note.gdid; 
+            const newId = await createGDriveFile(targetFolderId, 'note.txt', JSON.stringify(note));
+            if (newId) {
+                note.gdid = newId;
+                await updateGDriveFile(newId, JSON.stringify(note));
+            }
         }
         const newMediaData = [];
-        for (const item of (mediaData || [])) {
+        const mediaToMigrate = (mediaData || []);
+        const totalMedia = mediaToMigrate.length;
+        for (let i = 0; i < totalMedia; i++) {
+            const item = mediaToMigrate[i];
+            if (counterElem) counterElem.innerText = `[M] ${i+1}/${totalMedia}`;
             const newItem = { ...item };
             const typeFolderName = (item.type === 1 ? "Images" : (item.type === 2 ? "Sound" : (item.type === 4 ? "Video" : "Other")));
             const targetSubfolderId = newSubfolderIds[typeFolderName];
@@ -1430,6 +1481,13 @@ async function migrateDataToNewFolder(targetFolderId) {
         console.error("Migration error:", e);
         if (typeof showToast === 'function') showToast(_('migrationError'));
         return false;
+    } finally {
+        window.onbeforeunload = backupOnBeforeUnload;
+        if (reloadBtn) {
+            reloadBtn.style.pointerEvents = 'auto';
+            reloadBtn.innerHTML = originalReloadHtml;
+        }
+        if (counterElem) counterElem.innerHTML = originalCounterHtml;
     }
 }
 
@@ -5858,6 +5916,10 @@ async function mainLogic() {
                         const result = await fetchAllData(null);
                         if (result.error) { // Проверяваме за грешка при зареждането
                             return; // Прекратяваме, ако няма файлове
+                        }
+                        // Разрешаваме дублираните бележки, ако има такива (преди запис в базата)
+                        if (result.duplicates && result.duplicates.length > 0) {
+                            await resolveLoadedConflicts(result.duplicates);
                         }
                         // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
                         filterNotesForDemo();
@@ -12744,7 +12806,8 @@ async function fetchGDriveFileContent(fileId) {
     let accessToken = tokenObj ? tokenObj.access_token : null;
     if (!accessToken) throw new Error("Missing auth token.");
     try {
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        // Force reading from server, not cache
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&t=${Date.now()}`, {
             headers: { 'Authorization': `Bearer ${accessToken}` },
             cache: 'no-store'
         });
@@ -12979,6 +13042,34 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
         document.body.appendChild(overlay);
         switchView(true);
     });
+}
+
+/**
+ * Разрешава конфликти при начално зареждане (дублирани gdid в Google Drive).
+ * @param {Array} duplicates - Списък от двойки {localNote, serverNote}
+ */
+async function resolveLoadedConflicts(duplicates) {
+    if (!duplicates || duplicates.length === 0) return;
+    const loader = document.getElementById('loader-screen');
+    const wasVisible = loader && loader.style.display !== 'none';
+    if (wasVisible) loader.style.display = 'none';
+
+    for (const pair of duplicates) {
+        // Показваме модала за сливане
+        const resolved = await showNoteConflictModal(null, pair.localNote, pair.serverNote, {});
+        if (resolved) {
+            const gdid = resolved.gdid || resolved.id;
+            const idx = allNotesData.findIndex(n => (n.gdid || n.id).toString() === gdid.toString());
+            if (idx !== -1) allNotesData[idx] = resolved;
+            
+            // Ако вече имаме локална база данни, обновяваме я веднага
+            if (useIndexedDb && dbExists) {
+                await bulkPutDB(NOTE_STORE_NAME, [resolved], true);
+            }
+        }
+    }
+
+    if (wasVisible && loader) loader.style.display = 'flex';
 }
 
 /* Old implementation commented out
@@ -13251,10 +13342,11 @@ async function saveEditedNote() {
     const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
 
     if (newText === undefined) return; // Nothing to save
-    const updateGDriveNow = localStorage.getItem('updateGDrive') !== 'false';
+    let updateGDriveNow = localStorage.getItem('updateGDrive') !== 'false';
     const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
     const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
     const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
+
     // Show spinner on save button
     const saveBtnElem = document.getElementById('note-save-btn');
     const originalSaveBtnHtml = saveBtnElem ? saveBtnElem.innerHTML : null;
@@ -13406,17 +13498,6 @@ async function saveEditedNote() {
                     try { dbNote = await getFromDB(NOTE_STORE_NAME, noteGdid || noteId); } catch (e) { }
                 }
 
-                if (debug) {
-                    console.log("--- Conflict Debug ---");
-                    console.log("GDID:", noteGdid);
-                    console.log("1. Base Note (when modal opened) datemod:", baseDatemod);
-                    console.log("2. Local Memory Note (allNotesData) datemod:", noteObj.datemod);
-                    if (useIndexedDb) console.log("3. IndexedDB Note datemod:", dbNote ? dbNote.datemod : "Not found");
-                    console.log("4. Server Note (Google Drive) datemod:", sNote.datemod);
-                    console.log(">> Server > Base?", sNote.datemod > baseDatemod);
-                    console.log(">> Server > Memory?", sNote.datemod > noteObj.datemod);
-                }
-
                 if (sNote && sNote.datemod > baseDatemod) {
                     const lNote = { ...noteObj, notetxt: processedText, text_span: finalFormat, title_span: finalTitleFormat, color: newColor, calendarDate: newCalendarDate };
                     const { result, conflicts } = mergeNotes(baseNote, lNote, sNote);
@@ -13447,6 +13528,9 @@ async function saveEditedNote() {
 
     if (hasChanges) {
         // --- Apply Changes ---
+        if (noteObj.version) noteObj.version = parseInt(noteObj.version, 10) + 1;
+        else noteObj.version = 1;
+
         noteObj.notetxt = processedText;
         noteObj.color = newColor;
         noteObj.text_span = finalFormat;
@@ -13505,8 +13589,13 @@ async function saveEditedNote() {
                 }
             } else {
                 try {
-                    await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
-                } catch (e) { console.error("Failed to update GDrive file", e); }
+                    const success = await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
+                    if (!success) throw new Error("GDrive update returned false");
+                } catch (e) {
+                    console.error("Failed to update GDrive file", e);
+                    showToast(`${_('errorSaveGDrive')} for GD: ${noteObj.gdid}. ${e.message}`, 10000);
+                    updateGDriveNow = false; // Маркираме като неуспешно за финалното съобщение
+                }
             }
         }
 
@@ -13538,9 +13627,9 @@ async function saveEditedNote() {
         else if (useIndexedDbNow) msgKey = 'noteSavedInDb'; // БД
         else {
             // Само външни източници без БД (режим без кеширане)
-            if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll'; // Ще каже БД, но е най-близко
-            else if (updateGDriveNow) msgKey = 'noteSavedInBoth'; // Ще каже БД, но е най-близко
-            else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal'; // Ще каже БД, но е най-близко
+            if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInGDAndLocal';
+            else if (updateGDriveNow) msgKey = 'noteSavedInGD';
+            else if (updateLocalFolderNow) msgKey = 'noteSavedInLocalOnly';
             else msgKey = 'noteSavedInBoard';
         }
 
