@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.915'; // App version
+const version = 'Beta 1.916'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -322,10 +322,10 @@ async function parseFileResults(results, filenameForError) {
                         tempMap.set(key, item);
                     } else if (filenameForError === 'note.txt') {
                         // Проверяваме дали съдържанието е различно
-                        const isDiff = (item.notetxt !== existing.notetxt || 
-                                        item.color !== existing.color || 
-                                        item.title !== existing.title ||
-                                        item.boardid != existing.boardid);
+                        const isDiff = (item.notetxt !== existing.notetxt ||
+                            item.color !== existing.color ||
+                            item.title !== existing.title ||
+                            item.boardid != existing.boardid);
                         if (isDiff) {
                             duplicates.push({ localNote: existing, serverNote: item });
                         }
@@ -884,11 +884,6 @@ async function refreshAuthToken(forcePopup = false) {
                 },
             });
 
-            // Таймер за безопасност: ако Google не отговори до 30 секунди
-            const requestTimeout = setTimeout(() => {
-                reject(new Error("Token refresh request timed out after 30s."));
-            }, 30000);
-
             const loginHint = localStorage.getItem('google_login_hint') ||
                 (cachedLicenseData && cachedLicenseData.email_hint);
 
@@ -898,8 +893,19 @@ async function refreshAuthToken(forcePopup = false) {
             };
             if (loginHint) tokenOptions.hint = loginHint;
 
+            // Таймер за безопасност: ако Google не отговори
+            const isSilent = !forcePopup && tokenOptions.prompt === 'none';
+            const timeoutDuration = isSilent ? 5000 : 30000; // 5s за тих опит, 30s за попъп
+
+            const requestTimeout = setTimeout(() => {
+                const errMsg = isSilent ? "Silent token refresh failed/blocked." : "Token refresh request timed out after 30s.";
+                console.warn(errMsg);
+                reject(new Error(errMsg));
+            }, timeoutDuration);
+
             client.requestAccessToken(tokenOptions);
         } catch (error) {
+            console.error("Critical error in refreshAuthToken:", error);
             reject(error);
         }
     }).finally(() => {
@@ -1428,7 +1434,7 @@ async function migrateDataToNewFolder(targetFolderId) {
     const originalCounterHtml = counterElem ? counterElem.innerHTML : null;
 
     try {
-        window.onbeforeunload = function() { return _('migrationInProgressWarn') || "Migration in progress, please wait..."; };
+        window.onbeforeunload = function () { return _('migrationInProgressWarn') || "Migration in progress, please wait..."; };
         if (reloadBtn) {
             reloadBtn.style.pointerEvents = 'none';
             reloadBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
@@ -1442,15 +1448,15 @@ async function migrateDataToNewFolder(targetFolderId) {
         const boardsToMigrate = (boardsData || []);
         const totalBoards = boardsToMigrate.length;
         for (let i = 0; i < totalBoards; i++) {
-            if (counterElem) counterElem.innerText = `[B] ${i+1}/${totalBoards}`;
+            if (counterElem) counterElem.innerText = `[B] ${i + 1}/${totalBoards}`;
             await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardsToMigrate[i]));
         }
         const notesToMigrate = (allNotesData || []);
         const totalNotes = notesToMigrate.length;
         for (let i = 0; i < totalNotes; i++) {
             const note = notesToMigrate[i];
-            if (counterElem) counterElem.innerText = `[N] ${i+1}/${totalNotes}`;
-            delete note.gdid; 
+            if (counterElem) counterElem.innerText = `[N] ${i + 1}/${totalNotes}`;
+            delete note.gdid;
             const newId = await createGDriveFile(targetFolderId, 'note.txt', JSON.stringify(note));
             if (newId) {
                 note.gdid = newId;
@@ -1462,7 +1468,7 @@ async function migrateDataToNewFolder(targetFolderId) {
         const totalMedia = mediaToMigrate.length;
         for (let i = 0; i < totalMedia; i++) {
             const item = mediaToMigrate[i];
-            if (counterElem) counterElem.innerText = `[M] ${i+1}/${totalMedia}`;
+            if (counterElem) counterElem.innerText = `[M] ${i + 1}/${totalMedia}`;
             const newItem = { ...item };
             const typeFolderName = (item.type === 1 ? "Images" : (item.type === 2 ? "Sound" : (item.type === 4 ? "Video" : "Other")));
             const targetSubfolderId = newSubfolderIds[typeFolderName];
@@ -13061,7 +13067,7 @@ async function resolveLoadedConflicts(duplicates) {
             const gdid = resolved.gdid || resolved.id;
             const idx = allNotesData.findIndex(n => (n.gdid || n.id).toString() === gdid.toString());
             if (idx !== -1) allNotesData[idx] = resolved;
-            
+
             // Ако вече имаме локална база данни, обновяваме я веднага
             if (useIndexedDb && dbExists) {
                 await bulkPutDB(NOTE_STORE_NAME, [resolved], true);
