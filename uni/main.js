@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.916'; // App version
+const version = 'Beta 1.917'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -1454,7 +1454,7 @@ async function migrateDataToNewFolder(targetFolderId) {
         const notesToMigrate = (allNotesData || []);
         const totalNotes = notesToMigrate.length;
         const mediaToMigrate = (mediaData || []);
-        
+
         // OPTIMIZATION: Only track IDs for notes that actually have media attached
         const mediaNotesMap = {};
         for (const item of mediaToMigrate) {
@@ -1481,7 +1481,7 @@ async function migrateDataToNewFolder(targetFolderId) {
             const item = mediaToMigrate[i];
             if (counterElem) counterElem.innerText = `[M] ${i + 1}/${totalMedia}`;
             const newItem = { ...item };
-            
+
             // Update the noteid to the newly created note's gdid
             if (newItem.noteid && mediaNotesMap[newItem.noteid]) {
                 newItem.noteid = mediaNotesMap[newItem.noteid];
@@ -2588,7 +2588,7 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
  * @param {boolean} fromModal - Дали се извиква от модалния прозорец.
  */
 async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
-        const updateGDriveNow = useGoogleDb && !isOffline;
+    const updateGDriveNow = useGoogleDb && !isOffline;
     const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
     if (!useIndexedDb && !doGDrive && !doLocal) return;
     if (fromModal) {
@@ -11599,7 +11599,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                             await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
                         }
                         // Delete the board file from Google Drive if it has a gdid
-            const updateGDriveNow = useGoogleDb && !isOffline;
+                        const updateGDriveNow = useGoogleDb && !isOffline;
                         if (updateGDriveNow && board.gdid && typeof deleteGDriveFile === 'function') {
                             try {
                                 if (await deleteGDriveFile(board.gdid)) {
@@ -13731,7 +13731,7 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
         if (updatedEl) noteEl.replaceWith(updatedEl);
     }
     // Save to Source
-            const updateGDriveNow = useGoogleDb && !isOffline;
+    const updateGDriveNow = useGoogleDb && !isOffline;
     const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
 
     if (updateGDriveNow) {
@@ -14579,7 +14579,7 @@ async function showNewBoardModal() {
                         await permanentlyDeleteNote(note.gdid, note.id, true); // skipUI=true за бързина
                     }
 
-                            const updateGDriveNow = useGoogleDb && !isOffline;
+                    const updateGDriveNow = useGoogleDb && !isOffline;
                     if (updateGDriveNow && currentEditingBoard.gdid) {
                         await deleteGDriveFile(currentEditingBoard.gdid);
                     }
@@ -14990,7 +14990,7 @@ async function syncDirtyNotes() {
                         await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                     }
                 }
-                
+
                 // Fix orphaned media links
                 if (tempGdid && tempGdid !== note.gdid) {
                     for (let m of mediaData) {
@@ -15021,7 +15021,7 @@ async function syncDirtyNotes() {
     if (mediaNeedsSync && typeof syncFileWorker === 'function') {
         try {
             await syncFileWorker('media.txt', MEDIA_STORE_NAME, false);
-        } catch(e) {
+        } catch (e) {
             console.error("Failed to sync media.txt after updating orphan links", e);
         }
     }
@@ -15031,7 +15031,7 @@ async function syncDirtyNotes() {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
     }
-    
+
     if (errorCount === 0) {
         showToast(`Successfully synced ${successCount} notes.`, 3000);
     } else {
