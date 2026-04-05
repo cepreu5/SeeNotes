@@ -2496,8 +2496,10 @@ async function moveNoteToTrash(noteGdid, noteId) {
     const boardIdOfNote = noteToUpdate.boardid;
     noteToUpdate.status = 1;
     noteToUpdate.datemod = Date.now();
-
     const updateGDriveNow = useGoogleDb && !isOffline;
+    if (!updateGDriveNow) {
+        noteToUpdate.type = -1; // Маркираме за офлайн синхронизация
+    }
     if (updateGDriveNow && noteGdid && !isOffline && typeof updateGDriveFile === 'function') {
         await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
         console.log("Updating GD")
@@ -2726,14 +2728,15 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
 
         const targetBoardTitle = targetBoard.title;
         noteToMove.datemod = Date.now();
-
+        const updateGDriveNow = useGoogleDb && !isOffline;
+        const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+        if (!updateGDriveNow && !updateLocalFolderNow) {
+            noteToMove.type = -1; // Маркираме за офлайн синхронизация
+        }
         // Update DB
         if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
             await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
         }
-
-        const updateGDriveNow = useGoogleDb && !isOffline;
-        const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
 
         // --- GDrive Sync ---
         if (updateGDriveNow) {
@@ -13661,9 +13664,9 @@ async function saveEditedNote() {
             }
         }
         if (updateGDriveNow) {
-            noteObj.status = 0;
+            noteObj.type = 0;
         } else if (useIndexedDbNow) {
-            noteObj.status = -1;
+            noteObj.type = -1; // Маркираме за офлайн синхронизация
         }
         if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
 
@@ -14984,7 +14987,7 @@ async function syncDirtyNotes() {
         showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
         return;
     }
-    const dirtyNotes = allNotesData.filter(n => n.status === -1);
+    const dirtyNotes = allNotesData.filter(n => n.type === -1);
     if (dirtyNotes.length === 0) {
         showToast(_('noUnsyncedNotes') || 'No unsynced notes found.', 2000);
         return;
@@ -15005,9 +15008,8 @@ async function syncDirtyNotes() {
     for (const note of dirtyNotes) {
         try {
             const tempGdid = note.gdid;
-            
-            // Променяме на 0 преди записа, за да се запише 0-ла в GDrive и в паметта
-            note.status = 0;
+            // Променяме type на 0 преди записа, за да се запише коректно в GDrive
+            note.type = 0;
             if (useIndexedDb) {
                 await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
             }
@@ -15034,13 +15036,13 @@ async function syncDirtyNotes() {
                 const el = document.querySelector(`.note[data-i="${note.id}"], .note[data-g="${note.gdid}"], .note[data-g="${tempGdid}"]`);
                 if (el) {
                     el.classList.remove('dirty');
-                    el.dataset.s = '0';
+                    el.dataset.s = String(note.status);
                     if (note.gdid) el.dataset.g = note.gdid;
                 }
             } else {
                 errorCount++;
-                // Ако е неуспешно, връщаме на -1 и запазваме в БД
-                note.status = -1;
+                // Ако е неуспешно, връщаме type на -1 и запазваме в БД
+                note.type = -1;
                 if (useIndexedDb) {
                     await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
                 }
@@ -15048,8 +15050,8 @@ async function syncDirtyNotes() {
         } catch (e) {
             console.error("Sync error for note", note.id, e);
             errorCount++;
-            // Връщаме на -1 при грешка
-            note.status = -1;
+            // Връщаме type на -1 при грешка
+            note.type = -1;
             if (useIndexedDb) {
                 await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
             }
