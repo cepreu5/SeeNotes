@@ -295,7 +295,7 @@ async function parseFileResults(results, filenameForError) {
     const tempMap = new Map();
     const duplicates = [];
     let parseError = false;
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const updateGDrive = useGoogleDb && !isOffline;
 
     for (const { res, id } of results) {
         if (!res || !res.body || res.body.trim() === '') continue;
@@ -1536,13 +1536,11 @@ async function getFolderIDByName(name) {
  * Създава нова бележка в текущия борд.
  */
 async function createNewNote() {
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
-    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    const updateGDrive = useGoogleDb && !isOffline;
+    const useLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
 
-    if (!updateGDrive && !useLocalFolder) {
-        // Проверяваме за етикета и ако го няма, ползваме стандартно съобщение
-        const label = _('updateGDriveLabel') || "Update Google Drive";
-        showToast(label + " " + (_('required') || "required"), 5000);
+    if (!updateGDrive && !useLocalFolderNow) {
+        showToast("Cloud sync (GDrive) or Local folder updates required", 5000);
         return;
     }
 
@@ -2486,8 +2484,8 @@ async function moveNoteToTrash(noteGdid, noteId) {
     noteToUpdate.status = 1;
     noteToUpdate.datemod = Date.now();
 
-    const doGDrive = localStorage.getItem('updateGDrive') !== 'false';
-    if (doGDrive && noteGdid && !isOffline && typeof updateGDriveFile === 'function') {
+    const updateGDriveNow = useGoogleDb && !isOffline;
+    if (updateGDriveNow && noteGdid && !isOffline && typeof updateGDriveFile === 'function') {
         await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
         console.log("Updating GD")
     }
@@ -2525,9 +2523,9 @@ async function moveNoteToTrash(noteGdid, noteId) {
  * Изтрива бележка окончателно от БД, GDrive, локална папка и паметта.
  */
 async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
-    const doGDrive = localStorage.getItem('updateGDrive') !== 'false';
+    const updateGDriveNow = useGoogleDb && !isOffline;
     let gdriveDeleted = false;
-    if (doGDrive && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
+    if (updateGDriveNow && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
         await deleteGDriveFile(noteGdid);
         gdriveDeleted = true;
     }
@@ -2573,7 +2571,7 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
  * @param {boolean} fromModal - Дали се извиква от модалния прозорец.
  */
 async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
-    const doGDrive = localStorage.getItem('updateGDrive') !== 'false';
+        const updateGDriveNow = useGoogleDb && !isOffline;
     const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
     if (!useIndexedDb && !doGDrive && !doLocal) return;
     if (fromModal) {
@@ -2721,7 +2719,7 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
             await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
         }
 
-        const updateGDriveNow = localStorage.getItem('updateGDrive') !== 'false';
+        const updateGDriveNow = useGoogleDb && !isOffline;
         const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
 
         // --- GDrive Sync ---
@@ -3773,9 +3771,7 @@ function initApp() {
         localStorage.setItem('showWeeklyCalendar', 'true');
     }
     // Set default updateGDrive to true if not set
-    if (localStorage.getItem('updateGDrive') === null) {
-        localStorage.setItem('updateGDrive', 'true');
-    }
+    // Removed updateGDrive default check
     // Set default useIndexedDb to true if not set
     if (localStorage.getItem('useIndexedDb') === null) {
         localStorage.setItem('useIndexedDb', 'true');
@@ -5539,7 +5535,7 @@ async function goOffline() {
                 if (boardsInDb && boardsInDb.length > 0) {
                     localStorage.setItem('useIndexedDb', 'true');
                     localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('updateGDrive', 'false');
+                    // Removed updateGDrive adjustment
                     localStorage.setItem('forceGDriveRead', 'false');
                     updateGlobalStateFlags();
                     // showToast(_('offlineModeMessage'), 10000); // Moved to mainLogic or startApp for better timing
@@ -6848,7 +6844,7 @@ function makeElementDraggable(element, storageKey) {
 
 function showModal(options, noteElement = null) {
     let rawContent, formatString, titleFormatString, displayContent, noteColor, noteId, noteGdid;
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const updateGDrive = useGoogleDb && !isOffline;
     if (typeof options === 'string') {
         rawContent = options;
         options = {}; // Ensure options is an object
@@ -9557,14 +9553,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             showToast(_('settingSaved'), 2000);
         });
     }
-    const updateGDriveCheckbox = document.getElementById('update-gdrive-checkbox');
-    if (updateGDriveCheckbox) {
-        updateGDriveCheckbox.checked = localStorage.getItem('updateGDrive') === 'true';
-        updateGDriveCheckbox.addEventListener('change', () => {
-            localStorage.setItem('updateGDrive', updateGDriveCheckbox.checked);
-            showToast(_('settingSaved'), 2000);
-        });
-    }
     const updateLocalFolderCheckbox = document.getElementById('update-local-folder-checkbox');
     if (updateLocalFolderCheckbox) {
         updateLocalFolderCheckbox.checked = localStorage.getItem('updateLocalFolder') === 'true';
@@ -11292,7 +11280,7 @@ async function createNoteElement(noteContent) {
             showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
 
             // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
-            const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+            const updateGDrive = useGoogleDb && !isOffline;
             if (e.ctrlKey) {
                 if ((typeof useIndexedDb !== 'undefined' && useIndexedDb) || (updateGDrive && noteGdid)) {
                     const modalBodyElem = document.getElementById('modal-body');
@@ -11583,7 +11571,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                             await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
                         }
                         // Delete the board file from Google Drive if it has a gdid
-                        const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+            const updateGDriveNow = useGoogleDb && !isOffline;
                         if (updateGDriveNow && board.gdid && typeof deleteGDriveFile === 'function') {
                             try {
                                 if (await deleteGDriveFile(board.gdid)) {
@@ -12738,12 +12726,11 @@ document.addEventListener('click', (e) => {
     if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
 
     // Check if Database mode is active OR if GDrive update is enabled
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const updateGDriveNow = useGoogleDb && !isOffline;
     const noteGdid = modalBodyElem.dataset.gdid;
 
-    if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) {
-        // Warn if trying to edit but can't save anywhere
-        showToast("Editing requires Database Mode or 'Update Google Drive' enabled.", 3000);
+    if (!useIndexedDb && !updateGDriveNow) {
+        showToast("Editing requires Database Mode or active Google Drive synchronization.", 3000);
         return;
     }
 
@@ -12761,11 +12748,11 @@ document.addEventListener('touchstart', (e) => {
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
     if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
  
-    const updateGDrive = localStorage.getItem('updateGDrive') === 'true';
+    const updateGDriveNow = useGoogleDb && !isOffline;
     const noteGdid = modalBodyElem.dataset.gdid;
  
     // If not editable, just return, don't start timer
-    if ((typeof useIndexedDb === 'undefined' || !useIndexedDb) && (!updateGDrive || !noteGdid)) return;
+    if (!useIndexedDb && !updateGDriveNow) return;
  
     editLongPressTriggered = false;
     editLongPressTimer = setTimeout(() => {
@@ -13348,9 +13335,9 @@ async function saveEditedNote() {
     const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
 
     if (newText === undefined) return; // Nothing to save
-    let updateGDriveNow = localStorage.getItem('updateGDrive') !== 'false';
-    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
-    const useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    let updateGDriveNow = useGoogleDb && !isOffline;
+    const updateLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
+    const useLocalFolderNow = localStorage.getItem('useLocalDb') === 'true';
     const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
 
     // Show spinner on save button
@@ -13711,7 +13698,7 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
         if (updatedEl) noteEl.replaceWith(updatedEl);
     }
     // Save to Source
-    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+            const updateGDriveNow = useGoogleDb && !isOffline;
     const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
 
     if (updateGDriveNow) {
@@ -14559,7 +14546,7 @@ async function showNewBoardModal() {
                         await permanentlyDeleteNote(note.gdid, note.id, true); // skipUI=true за бързина
                     }
 
-                    const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+                            const updateGDriveNow = useGoogleDb && !isOffline;
                     if (updateGDriveNow && currentEditingBoard.gdid) {
                         await deleteGDriveFile(currentEditingBoard.gdid);
                     }
@@ -14633,7 +14620,7 @@ async function showNewBoardModal() {
         }
 
         try {
-            const updateGDriveNow = localStorage.getItem('updateGDrive') === 'true';
+            const updateGDriveNow = useGoogleDb && !isOffline;
             if (updateGDriveNow) {
                 if (currentEditingBoard && currentEditingBoard.gdid) {
                     await updateGDriveFile(currentEditingBoard.gdid, JSON.stringify(boardToSave));

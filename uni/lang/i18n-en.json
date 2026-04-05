@@ -257,7 +257,6 @@
     "refreshNow": "Refresh",
     "installPromptPlaceholder": "Install the application",
     "closeAfterSaveLabel": "Close after save:",
-    "updateGDriveLabel": "Update:",
     "updateLocalFolderLabel": "Update:",
     "checkEmptyBoardsLabel": "Check for empty boards:",
     "automatedTimerLabel": "Auto Reminder:",
