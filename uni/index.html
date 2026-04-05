@@ -792,10 +792,11 @@
                     <div style="display: flex; gap: 5px; flex: 1; align-items: center;">
                         <select id="device-name-select" class="zoom-input-select"
                             style="flex: 1; height: 32px;"></select>
-                        <button id="add-device-btn" class="scale-step-btn"
-                            style="width: 32px; height: 32px; padding: 0;" title="Добави нов профил">+</button>
+                        <button id="add-device-btn" class="zoom-btn"
+                            style="width: 32px; height: 32px; padding: 0; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; font-weight: bold; font-size: 18px;"
+                            title="Добави нов профил">+</button>
                         <button id="delete-device-btn" class="zoom-btn"
-                            style="background: #e74c3c; color: white; border: none; padding: 0 10px; border-radius: 4px; cursor: pointer; height: 32px;">
+                            style="width: 32px; height: 32px; padding: 0; background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center;">
                             <span data-key="deleteButton">Изтрий</span>
                         </button>
                     </div>
@@ -919,9 +920,11 @@
                                         <button id="save-individual-btn" class="zoom-btn"
                                             data-key="saveIndividualLabel">Запис в локална папка</button>
                                     </div>
+                                </div>
+                                <div style="display: flex; justify-content: center; width: 100%; margin-top: 5px;">
                                     <div class="zoom-control-wrapper" id="sync-dirty-wrapper"
                                         style="margin-top: 0; margin-bottom: 0;">
-                                        <button id="sync-dirty-btn" class="zoom-btn"
+                                        <button id="sync-dirty-btn" class="zoom-btn" style="min-width: 250px;"
                                             data-key="syncDirtyLabel">Синхронизирай промените</button>
                                     </div>
                                 </div>

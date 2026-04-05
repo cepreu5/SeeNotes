@@ -4386,7 +4386,28 @@ function initApp() {
 
     });
     // Specific listener for the settings close button (not class 'modal-close')
-    document.getElementById('settings-close-btn').addEventListener('click', () => {
+    const settingsCloseBtnPrimary = document.getElementById('settings-close-btn');
+    
+    // Add same long-press touch simulation as settings_button
+    let closeBtnLongPressTimer;
+    settingsCloseBtnPrimary.addEventListener('touchstart', (e) => {
+        closeBtnLongPressTimer = setTimeout(() => {
+            settingsCloseBtnPrimary.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true, cancelable: true }));
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 600);
+    }, { passive: true });
+    settingsCloseBtnPrimary.addEventListener('touchend', () => clearTimeout(closeBtnLongPressTimer));
+    settingsCloseBtnPrimary.addEventListener('touchmove', () => clearTimeout(closeBtnLongPressTimer));
+    settingsCloseBtnPrimary.addEventListener('contextmenu', (e) => {
+        e.preventDefault(); e.stopPropagation(); return false;
+    });
+
+    settingsCloseBtnPrimary.addEventListener('click', (e) => {
+        if (e && e.ctrlKey) {
+            const sb = document.getElementById('settings_button');
+            if (sb) sb.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
+            return;
+        }
         document.getElementById('settings-modal').classList.remove('visible');
         if (window.kbAssistant) window.kbAssistant.terminateGuide();
         if (notesBgrdChanged) {
@@ -10303,8 +10324,9 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
     });
     // Close
-    /*const settingsCloseBtn = */
-    document.getElementById('settings-close-btn').addEventListener('click', async () => {
+    document.getElementById('settings-close-btn').addEventListener('click', async (e) => {
+        if (e && e.ctrlKey) return; // Allow Ctrl-Click toggle behavior to fire without closing the UI
+
         /* const configData = await exportConfig();
         console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
         const currentState = {
