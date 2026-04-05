@@ -359,5 +359,12 @@
     "selectFolderToDelete": "Select a folder to delete:",
     "offlineStartPrompt": "Network connection is unavailable. Do you want to start in Offline Mode?",
     "betaVersionText": "This is a test (Beta) version of the application.",
-    "betaAccessText": "If you wish to get access, please write to"
+    "betaAccessText": "If you wish to get access, please write to",
+    "noUnsyncedNotes": "No unsynced notes found.",
+    "syncing": "Syncing...",
+    "syncSuccess": "Successfully synced",
+    "notes": "notes.",
+    "errorsOccurred": "errors occurred.",
+    "copyNoteTooltip": "Copy note",
+    "editNoteTooltip": "Edit note"
 }

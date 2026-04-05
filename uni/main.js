@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.917'; // App version
+const version = 'Beta 1.918'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -1556,10 +1556,6 @@ async function createNewNote() {
     const updateGDrive = useGoogleDb && !isOffline;
     const useLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
 
-    if (!updateGDrive && !useLocalFolderNow) {
-        showToast("Cloud sync (GDrive) or Local folder updates required", 5000);
-        return;
-    }
 
     if (boardsData.length === 0) {
         showToast(_('errorNoBoards') || "Моля, създайте първо поне един борд, преди да добавяте бележки.", 3000);
@@ -4387,7 +4383,7 @@ function initApp() {
     });
     // Specific listener for the settings close button (not class 'modal-close')
     const settingsCloseBtnPrimary = document.getElementById('settings-close-btn');
-    
+
     // Add same long-press touch simulation as settings_button
     let closeBtnLongPressTimer;
     settingsCloseBtnPrimary.addEventListener('touchstart', (e) => {
@@ -5482,10 +5478,13 @@ function updateModeButton() {
     mainIcon.style.width = '24px';
     mainIcon.style.height = '24px';
     iconWrapper.appendChild(mainIcon);
-    // Добавяме иконата за наслагване, ако сме в комбиниран режим И не сме офлайн
-    if (isCombinedWithDb && !isOffline) {
-        let overlaySrc = '';
-        let overlayAlt = '';
+    // Добавяме иконата за наслагване
+    let overlaySrc = '';
+    let overlayAlt = '';
+    if (isOffline) {
+        // overlaySrc = 'Offline.png'; overlayAlt = 'Offline Mode';
+        overlaySrc = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAAERElEQVR4nO2YW2hcVRSGT1pFBS/4JGqb2WsSSGIlFWvO6IMo1JkMSuYkMTU++OKlVIvYh0LVGIngrdpWDZ21xlFRES8Y6YsXUoIKal8KovggUvGCivUWSmatSYXmsmWfSew0c+bMmWQymYH5YcPMnL33Wd/Ze/9rnbGshhpaHdmxvs1WvSoSSzxpxxKzkXjPHVY9Bh/pdrRpdQfRFXWucoNeAHAhup2ZSMwZtOpFdjyxzQ06H6LeVsJuQNQRxMaD05cplEEg2atIDinib4BkEkiyQKIXmvk8aa6ZPkDyTIjk9g2p6cvXCMKZu3LXq+MK5Ye8IJfbfgTiF0KUudbSuql6EPE+3TE0vtLg9ZL2E5Dsbh2dvLBiwV+R/Ot8QHm8/ZGJbCTer6sAoRVJRqE8HU6fuGj5kWvdBCTbFPIvixO3D3+sqwUBuTapUHZZY3p9WbE3p7OXKuQJr0mLQWza/c5RQH7YQANOdzXTVNjMAy/LJe7ng9mrw8j9CnmPIn5bEf9Wxop8oZInQ4GCD2PmFkXyt9+EBsKO982v1GJb01MtBnrBufwhUKaM2/lOqEgeAOK5EhMdAcz0dN3ce1sl80QLTW8B5DcU8YwvDPKop1sByrMlAj8aejFz3WonO5XKbgbiT0tAvF5wLlSKdwDyvMeArLlWzKO9LbZXdzz0YRaQZ91GckKhfA/E40C8TyXZaaapi/1ATKIz47wB5LEi9EsgkL9SlGnz7Dym10OSBxTJ+21DEzPlupNCPqWQPzL7+oYRfZbXLVrw5EYg+SxQ8IsC5Lvdc4B8uO2Vfy4o6DCi16kkb89l0NLuFMRilbFq5J1eIOY3IEnn3IhHrCAKpeRGL+819gjEX/u504ryBMq3QHx9QUBaN4WTstVatkb0OiAeMsteKoiVQ/CsInmq2LYqW62j+hxAfjfAjf81e9qAdm7fv9eOOWe+2cWcuc776E1F8p7x9ADzHfbcwuXKOEYRd1rIkiYJZe5aWoD5Waz7UIhvVSif+54N436VkJfFKuJfjdX5lcB2NDFQKk9ASqK5vR/QKisBoZDfClopBoEIvabPBeTnVy34fAhF/GCx6znf5nvcYg3liEleiuRYx54PvrPjvSVrpzBm7lTEj1rVFqB0AsmY31lpH/6k0J1ia/yO7S49yUt+gdcsxIYD+jxF/GUgb69VCFgsO+oZQhVYLP9hSvNQMhtvScqmEHIHkNykSJ4AlJ/zIezu3rmagAgh3+tWl8TDZmsV67clrc+GlNxvsrbJ2HYAi62azB9cy+lr1xLEcmXXGsTpzGrOAx9XxM+Z3+oGAvLLgtO104FS4+xagXCffOFb159Bxtq1AOEFAMS/Bx1vrzWE2S4eAPvKmSMScwaXQkS6E6eu2doftlZb5sC6EMjH3UOMvN+8xJQ7j33mSsxH4s5Oq95kRxMD5snXZfCLsqM98P+XhhqyKqr/AEJezD2/ik84AAAAAElFTkSuQmCC'; overlayAlt = 'Offline Mode';
+    } else if (isCombinedWithDb) {
         if (currentUseGoogleDb) {
             overlaySrc = 'GDrive.png'; overlayAlt = 'Google Drive Sync';
         } else if (currentUseLocalFolder) {
@@ -5493,9 +5492,12 @@ function updateModeButton() {
         } else if (currentUseArhDb) {
             overlaySrc = 'Zip.png'; overlayAlt = 'Archive Source';
         }
+    }
+    if (overlaySrc) {
         const overlay = document.createElement('div');
         overlay.className = 'mode-db-overlay';
-        overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}">`;
+        const filterStyle = isOffline ? ' style="filter: brightness(0);"' : '';
+        overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}"${filterStyle}>`;
         iconWrapper.appendChild(overlay);
     }
     modeButton.title = title;
@@ -7574,7 +7576,7 @@ function showModal(options, noteElement = null) {
         } else {
             // Standard edit button
             editBtn.innerHTML = pencilIconSvg;
-            editBtn.title = "Edit note";
+            editBtn.title = _('editNoteTooltip') || "Edit note";
             editBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 enableNoteEditing(modalBody);
@@ -14984,7 +14986,7 @@ async function syncDirtyNotes() {
     }
     const dirtyNotes = allNotesData.filter(n => n.status === -1);
     if (dirtyNotes.length === 0) {
-        showToast('No unsynced notes found.', 2000);
+        showToast(_('noUnsyncedNotes') || 'No unsynced notes found.', 2000);
         return;
     }
 
@@ -14993,7 +14995,7 @@ async function syncDirtyNotes() {
     if (btn) {
         originalHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = `<img src="Refresh.png" style="width:20px; height:20px; animation: spin 0.8s linear infinite;"> Syncing...`;
+        btn.innerHTML = `<img src="Refresh.png" style="width:20px; height:20px; animation: spin 0.8s linear infinite;"> ` + (_('syncing') || 'Syncing...');
     }
 
     let successCount = 0;
@@ -15003,14 +15005,18 @@ async function syncDirtyNotes() {
     for (const note of dirtyNotes) {
         try {
             const tempGdid = note.gdid;
+            
+            // Променяме на 0 преди записа, за да се запише 0-ла в GDrive и в паметта
+            note.status = 0;
+            if (useIndexedDb) {
+                await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+            }
+
             const success = await syncSingleNoteToGDrive(note);
             if (success) {
-                note.status = 0;
-                if (useIndexedDb) {
+                if (useIndexedDb && tempGdid && tempGdid !== note.gdid) {
                     await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                    if (tempGdid && tempGdid !== note.gdid) {
-                        await deleteFromDB(NOTE_STORE_NAME, tempGdid);
-                    }
+                    await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                 }
 
                 // Fix orphaned media links
@@ -15033,10 +15039,20 @@ async function syncDirtyNotes() {
                 }
             } else {
                 errorCount++;
+                // Ако е неуспешно, връщаме на -1 и запазваме в БД
+                note.status = -1;
+                if (useIndexedDb) {
+                    await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+                }
             }
         } catch (e) {
             console.error("Sync error for note", note.id, e);
             errorCount++;
+            // Връщаме на -1 при грешка
+            note.status = -1;
+            if (useIndexedDb) {
+                await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+            }
         }
     }
 
@@ -15055,9 +15071,9 @@ async function syncDirtyNotes() {
     }
 
     if (errorCount === 0) {
-        showToast(`Successfully synced ${successCount} notes.`, 3000);
+        showToast(`${_('syncSuccess') || 'Successfully synced'} ${successCount} ${_('notes') || 'notes'}`, 3000);
     } else {
-        showToast(`Synced ${successCount} notes. ${errorCount} errors occurred.`, 5000);
+        showToast(`${_('syncSuccess') || 'Synced'} ${successCount} ${_('notes') || 'notes.'} ${errorCount} ${_('errorsOccurred') || 'errors occurred.'}`, 5000);
     }
 }
 
