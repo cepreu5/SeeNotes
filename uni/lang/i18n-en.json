@@ -313,7 +313,7 @@
     "forceGDriveReadLabel": "Read from GD before edit:",
     "loadingFromDrive": "Loading from Google Drive...",
     "errorParsingNote": "Error parsing note content",
-    "offlineModeMessage": "You are working in offline mode. Data loaded from local database.",
+    "offlineModeMessage": "Cannot sync while offline.",
     "loadingFromLocal": "Loading from local database...",
     "offlineStartButton": "Start Offline",
     "clickToEditLabel": "Click to edit:",

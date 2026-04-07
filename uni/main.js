@@ -315,6 +315,13 @@ async function parseFileResults(results, filenameForError) {
             }
 
             for (let item of items) {
+                // ВИНАГИ използвайте реалното ID на файла от Google Drive като gdid
+                if (id && filenameForError === 'note.txt') {
+                    if (item.gdid && item.gdid !== id) {
+                        console.warn(`[Sync-ID-Fix] Corrected mismatched ID for note "${item.id}": Internal was "${item.gdid}", actual GDrive ID is "${id}"`);
+                    }
+                    item.gdid = id;
+                }
                 const key = (item.gdid && item.gdid !== '') ? item.gdid : item.id;
                 if (typeof key !== 'undefined' && key !== null) {
                     const existing = tempMap.get(key);
@@ -1277,6 +1284,7 @@ function trackMaxIds(notes) {
  * Създава нов файл в Google Drive в указаната папка.
  */
 async function createGDriveFile(folderId, filename, content) {
+    if (isOffline) return null;
     const sendRequest = async (token) => {
         const metadata = {
             name: filename,
@@ -1514,8 +1522,10 @@ async function migrateDataToNewFolder(targetFolderId) {
     }
 }
 
+let cachedFolderIdsByName = {};
 async function getFolderIDByName(name) {
     if (isOffline) return null;
+    if (cachedFolderIdsByName[name]) return cachedFolderIdsByName[name];
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
         return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1`, {
@@ -1535,16 +1545,13 @@ async function getFolderIDByName(name) {
                 resp = await sendRequest(tokenData.access_token);
             }
         }
-        if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
+        if (!resp.ok) return null;
         const result = await resp.json();
-        return result.files?.[0]?.id || null;
+        const id = result.files?.[0]?.id || null;
+        if (id) cachedFolderIdsByName[name] = id;
+        return id;
     } catch (e) {
-        if (e instanceof TypeError || (e.message && e.message.includes('Failed to fetch'))) {
-            console.log(`getFolderIDByName('${name}'): Network unavailable, switching to offline mode.`);
-            isOffline = true;
-        } else {
-            console.error("getFolderIDByName error:", e);
-        }
+        console.error("Error in getFolderIDByName:", e);
         return null;
     }
 }
@@ -1583,7 +1590,6 @@ async function createNewNote() {
     // Увеличаваме броячите
     noteId++;
     noteNumord++;
-    syncFolderDataAsync();
     const now = Date.now();
 
     // Base note structure
@@ -1640,11 +1646,14 @@ async function createNewNote() {
     }
 }
 
+let cachedMainFolderId = null;
 async function getFolderID() {
     if (isOffline) return null;
+    if (cachedMainFolderId) return cachedMainFolderId;
     try {
         const multinotesDataId = await getMultinotesDataFolderID();
         if (!multinotesDataId) return null;
+        cachedMainFolderId = multinotesDataId;
 
         const listFolders = async () => {
             const folderNames = ["Other", "Sound", "Video", "Images"];
@@ -2532,6 +2541,7 @@ async function moveNoteToTrash(noteGdid, noteId) {
     if (week && week.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
         renderWeeklyCalendarView(currentWeeklyViewDate);
     }
+    updateReloadButtonState();
     return true;
 }
 /**
@@ -2541,18 +2551,20 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
     const updateGDriveNow = useGoogleDb && !isOffline;
     let gdriveDeleted = false;
     if (updateGDriveNow && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
-        await deleteGDriveFile(noteGdid);
-        gdriveDeleted = true;
+        try {
+            await deleteGDriveFile(noteGdid);
+            gdriveDeleted = true;
+        } catch (e) {
+            console.warn("GDrive deletion failed but continuing locally:", e);
+        }
     }
 
     if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
-        const db = await openNotesDB();
-        await new Promise((resolve, reject) => {
-            const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
-            tx.objectStore(NOTE_STORE_NAME).delete(noteGdid || Number(noteId));
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
-        });
+        try {
+            await deleteFromDB(NOTE_STORE_NAME, noteGdid || noteId);
+        } catch (e) {
+            console.error("Local DB deletion failed:", e);
+        }
     }
 
     const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
@@ -2588,7 +2600,7 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
 async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
     const updateGDriveNow = useGoogleDb && !isOffline;
     const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
-    if (!useIndexedDb && !doGDrive && !doLocal) return;
+    if (!useIndexedDb && !updateGDriveNow && !doLocal) return;
     if (fromModal) {
         document.getElementById('content-modal').classList.remove('visible');
         await new Promise(resolve => setTimeout(resolve, 150));
@@ -2596,7 +2608,7 @@ async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
     const noteData = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
     const isInTrash = currentBoardFilter === 'trash' || (noteData && noteData.status === 1);
     const confirmMsgKey = isInTrash
-        ? ((doGDrive || doLocal) ? 'confirmNoteDeleteSync' : 'confirmNoteDelete')
+        ? ((updateGDriveNow || doLocal) ? 'confirmNoteDeleteSync' : 'confirmNoteDelete')
         : 'confirmNoteMoveToTrash';
     const confirmed = await showConfirmation(_(confirmMsgKey) || _('confirmNoteDelete'));
     if (!confirmed) return;
@@ -2800,6 +2812,7 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
         }
         updateBoardCounterUI('trash');
         filterNotesByBoard(currentBoardFilter, false);
+        updateReloadButtonState();
         return true;
     }
     return false;
@@ -3130,19 +3143,25 @@ async function deleteFromDB(storeName, key) {
         try {
             const transaction = db.transaction([storeName], 'readwrite');
             const store = transaction.objectStore(storeName);
-            const request = store.delete(key);
-            request.onerror = (event) => reject(`Error deleting from ${storeName}: ` + event.target.error);
+            // Първи опит с оригиналния ключ
+            store.delete(key);
+            // Ако ключът е число или низ, който изглежда на число, пробвайте и другия тип
+            if (typeof key === 'number') {
+                store.delete(String(key));
+            } else if (typeof key === 'string' && !isNaN(key) && key.trim() !== "" && !key.startsWith('L') && !key.includes('-')) {
+                store.delete(Number(key));
+            }
             transaction.oncomplete = () => {
                 db.close();
                 resolve();
             };
-            transaction.onerror = () => {
+            transaction.onerror = (e) => {
                 db.close();
-                reject(`Transaction error deleting from ${storeName}`);
+                reject(e.target.error);
             };
             transaction.onabort = () => {
                 db.close();
-                reject(`Transaction aborted deleting from ${storeName}`);
+                reject("Abort");
             };
         } catch (error) {
             db.close();
@@ -3910,7 +3929,18 @@ function initApp() {
         });
 
     }
-    reloadButton.addEventListener('click', () => mainLogic());
+    reloadButton.addEventListener('click', () => {
+        const hasDirtyNotes = allNotesData && allNotesData.some(n => n.type === -1);
+        if (hasDirtyNotes) {
+            if (isOffline) {
+                showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
+            } else {
+                syncDirtyNotes();
+            }
+        } else {
+            mainLogic();
+        }
+    });
 
     // --- Long Press Logic for Settings Button (Mobile) ---
     let settingsLongPressTimer;
@@ -4561,7 +4591,7 @@ function initApp() {
     modeButton.addEventListener('click', (e) => {
         // Логика за обикновен клик: "Умен" бутон
         if (isOffline) {
-            showToast(_('offlineModeMessage') || "Offline Mode - Sync Disabled", 3000);
+            showToast(_('offlineModeMessage') || "Cannot sync while offline.", 3000);
             return;
         }
         updateGlobalStateFlags();
@@ -8823,7 +8853,7 @@ async function findGDFileByName(folderId, fileName) {
 }
 
 async function syncGlobalFoldersJson() {
-    if (isOffline) return;
+    if (isOffline || !useGoogleDb) return;
     try {
         const folderNamesStr = localStorage.getItem('gdrive_folder_names');
         if (!folderNamesStr) return;
@@ -8903,7 +8933,7 @@ function syncFolderDataAsync() {
 }
 
 async function loadGlobalFoldersJson() {
-    if (isOffline) return false;
+    if (isOffline || !useGoogleDb) return false;
     try {
         const folderId = await getFolderIDByName('multinotes_data');
         if (!folderId) return false;
@@ -13461,7 +13491,6 @@ async function saveEditedNote() {
         if (!noteId || isNaN(noteId)) {
             noteId = ++window.noteId;
             noteNumord++;
-            syncFolderDataAsync();
         }
 
         // Define new note object
@@ -13623,9 +13652,9 @@ async function saveEditedNote() {
                     try {
                         const tempGdid = noteObj.gdid;
                         const newGdid = await createGDriveFile(folderId, fileName, fileContent);
+                        if (!newGdid) throw new Error("Failed to create GDrive file");
                         noteObj.gdid = newGdid;
                         modalBodyElem.dataset.gdid = newGdid;
-                        await updateGDriveFile(newGdid, JSON.stringify(noteObj));
                         if (useIndexedDb) {
                             await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
                             if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
@@ -13687,6 +13716,7 @@ async function saveEditedNote() {
         }
 
         showToast(_(msgKey).replace('{boardName}', boardTitle));
+        updateReloadButtonState();
     }
 
     // Remove spinner
@@ -13729,6 +13759,9 @@ async function saveEditedNote() {
         if (typeof renderWeeklyCalendarView === 'function') renderWeeklyCalendarView(currentWeeklyViewDate);
     } else {
         applyFilters();
+    }
+    if (isNewNote) {
+        syncFolderDataAsync();
     }
 }
 
@@ -14982,100 +15015,138 @@ function populateFoldersDropdown() {
     });
 }
 
+function updateReloadButtonState() {
+    const btn = document.getElementById('reload_button');
+    if (!btn) return;
+    const hasDirty = allNotesData && allNotesData.some(n => n.type === -1);
+    const img = btn.querySelector('img');
+    if (hasDirty) {
+        btn.style.background = '#e74c3c';
+        btn.style.borderRadius = '6px';
+        if (img) img.style.filter = 'brightness(0) invert(1)';
+    } else {
+        btn.style.background = '';
+        btn.style.borderRadius = '';
+        if (img) img.style.filter = '';
+    }
+}
 async function syncDirtyNotes() {
     if (isOffline) {
         showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
         return;
     }
-    const dirtyNotes = allNotesData.filter(n => n.type === -1);
-    if (dirtyNotes.length === 0) {
-        showToast(_('noUnsyncedNotes') || 'No unsynced notes found.', 2000);
-        return;
-    }
 
-    const btn = document.getElementById('sync-dirty-btn');
-    let originalHtml = '';
-    if (btn) {
-        originalHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = `<img src="Refresh.png" style="width:20px; height:20px; animation: spin 0.8s linear infinite;"> ` + (_('syncing') || 'Syncing...');
-    }
+    const reloadBtn = document.getElementById('reload_button');
+    const reloadImg = reloadBtn?.querySelector('img');
+    if (reloadImg) reloadImg.style.animation = 'spin 1.5s linear infinite';
+    if (reloadBtn) reloadBtn.style.pointerEvents = 'none';
+    try {
+        const dirtyNotes = allNotesData.filter(n => n.type === -1);
+        if (dirtyNotes.length === 0) {
+            showToast(_('noDirtyNotesSync') || "No notes to sync.");
+            if (reloadImg) reloadImg.style.animation = '';
+            if (reloadBtn) reloadBtn.style.pointerEvents = 'auto';
+            return;
+        }
+        const btn = document.getElementById('sync-dirty-btn');
+        let originalHtml = '';
+        if (btn) {
+            originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<img src="Refresh.png" style="width:20px; height:20px; animation: spin 0.8s linear infinite;"> ` + (_('syncing') || 'Syncing...');
+        }
 
-    let successCount = 0;
-    let errorCount = 0;
-    let mediaNeedsSync = false;
+        let successCount = 0;
+        let errorCount = 0;
+        let mediaNeedsSync = false;
 
-    for (const note of dirtyNotes) {
-        try {
-            const tempGdid = note.gdid;
-            // Променяме type на 0 преди записа, за да се запише коректно в GDrive
-            note.type = 0;
-            if (useIndexedDb) {
-                await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-            }
-
-            const success = await syncSingleNoteToGDrive(note);
-            if (success) {
-                if (useIndexedDb && tempGdid && tempGdid !== note.gdid) {
+        for (const note of dirtyNotes) {
+            try {
+                if (useIndexedDb && (!note.gdid || note.gdid === "")) {
+                    note.gdid = `L${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+                }
+                const tempGdid = note.gdid;
+                // Променяме type на 0 преди записа, за да се запише коректно в GDrive
+                note.type = 0;
+                if (useIndexedDb && note.gdid) {
                     await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                    await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                 }
 
-                // Fix orphaned media links
-                if (tempGdid && tempGdid !== note.gdid) {
-                    for (let m of mediaData) {
-                        if (String(m.noteid) === String(tempGdid)) {
-                            m.noteid = note.gdid;
-                            if (useIndexedDb) await bulkPutDB(MEDIA_STORE_NAME, m, true);
-                            mediaNeedsSync = true;
+                const success = await syncSingleNoteToGDrive(note);
+                if (success) {
+                    if (useIndexedDb && tempGdid && tempGdid !== note.gdid) {
+                        await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+                        await deleteFromDB(NOTE_STORE_NAME, tempGdid);
+                    }
+
+                    // Изтриване на дубликати от паметта (ако има такива)
+                    allNotesData = allNotesData.filter(obj =>
+                        !(String(obj.id) === String(note.id) && String(obj.gdid) !== String(note.gdid))
+                    );
+                    // Подсигуряваме че текущата бележка е в масива
+                    if (!allNotesData.includes(note)) allNotesData.push(note);
+
+                    // Fix orphaned media links
+                    if (tempGdid && tempGdid !== note.gdid) {
+                        for (let m of mediaData) {
+                            if (String(m.noteid) === String(tempGdid)) {
+                                m.noteid = note.gdid;
+                                if (useIndexedDb) await bulkPutDB(MEDIA_STORE_NAME, m, true);
+                                mediaNeedsSync = true;
+                            }
                         }
                     }
-                }
 
-                successCount++;
-                const el = document.querySelector(`.note[data-i="${note.id}"], .note[data-g="${note.gdid}"], .note[data-g="${tempGdid}"]`);
-                if (el) {
-                    el.classList.remove('dirty');
-                    el.dataset.s = String(note.status);
-                    if (note.gdid) el.dataset.g = note.gdid;
+                    successCount++;
+                    const el = document.querySelector(`.note[data-i="${note.id}"], .note[data-g="${note.gdid}"], .note[data-g="${tempGdid}"]`);
+                    if (el) {
+                        el.classList.remove('dirty');
+                        el.dataset.s = String(note.status);
+                        if (note.gdid) el.dataset.g = note.gdid;
+                    }
+                } else {
+                    errorCount++;
+                    // Ако е неуспешно, връщаме type на -1 и запазваме в БД
+                    note.type = -1;
+                    if (useIndexedDb) {
+                        await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+                    }
                 }
-            } else {
+            } catch (e) {
+                console.error("Sync error for note", note.id, e);
                 errorCount++;
-                // Ако е неуспешно, връщаме type на -1 и запазваме в БД
+                // Връщаме type на -1 при грешка
                 note.type = -1;
                 if (useIndexedDb) {
                     await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
                 }
             }
-        } catch (e) {
-            console.error("Sync error for note", note.id, e);
-            errorCount++;
-            // Връщаме type на -1 при грешка
-            note.type = -1;
-            if (useIndexedDb) {
-                await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+        }
+
+        if (mediaNeedsSync && typeof syncFileWorker === 'function') {
+            try {
+                await syncFileWorker('media.txt', MEDIA_STORE_NAME, false);
+            } catch (e) {
+                console.error("Failed to sync media.txt after updating orphan links", e);
             }
         }
-    }
-
-    if (mediaNeedsSync && typeof syncFileWorker === 'function') {
-        try {
-            await syncFileWorker('media.txt', MEDIA_STORE_NAME, false);
-        } catch (e) {
-            console.error("Failed to sync media.txt after updating orphan links", e);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
         }
-    }
-
-    if (btn) {
-
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-    }
-
-    if (errorCount === 0) {
-        showToast(`${_('syncSuccess') || 'Successfully synced'} ${successCount} ${_('notes') || 'notes'}`, 3000);
-    } else {
-        showToast(`${_('syncSuccess') || 'Synced'} ${successCount} ${_('notes') || 'notes.'} ${errorCount} ${_('errorsOccurred') || 'errors occurred.'}`, 5000);
+        if (errorCount === 0) {
+            showToast(`${_('syncSuccess') || 'Successfully synced'} ${successCount} ${_('notes') || 'notes'}`, 3000);
+        } else {
+            showToast(`${_('syncSuccess') || 'Synced'} ${successCount} ${_('notes') || 'notes.'} ${errorCount} ${_('errorsOccurred') || 'errors occurred.'}`, 5000);
+        }
+        if (reloadImg) reloadImg.style.animation = '';
+        if (reloadBtn) reloadBtn.style.pointerEvents = 'auto';
+        updateReloadButtonState();
+    } catch (e) {
+        console.error("Critical sync error", e);
+        if (reloadImg) reloadImg.style.animation = '';
+        if (reloadBtn) reloadBtn.style.pointerEvents = 'auto';
+        updateReloadButtonState();
     }
 }
 
@@ -15087,13 +15158,13 @@ async function syncSingleNoteToGDrive(noteObj) {
             if (!folderId) return false;
             const fileContent = JSON.stringify(noteObj);
             const newGdid = await createGDriveFile(folderId, 'note.txt', fileContent);
+            if (!newGdid) return false;
             noteObj.gdid = newGdid;
             // Also update the note again with the new gdid inside it
-            await updateGDriveFile(newGdid, JSON.stringify(noteObj));
-            return true;
+            const success = await updateGDriveFile(newGdid, JSON.stringify(noteObj));
+            return success;
         } else {
-            await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
-            return true;
+            return await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
         }
     } catch (e) {
         console.error("syncSingleNoteToGDrive error:", e);

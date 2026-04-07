@@ -313,7 +313,7 @@
     "forceGDriveReadLabel": "Четене от GD преди редакция:",
     "loadingFromDrive": "Зареждане от Google Drive...",
     "errorParsingNote": "Грешка при анализ на бележката",
-    "offlineModeMessage": "Работите в офлайн режим. Данните са заредени от локалната база данни.",
+    "offlineModeMessage": "Не може да се синхронизира в офлайн режим.",
     "loadingFromLocal": "Зареждане от локалната база данни...",
     "offlineStartButton": "Старт офлайн",
     "clickToEditLabel": "Редактиране с клик:",
