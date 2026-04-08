@@ -631,6 +631,22 @@
                 }
             }
         },
+        "Beta 1.11": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.11"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.11<br><br><span align='left'>- New colors<br><br>- Calendar refresh<br><br>- Bullet symbol in <b>Settings</b></span>"
+                }
+            }
+        },
         "offline-mode": {
             "keywords": [
                 "offline",

@@ -366,5 +366,22 @@
     "notes": "notes.",
     "errorsOccurred": "errors occurred.",
     "copyNoteTooltip": "Copy note",
-    "editNoteTooltip": "Edit note"
+    "editNoteTooltip": "Edit note",
+    "color0": "Yellow",
+    "color1": "Red",
+    "color2": "Green",
+    "color3": "Gray",
+    "color4": "Blue",
+    "color5": "Orange",
+    "color6": "Light Yellow",
+    "color7": "Light Red",
+    "color8": "Light Green",
+    "color9": "Light Blue",
+    "color10": "Lavender",
+    "color11": "Sky Blue",
+    "color12": "Mint",
+    "color13": "Peach",
+    "color14": "Rose",
+    "customColor": "Custom Color",
+    "mdBulletLabel": "Bullet"
 }

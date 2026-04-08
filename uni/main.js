@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.10'; // App version
+const version = 'Beta 1.11'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -208,8 +208,6 @@ let currentLang = localStorage.getItem('language') || 'en';
 
 let appTranslations = {};
 
-
-
 const noteBackgrounds = [
     'wg1_1.png', // 0
     'wr1_1.png', // 1
@@ -227,8 +225,21 @@ const noteBackgrounds = [
 
 const noteColorMap = [
     '#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF',
-    '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'
+    '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF',
+    '#DDB1FF', '#B1D8FF', '#B1FFF2', '#FFD7B1', '#FFB1E8'
 ];
+
+function colorIntToHex(intVal) {
+    if (typeof intVal !== 'number') return intVal;
+    return '#' + (intVal >>> 0).toString(16).slice(-6).toUpperCase();
+}
+
+function hexToColorInt(hex) {
+    if (!hex || typeof hex !== 'string') return 0;
+    if (hex.startsWith('#')) hex = hex.slice(1);
+    if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    return (parseInt('FF' + hex, 16) | 0);
+}
 const noteBgCache = new Map();
 
 window.getPipeIndex = function (text) {
@@ -257,7 +268,7 @@ async function preloadNoteBackgrounds(notesData) {
     notesData.forEach(note => {
         // We need backgrounds for deleted notes too, if user goes to trash!
         const noteColor = note.color;
-        const color = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : '#FBFF86';
+        const color = (typeof noteColor === 'number' && noteColor >= 0 && noteColor < noteColorMap.length) ? noteColorMap[noteColor] : (typeof noteColor === 'string' ? noteColor : '#FBFF86');
         const img = (note.sellist && note.sellist > 0) ? note.sellist : 0;
         needed.add(`${color}_${img}`);
     });
@@ -2215,7 +2226,7 @@ function renderCalendarView() {
                     const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteToAssignDate.gdid)) || (n.id && String(n.id) === String(noteToAssignDate.id)));
                     noteToAssignDate = null;
                     if (noteObj) {
-                        const noteColorStr = (typeof noteColorMap !== 'undefined' && noteObj.color !== null && noteObj.color >= 0 && noteObj.color <= 9) ? noteColorMap[noteObj.color] : noteObj.color;
+                        const noteColorStr = (typeof noteObj.color === 'number' && noteObj.color >= 0 && noteObj.color < noteColorMap.length) ? noteColorMap[noteObj.color] : (typeof noteObj.color === 'string' ? noteObj.color : noteColorMap[0]);
                         showModal({
                             raw: noteObj.notetxt,
                             format: noteObj.text_span,
@@ -7121,17 +7132,29 @@ function showModal(options, noteElement = null) {
     }
     const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     modalBody.dataset.calendarDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? noteObjForCalendar.calendarDate : '0';
-    // Determine color index
-    let colorIndex = 0; // Default
-    if (noteColor !== undefined && noteColor !== null && typeof noteColorMap !== 'undefined') {
-        if (typeof noteColor === 'number' && noteColor >= 0 && noteColor <= 9) {
+    let colorIndex = 0;
+    if (typeof noteColor === 'number') {
+        if (noteColor >= 0 && noteColor < noteColorMap.length) {
             colorIndex = noteColor;
-        } else if (typeof noteColor === 'string') {
-            const foundIndex = noteColorMap.indexOf(noteColor);
+        } else if (noteColor < 0) {
+            // Find if this custom color matches any in the map (especially for indices 10-15)
+            const hex = colorIntToHex(noteColor);
+            const foundIndex = noteColorMap.indexOf(hex);
             if (foundIndex !== -1) colorIndex = foundIndex;
+            else colorIndex = noteColor; // Keep as negative int if not in map
         }
+    } else if (typeof noteColor === 'string') {
+        const foundIndex = noteColorMap.indexOf(noteColor);
+        if (foundIndex !== -1) colorIndex = foundIndex;
     } else if (noteObjForCalendar && noteObjForCalendar.color !== undefined) {
-        colorIndex = noteObjForCalendar.color;
+        const c = noteObjForCalendar.color;
+        if (typeof c === 'number' && c < 0) {
+            const hex = colorIntToHex(c);
+            const foundIndex = noteColorMap.indexOf(hex);
+            colorIndex = (foundIndex !== -1) ? foundIndex : c;
+        } else {
+            colorIndex = c;
+        }
     }
     modalBody.dataset.colorIndex = colorIndex;
 
@@ -7143,7 +7166,15 @@ function showModal(options, noteElement = null) {
         modalContentBox.classList.add('no-bg-image');
         modalBody.classList.add('no-bg-image');
     } else {
-        const bgColor = (typeof noteColorMap !== 'undefined') ? noteColorMap[colorIndex] : (noteColor || '#eef603');
+        let bgColor = '#eef603';
+        if (typeof colorIndex === 'number') {
+            if (colorIndex >= 0 && colorIndex < noteColorMap.length) bgColor = noteColorMap[colorIndex];
+            else if (colorIndex < 0) bgColor = colorIntToHex(colorIndex);
+        } else if (typeof colorIndex === 'string') {
+            bgColor = colorIndex;
+        } else if (noteColor) {
+            bgColor = (typeof noteColor === 'number' && noteColor < 0) ? colorIntToHex(noteColor) : noteColor;
+        }
         modalContentBox.style.backgroundColor = bgColor;
         if (!imgBgrdEnabled) {
             modalContentBox.style.backgroundImage = 'none';
@@ -7191,10 +7222,9 @@ function showModal(options, noteElement = null) {
                 right: '40px',
                 backgroundColor: 'white',
                 border: '1px solid #ccc',
-                padding: '8px',
+                padding: '10px',
                 display: 'none',
-                flexWrap: 'wrap',
-                width: '120px',
+                gridTemplateColumns: 'repeat(4, 22px)',
                 gap: '8px',
                 zIndex: '10001',
                 borderRadius: '8px',
@@ -7213,6 +7243,7 @@ function showModal(options, noteElement = null) {
                         border: '1px solid #ccc',
                         boxShadow: 'inset 0 0 2px rgba(0,0,0,0.2)'
                     });
+                    swatch.title = _(`color${idx}`) || c;
                     if (idx === colorIndex) {
                         swatch.style.border = '2px solid #555';
                         swatch.style.transform = 'scale(1.1)';
@@ -7227,16 +7258,45 @@ function showModal(options, noteElement = null) {
                     };
                     palette.appendChild(swatch);
                 });
+
+                // --- Добавяне на бутон за избор на произволен цвят ---
+                const customSwatch = document.createElement('div');
+                Object.assign(customSwatch.style, {
+                    width: '22px', height: '22px', cursor: 'pointer', borderRadius: '50%', border: '1px solid #ccc',
+                    background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
+                });
+                customSwatch.title = _('customColor') || 'Потребителски цвят';
+
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                Object.assign(colorInput.style, {
+                    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer'
+                });
+
+                colorInput.oninput = (e) => {
+                    const hex = e.target.value.toUpperCase();
+                    modalContentBox.style.backgroundColor = hex;
+                    modalBody.dataset.color = hex;
+                    modalBody.dataset.colorIndex = -1; // -1 показва, че е потребителски цвят
+                };
+
+                colorInput.onchange = () => {
+                    palette.style.display = 'none';
+                };
+
+                customSwatch.appendChild(colorInput);
+                palette.appendChild(customSwatch);
             }
             modalContentBox.appendChild(palette);
 
             colorBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                palette.style.display = palette.style.display === 'none' ? 'flex' : 'none';
+                palette.style.display = palette.style.display === 'none' ? 'grid' : 'none';
             });
             // Click outside to close (simple handler)
             const closePalette = (e) => {
-                if (palette.style.display === 'flex' && !palette.contains(e.target) && e.target !== colorBtn) {
+                if (palette.style.display === 'grid' && !palette.contains(e.target) && e.target !== colorBtn) {
                     palette.style.display = 'none';
                 }
             };
@@ -7473,7 +7533,7 @@ function showModal(options, noteElement = null) {
                     raw: noteCopy.notetxt || noteCopy.text || "",
                     format: noteCopy.text_span,
                     titleFormat: noteCopy.title_span,
-                    color: (typeof noteColorMap !== 'undefined' && noteCopy.color !== null && noteCopy.color >= 0 && noteCopy.color <= 9) ? noteColorMap[noteCopy.color] : noteCopy.color,
+                    color: (typeof noteCopy.color === 'number' && noteCopy.color >= 0 && noteCopy.color < noteColorMap.length) ? noteColorMap[noteCopy.color] : (typeof noteCopy.color === 'string' ? noteCopy.color : noteColorMap[0]),
                     boardId: noteCopy.boardid,
                     id: noteCopy.id,
                     isNewNote: true,
@@ -9666,6 +9726,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const mdStrikeInput = document.getElementById('md-strike-input');
     const mdUnderlineInput = document.getElementById('md-underline-input');
     const mdClearInput = document.getElementById('md-clear-input');
+    const mdBulletInput = document.getElementById('md-bullet-input');
 
     const setupMdInput = (input, storageKey, defaultValue) => {
         if (input) {
@@ -9682,6 +9743,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     setupMdInput(mdStrikeInput, 'mdStrike', '~~');
     setupMdInput(mdUnderlineInput, 'mdUnderline', '_');
     setupMdInput(mdClearInput, 'mdClear', '--');
+    setupMdInput(mdBulletInput, 'mdBullet', '-');
 
     applyBtn.addEventListener('click', () => {
         const zoomValue = scaleInput.value;
@@ -11144,9 +11206,9 @@ async function createNoteElement(noteContent) {
     titleWrapper.appendChild(headerInfoContainer);
     titleWrapper.appendChild(titleEl);
     // Use the color map for reliability and define a clear fallback color
-    const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9)
-        ? noteColorMap[noteColor]
-        : '#FBFF86';
+    const noteBgColor = (typeof noteColor === 'number')
+        ? (noteColor >= 0 && noteColor < noteColorMap.length ? noteColorMap[noteColor] : (noteColor < 0 ? colorIntToHex(noteColor) : '#FBFF86'))
+        : (typeof noteColor === 'string' ? noteColor : '#FBFF86');
     note.style.margin = '5px';
     if (notesBgrdEnabled) {
         const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
@@ -11361,7 +11423,7 @@ async function createNoteElement(noteContent) {
             }
             // --- END FORCE GDRIVE READ LOGIC ---
 
-            const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
+            const noteBgColor = (typeof noteColor === 'number' && noteColor >= 0 && noteColor < noteColorMap.length) ? noteColorMap[noteColor] : (typeof noteColor === 'string' ? noteColor : noteColorMap[0]);
             showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
 
             // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
@@ -12503,21 +12565,32 @@ function toggleListFormat(textarea, listType) {
     if (lineEnd === -1) lineEnd = text.length;
     const selectedLines = text.substring(lineStart, lineEnd).split('\n');
     const isBullet = listType === 'bullet';
+    const bulletSym = (localStorage.getItem('mdBullet') || '-').trim();
+
     const isRemoving = selectedLines.every(line => {
-        if (isBullet) return line.trim().startsWith('-');
+        if (isBullet) return line.trim().startsWith(bulletSym);
         return /^\d+\.\s/.test(line.trim());
     });
+
     const newLines = selectedLines.map((line, idx) => {
         if (isRemoving) {
-            return line.replace(isBullet ? /^\s*-\s*/ : /^\s*\d+\.\s*/, '');
+            if (isBullet) {
+                const escapedBullet = bulletSym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return line.replace(new RegExp(`^\\s*${escapedBullet}\\s*`), '');
+            }
+            return line.replace(/^\s*\d+\.\s*/, '');
         } else {
-            const currentMarker = isBullet ? '- ' : `${idx + 1}. `;
-            return currentMarker + line.replace(isBullet ? /^\s*-\s*/ : /^\s*\d+\.\s*/, '');
+            const currentMarker = isBullet ? `${bulletSym} ` : `${idx + 1}. `;
+            const escapedBullet = bulletSym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const bulletRegex = isBullet ? new RegExp(`^\\s*${escapedBullet}\\s*`) : /^\s*\d+\.\s*/;
+            return currentMarker + line.replace(bulletRegex, '');
         }
     });
     const replacement = newLines.join('\n');
     textarea.setRangeText(replacement, lineStart, lineEnd, 'select');
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.dispatchEvent(new Event('input', {
+        bubbles: true
+    }));
 }
 
 function getPreciseCharIndex(container, range) {
@@ -12962,8 +13035,14 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
             Object.assign(card.style, { position: 'absolute', width: '100%', height: '100%', zIndex: zIndex, transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)', opacity: zIndex > 50 ? '1' : '0.4', transform: zIndex > 50 ? 'scale(1)' : 'scale(0.85) translateY(20px)', pointerEvents: zIndex > 50 ? 'auto' : 'none', margin: '0', display: 'flex', flexDirection: 'column' });
 
             // Background logic
-            const colorIdx = note.color || 0;
-            card.style.backgroundColor = noteColorMap[colorIdx] || '#FBFF86';
+            let bgColor = '#FBFF86';
+            if (typeof note.color === 'number') {
+                if (note.color >= 0 && note.color < noteColorMap.length) bgColor = noteColorMap[note.color];
+                else if (note.color < 0) bgColor = colorIntToHex(note.color);
+            } else if (typeof note.color === 'string') {
+                bgColor = note.color;
+            }
+            card.style.backgroundColor = bgColor;
             if (localStorage.getItem('imgBgrd') !== 'false') card.style.backgroundImage = "url('Note.jpg')";
 
             // Header: Date only (standard look)
@@ -13246,8 +13325,8 @@ async function showNoteConflictModal_OLD(baseNote, localNote, serverNote, confli
         title.style.color = 'black';
         box.appendChild(title);
  
-        const noteColors = (typeof noteColorMap !== 'undefined') ? noteColorMap : ['#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF', '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF'];
-        const noteBgColor = noteColors[localNote.color || 0];
+        const noteColors = (typeof noteColorMap !== 'undefined') ? noteColorMap : ['#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF', '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF', '#DDB1FF', '#B1D8FF', '#B1FFF2', '#FFD7B1', '#FFB1E8', '#E2E2E2'];
+        const noteBgColor = (typeof localNote.color === 'number' && localNote.color >= 0 && localNote.color < noteColors.length) ? noteColors[localNote.color] : (typeof localNote.color === 'string' ? localNote.color : noteColors[0]);
  
         const resT = document.createElement('input');
         resT.className = 'result-field';
@@ -13557,7 +13636,22 @@ async function saveEditedNote() {
 
     const originalContent = noteObj ? (noteObj.notetxt || "") : "";
     let newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj ? (noteObj.calendarDate || 0) : 0);
-    let newColor = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (noteObj ? (noteObj.color || 0) : 0);
+    let newColorIdx = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : -1;
+    let newColor;
+    if (newColorIdx >= 0 && newColorIdx <= 9) {
+        newColor = newColorIdx;
+    } else if (newColorIdx >= 10 && newColorIdx <= 15) {
+        // Записваме като десетично число за индекси 10-15
+        newColor = hexToColorInt(modalBodyElem.dataset.color || noteColorMap[newColorIdx]);
+    } else {
+        // Fallback за потребителски цветове или запазване на текущия
+        const colorVal = modalBodyElem.dataset.color;
+        if (colorVal && typeof colorVal === 'string' && colorVal.startsWith('#')) {
+            newColor = hexToColorInt(colorVal);
+        } else {
+            newColor = noteObj ? (noteObj.color || 0) : 0;
+        }
+    }
 
     // --- Conflict Resolution Logic ---
     if (updateGDriveNow && noteGdid && noteObj) {
@@ -13740,7 +13834,9 @@ async function saveEditedNote() {
         if (contentModal) contentModal.classList.remove('visible');
     } else {
         if (typeof showModal === 'function') {
-            const noteColorStr = (typeof noteColorMap !== 'undefined' && noteObj.color !== null && noteObj.color >= 0 && noteObj.color <= 9) ? noteColorMap[noteObj.color] : noteObj.color;
+            const noteColorStr = (typeof noteObj.color === 'number')
+                ? (noteObj.color >= 0 && noteObj.color < noteColorMap.length ? noteColorMap[noteObj.color] : (noteObj.color < 0 ? colorIntToHex(noteObj.color) : noteColorMap[0]))
+                : (typeof noteObj.color === 'string' ? noteObj.color : noteColorMap[0]);
             showModal({
                 raw: noteObj.notetxt,
                 format: noteObj.text_span,
@@ -13755,8 +13851,11 @@ async function saveEditedNote() {
         }
     }
 
-    if (removedFromWeekly) {
+    const monthCal = document.getElementById('calendar-container');
+    if (isWeeklyView) {
         if (typeof renderWeeklyCalendarView === 'function') renderWeeklyCalendarView(currentWeeklyViewDate);
+    } else if (monthCal && monthCal.style.display !== 'none') {
+        if (typeof renderCalendarView === 'function') renderCalendarView();
     } else {
         applyFilters();
     }
@@ -13852,12 +13951,17 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
 
     showToast(_(msgKey).replace('{boardName}', boardTitle));
 
+    const monthCal = document.getElementById('calendar-container');
     const weekCal = document.getElementById('weekly-calendar-container');
     const isWeeklyView = weekCal && weekCal.style.display !== 'none';
-    if (isWeeklyView && newCalendarDate === 0) {
-        const contentModal = document.getElementById('content-modal');
-        if (contentModal) contentModal.classList.remove('visible');
+    if (isWeeklyView) {
+        if (newCalendarDate === 0) {
+            const contentModal = document.getElementById('content-modal');
+            if (contentModal) contentModal.classList.remove('visible');
+        }
         if (typeof renderWeeklyCalendarView === 'function') renderWeeklyCalendarView(currentWeeklyViewDate);
+    } else if (monthCal && monthCal.style.display !== 'none') {
+        if (typeof renderCalendarView === 'function') renderCalendarView();
     } else {
         applyFilters();
     }
@@ -13906,7 +14010,7 @@ function previewEditedNote() {
     if (typeof showModal === 'function') {
         const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
         const color = (modalNoteObj && modalNoteObj.color !== undefined) ? modalNoteObj.color : (modalBodyElem.dataset.color || 0);
-        const noteColorStr = (typeof noteColorMap !== 'undefined' && color !== null && color >= 0 && color <= 9) ? noteColorMap[color] : color;
+        const noteColorStr = (typeof color === 'number' && color >= 0 && color < noteColorMap.length) ? noteColorMap[color] : (typeof color === 'string' ? color : noteColorMap[0]);
 
         showModal({
             raw: processedText,
