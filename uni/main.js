@@ -45,7 +45,8 @@ const TRIAL_URL = "http://index.html?token=bEis1x9_geJ3w1aM4SWnR3KjEXbz6l9SK91w9
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
-let noteNumord = noteId = 1000000;
+let noteId = 1000000, noteNumord = 1000000;
+
 let boardsData = []; // Съхранява данните за бордовете
 let mediaData = []; // Съхранява данните за медия
 let folderIds = {}; // Съхранява ID-тата на папките за медия
@@ -330,7 +331,9 @@ async function parseFileResults(results, filenameForError) {
                 if (id && filenameForError === 'note.txt') {
                     if (item.gdid && item.gdid !== id) {
                         console.warn(`[Sync-ID-Fix] Corrected mismatched ID for note "${item.id}": Internal was "${item.gdid}", actual GDrive ID is "${id}"`);
+                        item.type = -1; // Mark as dirty to allow bulk fixing via Sync button
                     }
+
                     item.gdid = id;
                 }
                 const key = (item.gdid && item.gdid !== '') ? item.gdid : item.id;
@@ -1451,14 +1454,15 @@ async function migrateDataToNewFolder(targetFolderId) {
     let counterElem = document.getElementById('note-counter');
     const originalReloadHtml = reloadBtn ? reloadBtn.innerHTML : null;
     const originalCounterHtml = counterElem ? counterElem.innerHTML : null;
-
+    const CONCURRENCY_LIMIT = 10;
     try {
         window.onbeforeunload = function () { return _('migrationInProgressWarn') || "Migration in progress, please wait..."; };
         if (reloadBtn) {
             reloadBtn.style.pointerEvents = 'none';
             reloadBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
         }
-        if (typeof showToast === 'function') showToast(_('migratingData'));
+        if (typeof showToast === 'function') showToast(_('migratingData') + " (Parallel)");
+        console.time("Migration_Parallel");
         const subfolderNames = ["Other", "Sound", "Video", "Images"];
         const newSubfolderIds = {};
         for (const name of subfolderNames) {
@@ -1466,61 +1470,95 @@ async function migrateDataToNewFolder(targetFolderId) {
         }
         const boardsToMigrate = (boardsData || []);
         const totalBoards = boardsToMigrate.length;
+        let pool = new Set();
+        let boardResults = [];
+        let completedBoards = 0;
         for (let i = 0; i < totalBoards; i++) {
-            if (counterElem) counterElem.innerText = `[B] ${i + 1}/${totalBoards}`;
-            await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardsToMigrate[i]));
+            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
+            const promise = createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardsToMigrate[i])).then(res => {
+                pool.delete(promise);
+                completedBoards++;
+                if (counterElem) counterElem.innerText = `[B] ${completedBoards}/${totalBoards}`;
+                return res;
+            });
+            pool.add(promise);
+            boardResults.push(promise);
         }
+
+        await Promise.all(boardResults);
         const notesToMigrate = (allNotesData || []);
         const totalNotes = notesToMigrate.length;
         const mediaToMigrate = (mediaData || []);
-
-        // OPTIMIZATION: Only track IDs for notes that actually have media attached
         const mediaNotesMap = {};
         for (const item of mediaToMigrate) {
             if (item.noteid) mediaNotesMap[item.noteid] = null;
         }
-
+        pool = new Set();
+        let noteResults = [];
+        let completedNotes = 0;
         for (let i = 0; i < totalNotes; i++) {
+            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
             const note = notesToMigrate[i];
-            if (counterElem) counterElem.innerText = `[N] ${i + 1}/${totalNotes}`;
             const oldGdid = note.gdid;
             delete note.gdid;
-            const newId = await createGDriveFile(targetFolderId, 'note.txt', JSON.stringify(note));
-            if (newId) {
-                note.gdid = newId;
-                if (oldGdid && mediaNotesMap.hasOwnProperty(oldGdid)) {
-                    mediaNotesMap[oldGdid] = newId;
+            const promise = (async () => {
+                try {
+                    const newId = await createGDriveFile(targetFolderId, 'note.txt', JSON.stringify(note));
+                    if (newId) {
+                        note.gdid = newId;
+                        if (oldGdid && mediaNotesMap.hasOwnProperty(oldGdid)) {
+                            mediaNotesMap[oldGdid] = newId;
+                        }
+                        await updateGDriveFile(newId, JSON.stringify(note));
+                    }
+                } finally {
+                    completedNotes++;
+                    if (counterElem) counterElem.innerText = `[N] ${completedNotes}/${totalNotes}`;
                 }
-                await updateGDriveFile(newId, JSON.stringify(note));
-            }
+            })().then(() => {
+                pool.delete(promise);
+            });
+            pool.add(promise);
+            noteResults.push(promise);
         }
+        await Promise.all(noteResults);
         const newMediaData = [];
         const totalMedia = mediaToMigrate.length;
+        pool = new Set();
+        let mediaResults = [];
+        let completedMedia = 0;
         for (let i = 0; i < totalMedia; i++) {
+            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
             const item = mediaToMigrate[i];
-            if (counterElem) counterElem.innerText = `[M] ${i + 1}/${totalMedia}`;
-            const newItem = { ...item };
-
-            // Update the noteid to the newly created note's gdid
-            if (newItem.noteid && mediaNotesMap[newItem.noteid]) {
-                newItem.noteid = mediaNotesMap[newItem.noteid];
-            }
-
-            const typeFolderName = (item.type === 1 ? "Images" : (item.type === 2 ? "Sound" : (item.type === 4 ? "Video" : "Other")));
-            const targetSubfolderId = newSubfolderIds[typeFolderName];
-            if (item.pathGD && targetSubfolderId) {
-                const newId = await copyGDriveFile(item.pathGD, targetSubfolderId, item.filename);
-                if (newId) newItem.pathGD = newId;
-            }
-            newMediaData.push(newItem);
+            const promise = (async () => {
+                const newItem = { ...item };
+                if (newItem.noteid && mediaNotesMap[newItem.noteid]) {
+                    newItem.noteid = mediaNotesMap[newItem.noteid];
+                }
+                const typeFolderName = (item.type === 1 ? "Images" : (item.type === 2 ? "Sound" : (item.type === 4 ? "Video" : "Other")));
+                const targetSubfolderId = newSubfolderIds[typeFolderName];
+                if (item.pathGD && targetSubfolderId) {
+                    const newId = await copyGDriveFile(item.pathGD, targetSubfolderId, item.filename);
+                    if (newId) newItem.pathGD = newId;
+                }
+                newMediaData.push(newItem);
+                completedMedia++;
+                if (counterElem) counterElem.innerText = `[M] ${completedMedia}/${totalMedia}`;
+            })().then(() => {
+                pool.delete(promise);
+            });
+            pool.add(promise);
+            mediaResults.push(promise);
         }
+        await Promise.all(mediaResults);
         if (newMediaData.length > 0) {
             await createGDriveFile(targetFolderId, 'media.txt', JSON.stringify(newMediaData));
         }
         if (typeof showToast === 'function') showToast(_('migrationSuccess'));
+        console.timeEnd("Migration_Parallel");
         return true;
     } catch (e) {
-        console.error("Migration error:", e);
+        console.error("Parallel migration error:", e);
         if (typeof showToast === 'function') showToast(_('migrationError'));
         return false;
     } finally {
@@ -1532,6 +1570,7 @@ async function migrateDataToNewFolder(targetFolderId) {
         if (counterElem) counterElem.innerHTML = originalCounterHtml;
     }
 }
+
 
 let cachedFolderIdsByName = {};
 async function getFolderIDByName(name) {
@@ -1638,6 +1677,7 @@ async function createNewNote() {
                 boardId: newNote.boardid,
                 id: newNote.id,
                 gdid: newNote.gdid,
+                numord: newNote.numord,
                 isNewNote: true // Flag for deferred creation
             });
 
@@ -2520,10 +2560,12 @@ async function moveNoteToTrash(noteGdid, noteId) {
     if (!updateGDriveNow) {
         noteToUpdate.type = -1; // Маркираме за офлайн синхронизация
     }
-    if (updateGDriveNow && noteGdid && !isOffline && typeof updateGDriveFile === 'function') {
-        await updateGDriveFile(noteGdid, JSON.stringify(noteToUpdate));
-        console.log("Updating GD")
+    if (updateGDriveNow && noteToUpdate.gdid && !isOffline && typeof updateGDriveFile === 'function') {
+        const actualGdid = noteToUpdate.gdid;
+        await updateGDriveFile(actualGdid, JSON.stringify(noteToUpdate));
+        console.log("Updating GD with actual ID:", actualGdid);
     }
+
 
     if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
         const db = await openNotesDB();
@@ -2561,14 +2603,18 @@ async function moveNoteToTrash(noteGdid, noteId) {
 async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
     const updateGDriveNow = useGoogleDb && !isOffline;
     let gdriveDeleted = false;
-    if (updateGDriveNow && noteGdid && !isOffline && typeof deleteGDriveFile === 'function') {
+    const noteToDelete = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
+    const actualGdid = noteToDelete ? noteToDelete.gdid : noteGdid;
+
+    if (updateGDriveNow && actualGdid && !isOffline && typeof deleteGDriveFile === 'function') {
         try {
-            await deleteGDriveFile(noteGdid);
+            await deleteGDriveFile(actualGdid);
             gdriveDeleted = true;
         } catch (e) {
             console.warn("GDrive deletion failed but continuing locally:", e);
         }
     }
+
 
     if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
         try {
@@ -2586,9 +2632,10 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
     }
     const midx = allNotesData.findIndex(n => (noteGdid ? n.gdid === noteGdid : n.id == noteId));
     if (midx !== -1) allNotesData.splice(midx, 1);
-    const noteEl = document.querySelector(`.note[data-g="${noteGdid}"]`) ||
+    const noteEl = document.querySelector(`.note[data-g="${actualGdid}"]`) ||
         (noteId ? document.querySelector(`.note[data-i="${noteId}"]`) : null);
     if (noteEl) noteEl.remove();
+
 
     if (!skipUI) {
         updateBoardCounterUI('trash');
@@ -2661,11 +2708,17 @@ async function emptyTrash() {
     trashBtn.style.pointerEvents = 'none';
 
     try {
+        const pool = new Set();
+        const CONCURRENCY_LIMIT = 10;
         for (const noteEl of notesInTrash) {
+            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
             const noteGdid = noteEl.dataset.g;
             const noteId = noteEl.dataset.i;
-            await permanentlyDeleteNote(noteGdid, noteId, true); // Use shared function with skipUI
+            const promise = permanentlyDeleteNote(noteGdid, noteId, true).then(() => pool.delete(promise));
+            pool.add(promise);
         }
+        await Promise.all(pool);
+
 
         updateBoardCounterUI('trash');
         applyFilters();
@@ -7114,7 +7167,9 @@ function showModal(options, noteElement = null) {
     // Store metadata for editing and rendering identification
     modalBody.dataset.id = noteId || '';
     modalBody.dataset.gdid = noteGdid || '';
+    modalBody.dataset.numord = options.numord || '';
     modalBody.dataset.baseDatemod = options.datemod || '0';
+
     if (options.originalNote) {
         modalBody.dataset.baseNote = JSON.stringify(options.originalNote);
     } else {
@@ -7511,11 +7566,12 @@ function showModal(options, noteElement = null) {
 
             // Assign new unique IDs using global variables
             // Ensure globals exist and use them
-            window.noteId = (window.noteId || 0) + 1;
-            window.noteNumord = (window.noteNumord || 0) + 1;
+            noteId++;
+            noteNumord++;
             syncFolderDataAsync();
-            const newId = window.noteId;
-            const newNumord = window.noteNumord;
+            const newId = noteId;
+            const newNumord = noteNumord;
+
 
             noteCopy.id = newId;
             noteCopy.gdid = String(newId); // Temporary GDID
@@ -9495,6 +9551,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                             const confirmed = await showConfirmation(_('confirmMigration'));
                             if (confirmed) {
                                 await migrateDataToNewFolder(targetFolderId);
+
                                 // Копираме метаданните в новата папка в локалната памет
                                 const currentBmo = localStorage.getItem('boardMenuOrder');
                                 if (currentBmo) localStorage.setItem('boardMenuOrder_' + targetFolderName, currentBmo);
@@ -11802,7 +11859,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     populateStartBoardSelect();
     showAppUI();
+    updateReloadButtonState();
 }
+
 
 /**
  * Чете архивни данни (boards.bcp, notes.bcp, medias.bcp) от подадена директория
@@ -13526,9 +13585,12 @@ async function saveEditedNote() {
     }
 
     // Check if it's a new note (deferred creation)
-    let noteGdid = modalBodyElem.dataset.gdid;
-    let noteId = parseInt(modalBodyElem.dataset.id, 10);
-    const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+    let modalGdid = modalBodyElem.dataset.gdid;
+    let modalId = parseInt(modalBodyElem.dataset.id, 10);
+    let noteNumordValue = parseInt(modalBodyElem.dataset.numord, 10);
+    const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(modalGdid)) || (n.id && String(n.id) === String(modalId)));
+
+
     const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
 
     // --- Process Markdown Formatting ---
@@ -13562,15 +13624,18 @@ async function saveEditedNote() {
     }
 
     // Re-check isNewNote because we might have changed processedText
-    const isNewNote = !modalNoteObj && !noteGdid;
+    const isNewNote = !modalNoteObj && !modalGdid;
     if (isNewNote) {
         // --- Handle Creation of New Note ---
         const boardId = modalBodyElem.dataset.boardId || currentBoardFilter;
         // Generate new ID/GDID if missing
-        if (!noteId || isNaN(noteId)) {
-            noteId = ++window.noteId;
+        if (!modalId || isNaN(modalId)) {
+            noteId++;
+            modalId = noteId;
             noteNumord++;
         }
+
+
 
         // Define new note object
         const newNote = {
@@ -13581,10 +13646,12 @@ async function saveEditedNote() {
             "date": dateMod,
             "datemod": dateMod,
             "eventId": 0,
-            "gdid": String(noteId), // Use ID as temporary key to prevent empty key errors
-            "id": noteId,
+            "gdid": String(modalId), // Use ID as temporary key to prevent empty key errors
+            "id": modalId,
             "notetxt": processedText,
-            "numord": window.noteNumord,
+            "numord": (!isNaN(noteNumordValue) ? noteNumordValue : noteNumord),
+
+
             "pass": isHiddenNote, // Use the state from modalNoteObj if available, or false
             "sellist": 0,
             "status": 0,
@@ -13628,7 +13695,8 @@ async function saveEditedNote() {
     }
 
     // 2. Update local data model (for existing notes)
-    let noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+    let noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(modalGdid)) || (n.id && String(n.id) === String(modalId)));
+
     if (!noteObj && !isNewNote) {
         console.error("Note object not found for saving.");
         return;
@@ -13654,9 +13722,11 @@ async function saveEditedNote() {
     }
 
     // --- Conflict Resolution Logic ---
-    if (updateGDriveNow && noteGdid && noteObj) {
+    if (updateGDriveNow && modalGdid && noteObj) {
+
         try {
-            const serverRaw = await fetchGDriveFileContent(noteGdid);
+            const serverRaw = await fetchGDriveFileContent(modalGdid);
+
             if (serverRaw) {
                 const sData = JSON.parse(serverRaw);
                 const sNote = Array.isArray(sData) ? sData[0] : sData;
@@ -13666,8 +13736,9 @@ async function saveEditedNote() {
 
                 let dbNote = null;
                 if (useIndexedDb) {
-                    try { dbNote = await getFromDB(NOTE_STORE_NAME, noteGdid || noteId); } catch (e) { }
+                    try { dbNote = await getFromDB(NOTE_STORE_NAME, modalGdid || modalId); } catch (e) { }
                 }
+
 
                 if (sNote && sNote.datemod > baseDatemod) {
                     const lNote = { ...noteObj, notetxt: processedText, text_span: finalFormat, title_span: finalTitleFormat, color: newColor, calendarDate: newCalendarDate };
@@ -13749,10 +13820,17 @@ async function saveEditedNote() {
                         if (!newGdid) throw new Error("Failed to create GDrive file");
                         noteObj.gdid = newGdid;
                         modalBodyElem.dataset.gdid = newGdid;
+                        // Update the DOM element on the board so subsequent clicks/actions use the real ID
+                        const noteEl = document.querySelector(`.note[data-i="${noteObj.id}"]`);
+                        if (noteEl) noteEl.dataset.g = newGdid;
+                        // Synchronize internal GDrive ID inside the file content
+                        await updateGDriveFile(newGdid, JSON.stringify(noteObj));
+
                         if (useIndexedDb) {
                             await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
                             if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                         }
+
                     } catch (e) {
                         console.error("Failed to create GDrive file", e);
                         showToast(_('errorSaveGDrive'));
@@ -15163,69 +15241,70 @@ async function syncDirtyNotes() {
         let successCount = 0;
         let errorCount = 0;
         let mediaNeedsSync = false;
+        const CONCURRENCY_LIMIT = 10;
+        const pool = new Set();
 
         for (const note of dirtyNotes) {
-            try {
-                if (useIndexedDb && (!note.gdid || note.gdid === "")) {
-                    note.gdid = `L${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-                }
-                const tempGdid = note.gdid;
-                // Променяме type на 0 преди записа, за да се запише коректно в GDrive
-                note.type = 0;
-                if (useIndexedDb && note.gdid) {
-                    await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                }
+            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
 
-                const success = await syncSingleNoteToGDrive(note);
-                if (success) {
-                    if (useIndexedDb && tempGdid && tempGdid !== note.gdid) {
+            const promise = (async () => {
+                try {
+                    if (useIndexedDb && (!note.gdid || note.gdid === "")) {
+                        note.gdid = `L${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+                    }
+                    const tempGdid = note.gdid;
+                    note.type = 0;
+                    if (useIndexedDb && note.gdid) {
                         await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                        await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                     }
 
-                    // Изтриване на дубликати от паметта (ако има такива)
-                    allNotesData = allNotesData.filter(obj =>
-                        !(String(obj.id) === String(note.id) && String(obj.gdid) !== String(note.gdid))
-                    );
-                    // Подсигуряваме че текущата бележка е в масива
-                    if (!allNotesData.includes(note)) allNotesData.push(note);
+                    const success = await syncSingleNoteToGDrive(note);
+                    if (success) {
+                        if (useIndexedDb && tempGdid && tempGdid !== note.gdid) {
+                            await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+                            await deleteFromDB(NOTE_STORE_NAME, tempGdid);
+                        }
 
-                    // Fix orphaned media links
-                    if (tempGdid && tempGdid !== note.gdid) {
-                        for (let m of mediaData) {
-                            if (String(m.noteid) === String(tempGdid)) {
-                                m.noteid = note.gdid;
-                                if (useIndexedDb) await bulkPutDB(MEDIA_STORE_NAME, m, true);
-                                mediaNeedsSync = true;
+                        allNotesData = allNotesData.filter(obj =>
+                            !(String(obj.id) === String(note.id) && String(obj.gdid) !== String(note.gdid))
+                        );
+                        if (!allNotesData.includes(note)) allNotesData.push(note);
+
+                        if (tempGdid && tempGdid !== note.gdid) {
+                            for (let m of mediaData) {
+                                if (String(m.noteid) === String(tempGdid)) {
+                                    m.noteid = note.gdid;
+                                    if (useIndexedDb) await bulkPutDB(MEDIA_STORE_NAME, m, true);
+                                    mediaNeedsSync = true;
+                                }
                             }
                         }
-                    }
 
-                    successCount++;
-                    const el = document.querySelector(`.note[data-i="${note.id}"], .note[data-g="${note.gdid}"], .note[data-g="${tempGdid}"]`);
-                    if (el) {
-                        el.classList.remove('dirty');
-                        el.dataset.s = String(note.status);
-                        if (note.gdid) el.dataset.g = note.gdid;
+                        successCount++;
+                        const el = document.querySelector(`.note[data-i="${note.id}"], .note[data-g="${note.gdid}"], .note[data-g="${tempGdid}"]`);
+                        if (el) {
+                            el.classList.remove('dirty');
+                            el.dataset.s = String(note.status);
+                            if (note.gdid) el.dataset.g = note.gdid;
+                        }
+                    } else {
+                        errorCount++;
+                        note.type = -1;
+                        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
                     }
-                } else {
+                } catch (e) {
+                    console.error("Sync error for note", note.id, e);
                     errorCount++;
-                    // Ако е неуспешно, връщаме type на -1 и запазваме в БД
                     note.type = -1;
-                    if (useIndexedDb) {
-                        await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                    }
+                    if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
                 }
-            } catch (e) {
-                console.error("Sync error for note", note.id, e);
-                errorCount++;
-                // Връщаме type на -1 при грешка
-                note.type = -1;
-                if (useIndexedDb) {
-                    await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                }
-            }
+            })();
+
+            pool.add(promise);
+            promise.finally(() => pool.delete(promise));
         }
+        await Promise.all(pool);
+
 
         if (mediaNeedsSync && typeof syncFileWorker === 'function') {
             try {

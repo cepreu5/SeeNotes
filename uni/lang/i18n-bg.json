@@ -384,5 +384,7 @@
     "color13": "Праскова",
     "color14": "Розов",
     "customColor": "Избери цвят",
-    "mdBulletLabel": "Булет"
+    "mdBulletLabel": "Булет",
+    "saveTooltip": "Запис",
+    "previewTooltip": "Преглед"
 }

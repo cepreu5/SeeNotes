@@ -383,5 +383,7 @@
     "color13": "Peach",
     "color14": "Rose",
     "customColor": "Custom Color",
-    "mdBulletLabel": "Bullet"
+    "mdBulletLabel": "Bullet",
+    "saveTooltip": "Save",
+    "previewTooltip": "Preview"
 }
