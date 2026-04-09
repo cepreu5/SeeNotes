@@ -385,5 +385,9 @@
     "customColor": "Custom Color",
     "mdBulletLabel": "Bullet",
     "saveTooltip": "Save",
-    "previewTooltip": "Preview"
+    "previewTooltip": "Preview",
+    "appDataFolderLabel": "AppDataFolder (Hidden)",
+    "confirmEmptyFolder": "Are you sure you want to delete ALL content of \"{folderName}\"?",
+    "folderEmptiedSuccess": "Folder emptied successfully.",
+    "emptyFolderBtn": "Empty"
 }

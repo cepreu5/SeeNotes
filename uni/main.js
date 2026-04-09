@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.11'; // App version
+const version = 'Beta 1.12'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -40,7 +40,7 @@ const DEMO_NOTE_LIMIT = 5;
 // --- Конфигурация и версия ---
 // const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const CLIENT_ID = '365177022923-59fegvrs9tjimpmclr8nbrvk6ik8qfg6.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email';
+const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
 const TRIAL_URL = "http://index.html?token=bEis1x9_geJ3w1aM4SWnR3KjEXbz6l9SK91w9Zk5Clqd6TBnMQgUbMTYErrb_js5wP4I699wO-NflxzGy2yn"; // days token
 
 // --- Глобално състояние на приложението ---
@@ -949,7 +949,8 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
         let files = [];
         let nextToken = null;
         do {
-            const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name),nextPageToken&pageSize=1000${nextToken ? `&pageToken=${nextToken}` : ''}&t=${Date.now()}`;
+            const spacesParam = (folderId === 'appDataFolder') ? '&spaces=appDataFolder' : '';
+            const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name),nextPageToken&pageSize=1000${nextToken ? `&pageToken=${nextToken}` : ''}${spacesParam}&t=${Date.now()}`;
             const resp = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             if (!resp.ok) {
                 const errorData = await resp.json().catch(() => ({}));
@@ -1278,6 +1279,59 @@ async function deleteGDriveFile(fileId) {
     }
 }
 
+async function emptyAppDataFolder() {
+    if (isOffline) return false;
+    let nextPageToken = null;
+    let allFiles = [];
+    try {
+        do {
+            const query = encodeURIComponent("trashed=false");
+            const url = `https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,parents),nextPageToken&pageSize=1000${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
+            const sendRequest = async (token) => {
+                return fetch(url, {
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            };
+            let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!storedTokenString) return false;
+            let tokenData = JSON.parse(storedTokenString);
+            let response = await sendRequest(tokenData.access_token);
+            if (response.status === 401) {
+                let refreshResult = await refreshAuthToken(false);
+                if (refreshResult && refreshResult.pass) {
+                    tokenData = refreshResult.tokenData;
+                    response = await sendRequest(tokenData.access_token);
+                }
+            }
+            if (!response.ok) break;
+            const result = await response.json();
+            if (result.files) {
+                allFiles = allFiles.concat(result.files);
+            }
+            nextPageToken = result.nextPageToken;
+        } while (nextPageToken);
+        if (allFiles.length === 0) return true;
+        const appSettingsId = await getAppSettingsFolderId();
+        const pool = new Set();
+        const CONCURRENCY_LIMIT = 10;
+        for (const file of allFiles) {
+            const id = file.id;
+            const parents = file.parents || [];
+            if (id === appSettingsId || parents.includes(appSettingsId)) continue;
+            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
+            const promise = deleteGDriveFile(id).finally(() => pool.delete(promise));
+            pool.add(promise);
+        }
+        await Promise.all(pool);
+        return true;
+    } catch (e) {
+        console.error("emptyAppDataFolder error:", e);
+        return false;
+    }
+}
+
+
 /**
  * Търси максималните стойности на id и numord сред бележките и ги запазва в глобални променливи,
  * ако са по-големи от текущите им стойности (1 000 000).
@@ -1390,7 +1444,8 @@ async function isGDriveFolderEmpty(folderId) {
     if (isOffline || !folderId) return true;
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&pageSize=1&fields=files(id)`, {
+        const spacesParam = (folderId === 'appDataFolder') ? '&spaces=appDataFolder' : '';
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&pageSize=1&fields=files(id)${spacesParam}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -1575,6 +1630,7 @@ async function migrateDataToNewFolder(targetFolderId) {
 let cachedFolderIdsByName = {};
 async function getFolderIDByName(name) {
     if (isOffline) return null;
+    if (name === 'AppDataFolder') return 'appDataFolder';
     if (cachedFolderIdsByName[name]) return cachedFolderIdsByName[name];
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
@@ -1605,6 +1661,46 @@ async function getFolderIDByName(name) {
         return null;
     }
 }
+
+async function getAppSettingsFolderId() {
+    if (isOffline) return null;
+    if (cachedFolderIdsByName['appDataFolder:AppSettings']) return cachedFolderIdsByName['appDataFolder:AppSettings'];
+    const findFolder = async (token) => {
+        const query = encodeURIComponent("name='AppSettings' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id)&pageSize=1`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return null;
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await findFolder(tokenData.access_token);
+        if (resp.status === 401) {
+            let refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                resp = await findFolder(tokenData.access_token);
+            }
+        }
+        if (resp.ok) {
+            const result = await resp.json();
+            if (result.files && result.files.length > 0) {
+                const id = result.files[0].id;
+                cachedFolderIdsByName['appDataFolder:AppSettings'] = id;
+                return id;
+            }
+        }
+        const newId = await createNewGDriveFolder('AppSettings', 'appDataFolder');
+        if (newId) cachedFolderIdsByName['appDataFolder:AppSettings'] = newId;
+        return newId;
+    } catch (e) {
+        console.error("getAppSettingsFolderId error:", e);
+        return null;
+    }
+}
+
 
 /**
  * Създава нова бележка в текущия борд.
@@ -1717,7 +1813,8 @@ async function getFolderID() {
                 if (cachedId) { folderIds[name] = cachedId; return; }
 
                 const query = encodeURIComponent(`'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-                const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1`;
+                const spacesParam = (multinotesDataId === 'appDataFolder') ? '&spaces=appDataFolder' : '';
+                const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1${spacesParam}`;
 
                 let resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
 
@@ -1753,6 +1850,7 @@ async function getFolderID() {
 
 async function getMultinotesDataFolderID() {
     if (isOffline) return null;
+    if (typeof activeFolderName !== 'undefined' && activeFolderName === 'AppDataFolder') return 'appDataFolder';
     const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
     if (cachedId) return cachedId;
 
@@ -4044,53 +4142,13 @@ function initApp() {
                     advancedSettingsSpan.removeAttribute('hidden');
                     localStorage.setItem('showAdvancedSettings', 'true');
                 }
-                // Попълваме dropdown-а от localStorage при отваряне на Разширени настройки
-                const afsEl = document.getElementById('active-folder-select');
-                if (afsEl) {
-                    const defaultF = 'multinotes_data';
-                    let fns = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]');
-                    if (!fns.includes(defaultF)) fns.unshift(defaultF);
-                    const curF = localStorage.getItem('active_folder_name') || defaultF;
-                    if (!fns.includes(curF)) fns.push(curF);
-                    Array.from(afsEl.options).forEach(opt => {
-                        if (opt.value !== 'select_folder' && opt.value !== 'new_folder') opt.remove();
-                    });
-                    const insertBefore = afsEl.querySelector('option[value="select_folder"]') || afsEl.firstChild;
-                    fns.forEach(name => {
-                        if (!afsEl.querySelector(`option[value="${name}"]`)) {
-                            const opt = document.createElement('option');
-                            opt.value = name;
-                            opt.textContent = name;
-                            if (name === curF) opt.selected = true;
-                            afsEl.insertBefore(opt, insertBefore);
-                        }
-                    });
-                }
+                // Попълваме dropdown-а ПРАВИЛНО чрез централизираната функция
+                populateFoldersDropdown();
                 // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
                 loadGlobalFoldersJson().then(changed => {
                     if (changed) {
-                        const afs = document.getElementById('active-folder-select');
-                        if (afs) {
-                            const defaultF = 'multinotes_data';
-                            let fns = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]');
-                            if (!fns.includes(defaultF)) fns.unshift(defaultF);
-                            const curF = localStorage.getItem('active_folder_name') || defaultF;
-                            if (!fns.includes(curF)) fns.push(curF);
-                            // Премахваме старите опции (без select_folder и new_folder)
-                            Array.from(afs.options).forEach(opt => {
-                                if (opt.value !== 'select_folder' && opt.value !== 'new_folder') opt.remove();
-                            });
-                            const insertBefore = afs.querySelector('option[value="select_folder"]') || afs.firstChild;
-                            fns.forEach(name => {
-                                if (!afs.querySelector(`option[value="${name}"]`)) {
-                                    const opt = document.createElement('option');
-                                    opt.value = name;
-                                    opt.textContent = name;
-                                    if (name === curF) opt.selected = true;
-                                    afs.insertBefore(opt, insertBefore);
-                                }
-                            });
-                        }
+                        // Обновяваме dropdown-а, тъй като folders.json може да е заредил нови имена
+                        populateFoldersDropdown();
                     }
                 });
                 // Expand accordion if not already expanded (check for active class if you used it, or just click if content is hidden)
@@ -4140,6 +4198,8 @@ function initApp() {
         };
         document.getElementById('settings-modal').classList.add('visible');
         if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
+        // ВИНАГИ попълваме dropdown-а при отваряне на настройките
+        populateFoldersDropdown();
         // if (guide) showStep(4); // Настройки
     });
 
@@ -5218,8 +5278,8 @@ async function checkAuth(isExplicitLogin = false) {
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token');
         initLoginPage();
-        alert(_('sessionExpired'));
-        return null;
+        // alert(_('sessionExpired')); // Removed to avoid annoying popup on start
+        return { pass: false };
     }
     const licenseData = await decryptLicenseToken();
     tokenRemainingDays = licenseData.remainingDays;
@@ -8943,7 +9003,8 @@ async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`'${folderId}' in parents and name = '${fileName}' and trashed = false`);
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {
+        const spacesParam = (folderId === 'appDataFolder') ? '&spaces=appDataFolder' : '';
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc${spacesParam}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -9016,9 +9077,9 @@ async function syncGlobalFoldersJson() {
             folders
         };
         const content = JSON.stringify(data, null, 2);
-        // Push only to the main 'multinotes_data' folder
+        // Push only to the main 'AppSettings' folder in AppDataFolder
         try {
-            const fID = await getFolderIDByName('multinotes_data');
+            const fID = await getAppSettingsFolderId();
             if (fID) {
                 const existingFiles = await findGDFileByName(fID, 'folders.json');
                 if (existingFiles && existingFiles.length > 0) {
@@ -9028,7 +9089,7 @@ async function syncGlobalFoldersJson() {
                 }
             }
         } catch (e) {
-            console.warn("Failed to sync folders.json to multinotes_data", e);
+            console.warn("Failed to sync folders.json to AppSettings", e);
         }
     } catch (e) {
         console.warn("syncGlobalFoldersJson error:", e);
@@ -9051,7 +9112,7 @@ function syncFolderDataAsync() {
 async function loadGlobalFoldersJson() {
     if (isOffline || !useGoogleDb) return false;
     try {
-        const folderId = await getFolderIDByName('multinotes_data');
+        const folderId = await getAppSettingsFolderId();
         if (!folderId) return false;
         const existingFiles = await findGDFileByName(folderId, 'folders.json');
         if (!existingFiles || existingFiles.length === 0) return false;
@@ -9188,7 +9249,7 @@ async function saveSettingsToGDrive(silent = false) {
     const contentLocal = JSON.stringify(settings, null, 2);
     localStorage.setItem('settings_multinotes_data', contentLocal);
     if (!isOffline) {
-        const folderId = await getFolderIDByName('multinotes_data');
+        const folderId = await getAppSettingsFolderId();
         if (folderId) {
             const fileName = 'settings.json';
             try {
@@ -9234,7 +9295,7 @@ async function loadSettingsFromGDrive(silent = false) {
     let content = null;
     if (!isOffline) {
         try {
-            const folderId = await getFolderIDByName('multinotes_data');
+            const folderId = await getAppSettingsFolderId();
             if (folderId) {
                 const existingFiles = await findGDFileByName(folderId, 'settings.json');
                 if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
@@ -9391,7 +9452,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             let content = null;
             if (!isOffline) {
                 try {
-                    const folderId = await getFolderIDByName('multinotes_data');
+                    const folderId = await getAppSettingsFolderId();
                     if (folderId) {
                         const existingFiles = await findGDFileByName(folderId, 'settings.json');
                         if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
@@ -9459,7 +9520,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             if (!await showConfirmation(`Сигурни ли сте, че искате да изтриете профила '${currentDevice}' от облака?`)) return;
             showToast("Изтриване на профила...");
             try {
-                const folderId = await getFolderIDByName('multinotes_data');
+                const folderId = await getAppSettingsFolderId();
                 if (folderId) {
                     const existingFiles = await findGDFileByName(folderId, 'settings.json');
                     if (existingFiles && existingFiles.length > 0) {
@@ -9608,11 +9669,9 @@ async function createSettingsUI(boardsData, boardParseError) {
                             localStorage.setItem('boardIdCounter', boardIdCounter.toString());
                         }
 
-                        let shouldSyncJson = false;
-                        if ((selectedValue === 'new_folder' || selectedValue === 'select_folder') && !folderNames.includes(targetFolderName)) {
+                        if (!folderNames.includes(targetFolderName)) {
                             folderNames.push(targetFolderName);
                             localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-                            shouldSyncJson = true;
                         }
 
                         // Force Google Drive mode when folder is switched
@@ -9631,15 +9690,9 @@ async function createSettingsUI(boardsData, boardParseError) {
                             indexedDB.deleteDatabase('multinotes_db');
                         }
 
-                        if (shouldSyncJson) {
-                            if (typeof showToast === 'function') showToast(_('settingSaved') + ' Синхронизиране...');
-                            // Стартираме синхронизацията и чакаме малко, за да започне поне мрежовата заявка
-                            syncGlobalFoldersJson();
-                            setTimeout(() => location.reload(), 1500);
-                        } else {
-                            if (typeof showToast === 'function') showToast(_('settingSaved'));
-                            setTimeout(() => location.reload(), 1000);
-                        }
+                        if (typeof showToast === 'function') showToast(_('settingSaved') + ' Синхронизиране...');
+                        syncGlobalFoldersJson();
+                        setTimeout(() => location.reload(), 1500);
                     } else {
                         throw new Error("Folder ID not found");
                     }
@@ -15074,8 +15127,10 @@ function showFolderDeletePopup() {
     let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
 
     // Филтрираме активната папка и основната папка - те не могат да се трият
-    const currentActive = (typeof activeFolderName !== 'undefined') ? activeFolderName : localStorage.getItem('activeFolderName');
-    const otherFolders = folderNames.filter(name => name !== currentActive && name !== defaultFolder);
+    const currentActive = (typeof activeFolderName !== 'undefined') ? activeFolderName : localStorage.getItem('active_folder_name');
+    let allPossibleFolders = [...folderNames];
+    if (!allPossibleFolders.includes('AppDataFolder')) allPossibleFolders.push('AppDataFolder');
+    const otherFolders = allPossibleFolders.filter(name => name !== currentActive && name !== defaultFolder);
 
     if (otherFolders.length === 0) {
         showToast(_('noData') || "Няма други папки за изтриване.");
@@ -15110,9 +15165,11 @@ function showFolderDeletePopup() {
         const btn = document.createElement('button');
         btn.className = 'zoom-btn';
         btn.style.cssText = 'width:100%; padding:10px; text-align:center; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);';
-        btn.textContent = name;
+        btn.textContent = (name === 'AppDataFolder' && typeof _ === 'function') ? `${name} [${_('emptyFolderBtn')}]` : name;
         btn.onclick = async () => {
-            const confirmMsg = (_('confirmDeleteFolder') || 'Сигурни ли сте, че искате да изтриете папка "{folderName}"?').replace('{folderName}', name);
+            const isAppData = (name === 'AppDataFolder');
+            const confirmTemplate = isAppData ? _('confirmEmptyFolder') : _('confirmDeleteFolder');
+            const confirmMsg = (confirmTemplate || 'Сигурни ли сте, че искате да изтриете папка "{folderName}"?').replace('{folderName}', name);
 
             // Затваряме попъпа с избора, преди да покажем въпроса
             overlay.remove();
@@ -15121,19 +15178,26 @@ function showFolderDeletePopup() {
             if (confirmed) {
                 try {
                     if (typeof showToast === 'function') showToast(_('loadingFile') || 'Изтриване...');
-                    const folderId = await getFolderIDByName(name);
-                    if (folderId) {
-                        await deleteGDriveFile(folderId);
+
+                    if (isAppData) {
+                        await emptyAppDataFolder();
+                    } else {
+                        const folderId = await getFolderIDByName(name);
+                        if (folderId) {
+                            await deleteGDriveFile(folderId);
+                        }
                     }
 
-                    // Обновяваме локалния списък
-                    let newFolderNames = folderNames.filter(f => f !== name);
-                    localStorage.setItem('gdrive_folder_names', JSON.stringify(newFolderNames));
+                    if (!isAppData) {
+                        // Обновяваме локалния списък (само за нормални папки)
+                        let newFolderNames = folderNames.filter(f => f !== name);
+                        localStorage.setItem('gdrive_folder_names', JSON.stringify(newFolderNames));
 
-                    // Синхронизираме промяната в останалите папки
-                    await syncGlobalFoldersJson();
+                        // Синхронизираме промяната в останалите папки
+                        await syncGlobalFoldersJson();
+                    }
 
-                    showToast(_('folderDeletedSuccess'));
+                    showToast(isAppData ? _('folderEmptiedSuccess') : _('folderDeletedSuccess'));
 
                     // Обновяваме dropdown-а в настройките без презареждане
                     if (typeof populateFoldersDropdown === 'function') populateFoldersDropdown();
@@ -15189,12 +15253,20 @@ function populateFoldersDropdown() {
     const insertBeforeNode = activeFolderSelect.querySelector('option[value="select_folder"]') || activeFolderSelect.firstChild;
 
     folderNames.forEach(name => {
+        if (name === 'AppDataFolder') return; // Вече ще го добавим като специална опция
         const option = document.createElement('option');
         option.value = name;
         option.textContent = name;
         if (typeof activeFolderName !== 'undefined' && name === activeFolderName) option.selected = true;
         activeFolderSelect.insertBefore(option, insertBeforeNode);
     });
+
+    // Добавяме AppDataFolder като специална опция (винаги, точно веднъж)
+    const appDataOption = document.createElement('option');
+    appDataOption.value = 'AppDataFolder';
+    appDataOption.textContent = (typeof _ === 'function') ? _('appDataFolderLabel') : 'AppDataFolder (Hidden)';
+    if (typeof activeFolderName !== 'undefined' && activeFolderName === 'AppDataFolder') appDataOption.selected = true;
+    activeFolderSelect.insertBefore(appDataOption, insertBeforeNode);
 }
 
 function updateReloadButtonState() {

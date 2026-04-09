@@ -386,5 +386,9 @@
     "customColor": "Избери цвят",
     "mdBulletLabel": "Булет",
     "saveTooltip": "Запис",
-    "previewTooltip": "Преглед"
+    "previewTooltip": "Преглед",
+    "appDataFolderLabel": "AppDataFolder (Скрита)",
+    "confirmEmptyFolder": "Сигурни ли сте, че искате да изтриете ЦЯЛОТО съдържание на \"{folderName}\"?",
+    "folderEmptiedSuccess": "Папката е изпразнена успешно.",
+    "emptyFolderBtn": "Изпразни"
 }
