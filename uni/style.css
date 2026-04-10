@@ -543,6 +543,23 @@ code {
     user-select: contain;
 }
 
+.code-block {
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 8px 0;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    white-space: pre;
+    line-height: 1.4;
+}
+
+.code-block code {
+    background: none;
+    padding: 0;
+}
+
 .note-content::-webkit-scrollbar {
     width: 8px;
 }
@@ -3172,3 +3189,5 @@ body.selection-locked .note.active-selection-note .note-content {
     50% { transform: scale(1.1); opacity: 0.8; }
     100% { transform: scale(1); opacity: 1; }
 }
+
+.code-block { background-color: rgba(0,0,0,0.1) !important; border: 1px solid #ccc; padding: 10px; margin: 10px 0; overflow: auto; font-family: monospace; white-space: pre !important; display: block; } .code-block code { white-space: pre !important; }

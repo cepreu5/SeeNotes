@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.12'; // App version
+const version = 'Beta 1.13'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -9050,10 +9050,15 @@ async function syncGlobalFoldersJson() {
             }
             // Per-folder data: boardMenuOrder, lastNoteId, lastBoardId
             if (name === activeFolderCurrent) {
-                try {
-                    const bmo = localStorage.getItem('boardMenuOrder');
-                    if (bmo) entry.boardMenuOrder = JSON.parse(bmo);
-                } catch (e) { /* ignore */ }
+                const bmo = localStorage.getItem('boardMenuOrder');
+                if (bmo) {
+                    try {
+                        const parsedBmo = JSON.parse(bmo);
+                        if (Array.isArray(parsedBmo) && typeof boardsData !== 'undefined') {
+                            entry.boardMenuOrder = parsedBmo.filter(bid => boardsData.some(b => String(b.title) === String(bid)));
+                        } else { entry.boardMenuOrder = parsedBmo; }
+                    } catch (e) { }
+                }
                 if (typeof noteId !== 'undefined') entry.lastNoteId = noteId;
                 if (typeof noteNumord !== 'undefined') entry.lastNoteNumord = noteNumord;
                 const bic = localStorage.getItem('boardIdCounter');
@@ -9367,40 +9372,22 @@ async function createSettingsUI(boardsData, boardParseError) {
         if (showSettingsBtn) {
             showSettingsBtn.style.display = (typeof debug !== 'undefined' && debug) ? '' : 'none';
             showSettingsBtn.onclick = null;
-            showSettingsBtn.addEventListener('click', async () => {
-                showToast(_('loadingProfiles'));
-                let content = null;
-                if (!isOffline) {
-                    const folderId = await getFolderIDByName('multinotes_data');
-                    if (folderId) {
-                        try {
-                            const existingFiles = await findGDFileByName(folderId, 'settings.json');
-                            if (existingFiles && existingFiles.length > 0) {
-                                content = await fetchGDriveFileContent(existingFiles[0].id);
-                            }
-                        } catch (err) {
-                            console.error("Fetch full settings.json error:", err);
-                        }
-                    }
-                }
-                if (!content) content = localStorage.getItem('settings_multinotes_data');
+            showSettingsBtn.addEventListener('click', () => {
+                const content = localStorage.getItem('settings_multinotes_data');
                 if (content) {
                     sessionStorage.setItem('full_settings_json', content);
-                    sessionStorage.setItem('boardMenuOrder', localStorage.getItem('boardMenuOrder') || '[]');
-                    // Подготвяме масив с всички бордове
-                    const boardsToStore = (typeof boardsData !== 'undefined' && boardsData.length > 0) ? boardsData : [];
-                    sessionStorage.setItem('boardsData', JSON.stringify(boardsToStore));
-                    // Специално предаваме мап с имена на бордове за бързо търсене
-                    const titlesMap = {};
-                    boardsToStore.forEach(b => {
-                        const bid = String(b.gdid || b.id);
-                        if (bid && bid !== 'undefined' && b.title) titlesMap[bid] = b.title;
-                    });
-                    sessionStorage.setItem('boardTitlesMap', JSON.stringify(titlesMap));
-                    window.open('set.html', '_blank');
-                } else {
-                    showToast("Няма данни за показване.");
                 }
+                sessionStorage.setItem('boardMenuOrder', localStorage.getItem('boardMenuOrder') || '[]');
+                const boardsToStore = (typeof boardsData !== 'undefined' && boardsData.length > 0) ? boardsData : [];
+                sessionStorage.setItem('boardsData', JSON.stringify(boardsToStore));
+                const titlesMap = {};
+                boardsToStore.forEach(b => {
+                    const bid = String(b.gdid || b.id);
+                    if (bid && bid !== 'undefined' && b.title) titlesMap[bid] = b.title;
+                    if (b.title) titlesMap[b.title] = b.title;
+                });
+                sessionStorage.setItem('boardTitlesMap', JSON.stringify(titlesMap));
+                window.open('set.html', '_blank');
             });
         }
         settingsModalBody.dataset.initializedListeners = 'true';
@@ -15192,6 +15179,11 @@ function showFolderDeletePopup() {
                         // Обновяваме локалния списък (само за нормални папки)
                         let newFolderNames = folderNames.filter(f => f !== name);
                         localStorage.setItem('gdrive_folder_names', JSON.stringify(newFolderNames));
+                        localStorage.removeItem('boardMenuOrder_' + name);
+                        localStorage.removeItem('lastNoteId_' + name);
+                        localStorage.removeItem('lastNoteNumord_' + name);
+                        localStorage.removeItem('lastBoardId_' + name);
+                        localStorage.removeItem('startBoard_' + name);
 
                         // Синхронизираме промяната в останалите папки
                         await syncGlobalFoldersJson();

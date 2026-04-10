@@ -364,98 +364,80 @@ class KBAssistant {
      * Инициализация - зарежда KB данните
      */
     async init() {
-        if (window.isAppErrorState) return false;
-        try {
-            const corePath = 'lang/kb-core.json';
-            const langPath = `lang/kb-${this.currentLang}.json`;
-            const enPath = 'lang/kb-en.json';
-
-            // Fetch core and language-specific files in parallel
-            const [coreResponse, langResponse, enResponse] = await Promise.all([
-                fetch(corePath),
-                fetch(langPath),
-                this.currentLang !== 'en' ? fetch(enPath) : Promise.resolve(null)
-            ]);
-
-            if (!coreResponse.ok) throw new Error(`Failed to load knowledge base core: ${corePath}`);
-            if (!langResponse.ok) throw new Error(`Failed to load language file: ${langPath}`);
-
-            const coreData = await coreResponse.json();
-            const langData = await langResponse.json();
-            const enData = (enResponse && enResponse.ok) ? await enResponse.json() : null;
-
-            const mergedData = coreData;
-
-            // Helper function to merge language-specific texts into core data structure
-            const mergeLanguageData = (coreItems, langItems) => {
-                if (!coreItems || !langItems) return;
-
-                coreItems.forEach(coreItem => {
-                    const langItem = langItems[coreItem.id];
-                    if (langItem) {
-                        // Extract guide to avoid overwriting core guide structure
-                        const { guide: langGuide, ...restLangItem } = langItem;
-
-                        // Merge simple properties like question, answer, keywords
-                        Object.assign(coreItem, restLangItem);
-
-                        // Deep merge the 'guide' object to combine structure and text
-                        if (coreItem.guide && langGuide) {
-                            for (const key in langGuide) {
-                                if (coreItem.guide[key] && typeof coreItem.guide[key] === 'object') {
-                                    // Merge text into existing step (e.g., guide.1.text)
-                                    Object.assign(coreItem.guide[key], langGuide[key]);
-                                } else {
-                                    // Add properties that don't exist in core guide (e.g., root 'text')
-                                    coreItem.guide[key] = langGuide[key];
+        if (this.initPromise) return this.initPromise;
+        this.initPromise = (async () => {
+            if (window.isAppErrorState) return false;
+            try {
+                const corePath = 'lang/kb-core.json';
+                const langPath = `lang/kb-${this.currentLang}.json`;
+                const enPath = 'lang/kb-en.json';
+                const [coreResponse, langResponse, enResponse] = await Promise.all([
+                    fetch(corePath),
+                    fetch(langPath),
+                    this.currentLang !== 'en' ? fetch(enPath) : Promise.resolve(null)
+                ]);
+                if (!coreResponse.ok) throw new Error(`Failed to load knowledge base core: ${corePath}`);
+                if (!langResponse.ok) throw new Error(`Failed to load language file: ${langPath}`);
+                const coreData = await coreResponse.json();
+                const langData = await langResponse.json();
+                const enData = (enResponse && enResponse.ok) ? await enResponse.json() : null;
+                const mergedData = coreData;
+                const mergeLanguageData = (coreItems, langItems) => {
+                    if (!coreItems || !langItems) return;
+                    coreItems.forEach(coreItem => {
+                        const langItem = langItems[coreItem.id];
+                        if (langItem) {
+                            const { guide: langGuide, ...restLangItem } = langItem;
+                            Object.assign(coreItem, restLangItem);
+                            if (coreItem.guide && langGuide) {
+                                for (const key in langGuide) {
+                                    if (coreItem.guide[key] && typeof coreItem.guide[key] === 'object') {
+                                        Object.assign(coreItem.guide[key], langGuide[key]);
+                                    } else {
+                                        coreItem.guide[key] = langGuide[key];
+                                    }
                                 }
                             }
                         }
-                    }
-                });
-            };
-
-            // Merge data for both 'settings' and 'general' sections
-            mergeLanguageData(mergedData.settings, langData.settings);
-            mergeLanguageData(mergedData.general, langData.general);
-
-            // Prepare the 'ui_texts' object for the assistant's UI
-            mergedData.ui_texts = {};
-            if (langData.ui_texts) {
-                mergedData.ui_texts[this.currentLang] = langData.ui_texts;
+                    });
+                };
+                mergeLanguageData(mergedData.settings, langData.settings);
+                mergeLanguageData(mergedData.general, langData.general);
+                mergedData.ui_texts = {};
+                if (langData.ui_texts) {
+                    mergedData.ui_texts[this.currentLang] = langData.ui_texts;
+                }
+                if (enData && enData.ui_texts) {
+                    mergedData.ui_texts['en'] = enData.ui_texts;
+                } else if (this.currentLang === 'en' && langData.ui_texts) {
+                    mergedData.ui_texts['en'] = langData.ui_texts;
+                }
+                this.kbData = mergedData;
+                this.texts = this.kbData.ui_texts || {};
+                this.matcher = new KBMatcher(this.kbData);
+                this.isInitialized = true;
+                if (this.matcher) {
+                    this.matcher.currentLang = this.currentLang;
+                }
+                this.updateLanguage();
+                setTimeout(() => {
+                    this.checkVersionUpdates();
+                }, 1000);
+                console.log('✅ KB Assistant initialized successfully with split data files.');
+                console.log('Current language:', this.getCurrentLanguage());
+                if (!window.kbUI) {
+                    window.kbUI = new KBUI();
+                }
+                this.ui = window.kbUI;
+                return true;
+            } catch (error) {
+                console.error('❌ KB Assistant initialization failed:', error);
+                this.isInitialized = false;
+                this.initPromise = null;
+                return false;
             }
-            if (enData && enData.ui_texts) {
-                mergedData.ui_texts['en'] = enData.ui_texts;
-            } else if (this.currentLang === 'en' && langData.ui_texts) {
-                mergedData.ui_texts['en'] = langData.ui_texts;
-            }
-
-            this.kbData = mergedData;
-            this.texts = this.kbData.ui_texts || {};
-            this.matcher = new KBMatcher(this.kbData);
-            this.isInitialized = true;
-
-            // Force matcher language update
-            if (this.matcher) {
-                this.matcher.currentLang = this.currentLang;
-            }
-            this.updateLanguage();
-            // --- NEW: Check for version updates and trigger guides ---
-            setTimeout(() => {
-                this.checkVersionUpdates();
-            }, 1000); // Small delay to let the UI settle
-            console.log('✅ KB Assistant initialized successfully with split data files.');
-            console.log('Current language:', this.getCurrentLanguage());
-            if (!window.kbUI) {
-                window.kbUI = new KBUI();
-            }
-            this.ui = window.kbUI; // Референция за updateLanguage()
-            return true;
-        } catch (error) {
-            console.error('❌ KB Assistant initialization failed:', error);
-            this.isInitialized = false;
-            return false;
-        }
+        })();
+        return this.initPromise;
     }
 
     /**

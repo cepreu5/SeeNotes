@@ -570,64 +570,64 @@
             "question": "How do I use the calendar?",
             "answer": "Click the <b><i>Calendar</i></b> button in the board names menu. The calendar displays all notes for which you have set a date. You can switch between monthly and weekly view. If you click a date in the monthly view, the weekly calendar will open, showing the week that contains the selected date."
         },
-        "Beta 1.69": {
+        "Beta 1.06": {
             "keywords": [
                 "new",
                 "news",
                 "version",
-                "1.69"
+                "1.06"
             ],
             "question": "What new features and changes are in the application?",
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.69<br><br><span align='left'>Improved note deletion<br>Hide Copy button during editing<br><b>Noto</b> announces changes in new versions</span>"
+                    "text": "Beta 1.06<br><br><br><br><span align='left'>Improved note deletion<br>Hide Copy button during editing<br><b>Noto</b> announces changes in new versions</span>"
                 }
             }
         },
-        "Beta 1.70": {
+        "Beta 1.07": {
             "keywords": [
                 "new",
                 "news",
                 "version",
-                "1.70"
+                "1.07"
             ],
             "question": "What new features and changes are in the application?",
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.70<br><br><span align='left'>Set the order in which boards are displayed in the menu.<br></span>"
+                    "text": "Beta 1.07<br><br><span align='left'>Set the order in which boards are displayed in the menu.<br></span>"
                 }
             }
         },
-        "Beta 1.71": {
+        "Beta 1.071": {
             "keywords": [
                 "new",
                 "news",
                 "version",
-                "1.71"
+                "1.071"
             ],
             "question": "What new features and changes are in the application?",
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.71<br><br><span align='left'>- Calendar is visible when editing<br>- updateGDrive default value true<br>- Move button when editing a copy of a note<br>- Save/Load settings from local memory<br>- bullet and numbered lists</span>"
+                    "text": "Beta 1.071<br><br><span align='left'>- Calendar is visible when editing<br>- updateGDrive default value true<br>- Move button when editing a copy of a note<br>- Save/Load settings from local memory<br>- bullet and numbered lists</span>"
                 }
             }
         },
-        "Beta 1.93": {
+        "Beta 1.09": {
             "keywords": [
                 "new",
                 "news",
                 "version",
                 "last",
-                "1.93"
+                "1.09"
             ],
             "question": "What new features and changes are in the application?",
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.93<br><br><span align='left'>- Profiles<br><br>- Changes in <b>Settings</b><br><br>- Show complete versions info</span>"
+                    "text": "Beta 1.09<br><br><span align='left'>- Profiles<br><br>- Changes in <b>Settings</b><br><br>- Show complete versions info</span>"
                 }
             }
         },

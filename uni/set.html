@@ -151,18 +151,6 @@
             width: 100%;
         }
 
-        .json-raw {
-            display: none;
-            background: #272822;
-            color: #f8f8f2;
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 0.85em;
-            margin: 10px;
-        }
-
         .toggle-btn {
             background: none;
             border: 1px solid white;
@@ -175,15 +163,6 @@
 
         .toggle-btn:hover {
             background: rgba(255, 255, 255, 0.2);
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            margin-left: 10px;
-            color: white;
         }
 
         .delete-btn {
@@ -260,201 +239,294 @@
             display: none;
             resize: vertical;
         }
+
+        .folder-section {
+            margin-bottom: 25px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+
+        .folder-header {
+            background-color: #607d8b;
+            color: white;
+            padding: 10px 15px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .folder-body {
+            padding: 10px;
+        }
     </style>
 </head>
 
 <body>
     <div class="container" id="main-container">
-        <h1>Cloud Settings & Menu Order</h1>
-
+        <h1>Cloud Settings & Board Menu Order</h1>
         <div class="save-container">
             <button id="save-all-btn" class="save-btn" style="display:none;">Запази промените</button>
         </div>
-
-        <div id="content">Зареждане на данни...</div>
-
-        <h2 id="saved-order-title" style="display:none;">Запазен ред в облака/локално (boardMenuOrder)</h2>
-        <div id="saved-order-list" class="list-container" style="display:none;"></div>
+        <div id="content">Зареждане на данни от облака...</div>
+        <div id="saved-order-title" class="folder-section" style="display:none; margin-top: 20px;">
+            <div class="folder-header">
+                <span>Запазен ред в облака/локално (boardMenuOrder)</span>
+                <button class="toggle-btn" onclick="toggleRaw('order')">JSON</button>
+            </div>
+            <div id="saved-order-list" class="folder-body"></div>
+        </div>
+        <h2 id="folders-json-title" style="display:none;">Данни по папки (folders.json)</h2>
+        <div id="folders-json-list" style="display:none;"></div>
     </div>
-
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const contentDiv = document.getElementById('content');
-
-            const rawSettings = sessionStorage.getItem('full_settings_json');
-            const rawOrder = sessionStorage.getItem('boardMenuOrder');
-            const rawBoards = sessionStorage.getItem('boardsData');
-
-            if (!rawSettings) {
-                contentDiv.innerHTML = '<div class="error-msg">Няма намерени данни в сесията. Моля, отворете настройките от главното приложение отново.</div>';
-                return;
-            }
-
-            // 1. Показване на настройките по устройства
+            let token = null;
             try {
-                const settings = JSON.parse(rawSettings);
-                contentDiv.innerHTML = '';
-                const topLevelKeys = Object.keys(settings);
-                const looksOld = topLevelKeys.some(k =>
-                    ['zoomLevel', 'noteFontSize', 'modalFontSize', 'startBoard'].includes(k) ||
-                    k.startsWith('board_')
-                );
-                const devices = looksOld ? { 'Default': settings } : settings;
-                const deviceNames = Object.keys(devices);
-                if (deviceNames.length > 0) {
-                    document.getElementById('save-all-btn').style.display = 'block';
+                const storedToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                if (storedToken) token = JSON.parse(storedToken).access_token;
+            } catch (e) { console.error("Token error:", e); }
+            async function gfetch(url) {
+                return fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            }
+            async function findInAppData(name, parentId = 'appDataFolder') {
+                if (!token) return null;
+                const q = encodeURIComponent(`name='${name}' and '${parentId}' in parents and trashed=false`);
+                const res = await gfetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=files(id)`);
+                const data = await res.json();
+                return data.files && data.files.length > 0 ? data.files[0].id : null;
+            }
+            async function getGDContent(id) {
+                if (!token || !id) return null;
+                const res = await gfetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
+                return res.ok ? await res.text() : null;
+            }
+            // 0. Зареждане от AppDataFolder
+            let cloudSettings = null;
+            let cloudFolders = null;
+            if (token) {
+                try {
+                    const settingsDir = await findInAppData('AppSettings');
+                    if (settingsDir) {
+                        const sid = await findInAppData('settings.json', settingsDir);
+                        if (sid) cloudSettings = await getGDContent(sid);
+                        const fid = await findInAppData('folders.json', settingsDir);
+                        if (fid) cloudFolders = await getGDContent(fid);
+                    }
+                } catch (e) { console.error("Cloud fetch error:", e); }
+            }
+            const rawSettings = cloudSettings || sessionStorage.getItem('full_settings_json') || "{}";
+            const rawOrder = sessionStorage.getItem('boardMenuOrder') || "[]";
+            const rawFolders = cloudFolders || sessionStorage.getItem('full_folders_json') || '{"folders":[]}';
+            
+            if (cloudSettings) sessionStorage.setItem('full_settings_json', cloudSettings);
+            if (cloudFolders) sessionStorage.setItem('full_folders_json', cloudFolders);
+            
+            // 1. Показване на настройките
+            if (rawSettings && rawSettings !== "null" && rawSettings !== "undefined") {
+                try {
+                    const settings = JSON.parse(rawSettings);
+                    contentDiv.innerHTML = '';
+                    const topLevelKeys = Object.keys(settings);
+                    let isNestedProfiles = false;
+                    if (topLevelKeys.length > 0) {
+                        const hasOldKeys = topLevelKeys.some(k => ['zoomLevel', 'noteFontSize', 'modalFontSize', 'startBoard', 'showDatemod'].includes(k) || k.startsWith('board_'));
+                        const allObjects = topLevelKeys.every(k => typeof settings[k] === 'object' && settings[k] !== null && !Array.isArray(settings[k]));
+                        if (allObjects && !hasOldKeys) {
+                            isNestedProfiles = true;
+                        }
+                    }
+                    const devices = isNestedProfiles ? settings : { 'Default': settings };
+                    const deviceNames = Object.keys(devices);
+                    if (deviceNames.length > 0) document.getElementById('save-all-btn').style.display = 'block';
+                    deviceNames.forEach(deviceName => {
+                        const deviceSettings = devices[deviceName];
+                        const safeId = deviceName.replace(/[^\w-]/g, '-');
+                        const section = document.createElement('div');
+                        section.className = 'device-sectionProfile';
+                        section.classList.add('device-section');
+                        section.dataset.deviceName = deviceName;
+                        section.id = `section-${safeId}`;
+                        const header = document.createElement('div');
+                        header.className = 'device-header';
+                        header.innerHTML = `<div style="display:flex; align-items:center;"><button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий профила"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><span style="margin-left:10px;">Профил: ${deviceName}</span></div><button class="toggle-btn" onclick="toggleRaw('${safeId}')">JSON</button>`;
+                        const content = document.createElement('div');
+                        content.className = 'device-content';
+                        const table = document.createElement('table');
+                        const keys = Object.keys(deviceSettings).sort((a, b) => {
+                            const isDynamicA = a.startsWith('board_') || a.startsWith('startBoard_');
+                            const isDynamicB = b.startsWith('board_') || b.startsWith('startBoard_');
+                            if (isDynamicA && !isDynamicB) return 1;
+                            if (!isDynamicA && isDynamicB) return -1;
+                            return a.localeCompare(b);
+                        });
+                        keys.forEach(key => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `<th>${key}</th><td>${(typeof deviceSettings[key] === 'object') ? JSON.stringify(deviceSettings[key]) : String(deviceSettings[key])}</td>`;
+                            table.appendChild(tr);
+                        });
+                        const rawEdit = document.createElement('textarea');
+                        rawEdit.className = 'json-edit';
+                        rawEdit.id = `edit-${safeId}`;
+                        rawEdit.value = JSON.stringify(deviceSettings, null, 2);
+                        content.appendChild(rawEdit);
+                        content.appendChild(table);
+                        section.appendChild(header);
+                        section.appendChild(content);
+                        contentDiv.appendChild(section);
+                    });
+                } catch (e) { console.error(e); }
+            }
+            // 2. Показване на folders.json
+            try {
+                const titlesMap = JSON.parse(sessionStorage.getItem('boardTitlesMap') || '{}');
+                if (rawFolders) {
+                    const parsed = JSON.parse(rawFolders);
+                    if (parsed && Array.isArray(parsed.folders)) {
+                        const foldersTitle = document.getElementById('folders-json-title');
+                        const foldersList = document.getElementById('folders-json-list');
+                        foldersTitle.style.display = 'block';
+                        foldersList.style.display = 'block';
+                        parsed.folders.forEach((folder, idx) => {
+                            const safeId = `folder-${idx}`;
+                            const folderDiv = document.createElement('div');
+                            folderDiv.className = 'folder-section';
+                            folderDiv.dataset.folderIdx = idx;
+                            const fHeader = document.createElement('div');
+                            fHeader.className = 'folder-header';
+                            fHeader.innerHTML = `<span>Папка: ${folder.name}</span><button class="toggle-btn" onclick="toggleRaw('folder-${idx}')">JSON</button>`;
+                            const fBody = document.createElement('div');
+                            fBody.className = 'folder-body';
+                            fBody.innerHTML = '';
+                            if (Array.isArray(folder.boardMenuOrder)) {
+                                fBody.innerHTML = '<ol>' + folder.boardMenuOrder.map(id => {
+                                    const title = titlesMap[id] || id;
+                                    const label = (title !== id) ? ` <small style="color:#888;">(${id})</small>` : '';
+                                    return `<li>${title}${label}</li>`;
+                                }).join('') + '</ol>';
+                            }
+                            fBody.innerHTML += `<div style="font-size:0.85em; color:#666; margin-top:10px; border-top:1px solid #eee; padding-top:10px;"><strong>Start Board:</strong> ${folder.startBoard || 'Default'}<br><strong>Last Note ID:</strong> ${folder.lastNoteId || '-'}<br><strong>Last Board ID:</strong> ${folder.lastBoardId || '-'}</div>`;
+                        const rawEdit = document.createElement('textarea');
+                        rawEdit.className = 'json-edit';
+                        rawEdit.id = `edit-folder-${idx}`;
+                        rawEdit.value = JSON.stringify(folder, null, 2);
+                        fBody.prepend(rawEdit);
+                        folderDiv.appendChild(fHeader);
+                        folderDiv.appendChild(fBody);
+                        foldersList.appendChild(folderDiv);
+                        });
+                        // Запазваме активната папка и имейла за saveAll
+                        foldersList.dataset.fullJson = rawFolders;
+                    }
                 }
-
-                deviceNames.forEach(deviceName => {
-                    const deviceSettings = devices[deviceName];
-                    const safeId = deviceName.replace(/[^\w-]/g, '-');
-                    const section = document.createElement('div');
-                    section.className = 'device-section';
-                    section.dataset.deviceName = deviceName;
-                    section.id = `section-${safeId}`;
-
-                    const header = document.createElement('div');
-                    header.className = 'device-header';
-                    header.innerHTML = `
-                        <div style="display:flex; align-items:center;">
-                            <button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий профила">
-                                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                            </button>
-                            <span style="margin-left:10px;">Профил: ${deviceName}</span>
-                        </div>
-                        <button class="toggle-btn" onclick="toggleRaw('${safeId}')">JSON</button>
-                    `;
-
-                    const content = document.createElement('div');
-                    content.className = 'device-content';
-                    const table = document.createElement('table');
-
-                    const keys = Object.keys(deviceSettings).sort((a, b) => {
-                        const isDynamicA = a.startsWith('board_') || a.startsWith('startBoard_');
-                        const isDynamicB = b.startsWith('board_') || b.startsWith('startBoard_');
-                        if (isDynamicA && !isDynamicB) return 1;
-                        if (!isDynamicA && isDynamicB) return -1;
-                        return a.localeCompare(b);
-                    });
-
-                    keys.forEach(key => {
-                        const tr = document.createElement('tr');
-                        const value = deviceSettings[key];
-                        let displayValue = (typeof value === 'object') ? JSON.stringify(value) : String(value);
-                        tr.innerHTML = `<th>${key}</th><td>${displayValue}</td>`;
-                        table.appendChild(tr);
-                    });
-
+            } catch (e) { console.error(e); }
+            // 3. Показване на boardMenuOrder
+            if (rawOrder) {
+                try {
+                    const order = JSON.parse(rawOrder);
+                    const list = document.getElementById('saved-order-list');
+                    document.getElementById('saved-order-title').style.display = 'block';
+                    list.style.display = 'block';
+                    list.innerHTML = '';
+                    
                     const rawEdit = document.createElement('textarea');
                     rawEdit.className = 'json-edit';
-                    rawEdit.id = `edit-${safeId}`;
-                    rawEdit.value = JSON.stringify(deviceSettings, null, 2);
-
-                    content.appendChild(rawEdit);
-                    content.appendChild(table);
-                    section.appendChild(header);
-                    section.appendChild(content);
-                    contentDiv.appendChild(section);
-                });
-            } catch (err) {
-                console.error(err);
-                contentDiv.innerHTML = `<div class="error-msg">Грешка при четене на настройките: ${err.message}</div>`;
-            }
-
-            document.getElementById('save-all-btn').addEventListener('click', saveAll);
-
-            /* Секцията за текущо меню е премахната, тъй като е излишна тук */
-
-            // 3. Показване на boardMenuOrder
-            try {
-                if (rawOrder) {
-                    const order = JSON.parse(rawOrder);
-                    const savedOrderDiv = document.getElementById('saved-order-list');
-                    document.getElementById('saved-order-title').style.display = 'block';
-                    savedOrderDiv.style.display = 'block';
-
+                    rawEdit.id = 'edit-order';
+                    rawEdit.value = JSON.stringify(order, null, 2);
+                    list.appendChild(rawEdit);
+                    
                     if (Array.isArray(order) && order.length > 0) {
                         const ol = document.createElement('ol');
-                        order.forEach(item => {
-                            const li = document.createElement('li');
-                            li.textContent = item;
-                            ol.appendChild(li);
-                        });
-                        savedOrderDiv.appendChild(ol);
-                    } else {
-                        savedOrderDiv.textContent = 'Няма запазен ред (празен списък).';
+                        order.forEach(item => { const li = document.createElement('li'); li.textContent = item; ol.appendChild(li); });
+                        list.appendChild(ol);
                     }
-                }
-            } catch (err) {
-                console.error(err);
+                } catch (e) { }
             }
+            document.getElementById('save-all-btn').addEventListener('click', saveAll);
         });
-
         function toggleRaw(id) {
-            const el = document.getElementById(`edit-${id}`);
-            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+            const el = document.getElementById(`edit-${id}`) || document.getElementById(`edit-folder-${id.split('-')[1]}`);
+            if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
         }
-
         function toggleDelete(id) {
             const section = document.getElementById(`section-${id}`);
-            section.classList.toggle('marked-for-delete');
+            if (section) section.classList.toggle('marked-for-delete');
         }
-
         async function saveAll() {
-            const sections = document.querySelectorAll('.device-section');
+            const profileSections = document.querySelectorAll('.device-sectionProfile');
             const finalSettings = {};
-            let hasError = false;
-            sections.forEach(section => {
+            profileSections.forEach(section => {
                 if (section.classList.contains('marked-for-delete')) return;
-                const deviceName = section.dataset.deviceName;
-                const safeId = section.id.replace('section-', '');
-                const textarea = document.getElementById(`edit-${safeId}`);
+                const name = section.dataset.deviceName;
                 try {
-                    const editedJson = JSON.parse(textarea.value);
-                    finalSettings[deviceName] = editedJson;
-                } catch (e) {
-                    alert(`Грешка в JSON за настройка "${deviceName}": ${e.message}`);
-                    hasError = true;
-                }
+                    finalSettings[name] = JSON.parse(document.getElementById(`edit-${section.id.replace('section-', '')}`).value);
+                } catch (e) { alert(`Грешка в JSON за профил ${name}`); return; }
             });
-            if (hasError) return;
-            const finalContent = JSON.stringify(finalSettings, null, 2);
-            sessionStorage.setItem('full_settings_json', finalContent);
-            let successMsg = "Промените са запазени локално в сесията.";
-            let gdriveSaved = false;
-            if (window.opener && !window.opener.closed) {
+            const folderSections = document.querySelectorAll('.folder-section');
+            const foldersListEl = document.getElementById('folders-json-list');
+            let foldersData = JSON.parse(foldersListEl.dataset.fullJson || '{"folders":[]}');
+            const newFolders = [];
+            folderSections.forEach(f => {
+                const idx = f.dataset.folderIdx;
                 try {
-                    if (typeof window.opener.updateGDriveFile === 'function') {
-                        const folderId = await window.opener.getFolderIDByName('multinotes_data');
-                        if (folderId) {
-                            const fileName = 'settings.json';
-                            const existingFiles = await window.opener.findGDFileByName(folderId, fileName);
-                            if (existingFiles && existingFiles.length > 0) {
-                                await window.opener.updateGDriveFile(existingFiles[0].id, finalContent);
-                                successMsg = "Промените са запазени успешно в Google Drive!";
-                                gdriveSaved = true;
+                    newFolders.push(JSON.parse(document.getElementById(`edit-folder-${idx}`).value));
+                } catch (e) { alert(`Грешка в JSON за папка ${idx}`); return; }
+            });
+            foldersData.folders = newFolders;
+
+            let orderContent = null;
+            const orderEl = document.getElementById('edit-order');
+            if (orderEl) {
+                try {
+                    const parsedOrder = JSON.parse(orderEl.value);
+                    if (Array.isArray(parsedOrder)) {
+                        orderContent = JSON.stringify(parsedOrder);
+                        sessionStorage.setItem('boardMenuOrder', orderContent);
+                        if (window.opener && !window.opener.closed) {
+                            window.opener.localStorage.setItem('boardMenuOrder', orderContent);
+                            
+                            // Също така запазваме и за конкретната папка, ако тя е активна
+                            const activeFolder = window.opener.document.getElementById('active-folder-select')?.value;
+                            if (activeFolder) {
+                                window.opener.localStorage.setItem('boardMenuOrder_' + activeFolder, orderContent);
                             }
                         }
-                    } else if (typeof window.opener.saveSettingsToGDrive === 'function') {
-                        console.log("Found saveSettingsToGDrive but using manual update if possible.");
+                    } else {
+                        alert("boardMenuOrder трябва да бъде масив!"); return;
                     }
-                } catch (err) {
-                    console.error("GDrive save error from set.html:", err);
-                    successMsg += "\nГрешка при запис в Google Drive: " + err.message;
-                }
+                } catch (e) { alert("Грешка в JSON за boardMenuOrder"); return; }
             }
-            if (!gdriveSaved) {
-                localStorage.setItem('settings_json_full_override', finalContent);
-                successMsg += "\nМоля, рестартирайте основното приложение, за да се приложат промените.";
-            }
-            alert(successMsg);
-        }
 
-        function getBoardColor(color) {
-            const colors = ['#00FF00', '#FF0000', '#FF4500', '#FFFF00', '#00FFFF', '#FF00FF', '#3355FF'];
-            if (color >= 0 && color < colors.length) return colors[color];
-            if (color < 0) return '#' + (color >>> 0).toString(16).slice(-6);
-            return '#ccc';
+            const settingsContent = JSON.stringify(finalSettings, null, 2);
+            const foldersContent = JSON.stringify(foldersData, null, 2);
+            sessionStorage.setItem('full_settings_json', settingsContent);
+            sessionStorage.setItem('full_folders_json', foldersContent);
+            if (window.opener && !window.opener.closed) {
+                try {
+                    const settingsDir = await findInAppDataInternal('AppSettings');
+                    if (settingsDir) {
+                        const sid = await findInAppDataInternal('settings.json', settingsDir);
+                        if (sid) await window.opener.updateGDriveFile(sid, settingsContent);
+                        const fid = await findInAppDataInternal('folders.json', settingsDir);
+                        if (fid) await window.opener.updateGDriveFile(fid, foldersContent);
+                        alert("Промените са запазени в AppDataFolder!");
+                    }
+                } catch (e) { alert("Грешка при запис в облака: " + e.message); }
+            }
+        }
+        async function findInAppDataInternal(name, parentId = 'appDataFolder') {
+            const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!stored) return null;
+            const t = JSON.parse(stored).access_token;
+            const q = encodeURIComponent(`name='${name}' and '${parentId}' in parents and trashed=false`);
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=files(id)`, {
+                headers: { 'Authorization': `Bearer ${t}` }
+            });
+            const d = await res.json();
+            return d.files && d.files.length > 0 ? d.files[0].id : null;
         }
     </script>
 </body>

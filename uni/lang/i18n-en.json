@@ -289,7 +289,7 @@
     "savingProfile": "Saving profile...",
     "loadingProfiles": "Loading profiles...",
     "settingsSavedSuccess": "Profile saved successfully!",
-    "showSettingsLabel": "View Saved Profiles",
+    "showSettingsLabel": "System Data",
     "settingsLoadedSuccess": "Profile loaded successfully! Please reload the page.",
     "errorSaveSettings": "Error saving profile.",
     "errorLoadSettings": "Error loading profile.",
