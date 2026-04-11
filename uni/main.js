@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.16'; // App version
+const version = 'Beta 1.17'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -6915,7 +6915,7 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
 
     // Restore position
     const setDefaultPosition = () => {
-        if (debug) console.log(`[Draggable] Resetting ${element.id} to default position`);
+        if (debug) console.log(`[Draggable] Resetting ${element.id} to default position. Viewport: ${window.innerWidth}x${window.innerHeight}`);
         element.style.setProperty('top', 'auto', 'important');
         element.style.setProperty('left', 'auto', 'important');
         element.style.setProperty('right', '20px', 'important');
@@ -6926,16 +6926,28 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
         } else {
             element.style.setProperty('bottom', '20px', 'important');
         }
+
+        // --- EMERGENCY VISIBILITY FORCE ---
+        if (element.id !== 'scrollTopBtn') {
+            element.style.setProperty('display', 'flex', 'important');
+            element.style.setProperty('visibility', 'visible', 'important');
+            element.style.setProperty('opacity', '1', 'important');
+            element.style.setProperty('border', '5px solid red', 'important'); // TEMP: Visual aid
+        }
     };
 
     // Restore position
     const savedPos = localStorage.getItem(storageKey);
+    if (debug) console.log(`[Draggable] ${element.id} savedPos:`, savedPos);
+
     let positionRestored = false;
     if (savedPos) {
         try {
             const pos = JSON.parse(savedPos);
             const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
             const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+
+            if (debug) console.log(`[Draggable] ${element.id} parsing:`, pos, `Viewport: ${viewportWidth}x${viewportHeight}`);
 
             // Wait for element to have dimensions if it's currently hidden, but use 50 as safe fallback
             const elHeight = element.offsetHeight || 50;
@@ -6955,22 +6967,29 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
 
             if (topVal !== undefined && !isNaN(topVal) && rightVal !== undefined && !isNaN(rightVal)) {
                 // Define "off-screen" tolerance
-                const isVerticalOut = (topVal < -20) || (viewportHeight > 100 && topVal > viewportHeight - 10);
-                const isHorizontalOut = (rightVal < -20) || (viewportWidth > 100 && rightVal > viewportWidth - 10);
+                const isVerticalOut = (topVal < -20) || (viewportHeight > 50 && topVal > viewportHeight - 10);
+                const isHorizontalOut = (rightVal < -20) || (viewportWidth > 50 && rightVal > viewportWidth - 10);
 
                 if (isVerticalOut || isHorizontalOut) {
                     if (debug) console.warn(`[Draggable] ${element.id} is off-screen (${topVal}, ${rightVal}). Resetting.`, pos);
                     setDefaultPosition();
                 } else {
                     // Clamp values to be within the viewport
-                    topVal = Math.max(0, Math.min(topVal, viewportHeight - elHeight));
-                    rightVal = Math.max(0, Math.min(rightVal, viewportWidth - elWidth));
+                    topVal = Math.max(0, Math.min(topVal, viewportHeight > 0 ? viewportHeight - elHeight : 1000));
+                    rightVal = Math.max(0, Math.min(rightVal, viewportWidth > 0 ? viewportWidth - elWidth : 1000));
 
                     element.style.setProperty('bottom', 'auto', 'important');
                     element.style.setProperty('left', 'auto', 'important');
                     element.style.setProperty('top', `${topVal}px`, 'important');
                     element.style.setProperty('right', `${rightVal}px`, 'important');
                     element.style.setProperty('z-index', '10002', 'important'); // Boost z-index
+
+                    if (element.id !== 'scrollTopBtn') {
+                        element.style.setProperty('display', 'flex', 'important');
+                        element.style.setProperty('visibility', 'visible', 'important');
+                        element.style.setProperty('opacity', '1', 'important');
+                        element.style.setProperty('border', '5px solid green', 'important'); // TEMP: Visual aid
+                    }
 
                     if (debug) console.log(`[Draggable] Restored ${element.id} to ${topVal}px, ${rightVal}px`);
                     positionRestored = true;
