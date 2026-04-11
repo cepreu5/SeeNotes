@@ -7606,10 +7606,7 @@ function showModal(options, noteElement = null) {
         const noteDuplicateBtn = document.createElement('div');
         noteDuplicateBtn.id = 'note-duplicate-btn';
         // Use a custom SVG to match the scale and style of other footer buttons
-        noteDuplicateBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="8" y="8" width="12" height="12" rx="2"></rect>
-            <path d="M16 8v-2a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
-        </svg>`;
+        noteDuplicateBtn.innerHTML = copyIconSvg;
         noteDuplicateBtn.className = 'modal-footer-btn';
         noteDuplicateBtn.title = _('copyNoteTooltip') || 'Copy note';
         noteDuplicateBtn.addEventListener('click', async (e) => {
@@ -10673,7 +10670,7 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
     }
     // 4. Re-insert code blocks
     codeBlocks.forEach(block => {
-        const copyBtn = '<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="Копирай кода"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>';
+        const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
         html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
     });
     // 5. Finally, replace newlines with <br>
@@ -10696,7 +10693,8 @@ function renderNoteContent(text) {
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
     let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     codeBlocks.forEach(block => {
-        html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code></div>');
+        const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
+        html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
     });
 
     return html;
@@ -10880,7 +10878,7 @@ function formatText(text, formatString, isForModal = false) {
     }
     // Re-insert code blocks that were extracted before segmentation
     codeBlocks.forEach(block => {
-        const copyBtn = '<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="Копирай кода"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>';
+        const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
         html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
     });
     return html;
@@ -10893,7 +10891,7 @@ window.copyCode = function (btn) {
     navigator.clipboard.writeText(text).then(() => {
         const originalSvg = btn.innerHTML;
         // Смяна с икона "отметка" за обратна връзка
-        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#28a745" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        btn.innerHTML = '&#10003;';
         setTimeout(() => { btn.innerHTML = originalSvg; }, 2000);
     }).catch(err => {
         console.error('Copy failed:', err);
