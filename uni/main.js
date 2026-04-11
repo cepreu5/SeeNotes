@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.14'; // App version
+const version = 'Beta 1.15'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -6909,10 +6909,10 @@ function addInNotePreviewListener(element, attachments, indexOrSource, sourceMod
  */
 function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPress = null) {
     if (!element) return;
-    
+
     // Check if we already initialized dragging for this element to avoid duplicate listeners
     if (element.dataset.draggableInitialized === 'true' && !onlyRestore) return;
-    
+
     // Restore position
     const setDefaultPosition = () => {
         element.style.top = 'auto';
@@ -6942,7 +6942,7 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
             let rightVal = undefined;
 
             if (pos.top !== undefined && pos.top !== null) topVal = parseInt(pos.top, 10);
-            
+
             if (pos.right !== undefined && pos.right !== null) {
                 rightVal = parseInt(pos.right, 10);
             } else if (pos.left !== undefined && pos.left !== null) {
@@ -6953,9 +6953,9 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
 
             if (topVal !== undefined && !isNaN(topVal) && rightVal !== undefined && !isNaN(rightVal)) {
                 // Define "off-screen" tolerance
-                const isVerticalOut = (topVal < -20) || (topVal > viewportHeight - 20); 
+                const isVerticalOut = (topVal < -20) || (topVal > viewportHeight - 20);
                 const isHorizontalOut = (rightVal < -20) || (rightVal > viewportWidth - 20);
-                
+
                 if (isVerticalOut || isHorizontalOut) {
                     setDefaultPosition();
                 } else {
@@ -6976,12 +6976,12 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
     if (!positionRestored) {
         setDefaultPosition();
     }
-    
+
     // If onlyRestore is true, we stop here and don't attach listeners
     if (onlyRestore) return;
-    
+
     element.dataset.draggableInitialized = 'true';
-    
+
     let isDragging = false;
     let hasMoved = false;
     let startX, startY, startTop, startRight;
@@ -7001,7 +7001,7 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
         const rect = element.getBoundingClientRect();
         startTop = rect.top;
         startRight = window.innerWidth - rect.right;
-        
+
         isLongPress = false;
         if (onLongPress) {
             longPressTimer = setTimeout(() => {
@@ -7074,7 +7074,7 @@ function restoreAllFloatingPositions() {
         { id: 'scrollTopBtn', key: 'scrollTopBtnPosition' },
         { id: 'kb-fab', key: 'kbFabPosition' }
     ];
-    
+
     mappings.forEach(m => {
         const el = document.getElementById(m.id);
         if (el) {
