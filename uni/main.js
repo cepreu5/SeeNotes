@@ -6907,24 +6907,22 @@ function addInNotePreviewListener(element, attachments, indexOrSource, sourceMod
  * @param {HTMLElement} element - The element to make draggable.
  * @param {string} storageKey - The localStorage key to save the position.
  */
-function makeElementDraggable(element, storageKey) {
+function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPress = null) {
     if (!element) return;
+    
+    // Check if we already initialized dragging for this element to avoid duplicate listeners
+    if (element.dataset.draggableInitialized === 'true' && !onlyRestore) return;
+    
     // Restore position
     const setDefaultPosition = () => {
-        element.style.right = '10px';
+        element.style.top = 'auto';
         element.style.left = 'auto';
-        element.style.top = ''; // Clear top to fallback to bottom
+        element.style.right = '20px';
         if (element.id === 'kb-fab') {
             element.style.bottom = '10px';
         } else if (element.id === 'scrollTopBtn') {
             element.style.bottom = '80px';
         } else {
-            // Default for other elements if any, fallback to CSS or a safe default
-            // Assume CSS handles it if we don't set it, or set a safe default.
-            // But to be safe if we are clearing top, let's look at ID or just leave custom styles alone
-            // However, for consistency with 'no values', we might want to respect CSS.
-            // If we set top='', bottom takes over from CSS.
-            // If we want to enforce bottom right for others too:
             element.style.bottom = '20px';
         }
     };
@@ -6934,33 +6932,42 @@ function makeElementDraggable(element, storageKey) {
     if (savedPos) {
         try {
             const pos = JSON.parse(savedPos);
-            // Check if pos properties exist
-            if (pos.top !== undefined && pos.right !== undefined) {
-                const viewportWidth = window.innerWidth;
-                const viewportHeight = window.innerHeight;
-                // Use fallback dimensions if element is hidden (offset is 0)
-                const elHeight = element.offsetHeight || 60;
-                const elWidth = element.offsetWidth || 60;
-                let topVal = parseInt(pos.top, 10);
-                let rightVal = parseInt(pos.right, 10);
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            // Use fallback dimensions if element is hidden
+            const elHeight = element.offsetHeight || 60;
+            const elWidth = element.offsetWidth || 60;
+
+            let topVal = undefined;
+            let rightVal = undefined;
+
+            if (pos.top !== undefined && pos.top !== null) topVal = parseInt(pos.top, 10);
+            
+            if (pos.right !== undefined && pos.right !== null) {
+                rightVal = parseInt(pos.right, 10);
+            } else if (pos.left !== undefined && pos.left !== null) {
+                // Backward compatibility: convert left to right
+                const leftVal = parseInt(pos.left, 10);
+                rightVal = viewportWidth - leftVal - elWidth;
+            }
+
+            if (topVal !== undefined && !isNaN(topVal) && rightVal !== undefined && !isNaN(rightVal)) {
                 // Define "off-screen" tolerance
-                // If top is negative or way below viewport
-                // If right is negative or way to the left (right > viewportWidth)
-                const isVerticalOut = (topVal < 0) || (topVal > viewportHeight - 20); // At least 20px visible
-                const isHorizontalOut = (rightVal < 0) || (rightVal > viewportWidth - 20);
+                const isVerticalOut = (topVal < -20) || (topVal > viewportHeight - 20); 
+                const isHorizontalOut = (rightVal < -20) || (rightVal > viewportWidth - 20);
+                
                 if (isVerticalOut || isHorizontalOut) {
-                    console.log(`Element ${element.id} position reset (was off-screen):`, pos);
                     setDefaultPosition();
                 } else {
                     // Clamp values to be within the viewport
                     topVal = Math.max(0, Math.min(topVal, viewportHeight - elHeight));
                     rightVal = Math.max(0, Math.min(rightVal, viewportWidth - elWidth));
-                    element.style.top = `${topVal}px`;
-                    element.style.right = `${rightVal}px`;
                     element.style.bottom = 'auto';
                     element.style.left = 'auto';
+                    element.style.top = `${topVal}px`;
+                    element.style.right = `${rightVal}px`;
+                    positionRestored = true;
                 }
-                positionRestored = true;
             }
         } catch (e) {
             console.log("Error restoring position:", e);
@@ -6969,9 +6976,18 @@ function makeElementDraggable(element, storageKey) {
     if (!positionRestored) {
         setDefaultPosition();
     }
+    
+    // If onlyRestore is true, we stop here and don't attach listeners
+    if (onlyRestore) return;
+    
+    element.dataset.draggableInitialized = 'true';
+    
     let isDragging = false;
     let hasMoved = false;
     let startX, startY, startTop, startRight;
+    let longPressTimer;
+    let isLongPress = false;
+
     const onDragStart = (e) => {
         if (e.type === 'mousedown' && e.button !== 0) return;
         // Prevent native drag behavior (e.g. ghost image) for mouse events
@@ -6985,6 +7001,17 @@ function makeElementDraggable(element, storageKey) {
         const rect = element.getBoundingClientRect();
         startTop = rect.top;
         startRight = window.innerWidth - rect.right;
+        
+        isLongPress = false;
+        if (onLongPress) {
+            longPressTimer = setTimeout(() => {
+                if (!hasMoved) {
+                    isLongPress = true;
+                    onLongPress(element);
+                    if (navigator.vibrate) navigator.vibrate(50);
+                }
+            }, 600);
+        }
     };
     const onDragMove = (e) => {
         if (!isDragging) return;
@@ -6993,6 +7020,7 @@ function makeElementDraggable(element, storageKey) {
         if (Math.abs(clientX - startX) > 5 || Math.abs(clientY - startY) > 5) {
             hasMoved = true;
             element.classList.add('dragging');
+            if (longPressTimer) clearTimeout(longPressTimer);
         }
         if (!hasMoved) return;
         e.preventDefault();
@@ -7008,6 +7036,7 @@ function makeElementDraggable(element, storageKey) {
     const onDragEnd = () => {
         if (!isDragging) return;
         isDragging = false;
+        if (longPressTimer) clearTimeout(longPressTimer);
         element.classList.remove('dragging');
         if (hasMoved) {
             localStorage.setItem(storageKey, JSON.stringify({ top: element.style.top, right: element.style.right }));
@@ -7024,14 +7053,34 @@ function makeElementDraggable(element, storageKey) {
         e.preventDefault();
         e.stopPropagation();
     });
-    // Block click if moved
+    // Block click if moved or long-pressed
     element.addEventListener('click', (e) => {
-        if (hasMoved) {
+        if (hasMoved || isLongPress) {
             e.preventDefault();
             e.stopImmediatePropagation();
             hasMoved = false;
+            isLongPress = false;
         }
     }, true);
+}
+
+/**
+ * Възстановява позициите на всички плаващи елементи от localStorage
+ */
+function restoreAllFloatingPositions() {
+    const mappings = [
+        { id: 'add-note-fab', key: 'addNoteFabPosition' },
+        { id: 'popup-menu-btn-floating', key: 'popupMenuBtnPosition' },
+        { id: 'scrollTopBtn', key: 'scrollTopBtnPosition' },
+        { id: 'kb-fab', key: 'kbFabPosition' }
+    ];
+    
+    mappings.forEach(m => {
+        const el = document.getElementById(m.id);
+        if (el) {
+            makeElementDraggable(el, m.key, true);
+        }
+    });
 }
 
 function showModal(options, noteElement = null) {
@@ -8942,6 +8991,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     if (boardsMenuContainer) {
         // Клонираме бутона, за да го имаме и на двете места, или го местим.
         const allBoardsBtnForContainer = document.createElement('button');
+        allBoardsBtnForContainer.id = 'popup-menu-btn-floating'; // Уверяваме се, че има ID за restoreAllFloatingPositions
         allBoardsBtnForContainer.className = 'popup-menu-btn-floating'; // Използваме floating стил, за да стои над страницата
         allBoardsBtnForContainer.innerHTML = boardIconSvg;
         // --- DRAGGABLE FUNCTIONALITY ---
@@ -8983,7 +9033,7 @@ const appSettingsKeys = [
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'lastSearchTerm', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
     'active_folder_name', 'gdrive_folder_names', 'deviceName',
-    'addNoteFabPosition', 'popupMenuBtnPosition'
+    'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
 ];
 async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
@@ -9328,6 +9378,7 @@ async function loadSettingsFromGDrive(silent = false) {
             });
             if (silent) {
                 await renderUI({ rerenderOnlyMenu: true });
+                restoreAllFloatingPositions();
             } else {
                 setTimeout(async () => {
                     const confirmed = await showConfirmation(_('settingsLoadedSuccess'));
@@ -9468,9 +9519,11 @@ async function createSettingsUI(boardsData, boardParseError) {
     }
     if (deviceNameSelect) {
         loadDeviceProfiles();
-        deviceNameSelect.addEventListener('change', () => {
+        deviceNameSelect.addEventListener('change', async () => {
             localStorage.setItem('deviceName', deviceNameSelect.value);
             showToast(_('settingSaved'), 2000);
+            // Тихо зареждаме настройките за новия профил
+            await loadSettingsFromGDrive(true);
         });
     }
     if (addDeviceBtn) {
@@ -15069,107 +15122,19 @@ function initFABDragging() {
     const fab = document.getElementById('add-note-fab');
     if (!fab) return;
 
-    // --- LOAD SAVED POSITION ---
-    const savedPos = localStorage.getItem('addNoteFabPosition');
-    if (savedPos) {
-        try {
-            const pos = JSON.parse(savedPos);
-            fab.style.right = 'auto';
-            fab.style.bottom = 'auto';
-            fab.style.left = pos.left;
-            fab.style.top = pos.top;
-        } catch (e) { console.error("Error loading FAB position", e); }
-    }
-
-    let isDragging = false;
-    let startX, startY, initialLeft, initialTop;
-    const dragThreshold = 5;
-    let longPressTimer;
-    let isLongPress = false;
-
-    function onDown(e) {
-        isDragging = false;
-        const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-        const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
-        startX = clientX;
-        startY = clientY;
-        isLongPress = false;
-
-        longPressTimer = setTimeout(() => {
-            if (!isDragging) {
-                isLongPress = true;
-                if (typeof showNewBoardModal === 'function') showNewBoardModal();
-                if (navigator.vibrate) navigator.vibrate(50);
-            }
-        }, 600);
-
-        const rect = fab.getBoundingClientRect();
-        fab.style.right = 'auto';
-        fab.style.bottom = 'auto';
-        fab.style.left = rect.left + 'px';
-        fab.style.top = rect.top + 'px';
-
-        initialLeft = rect.left;
-        initialTop = rect.top;
-
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('touchmove', onMove, { passive: false });
-        document.addEventListener('mouseup', onUp);
-        document.addEventListener('touchend', onUp);
-    }
-
-    function onMove(e) {
-        const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-        const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
-        const dx = clientX - startX;
-        const dy = clientY - startY;
-
-        if (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold) {
-            isDragging = true;
-        }
-
-        if (isDragging) {
-            clearTimeout(longPressTimer);
-            if (e.cancelable) e.preventDefault();
-            fab.style.transform = 'none';
-            fab.style.left = (initialLeft + dx) + 'px';
-            fab.style.top = (initialTop + dy) + 'px';
-        }
-    }
-
-    function onUp() {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('touchmove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        document.removeEventListener('touchend', onUp);
-        clearTimeout(longPressTimer);
-
-        fab.style.transform = '';
-        if (isDragging) {
-            // --- SAVE POSITION ---
-            localStorage.setItem('addNoteFabPosition', JSON.stringify({
-                left: fab.style.left,
-                top: fab.style.top
-            }));
-        } else {
-            fab.style.transition = 'transform 0.2s, box-shadow 0.2s, opacity 0.3s';
-        }
-    }
-
-    fab.addEventListener('mousedown', onDown);
-    fab.addEventListener('touchstart', onDown, { passive: false });
+    // Use common logic with long press callback
+    makeElementDraggable(fab, 'addNoteFabPosition', false, () => {
+        if (typeof showNewBoardModal === 'function') showNewBoardModal();
+        if (navigator.vibrate) navigator.vibrate(50);
+    });
 
     fab.addEventListener('click', (e) => {
-        if (isDragging || isLongPress) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            isLongPress = false;
+        // We don't need to check isDragging/isLongPress here because
+        // makeElementDraggable blocks the event if it was a drag or long press!
+        if (e.ctrlKey) {
+            if (typeof showNewBoardModal === 'function') showNewBoardModal();
         } else {
-            if (e.ctrlKey) {
-                if (typeof showNewBoardModal === 'function') showNewBoardModal();
-            } else {
-                if (typeof createNewNote === 'function') createNewNote();
-            }
+            if (typeof createNewNote === 'function') createNewNote();
         }
     });
 }

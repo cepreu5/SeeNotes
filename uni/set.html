@@ -167,17 +167,21 @@
 
         .delete-btn {
             background: none;
-            border: none;
-            color: #fff;
+            border: 1px solid white;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
             cursor: pointer;
-            padding: 4px;
-            display: flex;
+            font-size: 0.75em;
+            display: inline-flex;
             align-items: center;
-            opacity: 0.7;
-            transition: opacity 0.2s;
+            opacity: 0.8;
+            transition: background 0.2s, opacity 0.2s;
+            margin-right: 10px;
         }
 
         .delete-btn:hover {
+            background: rgba(255, 0, 0, 0.3);
             opacity: 1;
         }
 
@@ -280,6 +284,14 @@
         </div>
         <h2 id="folders-json-title" style="display:none;">Данни по папки (folders.json)</h2>
         <div id="folders-json-list" style="display:none;"></div>
+        
+        <div class="delete-files-container" style="margin-top: 60px; padding: 30px; border-top: 3px double #e74c3c; display: flex; flex-direction: column; gap: 15px; align-items: center; background: #fff5f5; border-radius: 0 0 12px 12px;">
+            <p style="color: #c0392b; font-weight: bold; margin-bottom: 10px;">Опасна зона - триене на системни файлове от облака:</p>
+            <div style="display: flex; gap: 20px;">
+                <button id="del-settings-file-btn" class="save-btn" style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий settings.json</button>
+                <button id="del-folders-file-btn" class="save-btn" style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий folders.json</button>
+            </div>
+        </div>
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
@@ -352,22 +364,60 @@
                         section.id = `section-${safeId}`;
                         const header = document.createElement('div');
                         header.className = 'device-header';
-                        header.innerHTML = `<div style="display:flex; align-items:center;"><button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий профила"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><span style="margin-left:10px;">Профил: ${deviceName}</span></div><button class="toggle-btn" onclick="toggleRaw('${safeId}')">JSON</button>`;
+                        header.innerHTML = `<span>Профил: ${deviceName}</span>
+                            <div style="display:flex; align-items:center;">
+                                <button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий профила">Del</button>
+                                <button class="toggle-btn" onclick="toggleRaw('${safeId}')">JSON</button>
+                            </div>`;
                         const content = document.createElement('div');
                         content.className = 'device-content';
                         const table = document.createElement('table');
-                        const keys = Object.keys(deviceSettings).sort((a, b) => {
-                            const isDynamicA = a.startsWith('board_') || a.startsWith('startBoard_');
-                            const isDynamicB = b.startsWith('board_') || b.startsWith('startBoard_');
-                            if (isDynamicA && !isDynamicB) return 1;
-                            if (!isDynamicA && isDynamicB) return -1;
-                            return a.localeCompare(b);
+                        const groups = {
+                            "Core Info": ['deviceName', 'active_folder_name', 'folderId', 'gdrive_folder_names', 'language', 'rememberMe'],
+                            "UI Settings": ['zoomLevel', 'noteFontSize', 'modalFontSize', 'notesBgrd', 'imgBgrd', 'showDatemod', 'showNewBoard', 'oneTapLink', 'clickToEdit', 'closeAfterSave', 'hideAssistant', 'hideToast', 'modeButtonTooltip'],
+                            "Board/Note Rules": ['sortCriteria', 'sortInReverse', 'sortRemindersTop', 'enableNoteSorting', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear', 'maxSavedSearches', 'savedSearches'],
+                            "Positions": ['addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition', 'modalWidth', 'modalHeight'],
+                            "Visibility": ['showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind']
+                        };
+                        const allKeys = Object.keys(deviceSettings);
+                        const assignedKeys = new Set();
+                        
+                        Object.entries(groups).forEach(([groupName, groupKeys]) => {
+                            const matchingKeys = groupKeys.filter(k => allKeys.includes(k));
+                            if (matchingKeys.length === 0) return;
+                            
+                            const groupHeader = document.createElement('tr');
+                            groupHeader.innerHTML = `<th colspan="2" style="background-color: #eee; color: #333; font-weight: bold; text-align: center; font-size: 0.8em; letter-spacing: 1px;">--- ${groupName.toUpperCase()} ---</th>`;
+                            table.appendChild(groupHeader);
+                            
+                            matchingKeys.forEach(key => {
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = `<th>${key}</th><td>${(typeof deviceSettings[key] === 'object') ? JSON.stringify(deviceSettings[key]) : String(deviceSettings[key])}</td>`;
+                                table.appendChild(tr);
+                                assignedKeys.add(key);
+                            });
                         });
-                        keys.forEach(key => {
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `<th>${key}</th><td>${(typeof deviceSettings[key] === 'object') ? JSON.stringify(deviceSettings[key]) : String(deviceSettings[key])}</td>`;
-                            table.appendChild(tr);
+                        
+                        // Dynamic and unassigned keys
+                        const remainingKeys = allKeys.filter(k => !assignedKeys.has(k)).sort((a, b) => {
+                             const isDynamicA = a.startsWith('board_') || a.startsWith('startBoard_');
+                             const isDynamicB = b.startsWith('board_') || b.startsWith('startBoard_');
+                             if (isDynamicA && !isDynamicB) return 1;
+                             if (!isDynamicA && isDynamicB) return -1;
+                             return a.localeCompare(b);
                         });
+                        
+                        if (remainingKeys.length > 0) {
+                            const groupHeader = document.createElement('tr');
+                            groupHeader.innerHTML = `<th colspan="2" style="background-color: #eee; color: #333; font-weight: bold; text-align: center; font-size: 0.8em; letter-spacing: 1px;">--- DYNAMIC & OTHERS ---</th>`;
+                            table.appendChild(groupHeader);
+                            
+                            remainingKeys.forEach(key => {
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = `<th>${key}</th><td>${(typeof deviceSettings[key] === 'object') ? JSON.stringify(deviceSettings[key]) : String(deviceSettings[key])}</td>`;
+                                table.appendChild(tr);
+                            });
+                        }
                         const rawEdit = document.createElement('textarea');
                         rawEdit.className = 'json-edit';
                         rawEdit.id = `edit-${safeId}`;
@@ -397,7 +447,11 @@
                             folderDiv.dataset.folderIdx = idx;
                             const fHeader = document.createElement('div');
                             fHeader.className = 'folder-header';
-                            fHeader.innerHTML = `<span>Папка: ${folder.name}</span><button class="toggle-btn" onclick="toggleRaw('folder-${idx}')">JSON</button>`;
+                            fHeader.innerHTML = `<span>Папка: ${folder.name}</span>
+                                <div style="display:flex; align-items:center;">
+                                    <button class="delete-btn" onclick="toggleDeleteFolder(${idx})" title="Изтрий папката">Del</button>
+                                    <button class="toggle-btn" onclick="toggleRaw('folder-${idx}')">JSON</button>
+                                </div>`;
                             const fBody = document.createElement('div');
                             fBody.className = 'folder-body';
                             fBody.innerHTML = '';
@@ -446,6 +500,8 @@
                 } catch (e) { }
             }
             document.getElementById('save-all-btn').addEventListener('click', saveAll);
+            document.getElementById('del-settings-file-btn').addEventListener('click', () => deleteGDFile('settings.json'));
+            document.getElementById('del-folders-file-btn').addEventListener('click', () => deleteGDFile('folders.json'));
         });
         function toggleRaw(id) {
             const el = document.getElementById(`edit-${id}`) || document.getElementById(`edit-folder-${id.split('-')[1]}`);
@@ -454,6 +510,39 @@
         function toggleDelete(id) {
             const section = document.getElementById(`section-${id}`);
             if (section) section.classList.toggle('marked-for-delete');
+        }
+        function toggleDeleteFolder(idx) {
+            const sections = document.querySelectorAll('.folder-section');
+            sections.forEach(s => {
+                if (parseInt(s.dataset.folderIdx) === idx) {
+                    s.classList.toggle('marked-for-delete');
+                }
+            });
+        }
+        async function deleteGDFile(name) {
+            if (!confirm(`Сигурни ли сте, че искате да изтриете ${name} окончателно от облака?`)) return;
+            try {
+                const settingsDir = await findInAppDataInternal('AppSettings');
+                if (settingsDir) {
+                    const fid = await findInAppDataInternal(name, settingsDir);
+                    if (fid) {
+                        const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                        const t = JSON.parse(stored).access_token;
+                        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fid}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${t}` }
+                        });
+                        if (res.ok) {
+                            alert(`${name} е изтрит успешно!`);
+                            location.reload();
+                        } else {
+                            alert(`Грешка при триене: ${res.status}`);
+                        }
+                    } else {
+                        alert(`Файлът ${name} не е намерен.`);
+                    }
+                }
+            } catch (e) { alert("Грешка: " + e.message); }
         }
         async function saveAll() {
             const profileSections = document.querySelectorAll('.device-sectionProfile');
@@ -470,6 +559,7 @@
             let foldersData = JSON.parse(foldersListEl.dataset.fullJson || '{"folders":[]}');
             const newFolders = [];
             folderSections.forEach(f => {
+                if (f.classList.contains('marked-for-delete')) return;
                 const idx = f.dataset.folderIdx;
                 try {
                     newFolders.push(JSON.parse(document.getElementById(`edit-folder-${idx}`).value));
