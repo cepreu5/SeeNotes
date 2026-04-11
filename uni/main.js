@@ -8939,12 +8939,6 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
 
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
-    const allBoardsBtn = document.createElement('button');
-    allBoardsBtn.className = 'board-menu-button popup-menu-btn'; // Ново, по-семантично име на класовете
-    allBoardsBtn.innerHTML = boardIconSvg; // Use the board icon
-    // Add long-press/ctrl-click to arrows, with scrolling as the default single-click action
-    addAllBoardsModalEvents(allBoardsBtn, () => { showAllBoardsModal(); });
-    scrollWrapper.appendChild(allBoardsBtn);
 
     // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container --- @@
     const boardsMenuContainer = document.getElementById('boards-menu-container');
@@ -8979,7 +8973,6 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     }
     scrollWrapper.appendChild(contentEl);
     contentWrapper.appendChild(scrollWrapper);
-    allBoardsBtn.classList.add('visible');
     return boardsNote;
 }
 const appSettingsKeys = [
@@ -8992,7 +8985,8 @@ const appSettingsKeys = [
     'modalWidth', 'modalHeight', 'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'lastSearchTerm', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
-    'active_folder_name', 'gdrive_folder_names', 'deviceName'
+    'active_folder_name', 'gdrive_folder_names', 'deviceName',
+    'addNoteFabPosition', 'popupMenuBtnPosition'
 ];
 async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
@@ -15077,6 +15071,18 @@ function initFABDragging() {
     const fab = document.getElementById('add-note-fab');
     if (!fab) return;
 
+    // --- LOAD SAVED POSITION ---
+    const savedPos = localStorage.getItem('addNoteFabPosition');
+    if (savedPos) {
+        try {
+            const pos = JSON.parse(savedPos);
+            fab.style.right = 'auto';
+            fab.style.bottom = 'auto';
+            fab.style.left = pos.left;
+            fab.style.top = pos.top;
+        } catch (e) { console.error("Error loading FAB position", e); }
+    }
+
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
     const dragThreshold = 5;
@@ -15141,7 +15147,13 @@ function initFABDragging() {
         clearTimeout(longPressTimer);
 
         fab.style.transform = '';
-        if (!isDragging) {
+        if (isDragging) {
+            // --- SAVE POSITION ---
+            localStorage.setItem('addNoteFabPosition', JSON.stringify({
+                left: fab.style.left,
+                top: fab.style.top
+            }));
+        } else {
             fab.style.transition = 'transform 0.2s, box-shadow 0.2s, opacity 0.3s';
         }
     }

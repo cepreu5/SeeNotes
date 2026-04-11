@@ -1122,7 +1122,7 @@ code {
 
 /* Floating button for popup menu in boards-menu-container */
 .popup-menu-btn-floating {
-    display: none;
+    display: flex;
     position: fixed;
     top: 60px;
     right: 10px;
@@ -1160,12 +1160,7 @@ code {
     cursor: grabbing;
 }
 
-/* Show floating button on narrow screens */
-@media (max-width: 1220px) {
-    .popup-menu-btn-floating {
-        display: flex;
-    }
-}
+/* Floating button is now always flex */
 
 #loader-container {
     text-align: center;
@@ -2716,39 +2711,15 @@ code {
 
 /* --- Responsive Header Logic --- */
 
-/* Default state: Hide the header button container, show the scrolling wrapper */
 #boards-menu-container {
-    display: none;
+    display: block;
 }
 
 
 
-/* 
-   When screen is small (likely forcing header to 3 rows), 
-   swap visibility: show header button, hide scrolling wrapper 
-*/
-@media (max-width: 1160px) {
-    #boards-menu-container {
-        display: block;
-    }
+/* Floating button visibility handled in its own class */
 
-    /* Hide the specific button inside the scrolling wrapper that triggers the modal */
-    .scrolling-menu-wrapper .board-menu-button {
-        display: none !important;
-    }
-}
-
-.popup-menu-btn {
-    background-color: #FFFF00 !important;
-    /* Yellow background */
-}
-
-@media (hover: hover) {
-    .popup-menu-btn:hover {
-        background-color: #E6E600 !important;
-        /* Darker yellow on hover */
-    }
-}
+/* .popup-menu-btn removed */
 
 /* --- Login Page Styles --- */
 .login-box {
