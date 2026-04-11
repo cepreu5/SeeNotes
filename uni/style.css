@@ -544,10 +544,12 @@ code {
 }
 
 .code-block {
+    position: relative;
     background-color: rgba(0, 0, 0, 0.05);
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 4px;
     padding: 8px;
+    padding-right: 28px;
     margin: 8px 0;
     overflow-x: auto;
     font-family: 'Courier New', Courier, monospace;
@@ -558,6 +560,35 @@ code {
 .code-block code {
     background: none;
     padding: 0;
+}
+
+.code-block-copy {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+}
+
+.code-block-copy:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.code-block-copy svg {
+    width: 14px;
+    height: 14px;
+    stroke: #333;
+    fill: none;
+    stroke-width: 2;
 }
 
 .note-content::-webkit-scrollbar {

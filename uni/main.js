@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.13'; // App version
+const version = 'Beta 1.14'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -4005,15 +4005,10 @@ function initApp() {
 
     copyBtn = document.getElementById('copy-modal-btn');
     scrollTopBtn = document.getElementById("scrollTopBtn");
-    // --- КОРЕКЦИЯ: Предотвратяваме контекстното меню в модала ---
-    modalBody.addEventListener('contextmenu', e => e.preventDefault());
-    // --- Предотвратяваме Edge минименюто при маркиране на текст ---
-    modalBody.addEventListener('pointerup', e => {
-        if (window.getSelection().toString().length > 0) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-    });
+    // Allow context menu for system actions (copy/paste)
+    // Removed: modalBody.addEventListener('contextmenu', e => e.preventDefault());
+    // Removed: modalBody.addEventListener('pointerup', e => { ... });
+
     searchBox = document.getElementById('search-box');
     loaderContainer = document.getElementById('loader-container');
     loaderText = document.getElementById('loader-text');
@@ -7204,8 +7199,8 @@ function showModal(options, noteElement = null) {
 
     // Add click-to-edit functionality
     modalBody._clickListener = (e) => {
-        // Do not trigger if a link was clicked, if already editing, or if setting is disabled
-        if (e.target.closest('a') || modalBody.querySelector('textarea')) {
+        // Do not trigger if a link was clicked, copy button was clicked, if already editing, or if setting is disabled
+        if (e.target.closest('a') || e.target.closest('.code-block-copy') || modalBody.querySelector('textarea')) {
             return;
         }
 
@@ -10684,7 +10679,8 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
     }
     // 4. Re-insert code blocks
     codeBlocks.forEach(block => {
-        html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
+        const copyBtn = '<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="Копирай кода"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>';
+        html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
     });
     // 5. Finally, replace newlines with <br>
     // This needs to be done on the final HTML string, not on the escaped text
@@ -10706,7 +10702,7 @@ function renderNoteContent(text) {
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
     let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     codeBlocks.forEach(block => {
-        html = html.replace('%%CODE_BLOCK%%', '<pre><code>' + block + '</code></pre>');
+        html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code></div>');
     });
 
     return html;
@@ -10768,21 +10764,71 @@ function formatText(text, formatString, isForModal = false) {
     if (formats.length === 0) {
         return processNoteContent(localText, isForModal);
     }
-    // Continue with localText instead of text
-    const points = new Set([0, localText.length]);
-    formats.forEach(f => {
-        points.add(f.start);
-        points.add(f.end);
+    // Extract code blocks {{ }} BEFORE splitting into segments,
+    // so they are not broken across segment boundaries
+    const codeBlocks = [];
+    const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
+    const textForSegments = localText.replace(codeTagRegex, (match, code) => {
+        codeBlocks.push(escapeHtml(code));
+        return '%%CODE_BLOCK%%';
+    });
+    // Adjust format positions for removed {{ }} markers
+    // (not needed — we adjust segment points below based on the modified text)
+    // Re-calculate format positions relative to the modified text
+    // Since code block extraction changes text length, we need to rebuild format points
+    // from the original formats mapped to the new text.
+    // Strategy: build a position map from original text to textForSegments
+    const posMap = []; // posMap[origIdx] = newIdx
+    let origIdx = 0, newIdx = 0;
+    const origText = localText;
+    codeTagRegex.lastIndex = 0;
+    let codeMatch;
+    const codeRanges = [];
+    const codeTagRegex2 = /\{\{([\s\S]*?)\}\}/g;
+    while ((codeMatch = codeTagRegex2.exec(localText)) !== null) {
+        codeRanges.push({ start: codeMatch.index, end: codeMatch.index + codeMatch[0].length, replLen: '%%CODE_BLOCK%%'.length });
+    }
+    // Build position mapping
+    const positionMap = new Array(localText.length + 1);
+    let offset = 0;
+    let crIdx = 0;
+    for (let ci = 0; ci <= localText.length; ci++) {
+        if (crIdx < codeRanges.length && ci === codeRanges[crIdx].start) {
+            // Map positions inside the code range
+            const cr = codeRanges[crIdx];
+            const mappedStart = ci - offset;
+            for (let j = cr.start; j <= cr.end && j <= localText.length; j++) {
+                positionMap[j] = mappedStart;
+            }
+            // After the code range, the replacement is '%%CODE_BLOCK%%'
+            offset += (cr.end - cr.start) - cr.replLen;
+            ci = cr.end - 1; // loop will increment
+            crIdx++;
+        } else {
+            positionMap[ci] = ci - offset;
+        }
+    }
+    // Map format positions to new text positions
+    const mappedFormats = formats.map(f => ({
+        ...f,
+        start: positionMap[f.start] !== undefined ? positionMap[f.start] : f.start,
+        end: positionMap[f.end] !== undefined ? positionMap[f.end] : f.end
+    }));
+    // Continue with textForSegments instead of localText
+    const points = new Set([0, textForSegments.length]);
+    mappedFormats.forEach(f => {
+        if (f.start >= 0 && f.start <= textForSegments.length) points.add(f.start);
+        if (f.end >= 0 && f.end <= textForSegments.length) points.add(f.end);
     });
     const sortedPoints = Array.from(points).sort((a, b) => a - b);
     let html = '';
     for (let i = 0; i < sortedPoints.length - 1; i++) {
         const start = sortedPoints[i];
         const end = sortedPoints[i + 1];
-        const segmentText = localText.substring(start, end);
+        const segmentText = textForSegments.substring(start, end);
         if (segmentText.length === 0) continue;
-        const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
-        // Use processNoteContent instead of renderNoteContent
+        const activeFormats = mappedFormats.filter(f => f.start <= start && f.end >= end);
+        // Process segment (code blocks already extracted, processNoteContent won't find {{ }})
         let formattedSegment = processNoteContent(segmentText, isForModal);
         activeFormats.sort((a, b) => a.type - b.type); // Sort ascending to apply inline styles (bold/italic/etc) first
         activeFormats.forEach(format => {
@@ -10838,8 +10884,27 @@ function formatText(text, formatString, isForModal = false) {
         });
         html += formattedSegment;
     }
+    // Re-insert code blocks that were extracted before segmentation
+    codeBlocks.forEach(block => {
+        const copyBtn = '<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="Копирай кода"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>';
+        html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
+    });
     return html;
 }
+
+window.copyCode = function (btn) {
+    const codeElem = btn.parentElement.querySelector('code');
+    if (!codeElem) return;
+    const text = codeElem.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        const originalSvg = btn.innerHTML;
+        // Смяна с икона "отметка" за обратна връзка
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#28a745" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        setTimeout(() => { btn.innerHTML = originalSvg; }, 2000);
+    }).catch(err => {
+        console.error('Copy failed:', err);
+    });
+};
 
 /**
  * Обработва и създава UI за прикачен файл от локална папка.
@@ -12979,8 +13044,8 @@ document.addEventListener('click', (e) => {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
 
-    // Explicitly ignore clicks on footer or any other elements appended to modalBody
-    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
+    // Explicitly ignore clicks on footer or copy button or any other elements appended to modalBody
+    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer') || e.target.closest('.code-block-copy')) return;
 
     // Check if Database mode is active OR if GDrive update is enabled
     const updateGDriveNow = useGoogleDb && !isOffline;
@@ -13003,7 +13068,7 @@ let editLongPressTriggered = false;
 document.addEventListener('touchstart', (e) => {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
-    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer')) return;
+    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer') || e.target.closest('.code-block-copy')) return;
  
     const updateGDriveNow = useGoogleDb && !isOffline;
     const noteGdid = modalBodyElem.dataset.gdid;
@@ -13035,16 +13100,11 @@ document.addEventListener('touchmove', () => {
 });*/
 
 document.addEventListener('contextmenu', (e) => {
-    /* if (editLongPressTriggered) {
-        e.preventDefault();
-        editLongPressTriggered = false;
-        return;
-    } */
     const modalBodyElem = document.getElementById('modal-body');
     if (modalBodyElem && modalBodyElem.contains(e.target) && !e.target.closest('.note-footer') && !e.target.closest('.modal-note-footer')) {
-        // If textarea exists, it means we are editing or just started
+        // If textarea exists, we ALLOW context menu for copy/paste
         if (modalBodyElem.querySelector('textarea')) {
-            e.preventDefault();
+            // e.preventDefault(); // Removed to allow system context menu
         }
     }
 });
