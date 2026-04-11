@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.15'; // App version
+const version = 'Beta 1.16'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -6915,64 +6915,74 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
 
     // Restore position
     const setDefaultPosition = () => {
-        element.style.top = 'auto';
-        element.style.left = 'auto';
-        element.style.right = '20px';
+        if (debug) console.log(`[Draggable] Resetting ${element.id} to default position`);
+        element.style.setProperty('top', 'auto', 'important');
+        element.style.setProperty('left', 'auto', 'important');
+        element.style.setProperty('right', '20px', 'important');
         if (element.id === 'kb-fab') {
-            element.style.bottom = '10px';
+            element.style.setProperty('bottom', '10px', 'important');
         } else if (element.id === 'scrollTopBtn') {
-            element.style.bottom = '80px';
+            element.style.setProperty('bottom', '80px', 'important');
         } else {
-            element.style.bottom = '20px';
+            element.style.setProperty('bottom', '20px', 'important');
         }
     };
+
     // Restore position
     const savedPos = localStorage.getItem(storageKey);
     let positionRestored = false;
     if (savedPos) {
         try {
             const pos = JSON.parse(savedPos);
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
-            // Use fallback dimensions if element is hidden
-            const elHeight = element.offsetHeight || 60;
-            const elWidth = element.offsetWidth || 60;
+            const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+
+            // Wait for element to have dimensions if it's currently hidden, but use 50 as safe fallback
+            const elHeight = element.offsetHeight || 50;
+            const elWidth = element.offsetWidth || 50;
 
             let topVal = undefined;
             let rightVal = undefined;
 
-            if (pos.top !== undefined && pos.top !== null) topVal = parseInt(pos.top, 10);
+            if (pos.top !== undefined && pos.top !== null) topVal = parseFloat(String(pos.top));
 
             if (pos.right !== undefined && pos.right !== null) {
-                rightVal = parseInt(pos.right, 10);
+                rightVal = parseFloat(String(pos.right));
             } else if (pos.left !== undefined && pos.left !== null) {
-                // Backward compatibility: convert left to right
-                const leftVal = parseInt(pos.left, 10);
+                const leftVal = parseFloat(String(pos.left));
                 rightVal = viewportWidth - leftVal - elWidth;
             }
 
             if (topVal !== undefined && !isNaN(topVal) && rightVal !== undefined && !isNaN(rightVal)) {
                 // Define "off-screen" tolerance
-                const isVerticalOut = (topVal < -20) || (topVal > viewportHeight - 20);
-                const isHorizontalOut = (rightVal < -20) || (rightVal > viewportWidth - 20);
+                const isVerticalOut = (topVal < -20) || (viewportHeight > 100 && topVal > viewportHeight - 10);
+                const isHorizontalOut = (rightVal < -20) || (viewportWidth > 100 && rightVal > viewportWidth - 10);
 
                 if (isVerticalOut || isHorizontalOut) {
+                    if (debug) console.warn(`[Draggable] ${element.id} is off-screen (${topVal}, ${rightVal}). Resetting.`, pos);
                     setDefaultPosition();
                 } else {
                     // Clamp values to be within the viewport
                     topVal = Math.max(0, Math.min(topVal, viewportHeight - elHeight));
                     rightVal = Math.max(0, Math.min(rightVal, viewportWidth - elWidth));
-                    element.style.bottom = 'auto';
-                    element.style.left = 'auto';
-                    element.style.top = `${topVal}px`;
-                    element.style.right = `${rightVal}px`;
+
+                    element.style.setProperty('bottom', 'auto', 'important');
+                    element.style.setProperty('left', 'auto', 'important');
+                    element.style.setProperty('top', `${topVal}px`, 'important');
+                    element.style.setProperty('right', `${rightVal}px`, 'important');
+                    element.style.setProperty('z-index', '10002', 'important'); // Boost z-index
+
+                    if (debug) console.log(`[Draggable] Restored ${element.id} to ${topVal}px, ${rightVal}px`);
                     positionRestored = true;
                 }
+            } else {
+                if (debug) console.warn(`[Draggable] Invalid coordinates for ${element.id}:`, pos);
             }
         } catch (e) {
-            console.log("Error restoring position:", e);
+            console.error(`[Draggable] Error restoring ${element.id}:`, e);
         }
     }
+
     if (!positionRestored) {
         setDefaultPosition();
     }
