@@ -9015,26 +9015,19 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
 
-    // --- КОРЕКЦИЯ: Добавяме бутона и в boards-menu-container --- @@
-    const boardsMenuContainer = document.getElementById('boards-menu-container');
-    if (boardsMenuContainer) {
-        // Клонираме бутона, за да го имаме и на двете места, или го местим.
-        const allBoardsBtnForContainer = document.createElement('button');
-        allBoardsBtnForContainer.id = 'popup-menu-btn-floating'; // Уверяваме се, че има ID за restoreAllFloatingPositions
-        allBoardsBtnForContainer.className = 'popup-menu-btn-floating'; // Използваме floating стил, за да стои над страницата
+    // --- КОРЕКЦИЯ: Плаващият бутон за менюто с бордове (само един в body) --- @@
+    let allBoardsBtnForContainer = document.getElementById('popup-menu-btn-floating');
+    if (!allBoardsBtnForContainer) {
+        allBoardsBtnForContainer = document.createElement('button');
+        allBoardsBtnForContainer.id = 'popup-menu-btn-floating';
+        allBoardsBtnForContainer.className = 'popup-menu-btn-floating';
         allBoardsBtnForContainer.innerHTML = boardIconSvg;
+
         // --- DRAGGABLE FUNCTIONALITY ---
-        // Използваме новата функция за drag-and-drop
         makeElementDraggable(allBoardsBtnForContainer, 'popupMenuBtnPosition');
-        // Long press logic remains for specific actions if needed, but for now standard draggable covers the move.
-        // The original code had specific long press interaction which we preserve via showAllBoardsModal call logic below if needed.
-        // But here we just need to attach the click handler. makeElementDraggable blocks click if dragged.
-        // Click event - отваря менюто с малко забавяне, за да има време за drag (ако не е преместен)
+
         let clickTimer;
         allBoardsBtnForContainer.addEventListener('click', (e) => {
-            // makeElementDraggable already handles stopping propagation if moved.
-            // If we are here, it wasn't a drag.
-            // Малко забавяне преди отваряне на менюто
             e.preventDefault();
             e.stopPropagation();
             clearTimeout(clickTimer);
@@ -9042,11 +9035,12 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
                 showAllBoardsModal();
             }, 200);
         });
-
-        // Изчистваме контейнера преди да добавим (ако се презарежда UI)
-        boardsMenuContainer.innerHTML = '';
-        boardsMenuContainer.appendChild(allBoardsBtnForContainer);
+        document.body.appendChild(allBoardsBtnForContainer);
+    } else {
+        allBoardsBtnForContainer.innerHTML = boardIconSvg;
     }
+    const bmc = document.getElementById('boards-menu-container');
+    if (bmc) bmc.innerHTML = '';
     scrollWrapper.appendChild(contentEl);
     contentWrapper.appendChild(scrollWrapper);
     return boardsNote;
@@ -9068,7 +9062,8 @@ async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`'${folderId}' in parents and name = '${fileName}' and trashed = false`);
-        const spacesParam = (folderId === 'appDataFolder') ? '&spaces=appDataFolder' : '';
+        // ВАЖНО: Винаги включваме и двете пространства, за да намерим файловете навсякъде (особено в подпапки на AppData)
+        const spacesParam = '&spaces=drive,appDataFolder';
         return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc${spacesParam}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
@@ -9324,6 +9319,7 @@ async function saveSettingsToGDrive(silent = false) {
             const fileName = 'settings.json';
             try {
                 const existingFiles = await findGDFileByName(folderId, fileName);
+                if (debug) console.log("[ProfileSync] existingFiles found:", existingFiles ? existingFiles.length : 0);
                 let finalObject = {};
                 if (existingFiles && existingFiles.length > 0) {
                     const existingContent = await fetchGDriveFileContent(existingFiles[0].id);
