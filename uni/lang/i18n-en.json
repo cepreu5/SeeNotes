@@ -390,5 +390,9 @@
     "appDataFolderLabel": "AppDataFolder (Hidden)",
     "confirmEmptyFolder": "Are you sure you want to delete ALL content of \"{folderName}\"?",
     "folderEmptiedSuccess": "Folder emptied successfully.",
-    "emptyFolderBtn": "Empty"
+    "emptyFolderBtn": "Empty",
+    "firstRunSetup": "First-time setup...",
+    "firstRunMultinotesFound": "A multinotes_data folder was found in your Google Drive. Would you like to work with it?",
+    "firstRunCreatingBoard": "Creating initial board...",
+    "firstRunComplete": "First-time setup complete!"
 }

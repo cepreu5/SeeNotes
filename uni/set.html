@@ -287,9 +287,10 @@
         
         <div class="delete-files-container" style="margin-top: 60px; padding: 30px; border-top: 3px double #e74c3c; display: flex; flex-direction: column; gap: 15px; align-items: center; background: #fff5f5; border-radius: 0 0 12px 12px;">
             <p style="color: #c0392b; font-weight: bold; margin-bottom: 10px;">Опасна зона - триене на системни файлове от облака:</p>
-            <div style="display: flex; gap: 20px;">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
                 <button id="del-settings-file-btn" class="save-btn" style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий settings.json</button>
                 <button id="del-folders-file-btn" class="save-btn" style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий folders.json</button>
+                <button id="del-all-appdata-btn" class="save-btn" style="background-color: #000; color: #ff0000; border: 2px solid #ff0000; box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);">!!! ИЗТРИЙ ВСИЧКО В APPDATAFOLDER !!!</button>
             </div>
         </div>
     </div>
@@ -335,7 +336,10 @@
             const rawFolders = cloudFolders || sessionStorage.getItem('full_folders_json') || '{"folders":[]}';
             
             if (cloudSettings) sessionStorage.setItem('full_settings_json', cloudSettings);
+            else if (token) sessionStorage.removeItem('full_settings_json');
+            
             if (cloudFolders) sessionStorage.setItem('full_folders_json', cloudFolders);
+            else if (token) sessionStorage.removeItem('full_folders_json');
             
             // 1. Показване на настройките
             if (rawSettings && rawSettings !== "null" && rawSettings !== "undefined") {
@@ -502,7 +506,70 @@
             document.getElementById('save-all-btn').addEventListener('click', saveAll);
             document.getElementById('del-settings-file-btn').addEventListener('click', () => deleteGDFile('settings.json'));
             document.getElementById('del-folders-file-btn').addEventListener('click', () => deleteGDFile('folders.json'));
+            document.getElementById('del-all-appdata-btn').addEventListener('click', deleteAllAppData);
         });
+        async function findInAppDataInternal(name, parentId = 'appDataFolder') {
+            const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!stored) return null;
+            const t = JSON.parse(stored).access_token;
+            const q = encodeURIComponent(`name='${name}' and '${parentId}' in parents and trashed=false`);
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=files(id)`, {
+                headers: { 'Authorization': `Bearer ${t}` }
+            });
+            const data = await res.json();
+            return data.files && data.files.length > 0 ? data.files[0].id : null;
+        }
+
+        async function deleteAllAppData() {
+            if (!confirm("ВНИМАНИЕ! Това ще изтрие ВСИЧКИ файлове (бордове, настройки, папки) от системното пространство AppDataFolder. Действието е НЕОБРАТИМО. Желаете ли да продължите?")) return;
+            if (!confirm("ПОСЛЕДНО ПОТВЪРЖДЕНИЕ: Наистина ли искате да заличите всичко в AppDataFolder?")) return;
+            
+            try {
+                const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                if (!stored) throw new Error("Липсва оторизация.");
+                const t = JSON.parse(stored).access_token;
+                
+                let deletedCount = 0;
+                let nextPageToken = null;
+                
+                do {
+                    const q = encodeURIComponent("trashed = false");
+                    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=nextPageToken,files(id,name)&pageToken=${nextPageToken || ''}`;
+                    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${t}` } });
+                    const data = await res.json();
+                    
+                    if (data.files && data.files.length > 0) {
+                        const CHUNK_SIZE = 10; // Пакетно триене на 10 файла едновременно
+                        for (let i = 0; i < data.files.length; i += CHUNK_SIZE) {
+                            const chunk = data.files.slice(i, i + CHUNK_SIZE);
+                            await Promise.all(chunk.map(async (file) => {
+                                try {
+                                    const delRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
+                                        method: 'DELETE',
+                                        headers: { 'Authorization': `Bearer ${t}` }
+                                    });
+                                    if (delRes.ok) {
+                                        console.log('Deleted AppData file:', file.name);
+                                        deletedCount++;
+                                    }
+                                } catch (err) {
+                                    console.warn('Failed to delete AppData file:', file.name, err);
+                                }
+                            }));
+                        }
+                    }
+                    nextPageToken = data.nextPageToken;
+                } while (nextPageToken);
+                
+                alert(`Операцията завърши. Изтрити обекти от облака: ${deletedCount}. Локалното хранилище и сесията също са нулирани за напълно чисто начало.`);
+                localStorage.clear();
+                sessionStorage.clear();
+                location.reload();
+            } catch (e) {
+                alert("Критична грешка при изтриване: " + e.message);
+            }
+        }
+
         function toggleRaw(id) {
             const el = document.getElementById(`edit-${id}`) || document.getElementById(`edit-folder-${id.split('-')[1]}`);
             if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
@@ -533,6 +600,8 @@
                             headers: { 'Authorization': `Bearer ${t}` }
                         });
                         if (res.ok) {
+                            if (name === 'settings.json') sessionStorage.removeItem('full_settings_json');
+                            if (name === 'folders.json') sessionStorage.removeItem('full_folders_json');
                             alert(`${name} е изтрит успешно!`);
                             location.reload();
                         } else {

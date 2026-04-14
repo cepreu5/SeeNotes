@@ -1126,7 +1126,7 @@ code {
     position: fixed;
     top: 60px;
     right: 10px;
-    z-index: 99;
+    z-index: 9998;
     border: none;
     outline: none;
     background-color: yellow;

@@ -391,5 +391,9 @@
     "appDataFolderLabel": "AppDataFolder (Скрита)",
     "confirmEmptyFolder": "Сигурни ли сте, че искате да изтриете ЦЯЛОТО съдържание на \"{folderName}\"?",
     "folderEmptiedSuccess": "Папката е изпразнена успешно.",
-    "emptyFolderBtn": "Изпразни"
+    "emptyFolderBtn": "Изпразни",
+    "firstRunSetup": "Настройка при първо стартиране...",
+    "firstRunMultinotesFound": "Намерена е папка multinotes_data в Google Drive. Желаете ли да работите с нея?",
+    "firstRunCreatingBoard": "Създаване на начален борд...",
+    "firstRunComplete": "Първоначалната настройка е завършена!"
 }
