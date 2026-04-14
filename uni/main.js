@@ -6928,11 +6928,10 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
         }
 
         // --- EMERGENCY VISIBILITY FORCE ---
-        if (element.id !== 'scrollTopBtn') {
+                    if (element.id !== 'scrollTopBtn') {
             element.style.setProperty('display', 'flex', 'important');
             element.style.setProperty('visibility', 'visible', 'important');
             element.style.setProperty('opacity', '1', 'important');
-            element.style.setProperty('border', '5px solid red', 'important'); // TEMP: Visual aid
         }
     };
 
@@ -6988,7 +6987,6 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
                         element.style.setProperty('display', 'flex', 'important');
                         element.style.setProperty('visibility', 'visible', 'important');
                         element.style.setProperty('opacity', '1', 'important');
-                        element.style.setProperty('border', '5px solid green', 'important'); // TEMP: Visual aid
                     }
 
                     if (debug) console.log(`[Draggable] Restored ${element.id} to ${topVal}px, ${rightVal}px`);
