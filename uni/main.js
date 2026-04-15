@@ -5870,6 +5870,7 @@ async function handleFirstRunSetup() {
     cachedMainFolderId = null; 
     const loaderFolderInfo = document.getElementById('loader-folder-info');
     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+    console.log('[FirstRun] Active folder selected:', chosenFolder);
     
     const folderNames = ['AppDataFolder'];
     if (multinotesFound) folderNames.push('multinotes_data');
@@ -5878,7 +5879,7 @@ async function handleFirstRunSetup() {
     // --- СТЪПКА 3: Създаване на борд Main (САМО ако е избрана AppDataFolder) ---
     if (chosenFolder === 'AppDataFolder') {
         try {
-            if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunCreatingBoard');
+            console.log('[FirstRun] Creating Main board in AppDataFolder...');
             
             const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
             
@@ -6058,12 +6059,8 @@ async function mainLogic() {
         if (!isOffline) {
             const wasFirstRun = await handleFirstRunSetup();
             if (wasFirstRun) {
-                // Презареждаме флаговете след първоначалната настройка
-                updateGlobalStateFlags();
-                // Тъй като всичко е инициализирано на чисто, директно показваме UI без нов опит за зареждане
-                await renderUI({ boardParseError: false });
-                showAppUI();
-                isMainLogicRunning = false;
+                console.log('[mainLogic] First run setup completed. Reloading to start normal cycle...');
+                location.reload();
                 return;
             }
         }
