@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.17'; // App version
+const version = 'Beta 1.18'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -59,7 +59,7 @@ let authToken = null;
 let token;
 let ts; // Време на първо стартиране на приложението
 let tokenRemainingDays = null; // Остават дни валидност на токена
-let activeFolderName = localStorage.getItem('active_folder_name') || 'multinotes_data'; // Текуща папка в Google Drive
+let activeFolderName = localStorage.getItem('active_folder_name') || 'AppDataFolder'; // Текуща папка в Google Drive
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
@@ -2011,6 +2011,7 @@ function loadGoogleIdentityServices(retries = 3) {
     document.head.appendChild(script);
 }
 
+// Стартирай зареждането в зависимост от състоянието
 (async () => {
     // 1. ПЪРВО зареждаме преводите, за да са готови за всеки UI компонент (като initLoginPage)
     await setLanguage(currentLang);
@@ -3403,32 +3404,6 @@ function handleShareTarget() {
 }
 
 // --- Основна стартова функция ---
-async function handleFirstRunSetup() {
-    if (localStorage.getItem('isFirstRunComplete') === 'true') return;
-    const isOnline = navigator.onLine;
-    if (isOnline) {
-        if (localStorage.getItem('useGoogleDb') === null) {
-            localStorage.setItem('useGoogleDb', 'true');
-            localStorage.setItem('useIndexedDb', 'true');
-        }
-        let folders = [];
-        try {
-            const savedFolders = localStorage.getItem('active_folders');
-            if (savedFolders) folders = JSON.parse(savedFolders);
-        } catch (e) {
-            console.warn("Error parsing active_folders during setup:", e);
-        }
-        const driveFolderId = await getFolderIDByName('multinotes_data');
-        if (driveFolderId) {
-            if (!folders.includes('multinotes_data')) {
-                folders.push('multinotes_data');
-                localStorage.setItem('active_folders', JSON.stringify(folders));
-            }
-        }
-    }
-    localStorage.setItem('isFirstRunComplete', 'true');
-}
-
 async function startApp(isExplicitLogin = false) {
     if (isAppStarted) return;
     isAppStarted = true;
@@ -3492,7 +3467,13 @@ async function startApp(isExplicitLogin = false) {
             }
         }
         initApp(); // Инициализира UI елементите и event listeners
-        await handleFirstRunSetup();
+        // --- Задаване на настройки по подразбиране при първо стартиране ---
+        // Ако никога не са задавани настройки за източник на данни,
+        // избираме Google Drive + База данни по подразбиране.
+        if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
+            localStorage.setItem('useGoogleDb', 'true');
+            localStorage.setItem('useIndexedDb', 'true');
+        }
         // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
         // Това е критично, за да може userCheck() да работи правилно.
         dbExists = await checkDbExists(NOTES_DB_NAME);
@@ -3616,21 +3597,6 @@ function showAppUI() {
         if (loader) {
             loader.style.display = 'none';
         }
-        // Показваме плаващите бутони
-        const floatingElements = ['add-note-fab', 'kb-fab', 'scrollTopBtn', 'empty-trash-fab', 'popup-menu-btn-floating'];
-        floatingElements.forEach(id => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            if (id === 'kb-fab' && localStorage.getItem('hideAssistant') === 'true') {
-                el.style.setProperty('display', 'none', 'important');
-                return;
-            }
-            if (id === 'scrollTopBtn') {
-                // scrollTopBtn handles its own visibility based on scroll
-                return;
-            }
-            el.style.setProperty('display', 'flex', 'important');
-        });
     });
 }
 
@@ -4989,19 +4955,17 @@ function saveSearchTerm(term) {
 async function initLoginPage() {
     document.getElementById('login-page').hidden = false;
     document.getElementById('login-page').style.display = 'block';
-    // Скриваме плаващите бутони, докато не се логне потребителят
-    const floatingElements = ['add-note-fab', 'kb-fab', 'scrollTopBtn', 'empty-trash-fab', 'popup-menu-btn-floating'];
-    floatingElements.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.setProperty('display', 'none', 'important');
-    });
+
     // Header и search се показват чрез класа app-ready
     updateSearchPlaceholder(); // Обновяваме placeholder-а с преложения език
+
     // --- Button Visibility Logic (Restored & Consolidated) ---
     const loginBox = document.querySelector('.login-box');
     const authBtn = document.getElementById("authorize_button");
     const trialBtn = document.getElementById("trialBtn");
+
     if (loginBox) loginBox.style.display = 'block';
+
     let hasS = false;
     try {
         const cache = await caches.open('app-cache');
@@ -5010,6 +4974,7 @@ async function initLoginPage() {
     } catch (e) {
         console.warn("Error checking cache in initLoginPage:", e);
     }
+
     const licenseData = await decryptLicenseToken();
     const isLicenseExpired = hasS && !licenseData.pass;
     window.isAppErrorState = isLicenseExpired; // Mark as error state to hide assistant if needed
@@ -5035,6 +5000,7 @@ async function initLoginPage() {
             rememberMeCheck.parentElement.style.display = 'block';
         }
     }
+
     if (isOffline) {
         // Offline Mode: Show "Start Offline" only if we have data ('s') and license is still OK
         if (authBtn) {
@@ -5057,6 +5023,7 @@ async function initLoginPage() {
             trialBtn.textContent = (typeof _ === 'function') ? _('trialButton') : "Start 30-day trial period";
         }
     }
+
     // Language switcher event listeners
     const switchLanguage = (lang) => {
         localStorage.setItem('language', lang);
@@ -5094,9 +5061,11 @@ async function initLoginPage() {
         });
     }
     // Event listener за authorize бутона
-    if (authBtn) {
-        authBtn.addEventListener('click', handleAuthClick);
+    const authorizeBtn = document.getElementById('authorize_button');
+    if (authorizeBtn) {
+        authorizeBtn.addEventListener('click', handleAuthClick);
     }
+    showAppUI();
 }
 
 function updateSignoutTooltip() {
@@ -5841,9 +5810,140 @@ function filterNotesForDemo() {
 }
 
 /**
- * Основна логика за зареждане на данни в приложението.
- * Управлява откъде и как се зареждат данните в зависимост от потребителските настройки.
+ * Обработва първоначалното зареждане, когато settings.json и folders.json не съществуват.
+ * Ред:
+ * 1. Създава борд Main в AppDataFolder и го задава като стартов борд
+ * 2. Проверява дали в GD съществува папка multinotes_data и пита потребителя
+ * 3. Задава активна папка (AppDataFolder или multinotes_data)
+ * 4. Създава folders.json и settings.json с профил Default
+ * @returns {boolean} true ако е извършена първоначална настройка, false ако не е необходима
  */
+async function handleFirstRunSetup() {
+    if (isOffline) return false;
+    // Проверка дали вече е настроено (локално или в сесията)
+    if (localStorage.getItem('initial_setup_complete') === 'true' || sessionStorage.getItem('first_run_lock')) return false;
+    const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
+    if (hasLocalSettings) return false;
+
+    sessionStorage.setItem('first_run_lock', 'true'); // Временна блокировка за текущата сесия
+
+    // Проверка дали settings.json съществува в AppSettings папката
+    try {
+        const appSettingsFolderId = await getAppSettingsFolderId();
+        if (!appSettingsFolderId) return false;
+        const settingsFiles = await findGDFileByName(appSettingsFolderId, 'settings.json');
+        if (settingsFiles && settingsFiles.length > 0) {
+            localStorage.setItem('initial_setup_complete', 'true');
+            return false;
+        }
+        const foldersFiles = await findGDFileByName(appSettingsFolderId, 'folders.json');
+        if (foldersFiles && foldersFiles.length > 0) {
+            localStorage.setItem('initial_setup_complete', 'true');
+            return false;
+        }
+    } catch (e) {
+        console.warn('[FirstRun] Error checking AppSettings:', e);
+        return false;
+    }
+    console.log('[FirstRun] First-time setup detected. Starting initial configuration...');
+    if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunSetup');
+    // --- СТЪПКА 1: Създаване на борд Main в AppDataFolder ---
+    try {
+        if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunCreatingBoard');
+
+        // ПРОВЕРКА ЗА ДУБЛИКАТИ: Преди да създадем нов борд, проверяваме дали вече няма такъв в AppDataFolder
+        const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
+        if (existingMainBoards && existingMainBoards.length > 0) {
+            console.log('[FirstRun] Main board already exists. Count:', existingMainBoards.length);
+            localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
+
+            // АКО ИМА ПОВЕЧЕ ОТ ЕДИН: Почистваме облака от грешно създадени дубликати
+            if (existingMainBoards.length > 1) {
+                console.warn('[FirstRun] Duplicates found. Cleaning up extra boards...');
+                for (let i = 1; i < existingMainBoards.length; i++) {
+                    try {
+                        await deleteGoogleDriveFile(existingMainBoards[i].id);
+                        console.log('[FirstRun] Deleted duplicate board file:', existingMainBoards[i].id);
+                    } catch (err) { console.warn('Failed to delete duplicate board:', err); }
+                }
+            }
+        } else {
+            const now = Date.now();
+            boardIdCounter = 1;
+            localStorage.setItem('boardIdCounter', '1');
+            const boardToSave = {
+                "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+                "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
+                "numord": 1, "status": 0, "title": "Main"
+            };
+            // Създаваме борда в AppDataFolder (appDataFolder space)
+            const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
+            if (gdid) {
+                boardToSave.gdid = gdid;
+                await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+                console.log('[FirstRun] Main board created in AppDataFolder with gdid:', gdid);
+            }
+            // Задаваме го като стартов борд за AppDataFolder
+            localStorage.setItem('startBoard_AppDataFolder', boardToSave.gdid || 'Main');
+        }
+    } catch (e) {
+        console.error('[FirstRun] Error handling Main board:', e);
+    }
+    // --- СТЪПКА 2: Проверка дали multinotes_data съществува в Google Drive ---
+    let chosenFolder = 'AppDataFolder';
+    let multinotesFound = false;
+    try {
+        const multinotesId = await getFolderIDByName('multinotes_data');
+        if (multinotesId) {
+            multinotesFound = true;
+            // Папката съществува — питаме потребителя дали иска да работи с нея
+            const useMultinotes = await showConfirmation(_('firstRunMultinotesFound'));
+            if (useMultinotes) {
+                chosenFolder = 'multinotes_data';
+                localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
+            }
+        }
+    } catch (e) {
+        console.warn('[FirstRun] Error checking for multinotes_data:', e);
+    }
+    // --- СТЪПКА 3: Задаване на активна папка ---
+    activeFolderName = chosenFolder;
+    localStorage.setItem('active_folder_name', chosenFolder);
+    cachedMainFolderId = null; // Нулираме кеша
+    const loaderFolderInfo = document.getElementById('loader-folder-info');
+    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+    console.log('[FirstRun] Active folder set to:', chosenFolder);
+    // Инициализираме списъка с папки - само съществуващите
+    const folderNames = ['AppDataFolder'];
+    if (multinotesFound) {
+        folderNames.push('multinotes_data');
+    }
+    localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+    // --- СТЪПКА 4: Създаване на folders.json ---
+    try {
+        await syncGlobalFoldersJson();
+        console.log('[FirstRun] folders.json created.');
+    } catch (e) {
+        console.warn('[FirstRun] Error creating folders.json:', e);
+    }
+    // --- СТЪПКА 5: Подразбиращи се координати за плаващите бутони ---
+    localStorage.setItem('popupMenuBtnPosition', JSON.stringify({ top: '60px', right: '10px' }));
+    localStorage.setItem('addNoteFabPosition', JSON.stringify({ bottom: '10px', right: '50px' }));
+    // localStorage.setItem('kbFabPosition', JSON.stringify({ bottom: '10px', right: '10px' }));
+    // localStorage.setItem('scrollTopBtnPosition', JSON.stringify({ bottom: '50px', right: '10px' }));
+    // --- СТЪПКА 6: Създаване на settings.json с профил Default ---
+    try {
+        await saveSettingsToGDrive(true); // silent=true
+        console.log('[FirstRun] settings.json created with Default profile.');
+    } catch (e) {
+        console.warn('[FirstRun] Error creating settings.json:', e);
+    }
+    if (typeof showToast === 'function') showToast(_('firstRunComplete'), 5000);
+    localStorage.setItem('initial_setup_complete', 'true');
+    console.log('[FirstRun] First-time setup complete.');
+    return true;
+}
+
 async function mainLogic() {
     const loaderFolderInfo = document.getElementById('loader-folder-info');
     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
@@ -5953,7 +6053,7 @@ async function mainLogic() {
             const authResult = await checkAuth(isExplicitLogin);
             if (!authResult || !authResult.pass) {
                 if (isLoadCancelled) return;
-                // NOT showing App UI here, because it would show FABs on login page
+                showAppUI();
                 return;
             }
             authToken = authResult.tokenData;
@@ -5965,6 +6065,19 @@ async function mainLogic() {
         updateGlobalStateFlags();
         // Load folders.json (contains per-folder boardMenuOrder, lastNoteId, lastBoardId)
         if (!isOffline) await loadGlobalFoldersJson();
+        // --- ПЪРВОНАЧАЛНА НАСТРОЙКА: Ако settings.json и folders.json не съществуват ---
+        if (!isOffline) {
+            const wasFirstRun = await handleFirstRunSetup();
+            if (wasFirstRun) {
+                // Презареждаме флаговете след първоначалната настройка
+                updateGlobalStateFlags();
+                // Тъй като всичко е инициализирано на чисто, директно показваме UI без нов опит за зареждане
+                await renderUI({ boardParseError: false });
+                showAppUI();
+                isMainLogicRunning = false;
+                return;
+            }
+        }
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
         updateModeButton(); // Актуализираме иконата за режим веднага
         // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
@@ -6957,20 +7070,22 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
     // Restore position
     const setDefaultPosition = () => {
         if (debug) console.log(`[Draggable] Resetting ${element.id} to default position. Viewport: ${window.innerWidth}x${window.innerHeight}`);
-        element.style.setProperty('top', 'auto');
-        element.style.setProperty('left', 'auto');
-        element.style.setProperty('right', '20px');
-        // Distinct bottom positions to avoid overlap
-        if (element.id === 'add-note-fab') {
-            element.style.setProperty('bottom', '20px');
-        } else if (element.id === 'kb-fab') {
-            element.style.setProperty('bottom', '90px');
+        element.style.setProperty('top', 'auto', 'important');
+        element.style.setProperty('left', 'auto', 'important');
+        element.style.setProperty('right', '20px', 'important');
+        if (element.id === 'kb-fab') {
+            element.style.setProperty('bottom', '10px', 'important');
         } else if (element.id === 'scrollTopBtn') {
-            element.style.setProperty('bottom', '160px');
-        } else if (element.id === 'empty-trash-fab') {
-            element.style.setProperty('bottom', '230px');
+            element.style.setProperty('bottom', '80px', 'important');
         } else {
-            element.style.setProperty('bottom', '300px');
+            element.style.setProperty('bottom', '10px', 'important');
+        }
+
+        // --- EMERGENCY VISIBILITY FORCE ---
+        if (element.id !== 'scrollTopBtn') {
+            element.style.setProperty('display', 'flex', 'important');
+            element.style.setProperty('visibility', 'visible', 'important');
+            element.style.setProperty('opacity', '1', 'important');
         }
     };
 
@@ -6994,12 +7109,7 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
             let topVal = undefined;
             let rightVal = undefined;
 
-            if (pos.top !== undefined && pos.top !== null) {
-                topVal = parseFloat(String(pos.top));
-            } else if (pos.bottom !== undefined && pos.bottom !== null) {
-                const bottomVal = parseFloat(String(pos.bottom));
-                topVal = viewportHeight - bottomVal - elHeight;
-            }
+            if (pos.top !== undefined && pos.top !== null) topVal = parseFloat(String(pos.top));
 
             if (pos.right !== undefined && pos.right !== null) {
                 rightVal = parseFloat(String(pos.right));
@@ -7021,13 +7131,17 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
                     topVal = Math.max(0, Math.min(topVal, viewportHeight > 0 ? viewportHeight - elHeight : 1000));
                     rightVal = Math.max(0, Math.min(rightVal, viewportWidth > 0 ? viewportWidth - elWidth : 1000));
 
-                    element.style.setProperty('bottom', 'auto');
-                    element.style.setProperty('left', 'auto');
-                    element.style.setProperty('top', `${topVal}px`);
-                    element.style.setProperty('right', `${rightVal}px`);
-                    element.style.setProperty('z-index', '10002', 'important'); // Boost z-index remains important for layer priority
+                    element.style.setProperty('bottom', 'auto', 'important');
+                    element.style.setProperty('left', 'auto', 'important');
+                    element.style.setProperty('top', `${topVal}px`, 'important');
+                    element.style.setProperty('right', `${rightVal}px`, 'important');
+                    element.style.setProperty('z-index', '10002', 'important'); // Boost z-index
 
-
+                    if (element.id !== 'scrollTopBtn') {
+                        element.style.setProperty('display', 'flex', 'important');
+                        element.style.setProperty('visibility', 'visible', 'important');
+                        element.style.setProperty('opacity', '1', 'important');
+                    }
 
                     if (debug) console.log(`[Draggable] Restored ${element.id} to ${topVal}px, ${rightVal}px`);
                     positionRestored = true;
@@ -9059,7 +9173,6 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         allBoardsBtnForContainer = document.createElement('button');
         allBoardsBtnForContainer.id = 'popup-menu-btn-floating';
         allBoardsBtnForContainer.className = 'popup-menu-btn-floating';
-        allBoardsBtnForContainer.style.display = 'none'; // Initial state: hidden until showAppUI
         allBoardsBtnForContainer.innerHTML = boardIconSvg;
 
         // --- DRAGGABLE FUNCTIONALITY ---
@@ -15185,11 +15298,13 @@ async function showNewBoardModal() {
 function initFABDragging() {
     const fab = document.getElementById('add-note-fab');
     if (!fab) return;
+
     // Use common logic with long press callback
     makeElementDraggable(fab, 'addNoteFabPosition', false, () => {
         if (typeof showNewBoardModal === 'function') showNewBoardModal();
         if (navigator.vibrate) navigator.vibrate(50);
     });
+
     fab.addEventListener('click', (e) => {
         // We don't need to check isDragging/isLongPress here because
         // makeElementDraggable blocks the event if it was a drag or long press!
