@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.18'; // App version
+const version = 'Beta 1.19'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -5867,11 +5867,11 @@ async function handleFirstRunSetup() {
     // --- СТЪПКА 2: Задаване на активна папка ---
     activeFolderName = chosenFolder;
     localStorage.setItem('active_folder_name', chosenFolder);
-    cachedMainFolderId = null; 
+    cachedMainFolderId = null;
     const loaderFolderInfo = document.getElementById('loader-folder-info');
     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
     console.log('[FirstRun] Active folder selected:', chosenFolder);
-    
+
     const folderNames = ['AppDataFolder'];
     if (multinotesFound) folderNames.push('multinotes_data');
     localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
@@ -5880,9 +5880,9 @@ async function handleFirstRunSetup() {
     if (chosenFolder === 'AppDataFolder') {
         try {
             console.log('[FirstRun] Creating Main board in AppDataFolder...');
-            
+
             const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
-            
+
             if (existingMainBoards && existingMainBoards.length > 0) {
                 console.log('[FirstRun] Main board already exists in AppDataFolder');
                 localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
@@ -5895,7 +5895,7 @@ async function handleFirstRunSetup() {
                     "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
                     "numord": 1, "status": 0, "title": "Main"
                 };
-                
+
                 const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
                 if (gdid) {
                     boardToSave.gdid = gdid;
@@ -5918,7 +5918,8 @@ async function handleFirstRunSetup() {
     }
     // --- СТЪПКА 5: Подразбиращи се координати за плаващите бутони ---
     localStorage.setItem('popupMenuBtnPosition', JSON.stringify({ top: '60px', right: '10px' }));
-    localStorage.setItem('addNoteFabPosition', JSON.stringify({ bottom: '10px', right: '50px' }));
+    // Задаваме FAB бутона малко по-вляво от KB Assistant (който е на right: 10px)
+    localStorage.setItem('addNoteFabPosition', JSON.stringify({ top: (window.innerHeight - 80) + 'px', right: '70px' }));
     // localStorage.setItem('kbFabPosition', JSON.stringify({ bottom: '10px', right: '10px' }));
     // localStorage.setItem('scrollTopBtnPosition', JSON.stringify({ bottom: '50px', right: '10px' }));
     // --- СТЪПКА 6: Създаване на settings.json с профил Default ---
@@ -7088,7 +7089,12 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
             let topVal = undefined;
             let rightVal = undefined;
 
-            if (pos.top !== undefined && pos.top !== null) topVal = parseFloat(String(pos.top));
+            if (pos.top !== undefined && pos.top !== null) {
+                topVal = parseFloat(String(pos.top));
+            } else if (pos.bottom !== undefined && pos.bottom !== null) {
+                const bottomVal = parseFloat(String(pos.bottom));
+                topVal = viewportHeight - bottomVal - elHeight;
+            }
 
             if (pos.right !== undefined && pos.right !== null) {
                 rightVal = parseFloat(String(pos.right));
@@ -15596,7 +15602,17 @@ async function syncSingleNoteToGDrive(noteObj) {
             const success = await updateGDriveFile(newGdid, JSON.stringify(noteObj));
             return success;
         } else {
-            return await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
+            try {
+                return await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
+            } catch (e) {
+                // Ако файлът не е намерен (404), го третираме като нов и го създаваме повторно
+                if (e.message && e.message.includes('Status: 404')) {
+                    console.warn(`[Sync] File ${noteObj.gdid} not found on GDrive. Attempting to recreate...`);
+                    noteObj.gdid = ""; // Нулираме gdid за да влезе в логиката за нов файл
+                    return await syncSingleNoteToGDrive(noteObj);
+                }
+                throw e;
+            }
         }
     } catch (e) {
         console.error("syncSingleNoteToGDrive error:", e);
