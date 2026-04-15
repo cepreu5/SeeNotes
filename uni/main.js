@@ -5847,56 +5847,13 @@ async function handleFirstRunSetup() {
     }
     console.log('[FirstRun] First-time setup detected. Starting initial configuration...');
     if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunSetup');
-    // --- СТЪПКА 1: Създаване на борд Main в AppDataFolder ---
-    try {
-        if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunCreatingBoard');
-
-        // ПРОВЕРКА ЗА ДУБЛИКАТИ: Преди да създадем нов борд, проверяваме дали вече няма такъв в AppDataFolder
-        const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
-        if (existingMainBoards && existingMainBoards.length > 0) {
-            console.log('[FirstRun] Main board already exists. Count:', existingMainBoards.length);
-            localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
-
-            // АКО ИМА ПОВЕЧЕ ОТ ЕДИН: Почистваме облака от грешно създадени дубликати
-            if (existingMainBoards.length > 1) {
-                console.warn('[FirstRun] Duplicates found. Cleaning up extra boards...');
-                for (let i = 1; i < existingMainBoards.length; i++) {
-                    try {
-                        await deleteGoogleDriveFile(existingMainBoards[i].id);
-                        console.log('[FirstRun] Deleted duplicate board file:', existingMainBoards[i].id);
-                    } catch (err) { console.warn('Failed to delete duplicate board:', err); }
-                }
-            }
-        } else {
-            const now = Date.now();
-            boardIdCounter = 1;
-            localStorage.setItem('boardIdCounter', '1');
-            const boardToSave = {
-                "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
-                "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
-                "numord": 1, "status": 0, "title": "Main"
-            };
-            // Създаваме борда в AppDataFolder (appDataFolder space)
-            const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
-            if (gdid) {
-                boardToSave.gdid = gdid;
-                await updateGDriveFile(gdid, JSON.stringify(boardToSave));
-                console.log('[FirstRun] Main board created in AppDataFolder with gdid:', gdid);
-            }
-            // Задаваме го като стартов борд за AppDataFolder
-            localStorage.setItem('startBoard_AppDataFolder', boardToSave.gdid || 'Main');
-        }
-    } catch (e) {
-        console.error('[FirstRun] Error handling Main board:', e);
-    }
-    // --- СТЪПКА 2: Проверка дали multinotes_data съществува в Google Drive ---
+    // --- СТЪПКА 1: Проверка за multinotes_data в Google Drive ---
     let chosenFolder = 'AppDataFolder';
     let multinotesFound = false;
     try {
         const multinotesId = await getFolderIDByName('multinotes_data');
         if (multinotesId) {
             multinotesFound = true;
-            // Папката съществува — питаме потребителя дали иска да работи с нея
             const useMultinotes = await showConfirmation(_('firstRunMultinotesFound'));
             if (useMultinotes) {
                 chosenFolder = 'multinotes_data';
@@ -5906,19 +5863,51 @@ async function handleFirstRunSetup() {
     } catch (e) {
         console.warn('[FirstRun] Error checking for multinotes_data:', e);
     }
-    // --- СТЪПКА 3: Задаване на активна папка ---
+
+    // --- СТЪПКА 2: Задаване на активна папка ---
     activeFolderName = chosenFolder;
     localStorage.setItem('active_folder_name', chosenFolder);
-    cachedMainFolderId = null; // Нулираме кеша
+    cachedMainFolderId = null; 
     const loaderFolderInfo = document.getElementById('loader-folder-info');
     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-    console.log('[FirstRun] Active folder set to:', chosenFolder);
-    // Инициализираме списъка с папки - само съществуващите
+    
     const folderNames = ['AppDataFolder'];
-    if (multinotesFound) {
-        folderNames.push('multinotes_data');
-    }
+    if (multinotesFound) folderNames.push('multinotes_data');
     localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+
+    // --- СТЪПКА 3: Създаване на борд Main (САМО ако е избрана AppDataFolder) ---
+    if (chosenFolder === 'AppDataFolder') {
+        try {
+            if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunCreatingBoard');
+            
+            const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
+            
+            if (existingMainBoards && existingMainBoards.length > 0) {
+                console.log('[FirstRun] Main board already exists in AppDataFolder');
+                localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
+            } else {
+                const now = Date.now();
+                boardIdCounter = 1;
+                localStorage.setItem('boardIdCounter', '1');
+                const boardToSave = {
+                    "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+                    "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
+                    "numord": 1, "status": 0, "title": "Main"
+                };
+                
+                const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
+                if (gdid) {
+                    boardToSave.gdid = gdid;
+                    await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+                    console.log('[FirstRun] Main board created in AppDataFolder');
+                    localStorage.setItem('startBoard_AppDataFolder', gdid);
+                }
+            }
+        } catch (e) {
+            console.error('[FirstRun] Error creating Main board in AppDataFolder:', e);
+        }
+    }
+
     // --- СТЪПКА 4: Създаване на folders.json ---
     try {
         await syncGlobalFoldersJson();
@@ -7080,13 +7069,6 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
         } else {
             element.style.setProperty('bottom', '10px', 'important');
         }
-
-        // --- EMERGENCY VISIBILITY FORCE ---
-        if (element.id !== 'scrollTopBtn') {
-            element.style.setProperty('display', 'flex', 'important');
-            element.style.setProperty('visibility', 'visible', 'important');
-            element.style.setProperty('opacity', '1', 'important');
-        }
     };
 
     // Restore position
@@ -7136,12 +7118,6 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
                     element.style.setProperty('top', `${topVal}px`, 'important');
                     element.style.setProperty('right', `${rightVal}px`, 'important');
                     element.style.setProperty('z-index', '10002', 'important'); // Boost z-index
-
-                    if (element.id !== 'scrollTopBtn') {
-                        element.style.setProperty('display', 'flex', 'important');
-                        element.style.setProperty('visibility', 'visible', 'important');
-                        element.style.setProperty('opacity', '1', 'important');
-                    }
 
                     if (debug) console.log(`[Draggable] Restored ${element.id} to ${topVal}px, ${rightVal}px`);
                     positionRestored = true;
@@ -9249,7 +9225,7 @@ async function syncGlobalFoldersJson() {
         const folderNames = JSON.parse(folderNamesStr);
         if (!Array.isArray(folderNames)) return;
         const currentEmail = sessionStorage.getItem('google_auth_email_hint') || '';
-        const activeFolderCurrent = localStorage.getItem('active_folder_name') || 'multinotes_data';
+        const activeFolderCurrent = localStorage.getItem('active_folder_name') || '';
         const folders = folderNames.map(name => {
             const entry = { name };
             // Per-folder start board: use the dedicated key, or for the active folder use the global startBoard
