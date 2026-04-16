@@ -143,7 +143,7 @@
     "sysInfoAttachmentLinks": "Attachment Links",
     "sysInfoDbCreatedFrom": "DB created from",
     "sysInfoDbOwner": "DB Owner",
-    "dbFolderMismatch": "Error: DB was created for folder \"{dbFolder}\", but current is \"{activeFolder}\".",
+    "dbFolderMismatch": "Warning: DB was created for folder \"{dbFolder}\", but current is \"{activeFolder}\".",
     "dbOwnerMismatch": "Error: DB belongs to {dbOwner}, but current user is {currentUser}.",
     "errorSysInfo": "Error fetching system info.",
     "errorNoDataSourceSelected": "At least one data source must be selected when the database is not used.",
@@ -394,5 +394,11 @@
     "firstRunSetup": "First-time setup...",
     "firstRunMultinotesFound": "A multinotes_data folder was found in your Google Drive. Would you like to work with it?",
     "firstRunCreatingBoard": "Creating initial board...",
-    "firstRunComplete": "First-time setup complete!"
+    "firstRunComplete": "First-time setup complete!",
+    "syncPromptNote": "Sync note:",
+    "allEntries": "All",
+    "saveDbToFolderLabel": "Save DB to folder",
+    "errorFolderNotEmpty": "The folder is not empty! Operation stopped for data protection.",
+    "confirmSaveDbToFolder": "This will save all notes and boards from memory to the current folder. Do you want to continue?",
+    "confirmDbDeleteOnFolderChange": "Do you want to delete the current database when switching the folder?"
 }

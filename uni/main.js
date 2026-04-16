@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.19'; // App version
+const version = 'Beta 1.20'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -3745,6 +3745,71 @@ function showConfirmation(message, options = {}) {
         popup.classList.add('show');
     });
 }
+
+/**
+ * Показва избор с три опции при синхронизация: Да, Не, Всички.
+ */
+function showSyncChoiceModal(noteSummary) {
+    return new Promise(resolve => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        const popupContent = popup.querySelector('.popup-content');
+        const messagePara = popup.querySelector('p');
+        const yesBtn = document.getElementById('submitFolderIdBtn');
+        let noBtn = document.getElementById('prompt-no-btn');
+        let allBtn = document.getElementById('prompt-cancel-btn');
+
+        if (!noBtn) {
+            noBtn = document.createElement('button');
+            noBtn.id = 'prompt-no-btn';
+            noBtn.className = 'zoom-btn settings-close-btn';
+            noBtn.style.marginLeft = '10px';
+            yesBtn.parentNode.appendChild(noBtn);
+        }
+        if (!allBtn) {
+            allBtn = document.createElement('button');
+            allBtn.id = 'prompt-cancel-btn';
+            allBtn.className = 'zoom-btn settings-close-btn';
+            allBtn.style.marginLeft = '10px';
+            yesBtn.parentNode.appendChild(allBtn);
+        }
+
+        const promptText = (typeof _ === 'function' ? _('syncPromptNote') : 'Sync note:');
+        messagePara.innerHTML = `<div style="font-weight:bold; margin-bottom:10px;">${promptText}</div><div style="font-style:italic; color:#555; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:10px; border-radius:4px; text-align:left;">${noteSummary}</div>`;
+
+        // Разширяваме прозореца за по-добър преглед
+        popupContent.style.width = '450px';
+        popupContent.style.maxWidth = '90vw';
+
+        yesBtn.textContent = (typeof _ === 'function' ? _('confirmCreateDbYes') : 'Yes');
+        noBtn.textContent = (typeof _ === 'function' ? _('confirmCreateDbNo') : 'No');
+        allBtn.textContent = (typeof _ === 'function' ? _('allEntries') : 'All');
+
+        noBtn.style.display = 'inline-block';
+        allBtn.style.display = 'inline-block';
+
+        const cleanup = () => {
+            popup.classList.remove('show');
+            yesBtn.removeEventListener('click', onYes);
+            noBtn.removeEventListener('click', onNo);
+            allBtn.removeEventListener('click', onAll);
+            yesBtn.addEventListener('click', handleSubmitFolderId);
+            // Restore original width
+            popupContent.style.width = '';
+            popupContent.style.maxWidth = '';
+        };
+
+        const onYes = () => { cleanup(); resolve('yes'); };
+        const onNo = () => { cleanup(); resolve('no'); };
+        const onAll = () => { cleanup(); resolve('all'); };
+
+        yesBtn.removeEventListener('click', handleSubmitFolderId);
+        yesBtn.addEventListener('click', onYes);
+        noBtn.addEventListener('click', onNo);
+        allBtn.addEventListener('click', onAll);
+
+        popup.classList.add('show');
+    });
+}
 function showPrompt(message, defaultValue = '') {
     return new Promise(resolve => {
         const popup = document.getElementById('folderIdPromptPopup');
@@ -5911,6 +5976,14 @@ async function handleFirstRunSetup() {
 
     // --- СТЪПКА 4: Създаване на folders.json ---
     try {
+        // ПРЕДПАЗНА МЯРКА: Ако сме създали борд, трябва да е в boardsData, за да се запише в folders.json
+        if (typeof boardsData !== 'undefined' && boardsData.length === 0) {
+            const startBoardId = localStorage.getItem('startBoard_AppDataFolder');
+            if (startBoardId) {
+                // Търсим дали имаме вече някаква информация или слагаме дефолтния Main
+                boardsData = [{ id: 1, title: 'Main', gdid: startBoardId, numord: 1 }];
+            }
+        }
         await syncGlobalFoldersJson();
         console.log('[FirstRun] folders.json created.');
     } catch (e) {
@@ -9244,10 +9317,7 @@ async function syncGlobalFoldersJson() {
                 const bmo = localStorage.getItem('boardMenuOrder');
                 if (bmo) {
                     try {
-                        const parsedBmo = JSON.parse(bmo);
-                        if (Array.isArray(parsedBmo) && typeof boardsData !== 'undefined') {
-                            entry.boardMenuOrder = parsedBmo.filter(bid => boardsData.some(b => String(b.title) === String(bid)));
-                        } else { entry.boardMenuOrder = parsedBmo; }
+                        entry.boardMenuOrder = JSON.parse(bmo);
                     } catch (e) { }
                 }
                 if (typeof noteId !== 'undefined') entry.lastNoteId = noteId;
@@ -9396,6 +9466,7 @@ async function loadGlobalFoldersJson() {
             if (activeFolderData.lastBoardId !== null && typeof activeFolderData.lastBoardId !== 'undefined') {
                 boardIdCounter = activeFolderData.lastBoardId;
                 localStorage.setItem('boardIdCounter', boardIdCounter.toString());
+
                 changed = true;
             }
         }
@@ -9865,11 +9936,14 @@ async function createSettingsUI(boardsData, boardParseError) {
                         // Clear cached subfolder IDs
                         ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
 
-                        // Изчистване на локалната база от старата папка (вкл. таймстамп)
-                        if (typeof NOTES_DB_NAME !== 'undefined') {
-                            indexedDB.deleteDatabase(NOTES_DB_NAME);
-                        } else {
-                            indexedDB.deleteDatabase('multinotes_db');
+                        // Изчистване на локалната база от старата папка (по желание)
+                        const confirmDbDel = await showConfirmation((typeof _ === 'function') ? _('confirmDbDeleteOnFolderChange') : 'Желаете ли да изтриете текущата база данни при смяната на папката?');
+                        if (confirmDbDel) {
+                            if (typeof NOTES_DB_NAME !== 'undefined') {
+                                indexedDB.deleteDatabase(NOTES_DB_NAME);
+                            } else {
+                                indexedDB.deleteDatabase('multinotes_db');
+                            }
                         }
 
                         if (typeof showToast === 'function') showToast(_('settingSaved') + ' Синхронизиране...');
@@ -10055,6 +10129,12 @@ async function createSettingsUI(boardsData, boardParseError) {
     if (syncDirtyBtn) {
         syncDirtyBtn.addEventListener('click', () => {
             syncDirtyNotes();
+        });
+    }
+    const saveDbFolderBtn = document.getElementById('save-db-folder-btn');
+    if (saveDbFolderBtn) {
+        saveDbFolderBtn.addEventListener('click', () => {
+            handleSaveDbToFolder();
         });
     }
     scaleInput.addEventListener('change', () => {
@@ -10395,13 +10475,11 @@ async function createSettingsUI(boardsData, boardParseError) {
                 if (dbCreatedFolderName) {
                     const activeFolder = localStorage.getItem('active_folder_name') || 'multinotes_data';
                     if (dbCreatedFolderName !== activeFolder) {
-                        e.target.checked = false;
-                        localStorage.setItem('useIndexedDb', 'false');
-                        const msg = (_('dbFolderMismatch') || 'Грешка: БД е създадена за папка "{dbFolder}", а текущата е "{activeFolder}".')
+                        const msg = (_('dbFolderMismatch') || 'Внимание: БД е създадена за папка "{dbFolder}", а текущата е "{activeFolder}".')
                             .replace('{dbFolder}', dbCreatedFolderName)
                             .replace('{activeFolder}', activeFolder);
                         showToast(msg, 5000);
-                        return;
+                        // Оставяме отметката включена и не връщаме (return), само информираме
                     }
                 }
 
@@ -15495,70 +15573,112 @@ async function syncDirtyNotes() {
 
         let successCount = 0;
         let errorCount = 0;
+        let skipCount = 0;
         let mediaNeedsSync = false;
-        const CONCURRENCY_LIMIT = 10;
-        const pool = new Set();
+        let autoApproveAll = false;
 
-        for (const note of dirtyNotes) {
-            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
+        // Помощна функция за обработка на една бележка
+        const processNote = async (note) => {
+            try {
+                if (useIndexedDb && (!note.gdid || note.gdid === "")) {
+                    note.gdid = `L${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+                }
+                const tempGdid = note.gdid;
+                note.type = 0;
+                if (useIndexedDb && note.gdid) {
+                    await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+                }
 
-            const promise = (async () => {
-                try {
-                    if (useIndexedDb && (!note.gdid || note.gdid === "")) {
-                        note.gdid = `L${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-                    }
-                    const tempGdid = note.gdid;
-                    note.type = 0;
-                    if (useIndexedDb && note.gdid) {
+                const success = await syncSingleNoteToGDrive(note);
+                if (success) {
+                    if (useIndexedDb && tempGdid && tempGdid !== note.gdid) {
                         await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+                        await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                     }
+                    allNotesData = allNotesData.filter(obj =>
+                        !(String(obj.id) === String(note.id) && String(obj.gdid) !== String(note.gdid))
+                    );
+                    if (!allNotesData.includes(note)) allNotesData.push(note);
 
-                    const success = await syncSingleNoteToGDrive(note);
-                    if (success) {
-                        if (useIndexedDb && tempGdid && tempGdid !== note.gdid) {
-                            await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                            await deleteFromDB(NOTE_STORE_NAME, tempGdid);
-                        }
-
-                        allNotesData = allNotesData.filter(obj =>
-                            !(String(obj.id) === String(note.id) && String(obj.gdid) !== String(note.gdid))
-                        );
-                        if (!allNotesData.includes(note)) allNotesData.push(note);
-
-                        if (tempGdid && tempGdid !== note.gdid) {
-                            for (let m of mediaData) {
-                                if (String(m.noteid) === String(tempGdid)) {
-                                    m.noteid = note.gdid;
-                                    if (useIndexedDb) await bulkPutDB(MEDIA_STORE_NAME, m, true);
-                                    mediaNeedsSync = true;
-                                }
+                    if (tempGdid && tempGdid !== note.gdid) {
+                        for (let m of mediaData) {
+                            if (String(m.noteid) === String(tempGdid)) {
+                                m.noteid = note.gdid;
+                                if (useIndexedDb) await bulkPutDB(MEDIA_STORE_NAME, m, true);
+                                mediaNeedsSync = true;
                             }
                         }
-
-                        successCount++;
-                        const el = document.querySelector(`.note[data-i="${note.id}"], .note[data-g="${note.gdid}"], .note[data-g="${tempGdid}"]`);
-                        if (el) {
-                            el.classList.remove('dirty');
-                            el.dataset.s = String(note.status);
-                            if (note.gdid) el.dataset.g = note.gdid;
-                        }
-                    } else {
-                        errorCount++;
-                        note.type = -1;
-                        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
                     }
-                } catch (e) {
-                    console.error("Sync error for note", note.id, e);
+                    successCount++;
+                    const el = document.querySelector(`.note[data-i="${note.id}"], .note[data-g="${note.gdid}"], .note[data-g="${tempGdid}"]`);
+                    if (el) {
+                        el.classList.remove('dirty');
+                        el.dataset.s = String(note.status);
+                        if (note.gdid) el.dataset.g = note.gdid;
+                    }
+                } else {
                     errorCount++;
                     note.type = -1;
                     if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
                 }
-            })();
+            } catch (e) {
+                console.error("Sync error for note", note.id, e);
+                errorCount++;
+                note.type = -1;
+                if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
+            }
+        };
 
-            pool.add(promise);
-            promise.finally(() => pool.delete(promise));
+        for (let i = 0; i < dirtyNotes.length; i++) {
+            if (isLoadCancelled) break;
+            const note = dirtyNotes[i];
+
+            if (!autoApproveAll) {
+                // Създаване на смислено резюме на бележката
+                let summary = "";
+                if (note.title && note.title.trim() !== "") {
+                    summary = `<strong>${note.title}</strong>`;
+                    if (note.notetxt) {
+                        const snippet = note.notetxt.substring(0, 100).replace(/<[^>]*>/g, '');
+                        summary += `<br><small>${snippet}${note.notetxt.length > 100 ? '...' : ''}</small>`;
+                    }
+                } else if (note.notetxt) {
+                    const snippet = note.notetxt.substring(0, 150).replace(/<[^>]*>/g, '');
+                    summary = snippet + (note.notetxt.length > 150 ? '...' : '');
+                } else {
+                    summary = "ID: " + note.id;
+                }
+
+                // Добавяме gdid за справка
+                if (note.gdid) {
+                    summary += `<div style="margin-top:8px; font-size:10px; color:#888;">GDID: ${note.gdid}</div>`;
+                }
+
+                const choice = await showSyncChoiceModal(summary);
+                if (choice === 'no') {
+                    skipCount++;
+                    continue;
+                } else if (choice === 'all') {
+                    autoApproveAll = true;
+                    // Преминаваме към паралелно изпълнение за оставащите бележки
+                    const remainingNotes = dirtyNotes.slice(i);
+                    const pool = new Set();
+                    const CONCURRENCY_LIMIT = 5; // Леко по-нисък лимит за по-добра стабилност
+                    for (const rNote of remainingNotes) {
+                        if (isLoadCancelled) break;
+                        if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
+                        const p = processNote(rNote);
+                        pool.add(p);
+                        p.finally(() => pool.delete(p));
+                    }
+                    await Promise.all(pool);
+                    break; // Излизаме от For цикъла, защото вече сме обработили всичко паралелно
+                }
+            }
+
+            // Последователно изпълнение (ако не е избрано 'all')
+            await processNote(note);
         }
-        await Promise.all(pool);
 
 
         if (mediaNeedsSync && typeof syncFileWorker === 'function') {
@@ -15588,7 +15708,7 @@ async function syncDirtyNotes() {
     }
 }
 
-async function syncSingleNoteToGDrive(noteObj) {
+async function syncSingleNoteToGDrive(noteObj, retryCount = 0) {
     const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id) || String(noteObj.gdid).startsWith('L');
     try {
         if (isTempGdid) {
@@ -15598,18 +15718,23 @@ async function syncSingleNoteToGDrive(noteObj) {
             const newGdid = await createGDriveFile(folderId, 'note.txt', fileContent);
             if (!newGdid) return false;
             noteObj.gdid = newGdid;
-            // Also update the note again with the new gdid inside it
-            const success = await updateGDriveFile(newGdid, JSON.stringify(noteObj));
-            return success;
+            // Тук използваме директен опит за обновяване без рекурсия за вътрешната стъпка
+            try {
+                await updateGDriveFile(newGdid, JSON.stringify(noteObj));
+                return true;
+            } catch (e) {
+                console.warn("[Sync] Internal note update after creation failed (non-critical):", e);
+                return true; // Файлът е създаден успешно, затова връщаме true
+            }
         } else {
             try {
                 return await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
             } catch (e) {
-                // Ако файлът не е намерен (404), го третираме като нов и го създаваме повторно
-                if (e.message && e.message.includes('Status: 404')) {
+                // Ако файлът не е намерен (404), го пресъздаваме (само един път)
+                if (retryCount === 0 && e.message && e.message.includes('Status: 404')) {
                     console.warn(`[Sync] File ${noteObj.gdid} not found on GDrive. Attempting to recreate...`);
-                    noteObj.gdid = ""; // Нулираме gdid за да влезе в логиката за нов файл
-                    return await syncSingleNoteToGDrive(noteObj);
+                    noteObj.gdid = "";
+                    return await syncSingleNoteToGDrive(noteObj, 1);
                 }
                 throw e;
             }
@@ -15619,3 +15744,102 @@ async function syncSingleNoteToGDrive(noteObj) {
         return false;
     }
 }
+
+async function handleSaveDbToFolder() {
+    if (isOffline) {
+        showToast((typeof _ === 'function' ? _('offlineModeMessage') : 'Offline mode'), 3000);
+        return;
+    }
+    const folderId = await getFolderID();
+    if (!folderId) return;
+
+    // Проверка за празна папка
+    const checkResult = await checkFolderEligibilityForSave(folderId);
+    if (!checkResult.eligible) {
+        let msg = (typeof _ === 'function' ? _('errorFolderNotEmpty') : 'Folder is not empty!');
+        if (checkResult.conflicts && checkResult.conflicts.length > 0) {
+            const conflictNames = checkResult.conflicts.slice(0, 5).join(', ') + (checkResult.conflicts.length > 5 ? '...' : '');
+            msg += ` (${conflictNames})`;
+        }
+        showToast(msg, 7000);
+        return;
+    }
+
+    const confirmed = await showConfirmation((typeof _ === 'function' ? _('confirmSaveDbToFolder') : 'Save data to this folder?'));
+    if (confirmed) {
+        const success = await migrateDataToNewFolder(folderId);
+        if (success) {
+            // Запазваме съществуващата подредба, ако има такава
+            let boardTitles;
+            const existingBmo = localStorage.getItem('boardMenuOrder');
+            if (existingBmo) {
+                try {
+                    const parsed = JSON.parse(existingBmo);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        boardTitles = parsed;
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            // Ако няма съществуваща подредба, създаваме от boardsData
+            if (!boardTitles) {
+                boardTitles = (boardsData || [])
+                    .filter(b => b.title)
+                    .sort((a, b) => {
+                        const na = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+                        const nb = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+                        return na - nb;
+                    })
+                    .map(b => String(b.title));
+                localStorage.setItem('boardMenuOrder', JSON.stringify(boardTitles));
+            }
+            // Синхронизираме folders.json с актуалните данни
+            await syncGlobalFoldersJson();
+            console.log('[SaveDB] boardMenuOrder synced:', boardTitles);
+        }
+    }
+}
+
+async function checkFolderEligibilityForSave(folderId) {
+    if (isOffline) return { eligible: false, conflicts: ['Offline mode'] };
+    const sendRequest = async (token) => {
+        let query = `'${folderId}' in parents and trashed = false`;
+        // За AppDataFolder търсим само в неговия контекст
+        const spaces = (folderId === 'appDataFolder') ? 'appDataFolder' : 'drive';
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&spaces=${spaces}&fields=files(id,name,mimeType)`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return { eligible: false, conflicts: ['No auth token'] };
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) resp = await sendRequest(refresh.tokenData.access_token);
+        }
+        if (!resp.ok) return { eligible: false, conflicts: ['API request failed'] };
+        const result = await resp.json();
+        const files = result.files || [];
+
+        if (files.length === 0) return { eligible: true, conflicts: [] };
+
+        // Специално правило за AppDataFolder и AppSettings
+        if (folderId === 'appDataFolder') {
+            const nonSettingsFiles = files.filter(f => !(f.name === 'AppSettings' && f.mimeType === 'application/vnd.google-apps.folder'));
+            if (nonSettingsFiles.length === 0) {
+                return { eligible: true, conflicts: [] };
+            } else {
+                return { eligible: false, conflicts: nonSettingsFiles.map(f => f.name) };
+            }
+        }
+
+        return { eligible: false, conflicts: files.map(f => f.name) };
+    } catch (e) {
+        console.error("checkFolderEligibilityForSave error:", e);
+        return { eligible: false, conflicts: ['Network or parse error'] };
+    }
+}
+
+

@@ -143,7 +143,7 @@
     "sysInfoAttachmentLinks": "Връзка към приложенията",
     "sysInfoDbCreatedFrom": "Базата е създадена от",
     "sysInfoDbOwner": "Собственик на базата",
-    "dbFolderMismatch": "Грешка: БД е създадена за папка \"{dbFolder}\", а текущата е \"{activeFolder}\".",
+    "dbFolderMismatch": "Внимание: БД е създадена за папка \"{dbFolder}\", а текущата е \"{activeFolder}\".",
     "dbOwnerMismatch": "Грешка: БД принадлежи на {dbOwner}, а текущият потребител е {currentUser}.",
     "errorSysInfo": "Грешка при извличане на системна информация.",
     "errorNoDataSourceSelected": "Трябва да има избран поне един източник на данни, когато не се използва База данни.",
@@ -395,5 +395,11 @@
     "firstRunSetup": "Настройка при първо стартиране...",
     "firstRunMultinotesFound": "Намерена е папка multinotes_data в Google Drive. Желаете ли да работите с нея?",
     "firstRunCreatingBoard": "Създаване на начален борд...",
-    "firstRunComplete": "Първоначалната настройка е завършена!"
+    "firstRunComplete": "Първоначалната настройка е завършена!",
+    "syncPromptNote": "Синхронизиране на бележка:",
+    "allEntries": "Всички",
+    "saveDbToFolderLabel": "Запис на DB в папката",
+    "errorFolderNotEmpty": "Папката не е празна! Записът е спрян за защита на данните.",
+    "confirmSaveDbToFolder": "Това ще запише всички бележки и бордове от паметта в текущата папка. Желаете ли да продължите?",
+    "confirmDbDeleteOnFolderChange": "Желаете ли да изтриете текущата база данни при смяната на папката?"
 }
