@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.20'; // App version
+const version = 'Beta 1.21'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -4270,6 +4270,13 @@ function initApp() {
         if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
         // ВИНАГИ попълваме dropdown-а при отваряне на настройките
         populateFoldersDropdown();
+        // Ако Разширени настройки вече са видими, актуализираме gdrive_folder_names от folders.json
+        const advSpanOnOpen = document.getElementById('advanced-settings-span');
+        if (advSpanOnOpen && !advSpanOnOpen.hasAttribute('hidden') && !isOffline) {
+            loadGlobalFoldersJson().then(changed => {
+                if (changed) populateFoldersDropdown();
+            });
+        }
         // if (guide) showStep(4); // Настройки
     });
 
@@ -9376,7 +9383,7 @@ function syncFolderDataAsync() {
 }
 
 async function loadGlobalFoldersJson() {
-    if (isOffline || !useGoogleDb) return false;
+    if (isOffline) return false;
     try {
         const folderId = await getAppSettingsFolderId();
         if (!folderId) return false;
@@ -9384,6 +9391,7 @@ async function loadGlobalFoldersJson() {
         if (!existingFiles || existingFiles.length === 0) return false;
         const content = await fetchGDriveFileContent(existingFiles[0].id);
         if (!content) return false;
+        sessionStorage.setItem('full_folders_json', content); // Уверяваме се, че set.html също ще ги види
         const parsed = JSON.parse(content);
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             console.warn('folders.json has unexpected format, skipping.');
@@ -9423,9 +9431,14 @@ async function loadGlobalFoldersJson() {
         // Merge folder names
         const localFolderNamesStr = localStorage.getItem('gdrive_folder_names');
         const localFolderNames = localFolderNamesStr ? JSON.parse(localFolderNamesStr) : ['multinotes_data'];
-        const merged = [...new Set([...localFolderNames, ...remoteFolderNames])];
-        if (merged.length !== localFolderNames.length) {
-            localStorage.setItem('gdrive_folder_names', JSON.stringify(merged));
+
+        // Пречистваме remote names от дубликати и празни
+        const cleanRemote = [...new Set(remoteFolderNames.filter(Boolean))];
+        const merged = [...new Set([...localFolderNames, ...cleanRemote])];
+
+        const mergedStr = JSON.stringify(merged);
+        if (mergedStr !== localFolderNamesStr) {
+            localStorage.setItem('gdrive_folder_names', mergedStr);
             changed = true;
         }
         // Apply per-folder start boards
