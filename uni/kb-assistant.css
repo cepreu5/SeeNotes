@@ -632,12 +632,12 @@
     width: 40px;
     height: 40px;
     border-radius: 10px;
-    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
-    color: white;
-    border: 2px solid var(--kb-border-color);
+    background: var(--kb-bg-gray);
+    color: var(--kb-text-secondary);
+    border: 1px solid var(--kb-border-color);
     font-size: 20px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -645,9 +645,11 @@
 }
 
 .kb-clear-btn:hover {
-    background: var(--kb-bg-gray);
-    color: var(--kb-primary-color);
+    background: #e53e3e; /* soft red for delete */
+    color: white;
+    border-color: #c53030;
     transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(229, 62, 62, 0.3);
 }
 
 .kb-clear-btn:active {
