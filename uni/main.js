@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.12'; // App version
+const version = 'Beta 1.13'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -1494,10 +1494,20 @@ async function copyGDriveFile(fileId, newParentId, newName) {
                 resp = await sendRequest(tokenData.access_token);
             }
         }
-        if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
+        if (!resp.ok) {
+            if (resp.status === 404) {
+                console.warn(`[GDrive] Copy failed: File ${fileId} not found (404). Skipping.`);
+                return null;
+            }
+            throw new Error(`HTTP Error ${resp.status}`);
+        }
         const result = await resp.json();
         return result.id;
     } catch (e) {
+        if (e.message && e.message.includes('404')) {
+            console.warn(`[GDrive] Copy failed: File ${fileId} not found (404). Skipping.`);
+            return null;
+        }
         console.error("copyGDriveFile error:", e);
         return null;
     }

@@ -265,6 +265,28 @@
         .folder-body {
             padding: 10px;
         }
+
+        @keyframes simple-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .saving {
+            pointer-events: none !important;
+            opacity: 0.7 !important;
+        }
+
+        .saving::after {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-left: 10px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: simple-spin 0.8s linear infinite;
+        }
     </style>
 </head>
 
@@ -524,7 +546,13 @@
             if (!confirm("ВНИМАНИЕ! Това ще изтрие ВСИЧКИ файлове (бордове, настройки, папки) от системното пространство AppDataFolder. Действието е НЕОБРАТИМО. Желаете ли да продължите?")) return;
             if (!confirm("ПОСЛЕДНО ПОТВЪРЖДЕНИЕ: Наистина ли искате да заличите всичко в AppDataFolder?")) return;
             
+            const btn = document.getElementById('del-all-appdata-btn');
+            const originalText = btn.innerText;
+            
             try {
+                btn.classList.add('saving');
+                btn.innerText = "Изтриване...";
+                
                 const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
                 if (!stored) throw new Error("Липсва оторизация.");
                 const t = JSON.parse(stored).access_token;
@@ -566,6 +594,8 @@
                 sessionStorage.clear();
                 location.reload();
             } catch (e) {
+                btn.classList.remove('saving');
+                btn.innerText = originalText;
                 alert("Критична грешка при изтриване: " + e.message);
             }
         }
