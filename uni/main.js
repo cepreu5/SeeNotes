@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.13'; // App version
+const version = 'Beta 1.14'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -900,6 +900,16 @@ async function refreshAuthToken(forcePopup = false) {
                         resolve({ pass: true, tokenData: tokenWithTimestamp });
                     } else {
                         console.warn("Token refresh failed:", tokenResponse);
+                        // Handle cases where interaction is required (e.g. session expired after long idle)
+                        if (tokenResponse && (tokenResponse.error === 'interaction_required' || tokenResponse.error === 'access_denied')) {
+                            if (typeof showToast === 'function') {
+                                showToast(_('sessionExpired') || "Session expired. Please sign in again.", 5000);
+                            }
+                            // Small delay to let the user see the toast before redirect
+                            setTimeout(() => {
+                                if (typeof initLoginPage === 'function') initLoginPage();
+                            }, 1500);
+                        }
                         resolve({ pass: false, error: tokenResponse });
                     }
                 },
