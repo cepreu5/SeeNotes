@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="CXNotes180.png">
-    <link rel="preload" href="main.js" as="script">
+
     <meta http-equiv="Content-Security-Policy"
         content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
     <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
@@ -901,8 +901,8 @@
                                             style="width: 50px; margin: 0;">
                                     </div>
                                     <div
-                                        style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
-                                        <label for="md-bullet-input" style="font-size: 0.85em; color: #777;"
+                                        style="display: flex; align-items: center; justify-content: flex-start; gap: 5px;">
+                                        <label for="md-bullet-input" style="font-size: 0.85em; min-width: 60px;"
                                             data-key="mdBulletLabel">Bullet</label>
                                         <input type="text" id="md-bullet-input" class="zoom-input-number"
                                             style="width: 50px; margin: 0;">
@@ -932,7 +932,8 @@
                                 </div>
                                 <div style="display: flex; justify-content: center; width: 100%; margin-top: 5px;">
                                     <div class="zoom-control-wrapper" style="margin-top: 0; margin-bottom: 0;">
-                                        <button id="save-db-folder-btn" class="zoom-btn" style="min-width: 250px; background-color: #607d8b;"
+                                        <button id="save-db-folder-btn" class="zoom-btn"
+                                            style="min-width: 250px; background-color: #607d8b;"
                                             data-key="saveDbToFolderLabel">Запис на DB в папката</button>
                                     </div>
                                 </div>

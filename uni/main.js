@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.21'; // App version
+const version = 'Beta 1.12'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -6017,9 +6017,9 @@ async function handleFirstRunSetup() {
         console.warn('[FirstRun] Error creating folders.json:', e);
     }
     // --- СТЪПКА 5: Подразбиращи се координати за плаващите бутони ---
-    localStorage.setItem('popupMenuBtnPosition', JSON.stringify({ top: '60px', right: '10px' }));
+    // localStorage.setItem('popupMenuBtnPosition', JSON.stringify({ top: '60px', right: '10px' }));
     // Задаваме FAB бутона малко по-вляво от KB Assistant (който е на right: 10px)
-    localStorage.setItem('addNoteFabPosition', JSON.stringify({ top: (window.innerHeight - 80) + 'px', right: '70px' }));
+    // localStorage.setItem('addNoteFabPosition', JSON.stringify({ top: (window.innerHeight - 80) + 'px', right: '70px' }));
     // localStorage.setItem('kbFabPosition', JSON.stringify({ bottom: '10px', right: '10px' }));
     // localStorage.setItem('scrollTopBtnPosition', JSON.stringify({ bottom: '50px', right: '10px' }));
     // --- СТЪПКА 6: Създаване на settings.json с профил Default ---
@@ -7159,12 +7159,22 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
         if (debug) console.log(`[Draggable] Resetting ${element.id} to default position. Viewport: ${window.innerWidth}x${window.innerHeight}`);
         element.style.setProperty('top', 'auto', 'important');
         element.style.setProperty('left', 'auto', 'important');
-        element.style.setProperty('right', '20px', 'important');
+
         if (element.id === 'kb-fab') {
+            element.style.setProperty('right', '10px', 'important');
             element.style.setProperty('bottom', '10px', 'important');
         } else if (element.id === 'scrollTopBtn') {
+            element.style.setProperty('right', '10px', 'important');
             element.style.setProperty('bottom', '80px', 'important');
+        } else if (element.id === 'add-note-fab') {
+            element.style.setProperty('right', '80px', 'important');
+            element.style.setProperty('bottom', '10px', 'important');
+        } else if (element.id === 'popup-menu-btn-floating') {
+            element.style.setProperty('right', '10px', 'important');
+            element.style.setProperty('top', '60px', 'important');
+            element.style.setProperty('bottom', 'auto', 'important');
         } else {
+            element.style.setProperty('right', '10px', 'important');
             element.style.setProperty('bottom', '10px', 'important');
         }
     };
@@ -7220,7 +7230,7 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
                     element.style.setProperty('left', 'auto', 'important');
                     element.style.setProperty('top', `${topVal}px`, 'important');
                     element.style.setProperty('right', `${rightVal}px`, 'important');
-                    element.style.setProperty('z-index', '10002', 'important'); // Boost z-index
+                    element.style.setProperty('z-index', '9990', 'important'); // Boost z-index, but keep below chat
 
                     if (debug) console.log(`[Draggable] Restored ${element.id} to ${topVal}px, ${rightVal}px`);
                     positionRestored = true;
@@ -12499,10 +12509,10 @@ if ('serviceWorker' in navigator) {
                 const swVersion = swVersionMatch ? decodeURIComponent(swVersionMatch[1]) : null;
 
                 // Don't show if the version is the same as current (redundant notification)
-                // if (swVersion && swVersion === version) {
-                //     console.log(`[SW] Worker version ${swVersion} is already current. Skipping notification.`);
-                //     return;
-                // }
+                if (swVersion && swVersion === version) {
+                    console.log(`[SW] Worker version ${swVersion} is already current. Skipping notification.`);
+                    return;
+                }
 
                 // Don't show if already showed for THIS worker or if a refresh is already pending or if bar exists
                 if (window.swNotifiedWorkers.has(swUrl) || document.getElementById('sw-update-bar') || sessionStorage.getItem('swUpdateRefreshPending')) return;
