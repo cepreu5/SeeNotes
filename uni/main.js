@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.15'; // App version
+const version = 'Beta 1.16'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -9167,34 +9167,36 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         link.classList.add('board-filter-link');
         link.dataset.boardid = boardId;
         // Обработка на цвят на фона
-        if (board.color !== undefined && !isNaN(board.color)) {
-            if (board.color >= 0 && board.color <= 6) {
-                // Стандартни цветове (0-6)
-                link.style.backgroundColor = `var(--board-bg-${board.color})`;
-            } else if (board.color < 0) {
-                // Custom цвят (отрицателно число)
-                // Преобразуваме signed int в hex color string (RRGGBB)
-                // Използваме >>> 0 за да го третираме като unsigned 32-bit int,
-                // след това toString(16) и взимаме последните 6 символа.
-                const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
-                link.style.backgroundColor = hexColor;
+        let bColor = board.color;
+        if (bColor !== undefined && bColor !== null && bColor !== "") {
+            const num = Number(bColor);
+            if (!isNaN(num)) {
+                if (num >= 0 && num <= 6) {
+                    link.style.backgroundColor = `var(--board-bg-${num})`;
+                } else if (num < 0) {
+                    link.style.backgroundColor = '#' + (num >>> 0).toString(16).slice(-6);
+                }
+            } else if (typeof bColor === 'string' && bColor.startsWith('#')) {
+                link.style.backgroundColor = bColor;
             }
         }
+
         // Обработка на цвят на шрифта
         link.style.color = 'black'; // Default
         if (board.status === 1) {
             link.style.color = 'red';
-        } else if (board.colorfont !== undefined && !isNaN(board.colorfont)) {
-            if (board.colorfont === 1) {
-                link.style.color = '#FFFFFF';
-            } else if (board.colorfont === 2) {
-                link.style.color = '#FF0000';
-            } else if (board.colorfont === 3) {
-                link.style.color = '#0000FF';
-            } else if (board.colorfont < 0) {
-                // Custom цвят на шрифта (отрицателно число)
-                const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-                link.style.color = hexFontColor;
+        } else {
+            let bFColor = board.colorfont;
+            if (bFColor !== undefined && bFColor !== null && bFColor !== "") {
+                const fnum = Number(bFColor);
+                if (!isNaN(fnum)) {
+                    if (fnum === 1) link.style.color = '#FFFFFF';
+                    else if (fnum === 2) link.style.color = '#FF0000';
+                    else if (fnum === 3) link.style.color = '#0000FF';
+                    else if (fnum < 0) link.style.color = '#' + (fnum >>> 0).toString(16).slice(-6);
+                } else if (typeof bFColor === 'string' && bFColor.startsWith('#')) {
+                    link.style.color = bFColor;
+                }
             }
         }
         addBoardButtonEvents(link, boardId);
@@ -15129,6 +15131,8 @@ async function showNewBoardModal() {
     const colorsContainer = document.getElementById('new-board-colors');
     const fontColorsContainer = document.getElementById('new-board-font-colors');
     const backgroundsContainer = document.getElementById('new-board-backgrounds');
+    const customColorInput = document.getElementById('new-board-custom-color');
+    const customFontColorInput = document.getElementById('new-board-custom-font-color');
     const saveBtn = document.getElementById('save-new-board-btn');
     const delBtn = document.getElementById('board-del-btn');
     const previewTab = document.getElementById('preview-tab');
@@ -15136,23 +15140,22 @@ async function showNewBoardModal() {
 
     const closeBtn = modal.querySelector('.modal-close');
 
-    // Попълване на dropdown-а с текущите бордове
-    if (editSelect) {
-        while (editSelect.options.length > 1) editSelect.remove(1);
-        boardsData.forEach(board => {
-            const opt = document.createElement('option');
-            opt.value = board.gdid || board.id;
-            opt.textContent = board.title;
-            opt.style.background = '#2c2c2c';
-            editSelect.appendChild(opt);
-        });
-        editSelect.value = "";
-    }
-
     let selectedColor = 0;
     let selectedFontColor = 0;
     let selectedBackground = 0;
     let currentEditingBoard = null;
+
+    // Populated dropdown with current boards
+    if (editSelect) {
+        while (editSelect.options.length > 1) editSelect.remove(1);
+        boardsData.forEach(board => {
+            const opt = document.createElement('option');
+            opt.value = (board.gdid || board.id).toString();
+            opt.textContent = board.title;
+            opt.style.background = '#2c2c2c';
+            editSelect.appendChild(opt);
+        });
+    }
 
     const bgNames = ['Board.png', 'Board1.png', 'Board2.png', 'Board3.png'];
     const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
@@ -15161,19 +15164,43 @@ async function showNewBoardModal() {
         const title = titleInput.value.trim() || _('addBoardTitle') || "Нов борд";
         previewTab.textContent = title;
 
+        // Sync custom input with direct value if it's a HEX string or an index
+        if (customColorInput) {
+            if (typeof selectedColor === 'string' && selectedColor.startsWith('#')) {
+                customColorInput.value = selectedColor;
+            } else if (typeof selectedColor === 'number' && selectedColor >= 0 && selectedColor <= 6) {
+                customColorInput.value = `Index: ${selectedColor}`;
+            } else {
+                customColorInput.value = (selectedColor !== undefined && selectedColor !== null) ? selectedColor : "";
+            }
+        }
+
+        if (customFontColorInput) {
+            if (typeof selectedFontColor === 'string' && selectedFontColor.startsWith('#')) {
+                customFontColorInput.value = selectedFontColor;
+            } else if (typeof selectedFontColor === 'number' && selectedFontColor >= 0 && selectedFontColor < fontColors.length) {
+                customFontColorInput.value = `Index: ${selectedFontColor}`;
+            } else {
+                customFontColorInput.value = (selectedFontColor !== undefined && selectedFontColor !== null) ? selectedFontColor : "";
+            }
+        }
+
         // Background color logic matching createBoardsUI
-        if (selectedColor >= 0 && selectedColor <= 6) {
+        if (typeof selectedColor === 'number' && selectedColor >= 0 && selectedColor <= 6) {
             previewTab.style.backgroundColor = `var(--board-bg-${selectedColor})`;
-        } else if (selectedColor < 0) {
+        } else if (typeof selectedColor === 'string' && selectedColor.startsWith('#')) {
+            previewTab.style.backgroundColor = selectedColor;
+        } else if (typeof selectedColor === 'number' && selectedColor < 0) {
             const hexColor = '#' + (selectedColor >>> 0).toString(16).slice(-6);
             previewTab.style.backgroundColor = hexColor;
         }
 
         // Font color logic matching createBoardsUI
-        if (selectedFontColor >= 0 && selectedFontColor < fontColors.length) {
-            // In createBoardsUI, 1 is white, 2 is red, 3 is blue, default is black (0)
+        if (typeof selectedFontColor === 'number' && selectedFontColor >= 0 && selectedFontColor < fontColors.length) {
             previewTab.style.color = fontColors[selectedFontColor];
-        } else if (selectedFontColor < 0) {
+        } else if (typeof selectedFontColor === 'string' && selectedFontColor.startsWith('#')) {
+            previewTab.style.color = selectedFontColor;
+        } else if (typeof selectedFontColor === 'number' && selectedFontColor < 0) {
             const hexFontColor = '#' + (selectedFontColor >>> 0).toString(16).slice(-6);
             previewTab.style.color = hexFontColor;
         } else {
@@ -15186,15 +15213,67 @@ async function showNewBoardModal() {
         }
     }
 
+    if (customColorInput) {
+        customColorInput.oninput = () => {
+            const val = customColorInput.value.trim();
+            if (val.startsWith('#')) {
+                selectedColor = val;
+                renderColorOptions(); // Clear selection markers in palette
+                updatePreview();
+            }
+        };
+    }
+    if (customFontColorInput) {
+        customFontColorInput.oninput = () => {
+            const val = customFontColorInput.value.trim();
+            if (val.startsWith('#')) {
+                selectedFontColor = val;
+                renderFontColorOptions();
+                updatePreview();
+            }
+        };
+    }
+
     function resetInputs(board = null) {
         if (board) {
             currentEditingBoard = board;
             titleInput.value = board.title || "";
-            // Използваме Number(), за да сме сигурни, че работим с числа, дори ако идват като низове
-            selectedColor = (board.color !== undefined) ? Number(board.color) : 0;
-            selectedFontColor = (board.colorfont !== undefined) ? Number(board.colorfont) : 0;
+            // Handle both numeric indices, hex strings, and negative decimal colors
+            let bColor = board.color;
+            if (bColor !== undefined && bColor !== null && bColor !== "") {
+                const num = Number(bColor);
+                if (!isNaN(num)) {
+                    if (num < 0) {
+                        // Convert negative decimal color to HEX (e.g. -65536 -> #ff0000)
+                        selectedColor = '#' + (num >>> 0).toString(16).slice(-6).toUpperCase();
+                    } else {
+                        selectedColor = num;
+                    }
+                } else {
+                    selectedColor = bColor;
+                }
+            } else {
+                selectedColor = 0;
+            }
+
+            let bFColor = board.colorfont;
+            if (bFColor !== undefined && bFColor !== null && bFColor !== "") {
+                const num = Number(bFColor);
+                if (!isNaN(num)) {
+                    if (num < 0) {
+                        selectedFontColor = '#' + (num >>> 0).toString(16).slice(-6).toUpperCase();
+                    } else {
+                        selectedFontColor = num;
+                    }
+                } else {
+                    selectedFontColor = bFColor;
+                }
+            } else {
+                selectedFontColor = 0;
+            }
             selectedBackground = (board.backnum !== undefined) ? Number(board.backnum) : 0;
             saveBtn.textContent = _('updateButton') || "Обнови";
+            if (editSelect) editSelect.value = (board.gdid || board.id).toString();
         } else {
             currentEditingBoard = null;
             titleInput.value = "";
@@ -15202,11 +15281,12 @@ async function showNewBoardModal() {
             selectedFontColor = 0;
             selectedBackground = 0;
             saveBtn.textContent = _('submitButton') || "Потвърди";
+            if (editSelect) editSelect.value = "";
         }
         if (delBtn) delBtn.style.display = board ? 'flex' : 'none';
-        renderColorOptions();
-        renderFontColorOptions();
-        renderBackgroundOptions();
+        renderColorOptions(selectedColor);
+        renderFontColorOptions(selectedFontColor);
+        renderBackgroundOptions(selectedBackground);
         updatePreview();
     }
 
@@ -15227,77 +15307,79 @@ async function showNewBoardModal() {
             showBoardReorderPopup();
         };
     }
-    function renderColorOptions() {
+    // (Removed outdated initialization)
+
+    function renderColorOptions(current) {
         colorsContainer.innerHTML = '';
+        const docStyles = getComputedStyle(document.documentElement);
         for (let i = 0; i <= 6; i++) {
             const colorDiv = document.createElement('div');
+            const themeColor = docStyles.getPropertyValue(`--board-bg-${i}`).trim().toLowerCase();
+            const currentStr = (current !== undefined && current !== null) ? current.toString().toLowerCase() : "";
+            // Match by index OR by actual HEX color string
+            const isMatch = (i.toString() === currentStr) || (currentStr === themeColor);
+
             Object.assign(colorDiv.style, {
-                width: '24px', height: '24px', borderRadius: '50%',
+                width: '26px', height: '26px', borderRadius: '50%',
                 backgroundColor: `var(--board-bg-${i})`, cursor: 'pointer',
-                border: (i === selectedColor) ? '2px solid #555' : '1px solid #ccc',
-                boxShadow: (i === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
-                transition: 'transform 0.1s', margin: 'auto'
+                border: isMatch ? '4px solid white' : '1px solid rgba(255,255,255,0.4)',
+                boxShadow: isMatch ? '0 0 12px rgba(255,255,255,0.9)' : '0 2px 4px rgba(0,0,0,0.3)',
+                transition: 'transform 0.1s, border 0.2s', margin: 'auto'
             });
             colorDiv.onclick = () => {
                 selectedColor = i;
-                Array.from(colorsContainer.children).forEach((child, idx) => {
-                    child.style.border = (idx === selectedColor) ? '2px solid #555' : '1px solid #ccc';
-                    child.style.boxShadow = (idx === selectedColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
-                    child.style.transform = (idx === selectedColor) ? 'scale(1.1)' : 'scale(1)';
-                });
+                renderColorOptions(selectedColor);
                 updatePreview();
             };
-            if (i === selectedColor) colorDiv.style.transform = 'scale(1.1)';
+            if (isMatch) colorDiv.style.transform = 'scale(1.15)';
             colorsContainer.appendChild(colorDiv);
         }
     }
 
-    function renderFontColorOptions() {
+    function renderFontColorOptions(current) {
         fontColorsContainer.innerHTML = '';
+        const currentStr = (current !== undefined && current !== null) ? current.toString().toLowerCase() : "";
         fontColors.forEach((color, i) => {
             const fcDiv = document.createElement('div');
+            const paletteColor = color.toLowerCase();
+            const isMatch = (i.toString() === currentStr) || (currentStr === paletteColor);
+
             Object.assign(fcDiv.style, {
-                width: '100%', maxWidth: '24px', aspectRatio: '1/1', borderRadius: '4px',
+                width: '100%', maxWidth: '26px', aspectRatio: '1/1', borderRadius: '4px',
                 backgroundColor: color, cursor: 'pointer',
-                border: (i === selectedFontColor) ? '2px solid #555' : '1px solid #ccc',
-                boxShadow: (i === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none',
-                transition: 'transform 0.1s', margin: 'auto'
+                border: isMatch ? '4px solid white' : '1px solid rgba(255,255,255,0.4)',
+                boxShadow: isMatch ? '0 0 12px rgba(255,255,255,0.9)' : '0 2px 4px rgba(0,0,0,0.3)',
+                transition: 'transform 0.1s, border 0.2s', margin: 'auto'
             });
             fcDiv.onclick = () => {
                 selectedFontColor = i;
-                Array.from(fontColorsContainer.children).forEach((child, idx) => {
-                    child.style.border = (idx === selectedFontColor) ? '2px solid #555' : '1px solid #ccc';
-                    child.style.boxShadow = (idx === selectedFontColor) ? '0 0 5px rgba(0,0,0,0.3)' : 'none';
-                    child.style.transform = (idx === selectedFontColor) ? 'scale(1.1)' : 'scale(1)';
-                });
+                renderFontColorOptions(selectedFontColor);
                 updatePreview();
             };
-            if (i === selectedFontColor) fcDiv.style.transform = 'scale(1.1)';
+            if (isMatch) fcDiv.style.transform = 'scale(1.15)';
             fontColorsContainer.appendChild(fcDiv);
         });
     }
 
-    function renderBackgroundOptions() {
+    function renderBackgroundOptions(current) {
         backgroundsContainer.innerHTML = '';
         for (let i = 0; i <= 3; i++) {
             const bgDiv = document.createElement('div');
+            const isMatch = (i == current);
+
             Object.assign(bgDiv.style, {
                 width: '100%', aspectRatio: '16/10', backgroundImage: `url('${bgNames[i]}')`,
                 backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', borderRadius: '4px',
-                border: (i === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc',
-                boxShadow: (i === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none',
-                transition: 'transform 0.1s'
+                border: isMatch ? '4px solid white' : '1px solid rgba(255,255,255,0.4)',
+                boxShadow: isMatch ? '0 0 12px rgba(255,255,255,0.7)' : '0 2px 4px rgba(0,0,0,0.3)',
+                transition: 'transform 0.1s, border 0.2s'
             });
             bgDiv.onclick = () => {
                 selectedBackground = i;
-                Array.from(backgroundsContainer.children).forEach((child, idx) => {
-                    child.style.border = (idx === selectedBackground) ? '2px solid #4CAF50' : '1px solid #ccc';
-                    child.style.boxShadow = (idx === selectedBackground) ? '0 0 5px rgba(76, 175, 80, 0.4)' : 'none';
-                    child.style.transform = (idx === selectedBackground) ? 'scale(1.05)' : 'scale(1)';
-                });
+                renderBackgroundOptions(selectedBackground);
                 updatePreview();
             };
-            if (i === selectedBackground) bgDiv.style.transform = 'scale(1.05)';
+            if (isMatch) bgDiv.style.transform = 'scale(1.08)';
             backgroundsContainer.appendChild(bgDiv);
         }
     }
@@ -15370,7 +15452,7 @@ async function showNewBoardModal() {
         };
     }
 
-    resetInputs();
+    // (Removed outdated initialization)
 
     saveBtn.onclick = async () => {
         const title = titleInput.value.trim();
@@ -15464,6 +15546,15 @@ async function showNewBoardModal() {
             showToast("Error: " + error.message, 5000);
         }
     };
+
+    // Initialize modal with current active board at the very end
+    let activeBoard = null;
+    const currentIdStr = (currentBoardFilter || "").toString();
+    if (currentIdStr && currentIdStr !== 'all' && currentIdStr !== 'reminders' && !currentIdStr.includes('calendar')) {
+        const tId = currentIdStr;
+        activeBoard = boardsData.find(b => (b.gdid || b.id || "").toString() === tId);
+    }
+    resetInputs(activeBoard);
 
     modal.classList.add('visible');
 }
