@@ -1662,42 +1662,62 @@ async function getFolderIDByName(name) {
     }
 }
 
+let _appSettingsFolderIdPromise = null;
 async function getAppSettingsFolderId() {
     if (isOffline) return null;
     if (cachedFolderIdsByName['appDataFolder:AppSettings']) return cachedFolderIdsByName['appDataFolder:AppSettings'];
-    const findFolder = async (token) => {
-        const query = encodeURIComponent("name='AppSettings' and mimeType='application/vnd.google-apps.folder' and trashed=false");
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id)&pageSize=1`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
+    if (_appSettingsFolderIdPromise) return _appSettingsFolderIdPromise;
+
+    _appSettingsFolderIdPromise = (async () => {
+        const findFolder = async (token) => {
+            const query = encodeURIComponent("name='AppSettings' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+            // Извличаме всички копия, сортирани по последна промяна (най-новия първи)
+            return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        };
+        try {
+            let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!storedTokenString) return null;
+            let tokenData = JSON.parse(storedTokenString);
+            let resp = await findFolder(tokenData.access_token);
+            if (resp.status === 401) {
+                let refresh = await refreshAuthToken(false);
+                if (refresh && refresh.pass) {
+                    tokenData = refresh.tokenData;
+                    resp = await findFolder(tokenData.access_token);
+                }
+            }
+            if (resp.ok) {
+                const result = await resp.json();
+                if (result.files && result.files.length > 0) {
+                    // Ако има дубликати на папката AppSettings, изтриваме старите и оставяме най-новата
+                    if (result.files.length > 1) {
+                        console.warn("[Sync] Cleanup duplicates for AppSettings folder.");
+                        for (let i = 1; i < result.files.length; i++) {
+                            deleteGDriveFile(result.files[i].id).catch(err => console.error("Error deleting duplicate folder:", err));
+                        }
+                    }
+                    const id = result.files[0].id;
+                    cachedFolderIdsByName['appDataFolder:AppSettings'] = id;
+                    return id;
+                }
+            }
+            const newId = await createNewGDriveFolder('AppSettings', 'appDataFolder');
+            if (newId) cachedFolderIdsByName['appDataFolder:AppSettings'] = newId;
+            return newId;
+        } catch (e) {
+            console.error("getAppSettingsFolderId error:", e);
+            return null;
+        }
+    })();
+
     try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) return null;
-        let tokenData = JSON.parse(storedTokenString);
-        let resp = await findFolder(tokenData.access_token);
-        if (resp.status === 401) {
-            let refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                tokenData = refresh.tokenData;
-                resp = await findFolder(tokenData.access_token);
-            }
-        }
-        if (resp.ok) {
-            const result = await resp.json();
-            if (result.files && result.files.length > 0) {
-                const id = result.files[0].id;
-                cachedFolderIdsByName['appDataFolder:AppSettings'] = id;
-                return id;
-            }
-        }
-        const newId = await createNewGDriveFolder('AppSettings', 'appDataFolder');
-        if (newId) cachedFolderIdsByName['appDataFolder:AppSettings'] = newId;
-        return newId;
-    } catch (e) {
-        console.error("getAppSettingsFolderId error:", e);
-        return null;
+        const result = await _appSettingsFolderIdPromise;
+        return result;
+    } finally {
+        _appSettingsFolderIdPromise = null;
     }
 }
 
@@ -9356,6 +9376,12 @@ async function syncGlobalFoldersJson() {
             if (fID) {
                 const existingFiles = await findGDFileByName(fID, 'folders.json');
                 if (existingFiles && existingFiles.length > 0) {
+                    // Ако има дубликати на folders.json, почистваме старите
+                    if (existingFiles.length > 1) {
+                        for (let i = 1; i < existingFiles.length; i++) {
+                            deleteGDriveFile(existingFiles[i].id).catch(e => console.warn("[Sync] Error deleting duplicate folders.json:", e));
+                        }
+                    }
                     await updateGDriveFile(existingFiles[0].id, content);
                 } else {
                     await createGDriveFile(fID, 'folders.json', content);
@@ -9536,8 +9562,16 @@ async function saveSettingsToGDrive(silent = false) {
                 const existingFiles = await findGDFileByName(folderId, fileName);
                 if (debug) console.log("[ProfileSync] existingFiles found:", existingFiles ? existingFiles.length : 0);
                 let finalObject = {};
+                let targetId = null;
                 if (existingFiles && existingFiles.length > 0) {
-                    const existingContent = await fetchGDriveFileContent(existingFiles[0].id);
+                    // Почистваме дубликати на settings.json
+                    if (existingFiles.length > 1) {
+                        for (let i = 1; i < existingFiles.length; i++) {
+                            deleteGDriveFile(existingFiles[i].id).catch(e => console.warn("[ProfileSync] Error deleting duplicate settings.json:", e));
+                        }
+                    }
+                    targetId = existingFiles[0].id;
+                    const existingContent = await fetchGDriveFileContent(targetId);
                     try {
                         const parsed = JSON.parse(existingContent);
                         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -14868,88 +14902,90 @@ function showBoardReorderPopup() {
     let placeholder = document.createElement('div');
     placeholder.style.cssText = `height:40px;width:${itemWidth}px;border:2px dashed #fff;border-radius:4px;margin-bottom:8px;background:rgba(255,255,255,0.2);`;
 
-    console.log("[Reorder] currentOrder:", currentOrder);
-    console.log("[Reorder] boardsData count:", boardsData.length);
+    function renderList(titles) {
+        listContainer.innerHTML = '';
+        titles.forEach((boardTitle) => {
+            const board = boardsData.find(b => String(b.title) === String(boardTitle));
+            if (!board || !board.title) {
+                console.log("[Reorder] Missed board for title:", boardTitle);
+                return;
+            }
+            const item = document.createElement('div');
+            item.className = 'board-filter-link reorder-item';
+            item.dataset.boardtitle = String(boardTitle);
+            item.draggable = true;
+            item.style.width = `${itemWidth}px`;
+            item.style.marginBottom = '8px';
+            item.style.cursor = 'grab';
+            item.style.flexShrink = '0';
+            item.style.display = 'flex';
+            item.style.alignItems = 'center';
+            item.style.justifyContent = 'flex-start';
+            item.style.padding = '0 10px';
+            if (board.color !== undefined && !isNaN(board.color)) {
+                if (board.color >= 0 && board.color <= 6) item.style.backgroundColor = `var(--board-bg-${board.color})`;
+                else if (board.color < 0) item.style.backgroundColor = '#' + (board.color >>> 0).toString(16).slice(-6);
+            }
+            const grip = document.createElement('span');
+            grip.innerHTML = '⠿';
+            grip.style.cssText = 'margin-right:8px;font-size:16px;opacity:0.6;';
+            item.appendChild(grip);
+            const text = document.createElement('span');
+            text.textContent = board.title;
+            text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+            if (board.status === 1) {
+                text.style.color = 'red';
+            } else if (board.colorfont !== undefined && !isNaN(board.colorfont)) {
+                if (board.colorfont === 1) text.style.color = '#FFFFFF';
+                else if (board.colorfont === 2) text.style.color = '#FF0000';
+                else if (board.colorfont === 3) text.style.color = '#0000FF';
+                else if (board.colorfont < 0) text.style.color = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+                else text.style.color = 'black';
+            } else {
+                text.style.color = 'black';
+            }
+            item.appendChild(text);
+            item.addEventListener('dragstart', (e) => {
+                draggedItem = item;
+                e.dataTransfer.effectAllowed = 'move';
+                setTimeout(() => { item.style.opacity = '0'; }, 0);
+            });
+            item.addEventListener('dragend', () => {
+                draggedItem.style.opacity = '1';
+                if (placeholder.parentNode) placeholder.remove();
+                draggedItem = null;
+            });
+            item.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1) return;
+                draggedItem = item;
+                item.style.opacity = '0.5';
+            }, { passive: true });
+            item.addEventListener('touchmove', (e) => {
+                if (!draggedItem || draggedItem !== item) return;
+                e.preventDefault();
+                const y = e.touches[0].clientY;
+                const target = document.elementFromPoint(e.touches[0].clientX, y);
+                const scrollItem = target ? target.closest('.reorder-item') : null;
+                if (scrollItem && scrollItem !== item) {
+                    const rect = scrollItem.getBoundingClientRect();
+                    if (y < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, scrollItem);
+                    else listContainer.insertBefore(placeholder, scrollItem.nextSibling);
+                }
+            }, { passive: false });
+            item.addEventListener('touchend', () => {
+                if (!draggedItem) return;
+                item.style.opacity = '1';
+                if (placeholder.parentNode) {
+                    listContainer.insertBefore(item, placeholder);
+                    placeholder.remove();
+                }
+                draggedItem = null;
+            });
+            listContainer.appendChild(item);
+        });
+    }
 
-    currentOrder.forEach((boardTitle) => {
-        const board = boardsData.find(b => String(b.title) === String(boardTitle));
-        if (!board || !board.title) {
-            console.log("[Reorder] Missed board for title:", boardTitle);
-            return;
-        }
-        const item = document.createElement('div');
-        item.className = 'board-filter-link reorder-item';
-        item.dataset.boardtitle = String(boardTitle);
-        item.draggable = true;
-        item.style.width = `${itemWidth}px`;
-        item.style.marginBottom = '8px';
-        item.style.cursor = 'grab';
-        item.style.flexShrink = '0';
-        item.style.display = 'flex';
-        item.style.alignItems = 'center';
-        item.style.justifyContent = 'flex-start';
-        item.style.padding = '0 10px';
-        if (board.color !== undefined && !isNaN(board.color)) {
-            if (board.color >= 0 && board.color <= 6) item.style.backgroundColor = `var(--board-bg-${board.color})`;
-            else if (board.color < 0) item.style.backgroundColor = '#' + (board.color >>> 0).toString(16).slice(-6);
-        }
-        const grip = document.createElement('span');
-        grip.innerHTML = '⠿';
-        grip.style.cssText = 'margin-right:8px;font-size:16px;opacity:0.6;';
-        item.appendChild(grip);
-        const text = document.createElement('span');
-        text.textContent = board.title;
-        text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
-        if (board.status === 1) {
-            text.style.color = 'red';
-        } else if (board.colorfont !== undefined && !isNaN(board.colorfont)) {
-            if (board.colorfont === 1) text.style.color = '#FFFFFF';
-            else if (board.colorfont === 2) text.style.color = '#FF0000';
-            else if (board.colorfont === 3) text.style.color = '#0000FF';
-            else if (board.colorfont < 0) text.style.color = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-            else text.style.color = 'black';
-        } else {
-            text.style.color = 'black';
-        }
-        item.appendChild(text);
-        item.addEventListener('dragstart', (e) => {
-            draggedItem = item;
-            e.dataTransfer.effectAllowed = 'move';
-            setTimeout(() => { item.style.opacity = '0'; }, 0);
-        });
-        item.addEventListener('dragend', () => {
-            draggedItem.style.opacity = '1';
-            if (placeholder.parentNode) placeholder.remove();
-            draggedItem = null;
-        });
-        item.addEventListener('touchstart', (e) => {
-            if (e.touches.length !== 1) return;
-            draggedItem = item;
-            item.style.opacity = '0.5';
-        }, { passive: true });
-        item.addEventListener('touchmove', (e) => {
-            if (!draggedItem || draggedItem !== item) return;
-            e.preventDefault();
-            const y = e.touches[0].clientY;
-            const target = document.elementFromPoint(e.touches[0].clientX, y);
-            const scrollItem = target ? target.closest('.reorder-item') : null;
-            if (scrollItem && scrollItem !== item) {
-                const rect = scrollItem.getBoundingClientRect();
-                if (y < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, scrollItem);
-                else listContainer.insertBefore(placeholder, scrollItem.nextSibling);
-            }
-        }, { passive: false });
-        item.addEventListener('touchend', () => {
-            if (!draggedItem) return;
-            item.style.opacity = '1';
-            if (placeholder.parentNode) {
-                listContainer.insertBefore(item, placeholder);
-                placeholder.remove();
-            }
-            draggedItem = null;
-        });
-        listContainer.appendChild(item);
-    });
+    renderList(currentOrder);
     listContainer.addEventListener('dragover', (e) => {
         e.preventDefault();
         const target = e.target.closest('.reorder-item');
@@ -14968,7 +15004,25 @@ function showBoardReorderPopup() {
     });
     box.appendChild(listContainer);
     const footer = document.createElement('div');
-    footer.style.cssText = 'display:flex;justify-content:center;margin-top:15px;';
+    footer.style.cssText = 'display:flex;justify-content:center;gap:15px;margin-top:15px;';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.textContent = 'Reset';
+    resetBtn.className = 'submit-btn'; // Use same base class for styling if applicable
+    resetBtn.style.cssText = 'padding:10px 20px;background:#607D8B;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:1.1em;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.3);';
+    resetBtn.onclick = () => {
+        const sortedTitles = [...boardsData]
+            .filter(b => b.title)
+            .sort((a, b) => {
+                const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+                const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+                return numordA - numordB;
+            })
+            .map(b => String(b.title));
+        renderList(sortedTitles);
+    };
+    footer.appendChild(resetBtn);
+
     const saveCloseBtn = document.createElement('button');
     saveCloseBtn.textContent = _('submitButton') || 'Потвърди';
     saveCloseBtn.className = 'submit-btn';
