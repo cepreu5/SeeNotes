@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.14'; // App version
+const version = 'Beta 1.15'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -1545,12 +1545,20 @@ async function migrateDataToNewFolder(targetFolderId) {
         }
         const boardsToMigrate = (boardsData || []);
         const totalBoards = boardsToMigrate.length;
+        const boardGdidMap = {};
         let pool = new Set();
         let boardResults = [];
         let completedBoards = 0;
         for (let i = 0; i < totalBoards; i++) {
             if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-            const promise = createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardsToMigrate[i])).then(res => {
+            const board = boardsToMigrate[i];
+            const oldBoardId = board.gdid;
+            const promise = createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(board)).then(async res => {
+                if (res) {
+                    board.gdid = res;
+                    if (oldBoardId) boardGdidMap[oldBoardId] = res;
+                    if (useIndexedDb) await putDB(BOARD_STORE_NAME, board);
+                }
                 pool.delete(promise);
                 completedBoards++;
                 if (counterElem) counterElem.innerText = `[B] ${completedBoards}/${totalBoards}`;
@@ -1578,6 +1586,10 @@ async function migrateDataToNewFolder(targetFolderId) {
             delete note.gdid;
             const promise = (async () => {
                 try {
+                    // Update boardid mapping for the note
+                    if (note.boardid && boardGdidMap[note.boardid]) {
+                        note.boardid = boardGdidMap[note.boardid];
+                    }
                     const newId = await createGDriveFile(targetFolderId, 'note.txt', JSON.stringify(note));
                     if (newId) {
                         note.gdid = newId;
@@ -1585,6 +1597,7 @@ async function migrateDataToNewFolder(targetFolderId) {
                             mediaNotesMap[oldGdid] = newId;
                         }
                         await updateGDriveFile(newId, JSON.stringify(note));
+                        if (useIndexedDb) await putDB(NOTE_STORE_NAME, note);
                     }
                 } finally {
                     completedNotes++;
@@ -1628,7 +1641,16 @@ async function migrateDataToNewFolder(targetFolderId) {
         await Promise.all(mediaResults);
         if (newMediaData.length > 0) {
             await createGDriveFile(targetFolderId, 'media.txt', JSON.stringify(newMediaData));
+            if (useIndexedDb) {
+                for (let m of newMediaData) await putDB(MEDIA_STORE_NAME, m);
+            }
         }
+
+        // Update sync timestamp and last folder for consistency
+        const now = Date.now();
+        localStorage.setItem('lastSyncTimestamp', now);
+        lastSyncTimestamp = now;
+
         if (typeof showToast === 'function') showToast(_('migrationSuccess'));
         console.timeEnd("Migration_Parallel");
         return true;
