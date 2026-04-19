@@ -267,8 +267,13 @@
         }
 
         @keyframes simple-spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         .saving {
@@ -282,7 +287,7 @@
             width: 12px;
             height: 12px;
             margin-left: 10px;
-            border: 2px solid rgba(255,255,255,0.3);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
             border-top-color: #fff;
             animation: simple-spin 0.8s linear infinite;
@@ -292,11 +297,29 @@
 
 <body>
     <div class="container" id="main-container">
-        <h1>Cloud Settings & Board Menu Order</h1>
+        <h1>Profiles & Folders</h1>
         <div class="save-container">
             <button id="save-all-btn" class="save-btn" style="display:none;">Запази промените</button>
         </div>
         <div id="content">Зареждане на данни от облака...</div>
+
+        <div class="delete-files-container"
+            style="margin-top: 60px; padding: 30px; border-top: 3px double #e74c3c; display: flex; flex-direction: column; gap: 15px; align-items: center; background: #fff5f5; border-radius: 0 0 12px 12px;">
+            <p style="color: #c0392b; font-weight: bold; margin-bottom: 10px;">Опасна зона - триене на системни файлове
+                от облака:</p>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+                <button id="del-settings-file-btn" class="save-btn"
+                    style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий
+                    settings.json</button>
+                <button id="del-folders-file-btn" class="save-btn"
+                    style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий
+                    folders.json</button>
+                <button id="del-all-appdata-btn" class="save-btn"
+                    style="background-color: #000; color: #ff0000; border: 2px solid #ff0000; box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);">!!!
+                    ИЗТРИЙ ВСИЧКО В APPDATAFOLDER !!!</button>
+            </div>
+        </div>
+
         <div id="saved-order-title" class="folder-section" style="display:none; margin-top: 20px;">
             <div class="folder-header">
                 <span>Запазен ред в облака/локално (boardMenuOrder)</span>
@@ -306,15 +329,6 @@
         </div>
         <h2 id="folders-json-title" style="display:none;">Данни по папки (folders.json)</h2>
         <div id="folders-json-list" style="display:none;"></div>
-        
-        <div class="delete-files-container" style="margin-top: 60px; padding: 30px; border-top: 3px double #e74c3c; display: flex; flex-direction: column; gap: 15px; align-items: center; background: #fff5f5; border-radius: 0 0 12px 12px;">
-            <p style="color: #c0392b; font-weight: bold; margin-bottom: 10px;">Опасна зона - триене на системни файлове от облака:</p>
-            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
-                <button id="del-settings-file-btn" class="save-btn" style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий settings.json</button>
-                <button id="del-folders-file-btn" class="save-btn" style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий folders.json</button>
-                <button id="del-all-appdata-btn" class="save-btn" style="background-color: #000; color: #ff0000; border: 2px solid #ff0000; box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);">!!! ИЗТРИЙ ВСИЧКО В APPDATAFOLDER !!!</button>
-            </div>
-        </div>
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
@@ -356,13 +370,13 @@
             const rawSettings = cloudSettings || sessionStorage.getItem('full_settings_json') || "{}";
             const rawOrder = sessionStorage.getItem('boardMenuOrder') || "[]";
             const rawFolders = cloudFolders || sessionStorage.getItem('full_folders_json') || '{"folders":[]}';
-            
+
             if (cloudSettings) sessionStorage.setItem('full_settings_json', cloudSettings);
             else if (token) sessionStorage.removeItem('full_settings_json');
-            
+
             if (cloudFolders) sessionStorage.setItem('full_folders_json', cloudFolders);
             else if (token) sessionStorage.removeItem('full_folders_json');
-            
+
             // 1. Показване на настройките
             if (rawSettings && rawSettings !== "null" && rawSettings !== "undefined") {
                 try {
@@ -407,15 +421,15 @@
                         };
                         const allKeys = Object.keys(deviceSettings);
                         const assignedKeys = new Set();
-                        
+
                         Object.entries(groups).forEach(([groupName, groupKeys]) => {
                             const matchingKeys = groupKeys.filter(k => allKeys.includes(k));
                             if (matchingKeys.length === 0) return;
-                            
+
                             const groupHeader = document.createElement('tr');
                             groupHeader.innerHTML = `<th colspan="2" style="background-color: #eee; color: #333; font-weight: bold; text-align: center; font-size: 0.8em; letter-spacing: 1px;">--- ${groupName.toUpperCase()} ---</th>`;
                             table.appendChild(groupHeader);
-                            
+
                             matchingKeys.forEach(key => {
                                 const tr = document.createElement('tr');
                                 tr.innerHTML = `<th>${key}</th><td>${(typeof deviceSettings[key] === 'object') ? JSON.stringify(deviceSettings[key]) : String(deviceSettings[key])}</td>`;
@@ -423,21 +437,21 @@
                                 assignedKeys.add(key);
                             });
                         });
-                        
+
                         // Dynamic and unassigned keys
                         const remainingKeys = allKeys.filter(k => !assignedKeys.has(k)).sort((a, b) => {
-                             const isDynamicA = a.startsWith('board_') || a.startsWith('startBoard_');
-                             const isDynamicB = b.startsWith('board_') || b.startsWith('startBoard_');
-                             if (isDynamicA && !isDynamicB) return 1;
-                             if (!isDynamicA && isDynamicB) return -1;
-                             return a.localeCompare(b);
+                            const isDynamicA = a.startsWith('board_') || a.startsWith('startBoard_');
+                            const isDynamicB = b.startsWith('board_') || b.startsWith('startBoard_');
+                            if (isDynamicA && !isDynamicB) return 1;
+                            if (!isDynamicA && isDynamicB) return -1;
+                            return a.localeCompare(b);
                         });
-                        
+
                         if (remainingKeys.length > 0) {
                             const groupHeader = document.createElement('tr');
                             groupHeader.innerHTML = `<th colspan="2" style="background-color: #eee; color: #333; font-weight: bold; text-align: center; font-size: 0.8em; letter-spacing: 1px;">--- DYNAMIC & OTHERS ---</th>`;
                             table.appendChild(groupHeader);
-                            
+
                             remainingKeys.forEach(key => {
                                 const tr = document.createElement('tr');
                                 tr.innerHTML = `<th>${key}</th><td>${(typeof deviceSettings[key] === 'object') ? JSON.stringify(deviceSettings[key]) : String(deviceSettings[key])}</td>`;
@@ -489,14 +503,14 @@
                                 }).join('') + '</ol>';
                             }
                             fBody.innerHTML += `<div style="font-size:0.85em; color:#666; margin-top:10px; border-top:1px solid #eee; padding-top:10px;"><strong>Start Board:</strong> ${folder.startBoard || 'Default'}<br><strong>Last Note ID:</strong> ${folder.lastNoteId || '-'}<br><strong>Last Board ID:</strong> ${folder.lastBoardId || '-'}</div>`;
-                        const rawEdit = document.createElement('textarea');
-                        rawEdit.className = 'json-edit';
-                        rawEdit.id = `edit-folder-${idx}`;
-                        rawEdit.value = JSON.stringify(folder, null, 2);
-                        fBody.prepend(rawEdit);
-                        folderDiv.appendChild(fHeader);
-                        folderDiv.appendChild(fBody);
-                        foldersList.appendChild(folderDiv);
+                            const rawEdit = document.createElement('textarea');
+                            rawEdit.className = 'json-edit';
+                            rawEdit.id = `edit-folder-${idx}`;
+                            rawEdit.value = JSON.stringify(folder, null, 2);
+                            fBody.prepend(rawEdit);
+                            folderDiv.appendChild(fHeader);
+                            folderDiv.appendChild(fBody);
+                            foldersList.appendChild(folderDiv);
                         });
                         // Запазваме активната папка и имейла за saveAll
                         foldersList.dataset.fullJson = rawFolders;
@@ -511,13 +525,13 @@
                     document.getElementById('saved-order-title').style.display = 'block';
                     list.style.display = 'block';
                     list.innerHTML = '';
-                    
+
                     const rawEdit = document.createElement('textarea');
                     rawEdit.className = 'json-edit';
                     rawEdit.id = 'edit-order';
                     rawEdit.value = JSON.stringify(order, null, 2);
                     list.appendChild(rawEdit);
-                    
+
                     if (Array.isArray(order) && order.length > 0) {
                         const ol = document.createElement('ol');
                         order.forEach(item => { const li = document.createElement('li'); li.textContent = item; ol.appendChild(li); });
@@ -545,27 +559,27 @@
         async function deleteAllAppData() {
             if (!confirm("ВНИМАНИЕ! Това ще изтрие ВСИЧКИ файлове (бордове, настройки, папки) от системното пространство AppDataFolder. Действието е НЕОБРАТИМО. Желаете ли да продължите?")) return;
             if (!confirm("ПОСЛЕДНО ПОТВЪРЖДЕНИЕ: Наистина ли искате да заличите всичко в AppDataFolder?")) return;
-            
+
             const btn = document.getElementById('del-all-appdata-btn');
             const originalText = btn.innerText;
-            
+
             try {
                 btn.classList.add('saving');
                 btn.innerText = "Изтриване...";
-                
+
                 const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
                 if (!stored) throw new Error("Липсва оторизация.");
                 const t = JSON.parse(stored).access_token;
-                
+
                 let deletedCount = 0;
                 let nextPageToken = null;
-                
+
                 do {
                     const q = encodeURIComponent("trashed = false");
                     const url = `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=nextPageToken,files(id,name)&pageToken=${nextPageToken || ''}`;
                     const res = await fetch(url, { headers: { 'Authorization': `Bearer ${t}` } });
                     const data = await res.json();
-                    
+
                     if (data.files && data.files.length > 0) {
                         const CHUNK_SIZE = 10; // Пакетно триене на 10 файла едновременно
                         for (let i = 0; i < data.files.length; i += CHUNK_SIZE) {
@@ -588,7 +602,7 @@
                     }
                     nextPageToken = data.nextPageToken;
                 } while (nextPageToken);
-                
+
                 alert(`Операцията завърши. Изтрити обекти от облака: ${deletedCount}. Локалното хранилище и сесията също са нулирани за напълно чисто начало.`);
                 localStorage.clear();
                 sessionStorage.clear();
@@ -676,7 +690,7 @@
                         sessionStorage.setItem('boardMenuOrder', orderContent);
                         if (window.opener && !window.opener.closed) {
                             window.opener.localStorage.setItem('boardMenuOrder', orderContent);
-                            
+
                             // Също така запазваме и за конкретната папка, ако тя е активна
                             const activeFolder = window.opener.document.getElementById('active-folder-select')?.value;
                             if (activeFolder) {

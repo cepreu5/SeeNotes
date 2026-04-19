@@ -327,7 +327,7 @@ async function parseFileResults(results, filenameForError) {
             }
 
             for (let item of items) {
-                // ВИНАГИ използвайте реалното ID на файла от Google Drive като gdid
+                // ВИНАГИ използвайте реалното ID на файла от Google Drive като gdid (само за бележки)
                 if (id && filenameForError === 'note.txt') {
                     if (item.gdid && item.gdid !== id) {
                         console.warn(`[Sync-ID-Fix] Corrected mismatched ID for note "${item.id}": Internal was "${item.gdid}", actual GDrive ID is "${id}"`);
@@ -575,11 +575,13 @@ async function runGoogleDriveSync() {
 
                                 const isConflict = isDifferent && (isDirty || (isOpenInModal && hasUnsavedChangesInModal));
 
+                                /*
                                 console.log(`[Sync-Debug] Note: ${serverNote.gdid || serverNote.id}`);
                                 console.log(` - Server dm: ${serverNote.datemod}`);
                                 console.log(` - Local dm: ${localNote.datemod}`);
                                 console.log(` - Last sync base: ${lastSyncTimestamp || 'None'}`);
                                 console.log(` - isDifferent: ${isDifferent}, isDirty: ${isDirty}, isOpenInModal: ${isOpenInModal}, hasUnsavedChanges: ${hasUnsavedChangesInModal}`);
+                                */
 
                                 if (isConflict) {
                                     console.log(`[Sync-Conflict!] Buffering for manual resolution: ${serverNote.gdid}${isOpenInModal ? " (Open in Modal with Changes)" : ""}`);
@@ -1528,6 +1530,9 @@ async function migrateDataToNewFolder(targetFolderId) {
     let reloadBtn = document.getElementById('reload_button');
     let counterElem = document.getElementById('note-counter');
     const originalReloadHtml = reloadBtn ? reloadBtn.innerHTML : null;
+
+    // Ако липсва counter-elem в DOM, опитваме да го намерим по друг начин
+    if (!counterElem) counterElem = document.querySelector('.note-counter') || document.getElementById('footer-note-count');
     const originalCounterHtml = counterElem ? counterElem.innerHTML : null;
     const CONCURRENCY_LIMIT = 10;
     try {
@@ -1543,7 +1548,15 @@ async function migrateDataToNewFolder(targetFolderId) {
         for (const name of subfolderNames) {
             newSubfolderIds[name] = await createNewGDriveFolder(name, targetFolderId);
         }
-        const boardsToMigrate = (boardsData || []);
+        const rawBoards = (boardsData || []);
+        const boardsToMigrate = [];
+        const seenTitles = new Set();
+        for (const b of rawBoards) {
+            if (b.title && !seenTitles.has(b.title)) {
+                boardsToMigrate.push(b);
+                seenTitles.add(b.title);
+            }
+        }
         const totalBoards = boardsToMigrate.length;
         const boardGdidMap = {};
         let pool = new Set();
@@ -1552,12 +1565,19 @@ async function migrateDataToNewFolder(targetFolderId) {
         for (let i = 0; i < totalBoards; i++) {
             if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
             const board = boardsToMigrate[i];
-            const oldBoardId = board.gdid;
-            const promise = createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(board)).then(async res => {
+            const oldGdid = board.gdid;
+            const oldId = board.id;
+            const boardToSave = JSON.parse(JSON.stringify(board)); 
+            const promise = createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardToSave)).then(async res => {
                 if (res) {
+                    boardToSave.gdid = res;
+                    // Обновяваме файла в облака, за да съдържа новото ID
+                    await updateGDriveFile(res, JSON.stringify(boardToSave));
+                    
                     board.gdid = res;
-                    if (oldBoardId) boardGdidMap[oldBoardId] = res;
-                    if (useIndexedDb) await putDB(BOARD_STORE_NAME, board);
+                    if (oldGdid) boardGdidMap[oldGdid] = res;
+                    if (oldId) boardGdidMap[oldId] = res;
+                    if (useIndexedDb) await bulkPutDB(BOARD_STORE_NAME, [boardToSave], true);
                 }
                 pool.delete(promise);
                 completedBoards++;
@@ -1581,12 +1601,12 @@ async function migrateDataToNewFolder(targetFolderId) {
         let completedNotes = 0;
         for (let i = 0; i < totalNotes; i++) {
             if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-            const note = notesToMigrate[i];
+            const note = { ...notesToMigrate[i] }; // Клонираме, за да не повредим оригинала в паметта
             const oldGdid = note.gdid;
             delete note.gdid;
             const promise = (async () => {
                 try {
-                    // Update boardid mapping for the note
+                    // Update boardid mapping for the note using the mapping table
                     if (note.boardid && boardGdidMap[note.boardid]) {
                         note.boardid = boardGdidMap[note.boardid];
                     }
@@ -1596,8 +1616,7 @@ async function migrateDataToNewFolder(targetFolderId) {
                         if (oldGdid && mediaNotesMap.hasOwnProperty(oldGdid)) {
                             mediaNotesMap[oldGdid] = newId;
                         }
-                        await updateGDriveFile(newId, JSON.stringify(note));
-                        if (useIndexedDb) await putDB(NOTE_STORE_NAME, note);
+                        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [note], true);
                     }
                 } finally {
                     completedNotes++;
@@ -1642,7 +1661,7 @@ async function migrateDataToNewFolder(targetFolderId) {
         if (newMediaData.length > 0) {
             await createGDriveFile(targetFolderId, 'media.txt', JSON.stringify(newMediaData));
             if (useIndexedDb) {
-                for (let m of newMediaData) await putDB(MEDIA_STORE_NAME, m);
+                for (let m of newMediaData) await bulkPutDB(MEDIA_STORE_NAME, [m], true);
             }
         }
 
@@ -15322,8 +15341,8 @@ async function showNewBoardModal() {
             Object.assign(colorDiv.style, {
                 width: '26px', height: '26px', borderRadius: '50%',
                 backgroundColor: `var(--board-bg-${i})`, cursor: 'pointer',
-                border: isMatch ? '4px solid white' : '1px solid rgba(255,255,255,0.4)',
-                boxShadow: isMatch ? '0 0 12px rgba(255,255,255,0.9)' : '0 2px 4px rgba(0,0,0,0.3)',
+                border: isMatch ? '3px solid #ddd' : '1px solid rgba(255,255,255,0.4)',
+                boxShadow: isMatch ? '0 0 10px rgba(255,255,255,0.5)' : '0 2px 4px rgba(0,0,0,0.3)',
                 transition: 'transform 0.1s, border 0.2s', margin: 'auto'
             });
             colorDiv.onclick = () => {
@@ -15347,8 +15366,8 @@ async function showNewBoardModal() {
             Object.assign(fcDiv.style, {
                 width: '100%', maxWidth: '26px', aspectRatio: '1/1', borderRadius: '4px',
                 backgroundColor: color, cursor: 'pointer',
-                border: isMatch ? '4px solid white' : '1px solid rgba(255,255,255,0.4)',
-                boxShadow: isMatch ? '0 0 12px rgba(255,255,255,0.9)' : '0 2px 4px rgba(0,0,0,0.3)',
+                border: isMatch ? '3px solid #ddd' : '1px solid rgba(255,255,255,0.4)',
+                boxShadow: isMatch ? '0 0 10px rgba(255,255,255,0.5)' : '0 2px 4px rgba(0,0,0,0.3)',
                 transition: 'transform 0.1s, border 0.2s', margin: 'auto'
             });
             fcDiv.onclick = () => {
@@ -15370,8 +15389,8 @@ async function showNewBoardModal() {
             Object.assign(bgDiv.style, {
                 width: '100%', aspectRatio: '16/10', backgroundImage: `url('${bgNames[i]}')`,
                 backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', borderRadius: '4px',
-                border: isMatch ? '4px solid white' : '1px solid rgba(255,255,255,0.4)',
-                boxShadow: isMatch ? '0 0 12px rgba(255,255,255,0.7)' : '0 2px 4px rgba(0,0,0,0.3)',
+                border: isMatch ? '3px solid #ddd' : '1px solid rgba(255,255,255,0.4)',
+                boxShadow: isMatch ? '0 0 10px rgba(255,255,255,0.4)' : '0 2px 4px rgba(0,0,0,0.3)',
                 transition: 'transform 0.1s, border 0.2s'
             });
             bgDiv.onclick = () => {
@@ -15395,8 +15414,16 @@ async function showNewBoardModal() {
                 try {
                     showToast(_('loadingFile') || 'Изтриване...', 2000);
 
-                    // Първо изтриваме всички бележки от този борд
-                    const notesToDelete = allNotesData.filter(n => n.boardid == currentEditingBoard.id);
+                    // Първо изтриваме всички бележки от този борд - ПО-ПРЕЦИЗНО ФИЛТРИРАНЕ
+                    const notesToDelete = allNotesData.filter(n => {
+                        const matchId = n.boardid == currentEditingBoard.id;
+                        const matchGdid = currentEditingBoard.gdid && n.boardid == currentEditingBoard.gdid;
+                        // Ако текущият борд има gdid, задължително искаме и той да съвпадне или бележката да няма gdid
+                        if (currentEditingBoard.gdid) {
+                            return n.boardid == currentEditingBoard.gdid || (matchId && !n.gdid);
+                        }
+                        return matchId;
+                    });
                     for (const note of notesToDelete) {
                         await permanentlyDeleteNote(note.gdid, note.id, true); // skipUI=true за бързина
                     }
@@ -15406,7 +15433,7 @@ async function showNewBoardModal() {
                         await deleteGDriveFile(currentEditingBoard.gdid);
                     }
                     // Премахваме от локалния списък
-                    boardsData = boardsData.filter(b => b.id !== currentEditingBoard.id && (b.gdid !== currentEditingBoard.gdid || !b.gdid));
+                    boardsData = (boardsData || []).filter(b => b.id !== currentEditingBoard.id && (b.gdid !== currentEditingBoard.gdid || !b.gdid) && b.title !== currentEditingBoard.title);
                     // Премахваме от IndexedDB
                     if (useIndexedDb) {
                         await deleteFromDB(BOARD_STORE_NAME, currentEditingBoard.gdid || currentEditingBoard.id);
@@ -15963,6 +15990,35 @@ async function handleSaveDbToFolder() {
     const folderId = await getFolderID();
     if (!folderId) return;
 
+    // --- ПРИНУДИТЕЛНО ЗАРЕЖДАНЕ ОТ IndexedDB: Винаги взимаме данните от базата за най-голяма сигурност ---
+    console.log('[SaveDB] 🔄 Forcing data load from IndexedDB for migration...');
+    try {
+        const dbNotes = await getAllFromDB(NOTE_STORE_NAME);
+        if (dbNotes && dbNotes.length > 0) {
+            allNotesData = dbNotes;
+            console.log('[SaveDB] ✅ Successfully loaded notes from IndexedDB:', allNotesData.length);
+        } else {
+            console.warn('[SaveDB] ⚠️ No notes found in IndexedDB store.');
+        }
+
+        const dbBoards = await getAllFromDB(BOARD_STORE_NAME);
+        if (dbBoards && dbBoards.length > 0) {
+            boardsData = dbBoards;
+            console.log('[SaveDB] ✅ Successfully loaded boards from IndexedDB:', boardsData.length);
+        } else {
+            console.warn('[SaveDB] ⚠️ No boards found in IndexedDB store.');
+        }
+
+        const dbMedia = await getAllFromDB(MEDIA_STORE_NAME);
+        if (dbMedia && dbMedia.length > 0) {
+            mediaData = dbMedia;
+            console.log('[SaveDB] ✅ Successfully loaded media from IndexedDB:', mediaData.length);
+        }
+    } catch (e) {
+        console.error('[SaveDB] ❌ Failed to read from IndexedDB:', e);
+        // Продължаваме с паметта, ако базата е недостъпна
+    }
+
     // Проверка за празна папка
     const checkResult = await checkFolderEligibilityForSave(folderId);
     if (!checkResult.eligible) {
@@ -15992,8 +16048,15 @@ async function handleSaveDbToFolder() {
             }
             // Ако няма съществуваща подредба, създаваме от boardsData
             if (!boardTitles) {
-                boardTitles = (boardsData || [])
-                    .filter(b => b.title)
+                const uniqueBoards = [];
+                const seen = new Set();
+                (boardsData || []).forEach(b => {
+                    if (b.title && !seen.has(b.title)) {
+                        uniqueBoards.push(b);
+                        seen.add(b.title);
+                    }
+                });
+                boardTitles = uniqueBoards
                     .sort((a, b) => {
                         const na = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
                         const nb = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
@@ -16004,7 +16067,18 @@ async function handleSaveDbToFolder() {
             }
             // Синхронизираме folders.json с актуалните данни
             await syncGlobalFoldersJson();
+
+            // Актуализираме времевия маркер, за да предотвратим фалшива индикация за нови файлове след рестарта
+            if (useIndexedDb) {
+                await saveConfig('lastGDTimestamp', Date.now());
+            }
+
             console.log('[SaveDB] boardMenuOrder synced:', boardTitles);
+            showToast((typeof _ === 'function' ? _('dbSavedToFolderSuccess') : 'Database saved successfully!'), 7000);
+            console.log('%c Migration Complete! Successfully moved data to the new folder. ', 'background: #27ae60; color: white; font-weight: bold; padding: 5px;');
+            setTimeout(() => {
+                location.reload();
+            }, 5000);
         }
     }
 }
