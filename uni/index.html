@@ -322,26 +322,35 @@
             <button class="modal-close"
                 style="position: absolute; top: 10px; right: 10px; font-size: 28px; background: none; border: none; cursor: pointer; color: white; z-index: 2;">&times;</button>
             <div
-                style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; padding-right: 30px;">
-                <div style="display: flex; flex-direction: row; gap: 5px;">
+                style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; padding-right: 25px;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
                     <h2 data-key="addBoardTitle"
                         style="margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
                         Нов борд</h2>
-                    <div style="margin-bottom: 5px; margin-left: 15px; display: flex; align-items: center; gap: 10px;">
-                        <div id="new-board-preview"
-                            style="flex-direction: column; align-items: center; gap: 4px; margin-top: 5px; padding: 4px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); width: fit-content; align-self: flex-start;">
-                            <span id="preview-tab" class="board-filter-link"
-                                style="display: inline-block; pointer-events: none; margin: 0; text-align: center; width: 126px; white-space: nowrap; border-radius: 8px 8px 0 0;"></span>
-                            <div id="preview-bg"
-                                style="width: 140px; height: 60px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background-size: cover; background-position: center;">
-                            </div>
-                        </div>
+
+                    <button id="board-individual-order-btn" class="zoom-btn"
+                        style="width: fit-content; padding: 0 10px; height: 36px; background: darkorange; color: white; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-top: 5px;">
+                        <span data-key="orderNotesBtn">Order notes</span>
+                    </button>
+                    <label style="color: white; font-size: 14px; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="board-has-individual-order" class="settings-checkbox"
+                            style="margin: 0; width: 14px; height: 14px; pointer-events: none;" readonly>
+                        <span data-key="individualOrderAppliedLabel">Custom</span>
+                    </label>
+                </div>
+
+                <div id="new-board-preview"
+                    style="display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); width: fit-content; align-self: flex-start;">
+                    <span id="preview-tab" class="board-filter-link"
+                        style="display: inline-block; pointer-events: none; margin: 0; text-align: center; width: 126px; white-space: nowrap; border-radius: 8px 8px 0 0;"></span>
+                    <div id="preview-bg"
+                        style="width: 140px; height: 60px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background-size: cover; background-position: center;">
                     </div>
                 </div>
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
                 <label data-key="boardSelectLabel"
-                    style="flex: 0 0 80px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Редактиране:</label>
+                    style="flex: 0 0 80px; font-weight: 600; color: white;">Редактиране:</label>
                 <select id="board-edit-select"
                     style="flex: 1; height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 5px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
                     <option value="" data-key="newBoardOption" style="background:#2c2c2c;">[Нов борд]</option>
@@ -353,7 +362,7 @@
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
                 <label data-key="boardTitleLabel"
-                    style="flex: 0 0 80px; font-weight: 600; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Заглавие:</label>
+                    style="flex: 0 0 80px; font-weight: 600; color: white;">Заглавие:</label>
                 <input type="text" id="new-board-title"
                     style="flex: 1; width: 40%;height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 10px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
                 <button id="board-reorder-btn" class="zoom-btn"
@@ -364,8 +373,8 @@
             <div style="margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px;">
                 <div style="flex: 0 0 80px; display: flex; flex-direction: column; gap: 4px;">
                     <label data-key="boardColorLabel"
-                        style="font-weight: 600; color: white; margin-top: 4px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Цвят:</label>
-                    <input type="text" id="new-board-custom-color" placeholder="#HEX" 
+                        style="font-weight: 600; color: white; margin-top: 4px;">Цвят:</label>
+                    <input type="text" id="new-board-custom-color" placeholder="#HEX"
                         style="width: 70px; height: 22px; font-size: 11px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #aaa; padding: 0 5px; outline: none;">
                 </div>
                 <div id="new-board-colors"
@@ -376,8 +385,8 @@
             <div style="margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px;">
                 <div style="flex: 0 0 80px; display: flex; flex-direction: column; gap: 4px;">
                     <label data-key="boardFontColorLabel"
-                        style="font-weight: 600; color: white; margin-top: 4px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Шрифт:</label>
-                    <input type="text" id="new-board-custom-font-color" placeholder="#HEX" 
+                        style="font-weight: 600; color: white; margin-top: 4px;">Шрифт:</label>
+                    <input type="text" id="new-board-custom-font-color" placeholder="#HEX"
                         style="width: 70px; height: 22px; font-size: 11px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #aaa; padding: 0 5px; outline: none;">
                 </div>
                 <div id="new-board-font-colors"
@@ -387,14 +396,36 @@
             </div>
             <div style="margin-bottom: 20px; display: flex; align-items: flex-start; gap: 10px;">
                 <label data-key="boardBackgroundLabel"
-                    style="flex: 0 0 80px; font-weight: 600; color: white; margin-top: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Фон:</label>
+                    style="flex: 0 0 80px; font-weight: 600; color: white; margin-top: 8px;">Фон:</label>
                 <div id="new-board-backgrounds"
-                    style="flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px;">
+                    style="flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px;">
                     <!-- Фонове ще бъдат добавени динамично -->
                 </div>
             </div>
+
             <button id="save-new-board-btn" data-key="submitButton"
                 style="width: 100%; height: 45px; background: darkorange; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s, box-shadow 0.1s;">Потвърди</button>
+        </div>
+    </div>
+
+    <!-- Модал за индивидуален ред на бележките в борд -->
+    <div id="board-order-modal" class="modal-overlay" style="z-index: 10001;">
+        <div class="modal-content-box"
+            style="width: 100%; max-width: 320px; padding: 20px; border-radius: 15px; background: #333; box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); position: relative;">
+            <button class="modal-close" id="board-order-close"
+                style="position: absolute; top: 10px; right: 10px; font-size: 28px; background: none; border: none; cursor: pointer; color: white; z-index: 2;">&times;</button>
+            <h3 style="color: white; margin-top: 0; margin-bottom: 15px;" data-key="orderNotesBtn">Order Notes</h3>
+            <div id="board-sort-options-container" class="sort-options-container"
+                style="background: rgba(255,255,255,0.12); color: #f0f0f0; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px;">
+                <!-- Ще се попълни динамично -->
+            </div>
+
+            <button id="board-order-clear-btn"
+                style="width: 100%; height: 35px; background: #e74c3c; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; margin-bottom: 10px;"
+                data-key="clearCustomOrderBtn">Clear Custom Order</button>
+            <button id="board-order-save-btn"
+                style="width: 100%; height: 40px; background: darkorange; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold;"
+                data-key="saveCustomOrderBtn">Save Custom Order</button>
         </div>
     </div>
 

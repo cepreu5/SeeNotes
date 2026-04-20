@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.16'; // App version
+const version = 'Beta 1.17'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -1567,13 +1567,13 @@ async function migrateDataToNewFolder(targetFolderId) {
             const board = boardsToMigrate[i];
             const oldGdid = board.gdid;
             const oldId = board.id;
-            const boardToSave = JSON.parse(JSON.stringify(board)); 
+            const boardToSave = JSON.parse(JSON.stringify(board));
             const promise = createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardToSave)).then(async res => {
                 if (res) {
                     boardToSave.gdid = res;
                     // Обновяваме файла в облака, за да съдържа новото ID
                     await updateGDriveFile(res, JSON.stringify(boardToSave));
-                    
+
                     board.gdid = res;
                     if (oldGdid) boardGdidMap[oldGdid] = res;
                     if (oldId) boardGdidMap[oldId] = res;
@@ -8824,9 +8824,30 @@ function applyFilters() {
     }
     // --- Sorting Logic ---
     if (localStorage.getItem('enableNoteSorting') === 'true') {
-        const sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
-        const sortReverse = localStorage.getItem('sortInReverse') === 'true';
-        const sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
+        let sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
+        let sortReverse = localStorage.getItem('sortInReverse') === 'true';
+        let sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
+
+        // --- Individual Board Sort Override ---
+        if (currentBoardFilter && currentBoardFilter !== 'trash' && currentBoardFilter !== 'reminder' && currentBoardFilter !== 'all') {
+            const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
+            const boardToMatch = boardsData.find(b => (isArh ? b.id : b.gdid) == currentBoardFilter);
+            if (boardToMatch && boardToMatch.status >= 10) {
+                const statStr = String(boardToMatch.status);
+                const baseStat = parseInt(statStr.substring(0, 2));
+                const modifiers = statStr.substring(2);
+
+                const criteriaMap = { 10: 'numord', 11: 'color', 12: 'date', 13: 'datemod', 14: 'calendarDate', 15: 'alpha' };
+                if (criteriaMap[baseStat]) {
+                    sortCriteria = criteriaMap[baseStat];
+                }
+
+                sortReverse = modifiers.includes('1');
+                sortRemindersTop = modifiers.includes('2');
+            }
+        }
+        // --- End Override ---
+
         const sortOrder = sortReverse ? -1 : 1;
         const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not([style*="display: none"]):not(.promo-note)'));
         visibleNotes.sort((a, b) => {
@@ -12222,10 +12243,17 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     // Update container
     if (!rerenderOnlyMenu) {
+        notesContainer.style.visibility = 'hidden'; // Hide container to prevent text-before-background flash
         notesContainer.appendChild(fragment);
         // --- IMMEDIATE FILTER APPLICATION ---
         // Apply filters synchronously immediately after adding to DOM to prevent "flash" of all notes
         applyFilters();
+        // --- Reveal container after backgrounds are decoded by the browser ---
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                notesContainer.style.visibility = '';
+            });
+        });
     }
     // Hide spinner - using requestAnimationFrame to ensure the browser has a chance to 
     // paint the newly added notes with their backgrounds before we remove the overlay.
@@ -15162,6 +15190,7 @@ async function showNewBoardModal() {
     let selectedColor = 0;
     let selectedFontColor = 0;
     let selectedBackground = 0;
+    let selectedBoardStatus = 0;
     let currentEditingBoard = null;
 
     // Populated dropdown with current boards
@@ -15291,6 +15320,7 @@ async function showNewBoardModal() {
                 selectedFontColor = 0;
             }
             selectedBackground = (board.backnum !== undefined) ? Number(board.backnum) : 0;
+            selectedBoardStatus = (board.status !== undefined) ? Number(board.status) : 0;
             saveBtn.textContent = _('updateButton') || "Обнови";
             if (editSelect) editSelect.value = (board.gdid || board.id).toString();
         } else {
@@ -15299,8 +15329,14 @@ async function showNewBoardModal() {
             selectedColor = 0;
             selectedFontColor = 0;
             selectedBackground = 0;
+            selectedBoardStatus = 0;
             saveBtn.textContent = _('submitButton') || "Потвърди";
             if (editSelect) editSelect.value = "";
+        }
+
+        const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
+        if (hasIndividualOrderCheckbox) {
+            hasIndividualOrderCheckbox.checked = selectedBoardStatus >= 10;
         }
         if (delBtn) delBtn.style.display = board ? 'flex' : 'none';
         renderColorOptions(selectedColor);
@@ -15326,6 +15362,100 @@ async function showNewBoardModal() {
             showBoardReorderPopup();
         };
     }
+    // --- Individual Board Sort Logic ---
+    const individualOrderBtn = document.getElementById('board-individual-order-btn');
+    const boardOrderModal = document.getElementById('board-order-modal');
+    const boardOrderCloseBtn = document.getElementById('board-order-close');
+    const clearOrderBtn = document.getElementById('board-order-clear-btn');
+    const saveOrderBtn = document.getElementById('board-order-save-btn');
+
+    if (individualOrderBtn && boardOrderModal) {
+        individualOrderBtn.onclick = () => {
+            const destContainer = document.getElementById('board-sort-options-container');
+            if (destContainer && destContainer.children.length === 0) {
+                const sourceContainer = document.querySelector('#sorting-options-section .sort-options-container');
+                if (sourceContainer) {
+                    const cloned = sourceContainer.cloneNode(true);
+
+                    // Assign new names so radio buttons don't conflict with global ones
+                    const radios = cloned.querySelectorAll('input[type="radio"]');
+                    radios.forEach(r => r.name = "board-sort-criteria");
+
+                    const reverseCheck = cloned.querySelector('#sort-reverse-checkbox');
+                    if (reverseCheck) reverseCheck.id = "board-sort-reverse-checkbox";
+
+                    const remindersTop = cloned.querySelector('#sort-reminders-top-checkbox');
+                    if (remindersTop) remindersTop.id = "board-sort-reminders-top-checkbox";
+
+                    destContainer.appendChild(cloned);
+                }
+            }
+
+            if (selectedBoardStatus >= 10) {
+                const statStr = String(selectedBoardStatus);
+                const baseStat = parseInt(statStr.substring(0, 2));
+                const modifiers = statStr.substring(2);
+
+                const criteriaMap = { 10: 'numord', 11: 'color', 12: 'date', 13: 'datemod', 14: 'calendarDate', 15: 'alpha' };
+                const criteria = criteriaMap[baseStat] || 'numord';
+
+                const radio = document.querySelector(`input[name="board-sort-criteria"][value="${criteria}"]`);
+                if (radio) radio.checked = true;
+
+                const rc = document.getElementById('board-sort-reverse-checkbox');
+                if (rc) rc.checked = modifiers.includes('1');
+                const rtc = document.getElementById('board-sort-reminders-top-checkbox');
+                if (rtc) rtc.checked = modifiers.includes('2');
+            } else {
+                const defaultRadio = document.querySelector(`input[name="board-sort-criteria"][value="numord"]`);
+                if (defaultRadio) defaultRadio.checked = true;
+                const rc = document.getElementById('board-sort-reverse-checkbox');
+                if (rc) rc.checked = false;
+                const rtc = document.getElementById('board-sort-reminders-top-checkbox');
+                if (rtc) rtc.checked = false;
+            }
+            boardOrderModal.classList.add('visible');
+        };
+    }
+
+    if (boardOrderCloseBtn) {
+        boardOrderCloseBtn.onclick = () => {
+            boardOrderModal.classList.remove('visible');
+        };
+    }
+
+    if (clearOrderBtn) {
+        clearOrderBtn.onclick = () => {
+            selectedBoardStatus = 0;
+            const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
+            if (hasIndividualOrderCheckbox) hasIndividualOrderCheckbox.checked = false;
+            boardOrderModal.classList.remove('visible');
+        };
+    }
+
+    if (saveOrderBtn) {
+        saveOrderBtn.onclick = () => {
+            const criteriaRadio = document.querySelector('input[name="board-sort-criteria"]:checked');
+            const criteriaValue = criteriaRadio ? criteriaRadio.value : 'numord';
+            const reverse = document.getElementById('board-sort-reverse-checkbox').checked;
+            const remindersTop = document.getElementById('board-sort-reminders-top-checkbox').checked;
+
+            const valueMap = { 'numord': 10, 'color': 11, 'date': 12, 'datemod': 13, 'calendarDate': 14, 'alpha': 15 };
+            const baseStatus = valueMap[criteriaValue] || 10;
+            let modifiers = '';
+            if (reverse) modifiers += '1';
+            if (remindersTop) modifiers += '2';
+
+            selectedBoardStatus = parseInt(baseStatus.toString() + modifiers);
+
+            const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
+            if (hasIndividualOrderCheckbox) hasIndividualOrderCheckbox.checked = true;
+
+            boardOrderModal.classList.remove('visible');
+        };
+    }
+    // --- End Individual Board Sort Logic ---
+
     // (Removed outdated initialization)
 
     function renderColorOptions(current) {
@@ -15387,9 +15517,9 @@ async function showNewBoardModal() {
             const isMatch = (i == current);
 
             Object.assign(bgDiv.style, {
-                width: '100%', aspectRatio: '16/10', backgroundImage: `url('${bgNames[i]}')`,
+                width: '95%', aspectRatio: '15/10', backgroundImage: `url('${bgNames[i]}')`,
                 backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', borderRadius: '4px',
-                border: isMatch ? '3px solid #ddd' : '1px solid rgba(255,255,255,0.4)',
+                border: isMatch ? '3px solid #ddd' : '1px solid rgba(226, 250, 14, 1)',
                 boxShadow: isMatch ? '0 0 10px rgba(255,255,255,0.4)' : '0 2px 4px rgba(0,0,0,0.3)',
                 transition: 'transform 0.1s, border 0.2s'
             });
@@ -15497,13 +15627,13 @@ async function showNewBoardModal() {
         let boardToSave;
 
         if (currentEditingBoard) {
-            boardToSave = { ...currentEditingBoard, "backnum": selectedBackground, "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "title": title };
+            boardToSave = { ...currentEditingBoard, "backnum": selectedBackground, "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "title": title, "status": selectedBoardStatus };
         } else {
             trackMaxBoardIds(boardsData);
             boardIdCounter++;
             localStorage.setItem('boardIdCounter', boardIdCounter.toString());
             syncFolderDataAsync();
-            boardToSave = { "backcolor": 0, "backnum": selectedBackground, "backpath": "", "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "gdid": "", "id": boardIdCounter, "numord": boardIdCounter, "status": 0, "title": title };
+            boardToSave = { "backcolor": 0, "backnum": selectedBackground, "backpath": "", "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "gdid": "", "id": boardIdCounter, "numord": boardIdCounter, "status": selectedBoardStatus, "title": title };
         }
 
         try {
