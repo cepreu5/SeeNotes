@@ -28,23 +28,24 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
 }
 
 // --- Listener for Share events from Service Worker (to avoid reload) ---
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'SHARE_TARGET_EVENT') {
-            console.log('[Main] Received share event from SW:', event.data.data);
-            // Ако имаме отворен модал, го затваряме първо, за да заредим новия споделен контент
-            const closeBtn = document.querySelector('.close-modal');
-            if (closeBtn) closeBtn.click();
-            
-            // Премахваме фокуса от текущи елементи, за да не пречат на новата бележка
-            if (document.activeElement) document.activeElement.blur();
-            
-            setTimeout(() => {
-                handleShareTarget(event.data.data);
-            }, 100);
+window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SHARE_TARGET_EVENT') {
+        console.log('[Main] Received SHARE_TARGET_EVENT from SW:', event.data.data);
+        // Ако имаме отворен модал, го затваряме първо, за да заредим новия споделен контент
+        const closeBtn = document.querySelector('.close-modal');
+        if (closeBtn) {
+            console.log('[Main] Closing existing modal for new share');
+            closeBtn.click();
         }
-    });
-}
+        
+        // Премахваме фокуса от текущи елементи, за да не пречат на новата бележка
+        if (document.activeElement) document.activeElement.blur();
+        
+        setTimeout(() => {
+            handleShareTarget(event.data.data);
+        }, 300); // Малко повече време за затваряне на стария модал
+    }
+});
 
 let pass = false;
 
@@ -3584,10 +3585,12 @@ async function handleShareTarget(externalData = null) {
                 const waitForNoteGdid = () => {
                     return new Promise(resolve => {
                         const check = (attempts = 0) => {
+                            // Търсим в allNotesData по локалното id
                             const noteInData = allNotesData.find(n => String(n.id) === String(noteId));
-                            if (noteInData && noteInData.gdid) {
+                            // Важно: gdid трябва да е низ (string) от Google Drive
+                            if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
                                 resolve(noteInData.gdid);
-                            } else if (attempts < 60) { // До 30 секунди
+                            } else if (attempts < 80) { // До 40 секунди
                                 setTimeout(() => check(attempts + 1), 500);
                             } else {
                                 resolve(null);
@@ -3598,11 +3601,11 @@ async function handleShareTarget(externalData = null) {
                 };
                 const noteGdid = await waitForNoteGdid();
                 if (!noteGdid) {
-                    console.warn('Note gdid not available after timeout. Media entry will not be created.');
-                    showToast('⚠️ Image uploaded, but note must be saved first to create link.', 5000);
+                    console.warn('[ShareTarget] Note gdid not available after timeout. Media entry NOT created.');
+                    showToast('⚠️ Image uploaded, but link failed (note not saved to GDrive in time).', 7000);
                     return;
                 }
-                // 4. Създаваме media.txt запис в GDrive
+                // 4. Създаваме media.txt запис в GDrive (използваме само истински GDID)
                 const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
                 const mediaEntry = {
                     datemod: now,

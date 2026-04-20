@@ -171,7 +171,8 @@ self.addEventListener('fetch', (event) => {
         }
 
         if (existingClient) {
-          console.log('[SW] Found existing client, sending message...');
+          console.log('[SW] Found existing client. Focus and send data.');
+          await existingClient.focus();
           existingClient.postMessage({
             type: 'SHARE_TARGET_EVENT',
             data: {
@@ -181,10 +182,10 @@ self.addEventListener('fetch', (event) => {
               shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
             }
           });
-          if ('focus' in existingClient) await existingClient.focus();
           return new Response(null, { status: 204 });
         }
-
+        
+        console.log('[SW] No existing client found. Proceed with redirect.');
         return Response.redirect(redirectUrl.toString(), 303);
       })());
       return;
