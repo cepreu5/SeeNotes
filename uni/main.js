@@ -27,6 +27,25 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
     }
 }
 
+// --- Listener for Share events from Service Worker (to avoid reload) ---
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'SHARE_TARGET_EVENT') {
+            console.log('[Main] Received share event from SW:', event.data.data);
+            // Ако имаме отворен модал, го затваряме първо, за да заредим новия споделен контент
+            const closeBtn = document.querySelector('.close-modal');
+            if (closeBtn) closeBtn.click();
+            
+            // Премахваме фокуса от текущи елементи, за да не пречат на новата бележка
+            if (document.activeElement) document.activeElement.blur();
+            
+            setTimeout(() => {
+                handleShareTarget(event.data.data);
+            }, 100);
+        }
+    });
+}
+
 let pass = false;
 
 // --- Demo Mode ---
@@ -3614,14 +3633,6 @@ async function handleShareTarget(externalData = null) {
         }
     }, 500);
 }
-
-// --- Listener for Share events from Service Worker (to avoid reload) ---
-navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'SHARE_TARGET_EVENT') {
-        console.log('[Main] Received share event from SW:', event.data.data);
-        handleShareTarget(event.data.data);
-    }
-});
 
 // --- Support for LaunchQueue (Modern browsers like Chrome/Edge) ---
 if ('launchQueue' in window) {

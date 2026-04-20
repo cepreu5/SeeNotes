@@ -158,12 +158,20 @@ self.addEventListener('fetch', (event) => {
 
         // --- NEW: Try to find existing window and use postMessage to avoid reload ---
         const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-        const existingClient = clients.find(c => {
+        let existingClient = clients.find(c => {
           const cUrl = new URL(c.url);
-          return cUrl.pathname === url.pathname || cUrl.pathname === (url.pathname + 'index.html') || url.pathname === (cUrl.pathname + 'index.html');
+          const reqPath = url.pathname.replace(/\/index\.html$/, '/');
+          const clientPath = cUrl.pathname.replace(/\/index\.html$/, '/');
+          return reqPath === clientPath;
         });
+        
+        // Fallback: if no exact path match, find any client from the same origin
+        if (!existingClient && clients.length > 0) {
+          existingClient = clients[0];
+        }
 
         if (existingClient) {
+          console.log('[SW] Found existing client, sending message...');
           existingClient.postMessage({
             type: 'SHARE_TARGET_EVENT',
             data: {
@@ -173,8 +181,7 @@ self.addEventListener('fetch', (event) => {
               shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
             }
           });
-          existingClient.focus();
-          // Return a 204 No Content. Many browsers will stay on current page and the app just pops up.
+          if ('focus' in existingClient) await existingClient.focus();
           return new Response(null, { status: 204 });
         }
 
