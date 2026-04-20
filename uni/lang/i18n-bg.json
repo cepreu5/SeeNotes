@@ -408,5 +408,6 @@
     "confirmDbDeleteOnFolderChange": "Желаете ли да изтриете текущата база данни при смяната на папката?",
     "sharedContentReceived": "Споделено съдържание получено",
     "uploadingSharedImage": "Качване на изображение...",
-    "sharedImageSaved": "Изображението е прикачено към бележката"
+    "sharedImageSaved": "Изображението е прикачено към бележката",
+    "openLink": "Отвори"
 }

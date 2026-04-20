@@ -407,5 +407,6 @@
     "confirmDbDeleteOnFolderChange": "Do you want to delete the current database when switching the folder?",
     "sharedContentReceived": "Shared content received",
     "uploadingSharedImage": "Uploading image...",
-    "sharedImageSaved": "Image attached to note"
+    "sharedImageSaved": "Image attached to note",
+    "openLink": "Open"
 }

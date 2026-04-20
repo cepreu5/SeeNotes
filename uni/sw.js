@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.19';
+const CACHE_NAME = 'cx-notes-b1.14';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -155,6 +155,29 @@ self.addEventListener('fetch', (event) => {
           await cache.put('shared-image', new Response(imageFile, { headers }));
           redirectUrl.searchParams.set('shared_image', '1');
         }
+
+        // --- NEW: Try to find existing window and use postMessage to avoid reload ---
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        const existingClient = clients.find(c => {
+          const cUrl = new URL(c.url);
+          return cUrl.pathname === url.pathname || cUrl.pathname === (url.pathname + 'index.html') || url.pathname === (cUrl.pathname + 'index.html');
+        });
+
+        if (existingClient) {
+          existingClient.postMessage({
+            type: 'SHARE_TARGET_EVENT',
+            data: {
+              shared_title: title,
+              shared_text: text,
+              shared_url: sharedUrl,
+              shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
+            }
+          });
+          existingClient.focus();
+          // Return a 204 No Content. Many browsers will stay on current page and the app just pops up.
+          return new Response(null, { status: 204 });
+        }
+
         return Response.redirect(redirectUrl.toString(), 303);
       })());
       return;

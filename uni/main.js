@@ -7,8 +7,8 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.19'; // App version
-const debug = false; // Глобален флаг за дебъг режим
+const version = 'Beta 1.14'; // App version
+const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
 let guide = true;
@@ -3473,12 +3473,12 @@ async function deleteFromDB(storeName, key) {
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
 // --- Web Share Target API Handler ---
-async function handleShareTarget() {
+async function handleShareTarget(externalData = null) {
     const url = new URL(window.location.href);
-    const sharedTitle = url.searchParams.get('shared_title');
-    const sharedText = url.searchParams.get('shared_text');
-    const sharedUrl = url.searchParams.get('shared_url');
-    const hasSharedImage = url.searchParams.get('shared_image') === '1';
+    const sharedTitle = externalData ? externalData.shared_title : url.searchParams.get('shared_title');
+    const sharedText = externalData ? externalData.shared_text : url.searchParams.get('shared_text');
+    const sharedUrl = externalData ? externalData.shared_url : url.searchParams.get('shared_url');
+    const hasSharedImage = externalData ? (externalData.shared_image === '1') : (url.searchParams.get('shared_image') === '1');
     if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
@@ -3591,7 +3591,7 @@ async function handleShareTarget() {
                     gdid: '',
                     id: maxMediaId + 1,
                     noteid: noteGdid,
-                    path: '',
+                    path: `Images/${sharedImageFilename}`,
                     pathGD: imageGdid,
                     type: 1
                 };
@@ -3613,6 +3613,31 @@ async function handleShareTarget() {
             }
         }
     }, 500);
+}
+
+// --- Listener for Share events from Service Worker (to avoid reload) ---
+navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SHARE_TARGET_EVENT') {
+        console.log('[Main] Received share event from SW:', event.data.data);
+        handleShareTarget(event.data.data);
+    }
+});
+
+// --- Support for LaunchQueue (Modern browsers like Chrome/Edge) ---
+if ('launchQueue' in window) {
+    window.launchQueue.setConsumer(async (launchParams) => {
+        if (!launchParams.targetURL) return;
+        const url = new URL(launchParams.targetURL);
+        const params = {
+            shared_title: url.searchParams.get('shared_title'),
+            shared_text: url.searchParams.get('shared_text'),
+            shared_url: url.searchParams.get('shared_url'),
+            shared_image: url.searchParams.get('shared_image')
+        };
+        if (params.shared_title || params.shared_text || params.shared_url || params.shared_image === '1') {
+            handleShareTarget(params);
+        }
+    });
 }
 
 // --- Основна стартова функция ---
@@ -11466,13 +11491,16 @@ window.copyCode = function (btn) {
 async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local', isForModal = false) {
     const iconDiv = document.createElement('div');
     iconDiv.innerHTML = iconData.svg;
-    const filename = attachment.path ? attachment.path.split('/').pop() : '';
-    const archiveFolderName = dirHandle.name;
+    const path = attachment.path || '';
+    const nameOnly = path.split('/').pop();
+    const isSharedResource = nameOnly.startsWith('shared_');
+    const displayLinkText = (isSharedResource || !nameOnly) ? (_('openLink') || 'Open') : nameOnly;
+    const archiveFolderName = dirHandle ? dirHandle.name : '';
     const createLink = async (folderName, textPrefix) => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
         if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             const span = document.createElement('span');
-            span.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
+            span.textContent = textPrefix + displayLinkText;
             return span;
         }
         const link = document.createElement('a');
@@ -11513,7 +11541,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                 showToast(_('errorOpenFile').replace('{filename}', filename));
             }
         };
-        link.textContent = textPrefix + (mode === 'local' ? filename : attachment.path);
+        link.textContent = textPrefix + displayLinkText;
         return link;
     };
     const appendWithDescription = async (folder, prefix, description) => {
@@ -11617,7 +11645,10 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
         attachmentWrapper.prepend(iconDiv);
         return;
     }
-    const filename = attachment.path.split('/').pop();
+    const path = attachment.path || '';
+    const filename = path.split('/').pop();
+    const isSharedResource = filename.startsWith('shared_');
+    const displayLinkText = (isSharedResource || !filename) ? (_('openLink') || 'Open') : filename;
     const fileId = attachment.pathGD; // Вече имаме fileId директно в attachment обекта.
     // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
     const setupLink = (folderName, textPrefix) => {
@@ -11625,12 +11656,12 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
         let linkElement;
         if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             linkElement = document.createElement('span');
-            linkElement.textContent = textPrefix + filename;
+            linkElement.textContent = textPrefix + displayLinkText;
             return linkElement; // Връщаме span елемента
         }
         linkElement = document.createElement('a');
         linkElement.href = '#'; // href вече не сочи директно към файла.
-        linkElement.textContent = textPrefix + filename;
+        linkElement.textContent = textPrefix + displayLinkText;
         linkElement.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
         linkElement.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
         linkElement.title = `Click to open ${filename} from Google Drive`;
