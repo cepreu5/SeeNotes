@@ -171,9 +171,10 @@ self.addEventListener('fetch', (event) => {
         }
 
         if (existingClient) {
-          console.log('[SW] Found existing client. Focus and send data.');
+          console.log('[SW] Found existing client. Focusing and sending data...', existingClient.id);
           await existingClient.focus();
-          existingClient.postMessage({
+          
+          const shareData = {
             type: 'SHARE_TARGET_EVENT',
             data: {
               shared_title: title,
@@ -181,7 +182,16 @@ self.addEventListener('fetch', (event) => {
               shared_url: sharedUrl,
               shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
             }
-          });
+          };
+
+          // 1. Direct postMessage to the client
+          existingClient.postMessage(shareData);
+
+          // 2. BroadcastChannel as backup
+          const bc = new BroadcastChannel('share_target_channel');
+          bc.postMessage(shareData);
+          bc.close();
+          
           return new Response(null, { status: 204 });
         }
         

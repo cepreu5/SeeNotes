@@ -27,25 +27,41 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
     }
 }
 
-// --- Listener for Share events from Service Worker (to avoid reload) ---
-window.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'SHARE_TARGET_EVENT') {
-        console.log('[Main] Received SHARE_TARGET_EVENT from SW:', event.data.data);
-        // Ако имаме отворен модал, го затваряме първо, за да заредим новия споделен контент
-        const closeBtn = document.querySelector('.close-modal');
-        if (closeBtn) {
-            console.log('[Main] Closing existing modal for new share');
-            closeBtn.click();
-        }
-        
-        // Премахваме фокуса от текущи елементи, за да не пречат на новата бележка
+// --- Unified Share Event Handler ---
+const handleShareEvent = (eventData, source) => {
+    if (eventData && eventData.type === 'SHARE_TARGET_EVENT') {
+        const now = Date.now();
+        const isDuplicate = window.lastShareEventTime && (now - window.lastShareEventTime < 1000);
+
+        console.log(`[Main] Received SHARE_TARGET_EVENT from ${source}. ${isDuplicate ? '(Duplicate ignored)' : ''}`, eventData.data);
+
+        if (isDuplicate) return;
+        window.lastShareEventTime = now;
+
+        // 1. Изчистваме всички отворени модали
+        document.querySelectorAll('.modal.visible, .settings-modal.visible, .modal-overlay.visible').forEach(m => {
+            m.classList.remove('visible');
+        });
+
+        // 2. Фокусираме и изчистваме активни елементи
         if (document.activeElement) document.activeElement.blur();
-        
+
+        // 3. Изчакваме анимациите и отваряме Share Target
         setTimeout(() => {
-            handleShareTarget(event.data.data);
-        }, 300); // Малко повече време за затваряне на стария модал
+            console.log(`[Main] Invoking handleShareTarget (triggered by ${source})...`);
+            handleShareTarget(eventData.data);
+        }, 300);
     }
-});
+};
+
+// Listen via BroadcastChannel
+const shareChannel = new BroadcastChannel('share_target_channel');
+shareChannel.onmessage = (event) => handleShareEvent(event.data, 'BroadcastChannel');
+
+// Listen via direct SW postMessage
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => handleShareEvent(event.data, 'ServiceWorker.postMessage'));
+}
 
 let pass = false;
 
@@ -3612,8 +3628,8 @@ async function handleShareTarget(externalData = null) {
                     description: '',
                     gdid: '',
                     id: maxMediaId + 1,
-                    noteid: noteGdid,
-                    path: `Images/${sharedImageFilename}`,
+                    noteid: noteGdid, // STRING GDID
+                    path: sharedImageFilename, // Само името на файла (логика от Multinotes)
                     pathGD: imageGdid,
                     type: 1
                 };
@@ -3621,13 +3637,21 @@ async function handleShareTarget(externalData = null) {
                 if (mediaFileGdid) {
                     mediaEntry.gdid = mediaFileGdid;
                     await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                    // 5. Обновяваме локалните данни
+                    // 5. Обновяваме локалните данни и UI
                     mediaData.push(mediaEntry);
                     if (useIndexedDb) {
                         await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
                     }
+                    console.log('[ShareTarget] Media entry added to mediaData:', mediaEntry);
                     showToast(_('sharedImageSaved') || '✅ Image attached to note', 3000);
-                    console.log('[ShareTarget] Image attachment created:', mediaEntry);
+
+                    // Хирургично обновяваме само тази бележка, вместо цялото табло
+                    if (typeof refreshNoteUI === 'function') {
+                        console.log('[ShareTarget] Refreshing single note UI...');
+                        await refreshNoteUI(noteGdid);
+                    } else {
+                        renderNotes();
+                    }
                 }
             } catch (e) {
                 console.error('[ShareTarget] Error processing shared image:', e);
@@ -12286,6 +12310,32 @@ async function createNoteElement(noteContent) {
         }
     }
     return note;
+}
+
+/**
+ * Актуализира само съответния DOM елемент на бележката, без да прерисува целия екран.
+ * @param {string} gdid - Глобалното ID на бележката.
+ */
+async function refreshNoteUI(gdid) {
+    if (!gdid) return;
+    const oldNoteEl = document.querySelector(`.note[data-g="${gdid}"]`);
+    if (!oldNoteEl) {
+        console.warn(`[refreshNoteUI] Note with GDID ${gdid} not found in DOM.`);
+        return;
+    }
+
+    const noteData = allNotesData.find(n => n.gdid === gdid);
+    if (!noteData) {
+        console.error(`[refreshNoteUI] Note data for GDID ${gdid} not found in memory.`);
+        return;
+    }
+
+    const newNoteEl = await createNoteElement(noteData);
+    if (newNoteEl && oldNoteEl.parentNode) {
+        oldNoteEl.parentNode.replaceChild(newNoteEl, oldNoteEl);
+        // Важно: Извикваме applyFilters, за да се приложи текущият филтър на борда (за да не се появи "скрита" бележка)
+        if (typeof applyFilters === 'function') applyFilters();
+    }
 }
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Изчистваме бележките само ако не презареждаме единствено менюто - ПРЕМЕСТЕНО ПО-ДОЛУ ЗА ИЗБЯГВАНЕ НА 'МИГАНЕ'
