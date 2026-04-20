@@ -71,7 +71,9 @@
             "files": [
                 {
                     "name": "shared_image",
-                    "accept": ["image/*"]
+                    "accept": [
+                        "image/*"
+                    ]
                 }
             ]
         }
