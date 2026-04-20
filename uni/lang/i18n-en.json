@@ -404,5 +404,8 @@
     "saveDbToFolderLabel": "Save DB to folder",
     "errorFolderNotEmpty": "The folder is not empty! Operation stopped for data protection.",
     "confirmSaveDbToFolder": "This will save all notes and boards from memory to the current folder. Do you want to continue?",
-    "confirmDbDeleteOnFolderChange": "Do you want to delete the current database when switching the folder?"
+    "confirmDbDeleteOnFolderChange": "Do you want to delete the current database when switching the folder?",
+    "sharedContentReceived": "Shared content received",
+    "uploadingSharedImage": "Uploading image...",
+    "sharedImageSaved": "Image attached to note"
 }

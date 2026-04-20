@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.17';
+const CACHE_NAME = 'cx-notes-b1.18';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -109,7 +109,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName !== 'app-cache') {
+          if (cacheName !== CACHE_NAME && cacheName !== 'app-cache' && cacheName !== 'share-target-image') {
             return caches.delete(cacheName);
           }
         })
@@ -129,7 +129,37 @@ self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
-
+  // --- Share Target POST handler ---
+  if (event.request.method === 'POST') {
+    const url = new URL(event.request.url);
+    if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
+      event.respondWith((async () => {
+        const formData = await event.request.formData();
+        const title = formData.get('shared_title') || '';
+        const text = formData.get('shared_text') || '';
+        const sharedUrl = formData.get('shared_url') || '';
+        const imageFile = formData.get('shared_image');
+        // Build redirect URL with text params
+        const redirectUrl = new URL(url.pathname, self.location.origin);
+        if (title) redirectUrl.searchParams.set('shared_title', title);
+        if (text) redirectUrl.searchParams.set('shared_text', text);
+        if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
+        // Store image in a dedicated cache if present
+        if (imageFile && imageFile.size > 0) {
+          const cache = await caches.open('share-target-image');
+          // Store the file as a Response with original filename and type in headers
+          const headers = new Headers({
+            'Content-Type': imageFile.type || 'image/jpeg',
+            'X-Filename': imageFile.name || `shared_${Date.now()}.jpg`
+          });
+          await cache.put('shared-image', new Response(imageFile, { headers }));
+          redirectUrl.searchParams.set('shared_image', '1');
+        }
+        return Response.redirect(redirectUrl.toString(), 303);
+      })());
+      return;
+    }
+  }
   // Only handle GET requests
   if (event.request.method !== 'GET') {
     return;

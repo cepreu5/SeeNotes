@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.17'; // App version
+const version = 'Beta 1.18'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -1407,6 +1407,52 @@ async function createGDriveFile(folderId, filename, content) {
         return result.id;
     } catch (e) {
         console.error("Error creating GDrive file:", e);
+        throw e;
+    }
+}
+
+// Uploads a binary Blob (image, etc.) to Google Drive and returns the file ID
+async function uploadBlobToGDrive(folderId, filename, blob, mimeType) {
+    if (isOffline) return null;
+    const sendRequest = async (token) => {
+        const metadata = {
+            name: filename,
+            parents: [folderId]
+        };
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        form.append('file', blob, filename);
+        return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: form
+        });
+    };
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        let tokenData = JSON.parse(storedTokenString);
+        let response = await sendRequest(tokenData.access_token);
+        if (response.status === 401) {
+            let refreshResult = await refreshAuthToken(false);
+            if (refreshResult && refreshResult.pass) {
+                tokenData = refreshResult.tokenData;
+                response = await sendRequest(tokenData.access_token);
+            }
+            if (response.status === 401) {
+                refreshResult = await refreshAuthToken(true);
+                if (refreshResult && refreshResult.pass) {
+                    tokenData = refreshResult.tokenData;
+                    response = await sendRequest(tokenData.access_token);
+                }
+            }
+            if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
+        }
+        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+        const result = await response.json();
+        return result.id;
+    } catch (e) {
+        console.error("Error uploading blob to GDrive:", e);
         throw e;
     }
 }
@@ -3427,32 +3473,30 @@ async function deleteFromDB(storeName, key) {
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
 // --- Web Share Target API Handler ---
-function handleShareTarget() {
+async function handleShareTarget() {
     const url = new URL(window.location.href);
     const sharedTitle = url.searchParams.get('shared_title');
     const sharedText = url.searchParams.get('shared_text');
     const sharedUrl = url.searchParams.get('shared_url');
-    if (!sharedTitle && !sharedText && !sharedUrl) return;
-
+    const hasSharedImage = url.searchParams.get('shared_image') === '1';
+    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
     if (sharedTitle) parts.push(sharedTitle);
     if (sharedText) parts.push(sharedText);
     if (sharedUrl && sharedUrl !== sharedText) parts.push(sharedUrl);
-    const noteContent = parts.join('\n');
-
+    const noteContent = parts.join('\n') || (hasSharedImage ? '📷' : '');
     // Изчистваме share параметрите от URL-а, за да не се обработват повторно
     url.searchParams.delete('shared_title');
     url.searchParams.delete('shared_text');
     url.searchParams.delete('shared_url');
+    url.searchParams.delete('shared_image');
     window.history.replaceState({}, document.title, url.pathname + url.search);
-
     // Подготвяме нова бележка (копирано от createNewNote логиката)
     noteId++;
     noteNumord++;
     syncFolderDataAsync();
     const now = Date.now();
-
     // Определяме борда: ако сме в системен борд, ползваме 'Main' или първия наличен
     let boardId = currentBoardFilter;
     const systemBoards = ['all', 'calendar', 'reminders', 'photos', 'videos', 'sounds', 'other', 'new-updates', 'search', 'favorites', 'archived'];
@@ -3461,9 +3505,26 @@ function handleShareTarget() {
         const mainBoard = boardsData.find(b => b.title === 'Main' || b.gdid === 'Main');
         boardId = mainBoard ? mainBoard.gdid : (boardsData.length > 0 ? boardsData[0].gdid : 'Main');
     }
-
+    // --- Обработка на споделено изображение ---
+    let sharedImageBlob = null;
+    let sharedImageFilename = `shared_${now}.jpg`;
+    let sharedImageMimeType = 'image/jpeg';
+    if (hasSharedImage) {
+        try {
+            const cache = await caches.open('share-target-image');
+            const response = await cache.match('shared-image');
+            if (response) {
+                sharedImageBlob = await response.blob();
+                sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
+                sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
+                await cache.delete('shared-image');
+            }
+        } catch (e) {
+            console.error('Error retrieving shared image from cache:', e);
+        }
+    }
     // Показваме модала със споделеното съдържание
-    setTimeout(() => {
+    setTimeout(async () => {
         if (typeof showModal === 'function') {
             showModal({
                 raw: noteContent,
@@ -3473,7 +3534,6 @@ function handleShareTarget() {
                 id: noteId,
                 isNewNote: true
             });
-
             // Автоматично влизаме в режим на редактиране, за да може потребителят да запише
             setTimeout(() => {
                 const editBtn = document.getElementById('note-edit-btn');
@@ -3481,6 +3541,77 @@ function handleShareTarget() {
             }, 150);
         }
         showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
+        // --- Ако има споделено изображение, качваме го в GDrive ---
+        if (sharedImageBlob && !isOffline) {
+            try {
+                showToast(_('uploadingSharedImage') || '📤 Uploading image...', 5000);
+                const folderId = await getFolderID();
+                if (!folderId) throw new Error('Folder ID not available');
+                // 1. Осигуряваме Images папка
+                let imagesFolderId = folderIds['Images'] || localStorage.getItem('gdrive_folder_id_Images');
+                if (!imagesFolderId) {
+                    imagesFolderId = await createNewGDriveFolder('Images', folderId);
+                    if (imagesFolderId) {
+                        folderIds['Images'] = imagesFolderId;
+                        localStorage.setItem('gdrive_folder_id_Images', imagesFolderId);
+                    }
+                }
+                if (!imagesFolderId) throw new Error('Could not get/create Images folder');
+                // 2. Качваме изображението в Images папка
+                const imageGdid = await uploadBlobToGDrive(imagesFolderId, sharedImageFilename, sharedImageBlob, sharedImageMimeType);
+                if (!imageGdid) throw new Error('Image upload failed');
+                // 3. Намираме gdid на бележката (след запис)
+                // Търсим бележката по id - тя може вече да е записана с gdid
+                const waitForNoteGdid = () => {
+                    return new Promise(resolve => {
+                        const check = (attempts = 0) => {
+                            const noteInData = allNotesData.find(n => String(n.id) === String(noteId));
+                            if (noteInData && noteInData.gdid) {
+                                resolve(noteInData.gdid);
+                            } else if (attempts < 60) { // До 30 секунди
+                                setTimeout(() => check(attempts + 1), 500);
+                            } else {
+                                resolve(null);
+                            }
+                        };
+                        check();
+                    });
+                };
+                const noteGdid = await waitForNoteGdid();
+                if (!noteGdid) {
+                    console.warn('Note gdid not available after timeout. Media entry will not be created.');
+                    showToast('⚠️ Image uploaded, but note must be saved first to create link.', 5000);
+                    return;
+                }
+                // 4. Създаваме media.txt запис в GDrive
+                const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
+                const mediaEntry = {
+                    datemod: now,
+                    description: '',
+                    gdid: '',
+                    id: maxMediaId + 1,
+                    noteid: noteGdid,
+                    path: '',
+                    pathGD: imageGdid,
+                    type: 1
+                };
+                const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
+                if (mediaFileGdid) {
+                    mediaEntry.gdid = mediaFileGdid;
+                    await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
+                    // 5. Обновяваме локалните данни
+                    mediaData.push(mediaEntry);
+                    if (useIndexedDb) {
+                        await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                    }
+                    showToast(_('sharedImageSaved') || '✅ Image attached to note', 3000);
+                    console.log('[ShareTarget] Image attachment created:', mediaEntry);
+                }
+            } catch (e) {
+                console.error('[ShareTarget] Error processing shared image:', e);
+                showToast('❌ Error uploading shared image: ' + e.message, 5000);
+            }
+        }
     }, 500);
 }
 

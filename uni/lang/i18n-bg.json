@@ -405,5 +405,8 @@
     "saveDbToFolderLabel": "Запис на DB в папката",
     "errorFolderNotEmpty": "Папката не е празна! Записът е спрян за защита на данните.",
     "confirmSaveDbToFolder": "Това ще запише всички бележки и бордове от паметта в текущата папка. Желаете ли да продължите?",
-    "confirmDbDeleteOnFolderChange": "Желаете ли да изтриете текущата база данни при смяната на папката?"
+    "confirmDbDeleteOnFolderChange": "Желаете ли да изтриете текущата база данни при смяната на папката?",
+    "sharedContentReceived": "Споделено съдържание получено",
+    "uploadingSharedImage": "Качване на изображение...",
+    "sharedImageSaved": "Изображението е прикачено към бележката"
 }
