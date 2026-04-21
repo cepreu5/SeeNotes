@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.14'; // App version
+const version = 'Beta 1.15'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -28,7 +28,7 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
 }
 
 // --- Unified Share Event Handler ---
-const handleShareEvent = (eventData, source) => {
+const handleShareEvent = (eventData, source, preloadedBlob = null) => {
     if (eventData && eventData.type === 'SHARE_TARGET_EVENT') {
         const now = Date.now();
         const isDuplicate = window.lastShareEventTime && (now - window.lastShareEventTime < 1000);
@@ -49,7 +49,7 @@ const handleShareEvent = (eventData, source) => {
         // 3. Изчакваме анимациите и отваряме Share Target
         setTimeout(() => {
             console.log(`[Main] Invoking handleShareTarget (triggered by ${source})...`);
-            handleShareTarget(eventData.data);
+            handleShareTarget(eventData.data, preloadedBlob);
         }, 300);
     }
 };
@@ -60,7 +60,22 @@ shareChannel.onmessage = (event) => handleShareEvent(event.data, 'BroadcastChann
 
 // Listen via direct SW postMessage
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => handleShareEvent(event.data, 'ServiceWorker.postMessage'));
+    navigator.serviceWorker.addEventListener('message', async (event) => {
+        if (event.data?.type === 'SHARE_TARGET_EVENT') {
+            let blob = null;
+            try {
+                const cache = await caches.open('share-target-image');
+                const response = await cache.match('shared-image');
+                if (response) {
+                    blob = await response.blob();
+                    console.log('[Main] Pre-loaded shared image blob from cache.');
+                }
+            } catch (e) {
+                console.error('[Main] Error pre-loading shared image:', e);
+            }
+            handleShareEvent(event.data, 'ServiceWorker.postMessage', blob);
+        }
+    });
 }
 
 // --- Debug Listener for Service Worker logs ---

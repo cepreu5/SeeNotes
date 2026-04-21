@@ -1,6 +1,13 @@
-const CACHE_NAME = 'cx-notes-b1.14';
-const OFFLINE_PAGE = 'index.html';
-const ASSETS_TO_CACHE = [
+// ====== Конфигурация ======
+const CACHE_VERSION = 'cx-notes-b1.15';
+const APP_SHELL_CACHE = `cx-notes-shell-${CACHE_VERSION}`;
+const STATIC_CACHE = `cx-notes-static-${CACHE_VERSION}`;
+const SHARE_IMAGE_CACHE = 'share-target-image';
+
+const OFFLINE_FALLBACK = './index.html';
+
+// Основни файлове за стартиране на приложението (app shell)
+const APP_SHELL_ASSETS = [
   './',
   './index.html',
   './set.html',
@@ -11,6 +18,17 @@ const ASSETS_TO_CACHE = [
   './languages.json',
   './lang/i18n-bg.json',
   './lang/i18n-en.json',
+  './lang/kb-core.json',
+  './lang/kb-bg.json',
+  './lang/kb-en.json',
+  './msmstyle.css',
+  './kb-assistant.css',
+  './kb-assistant.js',
+  './msmrt.js'
+];
+
+// Статични ресурси (икони, изображения и др.)
+const STATIC_ASSETS = [
   './MNVLogo.png',
   './NoteFav.png',
   './Refresh.png',
@@ -27,8 +45,8 @@ const ASSETS_TO_CACHE = [
   './CXNotes96.png',
   './CXNotes144.png',
   './CXNotes180.png',
-  './CXNotes384.png',
   './CXNotes192.png',
+  './CXNotes384.png',
   './CXNotes512.png',
   './Board.png',
   './Frame.png',
@@ -41,13 +59,6 @@ const ASSETS_TO_CACHE = [
   './wb1_1.png',
   './wg1_1.png',
   './wr1_1.png',
-  './lang/kb-core.json',
-  './lang/kb-bg.json',
-  './lang/kb-en.json',
-  './msmstyle.css',
-  './kb-assistant.css',
-  './kb-assistant.js',
-  './msmrt.js',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',
@@ -60,6 +71,8 @@ const ASSETS_TO_CACHE = [
   './msm/r-up-w.png',
   './msm/l-down-w.png',
   './msm/r-down-w.png',
+  // големите примерни изображения може да се кешират „on demand“ при fetch,
+  // но ако държиш да са офлайн, остави ги тук:
   './msm-ex/1764551652828.jpg',
   './msm-ex/1764551676242.jpg',
   './msm-ex/1764551691209.jpg',
@@ -87,213 +100,235 @@ const ASSETS_TO_CACHE = [
   './msm-ex/1764554248286.jpg',
   './msm-ex/1764554317449.jpg',
   './msm-ex/1764554407319.jpg',
-  './msm-ex/1764554540104.jpg',
+  './msm-ex/1764554540104.jpg'
 ];
 
+// ====== Помощна лог функция (по желание) ======
 function swLog(...args) {
   try {
-    console.log(...args);
+    console.log('[SW]', ...args);
     const bc = new BroadcastChannel('sw_debug_channel');
     bc.postMessage({
       type: 'LOG',
       args: args.map(a => {
         try {
           return typeof a === 'object' ? JSON.stringify(a) : String(a);
-        } catch (e) { return "[Unserializable Object]"; }
+        } catch (e) { return '[Unserializable Object]'; }
       })
     });
     bc.close();
   } catch (e) {
-    console.error('swLog failed:', e);
+    // тихо падане
   }
 }
 
+// ====== INSTALL ======
 self.addEventListener('install', (event) => {
-  swLog('[SW] Install event triggered.');
+  swLog('Install');
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return Promise.allSettled(
-        ASSETS_TO_CACHE.map(url =>
-          cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
-        )
-      );
-    })
+    (async () => {
+      const shellCache = await caches.open(APP_SHELL_CACHE);
+      await shellCache.addAll(APP_SHELL_ASSETS);
+
+      const staticCache = await caches.open(STATIC_CACHE);
+      await staticCache.addAll(STATIC_ASSETS);
+
+      // веднага активиране на новия SW
+      await self.skipWaiting();
+    })()
   );
 });
 
+// ====== ACTIVATE ======
 self.addEventListener('activate', (event) => {
-  swLog('[SW] Activate event triggered.');
+  swLog('Activate');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName !== 'app-cache' && cacheName !== 'share-target-image') {
-            return caches.delete(cacheName);
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.map((key) => {
+          if (
+            key !== APP_SHELL_CACHE &&
+            key !== STATIC_CACHE &&
+            key !== SHARE_IMAGE_CACHE
+          ) {
+            swLog('Deleting old cache:', key);
+            return caches.delete(key);
           }
         })
       );
-    }).then(() => {
-      swLog('[SW] Activated and claiming clients...');
-      return self.clients.claim();
-    })
+      await self.clients.claim();
+    })()
   );
 });
 
+// ====== MESSAGE (skipWaiting от клиента) ======
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
+// ====== SHARE TARGET POST ======
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
-    return;
-  }
+  // само същия origin
+  if (!event.request.url.startsWith(self.location.origin)) return;
+
   // --- Share Target POST handler ---
   if (event.request.method === 'POST') {
     const url = new URL(event.request.url);
+
     if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
-      swLog('[SW] Share Target POST request intercepted:', url.href);
+      swLog('Share Target POST intercepted:', url.href);
 
-      event.respondWith((async () => {
-        try {
-          const formData = await event.request.formData();
-          const title = formData.get('shared_title') || '';
-          const text = formData.get('shared_text') || '';
-          const sharedUrl = formData.get('shared_url') || '';
-          const imageFile = formData.get('shared_image');
-
-          // Build redirect URL for fallback
-          const redirectUrl = new URL(url.pathname, self.location.origin);
-          if (title) redirectUrl.searchParams.set('shared_title', title);
-          if (text) redirectUrl.searchParams.set('shared_text', text);
-          if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
-
-          // Store image if present
-          if (imageFile && imageFile.size > 0) {
-            swLog('[SW] Processing shared image...', imageFile.name, imageFile.size);
-            const cache = await caches.open('share-target-image');
-            const headers = new Headers({
-              'Content-Type': imageFile.type || 'image/jpeg',
-              'X-Filename': imageFile.name || `shared_${Date.now()}.jpg`
-            });
-            await cache.put('shared-image', new Response(imageFile, { headers }));
-            redirectUrl.searchParams.set('shared_image', '1');
-          }
-
-          const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-          swLog('[SW] Found active clients:', clients.length);
-
-          let existingClient = clients.find(c => {
-            const clientUrl = new URL(c.url);
-            const reqPath = url.pathname.replace(/\/+$/, '');
-            const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
-            return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
-          });
-
-          if (!existingClient && clients.length > 0) existingClient = clients[0];
-
-          if (existingClient) {
-            swLog('[SW] Targeting client:', existingClient.url);
-
-            // Пробваме да фокусираме, но ако браузърът го блокира - не сриваме целия процес
-            try {
-              await existingClient.focus();
-            } catch (focusErr) {
-              swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
-            }
-
-            const shareData = {
-              type: 'SHARE_TARGET_EVENT',
-              data: {
-                shared_title: title,
-                shared_text: text,
-                shared_url: sharedUrl,
-                shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
-              }
-            };
-            existingClient.postMessage(shareData);
-            const bc = new BroadcastChannel('share_target_channel');
-            bc.postMessage(shareData);
-            bc.close();
-            
-            // Връщаме "агресивен" скрипт за затваряне на излишния прозорец.
-            // Използваме комбинация от методи, за да заобиколим защитите на браузъра.
-            return new Response(`
-              <!DOCTYPE html>
-              <html>
-              <head><title>Sharing...</title></head>
-              <body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
-                <script>
-                  // Трикове за затваряне
-                  try {
-                    window.close();
-                  } catch (e) {}
-                  
-                  setTimeout(() => {
-                    try {
-                      // Трик с пренасочване към себе си и затваряне
-                      window.open('', '_self', '');
-                      window.close();
-                    } catch (e) {}
-                  }, 50);
-
-                  // Ако след 500мс още е отворено, значи е блокирано - тогава навигираме към главната страница
-                  // за да не стои празен черен екран
-                  setTimeout(() => {
-                    window.location.href = './index.html?source=pwa_share_fallback';
-                  }, 500);
-                </script>
-              </body>
-              </html>
-            `, { headers: { 'Content-Type': 'text/html' } });
-          }
-
-          swLog('[SW] Redirecting to new instance.');
-          return Response.redirect(redirectUrl.toString(), 303);
-
-        } catch (err) {
-          swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
-          // Failsafe: just redirect to index without shared data rather than showing error page
-          return Response.redirect('./index.html', 303);
-        }
-      })());
+      event.respondWith(handleShareTargetPost(event.request, url));
       return;
     }
   }
-  // Only handle GET requests
-  if (event.request.method !== 'GET') {
-    return;
-  }
+
+  // само GET оттук надолу
+  if (event.request.method !== 'GET') return;
 
   const isNavigation = event.request.mode === 'navigate';
-
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      // 1. If match in cache, return it
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      // 2. If not in cache, try network
-      return fetch(event.request).then((networkResponse) => {
-        return networkResponse;
-      }).catch(() => {
-        // 3. Fallback logic for offline/network failure
-        if (isNavigation) {
-          return caches.match('./index.html').then((fallback) => {
-            return fallback || new Response('Offline: Page not found.', {
-              status: 404,
-              headers: { 'Content-Type': 'text/plain' }
-            });
-          });
-        }
-        return new Response('Offline: Resource not found.', {
-          status: 404,
-          headers: { 'Content-Type': 'text/plain' }
-        });
-      });
-    })
-  );
+  event.respondWith(handleFetch(event.request, isNavigation));
 });
+
+// ====== Логика за Share Target ======
+async function handleShareTargetPost(request, url) {
+  try {
+    const formData = await request.formData();
+    const title = formData.get('shared_title') || '';
+    const text = formData.get('shared_text') || '';
+    const sharedUrl = formData.get('shared_url') || '';
+    const imageFile = formData.get('shared_image');
+
+    // Записваме изображението (ако има) в отделен cache
+    if (imageFile && imageFile.size > 0) {
+      swLog('Processing shared image:', imageFile.name, imageFile.size);
+      const cache = await caches.open(SHARE_IMAGE_CACHE);
+      const headers = new Headers({
+        'Content-Type': imageFile.type || 'image/jpeg',
+        'X-Filename': imageFile.name || `shared_${Date.now()}.jpg`
+      });
+      await cache.put('shared-image', new Response(imageFile, { headers }));
+    }
+
+    const clientsList = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    });
+
+    const existingClient = clientsList.find((c) => {
+      const clientUrl = new URL(c.url);
+      const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
+      const reqPath = url.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
+      return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
+    });
+
+    const sharePayload = {
+      type: 'SHARE_TARGET_EVENT',
+      data: {
+        shared_title: title,
+        shared_text: text,
+        shared_url: sharedUrl,
+        shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
+      }
+    };
+
+    if (existingClient) {
+      // 👉 Приложението вече работи:
+      // - НЕ отваряме нов прозорец
+      // - НЕ презареждаме бележките от GD
+      swLog('Sending share data to existing client:', existingClient.url);
+      existingClient.postMessage(sharePayload);
+
+      // по желание – и през BroadcastChannel
+      const bc = new BroadcastChannel('share_target_channel');
+      bc.postMessage(sharePayload);
+      bc.close();
+
+      // затваряме празния прозорец, който Chrome е отворил за POST
+      return new Response('<script>window.close()</script>', {
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+
+    // 👉 НЯМА отворен клиент → отваряме нов прозорец
+    const redirectUrl = new URL('/index.html', self.location.origin);
+    if (title) redirectUrl.searchParams.set('shared_title', title);
+    if (text) redirectUrl.searchParams.set('shared_text', text);
+    if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
+    if (imageFile && imageFile.size > 0) {
+      redirectUrl.searchParams.set('shared_image', '1');
+    }
+
+    swLog('No existing client, opening new window:', redirectUrl.toString());
+    await self.clients.openWindow(redirectUrl.toString());
+
+    return new Response('<script>window.close()</script>', {
+      headers: { 'Content-Type': 'text/html' }
+    });
+
+  } catch (err) {
+    swLog('CRITICAL ERROR in Share Target:', err.message);
+    // Failsafe: просто redirect към index без данни
+    return Response.redirect('./index.html', 303);
+  }
+}
+
+// ====== Fetch стратегия ======
+async function handleFetch(request, isNavigation) {
+  const url = new URL(request.url);
+
+  // 1) App shell / HTML навигации → network-first с fallback към cache
+  if (isNavigation || request.destination === 'document') {
+    try {
+      const networkResponse = await fetch(request);
+      // по желание: може да се обнови cache-а на index.html
+      const cache = await caches.open(APP_SHELL_CACHE);
+      cache.put(OFFLINE_FALLBACK, networkResponse.clone());
+      return networkResponse;
+    } catch (e) {
+      const cached = await caches.match(OFFLINE_FALLBACK);
+      if (cached) return cached;
+      return new Response('Offline: Page not found.', {
+        status: 404,
+        headers: { 'Content-Type': 'text/plain' }
+      });
+    }
+  }
+
+  // 2) Статични ресурси → cache-first
+  if (request.destination === 'style' ||
+    request.destination === 'script' ||
+    request.destination === 'image' ||
+    request.destination === 'font') {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    try {
+      const networkResponse = await fetch(request);
+      const cache = await caches.open(STATIC_CACHE);
+      cache.put(request, networkResponse.clone());
+      return networkResponse;
+    } catch (e) {
+      return new Response('Offline: Resource not found.', {
+        status: 404,
+        headers: { 'Content-Type': 'text/plain' }
+      });
+    }
+  }
+
+  // 3) Всичко останало → опит за мрежа, fallback към cache ако има
+  const cached = await caches.match(request);
+  if (cached) return cached;
+
+  try {
+    return await fetch(request);
+  } catch (e) {
+    return new Response('Offline: Resource not found.', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+}
