@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.16';
+const CACHE_NAME = 'cx-notes-b1.14';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -94,13 +94,13 @@ function swLog(...args) {
   try {
     console.log(...args);
     const bc = new BroadcastChannel('sw_debug_channel');
-    bc.postMessage({ 
-      type: 'LOG', 
+    bc.postMessage({
+      type: 'LOG',
       args: args.map(a => {
         try {
           return typeof a === 'object' ? JSON.stringify(a) : String(a);
-        } catch(e) { return "[Unserializable Object]"; }
-      }) 
+        } catch (e) { return "[Unserializable Object]"; }
+      })
     });
     bc.close();
   } catch (e) {
@@ -156,7 +156,7 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
     if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
       swLog('[SW] Share Target POST request intercepted:', url.href);
-      
+
       event.respondWith((async () => {
         try {
           const formData = await event.request.formData();
@@ -192,19 +192,19 @@ self.addEventListener('fetch', (event) => {
             const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
             return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
           });
-          
+
           if (!existingClient && clients.length > 0) existingClient = clients[0];
 
           if (existingClient) {
             swLog('[SW] Targeting client:', existingClient.url);
-            
+
             // Пробваме да фокусираме, но ако браузърът го блокира - не сриваме целия процес
             try {
               await existingClient.focus();
             } catch (focusErr) {
               swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
             }
-            
+
             const shareData = {
               type: 'SHARE_TARGET_EVENT',
               data: {
@@ -218,10 +218,13 @@ self.addEventListener('fetch', (event) => {
             const bc = new BroadcastChannel('share_target_channel');
             bc.postMessage(shareData);
             bc.close();
-            
-            return new Response(null, { status: 204 });
+
+            // Вместо 204 (което на Desktop оставя празен прозорец), връщаме скрипт за самозатваряне
+            return new Response('<script>window.close()</script>', {
+              headers: { 'Content-Type': 'text/html' }
+            });
           }
-          
+
           swLog('[SW] Redirecting to new instance.');
           return Response.redirect(redirectUrl.toString(), 303);
 
