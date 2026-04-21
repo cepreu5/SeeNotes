@@ -160,8 +160,8 @@ async function handleShareTargetPost(event) {
     const sharedUrl = formData.get('shared_url') || '';
     const imageFile = formData.get('shared_image');
 
-    // Build redirect URL for fallback
-    const redirectUrl = new URL('./index.html', self.location.origin);
+    // Build redirect URL for fallback - use registration scope to handle subfolders correctly
+    const redirectUrl = new URL('index.html', self.registration.scope);
     if (title) redirectUrl.searchParams.set('shared_title', title);
     if (text) redirectUrl.searchParams.set('shared_text', text);
     if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
@@ -182,6 +182,7 @@ async function handleShareTargetPost(event) {
     swLog('[SW] Found active clients:', clients.length);
 
     let existingClient = clients.find(c => {
+      if (!c.url) return false;
       const clientUrl = new URL(c.url);
       const reqPath = url.pathname.replace(/\/+$/, '');
       const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
@@ -231,7 +232,8 @@ async function handleShareTargetPost(event) {
 
   } catch (err) {
     swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
-    return Response.redirect('./index.html', 303);
+    const fallbackUrl = new URL('index.html', self.registration.scope);
+    return Response.redirect(fallbackUrl.toString(), 303);
   }
 }
 
