@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.15';
+const CACHE_NAME = 'cx-notes-b1.14';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -150,105 +150,89 @@ self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
-// --- Share Target POST handler ---
-async function handleShareTargetPost(event) {
-  const url = new URL(event.request.url);
-  try {
-    const formData = await event.request.formData();
-    const title = formData.get('shared_title') || '';
-    const text = formData.get('shared_text') || '';
-    const sharedUrl = formData.get('shared_url') || '';
-    const imageFile = formData.get('shared_image');
-
-    // BUILD CORRECT REDIRECT URL
-    // We use self.location.href (the location of sw.js) to ensure we stay in the same folder
-    const redirectUrl = new URL('index.html', self.location.href);
-    if (title) redirectUrl.searchParams.set('shared_title', title);
-    if (text) redirectUrl.searchParams.set('shared_text', text);
-    if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
-
-    // Store image if present
-    if (imageFile && imageFile.size > 0) {
-      swLog('[SW] Processing shared image...', imageFile.name, imageFile.size);
-      const cache = await caches.open('share-target-image');
-      const headers = new Headers({
-        'Content-Type': imageFile.type || 'image/jpeg',
-        'X-Filename': imageFile.name || `shared_${Date.now()}.jpg`
-      });
-      await cache.put('shared-image', new Response(imageFile, { headers }));
-      redirectUrl.searchParams.set('shared_image', '1');
-    }
-
-    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    swLog('[SW] Found active clients:', clients.length);
-
-    let existingClient = clients.find(c => {
-      if (!c.url) return false;
-      const clientUrl = new URL(c.url);
-      const reqPath = url.pathname.replace(/\/+$/, '');
-      const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
-      return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
-    });
-
-    if (!existingClient && clients.length > 0) existingClient = clients[0];
-
-    const shareData = {
-      type: 'SHARE_TARGET_EVENT',
-      data: {
-        shared_title: title,
-        shared_text: text,
-        shared_url: sharedUrl,
-        shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
-      }
-    };
-
-    if (existingClient) {
-      swLog('[SW] Targeting client:', existingClient.url);
-      try {
-        await existingClient.focus();
-      } catch (focusErr) {
-        swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
-      }
-      existingClient.postMessage(shareData);
-      const bc = new BroadcastChannel('share_target_channel');
-      bc.postMessage(shareData);
-      bc.close();
-
-      return new Response('<script>window.close()</script>', {
-        headers: { 'Content-Type': 'text/html' }
-      });
-    }
-
-    // НЯМА отворен клиент → отваряме нов прозорец
-    swLog('[SW] No existing client, opening new window:', redirectUrl.toString());
-    if (self.clients.openWindow) {
-      await self.clients.openWindow(redirectUrl.toString());
-      return new Response('<script>window.close()</script>', {
-        headers: { 'Content-Type': 'text/html' }
-      });
-    } else {
-      // Fallback
-      return Response.redirect(redirectUrl.toString(), 303);
-    }
-
-  } catch (err) {
-    swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
-    const fallbackUrl = new URL('index.html', self.location.href);
-    return Response.redirect(fallbackUrl.toString(), 303);
-  }
-}
-
-self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
-    return;
-  }
   // --- Share Target POST handler ---
   if (event.request.method === 'POST') {
     const url = new URL(event.request.url);
     if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
       swLog('[SW] Share Target POST request intercepted:', url.href);
-      event.respondWith(handleShareTargetPost(event));
+
+      event.respondWith((async () => {
+        try {
+          const formData = await event.request.formData();
+          const title = formData.get('shared_title') || '';
+          const text = formData.get('shared_text') || '';
+          const sharedUrl = formData.get('shared_url') || '';
+          const imageFile = formData.get('shared_image');
+
+          // Build redirect URL for fallback
+          const redirectUrl = new URL(url.pathname, self.location.origin);
+          if (title) redirectUrl.searchParams.set('shared_title', title);
+          if (text) redirectUrl.searchParams.set('shared_text', text);
+          if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
+
+          // Store image if present
+          if (imageFile && imageFile.size > 0) {
+            swLog('[SW] Processing shared image...', imageFile.name, imageFile.size);
+            const cache = await caches.open('share-target-image');
+            const headers = new Headers({
+              'Content-Type': imageFile.type || 'image/jpeg',
+              'X-Filename': imageFile.name || `shared_${Date.now()}.jpg`
+            });
+            await cache.put('shared-image', new Response(imageFile, { headers }));
+            redirectUrl.searchParams.set('shared_image', '1');
+          }
+
+          const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+          swLog('[SW] Found active clients:', clients.length);
+
+          let existingClient = clients.find(c => {
+            const clientUrl = new URL(c.url);
+            const reqPath = url.pathname.replace(/\/+$/, '');
+            const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
+            return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
+          });
+
+          if (!existingClient && clients.length > 0) existingClient = clients[0];
+
+          if (existingClient) {
+            swLog('[SW] Targeting client:', existingClient.url);
+
+            // Пробваме да фокусираме, но ако браузърът го блокира - не сриваме целия процес
+            try {
+              await existingClient.focus();
+            } catch (focusErr) {
+              swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
+            }
+
+            const shareData = {
+              type: 'SHARE_TARGET_EVENT',
+              data: {
+                shared_title: title,
+                shared_text: text,
+                shared_url: sharedUrl,
+                shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
+              }
+            };
+            existingClient.postMessage(shareData);
+            const bc = new BroadcastChannel('share_target_channel');
+            bc.postMessage(shareData);
+            bc.close();
+
+            // Вместо 204 (което на Desktop оставя празен прозорец), връщаме скрипт за самозатваряне
+            return new Response('<script>window.close()</script>', {
+              headers: { 'Content-Type': 'text/html' }
+            });
+          }
+
+          swLog('[SW] Redirecting to new instance.');
+          return Response.redirect(redirectUrl.toString(), 303);
+
+        } catch (err) {
+          swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
+          // Failsafe: just redirect to index without shared data rather than showing error page
+          return Response.redirect('./index.html', 303);
+        }
+      })());
       return;
     }
   }

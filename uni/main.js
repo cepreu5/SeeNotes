@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.15'; // App version
+const version = 'Beta 1.14'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -28,17 +28,15 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
 }
 
 // --- Unified Share Event Handler ---
-let lastProcessedShareTime = 0;
-const handleShareEvent = (eventData, source, preloadedBlob = null) => {
+const handleShareEvent = (eventData, source) => {
     if (eventData && eventData.type === 'SHARE_TARGET_EVENT') {
         const now = Date.now();
-        if (now - lastProcessedShareTime < 2000) {
-            console.log('[Main] Ignoring duplicate share event');
-            return;
-        }
-        lastProcessedShareTime = now;
+        const isDuplicate = window.lastShareEventTime && (now - window.lastShareEventTime < 1000);
 
-        console.log(`[Main] Received SHARE_TARGET_EVENT from ${source}.`, eventData.data);
+        console.log(`[Main] Received SHARE_TARGET_EVENT from ${source}. ${isDuplicate ? '(Duplicate ignored)' : ''}`, eventData.data);
+
+        if (isDuplicate) return;
+        window.lastShareEventTime = now;
 
         // 1. Изчистваме всички отворени модали
         document.querySelectorAll('.modal.visible, .settings-modal.visible, .modal-overlay.visible').forEach(m => {
@@ -51,7 +49,7 @@ const handleShareEvent = (eventData, source, preloadedBlob = null) => {
         // 3. Изчакваме анимациите и отваряме Share Target
         setTimeout(() => {
             console.log(`[Main] Invoking handleShareTarget (triggered by ${source})...`);
-            handleShareTarget(eventData.data, preloadedBlob);
+            handleShareTarget(eventData.data);
         }, 300);
     }
 };
@@ -62,22 +60,7 @@ shareChannel.onmessage = (event) => handleShareEvent(event.data, 'BroadcastChann
 
 // Listen via direct SW postMessage
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', async (event) => {
-        if (event.data?.type === 'SHARE_TARGET_EVENT') {
-            let blob = null;
-            try {
-                const cache = await caches.open('share-target-image');
-                const response = await cache.match('shared-image');
-                if (response) {
-                    blob = await response.blob();
-                    console.log('[Main] Pre-loaded shared image blob from cache.');
-                }
-            } catch (e) {
-                console.error('[Main] Error pre-loading shared image:', e);
-            }
-            handleShareEvent(event.data, 'ServiceWorker.postMessage', blob);
-        }
-    });
+    navigator.serviceWorker.addEventListener('message', (event) => handleShareEvent(event.data, 'ServiceWorker.postMessage'));
 }
 
 // --- Debug Listener for Service Worker logs ---
@@ -3534,35 +3517,30 @@ async function deleteFromDB(storeName, key) {
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
 // --- Web Share Target API Handler ---
-async function handleShareTarget(externalData = null, preloadedBlob = null) {
+async function handleShareTarget(externalData = null) {
     const url = new URL(window.location.href);
     const sharedTitle = externalData ? externalData.shared_title : url.searchParams.get('shared_title');
     const sharedText = externalData ? externalData.shared_text : url.searchParams.get('shared_text');
     const sharedUrl = externalData ? externalData.shared_url : url.searchParams.get('shared_url');
     const hasSharedImage = externalData ? (externalData.shared_image === '1') : (url.searchParams.get('shared_image') === '1');
-
     if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
-
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
     if (sharedTitle) parts.push(sharedTitle);
     if (sharedText) parts.push(sharedText);
     if (sharedUrl && sharedUrl !== sharedText) parts.push(sharedUrl);
     const noteContent = parts.join('\n') || (hasSharedImage ? '📷' : '');
-
     // Изчистваме share параметрите от URL-а, за да не се обработват повторно
     url.searchParams.delete('shared_title');
     url.searchParams.delete('shared_text');
     url.searchParams.delete('shared_url');
     url.searchParams.delete('shared_image');
     window.history.replaceState({}, document.title, url.pathname + url.search);
-
     // Подготвяме нова бележка (копирано от createNewNote логиката)
     noteId++;
     noteNumord++;
     syncFolderDataAsync();
     const now = Date.now();
-
     // Определяме борда: ако сме в системен борд, ползваме 'Main' или първия наличен
     let boardId = currentBoardFilter;
     const systemBoards = ['all', 'calendar', 'reminders', 'photos', 'videos', 'sounds', 'other', 'new-updates', 'search', 'favorites', 'archived'];
@@ -3571,32 +3549,19 @@ async function handleShareTarget(externalData = null, preloadedBlob = null) {
         const mainBoard = boardsData.find(b => b.title === 'Main' || b.gdid === 'Main');
         boardId = mainBoard ? mainBoard.gdid : (boardsData.length > 0 ? boardsData[0].gdid : 'Main');
     }
-
     // --- Обработка на споделено изображение ---
-    let sharedImageBlob = preloadedBlob;
+    let sharedImageBlob = null;
     let sharedImageFilename = `shared_${now}.jpg`;
     let sharedImageMimeType = 'image/jpeg';
-
     if (hasSharedImage) {
         try {
             const cache = await caches.open('share-target-image');
-            if (sharedImageBlob) {
-                console.log('[ShareTarget] Using preloaded image blob.');
-                // Always try to get metadata even if we have the blob, or use defaults
-                const response = await cache.match('shared-image');
-                if (response) {
-                    sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
-                    sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
-                    await cache.delete('shared-image');
-                }
-            } else {
-                const response = await cache.match('shared-image');
-                if (response) {
-                    sharedImageBlob = await response.blob();
-                    sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
-                    sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
-                    await cache.delete('shared-image');
-                }
+            const response = await cache.match('shared-image');
+            if (response) {
+                sharedImageBlob = await response.blob();
+                sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
+                sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
+                await cache.delete('shared-image');
             }
         } catch (e) {
             console.error('Error retrieving shared image from cache:', e);
