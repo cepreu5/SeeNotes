@@ -160,8 +160,9 @@ async function handleShareTargetPost(event) {
     const sharedUrl = formData.get('shared_url') || '';
     const imageFile = formData.get('shared_image');
 
-    // Build redirect URL for fallback - use registration scope to handle subfolders correctly
-    const redirectUrl = new URL('index.html', self.registration.scope);
+    // BUILD CORRECT REDIRECT URL
+    // We use self.location.href (the location of sw.js) to ensure we stay in the same folder
+    const redirectUrl = new URL('index.html', self.location.href);
     if (title) redirectUrl.searchParams.set('shared_title', title);
     if (text) redirectUrl.searchParams.set('shared_text', text);
     if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
@@ -226,13 +227,13 @@ async function handleShareTargetPost(event) {
         headers: { 'Content-Type': 'text/html' }
       });
     } else {
-      // Fallback for environments where openWindow is not available
+      // Fallback
       return Response.redirect(redirectUrl.toString(), 303);
     }
 
   } catch (err) {
     swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
-    const fallbackUrl = new URL('index.html', self.registration.scope);
+    const fallbackUrl = new URL('index.html', self.location.href);
     return Response.redirect(fallbackUrl.toString(), 303);
   }
 }

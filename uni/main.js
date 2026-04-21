@@ -28,15 +28,17 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
 }
 
 // --- Unified Share Event Handler ---
+let lastProcessedShareTime = 0;
 const handleShareEvent = (eventData, source, preloadedBlob = null) => {
     if (eventData && eventData.type === 'SHARE_TARGET_EVENT') {
         const now = Date.now();
-        const isDuplicate = window.lastShareEventTime && (now - window.lastShareEventTime < 1000);
+        if (now - lastProcessedShareTime < 2000) {
+            console.log('[Main] Ignoring duplicate share event');
+            return;
+        }
+        lastProcessedShareTime = now;
 
-        console.log(`[Main] Received SHARE_TARGET_EVENT from ${source}. ${isDuplicate ? '(Duplicate ignored)' : ''}`, eventData.data);
-
-        if (isDuplicate) return;
-        window.lastShareEventTime = now;
+        console.log(`[Main] Received SHARE_TARGET_EVENT from ${source}.`, eventData.data);
 
         // 1. Изчистваме всички отворени модали
         document.querySelectorAll('.modal.visible, .settings-modal.visible, .modal-overlay.visible').forEach(m => {
