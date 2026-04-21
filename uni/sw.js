@@ -91,7 +91,7 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  // skipWaiting removed to allow application to prompt user before activation
+  self.skipWaiting(); // Принуждаваме новия SW да се активира веднага за тестовете
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // Cache assets individually for better error reporting and resilience
@@ -114,7 +114,10 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    }).then(() => self.clients.claim())
+    }).then(() => {
+      console.log('[SW] Activated and claiming clients...');
+      return self.clients.claim();
+    })
   );
 });
 
@@ -133,6 +136,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method === 'POST') {
     const url = new URL(event.request.url);
     if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
+      console.log('[SW] Share Target POST request intercepted:', url.href);
       event.respondWith((async () => {
         const formData = await event.request.formData();
         const title = formData.get('shared_title') || '';
@@ -156,18 +160,23 @@ self.addEventListener('fetch', (event) => {
           redirectUrl.searchParams.set('shared_image', '1');
         }
 
-        // --- NEW: Try to find existing window and use postMessage to avoid reload ---
+        // --- НОВО: Търсим отворен прозорец на приложението ---
         const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        console.log('[SW] Total window clients found:', clients.length);
+        clients.forEach(c => console.log('[SW] Found Client URL:', c.url));
+
         let existingClient = clients.find(c => {
-          const cUrl = new URL(c.url);
-          const reqPath = url.pathname.replace(/\/index\.html$/, '/');
-          const clientPath = cUrl.pathname.replace(/\/index\.html$/, '/');
-          return reqPath === clientPath;
+          const clientUrl = new URL(c.url);
+          const reqPath = url.pathname.replace(/\/+$/, ''); // Махаме финалните наклонени черти
+          const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
+          
+          console.log(`[SW] Comparing paths: Req=${reqPath} vs Client=${cPath}`);
+          return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
         });
         
-        // Fallback: if no exact path match, find any client from the same origin
         if (!existingClient && clients.length > 0) {
           existingClient = clients[0];
+          console.log('[SW] Exact match failed, using fallback client:', existingClient.url);
         }
 
         if (existingClient) {
