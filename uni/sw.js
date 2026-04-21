@@ -218,9 +218,36 @@ self.addEventListener('fetch', (event) => {
             bc.postMessage(shareData);
             bc.close();
             
-            // С launch_handler: focus-existing, 204 No Content е правилният начин да кажем
-            // на браузъра да не отваря нов прозорец и да остане на текущия (или да се прехвърли към съществуващия).
-            return new Response(null, { status: 204 });
+            // Връщаме "агресивен" скрипт за затваряне на излишния прозорец.
+            // Използваме комбинация от методи, за да заобиколим защитите на браузъра.
+            return new Response(`
+              <!DOCTYPE html>
+              <html>
+              <head><title>Sharing...</title></head>
+              <body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
+                <script>
+                  // Трикове за затваряне
+                  try {
+                    window.close();
+                  } catch (e) {}
+                  
+                  setTimeout(() => {
+                    try {
+                      // Трик с пренасочване към себе си и затваряне
+                      window.open('', '_self', '');
+                      window.close();
+                    } catch (e) {}
+                  }, 50);
+
+                  // Ако след 500мс още е отворено, значи е блокирано - тогава навигираме към главната страница
+                  // за да не стои празен черен екран
+                  setTimeout(() => {
+                    window.location.href = './index.html?source=pwa_share_fallback';
+                  }, 500);
+                </script>
+              </body>
+              </html>
+            `, { headers: { 'Content-Type': 'text/html' } });
           }
 
           swLog('[SW] Redirecting to new instance.');
