@@ -197,7 +197,13 @@ self.addEventListener('fetch', (event) => {
 
           if (existingClient) {
             swLog('[SW] Targeting client:', existingClient.url);
-            await existingClient.focus();
+            
+            // Пробваме да фокусираме, но ако браузърът го блокира - не сриваме целия процес
+            try {
+              await existingClient.focus();
+            } catch (focusErr) {
+              swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
+            }
             
             const shareData = {
               type: 'SHARE_TARGET_EVENT',
