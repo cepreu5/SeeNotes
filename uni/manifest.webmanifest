@@ -60,6 +60,9 @@
             "purpose": "any maskable"
         }
     ],
+    "launch_handler": {
+        "client_mode": "focus-existing"
+    },
     "share_target": {
         "action": "./index.html",
         "method": "POST",

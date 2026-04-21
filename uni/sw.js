@@ -217,11 +217,10 @@ self.addEventListener('fetch', (event) => {
             const bc = new BroadcastChannel('share_target_channel');
             bc.postMessage(shareData);
             bc.close();
-
-            // Вместо 204 (което на Desktop оставя празен прозорец), връщаме скрипт за самозатваряне
-            return new Response('<script>window.close()</script>', {
-              headers: { 'Content-Type': 'text/html' }
-            });
+            
+            // С launch_handler: focus-existing, 204 No Content е правилният начин да кажем
+            // на браузъра да не отваря нов прозорец и да остане на текущия (или да се прехвърли към съществуващия).
+            return new Response(null, { status: 204 });
           }
 
           swLog('[SW] Redirecting to new instance.');
