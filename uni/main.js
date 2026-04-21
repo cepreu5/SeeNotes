@@ -3532,30 +3532,35 @@ async function deleteFromDB(storeName, key) {
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
 // --- Web Share Target API Handler ---
-async function handleShareTarget(externalData = null) {
+async function handleShareTarget(externalData = null, preloadedBlob = null) {
     const url = new URL(window.location.href);
     const sharedTitle = externalData ? externalData.shared_title : url.searchParams.get('shared_title');
     const sharedText = externalData ? externalData.shared_text : url.searchParams.get('shared_text');
     const sharedUrl = externalData ? externalData.shared_url : url.searchParams.get('shared_url');
     const hasSharedImage = externalData ? (externalData.shared_image === '1') : (url.searchParams.get('shared_image') === '1');
+
     if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
+
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
     if (sharedTitle) parts.push(sharedTitle);
     if (sharedText) parts.push(sharedText);
     if (sharedUrl && sharedUrl !== sharedText) parts.push(sharedUrl);
     const noteContent = parts.join('\n') || (hasSharedImage ? '📷' : '');
+
     // Изчистваме share параметрите от URL-а, за да не се обработват повторно
     url.searchParams.delete('shared_title');
     url.searchParams.delete('shared_text');
     url.searchParams.delete('shared_url');
     url.searchParams.delete('shared_image');
     window.history.replaceState({}, document.title, url.pathname + url.search);
+
     // Подготвяме нова бележка (копирано от createNewNote логиката)
     noteId++;
     noteNumord++;
     syncFolderDataAsync();
     const now = Date.now();
+
     // Определяме борда: ако сме в системен борд, ползваме 'Main' или първия наличен
     let boardId = currentBoardFilter;
     const systemBoards = ['all', 'calendar', 'reminders', 'photos', 'videos', 'sounds', 'other', 'new-updates', 'search', 'favorites', 'archived'];
@@ -3564,19 +3569,32 @@ async function handleShareTarget(externalData = null) {
         const mainBoard = boardsData.find(b => b.title === 'Main' || b.gdid === 'Main');
         boardId = mainBoard ? mainBoard.gdid : (boardsData.length > 0 ? boardsData[0].gdid : 'Main');
     }
+
     // --- Обработка на споделено изображение ---
-    let sharedImageBlob = null;
+    let sharedImageBlob = preloadedBlob;
     let sharedImageFilename = `shared_${now}.jpg`;
     let sharedImageMimeType = 'image/jpeg';
+
     if (hasSharedImage) {
         try {
             const cache = await caches.open('share-target-image');
-            const response = await cache.match('shared-image');
-            if (response) {
-                sharedImageBlob = await response.blob();
-                sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
-                sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
-                await cache.delete('shared-image');
+            if (sharedImageBlob) {
+                console.log('[ShareTarget] Using preloaded image blob.');
+                // Always try to get metadata even if we have the blob, or use defaults
+                const response = await cache.match('shared-image');
+                if (response) {
+                    sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
+                    sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
+                    await cache.delete('shared-image');
+                }
+            } else {
+                const response = await cache.match('shared-image');
+                if (response) {
+                    sharedImageBlob = await response.blob();
+                    sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
+                    sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
+                    await cache.delete('shared-image');
+                }
             }
         } catch (e) {
             console.error('Error retrieving shared image from cache:', e);
