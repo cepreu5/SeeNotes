@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.15'; // App version
+const version = 'Beta 1.16'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -5386,7 +5386,7 @@ async function initLoginPage() {
     };
     if (typeof renderLanguageSwitchers === 'function') renderLanguageSwitchers(switchLanguage);
     // Добавяне на действие при натискане на trial бутона
-    if (trialBtn) {
+    if (trialBtn && trialBtn.parentNode) {
         // Cloning to remove any previous event listeners (simple way to avoid dupes)
         const newTrialBtn = trialBtn.cloneNode(true);
         trialBtn.parentNode.replaceChild(newTrialBtn, trialBtn);
