@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.14';
+const CACHE_NAME = 'cx-notes-b1.15';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -90,14 +90,21 @@ const ASSETS_TO_CACHE = [
   './msm-ex/1764554540104.jpg',
 ];
 
+function swLog(...args) {
+  console.log(...args);
+  const bc = new BroadcastChannel('sw_debug_channel');
+  bc.postMessage({ type: 'LOG', args: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)) });
+  bc.close();
+}
+
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Принуждаваме новия SW да се активира веднага за тестовете
+  swLog('[SW] Install event triggered.');
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Cache assets individually for better error reporting and resilience
       return Promise.allSettled(
         ASSETS_TO_CACHE.map(url =>
-          cache.add(url).catch(err => console.warn(`Failed to cache ${url}:`, err))
+          cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
         )
       );
     })
@@ -105,6 +112,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  swLog('[SW] Activate event triggered.');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -115,7 +123,7 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(() => {
-      console.log('[SW] Activated and claiming clients...');
+      swLog('[SW] Activated and claiming clients...');
       return self.clients.claim();
     })
   );
@@ -136,7 +144,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method === 'POST') {
     const url = new URL(event.request.url);
     if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
-      console.log('[SW] Share Target POST request intercepted:', url.href);
+      swLog('[SW] Share Target POST request intercepted:', url.href);
       event.respondWith((async () => {
         const formData = await event.request.formData();
         const title = formData.get('shared_title') || '';
@@ -162,27 +170,27 @@ self.addEventListener('fetch', (event) => {
 
         // --- НОВО: Търсим отворен прозорец на приложението ---
         const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-        console.log('[SW] Total window clients found:', clients.length);
-        clients.forEach(c => console.log('[SW] Found Client URL:', c.url));
+        swLog('[SW] Total window clients found:', clients.length);
+        clients.forEach(c => swLog('[SW] Found Client URL:', c.url));
 
         let existingClient = clients.find(c => {
           const clientUrl = new URL(c.url);
           const reqPath = url.pathname.replace(/\/+$/, ''); // Махаме финалните наклонени черти
           const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
-          
-          console.log(`[SW] Comparing paths: Req=${reqPath} vs Client=${cPath}`);
+
+          swLog(`[SW] Comparing paths: Req=${reqPath} vs Client=${cPath}`);
           return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
         });
-        
+
         if (!existingClient && clients.length > 0) {
           existingClient = clients[0];
-          console.log('[SW] Exact match failed, using fallback client:', existingClient.url);
+          swLog('[SW] Exact match failed, using fallback client:', existingClient.url);
         }
 
         if (existingClient) {
-          console.log('[SW] Found existing client. Focusing and sending data...', existingClient.id);
+          swLog('[SW] Found existing client. Focusing and sending data...', existingClient.id);
           await existingClient.focus();
-          
+
           const shareData = {
             type: 'SHARE_TARGET_EVENT',
             data: {
@@ -200,11 +208,11 @@ self.addEventListener('fetch', (event) => {
           const bc = new BroadcastChannel('share_target_channel');
           bc.postMessage(shareData);
           bc.close();
-          
+
           return new Response(null, { status: 204 });
         }
-        
-        console.log('[SW] No existing client found. Proceed with redirect.');
+
+        swLog('[SW] No existing client found. Proceed with redirect.');
         return Response.redirect(redirectUrl.toString(), 303);
       })());
       return;
