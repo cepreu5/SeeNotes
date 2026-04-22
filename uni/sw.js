@@ -90,31 +90,14 @@ const ASSETS_TO_CACHE = [
   './msm-ex/1764554540104.jpg',
 ];
 
-function swLog(...args) {
-  try {
-    console.log(...args);
-    const bc = new BroadcastChannel('sw_debug_channel');
-    bc.postMessage({
-      type: 'LOG',
-      args: args.map(a => {
-        try {
-          return typeof a === 'object' ? JSON.stringify(a) : String(a);
-        } catch (e) { return "[Unserializable Object]"; }
-      })
-    });
-    bc.close();
-  } catch (e) {
-    console.error('swLog failed:', e);
-  }
-}
-
 self.addEventListener('install', (event) => {
-  swLog('[SW] Install event triggered.');
+  // skipWaiting removed to allow application to prompt user before activation
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
+      // Cache assets individually for better error reporting and resilience
       return Promise.allSettled(
         ASSETS_TO_CACHE.map(url =>
-          cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
+          cache.add(url).catch(err => console.warn(`Failed to cache ${url}:`, err))
         )
       );
     })
@@ -122,7 +105,6 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  swLog('[SW] Activate event triggered.');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -132,10 +114,7 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    }).then(() => {
-      swLog('[SW] Activated and claiming clients...');
-      return self.clients.claim();
-    })
+    }).then(() => self.clients.claim())
   );
 });
 
@@ -154,84 +133,70 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method === 'POST') {
     const url = new URL(event.request.url);
     if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
-      swLog('[SW] Share Target POST request intercepted:', url.href);
-
       event.respondWith((async () => {
-        try {
-          const formData = await event.request.formData();
-          const title = formData.get('shared_title') || '';
-          const text = formData.get('shared_text') || '';
-          const sharedUrl = formData.get('shared_url') || '';
-          const imageFile = formData.get('shared_image');
-
-          // Build redirect URL for fallback
-          const redirectUrl = new URL(url.pathname, self.location.origin);
-          if (title) redirectUrl.searchParams.set('shared_title', title);
-          if (text) redirectUrl.searchParams.set('shared_text', text);
-          if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
-
-          // Store image if present
-          if (imageFile && imageFile.size > 0) {
-            swLog('[SW] Processing shared image...', imageFile.name, imageFile.size);
-            const cache = await caches.open('share-target-image');
-            const headers = new Headers({
-              'Content-Type': imageFile.type || 'image/jpeg',
-              'X-Filename': imageFile.name || `shared_${Date.now()}.jpg`
-            });
-            await cache.put('shared-image', new Response(imageFile, { headers }));
-            redirectUrl.searchParams.set('shared_image', '1');
-          }
-
-          const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-          swLog('[SW] Found active clients:', clients.length);
-
-          let existingClient = clients.find(c => {
-            const clientUrl = new URL(c.url);
-            const reqPath = url.pathname.replace(/\/+$/, '');
-            const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
-            return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
+        const formData = await event.request.formData();
+        const title = formData.get('shared_title') || '';
+        const text = formData.get('shared_text') || '';
+        const sharedUrl = formData.get('shared_url') || '';
+        const imageFile = formData.get('shared_image');
+        // Build redirect URL with text params
+        const redirectUrl = new URL(url.pathname, self.location.origin);
+        if (title) redirectUrl.searchParams.set('shared_title', title);
+        if (text) redirectUrl.searchParams.set('shared_text', text);
+        if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
+        // Store image in a dedicated cache if present
+        if (imageFile && imageFile.size > 0) {
+          const cache = await caches.open('share-target-image');
+          // Store the file as a Response with original filename and type in headers
+          const headers = new Headers({
+            'Content-Type': imageFile.type || 'image/jpeg',
+            'X-Filename': imageFile.name || `shared_${Date.now()}.jpg`
           });
-
-          if (!existingClient && clients.length > 0) existingClient = clients[0];
-
-          if (existingClient) {
-            swLog('[SW] Targeting client:', existingClient.url);
-
-            // Пробваме да фокусираме, но ако браузърът го блокира - не сриваме целия процес
-            try {
-              await existingClient.focus();
-            } catch (focusErr) {
-              swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
-            }
-
-            const shareData = {
-              type: 'SHARE_TARGET_EVENT',
-              data: {
-                shared_title: title,
-                shared_text: text,
-                shared_url: sharedUrl,
-                shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
-              }
-            };
-            existingClient.postMessage(shareData);
-            const bc = new BroadcastChannel('share_target_channel');
-            bc.postMessage(shareData);
-            bc.close();
-
-            // Вместо 204 (което на Desktop оставя празен прозорец), връщаме скрипт за самозатваряне
-            return new Response('<script>window.close()</script>', {
-              headers: { 'Content-Type': 'text/html' }
-            });
-          }
-
-          swLog('[SW] Redirecting to new instance.');
-          return Response.redirect(redirectUrl.toString(), 303);
-
-        } catch (err) {
-          swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
-          // Failsafe: just redirect to index without shared data rather than showing error page
-          return Response.redirect('./index.html', 303);
+          await cache.put('shared-image', new Response(imageFile, { headers }));
+          redirectUrl.searchParams.set('shared_image', '1');
         }
+
+        // --- NEW: Try to find existing window and use postMessage to avoid reload ---
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        let existingClient = clients.find(c => {
+          const cUrl = new URL(c.url);
+          const reqPath = url.pathname.replace(/\/index\.html$/, '/');
+          const clientPath = cUrl.pathname.replace(/\/index\.html$/, '/');
+          return reqPath === clientPath;
+        });
+        
+        // Fallback: if no exact path match, find any client from the same origin
+        if (!existingClient && clients.length > 0) {
+          existingClient = clients[0];
+        }
+
+        if (existingClient) {
+          console.log('[SW] Found existing client. Focusing and sending data...', existingClient.id);
+          await existingClient.focus();
+          
+          const shareData = {
+            type: 'SHARE_TARGET_EVENT',
+            data: {
+              shared_title: title,
+              shared_text: text,
+              shared_url: sharedUrl,
+              shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
+            }
+          };
+
+          // 1. Direct postMessage to the client
+          existingClient.postMessage(shareData);
+
+          // 2. BroadcastChannel as backup
+          const bc = new BroadcastChannel('share_target_channel');
+          bc.postMessage(shareData);
+          bc.close();
+          
+          return new Response(null, { status: 204 });
+        }
+        
+        console.log('[SW] No existing client found. Proceed with redirect.');
+        return Response.redirect(redirectUrl.toString(), 303);
       })());
       return;
     }
