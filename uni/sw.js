@@ -110,7 +110,6 @@ function swLog(...args) {
 
 self.addEventListener('install', (event) => {
   swLog('[SW] Install event triggered.');
-  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return Promise.allSettled(

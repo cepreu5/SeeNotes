@@ -3691,6 +3691,10 @@ async function startApp(isExplicitLogin = false) {
     if (isAppStarted) return;
     isAppStarted = true;
 
+    // --- КОРЕКЦИЯ: Показваме лоудъра ВЕДНАГА при стартиране ---
+    const lc = document.getElementById('loader-container');
+    if (lc) lc.style.display = 'block';
+
     // --- Автоматична проверка за режим Online/Offline ---
     if (!navigator.onLine) {
         isOffline = true;
@@ -3732,6 +3736,10 @@ async function startApp(isExplicitLogin = false) {
         console.log('First start in cache:', ts);
         // Първо зареждаме преводите, за да избегнем синхронни XHR заявки и предупреждения за preload
         await setLanguage(currentLang);
+
+        // Актуализираме текста на лоудъра след зареждане на преводите
+        const lt = document.getElementById('loader-title');
+        if (lt) lt.textContent = typeof _ === 'function' ? _('initialDataLoad') : 'Initial Data Load';
 
         // --- Предварително изчисляване на оставащите дни за UI (използва кеширана функция) ---
         const licenseData = await decryptLicenseToken();
@@ -6058,6 +6066,8 @@ function validateDataSourceSelection() {
         if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
 
         loaderContainer.style.display = 'none'; // Скриваме лоудъра
+        // Изчистваме осиротели файлове при старт
+        // cleanupOrphanedImages();
         return false; // Сигнализираме, че проверката е неуспешна
     }
     return true; // Всичко е наред
@@ -6693,6 +6703,8 @@ async function mainLogic() {
             if (!isOffline) loadSettingsFromGDrive(true);
         }
     } finally {
+        // Изчистваме осиротели файлове след зареждане на всичко
+        // cleanupOrphanedImages();
         isMainLogicRunning = false;
     }
 }
@@ -12829,16 +12841,6 @@ if ('serviceWorker' in navigator) {
                 if (!waitingSW) return;
                 const swUrl = waitingSW.scriptURL;
 
-                // Extract version from SW URL if possible
-                const swVersionMatch = swUrl.match(/[?&]v=([^&]+)/);
-                const swVersion = swVersionMatch ? decodeURIComponent(swVersionMatch[1]) : null;
-
-                // Don't show if the version is the same as current (redundant notification)
-                if (swVersion && swVersion === version) {
-                    console.log(`[SW] Worker version ${swVersion} is already current. Skipping notification.`);
-                    return;
-                }
-
                 // Don't show if already showed for THIS worker or if a refresh is already pending or if bar exists
                 if (window.swNotifiedWorkers.has(swUrl) || document.getElementById('sw-update-bar') || sessionStorage.getItem('swUpdateRefreshPending')) return;
                 window.swNotifiedWorkers.add(swUrl);
@@ -16470,9 +16472,7 @@ async function checkFolderEligibilityForSave(folderId) {
         if (!resp.ok) return { eligible: false, conflicts: ['API request failed'] };
         const result = await resp.json();
         const files = result.files || [];
-
         if (files.length === 0) return { eligible: true, conflicts: [] };
-
         // Специално правило за AppDataFolder и AppSettings
         if (folderId === 'appDataFolder') {
             const nonSettingsFiles = files.filter(f => !(f.name === 'AppSettings' && f.mimeType === 'application/vnd.google-apps.folder'));
@@ -16482,12 +16482,66 @@ async function checkFolderEligibilityForSave(folderId) {
                 return { eligible: false, conflicts: nonSettingsFiles.map(f => f.name) };
             }
         }
-
         return { eligible: false, conflicts: files.map(f => f.name) };
     } catch (e) {
         console.error("checkFolderEligibilityForSave error:", e);
         return { eligible: false, conflicts: ['Network or parse error'] };
     }
 }
+
+/**
+ * Изчиства осиротели изображения (файлове в папката Images, които нямат запис в mediaData).
+ */
+async function cleanupOrphanedImages() {
+    if (isOffline || isLoadCancelled) return;
+    const mediaPaths = new Set(mediaData.map(m => m.path));
+    const mediaGdidPaths = new Set(mediaData.map(m => m.pathGD).filter(id => !!id));
+    console.log(`[Cleanup] Starting orphaned images check. Known media files: ${mediaPaths.size}`);
+    // --- ЛОКАЛНА ПАПКА ---
+    if (useLocalFolder && typeof dirHandle !== 'undefined' && dirHandle) {
+        try {
+            const imagesHandle = await dirHandle.getDirectoryHandle('Images', { create: false }).catch(() => null);
+            if (imagesHandle) {
+                let deletedCount = 0;
+                for await (const entry of imagesHandle.values()) {
+                    if (entry.kind === 'file' && !mediaPaths.has(entry.name)) {
+                        if (entry.name.startsWith('.') || entry.name === 'media.txt') continue;
+                        console.log(`[Cleanup-Local] Deleting orphaned file: ${entry.name}`);
+                        await imagesHandle.removeEntry(entry.name);
+                        deletedCount++;
+                    }
+                }
+                if (deletedCount > 0) console.log(`[Cleanup-Local] Removed ${deletedCount} files.`);
+            }
+        } catch (e) { console.error("[Cleanup-Local] Error:", e); }
+    }
+    // --- GOOGLE DRIVE ---
+    if (useGoogleDb && typeof authToken !== 'undefined' && authToken) {
+        try {
+            const imagesFolderId = folderIds['Images'] || localStorage.getItem('gdrive_folder_id_Images');
+            if (imagesFolderId) {
+                const response = await fetch(`https://www.googleapis.com/drive/v3/files?q='${imagesFolderId}'+in+parents+and+trashed=false&fields=files(id,name)`, {
+                    headers: { 'Authorization': `Bearer ${authToken.access_token}` }
+                });
+                if (response.ok) {
+                    const result = await response.json();
+                    const files = result.files || [];
+                    let deletedCount = 0;
+                    for (const file of files) {
+                        if (!mediaPaths.has(file.name) && !mediaGdidPaths.has(file.id)) {
+                             console.log(`[Cleanup-GDrive] Deleting orphaned file: ${file.name} (${file.id})`);
+                             if (typeof deleteGDriveFile === 'function') await deleteGDriveFile(file.id);
+                             deletedCount++;
+                        }
+                    }
+                    if (deletedCount > 0) console.log(`[Cleanup-GDrive] Removed ${deletedCount} files.`);
+                }
+            }
+        } catch (e) { console.error("[Cleanup-GDrive] Error:", e); }
+    }
+}
+
+// Задаваме периодична проверка за осиротели изображения
+// setInterval(cleanupOrphanedImages, 10 * 60 * 1000); // На всеки 10 минути
 
 
