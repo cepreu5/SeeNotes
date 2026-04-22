@@ -3604,63 +3604,14 @@ async function handleShareTarget(externalData = null) {
                 // 2. Качваме изображението в Images папка
                 const imageGdid = await uploadBlobToGDrive(imagesFolderId, sharedImageFilename, sharedImageBlob, sharedImageMimeType);
                 if (!imageGdid) throw new Error('Image upload failed');
-                // 3. Намираме gdid на бележката (след запис)
-                // Търсим бележката по id - тя може вече да е записана с gdid
-                const waitForNoteGdid = () => {
-                    return new Promise(resolve => {
-                        const check = (attempts = 0) => {
-                            // Търсим в allNotesData по локалното id
-                            const noteInData = allNotesData.find(n => String(n.id) === String(noteId));
-                            // Важно: gdid трябва да е низ (string) от Google Drive
-                            if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                                resolve(noteInData.gdid);
-                            } else if (attempts < 80) { // До 40 секунди
-                                setTimeout(() => check(attempts + 1), 500);
-                            } else {
-                                resolve(null);
-                            }
-                        };
-                        check();
-                    });
-                };
-                const noteGdid = await waitForNoteGdid();
-                if (!noteGdid) {
-                    console.warn('[ShareTarget] Note gdid not available after timeout. Media entry NOT created.');
-                    showToast('⚠️ Image uploaded, but link failed (note not saved to GDrive in time).', 7000);
-                    return;
+                // 3. Запазваме данните за изображението в modal-а — media entry ще се създаде при Save
+                const modalBody = document.getElementById('modal-body');
+                if (modalBody) {
+                    modalBody.dataset.pendingImageGdid = imageGdid;
+                    modalBody.dataset.pendingImageFilename = sharedImageFilename;
+                    console.log('[ShareTarget] Image uploaded to GDrive, pending link on note save. imageGdid:', imageGdid);
                 }
-                // 4. Създаваме media.txt запис в GDrive (използваме само истински GDID)
-                const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
-                const mediaEntry = {
-                    datemod: now,
-                    description: '',
-                    gdid: '',
-                    id: maxMediaId + 1,
-                    noteid: noteGdid, // STRING GDID
-                    path: sharedImageFilename, // Само името на файла (логика от Multinotes)
-                    pathGD: imageGdid,
-                    type: 1
-                };
-                const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-                if (mediaFileGdid) {
-                    mediaEntry.gdid = mediaFileGdid;
-                    await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                    // 5. Обновяваме локалните данни и UI
-                    mediaData.push(mediaEntry);
-                    if (useIndexedDb) {
-                        await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
-                    }
-                    console.log('[ShareTarget] Media entry added to mediaData:', mediaEntry);
-                    showToast(_('sharedImageSaved') || '✅ Image attached to note', 3000);
-
-                    // Хирургично обновяваме само тази бележка, вместо цялото табло
-                    if (typeof refreshNoteUI === 'function') {
-                        console.log('[ShareTarget] Refreshing single note UI...');
-                        await refreshNoteUI(noteGdid);
-                    } else {
-                        renderNotes();
-                    }
-                }
+                showToast(_('sharedImageUploaded') || '✅ Image uploaded — save the note to link it.', 4000);
             } catch (e) {
                 console.error('[ShareTarget] Error processing shared image:', e);
                 showToast('❌ Error uploading shared image: ' + e.message, 5000);
@@ -14633,6 +14584,41 @@ async function saveEditedNote() {
             noteObj.type = -1; // Маркираме за офлайн синхронизация
         }
         if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+        // --- Обработка на чакащо споделено изображение (от Share Target) ---
+        const pendingImageGdid = modalBodyElem.dataset.pendingImageGdid;
+        if (pendingImageGdid && noteObj.gdid && String(noteObj.gdid).length > 10) {
+            try {
+                const pendingFilename = modalBodyElem.dataset.pendingImageFilename || `shared_${Date.now()}.jpg`;
+                const shareFolderId = await getFolderID();
+                if (shareFolderId) {
+                    const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
+                    const mediaEntry = {
+                        datemod: Date.now(),
+                        description: '',
+                        gdid: '',
+                        id: maxMediaId + 1,
+                        noteid: noteObj.gdid,
+                        path: pendingFilename,
+                        pathGD: pendingImageGdid,
+                        type: 1
+                    };
+                    const mediaFileGdid = await createGDriveFile(shareFolderId, 'media.txt', JSON.stringify(mediaEntry));
+                    if (mediaFileGdid) {
+                        mediaEntry.gdid = mediaFileGdid;
+                        await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
+                        mediaData.push(mediaEntry);
+                        if (useIndexedDb) {
+                            await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                        }
+                        console.log('[ShareTarget] Media entry created after save:', mediaEntry);
+                    }
+                }
+                delete modalBodyElem.dataset.pendingImageGdid;
+                delete modalBodyElem.dataset.pendingImageFilename;
+            } catch (e) {
+                console.error('[ShareTarget] Error creating media entry after save:', e);
+            }
+        }
 
         const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
         const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
