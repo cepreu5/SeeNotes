@@ -58,9 +58,13 @@ const handleShareEvent = (eventData, source) => {
 // const shareChannel = new BroadcastChannel('share_target_channel');
 // shareChannel.onmessage = (event) => handleShareEvent(event.data, 'BroadcastChannel');
 
-// Listen via direct SW postMessage
+// Listen via direct SW postMessage (fallback when LaunchQueue is not available)
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => handleShareEvent(event.data, 'ServiceWorker.postMessage'));
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        // Ако LaunchQueue е наличен, той е водещ за share events — SW postMessage се пропуска
+        if ('launchQueue' in window && event.data?.type === 'SHARE_TARGET_EVENT') return;
+        handleShareEvent(event.data, 'ServiceWorker.postMessage');
+    });
 }
 
 // --- Debug Listener for Service Worker logs ---
@@ -3554,18 +3558,25 @@ async function handleShareTarget(externalData = null) {
     let sharedImageFilename = `shared_${now}.jpg`;
     let sharedImageMimeType = 'image/jpeg';
     if (hasSharedImage) {
-        try {
-            const cache = await caches.open('share-target-image');
-            const response = await cache.match('shared-image');
-            if (response) {
-                sharedImageBlob = await response.blob();
-                sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
-                sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
-                await cache.delete('shared-image');
+        // Retry loop: при Launch Handler API, launchQueue може да се задейства
+        // преди SW да е записал изображението в кеша
+        for (let attempt = 0; attempt < 6; attempt++) {
+            try {
+                const cache = await caches.open('share-target-image');
+                const response = await cache.match('shared-image');
+                if (response) {
+                    sharedImageBlob = await response.blob();
+                    sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
+                    sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
+                    await cache.delete('shared-image');
+                    break;
+                }
+            } catch (e) {
+                console.error('Error retrieving shared image from cache:', e);
             }
-        } catch (e) {
-            console.error('Error retrieving shared image from cache:', e);
+            if (attempt < 5) await new Promise(r => setTimeout(r, 500));
         }
+        if (!sharedImageBlob) console.warn('[ShareTarget] Shared image not found in cache after retries.');
     }
     // Показваме модала със споделеното съдържание
     setTimeout(async () => {
@@ -3669,19 +3680,28 @@ async function handleShareTarget(externalData = null) {
     }, 500);
 }
 
-// --- Support for LaunchQueue (Modern browsers like Chrome/Edge) ---
+// --- Launch Handler API (primary path on supporting browsers) ---
+// С launch_handler: focus-existing в manifest, браузърът фокусира съществуващия
+// прозорец и изпраща данните чрез launchQueue, вместо да отваря нов таб.
+// POST handler в sw.js остава като fallback.
 if ('launchQueue' in window) {
     window.launchQueue.setConsumer(async (launchParams) => {
         if (!launchParams.targetURL) return;
         const url = new URL(launchParams.targetURL);
-        const params = {
-            shared_title: url.searchParams.get('shared_title'),
-            shared_text: url.searchParams.get('shared_text'),
-            shared_url: url.searchParams.get('shared_url'),
-            shared_image: url.searchParams.get('shared_image')
-        };
-        if (params.shared_title || params.shared_text || params.shared_url || params.shared_image === '1') {
-            handleShareTarget(params);
+        const hasShareData = url.searchParams.get('shared_title') || url.searchParams.get('shared_text')
+            || url.searchParams.get('shared_url') || url.searchParams.get('shared_image') === '1';
+        if (hasShareData) {
+            // Преминаваме през handleShareEvent за дедупликация
+            // (SW postMessage може да пристигне едновременно с launchQueue)
+            handleShareEvent({
+                type: 'SHARE_TARGET_EVENT',
+                data: {
+                    shared_title: url.searchParams.get('shared_title') || '',
+                    shared_text: url.searchParams.get('shared_text') || '',
+                    shared_url: url.searchParams.get('shared_url') || '',
+                    shared_image: url.searchParams.get('shared_image') || '0'
+                }
+            }, 'LaunchQueue');
         }
     });
 }
