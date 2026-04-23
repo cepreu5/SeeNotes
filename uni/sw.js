@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.21';
+const CACHE_NAME = 'cx-notes-b1.22';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -214,9 +214,9 @@ self.addEventListener('fetch', (event) => {
               }
             };
             existingClient.postMessage(shareData);
-            const bc = new BroadcastChannel('share_target_channel');
-            bc.postMessage(shareData);
-            bc.close();
+            // const bc = new BroadcastChannel('share_target_channel');
+            // bc.postMessage(shareData);
+            // bc.close();
 
             // Вместо 204 (което на Desktop оставя празен прозорец), връщаме скрипт за самозатваряне
             return new Response('<script>window.close()</script>', {

@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.21'; // App version
+const version = 'Beta 1.22'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -55,8 +55,8 @@ const handleShareEvent = (eventData, source) => {
 };
 
 // Listen via BroadcastChannel
-const shareChannel = new BroadcastChannel('share_target_channel');
-shareChannel.onmessage = (event) => handleShareEvent(event.data, 'BroadcastChannel');
+// const shareChannel = new BroadcastChannel('share_target_channel');
+// shareChannel.onmessage = (event) => handleShareEvent(event.data, 'BroadcastChannel');
 
 // Listen via direct SW postMessage
 if ('serviceWorker' in navigator) {
@@ -64,12 +64,12 @@ if ('serviceWorker' in navigator) {
 }
 
 // --- Debug Listener for Service Worker logs ---
-const swDebugChannel = new BroadcastChannel('sw_debug_channel');
-swDebugChannel.onmessage = (event) => {
-    if (event.data && event.data.type === 'LOG') {
-        console.log('[SW-REMOTE-LOG]', ...event.data.args);
-    }
-};
+// const swDebugChannel = new BroadcastChannel('sw_debug_channel');
+// swDebugChannel.onmessage = (event) => {
+//     if (event.data && event.data.type === 'LOG') {
+//         console.log('[SW-REMOTE-LOG]', ...event.data.args);
+//     }
+// };
 
 let pass = false;
 
