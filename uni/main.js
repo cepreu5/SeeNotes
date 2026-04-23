@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.24'; // App version
+const version = 'Beta 1.22'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -27,36 +27,49 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
     }
 }
 
-// Поддръжка само ако браузърът има launchQueue
-if ('launchQueue' in window && 'LaunchParams' in window) {
+// --- Unified Share Event Handler ---
+const handleShareEvent = (eventData, source) => {
+    if (eventData && eventData.type === 'SHARE_TARGET_EVENT') {
+        const now = Date.now();
+        const isDuplicate = window.lastShareEventTime && (now - window.lastShareEventTime < 1000);
 
-    window.launchQueue.setConsumer(async (launchParams) => {
-        if (!launchParams.files || launchParams.files.length === 0)
-            return;
+        console.log(`[Main] Received SHARE_TARGET_EVENT from ${source}. ${isDuplicate ? '(Duplicate ignored)' : ''}`, eventData.data);
 
-        const sharedFiles = [];
+        if (isDuplicate) return;
+        window.lastShareEventTime = now;
 
-        for (const fileHandle of launchParams.files) {
-            try {
-                const file = await fileHandle.getFile();
-                sharedFiles.push(file);
-            } catch (err) {
-                console.error("Error reading shared file:", err);
-            }
-        }
+        // 1. Изчистваме всички отворени модали
+        document.querySelectorAll('.modal.visible, .settings-modal.visible, .modal-overlay.visible').forEach(m => {
+            m.classList.remove('visible');
+        });
 
-        // Подготвяме данните в същия формат, който handleShareTarget очаква
-        const externalData = {
-            shared_title: launchParams.title || "",
-            shared_text: launchParams.text || "",
-            shared_url: launchParams.url || "",
-            shared_files: sharedFiles
-        };
+        // 2. Фокусираме и изчистваме активни елементи
+        if (document.activeElement) document.activeElement.blur();
 
-        // Извикваме твоята функция
-        await handleShareTarget(externalData);
-    });
+        // 3. Изчакваме анимациите и отваряме Share Target
+        setTimeout(() => {
+            console.log(`[Main] Invoking handleShareTarget (triggered by ${source})...`);
+            handleShareTarget(eventData.data);
+        }, 300);
+    }
+};
+
+// Listen via BroadcastChannel
+// const shareChannel = new BroadcastChannel('share_target_channel');
+// shareChannel.onmessage = (event) => handleShareEvent(event.data, 'BroadcastChannel');
+
+// Listen via direct SW postMessage
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => handleShareEvent(event.data, 'ServiceWorker.postMessage'));
 }
+
+// --- Debug Listener for Service Worker logs ---
+// const swDebugChannel = new BroadcastChannel('sw_debug_channel');
+// swDebugChannel.onmessage = (event) => {
+//     if (event.data && event.data.type === 'LOG') {
+//         console.log('[SW-REMOTE-LOG]', ...event.data.args);
+//     }
+// };
 
 let pass = false;
 
@@ -3503,56 +3516,8 @@ async function deleteFromDB(storeName, key) {
 // =================================================================================
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
-
-let sharedImageBlob = null;
-let sharedImageFilename = `shared_${now}.jpg`;
-let sharedImageMimeType = 'image/jpeg';
-async function processSharedImage(externalData) {
-    // ----------------------------------------------------
-    // 1) Launch Handler API (файлове директно от launchQueue)
-    // ----------------------------------------------------
-    if (externalData?.shared_files?.length > 0) {
-        const file = externalData.shared_files[0];
-        sharedImageBlob = file; // File е Blob
-        sharedImageFilename = file.name || "shared_image";
-        sharedImageMimeType = file.type || "image/jpeg";
-        console.log("[ShareTarget] Image received via Launch Handler:", sharedImageFilename);
-        return; // НЕ прекъсва обработката на handleShareTarget(), само излиза от тази функция
-    }
-
-    // ----------------------------------------------------
-    // 2) POST Share Target (изображение в SW cache)
-    // ----------------------------------------------------
-    const hasSharedImage =
-        externalData?.shared_image === "1" ||
-        externalData?.hasSharedImage === true;
-    if (hasSharedImage) {
-        console.log("[ShareTarget] Waiting for image from SW cache...");
-        for (let attempt = 0; attempt < 6; attempt++) {
-            try {
-                const cache = await caches.open('share-target-image');
-                const response = await cache.match('shared-image');
-                if (response) {
-                    sharedImageBlob = await response.blob();
-                    sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename || "shared_image";
-                    sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType || "image/jpeg";
-                    await cache.delete('shared-image');
-                    console.log("[ShareTarget] Image retrieved from SW cache:", sharedImageFilename);
-                    return;
-                }
-            } catch (e) {
-                console.error('Error retrieving shared image from cache:', e);
-            }
-            if (attempt < 5) await new Promise(r => setTimeout(r, 500));
-        }
-        console.warn('[ShareTarget] Shared image not found in cache after retries.');
-    }
-    // Ако няма изображение — просто нищо не правим
-}
-
 // --- Web Share Target API Handler ---
 async function handleShareTarget(externalData = null) {
-    if (!externalData) return;
     const url = new URL(window.location.href);
     const sharedTitle = externalData ? externalData.shared_title : url.searchParams.get('shared_title');
     const sharedText = externalData ? externalData.shared_text : url.searchParams.get('shared_text');
@@ -3584,38 +3549,22 @@ async function handleShareTarget(externalData = null) {
         const mainBoard = boardsData.find(b => b.title === 'Main' || b.gdid === 'Main');
         boardId = mainBoard ? mainBoard.gdid : (boardsData.length > 0 ? boardsData[0].gdid : 'Main');
     }
-    // Унифицирана обработка на изображението
-    await processSharedImage(externalData);
-    // Тук sharedImageBlob / sharedImageFilename / sharedImageMimeType
-    // вече са попълнени, ако има изображение
-    if (sharedImageBlob) {
-        console.log("Image ready:", sharedImageFilename, sharedImageMimeType);
-
-        // if (externalData.shared_files?.length > 0) {
-        //     const file = externalData.shared_files[0];
-        //     const blob = await file.arrayBuffer();    
-
-        // --- Обработка на споделено изображение ---
-        if (hasSharedImage) {
-            // Retry loop: при Launch Handler API, launchQueue може да се задейства
-            // преди SW да е записал изображението в кеша
-            for (let attempt = 0; attempt < 6; attempt++) {
-                try {
-                    const cache = await caches.open('share-target-image');
-                    const response = await cache.match('shared-image');
-                    if (response) {
-                        sharedImageBlob = await response.blob();
-                        sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
-                        sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
-                        await cache.delete('shared-image');
-                        break;
-                    }
-                } catch (e) {
-                    console.error('Error retrieving shared image from cache:', e);
-                }
-                if (attempt < 5) await new Promise(r => setTimeout(r, 500));
+    // --- Обработка на споделено изображение ---
+    let sharedImageBlob = null;
+    let sharedImageFilename = `shared_${now}.jpg`;
+    let sharedImageMimeType = 'image/jpeg';
+    if (hasSharedImage) {
+        try {
+            const cache = await caches.open('share-target-image');
+            const response = await cache.match('shared-image');
+            if (response) {
+                sharedImageBlob = await response.blob();
+                sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
+                sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
+                await cache.delete('shared-image');
             }
-            if (!sharedImageBlob) console.warn('[ShareTarget] Shared image not found in cache after retries.');
+        } catch (e) {
+            console.error('Error retrieving shared image from cache:', e);
         }
     }
     // Показваме модала със споделеното съдържание
@@ -3720,47 +3669,21 @@ async function handleShareTarget(externalData = null) {
     }, 500);
 }
 
-// --- Launch Handler API (primary path on supporting browsers) ---
-// С launch_handler: focus-existing в manifest, браузърът фокусира съществуващия
-// прозорец и изпраща данните чрез launchQueue, вместо да отваря нов таб.
-// POST handler в sw.js остава като fallback.
+// --- Support for LaunchQueue (Modern browsers like Chrome/Edge) ---
 if ('launchQueue' in window) {
-    console.log('[LaunchQueue] API available, setting consumer...');
     window.launchQueue.setConsumer(async (launchParams) => {
-        console.log('[LaunchQueue] Consumer fired!', {
-            targetURL: launchParams.targetURL || '(none)',
-            files: launchParams.files?.length || 0
-        });
-        if (!launchParams.targetURL) {
-            console.log('[LaunchQueue] No targetURL, ignoring.');
-            return;
-        }
+        if (!launchParams.targetURL) return;
         const url = new URL(launchParams.targetURL);
-        console.log('[LaunchQueue] Parsed URL params:', {
+        const params = {
             shared_title: url.searchParams.get('shared_title'),
             shared_text: url.searchParams.get('shared_text'),
             shared_url: url.searchParams.get('shared_url'),
             shared_image: url.searchParams.get('shared_image')
-        });
-        const hasShareData = url.searchParams.get('shared_title') || url.searchParams.get('shared_text')
-            || url.searchParams.get('shared_url') || url.searchParams.get('shared_image') === '1';
-        if (hasShareData) {
-            console.log('[LaunchQueue] Share data detected, dispatching to handleShareEvent...');
-            handleShareEvent({
-                type: 'SHARE_TARGET_EVENT',
-                data: {
-                    shared_title: url.searchParams.get('shared_title') || '',
-                    shared_text: url.searchParams.get('shared_text') || '',
-                    shared_url: url.searchParams.get('shared_url') || '',
-                    shared_image: url.searchParams.get('shared_image') || '0'
-                }
-            }, 'LaunchQueue');
-        } else {
-            console.log('[LaunchQueue] No share data in URL params.');
+        };
+        if (params.shared_title || params.shared_text || params.shared_url || params.shared_image === '1') {
+            handleShareTarget(params);
         }
     });
-} else {
-    console.log('[LaunchQueue] API NOT available in this browser.');
 }
 
 // --- Основна стартова функция ---

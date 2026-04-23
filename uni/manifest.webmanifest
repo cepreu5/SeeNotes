@@ -9,26 +9,7 @@
     "orientation": "any",
     "background_color": "#000000",
     "theme_color": "#000000",
-    "launch_handler": {
-        "client_mode": "focus-existing"
-    },
-    "share_target": {
-        "action": "/index.html",
-        "method": "GET",
-        "params": {
-            "title": "shared_title",
-            "text": "shared_text",
-            "url": "shared_url",
-            "files": [
-                {
-                    "name": "shared_image",
-                    "accept": [
-                        "image/*"
-                    ]
-                }
-            ]
-        }
-    },
+    "prefer_related_applications": false,
     "icons": [
         {
             "src": "CXNotes48.png",
@@ -78,5 +59,23 @@
             "type": "image/png",
             "purpose": "any maskable"
         }
-    ]
+    ],
+    "share_target": {
+        "action": "./index.html",
+        "method": "POST",
+        "enctype": "multipart/form-data",
+        "params": {
+            "title": "shared_title",
+            "text": "shared_text",
+            "url": "shared_url",
+            "files": [
+                {
+                    "name": "shared_image",
+                    "accept": [
+                        "image/*"
+                    ]
+                }
+            ]
+        }
+    }
 }
