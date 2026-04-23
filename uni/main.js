@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.14'; // App version
+const version = 'Beta 1.20'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -16529,9 +16529,9 @@ async function cleanupOrphanedImages() {
                     let deletedCount = 0;
                     for (const file of files) {
                         if (!mediaPaths.has(file.name) && !mediaGdidPaths.has(file.id)) {
-                             console.log(`[Cleanup-GDrive] Deleting orphaned file: ${file.name} (${file.id})`);
-                             if (typeof deleteGDriveFile === 'function') await deleteGDriveFile(file.id);
-                             deletedCount++;
+                            console.log(`[Cleanup-GDrive] Deleting orphaned file: ${file.name} (${file.id})`);
+                            if (typeof deleteGDriveFile === 'function') await deleteGDriveFile(file.id);
+                            deletedCount++;
                         }
                     }
                     if (deletedCount > 0) console.log(`[Cleanup-GDrive] Removed ${deletedCount} files.`);
