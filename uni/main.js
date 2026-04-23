@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.22'; // App version
+const version = 'Beta 1.23'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -62,7 +62,11 @@ const handleShareEvent = (eventData, source) => {
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (event) => {
         // Ако LaunchQueue е наличен, той е водещ за share events — SW postMessage се пропуска
-        if ('launchQueue' in window && event.data?.type === 'SHARE_TARGET_EVENT') return;
+        if ('launchQueue' in window && event.data?.type === 'SHARE_TARGET_EVENT') {
+            console.log('[SW-Message] SHARE_TARGET_EVENT received but SKIPPED (LaunchQueue is primary).');
+            return;
+        }
+        console.log('[SW-Message] Received:', event.data?.type || '(unknown type)');
         handleShareEvent(event.data, 'ServiceWorker.postMessage');
     });
 }
@@ -3685,14 +3689,27 @@ async function handleShareTarget(externalData = null) {
 // прозорец и изпраща данните чрез launchQueue, вместо да отваря нов таб.
 // POST handler в sw.js остава като fallback.
 if ('launchQueue' in window) {
+    console.log('[LaunchQueue] API available, setting consumer...');
     window.launchQueue.setConsumer(async (launchParams) => {
-        if (!launchParams.targetURL) return;
+        console.log('[LaunchQueue] Consumer fired!', {
+            targetURL: launchParams.targetURL || '(none)',
+            files: launchParams.files?.length || 0
+        });
+        if (!launchParams.targetURL) {
+            console.log('[LaunchQueue] No targetURL, ignoring.');
+            return;
+        }
         const url = new URL(launchParams.targetURL);
+        console.log('[LaunchQueue] Parsed URL params:', {
+            shared_title: url.searchParams.get('shared_title'),
+            shared_text: url.searchParams.get('shared_text'),
+            shared_url: url.searchParams.get('shared_url'),
+            shared_image: url.searchParams.get('shared_image')
+        });
         const hasShareData = url.searchParams.get('shared_title') || url.searchParams.get('shared_text')
             || url.searchParams.get('shared_url') || url.searchParams.get('shared_image') === '1';
         if (hasShareData) {
-            // Преминаваме през handleShareEvent за дедупликация
-            // (SW postMessage може да пристигне едновременно с launchQueue)
+            console.log('[LaunchQueue] Share data detected, dispatching to handleShareEvent...');
             handleShareEvent({
                 type: 'SHARE_TARGET_EVENT',
                 data: {
@@ -3702,8 +3719,12 @@ if ('launchQueue' in window) {
                     shared_image: url.searchParams.get('shared_image') || '0'
                 }
             }, 'LaunchQueue');
+        } else {
+            console.log('[LaunchQueue] No share data in URL params.');
         }
     });
+} else {
+    console.log('[LaunchQueue] API NOT available in this browser.');
 }
 
 // --- Основна стартова функция ---
