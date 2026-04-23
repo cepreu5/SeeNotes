@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.22'; // App version
+const version = 'Beta 1.23'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -3737,16 +3737,11 @@ async function startApp(isExplicitLogin = false) {
         // Първо зареждаме преводите, за да избегнем синхронни XHR заявки и предупреждения за preload
         await setLanguage(currentLang);
 
+        initApp(); // Инициализира UI елементите и event listeners
+
         // Актуализираме текста на лоудъра след зареждане на преводите
         const lt = document.getElementById('loader-title');
         if (lt) lt.textContent = typeof _ === 'function' ? _('initialDataLoad') : 'Initial Data Load';
-
-        // --- Предварително изчисляване на оставащите дни за UI (използва кеширана функция) ---
-        const licenseData = await decryptLicenseToken();
-        if (licenseData.remainingDays > 0) {
-            tokenRemainingDays = licenseData.remainingDays;
-            if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
-        }
 
         // --- КОРЕКЦИЯ: Осигуряваме наличност на имейла при безшумен старт ---
         // Използваме САМО записания от логина hint (ако е избрано 'Запомни ме'),
@@ -3757,7 +3752,6 @@ async function startApp(isExplicitLogin = false) {
                 sessionStorage.setItem('google_auth_email_hint', emailHint);
             }
         }
-        initApp(); // Инициализира UI елементите и event listeners
         // --- Задаване на настройки по подразбиране при първо стартиране ---
         // Ако никога не са задавани настройки за източник на данни,
         // избираме Google Drive + База данни по подразбиране.
@@ -6643,31 +6637,51 @@ async function mainLogic() {
                     }
                     showToast(_('dbCreated'), 10000);
                 } else {
-                    // DB exists and has data, sync from source then load from DB
-                    const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
-                    // Синхронизираме от източника, след което зареждаме от базата
-                    console.log("Syncing from source (sync is enabled).");
-                    if (useGoogleDb) {
-                        if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
-                        if (isLoadCancelled) return;
-                        const updatedCount = await runGoogleDriveSync();
-                        showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 10000);
-                    } else if (useLocalFolder) {
-                        if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
-                        if (isLoadCancelled) return;
-                        const updatedCount = await runLocalSync();
-                        showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 10000);
-                    }
-                    // След синхронизация, винаги зареждаме ВСИЧКИ данни от базата
+                    // DB exists and has data, load from DB FIRST then sync in background
+                    console.log("[mainLogic] DB exists. Fast loading local data first.");
                     loaderText.textContent = _('fetchingFromDb');
                     if (isLoadCancelled) return;
                     await fetchAllDataLocal();
-                    // Ако има обновени бележки, автоматично превключваме на тях
-                    if (updatedNoteGdims.length > 0) {
-                        currentBoardFilter = 'new-updates';
-                    }
-                    // Създаваме UI с всички данни
+
+                    // --- ПЪРВОНАЧАЛНО РЕНДИРАНЕ (ОТ БАЗАТА) ---
                     await renderUI({ boardParseError: false });
+
+                    // Background Sync Task - стартираме го веднага след първото рендиране
+                    const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
+                    if (updateFromSource && !isOffline) {
+                        (async () => {
+                            try {
+                                console.log("[mainLogic] Starting background sync task...");
+                                let updatedCount = 0;
+                                if (useGoogleDb) {
+                                    updatedCount = await runGoogleDriveSync();
+                                } else if (useLocalFolder) {
+                                    updatedCount = await runLocalSync();
+                                }
+
+                                if (updatedCount > 0) {
+                                    console.log(`[mainLogic] Background sync finished: ${updatedCount} updates found.`);
+                                    // Освежаваме данните в паметта от базата след синхронизацията
+                                    await fetchAllDataLocal();
+
+                                    // Ако има обновени бележки и потребителят не е отворил модал, превключваме на тях
+                                    if (updatedNoteGdims.length > 0 && !document.getElementById('modal-body')) {
+                                        currentBoardFilter = 'new-updates';
+                                    }
+
+                                    // Освежаваме UI, за да покажем новите данни
+                                    await renderUI({ boardParseError: false });
+
+                                    // Информираме потребителя за намерените промени
+                                    showToast(useGoogleDb ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('localUpdatesFound').replace('{count}', updatedCount), 5000);
+                                } else {
+                                    console.log("[mainLogic] Background sync finished. No new updates.");
+                                }
+                            } catch (e) {
+                                console.error("[mainLogic] Background sync error:", e);
+                            }
+                        })();
+                    }
                 }
             }
             reportDataIntegrityIssues(); // Generate report before finishing loading
