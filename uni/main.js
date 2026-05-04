@@ -11305,8 +11305,9 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
     if (!text) return '';
     // 1. Handle code blocks first, just like in renderNoteContent
     const codeBlocks = [];
-    const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
-    const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
+    const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
+    const textWithoutCode = text.replace(codeTagRegex, (match, code1, code2) => {
+        const code = code1 !== undefined ? code1 : code2;
         codeBlocks.push(escapeHtml(code)); // escapeHtml is crucial here
         return '%%CODE_BLOCK%%';
     });
@@ -11337,8 +11338,9 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
 function renderNoteContent(text) {
     if (!text) return '';
     const codeBlocks = [];
-    const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
-    const textWithoutCode = text.replace(codeTagRegex, (match, code) => {
+    const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
+    const textWithoutCode = text.replace(codeTagRegex, (match, code1, code2) => {
+        const code = code1 !== undefined ? code1 : code2;
         codeBlocks.push(escapeHtml(code));
         return '%%CODE_BLOCK%%';
     });
@@ -11415,8 +11417,9 @@ function formatText(text, formatString, isForModal = false) {
     // Extract code blocks {{ }} BEFORE splitting into segments,
     // so they are not broken across segment boundaries
     const codeBlocks = [];
-    const codeTagRegex = /\{\{([\s\S]*?)\}\}/g;
-    const textForSegments = localText.replace(codeTagRegex, (match, code) => {
+    const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
+    const textForSegments = localText.replace(codeTagRegex, (match, code1, code2) => {
+        const code = code1 !== undefined ? code1 : code2;
         codeBlocks.push(escapeHtml(code));
         return '%%CODE_BLOCK%%';
     });
@@ -11432,7 +11435,7 @@ function formatText(text, formatString, isForModal = false) {
     codeTagRegex.lastIndex = 0;
     let codeMatch;
     const codeRanges = [];
-    const codeTagRegex2 = /\{\{([\s\S]*?)\}\}/g;
+    const codeTagRegex2 = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
     while ((codeMatch = codeTagRegex2.exec(localText)) !== null) {
         codeRanges.push({ start: codeMatch.index, end: codeMatch.index + codeMatch[0].length, replLen: '%%CODE_BLOCK%%'.length });
     }
