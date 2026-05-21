@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.26'; // App version
+const version = 'Beta 1.25'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -3581,7 +3581,16 @@ async function handleShareTarget(externalData = null) {
             // Автоматично влизаме в режим на редактиране, за да може потребителят да запише
             setTimeout(() => {
                 const editBtn = document.getElementById('note-edit-btn');
-                if (editBtn) editBtn.click();
+                if (editBtn) {
+                    editBtn.click();
+                    setTimeout(() => {
+                        if (typeof saveEditedNote === 'function') saveEditedNote();
+                        setTimeout(() => {
+                            const contentModal = document.getElementById('content-modal');
+                            if (contentModal) contentModal.classList.remove('visible');
+                        }, 100);
+                    }, 100);
+                }
             }, 150);
         }
         showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
@@ -10416,6 +10425,14 @@ async function createSettingsUI(boardsData, boardParseError) {
         closeAfterSaveCheckbox.checked = localStorage.getItem('closeAfterSave') === 'true';
         closeAfterSaveCheckbox.addEventListener('change', () => {
             localStorage.setItem('closeAfterSave', closeAfterSaveCheckbox.checked);
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    const autoSaveShareCheckbox = document.getElementById('auto-save-share-checkbox');
+    if (autoSaveShareCheckbox) {
+        autoSaveShareCheckbox.checked = localStorage.getItem('autoSaveShare') === 'true';
+        autoSaveShareCheckbox.addEventListener('change', () => {
+            localStorage.setItem('autoSaveShare', autoSaveShareCheckbox.checked);
             showToast(_('settingSaved'), 2000);
         });
     }
