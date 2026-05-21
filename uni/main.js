@@ -141,6 +141,7 @@ let initialLoadTimestamp = null; // Timestamp when the load finished
 let isAppStarted = false; // Guard for startApp
 let isMainLogicRunning = false; // Guard for mainLogic concurrency
 let isOffline = false; // Flag for offline mode
+let isOfflineChecked = false;
 let localFileMap = new Map(); // Карта за съответствие GDID -> име на файл за локална папка
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
@@ -726,33 +727,18 @@ async function runGoogleDriveSync() {
                 }
             }
         }
-
         loaderText.textContent = _('syncFinishedLoadingData');
         return Math.max(0, updatedFilesCount - skippedNotesCount);
     } finally {
         isSyncing = false;
     }
 }
-
-/**
- * Cached license data from URL token decryption.
- * Prevents multiple expensive crypto operations.
- */
-let cachedLicenseData = null;
-let cachedLicenseEmailHint = null;
-
-/**
- * Decrypts the URL license token and caches the result.
- * Returns cached data on subsequent calls.
- * @returns {Promise<{email: string|null, validityDays: number, ageInDays: number, remainingDays: number, pass: boolean}>}
- */
 async function decryptLicenseToken() {
     const currentEmail = sessionStorage.getItem('google_auth_email_hint');
     if (cachedLicenseData !== null && cachedLicenseEmailHint !== currentEmail) {
-        cachedLicenseData = null; // Bust cache on account switch to allow re-validation
+        cachedLicenseData = null;
     }
     if (cachedLicenseData !== null) return cachedLicenseData;
-
     cachedLicenseData = { email: null, validityDays: 30, ageInDays: 0, remainingDays: 0, pass: false };
     const url = new URL(window.location.href);
     const urlTokenParam = url.searchParams.get("token");
@@ -768,19 +754,49 @@ async function decryptLicenseToken() {
             console.log("Using hardcoded trial token.");
         } catch (e) { }
     }
-    if (!urlToken) {
-        console.log("No license token found. Will use server whitelist check or local trial fallback.");
+    const cachedEmail = localStorage.getItem('cached_whitelist_email');
+    if (cachedEmail && cachedEmail !== currentEmail) {
+        localStorage.removeItem('cached_whitelist_data');
+        localStorage.removeItem('cached_whitelist_time');
+        localStorage.removeItem('cached_whitelist_email');
     }
-
-    // --- НОВА ЛОГИКА ЧРЕЗ WHITELIST (Authorize trials and check for termination) ---
-    // Винаги проверяваме сървъра, ако сме онлайн, дори и да имаме токен (за да хванем terminated)
+    const cachedDataStr = localStorage.getItem('cached_whitelist_data');
+    const cachedTimeStr = localStorage.getItem('cached_whitelist_time');
     let whitelistData = null;
-    if (!isOffline) {
-        whitelistData = await checkWhitelist();
+    let cacheIsValid = false;
+    if (cachedDataStr && cachedTimeStr && !isOffline) {
+        const cachedTime = parseInt(cachedTimeStr, 10);
+        if (Date.now() - cachedTime < 24 * 60 * 60 * 1000) {
+            try {
+                whitelistData = JSON.parse(cachedDataStr);
+                cacheIsValid = true;
+                console.log("[License] Using cached whitelist data (age: " + Math.round((Date.now() - cachedTime) / 60000) + " minutes).");
+                if (Date.now() - cachedTime > 12 * 60 * 60 * 1000) {
+                    setTimeout(() => {
+                        checkWhitelist(false).then(freshData => {
+                            if (freshData) {
+                                localStorage.setItem('cached_whitelist_data', JSON.stringify(freshData));
+                                localStorage.setItem('cached_whitelist_time', Date.now().toString());
+                                localStorage.setItem('cached_whitelist_email', currentEmail || '');
+                                console.log("[License] Background whitelist update successful.");
+                            }
+                        }).catch(e => console.warn("Background whitelist update failed:", e));
+                    }, 5000);
+                }
+            } catch (e) {
+                console.warn("Error parsing cached whitelist data:", e);
+            }
+        }
     }
-
+    if (!cacheIsValid && !isOffline) {
+        whitelistData = await checkWhitelist();
+        if (whitelistData) {
+            localStorage.setItem('cached_whitelist_data', JSON.stringify(whitelistData));
+            localStorage.setItem('cached_whitelist_time', Date.now().toString());
+            localStorage.setItem('cached_whitelist_email', currentEmail || '');
+        }
+    }
     if (whitelistData) {
-        // 1. Първостепенна проверка за прекратен достъп (Hard Block)
         if (whitelistData.terminated === true || whitelistData.terminated === "YES") {
             console.warn("Access terminated by server administrator.");
             cachedLicenseData.pass = false;
@@ -789,26 +805,18 @@ async function decryptLicenseToken() {
             cachedLicenseEmailHint = currentEmail;
             return cachedLicenseData;
         }
-
-        // 2. Проверка за достъп (success)
         cachedLicenseData.pass = whitelistData.success === true;
-
-        // 3. Изчисляване на оставащи дни
         const term = whitelistData.term || whitelistData.newTerm || 30;
         const daysPassed = whitelistData.daysPassed || 0;
-
         if (whitelistData.success === true) {
             cachedLicenseData.remainingDays = Math.max(0, term - daysPassed);
         } else if ((whitelistData.extended === true || whitelistData.extended === "YES") && whitelistData.newTerm > 0) {
-            // Ако не е success (според сървъра е изтекъл), но е удължен (extended)
             cachedLicenseData.pass = true;
             cachedLicenseData.remainingDays = whitelistData.newTerm;
         } else {
             cachedLicenseData.remainingDays = 0;
         }
         cachedLicenseData.email = whitelistData.email;
-
-        // Ако сървърът е дал достъп, не ни трябва локален AES токен
         if (cachedLicenseData.pass) {
             cachedLicenseEmailHint = currentEmail;
             return cachedLicenseData;
@@ -816,13 +824,7 @@ async function decryptLicenseToken() {
     } else if (!isOffline) {
         console.warn("Whitelist check failed.");
     }
-
-    // Ако сме офлайн или нямаме отговор от сървъра, или сървърът е отказал (success: false), 
-    // но имаме физически токен, опитваме декрипция като последен вариант (за платени потребители)
     if (!urlToken) {
-        // --- FALLBACK TO LOCAL TRIAL ---
-        // If we reached here, it means we have no server response and no URL token.
-        // We use the first start timestamp to provide a local trial.
         if (!ts) {
             ts = await getFirstStartEncoded(true); // Persist if it's the very first start
         }
@@ -833,13 +835,11 @@ async function decryptLicenseToken() {
         cachedLicenseData.remainingDays = remainingDays;
         cachedLicenseData.pass = ageInDays < validityInDays;
         cachedLicenseEmailHint = currentEmail;
-
         if (!cachedLicenseData.pass) {
             console.warn("Trial period has expired. License required.");
         } else if (!whitelistData) {
             console.log(`Working in offline trial mode (${remainingDays} days remaining).`);
         }
-
         return cachedLicenseData;
     }
     try {
@@ -850,7 +850,6 @@ async function decryptLicenseToken() {
         const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]), { name: 'AES-GCM' }, false, ['decrypt']);
         const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
         const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-
         const isDeviceValidated = (localStorage.getItem('validatedTokenForDevice') === urlToken);
         if (!isDeviceValidated) {
             const localPart = decryptedEmail.split('@')[0];
@@ -862,7 +861,6 @@ async function decryptLicenseToken() {
                 localStorage.setItem('validatedTokenForDevice', urlToken);
             }
         }
-
         if (!ts) ts = await getFirstStartEncoded();
         const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
         let validityInDays = 30;
@@ -3698,22 +3696,18 @@ async function startApp(isExplicitLogin = false) {
     // --- Автоматична проверка за режим Online/Offline ---
     if (!navigator.onLine) {
         isOffline = true;
-        isExplicitLogin = true; // Позволява влизане без Google Auth в офлайн режим
+        isExplicitLogin = true;
     } else {
         await goOffline();
         if (isOffline) isExplicitLogin = true;
     }
-    // --- Активна проверка за реална мрежова свързаност ---
-    // navigator.onLine може да върне true дори без реален интернет (напр. WiFi без интернет).
-    // Правим бърза HEAD заявка, за да проверим дали Google е достъпен.
+    // --- Активна проверка за реална мрежова свързаност (non-blocking) ---
+    // Стартираме пробата паралелно с другата инициализация. Ще изчакаме резултата само ако е нужен.
+    let networkProbePromise = null;
     if (!isOffline) {
-        try {
-            await fetch('https://www.googleapis.com/generate_204', { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
-        } catch (e) {
-            console.log('Network probe failed — switching to offline mode.');
-            isOffline = true;
-            isExplicitLogin = true;
-        }
+        networkProbePromise = fetch('https://www.googleapis.com/generate_204', {
+            method: 'HEAD', mode: 'no-cors', cache: 'no-store'
+        }).catch(() => null);
     }
 
     // --- NEW: Graceful fallback for KB Assistant ---
@@ -3734,9 +3728,7 @@ async function startApp(isExplicitLogin = false) {
         console.log('First start:', Date.now());
         ts = await getFirstStartEncoded();
         console.log('First start in cache:', ts);
-        // Първо зареждаме преводите, за да избегнем синхронни XHR заявки и предупреждения за preload
-        await setLanguage(currentLang);
-
+        // Преводите вече са заредени от IIFE — не дублираме setLanguage()
         initApp(); // Инициализира UI елементите и event listeners
 
         // Актуализираме текста на лоудъра след зареждане на преводите
@@ -3759,9 +3751,19 @@ async function startApp(isExplicitLogin = false) {
             localStorage.setItem('useGoogleDb', 'true');
             localStorage.setItem('useIndexedDb', 'true');
         }
-        // --- КОРЕКЦИЯ: Проверяваме за базата данни ВЕДНАГА при стартиране ---
-        // Това е критично, за да може userCheck() да работи правилно.
-        dbExists = await checkDbExists(NOTES_DB_NAME);
+        // --- Изчакваме мрежовата проба, ако е стартирана ---
+        if (networkProbePromise) {
+            const probeResult = await networkProbePromise;
+            if (probeResult === null) {
+                console.log('Network probe failed — switching to offline mode.');
+                isOffline = true;
+                isExplicitLogin = true;
+            }
+        }
+        // --- Проверяваме за базата данни (нужно за userCheck) ---
+        if (dbExists === null || typeof dbExists === 'undefined') {
+            dbExists = await checkDbExists(NOTES_DB_NAME);
+        }
         // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
         const authResult = await checkAuth(isExplicitLogin);
         if (!authResult || !authResult.pass) {
@@ -6071,6 +6073,8 @@ function validateDataSourceSelection() {
  * Отчита проблеми с целостта на данните (липсващи или дублирани ID-та).
  */
 async function goOffline() {
+    if (isOfflineChecked) return;
+    isOfflineChecked = true;
     let hasS = false;
     try {
         const cache = await caches.open('app-cache');
@@ -6079,27 +6083,21 @@ async function goOffline() {
     } catch (e) {
         console.warn("Error checking app-cache for 's':", e);
     }
-
-    if (isOffline) return; // Keep sticky offline mode if set manually
-
+    if (isOffline) return;
     if (!navigator.onLine && hasS) {
         isOffline = true;
         console.warn("Working in offline mode (s-record found).");
-
         if (document.querySelector('.login-box')) {
             document.querySelector('.login-box').style.display = 'block';
         }
-
         if (dbExists) {
             try {
                 const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
                 if (boardsInDb && boardsInDb.length > 0) {
                     localStorage.setItem('useIndexedDb', 'true');
                     localStorage.setItem('useGoogleDb', 'false');
-                    // Removed updateGDrive adjustment
                     localStorage.setItem('forceGDriveRead', 'false');
                     updateGlobalStateFlags();
-                    // showToast(_('offlineModeMessage'), 10000); // Moved to mainLogic or startApp for better timing
                 }
             } catch (e) {
                 console.error("Error checking DB in goOffline:", e);
@@ -6416,11 +6414,7 @@ async function mainLogic() {
             }
             authToken = authResult.tokenData;
         }
-        // Проверяваме за съвпадение на потребителя, ако има локална база.
-        await userCheck();
-        if (isLoadCancelled) return;
-        // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
-        updateGlobalStateFlags();
+        // updateGlobalStateFlags ще се извика след пълната DB проверка по-долу
         // Load folders.json (contains per-folder boardMenuOrder, lastNoteId, lastBoardId)
         if (!isOffline) await loadGlobalFoldersJson();
         // --- ПЪРВОНАЧАЛНА НАСТРОЙКА: Ако settings.json и folders.json не съществуват ---
@@ -6486,6 +6480,8 @@ async function mainLogic() {
         // --- КОРЕКЦИЯ: Извикваме проверката за потребител тук, след като UI е готов ---
         await userCheck();
         if (isLoadCancelled) return;
+        // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
+        updateGlobalStateFlags();
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
         if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
             showToast(_('errorDbOnlyAndEmpty'), 15000);
