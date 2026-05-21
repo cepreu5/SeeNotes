@@ -733,6 +733,8 @@ async function runGoogleDriveSync() {
         isSyncing = false;
     }
 }
+let cachedLicenseData = null;
+let cachedLicenseEmailHint = null;
 async function decryptLicenseToken() {
     const currentEmail = sessionStorage.getItem('google_auth_email_hint');
     if (cachedLicenseData !== null && cachedLicenseEmailHint !== currentEmail) {
