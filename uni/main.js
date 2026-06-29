@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.31'; // App version
+const version = 'Beta 1.32'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -12904,6 +12904,9 @@ if ('serviceWorker' in navigator) {
             // Регистрираме версията с флаг, за да принудим браузъра да я презареди, версиите на sw и main трябва да съвпадат
             const registration = await navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(version)}`);
             console.log(`[SW] Registration successful. Scope: ${registration.scope}. Active: ${!!registration.active}, Waiting: ${!!registration.waiting}, Installing: ${!!registration.installing}`);
+            if (registration.active) {
+                sessionStorage.removeItem('swUpdateRefreshPending');
+            }
 
             // Global set to track which SW versions we've already notified about
             window.swNotifiedWorkers = window.swNotifiedWorkers || new Set();
@@ -13006,6 +13009,15 @@ if ('serviceWorker' in navigator) {
 
 
 
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                console.log(`[SW] Controller changed. hadController: ${hadController}, refreshing: ${refreshing}`);
+                if (!refreshing && hadController) {
+                    console.log('[SW] Reloading page due to controller change...');
+                    window.location.reload();
+                    refreshing = true;
+                }
+            });
         } catch (err) {
             console.log('ServiceWorker registration failed: ', err);
         }
