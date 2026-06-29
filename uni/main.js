@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.26'; // App version
+const version = 'Beta 1.30'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -142,6 +142,7 @@ let isAppStarted = false; // Guard for startApp
 let isMainLogicRunning = false; // Guard for mainLogic concurrency
 let isOffline = false; // Flag for offline mode
 let isOfflineChecked = false;
+let isSyncSuspended = false;
 let localFileMap = new Map(); // Карта за съответствие GDID -> име на файл за локална папка
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
@@ -2066,51 +2067,49 @@ async function getMultinotesDataFolderID() {
 
 // =================================================================================
 
+async function authCallback(tokenResponse) {
+    if (tokenResponse && tokenResponse.access_token) {
+        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+        const rememberMe = document.getElementById('rememberMe')?.checked;
+        const storage = rememberMe ? localStorage : sessionStorage;
+        storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+        try {
+            console.log('Fetching user info...');
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+            });
+            console.log('User info response status:', userInfoResponse.status);
+            if (userInfoResponse.ok) {
+                const userInfo = await userInfoResponse.json();
+                console.log('User info received:', userInfo.email);
+                sessionStorage.setItem('google_auth_email_hint', userInfo.email);
+                localStorage.setItem('google_login_hint', userInfo.email);
+            } else {
+                console.warn('User info response not OK:', await userInfoResponse.text());
+            }
+        } catch (error) {
+            console.log('Failed to fetch user info:', error);
+        }
+        sessionStorage.removeItem('logout_flag');
+        isSyncSuspended = false;
+        document.getElementById('login-page').hidden = true;
+        document.getElementById('login-page').style.display = 'none';
+        startApp(true);
+    } else {
+        console.log('Failed to get access token');
+        alert(_('authFailed'));
+    }
+}
+
 async function gisLoaded() {
-    // Задаваме езика преди да се покаже login box-а
     await setLanguage(currentLang);
-    // Ако вече има токен
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: async (tokenResponse) => {
-            if (tokenResponse && tokenResponse.access_token) {
-                const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                const rememberMe = document.getElementById('rememberMe')?.checked;
-                // Токенът се записва в localStorage или sessionStorage според избора
-                const storage = rememberMe ? localStorage : sessionStorage;
-                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                try {
-                    console.log('Fetching user info...');
-                    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                        headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
-                    });
-                    console.log('User info response status:', userInfoResponse.status);
-                    if (userInfoResponse.ok) {
-                        const userInfo = await userInfoResponse.json();
-                        console.log('User info received:', userInfo.email);
-                        // Имейлът за текущата сесия се записва ВИНАГИ в sessionStorage
-                        sessionStorage.setItem('google_auth_email_hint', userInfo.email);
-                        // Запазваме имейла за следващо "тихо" влизане
-                        localStorage.setItem('google_login_hint', userInfo.email);
-                    } else {
-                        console.warn('User info response not OK:', await userInfoResponse.text());
-                    }
-                } catch (error) {
-                    console.log('Failed to fetch user info:', error);
-                }
-                sessionStorage.removeItem('logout_flag');
-                // Вместо redirect, скриваме login страницата и продължаваме
-                document.getElementById('login-page').hidden = true;
-                document.getElementById('login-page').style.display = 'none';
-                // Извикваме startApp за да заредим приложението
-                startApp(true);
-            } else {
-                console.log('Failed to get access token');
-                alert(_('authFailed'));
-            }
+            await authCallback(tokenResponse);
         },
         error_callback: (error) => {
             console.log("GSI Error:", error);
@@ -2118,18 +2117,12 @@ async function gisLoaded() {
         }
     });
     const loginBox = document.querySelector('.login-box');
-    // Проверяваме дали вече имаме токен и дали не сме излезли нарочно
     const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
     const isLogout = sessionStorage.getItem('logout_flag') === 'true';
-
-    // ВИНАГИ стартираме приложението, за да се инициализира UI-а (вкл. полето за търсене за токени)
-    // checkAuth ще се погрижи да покаже login страницата, ако няма токен.
     await startApp();
-
     if (hasToken && !isLogout) {
         console.log("Existing token found in GIS callback, silente mode handled by startApp...");
     } else {
-        // Винаги показваме екрана за вход
         if (loginBox) loginBox.style.visibility = 'visible';
         const authBtn = document.getElementById('authorize_button');
         if (authBtn) authBtn.disabled = false;
@@ -5079,7 +5072,13 @@ function initApp() {
 
     // Click handler
     modeButton.addEventListener('click', (e) => {
-        // Логика за обикновен клик: "Умен" бутон
+        if (isSyncSuspended) {
+            isSyncSuspended = false;
+            isOffline = false;
+            isAppStarted = false;
+            handleAuthClick();
+            return;
+        }
         if (isOffline) {
             showToast(_('offlineModeMessage') || "Cannot sync while offline.", 3000);
             return;
@@ -5513,12 +5512,11 @@ async function handleAuthClick() {
         startApp(true);
         return;
     }
-    // Опит за инициализация, ако липсва tokenClient, но Google lib е налична
     if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: SCOPES,
-            callback: async (resp) => { // Reusing logic from gisLoaded callback partly
+            callback: async (resp) => {
                 if (resp.error) {
                     throw (resp);
                 }
@@ -5526,9 +5524,7 @@ async function handleAuthClick() {
             },
         });
     }
-
     if (tokenClient) {
-        // ... (standard auth logic)
         const rememberMe = localStorage.getItem('rememberMe') === 'true';
         const loginHint = localStorage.getItem('google_login_hint');
         if (rememberMe && loginHint) {
@@ -5537,7 +5533,6 @@ async function handleAuthClick() {
             tokenClient.requestAccessToken({ prompt: 'select_account' });
         }
     } else {
-        // --- NEW FALLBACK FOR FAILED GIS LOAD ---
         console.warn("Google Identity Services not loaded. Checking for offline capability...");
         let hasS = false;
         try {
@@ -5545,7 +5540,6 @@ async function handleAuthClick() {
             const cachedResponse = await cache.match('s');
             hasS = !!cachedResponse;
         } catch (e) { console.warn(e); }
-
         if (hasS) {
             if (confirm("Google services could not be loaded (likely due to connection issues).\n\nDo you want to start in Offline Mode?")) {
                 isOffline = true;
@@ -5555,7 +5549,6 @@ async function handleAuthClick() {
                 return;
             }
         }
-
         console.error("Google Identity Services not loaded.");
         alert("Google services are not loaded yet. Please check your connection and reload via F5.");
     }
@@ -5640,11 +5633,28 @@ async function checkAuth(isExplicitLogin = false) {
         try {
             const refreshResult = await refreshAuthToken();
             if (refreshResult && refreshResult.pass) return refreshResult;
-        } catch (refreshErr) { console.warn("Silent refresh failed:", refreshErr); }
+            console.warn("Silent refresh returned non-pass result:", refreshResult);
+        } catch (refreshErr) {
+            console.warn("Silent refresh failed:", refreshErr);
+        }
+        let hasLocalData = false;
+        if (dbExists) {
+            try {
+                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (boardsInDb && boardsInDb.length > 0) hasLocalData = true;
+            } catch (e) {
+                console.warn("Failed to check local DB in checkAuth:", e);
+            }
+        }
+        if (hasLocalData) {
+            isOffline = true;
+            isSyncSuspended = true;
+            console.log("[Auth] Switching to local-only mode (sync suspended).");
+            return { pass: true, tokenData };
+        }
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token');
         initLoginPage();
-        // alert(_('sessionExpired')); // Removed to avoid annoying popup on start
         return { pass: false };
     }
     const licenseData = await decryptLicenseToken();
@@ -6022,6 +6032,14 @@ function updateModeButton() {
         const filterStyle = isOffline ? ' style="filter: brightness(0);"' : '';
         overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}"${filterStyle}>`;
         iconWrapper.appendChild(overlay);
+    }
+    if (isSyncSuspended) {
+        title = (_('syncSuspendedTooltip') || 'Синхронизацията е спряна. Кликнете за свързване.');
+        iconWrapper.style.position = 'relative';
+        const warnBadge = document.createElement('span');
+        warnBadge.textContent = '⚠️';
+        warnBadge.style.cssText = 'position:absolute;bottom:-4px;right:-4px;font-size:12px;line-height:1;';
+        iconWrapper.appendChild(warnBadge);
     }
     modeButton.title = title;
 }
