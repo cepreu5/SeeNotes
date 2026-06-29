@@ -515,7 +515,6 @@ async function runGoogleDriveSync(forceFullSync = false) {
         return 0;
     }
     isSyncing = true;
-    let lastSyncTimestamp = null; // Декларираме променливата тук
     try {
         console.log("[Sync-Run] runGoogleDriveSync started");
         const loaderTitle = document.getElementById('loader-title');
@@ -530,7 +529,8 @@ async function runGoogleDriveSync(forceFullSync = false) {
         let modifiedSince = null;
         if (!forceFullSync) {
             const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
-            lastSyncTimestamp = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
+            const lastSyncTimestampOrig = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
+            let lastSyncTimestamp = lastSyncTimestampOrig;
             if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
             modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
         }

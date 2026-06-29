@@ -1,4 +1,4 @@
-// https://multinotes.app/gdviewer
+async function mainLogic() // https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
@@ -515,7 +515,6 @@ async function runGoogleDriveSync(forceFullSync = false) {
         return 0;
     }
     isSyncing = true;
-    let lastSyncTimestamp = null; // Декларираме променливата тук
     try {
         console.log("[Sync-Run] runGoogleDriveSync started");
         const loaderTitle = document.getElementById('loader-title');
@@ -530,7 +529,8 @@ async function runGoogleDriveSync(forceFullSync = false) {
         let modifiedSince = null;
         if (!forceFullSync) {
             const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
-            lastSyncTimestamp = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
+            const lastSyncTimestampOrig = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
+            let lastSyncTimestamp = lastSyncTimestampOrig;
             if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
             modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
         }
