@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.33'; // App version
+const version = 'Beta 1.32'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -509,13 +509,12 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
 }
 
 let isSyncing = false;
-async function runGoogleDriveSync(forceFullSync = false) {
+async function runGoogleDriveSync() {
     if (isSyncing) {
         console.log("[Sync-Run] Already syncing, skipping call.");
         return 0;
     }
     isSyncing = true;
-    let lastSyncTimestamp = null; // Декларираме променливата тук
     try {
         console.log("[Sync-Run] runGoogleDriveSync started");
         const loaderTitle = document.getElementById('loader-title');
@@ -527,13 +526,12 @@ async function runGoogleDriveSync(forceFullSync = false) {
             return 0;
         }
 
-        let modifiedSince = null;
-        if (!forceFullSync) {
-            const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
-            lastSyncTimestamp = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
-            if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
-            modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
-        }
+        const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
+        const lastSyncTimestampOrig = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
+        let lastSyncTimestamp = lastSyncTimestampOrig;
+        if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
+
+        const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
         let notesForConflictCheck = [];
         if (loaderTitle) {
             loaderTitle.innerText = modifiedSince ?
@@ -3519,28 +3517,11 @@ async function handleShareTarget(externalData = null) {
     const sharedUrl = externalData ? externalData.shared_url : url.searchParams.get('shared_url');
     const hasSharedImage = externalData ? (externalData.shared_image === '1') : (url.searchParams.get('shared_image') === '1');
     if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
+    // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
-    const cleanTitle = sharedTitle ? sharedTitle.trim() : '';
-    const cleanText = sharedText ? sharedText.trim() : '';
-    const cleanUrl = sharedUrl ? sharedUrl.trim() : '';
-    const normalize = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-    const normTitle = normalize(cleanTitle);
-    const normText = normalize(cleanText);
-    const normUrl = normalize(cleanUrl);
-    if (cleanTitle) {
-        const isTitleInText = cleanText && normText.includes(normTitle);
-        if (!isTitleInText) parts.push(cleanTitle);
-    }
-    if (cleanText) {
-        parts.push(cleanText);
-    }
-    if (cleanUrl) {
-        const isUrlInText = cleanText && (normText.includes(normUrl) || normText.replace(/\s+/g, '').includes(normUrl.replace(/\s+/g, '')));
-        const isUrlInTitle = cleanTitle && (normTitle.includes(normUrl) || normTitle.replace(/\s+/g, '').includes(normUrl.replace(/\s+/g, '')));
-        if (!isUrlInText && !isUrlInTitle && cleanUrl !== cleanText && cleanUrl !== cleanTitle) {
-            parts.push(cleanUrl);
-        }
-    }
+    if (sharedTitle) parts.push(sharedTitle);
+    if (sharedText) parts.push(sharedText);
+    if (sharedUrl && sharedUrl !== sharedText) parts.push(sharedUrl);
     const noteContent = parts.join('\n') || (hasSharedImage ? '📷' : '');
     // Изчистваме share параметрите от URL-а, за да не се обработват повторно
     url.searchParams.delete('shared_title');
@@ -3778,31 +3759,22 @@ async function startApp(isExplicitLogin = false) {
         if (dbExists === null || typeof dbExists === 'undefined') {
             dbExists = await checkDbExists(NOTES_DB_NAME);
         }
-        const canFastStart = dbExists && localStorage.getItem('useIndexedDb') !== 'false';
-        let localBoardCount = 0;
-        if (canFastStart) {
-            try {
-                const bds = await getAllFromDB(BOARD_STORE_NAME);
-                localBoardCount = bds ? bds.length : 0;
-            } catch (e) { localBoardCount = 0; }
+        // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
+        const authResult = await checkAuth(isExplicitLogin);
+        if (!authResult || !authResult.pass) {
+            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
+            loaderContainer.style.display = 'none';
+            // checkAuth вече е показал грешка или е пренасочил
+            isAppStarted = false; // Allow re-try
+            return;
         }
-        const hasLocalDataForFastStart = canFastStart && localBoardCount > 0;
-        if (hasLocalDataForFastStart) {
-            document.getElementById('login-page').hidden = true;
-            document.getElementById('login-page').style.display = 'none';
-        } else {
-            const authResult = await checkAuth(isExplicitLogin);
-            if (!authResult || !authResult.pass) {
-                if (isLoadCancelled) return;
-                loaderContainer.style.display = 'none';
-                isAppStarted = false;
-                return;
-            }
-            authToken = authResult.tokenData;
-            document.getElementById('login-page').hidden = true;
-            document.getElementById('login-page').style.display = 'none';
-            checkWhitelist(true);
-        }
+        authToken = authResult.tokenData;
+        // Скриваме логин страницата, ако е била показана
+        document.getElementById('login-page').hidden = true;
+        document.getElementById('login-page').style.display = 'none';
+        // --- WHITELIST CHECK (On every login) ---
+        checkWhitelist(true); // Delayed background check to log session and update state
+        // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
         updateGlobalStateFlags();
 
         // --- PRE-LOAD START BOARD SETTING ---
@@ -3843,7 +3815,7 @@ async function startApp(isExplicitLogin = false) {
             initKbFab();
         };
         initDraggableButtons();
-        await mainLogic(isExplicitLogin);
+        await mainLogic();
         handleShareTarget();
     } catch (err) {
         console.error("Error in startApp:", err);
@@ -4480,7 +4452,7 @@ function initApp() {
                 syncDirtyNotes();
             }
         } else {
-            mainLogic(false, true); // Force full sync from GD
+            mainLogic();
         }
     });
 
@@ -6362,7 +6334,7 @@ async function handleFirstRunSetup() {
     return true;
 }
 
-async function mainLogic(isExplicitLogin = false, forceFullSyncFromGD = false) {
+async function mainLogic() {
     const loaderFolderInfo = document.getElementById('loader-folder-info');
     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
     const settingsOverride = localStorage.getItem('settings_json_full_override'); //@@ прилагане на промени, направени в set.html
@@ -6477,18 +6449,24 @@ async function mainLogic(isExplicitLogin = false, forceFullSyncFromGD = false) {
             }
         }
         if (!hasLocalData) {
-            // --- ЗАДЪЛЖИТЕЛНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
             if (!authToken) {
                 const authResult = await checkAuth(isExplicitLogin);
-                if (!authResult || !authResult.pass) { // Ако удостоверяването е неуспешно
-                    if (isLoadCancelled) return; // или е отказано от потребителя
-                    showAppUI(); // Показваме UI (вероятно login екрана)
-                    return; // и прекратяваме
+                if (!authResult || !authResult.pass) {
+                    if (isLoadCancelled) return;
+                    showAppUI();
+                    return;
                 }
-                authToken = authResult.tokenData; // Запазваме токена
+                authToken = authResult.tokenData;
             }
-            updateGlobalStateFlags();
-            enableSettingsControls();
+            if (!isOffline) await loadGlobalFoldersJson();
+            if (!isOffline) {
+                const wasFirstRun = await handleFirstRunSetup();
+                if (wasFirstRun) {
+                    console.log('[mainLogic] First run setup completed. Reloading to start normal cycle...');
+                    location.reload();
+                    return;
+                }
+            }
         }
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
         updateModeButton(); // Актуализираме иконата за режим веднага
@@ -6724,27 +6702,17 @@ async function mainLogic(isExplicitLogin = false, forceFullSyncFromGD = false) {
                                         if (useGoogleDb && typeof gapi !== 'undefined' && gapi.client) {
                                             gapi.client.setToken({ access_token: authToken.access_token });
                                         }
-                                        if (!forceFullSyncFromGD) await loadGlobalFoldersJson(); // Only load folders.json if not forcing a full sync
+                                        await loadGlobalFoldersJson();
                                         const wasFirstRun = await handleFirstRunSetup();
-                                        let updatedCount = 0;
-                                        if (useGoogleDb) {
-                                            updatedCount = await runGoogleDriveSync(forceFullSyncFromGD); // Pass the forceFullSyncFromGD flag
-                                        } else if (useLocalFolder) {
-                                            updatedCount = await runLocalSync();
-                                        }
                                         if (wasFirstRun) {
                                             location.reload();
+                                            return;
                                         }
                                         await userCheck();
                                         updateGlobalStateFlags();
-                                        console.log("[mainLogic] Starting background sync task...");
                                     } else {
                                         return;
                                     }
-                                }
-                                if (sessionStorage.getItem('bgSyncDone')) {
-                                    console.log("[mainLogic] Skipping background sync — already synced this session.");
-                                    return;
                                 }
                                 console.log("[mainLogic] Starting background sync task...");
                                 let updatedCount = 0;
@@ -6753,7 +6721,6 @@ async function mainLogic(isExplicitLogin = false, forceFullSyncFromGD = false) {
                                 } else if (useLocalFolder) {
                                     updatedCount = await runLocalSync();
                                 }
-                                sessionStorage.setItem('bgSyncDone', '1');
                                 if (updatedCount > 0) {
                                     console.log(`[mainLogic] Background sync finished: ${updatedCount} updates found.`);
                                     await fetchAllDataLocal();
@@ -12940,9 +12907,6 @@ if ('serviceWorker' in navigator) {
             if (registration.active) {
                 sessionStorage.removeItem('swUpdateRefreshPending');
             }
-            if (registration.active) {
-                sessionStorage.removeItem('swUpdateRefreshPending');
-            }
 
             // Global set to track which SW versions we've already notified about
             window.swNotifiedWorkers = window.swNotifiedWorkers || new Set();
@@ -13038,10 +13002,13 @@ if ('serviceWorker' in navigator) {
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                             console.log('[SW] New worker installed and waiting. Showing notification bar.');
                             showUpdateNotification(newWorker);
-                        };
+                        }
                     });
-                };
+                }
             });
+
+
+
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 console.log(`[SW] Controller changed. hadController: ${hadController}, refreshing: ${refreshing}`);
