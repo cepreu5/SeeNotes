@@ -5101,16 +5101,30 @@ function initApp() {
         loaderContainer.style.display = 'block';
         const loaderTitle = document.getElementById('loader-title');
         if (dbSource === 1) { // Базата е създадена от Google Drive
-            // --- КОРЕКЦИЯ: Зареждаме Google API, тъй като тази функция го пропуска ---
             try {
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
                     await loadGoogleApis();
                 }
-                if (typeof gapi !== 'undefined' && gapi.client) {
+                const authResult = await checkAuth(false);
+                if (authResult && authResult.pass && authResult.tokenData) {
+                    authToken = authResult.tokenData;
+                }
+                if (authToken && typeof gapi !== 'undefined' && gapi.client) {
                     gapi.client.setToken({ access_token: authToken.access_token });
+                } else {
+                    throw new Error("No valid token");
                 }
             } catch (error) {
-                throw new Error(_('errorGoogleLibs'));
+                console.warn("Failed to initialize Google API token, trying direct refresh...", error);
+                const refreshResult = await refreshAuthToken();
+                if (refreshResult && refreshResult.pass && refreshResult.tokenData) {
+                    authToken = refreshResult.tokenData;
+                    if (typeof gapi !== 'undefined' && gapi.client) {
+                        gapi.client.setToken({ access_token: authToken.access_token });
+                    }
+                } else {
+                    throw new Error(_('errorGoogleLibs'));
+                }
             }
             console.log("Triggering Google Drive sync...");
             console.trace("[Sync-Trace] triggerSync called");
@@ -12990,19 +13004,7 @@ if ('serviceWorker' in navigator) {
                 }
             });
 
-            // Reload when the new Service Worker takes control, but only IF there was a previous controller (actual update)
-            let refreshing = false;
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                console.log(`[SW] Controller changed. hadController: ${hadController}, refreshing: ${refreshing}`);
-                if (!refreshing && hadController) {
-                    console.log('[SW] Reloading page due to controller change...');
-                    // Clear the refresh flag once the new worker takes control
-                    sessionStorage.removeItem('swUpdateRefreshPending');
-                    // Use simple reload instead of handleSignoutClick to preserve session
-                    window.location.reload();
-                    refreshing = true;
-                }
-            });
+
 
         } catch (err) {
             console.log('ServiceWorker registration failed: ', err);
@@ -13451,12 +13453,10 @@ function toggleListFormat(textarea, listType) {
     const selectedLines = text.substring(lineStart, lineEnd).split('\n');
     const isBullet = listType === 'bullet';
     const bulletSym = (localStorage.getItem('mdBullet') || '-').trim();
-
     const isRemoving = selectedLines.every(line => {
         if (isBullet) return line.trim().startsWith(bulletSym);
         return /^\d+\.\s/.test(line.trim());
     });
-
     const newLines = selectedLines.map((line, idx) => {
         if (isRemoving) {
             if (isBullet) {
@@ -13472,7 +13472,7 @@ function toggleListFormat(textarea, listType) {
         }
     });
     const replacement = newLines.join('\n');
-    textarea.setRangeText(replacement, lineStart, lineEnd, 'select');
+    textarea.setRangeText(replacement, lineStart, lineEnd, 'end');
     textarea.dispatchEvent(new Event('input', {
         bubbles: true
     }));
