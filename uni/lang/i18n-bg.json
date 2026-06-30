@@ -177,6 +177,8 @@
     "noteDeletedSuccess": "Бележката е изтрита успешно от базата данни.",
     "confirmDiscardChanges": "Затваряне без запис?",
     "noteDeletedSuccessGDrive": "Бележката е изтрита от БД и Google Drive.",
+    "confirmSaveChanges": "Запис на промените?",
+    "savingChanges": "Запис на промените...",
     "noteDeletedSuccessLocal": "Бележката е изтрита от БД и локалната папка.",
     "noteDeletedSuccessBoth": "Бележката е изтрита от БД, GD и локалната папка.",
     "archiveSavedSuccess": "Архивът е записан успешно!",
