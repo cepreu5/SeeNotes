@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<title>Centered Clock with Numbers</title>
+<style>
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #111;
+    font-family: 'Arial', sans-serif;
+  }
+
+  .clock {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #444, #111);
+    position: relative;
+    box-shadow: inset 0 0 10px #000, 0 0 20px #000;
+    box-sizing: border-box;
+  }
+
+  .center {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #1df52f;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+  }
+
+  .hand {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform-origin: bottom center; 
+  }
+
+  .hour {
+    width: 6px;
+    height: 50px;
+    background: #fff;
+    border-radius: 3px;
+  }
+
+  .minute {
+    width: 4px;
+    height: 70px;
+    background: #1df52f;
+    border-radius: 2px;
+  }
+
+  .second {
+    width: 2px;
+    height: 80px;
+    background: #ff3b3b;
+    border-radius: 1px;
+    box-shadow: 0 0 6px #ff3b3b;
+  }
+
+  .mark {
+    position: absolute;
+    width: 4px;
+    height: 12px;
+    background: #eee;
+    top: 4px;
+    left: 50%;
+    transform-origin: center 96px;
+  }
+
+  /* Стилизиране на цифрите */
+  .number {
+    position: absolute;
+    color: #fff;
+    font-size: 16px; /* Малко по-малък размер, за да стоят по-елегантно до ръба */
+    font-weight: bold;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Позициониране максимално близо до периферията */
+  .n12 { top: 5px; left: 50%; transform: translateX(-50%); }
+  .n3  { right: 5px; top: 50%; transform: translateY(-50%); }
+  .n6  { bottom: 5px; left: 50%; transform: translateX(-50%); }
+  .n9  { left: 5px; top: 50%; transform: translateY(-50%); }
+</style>
+</head>
+<body>
+
+<div class="clock" id="clock">
+  <div class="center"></div>
+  
+  <div class="number n12">12</div>
+  <div class="number n3">3</div>
+  <div class="number n6">6</div>
+  <div class="number n9">9</div>
+
+  <div class="hand hour" id="hour"></div>
+  <div class="hand minute" id="minute"></div>
+  <div class="hand second" id="second"></div>
+</div>
+
+<script>
+  // Маркери за часовете
+  const clock = document.getElementById('clock');
+  for (let i = 0; i < 12; i++) {
+    if (i % 3 === 0) continue; 
+    
+    const m = document.createElement('div');
+    m.className = 'mark';
+    m.style.transform = `translateX(-50%) rotate(${i * 30}deg)`;
+    clock.appendChild(m);
+  }
+
+  const hourHand = document.getElementById('hour');
+  const minuteHand = document.getElementById('minute');
+  const secondHand = document.getElementById('second');
+
+  function updateClock() {
+    const now = new Date();
+    const s = now.getSeconds();
+    const m = now.getMinutes();
+    const h = now.getHours();
+
+    const sDeg = s * 6;
+    const mDeg = m * 6 + s * 0.1;
+    const hDeg = (h % 12) * 30 + m * 0.5;
+
+    hourHand.style.transform = `translate(-50%, -100%) rotate(${hDeg}deg)`;
+    minuteHand.style.transform = `translate(-50%, -100%) rotate(${mDeg}deg)`;
+    secondHand.style.transform = `translate(-50%, -100%) rotate(${sDeg}deg)`;
+  }
+
+  updateClock();
+  setInterval(updateClock, 1000);
+</script>
+
+</body>
+</html>
