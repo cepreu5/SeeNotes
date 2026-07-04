@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.31clock'; // App version
+const version = 'Beta 1.31size'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -5317,20 +5317,20 @@ function updateSearchPlaceholder() {
 }
 
 function saveSearchTerm(term) {
-    // Remove if it already exists to move it to the top
     const existingIndex = savedSearches.indexOf(term);
     if (existingIndex > -1) {
         savedSearches.splice(existingIndex, 1);
     }
-    // Add to the beginning
     savedSearches.unshift(term);
-    // Trim the array if it's too long
     if (maxSavedSearches > 0 && savedSearches.length > maxSavedSearches) {
         savedSearches.length = maxSavedSearches;
     } else if (maxSavedSearches === 0) {
-        savedSearches = []; // If max is 0, clear the list
+        savedSearches = [];
     }
     localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+    if (!isOffline) {
+        saveSettingsToGDrive(true).catch(e => console.warn("Failed to auto-save settings on search save:", e));
+    }
 }
 
 
@@ -9723,7 +9723,7 @@ const appSettingsKeys = [
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
-    'modalWidth', 'modalHeight', 'folderId', 'language', 'rememberMe',
+    'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'lastSearchTerm', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
     'active_folder_name', 'gdrive_folder_names', 'deviceName',
@@ -14324,8 +14324,10 @@ async function checkUnsavedChanges(isClosingModal = true) {
     const normalizedCurrentFullText = currentFullTextRaw.replace(/\r\n/g, '\n');
     const hasTextChanged = normalizedCurrentFullText !== normalizedInitialContent;
     const hasColorChanged = newColorIndex !== initialColorIndex;
-    if (!hasTextChanged && !hasColorChanged) {
-        return true; // No changes, allow closing
+    const isNewNote = modalBodyElem.dataset.isNewNote === 'true';
+    const isNewNoteWithContent = isNewNote && (newBodyTextRaw.trim() !== "" || newTitleTextRaw.trim() !== "");
+    if (!hasTextChanged && !hasColorChanged && !isNewNoteWithContent) {
+        return true;
     }
     // If there are changes, ask to save
     const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
