@@ -3,11 +3,11 @@
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
 // terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
-// node -e "const fs=require('fs'); const T=require('terser'); (async()=>{ const code=fs.readFileSync('main.js','utf8'); const result=await T.minify(code,{ compress:{ arrows:true, booleans:true, collapse_vars:true, comparisons:true, dead_code:true, drop_console:true, hoist_funs:true, if_return:true, passes:3, pure_funcs:['console.log'] }, mangle:{ reserved:['gisLoaded'], keep_fnames: /^gisLoaded$/ }, toplevel:true, ecma:2020, module:true, format:{ wrap_iife:true } }); fs.writeFileSync('mainn.js',result.code); })();"
+// node -e "const fs=require('fs'); const T=require('terser'); (async()=>{ const code=fs.readFileSync('main.js','utf8'); const result=await T.minify(code,{ compress:{ arrows:true, booleans:true, collapse_vars=true, comparisons:true, dead_code=true, drop_console=true, hoist_funs=true, if_return=true, passes:3, pure_funcs:['console.log'] }, mangle:{ reserved:['gisLoaded'], keep_fnames: /^gisLoaded$/ }, toplevel:true, ecma:2020, module:true, format:{ wrap_iife:true } }); fs.writeFileSync('mainn.js',result.code); })();"
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.31oneclick'; // App version
+const version = 'Beta 1.32newver'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -13072,8 +13072,8 @@ if ('serviceWorker' in navigator) {
                 if (!waitingSW) return;
                 const swUrl = waitingSW.scriptURL;
 
-                // Don't show if already showed for THIS worker or if a refresh is already pending or if bar exists
-                if (window.swNotifiedWorkers.has(swUrl) || document.getElementById('sw-update-bar') || sessionStorage.getItem('swUpdateRefreshPending')) return;
+                // Don't show if already showed for THIS worker, if bar exists, or if we already handled this exact SW version
+                if (window.swNotifiedWorkers.has(swUrl) || document.getElementById('sw-update-bar') || localStorage.getItem('last_sw_update_url') === swUrl) return;
                 window.swNotifiedWorkers.add(swUrl);
 
                 // Create update notification bar
@@ -13117,8 +13117,8 @@ if ('serviceWorker' in navigator) {
                 refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
                 refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
                 refreshBtn.onclick = () => {
-                    // Mark as pending refresh to avoid duplicate prompts in this session
-                    sessionStorage.setItem('swUpdateRefreshPending', 'true');
+                    // Persist the SW URL so we never show the notification again for this exact version
+                    localStorage.setItem('last_sw_update_url', swUrl);
                     // Forcing the assistant to show the update info after reload by removing seen version
                     localStorage.removeItem('app_version_seen');
                     waitingSW.postMessage({ type: 'SKIP_WAITING' });
@@ -13169,9 +13169,6 @@ if ('serviceWorker' in navigator) {
                 console.log(`[SW] Controller changed. hadController: ${hadController}, refreshing: ${refreshing}`);
                 if (!refreshing && hadController) {
                     console.log('[SW] Reloading page due to controller change...');
-                    // Clear the refresh flag once the new worker takes control
-                    sessionStorage.removeItem('swUpdateRefreshPending');
-                    // Use simple reload instead of handleSignoutClick to preserve session
                     window.location.reload();
                     refreshing = true;
                 }
