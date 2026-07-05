@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.32newver'; // App version
+const version = 'Beta 1.31newver'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -13064,18 +13064,14 @@ if ('serviceWorker' in navigator) {
             const registration = await navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(version)}`);
             console.log(`[SW] Registration successful. Scope: ${registration.scope}. Active: ${!!registration.active}, Waiting: ${!!registration.waiting}, Installing: ${!!registration.installing}`);
 
-            // Global set to track which SW versions we've already notified about
-            window.swNotifiedWorkers = window.swNotifiedWorkers || new Set();
-
             // Function to show update notification as a persistent floating bar
+            // Uses a simple boolean flag - guarantees at most ONE notification per page load
             const showUpdateNotification = (waitingSW) => {
                 if (!waitingSW) return;
-                const swUrl = waitingSW.scriptURL;
-
-                // Don't show if already showed for THIS worker, if bar exists, or if we already handled this exact SW version
-                if (window.swNotifiedWorkers.has(swUrl) || document.getElementById('sw-update-bar') || localStorage.getItem('last_sw_update_url') === swUrl) return;
-                window.swNotifiedWorkers.add(swUrl);
-
+                // Absolute guard: once shown, never show again on this page load
+                if (window._swUpdateBarShown) return;
+                window._swUpdateBarShown = true;
+                console.log('[SW] Showing update notification bar.');
                 // Create update notification bar
                 const updateBar = document.createElement('div');
                 updateBar.id = 'sw-update-bar';
@@ -13097,11 +13093,9 @@ if ('serviceWorker' in navigator) {
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     animation: swSlideUp 0.3s ease;
                 `;
-
                 const textSpan = document.createElement('span');
                 textSpan.textContent = typeof _ === 'function' ? _('newVersionAvailable') : "New version available!";
                 textSpan.style.fontWeight = '500';
-
                 const refreshBtn = document.createElement('button');
                 refreshBtn.textContent = typeof _ === 'function' ? _('refreshNow') : "Refresh now";
                 refreshBtn.style.cssText = `
@@ -13117,18 +13111,15 @@ if ('serviceWorker' in navigator) {
                 refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
                 refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
                 refreshBtn.onclick = () => {
-                    // Persist the SW URL so we never show the notification again for this exact version
-                    localStorage.setItem('last_sw_update_url', swUrl);
-                    // Forcing the assistant to show the update info after reload by removing seen version
+                    // Mark this version as handled so it won't show after reload
+                    localStorage.setItem('sw_notified_version', version);
                     localStorage.removeItem('app_version_seen');
                     waitingSW.postMessage({ type: 'SKIP_WAITING' });
                     setTimeout(() => updateBar.remove(), 100);
                 };
-
                 updateBar.appendChild(textSpan);
                 updateBar.appendChild(refreshBtn);
                 document.body.appendChild(updateBar);
-
                 // Add animation style if not exists
                 if (!document.getElementById('sw-update-style')) {
                     const style = document.createElement('style');
@@ -13142,26 +13133,32 @@ if ('serviceWorker' in navigator) {
                     document.head.appendChild(style);
                 }
             };
-
-            // Check if there's already a waiting SW
-            if (registration.waiting) {
-                showUpdateNotification(registration.waiting);
-            }
-
-            // Listen for new SW installing
-            registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                console.log('[SW] New worker found installation starting...', newWorker?.scriptURL);
-                if (newWorker) {
-                    newWorker.addEventListener('statechange', () => {
-                        console.log(`[SW] New worker state changed: ${newWorker.state}`);
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            console.log('[SW] New worker installed and waiting. Showing notification bar.');
-                            showUpdateNotification(newWorker);
-                        }
-                    });
+            // Cross-reload guard: if we already handled this exact app version, skip
+            const alreadyNotifiedVersion = localStorage.getItem('sw_notified_version');
+            if (alreadyNotifiedVersion === version) {
+                console.log('[SW] Already notified for version', version, '- skipping update notification.');
+                // Clear the flag now that the new SW is active so NEXT update can show
+                localStorage.removeItem('sw_notified_version');
+            } else {
+                // Check if there's already a waiting SW
+                if (registration.waiting) {
+                    showUpdateNotification(registration.waiting);
                 }
-            });
+                // Listen for new SW installing
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    console.log('[SW] New worker found installation starting...', newWorker?.scriptURL);
+                    if (newWorker) {
+                        newWorker.addEventListener('statechange', () => {
+                            console.log(`[SW] New worker state changed: ${newWorker.state}`);
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                console.log('[SW] New worker installed and waiting. Showing notification bar.');
+                                showUpdateNotification(newWorker);
+                            }
+                        });
+                    }
+                });
+            }
 
             // Reload when the new Service Worker takes control, but only IF there was a previous controller (actual update)
             let refreshing = false;
