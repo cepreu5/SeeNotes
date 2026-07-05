@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.31size'; // App version
+const version = 'Beta 1.31oneclick'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -112,6 +112,7 @@ let isDbOwner = true; // Флаг, който показва дали потре
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
 let tokenClient = null; // Client for silent auth refresh
 let notesBgrdChanged = false; // Flag to track if notes background setting changed
+let oneTapLinkChanged = false;
 let isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
 
 // --- Състояние на търсенето ---
@@ -4963,10 +4964,11 @@ function initApp() {
             }
             if (modal) modal.classList.remove('visible');
             if (modal && modal.id === 'settings-modal') {
-                window.kbAssistant.terminateGuide(); // Safe to call due to dummy object
-                if (notesBgrdChanged) {
+                window.kbAssistant.terminateGuide();
+                if (notesBgrdChanged || oneTapLinkChanged) {
                     mainLogic();
                     notesBgrdChanged = false;
+                    oneTapLinkChanged = false;
                 }
             }
         });
@@ -4997,9 +4999,10 @@ function initApp() {
         }
         document.getElementById('settings-modal').classList.remove('visible');
         if (window.kbAssistant) window.kbAssistant.terminateGuide();
-        if (notesBgrdChanged) {
+        if (notesBgrdChanged || oneTapLinkChanged) {
             mainLogic();
             notesBgrdChanged = false;
+            oneTapLinkChanged = false;
         }
         if (!isOffline) {
             const advSpan = document.getElementById('advanced-settings-span');
@@ -5031,9 +5034,10 @@ function initApp() {
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
-                    if (notesBgrdChanged) {
+                    if (notesBgrdChanged || oneTapLinkChanged) {
                         mainLogic();
                         notesBgrdChanged = false;
+                        oneTapLinkChanged = false;
                     }
                     if (!isOffline) {
                         const advSpan = document.getElementById('advanced-settings-span');
@@ -10708,10 +10712,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         const isChecked = oneTapLinkCheckbox.checked;
         localStorage.setItem('oneTapLink', isChecked);
         showToast(_('settingSaved'), 2000);
-        // Затваряме настройките, за да се вижда презареждането
-        document.getElementById('settings-modal').classList.remove('visible');
-        // Презареждаме бележките, за да се отрази промяната веднага (само UI рендериране)
-        renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        oneTapLinkChanged = true;
     });
     // Click to edit
     if (clickToEditCheckbox) {
