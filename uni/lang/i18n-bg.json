@@ -411,5 +411,9 @@
     "sharedContentReceived": "Споделено съдържание получено",
     "uploadingSharedImage": "Качване на изображение...",
     "sharedImageSaved": "Изображението е прикачено към бележката",
-    "openLink": "Отвори"
+    "openLink": "Отвори",
+    "pinNoteTooltip": "Закачи бележка",
+    "unpinNoteTooltip": "Откачи бележка",
+    "notePinned": "Бележката е закачена.",
+    "noteUnpinned": "Бележката е откачена."
 }

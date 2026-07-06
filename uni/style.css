@@ -748,7 +748,8 @@ code {
     left: 0;
     width: 100%;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 6px;
     padding: 0 40px 0 20px;
     /* Horizontal padding */
     box-sizing: border-box;
@@ -767,6 +768,54 @@ code {
     /* Re-enable clicks on date/time elements */
     gap: 5px;
     /* Space between icon and text */
+}
+
+.note-header-time {
+    margin-left: auto;
+}
+
+.note-pin-btn {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    padding: 2px;
+    color: rgba(0, 0, 0, 0.42);
+    background: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.note-pin-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.note-pin-btn .pin-dot {
+    fill: transparent;
+}
+
+.note-pin-btn:hover {
+    color: rgba(0, 0, 0, 0.75);
+    background: rgba(255, 255, 255, 0.62);
+    transform: translateY(-1px);
+}
+
+.note-pin-btn.pinned {
+    color: #c22d1f;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.note-pin-btn.pinned .pin-dot {
+    fill: currentColor;
+}
+
+.note-pinned {
+    box-shadow: 0 0 0 2px rgba(194, 45, 31, 0.28), 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
 }
 
 .header-icon svg {

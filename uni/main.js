@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.31newver'; // App version
+const version = 'Beta 1.32pin'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -170,6 +170,7 @@ const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
 const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+const pinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2.4" stroke="currentColor" fill="none"><circle class="pin-dot" cx="12" cy="12" r="7"></circle></svg>`;
 const saveSearchSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
 const attachmentIcons = [
     { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
@@ -1929,6 +1930,7 @@ async function createNewNote() {
         "notetxt": "",
         "numord": noteNumord,
         "pass": false,
+        "pinnedAt": 0,
         "sellist": 0,
         "status": 0,
         "text_span": "",
@@ -9173,13 +9175,15 @@ function applyFilters() {
         }
     }
     // --- Sorting Logic ---
-    if (localStorage.getItem('enableNoteSorting') === 'true') {
+    const pinSortingEnabled = currentBoardFilter === 'all' || isStandard;
+    const noteSortingEnabled = localStorage.getItem('enableNoteSorting') === 'true';
+    if (noteSortingEnabled || pinSortingEnabled) {
         let sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
         let sortReverse = localStorage.getItem('sortInReverse') === 'true';
         let sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
 
         // --- Individual Board Sort Override ---
-        if (currentBoardFilter && currentBoardFilter !== 'trash' && currentBoardFilter !== 'reminder' && currentBoardFilter !== 'all') {
+        if (noteSortingEnabled && currentBoardFilter && currentBoardFilter !== 'trash' && currentBoardFilter !== 'reminder' && currentBoardFilter !== 'all') {
             const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
             const boardToMatch = boardsData.find(b => (isArh ? b.id : b.gdid) == currentBoardFilter);
             if (boardToMatch && boardToMatch.status >= 10) {
@@ -9203,6 +9207,16 @@ function applyFilters() {
         visibleNotes.sort((a, b) => {
             if (a.classList.contains('boards-note')) return -1;
             if (b.classList.contains('boards-note')) return 1;
+            if (pinSortingEnabled) {
+                const pinA = Number(a.dataset.pin || 0);
+                const pinB = Number(b.dataset.pin || 0);
+                const isPinnedA = pinA > 0;
+                const isPinnedB = pinB > 0;
+                if (isPinnedA && !isPinnedB) return -1;
+                if (!isPinnedA && isPinnedB) return 1;
+                if (isPinnedA && isPinnedB && pinA !== pinB) return pinB - pinA;
+            }
+            if (!noteSortingEnabled) return 0;
             // 1. Reminder Priority
             if (sortRemindersTop) {
                 const isReminderA = a.dataset.tm === '1';
@@ -12019,6 +12033,12 @@ async function createNoteElement(noteContent) {
             if (extraData.datemod) note.dataset.dm = extraData.datemod;
             // data-no -> numord
             if (extraData.numord !== undefined) note.dataset.no = extraData.numord;
+            if (extraData.pinnedAt) {
+                note.dataset.pin = extraData.pinnedAt;
+                note.classList.add('note-pinned');
+            } else {
+                note.dataset.pin = '0';
+            }
             // data-s -> status
             if (extraData.status !== undefined) {
                 note.dataset.s = extraData.status;
@@ -12235,6 +12255,19 @@ async function createNoteElement(noteContent) {
         }
     });
     headerInfoContainer.appendChild(headerTime);
+    const pinBtn = document.createElement('button');
+    const isPinned = Number(extraData.pinnedAt || 0) > 0;
+    pinBtn.type = 'button';
+    pinBtn.className = `note-pin-btn${isPinned ? ' pinned' : ''}`;
+    pinBtn.innerHTML = pinIconSvg;
+    pinBtn.title = isPinned ? (_('unpinNoteTooltip') || 'Unpin note') : (_('pinNoteTooltip') || 'Pin note');
+    pinBtn.setAttribute('aria-label', pinBtn.title);
+    pinBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        await toggleNotePinned(noteGdid, noteID);
+    });
+    headerInfoContainer.appendChild(pinBtn);
     // Add the new container before the title
     titleWrapper.appendChild(headerInfoContainer);
     titleWrapper.appendChild(titleEl);
@@ -12587,6 +12620,65 @@ async function refreshNoteUI(gdid) {
         // Важно: Извикваме applyFilters, за да се приложи текущият филтър на борда (за да не се появи "скрита" бележка)
         if (typeof applyFilters === 'function') applyFilters();
     }
+}
+
+async function toggleNotePinned(noteGdid, noteId) {
+    const noteToUpdate = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
+    if (!noteToUpdate) return false;
+
+    const wasPinned = Number(noteToUpdate.pinnedAt || 0) > 0;
+    if (noteToUpdate.version) noteToUpdate.version = parseInt(noteToUpdate.version, 10) + 1;
+    else noteToUpdate.version = 1;
+    noteToUpdate.pinnedAt = wasPinned ? 0 : Date.now();
+    noteToUpdate.datemod = Date.now();
+
+    const updateGDriveNow = useGoogleDb && !isOffline;
+    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true' && !isOffline;
+    if (!updateGDriveNow && !updateLocalFolderNow) {
+        noteToUpdate.type = -1;
+    }
+
+    const oldNoteEl = document.querySelector(`.note[data-g="${noteToUpdate.gdid}"]`) ||
+        (noteToUpdate.id ? document.querySelector(`.note[data-i="${noteToUpdate.id}"]`) : null);
+    if (oldNoteEl) {
+        const updatedEl = await createNoteElement(noteToUpdate);
+        if (updatedEl) oldNoteEl.replaceWith(updatedEl);
+    }
+
+    if (updateGDriveNow) {
+        const isTempGdid = !noteToUpdate.gdid || String(noteToUpdate.gdid) === String(noteToUpdate.id);
+        if (isTempGdid) {
+            const folderId = await getFolderID();
+            if (folderId) {
+                const oldGdid = noteToUpdate.gdid;
+                const newGdid = await createGDriveFile(folderId, 'note.txt', JSON.stringify(noteToUpdate));
+                if (newGdid) {
+                    noteToUpdate.gdid = newGdid;
+                    await updateGDriveFile(newGdid, JSON.stringify(noteToUpdate));
+                    if (useIndexedDb && oldGdid && oldGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, oldGdid);
+                }
+            }
+        } else {
+            await updateGDriveFile(noteToUpdate.gdid, JSON.stringify(noteToUpdate));
+        }
+        noteToUpdate.type = 0;
+    }
+
+    if (updateLocalFolderNow) {
+        const isTempGdid = !noteToUpdate.gdid || String(noteToUpdate.gdid) === String(noteToUpdate.id);
+        if (isTempGdid && !updateGDriveNow) {
+            noteToUpdate.gdid = `L${Date.now()}`;
+        }
+        if (noteToUpdate.gdid) {
+            await updateLocalFile(noteToUpdate.gdid, JSON.stringify(noteToUpdate));
+        }
+    }
+
+    if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
+    applyFilters();
+    updateReloadButtonState();
+    showToast(wasPinned ? (_('noteUnpinned') || 'Note unpinned') : (_('notePinned') || 'Note pinned'), 2000);
+    return true;
 }
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Изчистваме бележките само ако не презареждаме единствено менюто - ПРЕМЕСТЕНО ПО-ДОЛУ ЗА ИЗБЯГВАНЕ НА 'МИГАНЕ'
@@ -14425,6 +14517,7 @@ function saveEditedNote() {
                 "notetxt": processedText,
                 "numord": (!isNaN(noteNumordValue) ? noteNumordValue : noteNumord),
                 "pass": isHiddenNote, // Use the state from modalNoteObj if available, or false
+                "pinnedAt": 0,
                 "sellist": 0,
                 "status": 0,
                 "text_span": finalFormat,
