@@ -415,5 +415,6 @@
     "pinNoteTooltip": "Закачи бележка",
     "unpinNoteTooltip": "Откачи бележка",
     "notePinned": "Бележката е закачена.",
-    "noteUnpinned": "Бележката е откачена."
+    "noteUnpinned": "Бележката е откачена.",
+    "systemBoardSortLabel": "Системен борд:"
 }

@@ -1,4 +1,4 @@
-// https://multinotes.app/gdviewer
+﻿// https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
@@ -9086,6 +9086,169 @@ function initPromoNote() {
 }
 /* --- PROMO NOTE LOGIC END --- */
 
+function getSortStatusFromControls(criteriaName, reverseId, remindersTopId) {
+    const criteriaRadio = document.querySelector(`input[name="${criteriaName}"]:checked`);
+    const criteriaValue = criteriaRadio ? criteriaRadio.value : 'numord';
+    const reverse = document.getElementById(reverseId)?.checked;
+    const remindersTop = document.getElementById(remindersTopId)?.checked;
+    const valueMap = { 'numord': 10, 'color': 11, 'date': 12, 'datemod': 13, 'calendarDate': 14, 'alpha': 15 };
+    const baseStatus = valueMap[criteriaValue] || 10;
+    let modifiers = '';
+    if (reverse) modifiers += '1';
+    if (remindersTop) modifiers += '2';
+    return parseInt(baseStatus.toString() + modifiers);
+}
+
+function ensureBoardSortOptionsCloned() {
+    const destContainer = document.getElementById('board-sort-options-container');
+    if (!destContainer || destContainer.children.length > 0) return;
+    const sourceContainer = document.querySelector('#sorting-options-section .sort-options-container');
+    if (!sourceContainer) return;
+    const cloned = sourceContainer.cloneNode(true);
+
+    const radios = cloned.querySelectorAll('input[type="radio"]');
+    radios.forEach(r => r.name = "board-sort-criteria");
+
+    const reverseCheck = cloned.querySelector('#sort-reverse-checkbox');
+    if (reverseCheck) reverseCheck.id = "board-sort-reverse-checkbox";
+
+    const remindersTop = cloned.querySelector('#sort-reminders-top-checkbox');
+    if (remindersTop) remindersTop.id = "board-sort-reminders-top-checkbox";
+
+    destContainer.appendChild(cloned);
+}
+
+function applySortStatusToControls(status, criteriaName, reverseId, remindersTopId) {
+    let criteria = 'numord';
+    let modifiers = '';
+    if (status >= 10) {
+        const statStr = String(status);
+        const baseStat = parseInt(statStr.substring(0, 2));
+        modifiers = statStr.substring(2);
+        const criteriaMap = { 10: 'numord', 11: 'color', 12: 'date', 13: 'datemod', 14: 'calendarDate', 15: 'alpha' };
+        criteria = criteriaMap[baseStat] || 'numord';
+    }
+    const radio = document.querySelector(`input[name="${criteriaName}"][value="${criteria}"]`);
+    if (radio) radio.checked = true;
+    const reverseCheck = document.getElementById(reverseId);
+    if (reverseCheck) reverseCheck.checked = modifiers.includes('1');
+    const remindersTopCheck = document.getElementById(remindersTopId);
+    if (remindersTopCheck) remindersTopCheck.checked = modifiers.includes('2');
+}
+
+function getSystemBoardSortKey(boardId) {
+    return `systemBoardSort_${boardId}`;
+}
+
+function getSystemBoardSortStatus(boardId) {
+    const raw = localStorage.getItem(getSystemBoardSortKey(boardId));
+    const status = parseInt(raw, 10);
+    return Number.isFinite(status) ? status : 0;
+}
+
+function applySortStatusToVariables(status, fallback) {
+    if (status < 10) return fallback;
+    const statStr = String(status);
+    const baseStat = parseInt(statStr.substring(0, 2));
+    const modifiers = statStr.substring(2);
+    const criteriaMap = { 10: 'numord', 11: 'color', 12: 'date', 13: 'datemod', 14: 'calendarDate', 15: 'alpha' };
+    return {
+        sortCriteria: criteriaMap[baseStat] || fallback.sortCriteria,
+        sortReverse: modifiers.includes('1'),
+        sortRemindersTop: modifiers.includes('2')
+    };
+}
+
+function getSystemBoardOrderEntries(extraCounts = {}) {
+    const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
+    const entries = [];
+    if (localStorage.getItem('showBoardAll') !== 'false') {
+        entries.push({ key: 'system:all', title: _('allBoards'), boardId: 'all', className: 'all-boards-filter-btn' });
+    }
+    if (updatedNoteGdims.length > 0 && localStorage.getItem('showNewBoard') === 'true') {
+        entries.push({ key: 'system:new-updates', title: _('newUpdates'), boardId: 'new-updates', className: 'new-updates-filter-btn' });
+    }
+    if (localStorage.getItem('showBoardRemind') !== 'false') {
+        const count = extraCounts.reminderCount || 0;
+        entries.push({ key: 'system:reminder', title: showCount && count > 0 ? `${_('reminder')} (${count})` : _('reminder'), boardId: 'reminder', className: 'reminder-filter-btn' });
+    }
+    if (localStorage.getItem('showPhotosBoard') === 'true') {
+        entries.push({ key: 'system:with-photos', title: _('photosBoardTitle') || "With Photos", boardId: 'with-photos', className: 'photos-filter-btn' });
+    }
+    if (localStorage.getItem('showVideosBoard') === 'true') {
+        entries.push({ key: 'system:with-videos', title: _('videosBoardTitle') || "With Video", boardId: 'with-videos', className: 'videos-filter-btn' });
+    }
+    if (localStorage.getItem('showSoundsBoard') === 'true') {
+        entries.push({ key: 'system:with-sounds', title: _('soundsBoardTitle') || "With Sounds", boardId: 'with-sounds', className: 'sounds-filter-btn' });
+    }
+    if (localStorage.getItem('showOtherBoard') === 'true') {
+        entries.push({ key: 'system:with-other', title: _('otherBoardTitle') || "Other Attachments", boardId: 'with-other', className: 'other-filter-btn', backgroundColor: '#a6a6a6' });
+    }
+    if (localStorage.getItem('showTrashBoard') !== 'false') {
+        const count = extraCounts.trashCount || 0;
+        entries.push({ key: 'system:trash', title: showCount && count > 0 ? `${_('trashBoardTitle') || "Кошче"} (${count})` : (_('trashBoardTitle') || "Кошче"), boardId: 'trash', className: 'trash-filter-btn', backgroundColor: '#c00', color: '#fff' });
+    }
+    return entries;
+}
+
+function getSystemBoardEditEntries() {
+    const entries = [...getSystemBoardOrderEntries()];
+    if (!entries.some(entry => entry.boardId === 'search-results')) {
+        entries.push({ key: 'system:search-results', title: _('searchResultTitle') || 'Search Results', boardId: 'search-results' });
+    }
+    return entries;
+}
+
+function getBoardOrderEntryKey(entry) {
+    return entry.key || String(entry.title);
+}
+
+function orderBoardEntries(entries) {
+    try {
+        const raw = localStorage.getItem('boardMenuOrder');
+        if (!raw) return entries;
+        const savedOrder = JSON.parse(raw);
+        if (!Array.isArray(savedOrder) || savedOrder.length === 0) return entries;
+        const orderMap = new Map(savedOrder.map((key, index) => [String(key), index]));
+        return [...entries].sort((a, b) => {
+            const keyA = getBoardOrderEntryKey(a);
+            const keyB = getBoardOrderEntryKey(b);
+            const posA = orderMap.has(keyA) ? orderMap.get(keyA) : 9999;
+            const posB = orderMap.has(keyB) ? orderMap.get(keyB) : 9999;
+            return posA - posB;
+        });
+    } catch (e) {
+        console.error("Error sorting boards:", e);
+        return entries;
+    }
+}
+
+function orderBoardEntriesByVisibleMenu(entries) {
+    const entryByKey = new Map(entries.map(entry => [getBoardOrderEntryKey(entry), entry]));
+    const entryByBoardId = new Map(entries.map(entry => [String(entry.boardId), entry]));
+    const menuEntries = [];
+    const usedKeys = new Set();
+
+    document.querySelectorAll('.board-menu-container .board-filter-link').forEach(link => {
+        if (link.dataset.boardid === 'reorder') return;
+        if (getComputedStyle(link).display === 'none') return;
+        const boardId = link.dataset.boardid;
+        const board = boardsData.find(b => String(b.gdid || b.id) === String(boardId));
+        const key = board && board.title ? String(board.title) : `system:${boardId}`;
+        const entry = entryByKey.get(key) || entryByBoardId.get(String(boardId));
+        if (entry && !usedKeys.has(getBoardOrderEntryKey(entry))) {
+            menuEntries.push(entry);
+            usedKeys.add(getBoardOrderEntryKey(entry));
+        }
+    });
+
+    if (menuEntries.length === 0) return orderBoardEntries(entries);
+    return [
+        ...menuEntries,
+        ...orderBoardEntries(entries).filter(entry => !usedKeys.has(getBoardOrderEntryKey(entry)))
+    ];
+}
+
 function applyFilters() {
     const searchBox = document.getElementById('search-box');
     const searchTerm = searchBox ? searchBox.value.toLowerCase() : '';
@@ -9176,8 +9339,11 @@ function applyFilters() {
     }
     // --- Sorting Logic ---
     const pinSortingEnabled = currentBoardFilter === 'all' || isStandard;
+    const systemSortStatus = getSystemBoardSortStatus(currentBoardFilter);
+    const systemSortOverrideEnabled = systemSortStatus >= 10;
+    const reminderDateSortingEnabled = isReminder && !systemSortOverrideEnabled;
     const noteSortingEnabled = localStorage.getItem('enableNoteSorting') === 'true';
-    if (noteSortingEnabled || pinSortingEnabled) {
+    if (noteSortingEnabled || pinSortingEnabled || reminderDateSortingEnabled || systemSortOverrideEnabled) {
         let sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
         let sortReverse = localStorage.getItem('sortInReverse') === 'true';
         let sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
@@ -9201,6 +9367,12 @@ function applyFilters() {
             }
         }
         // --- End Override ---
+        if (systemSortOverrideEnabled) {
+            const systemSort = applySortStatusToVariables(systemSortStatus, { sortCriteria, sortReverse, sortRemindersTop });
+            sortCriteria = systemSort.sortCriteria;
+            sortReverse = systemSort.sortReverse;
+            sortRemindersTop = systemSort.sortRemindersTop;
+        }
 
         const sortOrder = sortReverse ? -1 : 1;
         const visibleNotes = Array.from(notesContainer.querySelectorAll('.note:not([style*="display: none"]):not(.promo-note)'));
@@ -9216,7 +9388,17 @@ function applyFilters() {
                 if (!isPinnedA && isPinnedB) return 1;
                 if (isPinnedA && isPinnedB && pinA !== pinB) return pinB - pinA;
             }
-            if (!noteSortingEnabled) return 0;
+            if (reminderDateSortingEnabled) {
+                const timerA = Number(a.dataset.tv || 0);
+                const timerB = Number(b.dataset.tv || 0);
+                const hasTimerA = timerA > 0;
+                const hasTimerB = timerB > 0;
+                if (hasTimerA && !hasTimerB) return -1;
+                if (!hasTimerA && hasTimerB) return 1;
+                if (hasTimerA && hasTimerB && timerA !== timerB) return timerA - timerB;
+                return 0;
+            }
+            if (!noteSortingEnabled && !systemSortOverrideEnabled) return 0;
             // 1. Reminder Priority
             if (sortRemindersTop) {
                 const isReminderA = a.dataset.tm === '1';
@@ -9676,6 +9858,34 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         showNewBoardModal(); // Вече отваряме модала за нов/редактиране на борд
     });
     allButtonLinks.push(reorderLink);
+    try {
+        const raw = localStorage.getItem('boardMenuOrder');
+        if (raw) {
+            const savedOrder = JSON.parse(raw);
+            if (Array.isArray(savedOrder) && savedOrder.length > 0) {
+                const hasSystemOrder = savedOrder.some(key => String(key).startsWith('system:'));
+                if (hasSystemOrder) {
+                    const orderMap = new Map(savedOrder.map((key, index) => [String(key), index]));
+                    const getLinkOrderKey = (link) => {
+                        const boardId = link.dataset.boardid;
+                        if (boardId === 'reorder') return 'system:reorder';
+                        const board = boardsData.find(b => String(b.gdid || b.id) === String(boardId));
+                        if (board && board.title) return String(board.title);
+                        return `system:${boardId}`;
+                    };
+                    allButtonLinks.sort((a, b) => {
+                        if (a.dataset.boardid === 'reorder') return 1;
+                        if (b.dataset.boardid === 'reorder') return -1;
+                        const keyA = getLinkOrderKey(a);
+                        const keyB = getLinkOrderKey(b);
+                        const posA = orderMap.has(keyA) ? orderMap.get(keyA) : 9999;
+                        const posB = orderMap.has(keyB) ? orderMap.get(keyB) : 9999;
+                        return posA - posB;
+                    });
+                }
+            }
+        }
+    } catch (e) { console.error("Error sorting board buttons:", e); }
     maxWidthForButtons = 0;
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
@@ -10890,6 +11100,61 @@ async function createSettingsUI(boardsData, boardParseError) {
         applyFilters();
         showToast(_('settingSaved'), 2000);
     });
+    const systemBoardSortSelect = document.getElementById('system-board-sort-select');
+    const systemBoardOrderBtn = document.getElementById('system-board-order-btn');
+    if (systemBoardSortSelect) {
+        const systemSortBoards = [
+            { id: 'all', label: _('allBoards') },
+            { id: 'reminder', label: _('reminder') },
+            { id: 'new-updates', label: _('newUpdates') },
+            { id: 'with-photos', label: _('showPhotosBoardLabel').replace(/<[^>]*>/g, '').replace(/^(Board|Борд)\s*/i, '').replace(/:$/, '') },
+            { id: 'with-videos', label: _('showVideosBoardLabel').replace(/<[^>]*>/g, '').replace(/^(Board|Борд)\s*/i, '').replace(/:$/, '') },
+            { id: 'with-sounds', label: _('showSoundsBoardLabel').replace(/<[^>]*>/g, '').replace(/^(Board|Борд)\s*/i, '').replace(/:$/, '') },
+            { id: 'with-other', label: _('showOtherBoardLabel').replace(/<[^>]*>/g, '').replace(/^(Board|Борд)\s*/i, '').replace(/:$/, '') },
+            { id: 'search-results', label: _('searchResultTitle') },
+            { id: 'trash', label: _('trashBoardTitle') }
+        ];
+        systemBoardSortSelect.innerHTML = '';
+        systemSortBoards.forEach(board => {
+            const option = document.createElement('option');
+            option.value = board.id;
+            option.textContent = board.label || board.id;
+            systemBoardSortSelect.appendChild(option);
+        });
+    }
+    if (systemBoardOrderBtn && systemBoardSortSelect) {
+        systemBoardOrderBtn.addEventListener('click', () => {
+            const boardOrderModal = document.getElementById('board-order-modal');
+            if (!boardOrderModal) return;
+            ensureBoardSortOptionsCloned();
+            const boardId = systemBoardSortSelect.value || 'all';
+            boardOrderModal.dataset.mode = 'system';
+            boardOrderModal.dataset.systemBoardId = boardId;
+            applySortStatusToControls(getSystemBoardSortStatus(boardId), 'board-sort-criteria', 'board-sort-reverse-checkbox', 'board-sort-reminders-top-checkbox');
+            const clearOrderBtn = document.getElementById('board-order-clear-btn');
+            const saveOrderBtn = document.getElementById('board-order-save-btn');
+            if (clearOrderBtn) {
+                clearOrderBtn.onclick = () => {
+                    const activeBoardId = boardOrderModal.dataset.systemBoardId;
+                    if (activeBoardId) localStorage.removeItem(getSystemBoardSortKey(activeBoardId));
+                    boardOrderModal.classList.remove('visible');
+                    applyFilters();
+                    showToast(_('settingSaved'), 2000);
+                };
+            }
+            if (saveOrderBtn) {
+                saveOrderBtn.onclick = () => {
+                    const activeBoardId = boardOrderModal.dataset.systemBoardId;
+                    const sortStatus = getSortStatusFromControls('board-sort-criteria', 'board-sort-reverse-checkbox', 'board-sort-reminders-top-checkbox');
+                    if (activeBoardId) localStorage.setItem(getSystemBoardSortKey(activeBoardId), String(sortStatus));
+                    boardOrderModal.classList.remove('visible');
+                    applyFilters();
+                    showToast(_('settingSaved'), 2000);
+                };
+            }
+            boardOrderModal.classList.add('visible');
+        });
+    }
     // Start Board
     let startBoardSelect; // Declare here to be accessible in the whole function
     startBoardSelect = document.getElementById('start-board-select');
@@ -12055,6 +12320,7 @@ async function createNoteElement(noteContent) {
             // --- Set attributes for special filters (SHORT CODES, "1" for true) ---
             if (extraData.timer && extraData.timer !== 0) {
                 note.dataset.tm = '1'; // data-tm
+                note.dataset.tv = extraData.timer; // data-tv = timer value
             }
             // if (Object.keys(extraData).length > 0) note.dataset.extraInfo = JSON.stringify(extraData);
             if (noteColor && !isNaN(noteColor) && noteColor >= 0 && noteColor <= 9) {
@@ -15271,32 +15537,17 @@ let boardIdCounter = bicFromStorage !== null ? parseInt(bicFromStorage, 10) : 10
  * Новият ред се записва в localStorage ('boardMenuOrder').
  */
 function showBoardReorderPopup() {
-    let currentOrder = [];
-    try {
-        const raw = localStorage.getItem('boardMenuOrder');
-        if (raw) {
-            currentOrder = JSON.parse(raw);
-            if (!Array.isArray(currentOrder)) currentOrder = [];
-        }
-    } catch (e) { /* ignore */ }
+    const normalEntries = [...boardsData]
+        .filter(b => b.title)
+        .sort((a, b) => {
+            const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+            const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+            return numordA - numordB;
+        })
+        .map(board => ({ key: String(board.title), title: String(board.title), board, boardId: board.gdid || board.id }));
+    const defaultEntries = [...getSystemBoardOrderEntries(), ...normalEntries];
+    const orderedEntries = orderBoardEntriesByVisibleMenu(defaultEntries);
 
-    // Премахваме невалидни записи (null, undefined или низовете им)
-    currentOrder = currentOrder.filter(item =>
-        item && typeof item === 'string' &&
-        item !== 'undefined' && item !== 'null' &&
-        item.trim() !== ''
-    );
-
-    if (currentOrder.length === 0) {
-        currentOrder = [...boardsData]
-            .filter(b => b.title)
-            .sort((a, b) => {
-                const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
-                const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
-                return numordA - numordB;
-            })
-            .map(b => String(b.title));
-    }
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay reorder-overlay';
     overlay.style.cssText = 'display:flex;align-items:center;justify-content:center;z-index:100000;';
@@ -15317,24 +15568,19 @@ function showBoardReorderPopup() {
     const listContainer = document.createElement('div');
     listContainer.style.cssText = 'overflow-y:auto;flex:1;padding:4px;display:flex;flex-direction:column;align-items:center;width:100%;';
 
-    // Подсигуряваме ширина за елементите в списъка
     const itemWidth = Math.max(maxWidthForButtons, 220);
 
     let draggedItem = null;
     let placeholder = document.createElement('div');
     placeholder.style.cssText = `height:40px;width:${itemWidth}px;border:2px dashed #fff;border-radius:4px;margin-bottom:8px;background:rgba(255,255,255,0.2);`;
 
-    function renderList(titles) {
+    function renderList(entries) {
         listContainer.innerHTML = '';
-        titles.forEach((boardTitle) => {
-            const board = boardsData.find(b => String(b.title) === String(boardTitle));
-            if (!board || !board.title) {
-                console.log("[Reorder] Missed board for title:", boardTitle);
-                return;
-            }
+        entries.forEach((entry) => {
+            const board = entry.board || null;
             const item = document.createElement('div');
-            item.className = 'board-filter-link reorder-item';
-            item.dataset.boardtitle = String(boardTitle);
+            item.className = `board-filter-link reorder-item ${entry.className || ''}`.trim();
+            item.dataset.boardkey = getBoardOrderEntryKey(entry);
             item.draggable = true;
             item.style.width = `${itemWidth}px`;
             item.style.marginBottom = '8px';
@@ -15344,7 +15590,9 @@ function showBoardReorderPopup() {
             item.style.alignItems = 'center';
             item.style.justifyContent = 'flex-start';
             item.style.padding = '0 10px';
-            if (board.color !== undefined && !isNaN(board.color)) {
+            if (entry.backgroundColor) {
+                item.style.backgroundColor = entry.backgroundColor;
+            } else if (board && board.color !== undefined && !isNaN(board.color)) {
                 if (board.color >= 0 && board.color <= 6) item.style.backgroundColor = `var(--board-bg-${board.color})`;
                 else if (board.color < 0) item.style.backgroundColor = '#' + (board.color >>> 0).toString(16).slice(-6);
             }
@@ -15353,11 +15601,13 @@ function showBoardReorderPopup() {
             grip.style.cssText = 'margin-right:8px;font-size:16px;opacity:0.6;';
             item.appendChild(grip);
             const text = document.createElement('span');
-            text.textContent = board.title;
+            text.textContent = entry.title;
             text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
-            if (board.status === 1) {
+            if (entry.color) {
+                text.style.color = entry.color;
+            } else if (board && board.status === 1) {
                 text.style.color = 'red';
-            } else if (board.colorfont !== undefined && !isNaN(board.colorfont)) {
+            } else if (board && board.colorfont !== undefined && !isNaN(board.colorfont)) {
                 if (board.colorfont === 1) text.style.color = '#FFFFFF';
                 else if (board.colorfont === 2) text.style.color = '#FF0000';
                 else if (board.colorfont === 3) text.style.color = '#0000FF';
@@ -15407,7 +15657,7 @@ function showBoardReorderPopup() {
         });
     }
 
-    renderList(currentOrder);
+    renderList(orderedEntries);
     listContainer.addEventListener('dragover', (e) => {
         e.preventDefault();
         const target = e.target.closest('.reorder-item');
@@ -15430,18 +15680,10 @@ function showBoardReorderPopup() {
 
     const resetBtn = document.createElement('button');
     resetBtn.textContent = 'Reset';
-    resetBtn.className = 'submit-btn'; // Use same base class for styling if applicable
+    resetBtn.className = 'submit-btn';
     resetBtn.style.cssText = 'padding:10px 20px;background:#607D8B;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:1.1em;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.3);';
     resetBtn.onclick = () => {
-        const sortedTitles = [...boardsData]
-            .filter(b => b.title)
-            .sort((a, b) => {
-                const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
-                const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
-                return numordA - numordB;
-            })
-            .map(b => String(b.title));
-        renderList(sortedTitles);
+        renderList(defaultEntries);
     };
     footer.appendChild(resetBtn);
 
@@ -15452,14 +15694,13 @@ function showBoardReorderPopup() {
     saveCloseBtn.onclick = async () => {
         const newOrder = [...listContainer.children]
             .filter(el => el.classList.contains('reorder-item'))
-            .map(el => el.dataset.boardtitle);
+            .map(el => el.dataset.boardkey);
         localStorage.setItem('boardMenuOrder', JSON.stringify(newOrder));
         syncFolderDataAsync();
         overlay.remove();
         const boardsNote = document.querySelector('header .boards-note');
         if (boardsNote) boardsNote.remove();
         await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-        // Автоматично запазваме настройките в облака след пренареждане
         saveSettingsToGDrive(true);
         showToast(_('settingSaved') || 'Запазено', 2000);
     };
@@ -15513,14 +15754,33 @@ async function showNewBoardModal() {
     let selectedBackground = 0;
     let selectedBoardStatus = 0;
     let currentEditingBoard = null;
+    let currentSystemBoardId = null;
 
     // Populated dropdown with current boards
     if (editSelect) {
         while (editSelect.options.length > 1) editSelect.remove(1);
-        boardsData.forEach(board => {
+        const normalEditEntries = [...boardsData]
+            .filter(board => board.title)
+            .sort((a, b) => {
+                const numordA = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
+                const numordB = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
+                return numordA - numordB;
+            })
+            .map(board => ({
+                key: String(board.title),
+                title: String(board.title),
+                board,
+                boardId: board.gdid || board.id
+            }));
+        const orderedEditEntries = orderBoardEntriesByVisibleMenu([
+            ...getSystemBoardEditEntries(),
+            ...normalEditEntries
+        ]);
+
+        orderedEditEntries.forEach(entry => {
             const opt = document.createElement('option');
-            opt.value = (board.gdid || board.id).toString();
-            opt.textContent = board.title;
+            opt.value = entry.board ? (entry.board.gdid || entry.board.id).toString() : `system:${entry.boardId}`;
+            opt.textContent = entry.title;
             opt.style.background = '#2c2c2c';
             editSelect.appendChild(opt);
         });
@@ -15606,6 +15866,7 @@ async function showNewBoardModal() {
     function resetInputs(board = null) {
         if (board) {
             currentEditingBoard = board;
+            currentSystemBoardId = null;
             titleInput.value = board.title || "";
             // Handle both numeric indices, hex strings, and negative decimal colors
             let bColor = board.color;
@@ -15644,8 +15905,13 @@ async function showNewBoardModal() {
             selectedBoardStatus = (board.status !== undefined) ? Number(board.status) : 0;
             saveBtn.textContent = _('updateButton') || "Обнови";
             if (editSelect) editSelect.value = (board.gdid || board.id).toString();
+            titleInput.disabled = false;
+            if (customColorInput) customColorInput.disabled = false;
+            if (customFontColorInput) customFontColorInput.disabled = false;
+            if (saveBtn) saveBtn.style.display = '';
         } else {
             currentEditingBoard = null;
+            currentSystemBoardId = null;
             titleInput.value = "";
             selectedColor = 0;
             selectedFontColor = 0;
@@ -15653,6 +15919,10 @@ async function showNewBoardModal() {
             selectedBoardStatus = 0;
             saveBtn.textContent = _('submitButton') || "Потвърди";
             if (editSelect) editSelect.value = "";
+            titleInput.disabled = false;
+            if (customColorInput) customColorInput.disabled = false;
+            if (customFontColorInput) customFontColorInput.disabled = false;
+            if (saveBtn) saveBtn.style.display = '';
         }
 
         const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
@@ -15666,10 +15936,37 @@ async function showNewBoardModal() {
         updatePreview();
     }
 
+    function resetSystemInputs(systemBoardId) {
+        const systemBoard = getSystemBoardEditEntries().find(entry => entry.boardId === systemBoardId);
+        currentEditingBoard = null;
+        currentSystemBoardId = systemBoardId;
+        titleInput.value = systemBoard ? systemBoard.title : systemBoardId;
+        selectedColor = 0;
+        selectedFontColor = 1;
+        selectedBackground = 0;
+        selectedBoardStatus = getSystemBoardSortStatus(systemBoardId);
+        saveBtn.textContent = _('submitButton') || "Потвърди";
+        titleInput.disabled = true;
+        if (customColorInput) customColorInput.disabled = true;
+        if (customFontColorInput) customFontColorInput.disabled = true;
+        if (saveBtn) saveBtn.style.display = 'none';
+        if (delBtn) delBtn.style.display = 'none';
+        const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
+        if (hasIndividualOrderCheckbox) {
+            hasIndividualOrderCheckbox.checked = selectedBoardStatus >= 10;
+        }
+        renderColorOptions(selectedColor);
+        renderFontColorOptions(selectedFontColor);
+        renderBackgroundOptions(selectedBackground);
+        updatePreview();
+    }
+
     if (editSelect) {
         editSelect.onchange = () => {
             if (editSelect.value === "") {
                 resetInputs(null);
+            } else if (editSelect.value.startsWith('system:')) {
+                resetSystemInputs(editSelect.value.replace(/^system:/, ''));
             } else {
                 const board = boardsData.find(b => (b.gdid || b.id).toString() === editSelect.value.toString());
                 resetInputs(board);
@@ -15692,48 +15989,20 @@ async function showNewBoardModal() {
 
     if (individualOrderBtn && boardOrderModal) {
         individualOrderBtn.onclick = () => {
-            const destContainer = document.getElementById('board-sort-options-container');
-            if (destContainer && destContainer.children.length === 0) {
-                const sourceContainer = document.querySelector('#sorting-options-section .sort-options-container');
-                if (sourceContainer) {
-                    const cloned = sourceContainer.cloneNode(true);
+            ensureBoardSortOptionsCloned();
 
-                    // Assign new names so radio buttons don't conflict with global ones
-                    const radios = cloned.querySelectorAll('input[type="radio"]');
-                    radios.forEach(r => r.name = "board-sort-criteria");
-
-                    const reverseCheck = cloned.querySelector('#sort-reverse-checkbox');
-                    if (reverseCheck) reverseCheck.id = "board-sort-reverse-checkbox";
-
-                    const remindersTop = cloned.querySelector('#sort-reminders-top-checkbox');
-                    if (remindersTop) remindersTop.id = "board-sort-reminders-top-checkbox";
-
-                    destContainer.appendChild(cloned);
-                }
-            }
-
-            if (selectedBoardStatus >= 10) {
-                const statStr = String(selectedBoardStatus);
-                const baseStat = parseInt(statStr.substring(0, 2));
-                const modifiers = statStr.substring(2);
-
-                const criteriaMap = { 10: 'numord', 11: 'color', 12: 'date', 13: 'datemod', 14: 'calendarDate', 15: 'alpha' };
-                const criteria = criteriaMap[baseStat] || 'numord';
-
-                const radio = document.querySelector(`input[name="board-sort-criteria"][value="${criteria}"]`);
-                if (radio) radio.checked = true;
-
-                const rc = document.getElementById('board-sort-reverse-checkbox');
-                if (rc) rc.checked = modifiers.includes('1');
-                const rtc = document.getElementById('board-sort-reminders-top-checkbox');
-                if (rtc) rtc.checked = modifiers.includes('2');
+            if (currentSystemBoardId) {
+                boardOrderModal.dataset.mode = 'system';
+                boardOrderModal.dataset.systemBoardId = currentSystemBoardId;
+                applySortStatusToControls(getSystemBoardSortStatus(currentSystemBoardId), 'board-sort-criteria', 'board-sort-reverse-checkbox', 'board-sort-reminders-top-checkbox');
             } else {
-                const defaultRadio = document.querySelector(`input[name="board-sort-criteria"][value="numord"]`);
-                if (defaultRadio) defaultRadio.checked = true;
-                const rc = document.getElementById('board-sort-reverse-checkbox');
-                if (rc) rc.checked = false;
-                const rtc = document.getElementById('board-sort-reminders-top-checkbox');
-                if (rtc) rtc.checked = false;
+                boardOrderModal.dataset.mode = 'board';
+                delete boardOrderModal.dataset.systemBoardId;
+                if (selectedBoardStatus >= 10) {
+                    applySortStatusToControls(selectedBoardStatus, 'board-sort-criteria', 'board-sort-reverse-checkbox', 'board-sort-reminders-top-checkbox');
+                } else {
+                    applySortStatusToControls(0, 'board-sort-criteria', 'board-sort-reverse-checkbox', 'board-sort-reminders-top-checkbox');
+                }
             }
             boardOrderModal.classList.add('visible');
         };
@@ -15747,6 +16016,19 @@ async function showNewBoardModal() {
 
     if (clearOrderBtn) {
         clearOrderBtn.onclick = () => {
+            if (boardOrderModal.dataset.mode === 'system') {
+                const boardId = boardOrderModal.dataset.systemBoardId;
+                if (boardId) localStorage.removeItem(getSystemBoardSortKey(boardId));
+                if (currentSystemBoardId === boardId) {
+                    selectedBoardStatus = getSystemBoardSortStatus(boardId);
+                    const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
+                    if (hasIndividualOrderCheckbox) hasIndividualOrderCheckbox.checked = false;
+                }
+                boardOrderModal.classList.remove('visible');
+                applyFilters();
+                showToast(_('settingSaved'), 2000);
+                return;
+            }
             selectedBoardStatus = 0;
             const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
             if (hasIndividualOrderCheckbox) hasIndividualOrderCheckbox.checked = false;
@@ -15756,18 +16038,23 @@ async function showNewBoardModal() {
 
     if (saveOrderBtn) {
         saveOrderBtn.onclick = () => {
-            const criteriaRadio = document.querySelector('input[name="board-sort-criteria"]:checked');
-            const criteriaValue = criteriaRadio ? criteriaRadio.value : 'numord';
-            const reverse = document.getElementById('board-sort-reverse-checkbox').checked;
-            const remindersTop = document.getElementById('board-sort-reminders-top-checkbox').checked;
+            const sortStatus = getSortStatusFromControls('board-sort-criteria', 'board-sort-reverse-checkbox', 'board-sort-reminders-top-checkbox');
 
-            const valueMap = { 'numord': 10, 'color': 11, 'date': 12, 'datemod': 13, 'calendarDate': 14, 'alpha': 15 };
-            const baseStatus = valueMap[criteriaValue] || 10;
-            let modifiers = '';
-            if (reverse) modifiers += '1';
-            if (remindersTop) modifiers += '2';
+            if (boardOrderModal.dataset.mode === 'system') {
+                const boardId = boardOrderModal.dataset.systemBoardId;
+                if (boardId) localStorage.setItem(getSystemBoardSortKey(boardId), String(sortStatus));
+                if (currentSystemBoardId === boardId) {
+                    selectedBoardStatus = sortStatus;
+                    const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
+                    if (hasIndividualOrderCheckbox) hasIndividualOrderCheckbox.checked = true;
+                }
+                boardOrderModal.classList.remove('visible');
+                applyFilters();
+                showToast(_('settingSaved'), 2000);
+                return;
+            }
 
-            selectedBoardStatus = parseInt(baseStatus.toString() + modifiers);
+            selectedBoardStatus = sortStatus;
 
             const hasIndividualOrderCheckbox = document.getElementById('board-has-individual-order');
             if (hasIndividualOrderCheckbox) hasIndividualOrderCheckbox.checked = true;

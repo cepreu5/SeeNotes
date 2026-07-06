@@ -413,5 +413,6 @@
     "sharedContentReceived": "Shared content received",
     "uploadingSharedImage": "Uploading image...",
     "sharedImageSaved": "Image attached to note",
-    "openLink": "Open"
+    "openLink": "Open",
+    "systemBoardSortLabel": "System board:"
 }
