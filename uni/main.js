@@ -7938,7 +7938,7 @@ function showModal(options, noteElement = null) {
         if (formatString && formatString.trim() !== '') {
             formattedBody = formatText(bodyPart, formatString, true);
         } else {
-            formattedBody = processNoteContent(bodyPart, true);
+            formattedBody = renderMarkdownTableAsPseudoGraphic(bodyPart) || processNoteContent(bodyPart, true);
         }
         displayContent = formattedTitle + '<br>' + formattedBody;
     } else {
@@ -7946,7 +7946,12 @@ function showModal(options, noteElement = null) {
         const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
         if (pipeIdxForReplace !== -1) {
             // Replace only the first separating pipe
-            rawContent = rawContent.substring(0, pipeIdxForReplace) + '\n' + rawContent.substring(pipeIdxForReplace + 1);
+            const titlePart = rawContent.substring(0, pipeIdxForReplace);
+            const bodyPart = rawContent.substring(pipeIdxForReplace + 1);
+            const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
+            displayContent = tableHtml
+                ? processNoteContent(titlePart, true) + '<br>' + tableHtml
+                : processNoteContent(titlePart + '\n' + bodyPart, true);
         } else if (formatString && formatString.trim() !== '') {
             displayContent = formatText(rawContent, formatString, true); // isForModal = true
         } else {
@@ -11730,6 +11735,56 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
+function parseMarkdownTable(text) {
+    if (!text || !text.includes('|')) return null;
+    const lines = text
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.includes('|'));
+    if (lines.length < 2) return null;
+
+    const separatorIndex = lines.findIndex(line => {
+        const cells = line.split('|').map(cell => cell.trim()).filter(Boolean);
+        return cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell));
+    });
+    if (separatorIndex < 1) return null;
+
+    const parseRow = (line) => {
+        let normalized = line.trim();
+        if (normalized.startsWith('|')) normalized = normalized.slice(1);
+        if (normalized.endsWith('|')) normalized = normalized.slice(0, -1);
+        return normalized.split('|').map(cell => cell.trim());
+    };
+
+    const rows = [
+        parseRow(lines[separatorIndex - 1]),
+        ...lines.slice(separatorIndex + 1).map(parseRow)
+    ].filter(row => row.length > 0);
+    if (rows.length < 2) return null;
+
+    const columnCount = Math.max(...rows.map(row => row.length));
+    return rows.map(row => {
+        const padded = [...row];
+        while (padded.length < columnCount) padded.push('');
+        return padded;
+    });
+}
+
+function renderMarkdownTableAsPseudoGraphic(text) {
+    const rows = parseMarkdownTable(text);
+    if (!rows) return null;
+    const widths = rows[0].map((_, colIndex) =>
+        Math.max(...rows.map(row => String(row[colIndex] || '').length))
+    );
+    const border = '+' + widths.map(width => '-'.repeat(width + 2)).join('+') + '+';
+    const renderRow = (row) => '| ' + row.map((cell, index) => String(cell || '').padEnd(widths[index], ' ')).join(' | ') + ' |';
+    const output = [border, renderRow(rows[0]), border];
+    rows.slice(1).forEach(row => output.push(renderRow(row)));
+    output.push(border);
+    return `<pre class="md-table-pseudo">${escapeHtml(output.join('\n'))}</pre>`;
+}
+
 /**
  * Processes note content to handle links, code blocks, and newlines.
  * @param {string} text - The raw text content of the note.
@@ -12628,7 +12683,10 @@ async function createNoteElement(noteContent) {
         contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
     } else {
         const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
-        if (formatSource) {
+        const tablePreviewHtml = renderMarkdownTableAsPseudoGraphic(displayContent);
+        if (tablePreviewHtml) {
+            contentEl.innerHTML = tablePreviewHtml;
+        } else if (formatSource) {
             // Use the exact same logic as in showModal to ensure indices match
             let contentToFormat = fileContent;
             const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) !== -1 : contentToFormat.includes('|');
