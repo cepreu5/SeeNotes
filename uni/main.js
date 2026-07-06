@@ -1011,6 +1011,12 @@ async function refreshAuthToken(forcePopup = false) {
     return refreshPromise;
 }
 
+function notifyManualGoogleLoginRequired() {
+    if (typeof showToast === 'function') {
+        showToast(_('sessionExpired') || "Session expired. Please sign in again.", 5000);
+    }
+}
+
 /**
  * Downloads file contents with Concurrency Control & 'Kick' mechanism.
  */
@@ -1293,14 +1299,8 @@ async function updateGDriveFile(fileId, content) {
                 tokenData = refreshResult.tokenData;
                 response = await sendRequest(tokenData.access_token);
             }
-            // If silent refresh failed or still 401, try with popup
             if (response.status === 401) {
-                console.warn("Silent refresh failed or insufficient, attempting refresh with popup...");
-                refreshResult = await refreshAuthToken(true);
-                if (refreshResult && refreshResult.pass) {
-                    tokenData = refreshResult.tokenData;
-                    response = await sendRequest(tokenData.access_token);
-                }
+                notifyManualGoogleLoginRequired();
             }
             if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
         }
@@ -1336,12 +1336,7 @@ async function deleteGDriveFile(fileId) {
                 response = await sendRequest(tokenData.access_token);
             }
             if (response.status === 401) {
-                console.warn("Silent refresh failed, attempting refresh with popup...");
-                refreshResult = await refreshAuthToken(true);
-                if (refreshResult && refreshResult.pass) {
-                    tokenData = refreshResult.tokenData;
-                    response = await sendRequest(tokenData.access_token);
-                }
+                notifyManualGoogleLoginRequired();
             }
             if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
         }
@@ -1456,12 +1451,7 @@ async function createGDriveFile(folderId, filename, content) {
                 response = await sendRequest(tokenData.access_token);
             }
             if (response.status === 401) {
-                console.warn("Silent refresh failed, attempting refresh with popup...");
-                refreshResult = await refreshAuthToken(true);
-                if (refreshResult && refreshResult.pass) {
-                    tokenData = refreshResult.tokenData;
-                    response = await sendRequest(tokenData.access_token);
-                }
+                notifyManualGoogleLoginRequired();
             }
             if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
         }
@@ -1503,11 +1493,7 @@ async function uploadBlobToGDrive(folderId, filename, blob, mimeType) {
                 response = await sendRequest(tokenData.access_token);
             }
             if (response.status === 401) {
-                refreshResult = await refreshAuthToken(true);
-                if (refreshResult && refreshResult.pass) {
-                    tokenData = refreshResult.tokenData;
-                    response = await sendRequest(tokenData.access_token);
-                }
+                notifyManualGoogleLoginRequired();
             }
             if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
         }
@@ -9988,7 +9974,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
 }
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
-    'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'showNewBoard', 'oneTapLink',
+    'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'showFirstLine', 'showNewBoard', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd',
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
@@ -10419,6 +10405,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const noteFontSizeInput = document.getElementById('note-font-size-input');
     const modalFontSizeInput = document.getElementById('modal-font-size-input');
     const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
+    const showFirstLineCheckbox = document.getElementById('show-first-line-checkbox');
     const showNewBoardCheckbox = document.getElementById('show-new-board-checkbox');
     const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
     const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
@@ -10964,6 +10951,14 @@ async function createSettingsUI(boardsData, boardParseError) {
         document.body.classList.toggle('hide-datemod', !isChecked);
         showToast(_('settingSaved'), 2000);
     });
+    if (showFirstLineCheckbox) {
+        showFirstLineCheckbox.checked = localStorage.getItem('showFirstLine') === 'true'; // Default to false
+        showFirstLineCheckbox.addEventListener('change', async () => {
+            localStorage.setItem('showFirstLine', showFirstLineCheckbox.checked.toString());
+            showToast(_('settingSaved'), 2000);
+            await renderUI({ boardParseError: false });
+        });
+    }
     // Show 'New' Board Checkbox
     if (showNewBoardCheckbox) {
         showNewBoardCheckbox.checked = localStorage.getItem('showNewBoard') === 'true'; // Default to false
@@ -11785,6 +11780,69 @@ function renderMarkdownTableAsPseudoGraphic(text) {
     return `<pre class="md-table-pseudo">${escapeHtml(output.join('\n'))}</pre>`;
 }
 
+function getPreviewBodyAfterTitle(fullText, titleText) {
+    if (!fullText || !titleText) return fullText || '';
+    const normalizedText = String(fullText).replace(/\r\n/g, '\n');
+    const lines = normalizedText.split('\n');
+    const titleLineIndex = lines.findIndex(line => line.trim());
+    if (titleLineIndex === -1) return normalizedText;
+
+    const originalLine = lines[titleLineIndex];
+    const leadingWhitespaceLength = originalLine.length - originalLine.trimStart().length;
+    const trimmedLine = originalLine.trim();
+    const usedLength = Math.min(String(titleText).trim().length, trimmedLine.length);
+    if (usedLength <= 0) return normalizedText;
+
+    let remainder = trimmedLine.slice(usedLength);
+    if (remainder && /\S/.test(remainder)) {
+        const titleEndsInWord = /\S$/.test(trimmedLine.slice(0, usedLength));
+        const remainderStartsInWord = /^\S/.test(remainder);
+        if (titleEndsInWord && remainderStartsInWord) {
+            const wordStartMatch = trimmedLine.slice(0, usedLength).match(/\S+$/);
+            if (wordStartMatch) {
+                remainder = '...' + wordStartMatch[0] + remainder;
+            }
+        } else {
+            remainder = remainder.trimStart();
+        }
+        lines[titleLineIndex] = ' '.repeat(leadingWhitespaceLength) + remainder;
+    } else {
+        lines.splice(titleLineIndex, 1);
+    }
+
+    return lines.join('\n').replace(/^\s*\n/, '');
+}
+
+function getVisibleTitleTextForElement(titleEl, sourceText) {
+    if (!titleEl || !sourceText) return sourceText || '';
+    const fullText = String(sourceText);
+    const maxLength = Math.min(fullText.length, (titleEl.textContent || '').length || fullText.length);
+    const availableWidth = titleEl.clientWidth || titleEl.getBoundingClientRect().width;
+    if (!availableWidth || titleEl.scrollWidth <= availableWidth) {
+        return fullText.slice(0, maxLength);
+    }
+
+    const style = getComputedStyle(titleEl);
+    const canvas = getVisibleTitleTextForElement._canvas || (getVisibleTitleTextForElement._canvas = document.createElement('canvas'));
+    const ctx = canvas.getContext('2d');
+    ctx.font = `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const ellipsis = '...';
+    let low = 0;
+    let high = maxLength;
+    let best = 0;
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const measured = ctx.measureText(fullText.slice(0, mid) + ellipsis).width;
+        if (measured <= availableWidth) {
+            best = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return fullText.slice(0, Math.max(0, best));
+}
+
 /**
  * Processes note content to handle links, code blocks, and newlines.
  * @param {string} text - The raw text content of the note.
@@ -12430,6 +12488,9 @@ async function createNoteElement(noteContent) {
     // let attachments = [];
     let noteTitle = '';
     let displayContent = fileContent;
+    let previewTitleSourceText = '';
+    let adjustPreviewBodyToRenderedTitle = false;
+    const showFullFirstLinePreview = localStorage.getItem('showFirstLine') === 'true';
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
@@ -12440,17 +12501,23 @@ async function createNoteElement(noteContent) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
         } else {
-            noteTitle = fileContent.split('\n')[0].substring(0, 50);
+            previewTitleSourceText = (fileContent.split('\n').find(line => line.trim()) || '').trim();
+            noteTitle = previewTitleSourceText.substring(0, 50);
+            displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, noteTitle);
+            adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
         }
     } else if (!isHiddenNote) {
         const lines = fileContent.split('\n');
         for (const line of lines) {
             const trimmedLine = line.trim();
             if (trimmedLine) {
+                previewTitleSourceText = trimmedLine;
                 noteTitle = trimmedLine.substring(0, 50);
                 break;
             }
         }
+        displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, noteTitle);
+        adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
     }
     if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
     const titleWrapper = document.createElement('div');
@@ -12677,13 +12744,9 @@ async function createNoteElement(noteContent) {
     const contentEl = document.createElement('div');
     contentEl.className = 'note-content';
     const isForModal = (note.closest('#modal-body') !== null);
-    if (isHiddenNote) {
-        const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
-        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
-        contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
-    } else {
+    const renderPreviewContent = (contentForPreview) => {
         const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
-        const tablePreviewHtml = renderMarkdownTableAsPseudoGraphic(displayContent);
+        const tablePreviewHtml = renderMarkdownTableAsPseudoGraphic(contentForPreview);
         if (tablePreviewHtml) {
             contentEl.innerHTML = tablePreviewHtml;
         } else if (formatSource) {
@@ -12694,13 +12757,22 @@ async function createNoteElement(noteContent) {
                 // Just replace the first pipe to keep indices consistent with modal body
                 const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) : contentToFormat.indexOf('|');
                 contentToFormat = contentToFormat.substring(0, pipeIdxForReplace) + '\n' + contentToFormat.substring(pipeIdxForReplace + 1);
+            } else {
+                contentToFormat = contentForPreview;
             }
-            // Format the full content
+            // Format the content
             let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
             contentEl.innerHTML = formattedHtml;
         } else {
-            contentEl.innerHTML = processNoteContent(displayContent, isForModal);
+            contentEl.innerHTML = processNoteContent(contentForPreview, isForModal);
         }
+    };
+    if (isHiddenNote) {
+        const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
+        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
+        contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
+    } else {
+        renderPreviewContent(displayContent);
     }
     let attachments = [];
     if (useIndexedDb) {
@@ -12890,6 +12962,25 @@ async function createNoteElement(noteContent) {
     note.addEventListener('contextmenu', e => e.preventDefault());
     contentWrapper.appendChild(titleWrapper);
     contentWrapper.appendChild(contentEl);
+    if (adjustPreviewBodyToRenderedTitle && previewTitleSourceText) {
+        let measureAttempts = 0;
+        const updatePreviewBodyFromRenderedTitle = () => {
+            measureAttempts++;
+            if (!titleEl.clientWidth && measureAttempts < 20) {
+                requestAnimationFrame(updatePreviewBodyFromRenderedTitle);
+                return;
+            }
+            if (!titleEl.clientWidth) return;
+            const visibleTitleText = getVisibleTitleTextForElement(titleEl, previewTitleSourceText);
+            if (!visibleTitleText) return;
+            const adjustedContent = getPreviewBodyAfterTitle(fileContent, visibleTitleText);
+            if (adjustedContent !== displayContent) {
+                displayContent = adjustedContent;
+                renderPreviewContent(displayContent);
+            }
+        };
+        requestAnimationFrame(updatePreviewBodyFromRenderedTitle);
+    }
     // --- Създаване на футър с икони за прикачени файлове ---
     // Проверяваме дали има прикачени файлове (масивът `attachments` вече е попълнен правилно по-горе)
     // и дали бележката има идентификатор.

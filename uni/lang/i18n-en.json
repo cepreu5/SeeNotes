@@ -65,6 +65,7 @@
     "noteFontSizeLabel": "Note Font Size (board):",
     "modalFontSizeLabel": "Note Font Size (preview):",
     "showDatemodLabel": "Show modification/calendar date:",
+    "showFirstLineLabel": "First line:",
     "dataManagementTitle": "Data Loading",
     "advancedSettings": "Advanced Settings",
     "useLocalDbLabel": "Local folder:",

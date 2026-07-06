@@ -66,6 +66,7 @@
     "clearSearchesTooltip": "Изчисти историята на търсенията",
     "noteFontSizeLabel": "Размер шрифт (бележка):",
     "showDatemodLabel": "Покажи дата на промяна/календар:",
+    "showFirstLineLabel": "Първи ред:",
     "dataManagementTitle": "Четене на данни",
     "advancedSettings": "Разширени настройки",
     "useLocalDbLabel": "Локална папка:",
