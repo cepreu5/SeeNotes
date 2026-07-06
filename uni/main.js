@@ -13619,10 +13619,12 @@ async function showBoardPreviews() {
 // --- Swipe Navigation for Boards ---
 let touchStartX = 0;
 let touchStartY = 0;
+let touchStartedInWeeklyCalendar = false;
 
 document.addEventListener('touchstart', e => {
     // Ignore if multi-touch
     if (e.touches.length > 1) return;
+    touchStartedInWeeklyCalendar = !!e.target.closest('#weekly-calendar-container');
     touchStartX = e.changedTouches[0].screenX;
     touchStartY = e.changedTouches[0].screenY;
 }, { passive: true });
@@ -13630,6 +13632,11 @@ document.addEventListener('touchstart', e => {
 document.addEventListener('touchend', e => {
     // Ignore if multi-touch
     if (e.changedTouches.length > 1) return;
+
+    if (touchStartedInWeeklyCalendar) {
+        touchStartedInWeeklyCalendar = false;
+        return;
+    }
 
     // Check if any modal is open
     if (document.querySelector('.modal-overlay.visible')) return;
