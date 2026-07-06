@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.32pin'; // App version
+const version = 'Beta 1.32lng'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -257,6 +257,18 @@ function renderLanguageSwitchers(onChangeCallback) {
         })
         .catch(err => console.warn('languages.json fallback to default', err));
 }
+
+function applyLanguageFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const shortLang = SUPPORTED_LANGUAGES.find(lang => params.has(lang.id));
+    const requestedLang = params.get('lang') || params.get('language') || (shortLang ? shortLang.id : '');
+    const isSupported = SUPPORTED_LANGUAGES.some(lang => lang.id === requestedLang);
+    if (isSupported) {
+        localStorage.setItem('language', requestedLang);
+    }
+}
+
+applyLanguageFromUrl();
 let currentLang = localStorage.getItem('language') || 'en';
 
 let appTranslations = {};
