@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.33table'; // App version
+const version = 'Beta 1.33shlist'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -7935,9 +7935,8 @@ function showModal(options, noteElement = null) {
             const titlePart = rawContent.substring(0, pipeIdxForReplace);
             const bodyPart = rawContent.substring(pipeIdxForReplace + 1);
             const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
-            displayContent = tableHtml
-                ? processNoteContent(titlePart, true) + '<br>' + tableHtml
-                : processNoteContent(titlePart + '\n' + bodyPart, true);
+            const formattedBody = tableHtml || processNoteContent(bodyPart, true);
+            displayContent = processNoteContent(titlePart, true) + '<br>' + formattedBody;
         } else if (formatString && formatString.trim() !== '') {
             displayContent = formatText(rawContent, formatString, true); // isForModal = true
         } else {
@@ -12495,29 +12494,29 @@ async function createNoteElement(noteContent) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
         noteTitle = previewContent.split('\n')[0].trim();
-    } else if (isType1Note) {
+    } else {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         if (pipeIndex !== -1) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
-        } else {
+        } else if (isType1Note) {
             previewTitleSourceText = (fileContent.split('\n').find(line => line.trim()) || '').trim();
             noteTitle = previewTitleSourceText.substring(0, 50);
             displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, noteTitle);
             adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
-        }
-    } else if (!isHiddenNote) {
-        const lines = fileContent.split('\n');
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine) {
-                previewTitleSourceText = trimmedLine;
-                noteTitle = trimmedLine.substring(0, 50);
-                break;
+        } else {
+            const lines = fileContent.split('\n');
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (trimmedLine) {
+                    previewTitleSourceText = trimmedLine;
+                    noteTitle = trimmedLine.substring(0, 50);
+                    break;
+                }
             }
+            displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, noteTitle);
+            adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
         }
-        displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, noteTitle);
-        adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
     }
     if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
     const titleWrapper = document.createElement('div');
@@ -12754,9 +12753,7 @@ async function createNoteElement(noteContent) {
             let contentToFormat = fileContent;
             const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) !== -1 : contentToFormat.includes('|');
             if (hasPipe) {
-                // Just replace the first pipe to keep indices consistent with modal body
-                const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) : contentToFormat.indexOf('|');
-                contentToFormat = contentToFormat.substring(0, pipeIdxForReplace) + '\n' + contentToFormat.substring(pipeIdxForReplace + 1);
+                contentToFormat = contentForPreview;
             } else {
                 contentToFormat = contentForPreview;
             }
