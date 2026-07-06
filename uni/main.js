@@ -2680,20 +2680,45 @@ function renderWeeklyCalendarView(dateForWeek) {
         }, 20);
     });
 
-    header.querySelector('#prev-week-btn').addEventListener('click', () => {
+    const navigateWeek = (dayOffset) => {
         const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
-        newStartDate.setDate(newStartDate.getDate() - 7); // Връщаме 7 дни назад
+        newStartDate.setDate(newStartDate.getDate() + dayOffset);
         renderWeeklyCalendarView(newStartDate);
+    };
+
+    header.querySelector('#prev-week-btn').addEventListener('click', () => {
+        navigateWeek(-7); // Връщаме 7 дни назад
     });
     header.querySelector('#next-week-btn').addEventListener('click', () => {
-        const newStartDate = new Date(startDate); // Използваме началната дата на текущия изглед
-        newStartDate.setDate(newStartDate.getDate() + 7); // Отиваме 7 дни напред
-        renderWeeklyCalendarView(newStartDate);
+        navigateWeek(7); // Отиваме 7 дни напред
     });
 
     header.querySelector('#today-week-btn').addEventListener('click', () => {
         renderWeeklyCalendarView(); // Показваме текущата седмица от понеделник
     });
+
+    let weeklySwipeStartX = 0;
+    let weeklySwipeStartY = 0;
+    let weeklySwipeTracking = false;
+    weeklyContainer.ontouchstart = (e) => {
+        if (e.touches.length !== 1 || e.target.closest('.weekly-notes-container')) {
+            weeklySwipeTracking = false;
+            return;
+        }
+        weeklySwipeStartX = e.touches[0].clientX;
+        weeklySwipeStartY = e.touches[0].clientY;
+        weeklySwipeTracking = true;
+    };
+    weeklyContainer.ontouchend = (e) => {
+        if (!weeklySwipeTracking || e.changedTouches.length !== 1) return;
+        weeklySwipeTracking = false;
+        const deltaX = e.changedTouches[0].clientX - weeklySwipeStartX;
+        const deltaY = e.changedTouches[0].clientY - weeklySwipeStartY;
+        const absX = Math.abs(deltaX);
+        const absY = Math.abs(deltaY);
+        if (absX < 60 || absX < absY * 1.3) return;
+        navigateWeek(deltaX < 0 ? 7 : -7);
+    };
     // Групираме бележките по дата
     const notesByDate = new Map();
     allNotesData.forEach(noteData => {
