@@ -1,4 +1,4 @@
-// https://multinotes.app/gdviewer
+﻿// https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.34more'; // App version
+const version = 'Beta 1.33shlist'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -318,20 +318,6 @@ window.getPipeIndex = function (text) {
             inCode = false;
             i++;
         } else if (text[i] === '|' && !inCode) {
-            // Found first pipe — check if its line has more pipes (MD table row)
-            let lineStart = text.lastIndexOf('\n', i) + 1;
-            let lineEnd = text.indexOf('\n', i);
-            if (lineEnd === -1) lineEnd = text.length;
-            let line = text.substring(lineStart, lineEnd);
-            // Count pipes on this line (outside code blocks)
-            let pipesOnLine = 0;
-            let lInCode = false;
-            for (let j = 0; j < line.length; j++) {
-                if (line[j] === '{' && line[j + 1] === '{') { lInCode = true; j++; }
-                else if (line[j] === '}' && line[j + 1] === '}') { lInCode = false; j++; }
-                else if (line[j] === '|' && !lInCode) pipesOnLine++;
-            }
-            if (pipesOnLine > 1) return -1; // Table row, not a title separator
             return i;
         }
     }
@@ -633,26 +619,21 @@ async function runGoogleDriveSync() {
                                 const localDm = parseInt(localNote.datemod, 10) || 0;
                                 const isDirty = lastSyncTimestamp ? (localDm > lastSyncTimestamp) : isDifferent;
 
-                                // Modal Safety: If this note is currently open in ANY modal, 
-                                // we treat it as a conflict ONLY if the user has unsaved changes in that modal.
-                                let isOpenInModal = false;
-                                let hasUnsavedChangesInModal = false;
-                                const allModals = document.querySelectorAll('.active-note-modal .modal-body-content');
-                                for (const modalBodyElem of allModals) {
-                                    const modalGdid = modalBodyElem.dataset.gdid;
-                                    const modalNoteId = modalBodyElem.dataset.id;
-                                    if ((serverNote.gdid && String(serverNote.gdid) === String(modalGdid)) ||
-                                        (serverNote.id && String(serverNote.id) === String(modalNoteId))) {
+                                // Modal Safety: If this note is currently open in the modal, 
+                                // we treat it as a conflict ONLY if the user has unsaved changes in the modal.
+                                const modalBodyElem = document.getElementById('modal-body');
+                                const modalGdid = modalBodyElem?.dataset.gdid;
+                                const modalNoteId = modalBodyElem?.dataset.id;
+                                const isOpenInModal = (serverNote.gdid && String(serverNote.gdid) === String(modalGdid)) || (serverNote.id && String(serverNote.id) === String(modalNoteId));
 
-                                        isOpenInModal = true;
-                                        const textarea = modalBodyElem.querySelector('textarea');
-                                        const titleArea = modalBodyElem.querySelector('.note-edit-title-textarea');
-                                        if (textarea) {
-                                            let currentText = textarea.value;
-                                            if (titleArea) currentText = titleArea.value + '|' + currentText;
-                                            hasUnsavedChangesInModal = (currentText !== localNote.notetxt);
-                                        }
-                                        break; // Found the modal for this note
+                                let hasUnsavedChangesInModal = false;
+                                if (isOpenInModal && modalBodyElem) {
+                                    const textarea = modalBodyElem.querySelector('textarea');
+                                    const titleArea = modalBodyElem.querySelector('#note-edit-title-textarea');
+                                    if (textarea) {
+                                        let currentText = textarea.value;
+                                        if (titleArea) currentText = titleArea.value + '|' + currentText;
+                                        hasUnsavedChangesInModal = (currentText !== localNote.notetxt);
                                     }
                                 }
 
@@ -1975,7 +1956,7 @@ async function createNewNote() {
 
             // Auto-enter edit mode
             setTimeout(() => {
-                const editBtn = modalContainer.querySelector('.note-edit-btn') || modalContainer.querySelector('#note-edit-btn');
+                const editBtn = document.getElementById('note-edit-btn');
                 if (editBtn) editBtn.click();
             }, 100);
         }
@@ -2390,12 +2371,12 @@ function renderCalendarView() {
             // Background handler for the spinner in the re-opened modal
             (async () => {
                 await new Promise(r => setTimeout(r, 120)); // Wait for modal to re-open
-                const calendarBtn = contentModal.querySelector('#note-calendar-btn');
+                const calendarBtn = document.getElementById('note-calendar-btn');
                 if (calendarBtn) {
                     calendarBtn.style.pointerEvents = 'none';
                     calendarBtn.innerHTML = `<img src="Refresh.png" style="width:22px; height:22px; animation: spin 0.8s linear infinite;">`;
                     await syncPromise;
-                    const finalCalendarBtn = contentModal.querySelector('#note-calendar-btn');
+                    const finalCalendarBtn = document.getElementById('note-calendar-btn');
                     if (finalCalendarBtn) {
                         finalCalendarBtn.style.pointerEvents = 'auto';
                         finalCalendarBtn.innerHTML = noCalendarIconSvg;
@@ -3686,7 +3667,7 @@ async function handleShareTarget(externalData = null) {
             });
             // Автоматично влизаме в режим на редактиране, за да може потребителят да запише
             setTimeout(() => {
-                const editBtn = modalContainer.querySelector('.note-edit-btn') || modalContainer.querySelector('#note-edit-btn');
+                const editBtn = document.getElementById('note-edit-btn');
                 if (editBtn) editBtn.click();
             }, 150);
         }
@@ -4344,7 +4325,7 @@ function extractAndFormat(text, onlyChecked = false) {
  */
 async function handleCalculateClick(checkList) {
     const selection = window.getSelection();
-    const modalBody = activeModal ? activeModal.querySelector('.modal-body-content') : document.getElementById('modal-body');
+    const modalBody = document.getElementById('modal-body');
     let expression = '';
     let isFromClipboard = false;
     let range = null;
@@ -4919,7 +4900,80 @@ function initApp() {
     });
 
     // --- Calculator Button ---
-    // Moved to showModal
+    const calculateBtn = document.getElementById('calculate-modal-btn');
+    let longPressTimer;
+    let isLongPress = false;
+
+    // Обработка на click събитие
+    calculateBtn.addEventListener('click', (e) => {
+        if (isLongPress) {
+            isLongPress = false;
+            return;
+        }
+        if (e.ctrlKey) {
+            // Ctrl+клик - извикваме с true
+            handleCalculateClick(true);
+        } else {
+            // Обикновен клик
+            handleCalculateClick(false);
+        }
+    });
+
+    // Обработка на long press
+    const startPress = (e) => {
+        isLongPress = false;
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            handleCalculateClick(true);
+        }, 500); // 500ms за long press
+    };
+
+    const endPress = () => {
+        clearTimeout(longPressTimer);
+    };
+
+    calculateBtn.addEventListener('mousedown', startPress);
+    calculateBtn.addEventListener('mouseup', endPress);
+    calculateBtn.addEventListener('mouseleave', endPress);
+    calculateBtn.addEventListener('touchstart', startPress, { passive: true });
+    calculateBtn.addEventListener('touchend', endPress);
+    // --- КОРЕКЦИЯ: Преместваме бутоните в хедъра на модала ---
+    const modalHeader = contentModal.querySelector('.modal-header-controls');
+    const modalCloseBtn = contentModal.querySelector('.modal-close');
+    if (modalHeader && modalCloseBtn) {
+        // Вмъкваме бутоните преди бутона за затваряне
+        modalHeader.insertBefore(calculateBtn, modalCloseBtn);
+        modalHeader.insertBefore(copyBtn, modalCloseBtn);
+    }
+    // --- Край на корекцията ---
+    copyBtn.innerHTML = copyIconSvg;
+    copyBtn.addEventListener('click', () => {
+        if (!navigator.clipboard) return;
+        const selection = window.getSelection();
+        let textToCopy = '';
+        // Проверяваме дали има маркиран текст и дали той се намира в модалния прозорец
+        if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
+            const range = selection.getRangeAt(0);
+            // Уверяваме се, че селекцията е започнала вътре в modalBody
+            if (modalBody.contains(range.commonAncestorContainer)) {
+                textToCopy = selection.toString();
+            }
+        }
+        // Ако няма избран текст, копираме цялото съдържание на бележката
+        if (textToCopy === '') {
+            textToCopy = currentModalContent?.trim() || '';
+        }
+        if (textToCopy) {
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                copyBtn.innerHTML = '&#10003;'; // Показваме отметка за успех
+                setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 5000);
+            }).catch(err => {
+                showToast(_('errorCopyFailed'));
+            });
+        }
+    });
+
+    // Event listener for submit button in folder ID popup
     document.getElementById('submitFolderIdBtn').addEventListener('click', handleSubmitFolderId);
     document.getElementById('folderIdInput').addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
@@ -4999,7 +5053,9 @@ function initApp() {
         modal.addEventListener('click', async (e) => {
             // Затваряме само ако и натискането, и отпускането са били върху овърлея
             if (e.target === modal && !isMouseDownInside) {
-
+                if (modal.id === 'content-modal') {
+                    if (!(await checkUnsavedChanges())) return;
+                }
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
@@ -5018,6 +5074,10 @@ function initApp() {
             }
         });
     });
+    // Prevent clicks inside the content modal from propagating to the underlying notes
+    contentModal.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
 
     // Apply initial font size settings from localStorage
     const initialNoteFontSize = localStorage.getItem('noteFontSize') || 16;
@@ -5025,10 +5085,67 @@ function initApp() {
     // Apply initial state for datemod visibility
     const shouldHideDatemod = localStorage.getItem('showDatemod') === 'false';
     document.body.classList.toggle('hide-datemod', shouldHideDatemod);
+    const initialModalFontSize = localStorage.getItem('modalFontSize') || 16;
+    modalBody.style.fontSize = `${initialModalFontSize}px`;
+    // Add a listener to reset the modal font size when it's closed,
+    // as it might be changed by other parts of the app (like formatText).
+    contentModal.addEventListener('transitionend', () => {
+        if (!contentModal.classList.contains('visible')) {
+            modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
+        }
+    });
 
+    // --- Modal Resizing Logic ---
+    const modalContentBox = contentModal.querySelector('.modal-content-box');
+    const resizeHandle = contentModal.querySelector('.modal-resize-handle');
+    let startX, startY, startWidth, startHeight;
+    function doDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+        const newWidth = Math.round(startWidth + currentX - startX);
+        const newHeight = Math.round(startHeight + currentY - startY);
+        modalContentBox.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px'; // Limited by screen width
+        modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
+        modalContentBox.style.maxWidth = '100vw';
+        modalContentBox.style.maxHeight = 'none';
+    }
 
+    function stopDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        document.documentElement.removeEventListener('mousemove', doDrag, false);
+        document.documentElement.removeEventListener('mouseup', stopDrag, false);
+        document.documentElement.removeEventListener('touchmove', doDrag, false);
+        document.documentElement.removeEventListener('touchend', stopDrag, false);
+        localStorage.setItem('modalWidth', modalContentBox.style.width);
+        localStorage.setItem('modalHeight', modalContentBox.style.height);
+    }
+    function startDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        startY = e.touches ? e.touches[0].clientY : e.clientY;
+        startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
+        startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
+        // Attach listeners for both mouse and touch
+        document.documentElement.addEventListener('mousemove', doDrag, false);
+        document.documentElement.addEventListener('mouseup', stopDrag, false);
+        document.documentElement.addEventListener('touchmove', doDrag, false);
+        document.documentElement.addEventListener('touchend', stopDrag, false);
+    }
 
-
+    // Attach start event for both mouse and touch
+    resizeHandle.addEventListener('mousedown', startDrag);
+    resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
+    // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
+    resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
+            <path d="M12 2 L2 12" />
+            <path d="M12 7 L7 12" />
+            <!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
+            <path d="M10 4 L4 4 L4 10" />
+        </svg>`;
     // Load saved searches and settings from localStorage
     lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
     savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
@@ -7688,132 +7805,8 @@ function showModal(options, noteElement = null) {
         noteId = options.id;
         noteGdid = options.gdid;
     }
-    // --- MULTI-NOTE LOGIC ---
-    let modalIdSuffix = noteGdid || noteId || Date.now();
-    let contentModal = document.getElementById('note-modal-' + modalIdSuffix);
-
-    // If it already exists and is not a new note, just focus it
-    if (contentModal && !options.isNewNote) {
-        bringModalToFront(contentModal);
-        return;
-    }
-
-    const template = document.getElementById('content-modal-template');
-    contentModal = template.cloneNode(true);
-    contentModal.id = 'note-modal-' + (options.isNewNote ? Date.now() : modalIdSuffix);
-    contentModal.style.display = 'flex';
-    contentModal.classList.add('note-modal');
-    contentModal.classList.add('active-note-modal');
-    document.body.appendChild(contentModal);
-
-    bringModalToFront(contentModal);
-
-    const modalBodyElem = contentModal.querySelector('.modal-body-content');
-
-    const copyBtn = contentModal.querySelector('.copy-modal-btn');
-
-    contentModal.addEventListener('click', (e) => {
-        e.stopPropagation();
-    });
-
-
-
-    const modalContentBox = contentModal.querySelector('.modal-content-box');
-    const resizeHandle = contentModal.querySelector('.modal-resize-handle');
-    makeModalResizable(modalContentBox, resizeHandle);
-
-    const initialModalFontSize = localStorage.getItem('modalFontSize') || 16;
-    if (modalBodyElem) modalBodyElem.style.fontSize = `${initialModalFontSize}px`;
-
-    const calculateBtn = contentModal.querySelector('.calculate-modal-btn');
-    if (calculateBtn) {
-        let longPressTimer;
-        let isLongPress = false;
-
-        calculateBtn.addEventListener('click', (e) => {
-            if (isLongPress) {
-                isLongPress = false;
-                return;
-            }
-            if (e.ctrlKey) {
-                handleCalculateClick(true, contentModal);
-            } else {
-                handleCalculateClick(false, contentModal);
-            }
-        });
-
-        const startPress = (e) => {
-            isLongPress = false;
-            longPressTimer = setTimeout(() => {
-                isLongPress = true;
-                handleCalculateClick(true, contentModal);
-            }, 500);
-        };
-
-        const endPress = () => {
-            clearTimeout(longPressTimer);
-        };
-
-        calculateBtn.addEventListener('mousedown', startPress);
-        calculateBtn.addEventListener('mouseup', endPress);
-        calculateBtn.addEventListener('mouseleave', endPress);
-        calculateBtn.addEventListener('touchstart', startPress, { passive: true });
-        calculateBtn.addEventListener('touchend', endPress);
-    }
-
-    if (copyBtn) {
-        copyBtn.innerHTML = typeof copyIconSvg !== 'undefined' ? copyIconSvg : 'Copy';
-        copyBtn.addEventListener('click', () => {
-            if (!navigator.clipboard) return;
-            const selection = window.getSelection();
-            let textToCopy = '';
-            if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
-                const range = selection.getRangeAt(0);
-                if (modalBodyElem.contains(range.commonAncestorContainer)) {
-                    textToCopy = selection.toString();
-                }
-            }
-            if (textToCopy === '') {
-                textToCopy = contentModal.dataset.originalContent?.trim() || '';
-            }
-            if (textToCopy) {
-                navigator.clipboard.writeText(textToCopy).then(() => {
-                    copyBtn.innerHTML = '&#10003;';
-                    setTimeout(() => { copyBtn.innerHTML = typeof copyIconSvg !== 'undefined' ? copyIconSvg : 'Copy'; }, 5000);
-                }).catch(err => {
-                    if (typeof showToast === 'function') showToast(_('errorCopyFailed'));
-                });
-            }
-        });
-    }
-
-
-    // Add close logic
-    const closeBtnHeader = contentModal.querySelector('.modal-close');
-    if (closeBtnHeader) {
-        closeBtnHeader.onclick = async () => {
-            if (!(await checkUnsavedChanges(true, contentModal))) return;
-            contentModal.remove();
-        };
-    }
-
-
-
-    // Bring to front on click
-    contentModal.addEventListener('mousedown', () => bringModalToFront(contentModal));
-    contentModal.addEventListener('touchstart', () => bringModalToFront(contentModal), { passive: true });
-
-    // Cascade positioning
-
-    // Ensure the modal becomes visible with transition
-    requestAnimationFrame(() => {
-        if (contentModal) contentModal.classList.add('visible');
-    });
-
-    // ------------------------
-
     // --- Board Name Display in Modal ---
-
+    const modalContentBox = contentModal.querySelector('.modal-content-box');
 
     // Check for explicit dimensions in options (e.g. from guide temp note)
     if (options && options.width && options.height) {
@@ -7838,16 +7831,13 @@ function showModal(options, noteElement = null) {
             modalContentBox.style.maxHeight = 'none';
         }
     }
-
-    // Apply cascade position AFTER dimensions are set
-    applyCascadePosition(contentModal);
     // Размер на шрифта: от options (демо бележка) или от потребителските настройки
     if (options && options.fontSize) {
-        modalBodyElem.style.fontSize = (typeof options.fontSize === 'number' ? options.fontSize + 'px' : options.fontSize);
+        modalBody.style.fontSize = (typeof options.fontSize === 'number' ? options.fontSize + 'px' : options.fontSize);
     } else {
-        modalBodyElem.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
+        modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
     }
-    const modalBoardNameEl = contentModal.querySelector('.modal-board-name');
+    const modalBoardNameEl = document.getElementById('modal-board-name');
     const isPromo = options.id === 'promo';
 
     // Скриваме бутоните в хедъра за промо бележката (освен Close)
@@ -7891,7 +7881,7 @@ function showModal(options, noteElement = null) {
                 const newEl = modalBoardNameEl.cloneNode(true);
                 modalBoardNameEl.parentNode.replaceChild(newEl, modalBoardNameEl);
                 newEl.addEventListener('click', () => {
-                    contentModal.remove();
+                    document.getElementById('content-modal').classList.remove('visible');
                     const boardBtn = document.querySelector(`.board-filter-link[data-boardid="${board.gdid}"]`);
                     if (boardBtn) {
                         boardBtn.click();
@@ -7919,38 +7909,19 @@ function showModal(options, noteElement = null) {
         modalBoardNameEl.style.cursor = 'default';
         modalBoardNameEl.style.textDecoration = 'none';
     }
-    contentModal.dataset.originalContent = rawContent;
+    currentModalContent = rawContent;
     // For notes with a preview (pass: true), the '|' is a separator.
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
     // Special case: if titleFormatString is provided, format the title part separately.
     const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
-    // Check if the first pipe is a title separator (1 pipe on the line) or part of a table (multiple pipes)
-    let isTablePipe = false;
-    if (pipeIndex !== -1) {
-        let lineStart = rawContent.lastIndexOf('\n', pipeIndex) + 1;
-        let lineEnd = rawContent.indexOf('\n', pipeIndex);
-        if (lineEnd === -1) lineEnd = rawContent.length;
-        let line = rawContent.substring(lineStart, lineEnd);
-        let pipesOnLine = 0;
-        let lInCode = false;
-        for (let j = 0; j < line.length; j++) {
-            if (line[j] === '{' && line[j + 1] === '{') { lInCode = true; j++; }
-            else if (line[j] === '}' && line[j + 1] === '}') { lInCode = false; j++; }
-            else if (line[j] === '|' && !lInCode) pipesOnLine++;
-        }
-        isTablePipe = (pipesOnLine > 1);
-    }
-    if (isTablePipe) {
-        // The pipe is part of a table — don't split, render as table
-        displayContent = renderMarkdownTableAsPseudoGraphic(rawContent) || processNoteContent(rawContent, true);
-    } else if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
+    if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
         // Hidden note with title formatting: split, format each part, then combine
         const titlePart = rawContent.substring(0, pipeIndex);
         const bodyPart = rawContent.substring(pipeIndex + 1);
         const formattedTitle = formatText(titlePart, titleFormatString, true);
         let formattedBody = '';
-        if (formatString && formatString.trim() !== '' && formatString !== '[]') {
+        if (formatString && formatString.trim() !== '') {
             formattedBody = formatText(bodyPart, formatString, true);
         } else {
             formattedBody = renderMarkdownTableAsPseudoGraphic(bodyPart) || processNoteContent(bodyPart, true);
@@ -7958,7 +7929,7 @@ function showModal(options, noteElement = null) {
         displayContent = formattedTitle + '<br>' + formattedBody;
     } else {
         // Standard logic: replace separator with newline for hidden notes
-        const pipeIdxForReplace = pipeIndex;
+        const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
         if (pipeIdxForReplace !== -1) {
             // Replace only the first separating pipe
             const titlePart = rawContent.substring(0, pipeIdxForReplace);
@@ -7966,24 +7937,24 @@ function showModal(options, noteElement = null) {
             const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
             const formattedBody = tableHtml || processNoteContent(bodyPart, true);
             displayContent = processNoteContent(titlePart, true) + '<br>' + formattedBody;
-        } else if (formatString && formatString.trim() !== '' && formatString !== '[]') {
+        } else if (formatString && formatString.trim() !== '') {
             displayContent = formatText(rawContent, formatString, true); // isForModal = true
         } else {
-            displayContent = renderMarkdownTableAsPseudoGraphic(rawContent) || processNoteContent(rawContent, true); // isForModal = true
+            displayContent = processNoteContent(rawContent, true); // isForModal = true
         }
     }
-    modalBodyElem.innerHTML = displayContent;
-    modalBodyElem.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
+    modalBody.innerHTML = displayContent;
+    modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
 
     // Remove previous click listener if it exists to prevent accumulation
-    if (modalBodyElem._clickListener) {
-        modalBodyElem.removeEventListener('click', modalBodyElem._clickListener, { capture: true });
+    if (modalBody._clickListener) {
+        modalBody.removeEventListener('click', modalBody._clickListener, { capture: true });
     }
 
     // Add click-to-edit functionality
-    modalBodyElem._clickListener = (e) => {
+    modalBody._clickListener = (e) => {
         // Do not trigger if a link was clicked, copy button was clicked, if already editing, or if setting is disabled
-        if (e.target.closest('a') || e.target.closest('.code-block-copy') || modalBodyElem.querySelector('textarea')) {
+        if (e.target.closest('a') || e.target.closest('.code-block-copy') || modalBody.querySelector('textarea')) {
             return;
         }
 
@@ -7995,36 +7966,36 @@ function showModal(options, noteElement = null) {
         const selection = window.getSelection();
         if (selection.rangeCount > 0) {
             const range = selection.getRangeAt(0);
-            charIndex = getPreciseCharIndex(modalBodyElem, range);
+            charIndex = getPreciseCharIndex(modalBody, range);
         }
 
-        enableNoteEditing(modalBodyElem, charIndex);
+        enableNoteEditing(modalBody, charIndex);
     };
-    modalBodyElem.addEventListener('click', modalBodyElem._clickListener, { capture: true }); // Use capture to handle event before other listeners if needed
+    modalBody.addEventListener('click', modalBody._clickListener, { capture: true }); // Use capture to handle event before other listeners if needed
 
     // Store metadata for editing and rendering identification
-    modalBodyElem.dataset.id = noteId || '';
-    modalBodyElem.dataset.gdid = noteGdid || '';
-    modalBodyElem.dataset.numord = options.numord || '';
-    modalBodyElem.dataset.baseDatemod = options.datemod || '0';
+    modalBody.dataset.id = noteId || '';
+    modalBody.dataset.gdid = noteGdid || '';
+    modalBody.dataset.numord = options.numord || '';
+    modalBody.dataset.baseDatemod = options.datemod || '0';
 
     if (options.originalNote) {
-        modalBodyElem.dataset.baseNote = JSON.stringify(options.originalNote);
+        modalBody.dataset.baseNote = JSON.stringify(options.originalNote);
     } else {
-        delete modalBodyElem.dataset.baseNote;
+        delete modalBody.dataset.baseNote;
     }
-    modalBodyElem.dataset.format = formatString || '';
-    modalBodyElem.dataset.titleFormat = titleFormatString || '';
-    modalBodyElem.dataset.boardId = (options && options.boardId) ? options.boardId : '';
-    modalBodyElem.dataset.isNewNote = options.isNewNote ? 'true' : 'false';
-    modalBodyElem.dataset.color = noteColor || '';
+    modalBody.dataset.format = formatString || '';
+    modalBody.dataset.titleFormat = titleFormatString || '';
+    modalBody.dataset.boardId = (options && options.boardId) ? options.boardId : '';
+    modalBody.dataset.isNewNote = options.isNewNote ? 'true' : 'false';
+    modalBody.dataset.color = noteColor || '';
     if (options.maskedLinks) {
-        modalBodyElem.dataset.maskedLinks = JSON.stringify(options.maskedLinks);
+        modalBody.dataset.maskedLinks = JSON.stringify(options.maskedLinks);
     } else {
-        delete modalBodyElem.dataset.maskedLinks;
+        delete modalBody.dataset.maskedLinks;
     }
     const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-    modalBodyElem.dataset.calendarDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? noteObjForCalendar.calendarDate : '0';
+    modalBody.dataset.calendarDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? noteObjForCalendar.calendarDate : '0';
     let colorIndex = 0;
     if (typeof noteColor === 'number') {
         if (noteColor >= 0 && noteColor < noteColorMap.length) {
@@ -8049,8 +8020,8 @@ function showModal(options, noteElement = null) {
             colorIndex = c;
         }
     }
-    modalBodyElem.dataset.initialColorIndex = colorIndex; // Запазваме оригиналния цвят
-    modalBodyElem.dataset.colorIndex = colorIndex;
+    modalBody.dataset.initialColorIndex = colorIndex; // Запазваме оригиналния цвят
+    modalBody.dataset.colorIndex = colorIndex;
 
     // Set modal background color
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
@@ -8058,7 +8029,7 @@ function showModal(options, noteElement = null) {
         modalContentBox.style.backgroundColor = '#222';
         modalContentBox.style.backgroundImage = 'none';
         modalContentBox.classList.add('no-bg-image');
-        modalBodyElem.classList.add('no-bg-image');
+        modalBody.classList.add('no-bg-image');
     } else {
         let bgColor = '#eef603';
         if (typeof colorIndex === 'number') {
@@ -8073,18 +8044,18 @@ function showModal(options, noteElement = null) {
         if (!imgBgrdEnabled) {
             modalContentBox.style.backgroundImage = 'none';
             modalContentBox.classList.add('no-bg-image');
-            modalBodyElem.classList.add('no-bg-image');
+            modalBody.classList.add('no-bg-image');
         } else {
             modalContentBox.style.backgroundImage = '';
             modalContentBox.classList.remove('no-bg-image');
-            modalBodyElem.classList.remove('no-bg-image');
+            modalBody.classList.remove('no-bg-image');
         }
     }
 
     // --- Color Picker UI in Header ---
-    const oldColorBtn = contentModal.querySelector('#modal-color-btn');
+    const oldColorBtn = document.getElementById('modal-color-btn');
     if (oldColorBtn) oldColorBtn.remove();
-    const oldPalette = contentModal.querySelector('#color-palette-dropdown');
+    const oldPalette = document.getElementById('color-palette-dropdown');
     if (oldPalette) oldPalette.remove();
 
     if (!isPromo && !options.readonly) {
@@ -8146,8 +8117,8 @@ function showModal(options, noteElement = null) {
                         e.stopPropagation();
                         // Update UI
                         modalContentBox.style.backgroundColor = c;
-                        modalBodyElem.dataset.color = c;
-                        modalBodyElem.dataset.colorIndex = idx;
+                        modalBody.dataset.color = c;
+                        modalBody.dataset.colorIndex = idx;
                         palette.style.display = 'none';
                     };
                     palette.appendChild(swatch);
@@ -8171,8 +8142,8 @@ function showModal(options, noteElement = null) {
                 colorInput.oninput = (e) => {
                     const hex = e.target.value.toUpperCase();
                     modalContentBox.style.backgroundColor = hex;
-                    modalBodyElem.dataset.color = hex;
-                    modalBodyElem.dataset.colorIndex = -1; // -1 показва, че е потребителски цвят
+                    modalBody.dataset.color = hex;
+                    modalBody.dataset.colorIndex = -1; // -1 показва, че е потребителски цвят
                 };
 
                 colorInput.onchange = () => {
@@ -8201,7 +8172,7 @@ function showModal(options, noteElement = null) {
     // Използваме requestAnimationFrame, за да гарантираме, че браузърът е приложил началните стилове (scale 0.7)
     // преди да добавим класа visible, за да се възпроизведе анимацията.
     requestAnimationFrame(() => {
-        contentModal.style.display = 'flex';
+        contentModal.classList.add('visible');
     });
 
     // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
@@ -8224,7 +8195,7 @@ function showModal(options, noteElement = null) {
             const separator = document.createElement('hr');
             separator.style.marginTop = '10px';
             separator.style.marginBottom = '10px';
-            modalBodyElem.appendChild(separator);
+            modalBody.appendChild(separator);
             attachments.forEach(async attachment => {
                 const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
                 if (!iconData) return;
@@ -8240,7 +8211,7 @@ function showModal(options, noteElement = null) {
                 } else {
                     await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
                 }
-                modalBodyElem.appendChild(attachmentWrapper);
+                modalBody.appendChild(attachmentWrapper);
             });
 
         }
@@ -8332,9 +8303,9 @@ function showModal(options, noteElement = null) {
 
     copyBtn.innerHTML = copyIconSvg;
     // --- Логика за навигация между бележките ---
-    const prevBtn = contentModal.querySelector('.prev-note-btn');
-    const nextBtn = contentModal.querySelector('.next-note-btn');
-    const deleteBtn = contentModal.querySelector('.delete-modal-btn');
+    const prevBtn = document.getElementById('prev-note-btn');
+    const nextBtn = document.getElementById('next-note-btn');
+    const deleteBtn = document.getElementById('delete-modal-btn');
 
     // Показваме/скриваме бутона за изтриване
     // --- КОРЕКЦИЯ: Разрешаваме изтриване и в режим "Локална папка" ---
@@ -8371,18 +8342,18 @@ function showModal(options, noteElement = null) {
     } else {
         prevBtn.style.display = 'none';
         nextBtn.style.display = 'none';
-        const boardNameEl = contentModal.querySelector('.modal-board-name');
+        const boardNameEl = document.getElementById('modal-board-name');
         if (boardNameEl) boardNameEl.style.left = '';
     }
-    const bulletBtn = contentModal.querySelector('.bullet-list-btn');
-    const numberedBtn = contentModal.querySelector('.numbered-list-btn');
+    const bulletBtn = document.getElementById('bullet-list-btn');
+    const numberedBtn = document.getElementById('numbered-list-btn');
     if (bulletBtn) bulletBtn.style.display = 'none';
     if (numberedBtn) numberedBtn.style.display = 'none';
 
     // --- Edit Icon for Modal (DB Mode) ---
     // Individual buttons are cleaned up when oldToolbar is removed at the top,
     // but we ensure extra cleanup for persistent buttons if needed.
-    const oldCalendarBtn = contentModal.querySelector('#note-calendar-btn');
+    const oldCalendarBtn = document.getElementById('note-calendar-btn');
     if (oldCalendarBtn) oldCalendarBtn.remove();
 
     if (canEdit && footerToolbar) {
@@ -8417,7 +8388,7 @@ function showModal(options, noteElement = null) {
             noteCopy.isNewNote = true; // Mark as new for save logic
 
             // Close original modal
-            contentModal.remove();
+            contentModal.classList.remove('visible');
 
             // Small delay to ensure clean transition
             setTimeout(() => {
@@ -8434,7 +8405,7 @@ function showModal(options, noteElement = null) {
 
                 // Switch to edit mode automatically
                 setTimeout(() => {
-                    const mBody = contentModal.querySelector('.modal-body-content');
+                    const mBody = document.getElementById('modal-body');
                     if (mBody) {
                         enableNoteEditing(mBody);
                         showToast(_('copyNoteMessage'), 4000);
@@ -8460,12 +8431,12 @@ function showModal(options, noteElement = null) {
         moveBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             showAllBoardsModal(async (newBoardId) => {
-                const isEditing = modalBodyElem.querySelector('textarea') !== null;
-                const isNewNote = modalBodyElem.dataset.isNewNote === 'true';
+                const isEditing = modalBody.querySelector('textarea') !== null;
+                const isNewNote = modalBody.dataset.isNewNote === 'true';
                 if (isEditing || isNewNote) {
-                    modalBodyElem.dataset.boardId = newBoardId;
+                    modalBody.dataset.boardId = newBoardId;
                     const b = boardsData.find(board => (board.gdid || board.id) == newBoardId);
-                    const currentBoardNameEl = contentModal.querySelector('.modal-board-name');
+                    const currentBoardNameEl = document.getElementById('modal-board-name');
                     if (currentBoardNameEl && b) {
                         currentBoardNameEl.textContent = b.title;
                         currentBoardNameEl.style.display = 'flex';
@@ -8477,14 +8448,14 @@ function showModal(options, noteElement = null) {
                         const newBoardEl = currentBoardNameEl.cloneNode(true);
                         currentBoardNameEl.parentNode.replaceChild(newBoardEl, currentBoardNameEl);
                         newBoardEl.addEventListener('click', () => {
-                            contentModal.remove();
+                            document.getElementById('content-modal').classList.remove('visible');
                             const bBtn = document.querySelector(`.board-filter-link[data-boardid="${newBoardId}"]`);
                             if (bBtn) { bBtn.click(); } else { filterNotesByBoard(newBoardId); }
                         });
                     }
                 } else {
                     const moved = await moveNoteToBoard(noteGdid, noteId, newBoardId);
-                    if (moved) contentModal.remove();
+                    if (moved) contentModal.classList.remove('visible');
                 }
             });
         });
@@ -8502,7 +8473,7 @@ function showModal(options, noteElement = null) {
         calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
         calendarBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            const currentCalendarDateVal = modalBodyElem.dataset.calendarDate;
+            const currentCalendarDateVal = modalBody.dataset.calendarDate;
             const isAssigned = currentCalendarDateVal && currentCalendarDateVal !== '0';
             if (isAssigned) {
                 calendarBtn.style.pointerEvents = 'none';
@@ -8511,11 +8482,11 @@ function showModal(options, noteElement = null) {
                 calendarBtn.style.pointerEvents = 'auto';
                 calendarBtn.innerHTML = calendarIconSvg;
                 calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
-                modalBodyElem.dataset.calendarDate = "0";
+                modalBody.dataset.calendarDate = "0";
             } else {
-                if (modalBodyElem.querySelector('textarea')) await saveEditedNote();
-                noteToAssignDate = { id: modalBodyElem.dataset.id || noteId, gdid: modalBodyElem.dataset.gdid || noteGdid };
-                contentModal.remove();
+                if (modalBody.querySelector('textarea')) await saveEditedNote();
+                noteToAssignDate = { id: modalBody.dataset.id || noteId, gdid: modalBody.dataset.gdid || noteGdid };
+                contentModal.classList.remove('visible');
                 renderCalendarView();
             }
         });
@@ -8533,7 +8504,7 @@ function showModal(options, noteElement = null) {
         searchBtn.title = _('searchInNoteTooltip') || "Search in note";
         searchBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            toggleModalSearch(modalContentBox, modalBodyElem, contentModal);
+            toggleModalSearch(modalContentBox, modalBody);
         });
         footerToolbar.appendChild(searchBtn);
 
@@ -8558,7 +8529,7 @@ function showModal(options, noteElement = null) {
                 // Move note back to its original board
                 const moved = await moveNoteToBoard(noteGdid, noteId, currentNoteObj.boardid);
                 if (moved !== false) {
-                    contentModal.remove();
+                    contentModal.classList.remove('visible');
                     // showToast(_('noteRestoredSuccess') || "Бележката е възстановена.", 3000);
                 }
             });
@@ -8568,7 +8539,7 @@ function showModal(options, noteElement = null) {
             editBtn.title = _('editNoteTooltip') || "Edit note";
             editBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                enableNoteEditing(modalBodyElem);
+                enableNoteEditing(modalBody);
             });
         }
 
@@ -8757,8 +8728,6 @@ function showAllBoardsModal(onSelectCallback = null) {
     const modalContent = document.createElement('div');
     const boardsModal = document.getElementById('boards-menu-modal');
     modalContent.className = 'all-boards-modal-container';
-
-
     // Взимаме всички бутони от главното меню в хедъра
     const headerMenuContainer = document.querySelector('header .board-menu-container');
     if (!headerMenuContainer) return; // Предпазна мярка
@@ -9979,8 +9948,10 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         allBoardsBtnForContainer.id = 'popup-menu-btn-floating';
         allBoardsBtnForContainer.className = 'popup-menu-btn-floating';
         allBoardsBtnForContainer.innerHTML = boardIconSvg;
+
         // --- DRAGGABLE FUNCTIONALITY ---
         makeElementDraggable(allBoardsBtnForContainer, 'popupMenuBtnPosition');
+
         let clickTimer;
         allBoardsBtnForContainer.addEventListener('click', (e) => {
             e.preventDefault();
@@ -9990,65 +9961,9 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
                 showAllBoardsModal();
             }, 200);
         });
-        // --- Satellite close-all-notes button ---
-        const closeAllSatellite = document.createElement('button');
-        closeAllSatellite.id = 'close-all-notes-satellite';
-        closeAllSatellite.className = 'close-all-notes-satellite';
-        closeAllSatellite.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>`;
-        closeAllSatellite.title = 'Затвори всички бележки';
-        closeAllSatellite.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            await closeAllNotes();
-        });
-        allBoardsBtnForContainer.appendChild(closeAllSatellite);
-        // --- Satellite show/hide with 3s delay ---
-        let satelliteHideTimer = null;
-        const showSatellite = () => {
-            clearTimeout(satelliteHideTimer);
-            closeAllSatellite.classList.add('visible');
-        };
-        const hideSatelliteDelayed = () => {
-            satelliteHideTimer = setTimeout(() => {
-                closeAllSatellite.classList.remove('visible');
-            }, 3000);
-        };
-        allBoardsBtnForContainer.addEventListener('mouseenter', showSatellite);
-        allBoardsBtnForContainer.addEventListener('mouseleave', hideSatelliteDelayed);
-        closeAllSatellite.addEventListener('mouseenter', showSatellite);
-        closeAllSatellite.addEventListener('mouseleave', hideSatelliteDelayed);
         document.body.appendChild(allBoardsBtnForContainer);
     } else {
         allBoardsBtnForContainer.innerHTML = boardIconSvg;
-        // Re-create satellite if missing
-        if (!allBoardsBtnForContainer.querySelector('.close-all-notes-satellite')) {
-            const closeAllSatellite = document.createElement('button');
-            closeAllSatellite.id = 'close-all-notes-satellite';
-            closeAllSatellite.className = 'close-all-notes-satellite';
-            closeAllSatellite.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>`;
-            closeAllSatellite.title = 'Затвори всички бележки';
-            closeAllSatellite.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                await closeAllNotes();
-            });
-            allBoardsBtnForContainer.appendChild(closeAllSatellite);
-            // --- Satellite show/hide with 3s delay ---
-            let satelliteHideTimer = null;
-            const showSatellite = () => {
-                clearTimeout(satelliteHideTimer);
-                closeAllSatellite.classList.add('visible');
-            };
-            const hideSatelliteDelayed = () => {
-                satelliteHideTimer = setTimeout(() => {
-                    closeAllSatellite.classList.remove('visible');
-                }, 3000);
-            };
-            allBoardsBtnForContainer.addEventListener('mouseenter', showSatellite);
-            allBoardsBtnForContainer.addEventListener('mouseleave', hideSatelliteDelayed);
-            closeAllSatellite.addEventListener('mouseenter', showSatellite);
-            closeAllSatellite.addEventListener('mouseleave', hideSatelliteDelayed);
-        }
     }
     const bmc = document.getElementById('boards-menu-container');
     if (bmc) bmc.innerHTML = '';
@@ -11026,7 +10941,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
     };
     setupFontSizeInput(noteFontSizeInput, 'noteFontSize', 16, (val) => document.documentElement.style.setProperty('--note-font-size', `${val}px`));
-    setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => document.querySelectorAll('.modal-body-content').forEach(el => el.style.fontSize = `${val}px`));
+    setupFontSizeInput(modalFontSizeInput, 'modalFontSize', 16, (val) => modalBody.style.fontSize = `${val}px`);
     // Date
     showDatemodCheckbox.checked = localStorage.getItem('showDatemod') !== 'false'; // Default to true
     showDatemodCheckbox.addEventListener('change', () => {
@@ -12602,22 +12517,6 @@ async function createNoteElement(noteContent) {
             displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, noteTitle);
             adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
         }
-        
-        // Prevent breaking MD tables if the note starts with one and has no title separator
-        if (pipeIndex === -1 && previewTitleSourceText) {
-            let pipes = 0;
-            let lInCode = false;
-            for (let j = 0; j < previewTitleSourceText.length; j++) {
-                if (previewTitleSourceText[j] === '{' && previewTitleSourceText[j + 1] === '{') { lInCode = true; j++; }
-                else if (previewTitleSourceText[j] === '}' && previewTitleSourceText[j + 1] === '}') { lInCode = false; j++; }
-                else if (previewTitleSourceText[j] === '|' && !lInCode) pipes++;
-            }
-            if (pipes > 1) {
-                noteTitle = ''; // Clear title, it's a table
-                displayContent = fileContent; // Keep the whole table
-                adjustPreviewBodyToRenderedTitle = false;
-            }
-        }
     }
     if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
     const titleWrapper = document.createElement('div');
@@ -13027,7 +12926,7 @@ async function createNoteElement(noteContent) {
             const updateGDrive = useGoogleDb && !isOffline;
             if (e.ctrlKey) {
                 if ((typeof useIndexedDb !== 'undefined' && useIndexedDb) || (updateGDrive && noteGdid)) {
-                    const modalBodyElem = textarea.closest('.modal-body-content') || document.getElementById('modal-body');
+                    const modalBodyElem = document.getElementById('modal-body');
                     if (modalBodyElem) {
                         enableNoteEditing(modalBodyElem);
                     }
@@ -14069,7 +13968,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     if (!modalBodyElem) return;
 
     // Show board name when editing starts
-    const modalContainer = modalBodyElem.closest('.note-modal'); const modalBoardNameEl = modalContainer ? modalContainer.querySelector('.modal-board-name') : null;
+    const modalBoardNameEl = document.getElementById('modal-board-name');
     if (modalBoardNameEl) modalBoardNameEl.style.display = 'block';
 
     // If already editing, don't re-init
@@ -14091,45 +13990,15 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     let correctedBodyIndex = -1;
 
     let titleText = "";
-    let bodyText = "";
-    if (modalBodyElem.dataset.draftText !== undefined) {
-        bodyText = modalBodyElem.dataset.draftText;
-        if (modalBodyElem.dataset.draftTitle) {
-            bodyText = modalBodyElem.dataset.draftTitle + '|' + bodyText;
-        }
-    } else if (noteObj) {
-        bodyText = noteObj.notetxt || "";
-    } else {
-        const modalContainer = modalBodyElem.closest('.note-modal');
-        if (modalContainer && modalContainer.dataset.originalContent !== undefined) {
-            bodyText = modalContainer.dataset.originalContent;
-        } else if (typeof currentModalContent !== 'undefined') {
-            bodyText = currentModalContent;
-        }
-    }
+    let bodyText = currentModalContent || "";
     let currentBodyFormats = parseFormatsString(modalBodyElem.dataset.format);
     let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
 
-    const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) : bodyText.indexOf('|');
-    let isTitlePipe = false;
-    if (pipeIdx !== -1) {
-        let lineStart = bodyText.lastIndexOf('\n', pipeIdx) + 1;
-        let lineEnd = bodyText.indexOf('\n', pipeIdx);
-        if (lineEnd === -1) lineEnd = bodyText.length;
-        let line = bodyText.substring(lineStart, lineEnd);
-        let pipesOnLine = 0;
-        let lInCode = false;
-        for (let j = 0; j < line.length; j++) {
-            if (line[j] === '{' && line[j + 1] === '{') { lInCode = true; j++; }
-            else if (line[j] === '}' && line[j + 1] === '}') { lInCode = false; j++; }
-            else if (line[j] === '|' && !lInCode) pipesOnLine++;
-        }
-        isTitlePipe = (pipesOnLine === 1);
-    }
-    const hasPipe = isTitlePipe;
+    const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) !== -1 : bodyText.includes('|');
     if ((isHiddenNote || hasPipe) && !modalBodyElem.querySelector('textarea')) {
         let splitParts = [];
         if (hasPipe) {
+            const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) : bodyText.indexOf('|');
             titleText = bodyText.substring(0, pipeIdx);
             bodyText = bodyText.substring(pipeIdx + 1);
         }
@@ -14175,7 +14044,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         container.style.cssText = `position:relative; width:100%; height:${height}; overflow:hidden; border-bottom: ${isTitle ? '1px solid #ccc' : 'none'};`;
 
         const textarea = document.createElement('textarea');
-        textarea.id = id; textarea.classList.add(id.replace(/[0-9]/g, ''));
+        textarea.id = id;
         textarea.value = value;
         Object.assign(textarea.style, {
             width: '100%',
@@ -14198,7 +14067,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         });
 
         const backdrop = document.createElement('div');
-        backdrop.id = id + '-backdrop'; backdrop.classList.add(id.replace(/[0-9]/g, '') + '-backdrop');
+        backdrop.id = id + '-backdrop';
         Object.assign(backdrop.style, {
             position: 'absolute',
             top: '0',
@@ -14225,7 +14094,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     };
 
     if ((isHiddenNote || titleText !== "") && bodyText !== null) {
-        const titleEditor = createEditor('note-edit-title-textarea' + Date.now(), titleText, '60px', true);
+        const titleEditor = createEditor('note-edit-title-textarea', titleText, '60px', true);
         const bodyEditor = createEditor('note-edit-textarea', bodyText, 'calc(100% - 60px)');
 
         wrapper.appendChild(titleEditor.container);
@@ -14237,10 +14106,10 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
 
     modalBodyElem.appendChild(wrapper);
 
-    const bodyTextarea = modalBodyElem.querySelector('.note-edit-textarea') || modalBodyElem.querySelector('#note-edit-textarea');
-    const bodyBackdrop = modalBodyElem.querySelector('.note-edit-textarea-backdrop') || modalBodyElem.querySelector('#note-edit-textarea-backdrop');
-    const titleTextarea = modalBodyElem.querySelector('.note-edit-title-textarea') || modalBodyElem.querySelector('#note-edit-title-textarea');
-    const titleBackdrop = modalBodyElem.querySelector('.note-edit-title-textarea-backdrop') || modalBodyElem.querySelector('#note-edit-title-textarea-backdrop');
+    const bodyTextarea = document.getElementById('note-edit-textarea');
+    const bodyBackdrop = document.getElementById('note-edit-textarea-backdrop');
+    const titleTextarea = document.getElementById('note-edit-title-textarea');
+    const titleBackdrop = document.getElementById('note-edit-title-textarea-backdrop');
 
     // Sync scrolling for both if applicable (mostly body)
     if (bodyTextarea && bodyBackdrop) {
@@ -14256,7 +14125,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         handleEditInput(titleTextarea, titleBackdrop);
     }
 
-    initNoteEditUI(modalBodyElem);
+    initNoteEditUI();
 
     const focusEl = (charIndex !== -1 && bodyTextarea) ? bodyTextarea : (titleTextarea || bodyTextarea);
 
@@ -14272,17 +14141,17 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         // --- SCROLL TO CARET LOGIC ---
         setTimeout(() => {
             const textarea = document.activeElement;
-            if (textarea && (textarea.id === 'note-edit-textarea' || textarea.classList.contains('note-edit-title-textarea') || textarea.id === 'note-edit-title-textarea')) {
+            if (textarea && (textarea.id === 'note-edit-textarea' || textarea.id === 'note-edit-title-textarea')) {
                 scrollCaretIntoView(textarea);
             }
         }, 150);
     }
 
     // if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
-    const prevBtn = modalContainer ? modalContainer.querySelector('.prev-note-btn') : null;
-    const nextBtn = modalContainer ? modalContainer.querySelector('.next-note-btn') : null;
-    const bulletBtn = modalContainer ? modalContainer.querySelector('.bullet-list-btn') : null;
-    const numberedBtn = modalContainer ? modalContainer.querySelector('.numbered-list-btn') : null;
+    const prevBtn = document.getElementById('prev-note-btn');
+    const nextBtn = document.getElementById('next-note-btn');
+    const bulletBtn = document.getElementById('bullet-list-btn');
+    const numberedBtn = document.getElementById('numbered-list-btn');
     if (prevBtn) prevBtn.style.display = 'none';
     if (nextBtn) nextBtn.style.display = 'none';
     if (bulletBtn) bulletBtn.style.display = 'flex';
@@ -14370,7 +14239,7 @@ document.addEventListener('keydown', (e) => {
             e.stopPropagation();
             e.stopImmediatePropagation();
 
-            const backdropId = activeTextarea.id + '-backdrop';
+            const backdropId = (activeTextarea.id === 'note-edit-textarea') ? 'note-edit-textarea-backdrop' : 'note-edit-title-textarea-backdrop';
             const backdrop = document.getElementById(backdropId);
 
             formatKeyboardHotkeys(activeTextarea, backdrop, isB, isI, isU, isD);
@@ -14443,10 +14312,10 @@ function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD) {
 
 // --- Logic for preserving formatting during editing ---
 function handleEditInput(textarea, backdrop) {
-    const modalBodyElem = textarea.closest('.modal-body-content') || document.getElementById('modal-body');
+    const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem) return;
 
-    const isTitle = textarea.classList.contains('note-edit-title-textarea') || textarea.id === 'note-edit-title-textarea';
+    const isTitle = textarea.id === 'note-edit-title-textarea';
     const storageKey = isTitle ? 'titleFormat' : 'format';
     let formats = [];
     const fmtStr = modalBodyElem.dataset[storageKey];
@@ -14510,13 +14379,13 @@ function handleEditInput(textarea, backdrop) {
     }
 }
 
-function initNoteEditUI(modalBodyElem = null) {
-    const contentModal = modalBodyElem ? modalBodyElem.closest('.note-modal') : document.getElementById('content-modal');
-    const modalBodyEl = modalBodyElem || document.getElementById('modal-body');
+function initNoteEditUI() {
+    const contentModal = document.getElementById('content-modal');
+    const modalBodyEl = document.getElementById('modal-body');
     const modalContentBox = contentModal?.querySelector('.modal-content-box');
     const footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
     // Add save button if not exists
-    if (!contentModal.querySelector('#note-save-btn')) {
+    if (!document.getElementById('note-save-btn')) {
         const saveBtn = document.createElement('div');
         saveBtn.id = 'note-save-btn';
         saveBtn.className = 'modal-footer-btn';
@@ -14524,7 +14393,7 @@ function initNoteEditUI(modalBodyElem = null) {
         saveBtn.title = _('saveTooltip') || "Save changes";
         saveBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (typeof saveEditedNote === 'function') saveEditedNote(contentModal);
+            if (typeof saveEditedNote === 'function') saveEditedNote();
         });
 
         // Add preview button
@@ -14536,26 +14405,26 @@ function initNoteEditUI(modalBodyElem = null) {
         previewBtn.title = _('previewTooltip') || "Preview changes";
         previewBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (typeof previewEditedNote === 'function') previewEditedNote(contentModal);
+            if (typeof previewEditedNote === 'function') previewEditedNote();
         });
 
         if (footerToolbar) {
             // We append them in order: Preview, Search (already exists, will move), Save
-            const existingSearchBtn = contentModal.querySelector('#note-search-btn');
+            const existingSearchBtn = document.getElementById('note-search-btn');
             footerToolbar.appendChild(previewBtn);
             if (existingSearchBtn) footerToolbar.appendChild(existingSearchBtn);
             footerToolbar.appendChild(saveBtn);
         } else if (modalContentBox) {
-            const existingSearchBtn = contentModal.querySelector('#note-search-btn');
+            const existingSearchBtn = document.getElementById('note-search-btn');
             modalContentBox.appendChild(previewBtn);
             if (existingSearchBtn) modalContentBox.appendChild(existingSearchBtn);
             modalContentBox.appendChild(saveBtn);
         }
     } else {
         // If buttons already exist, re-append them to ensure order: Preview, Search, Save
-        const sBtn = contentModal.querySelector('#note-save-btn');
-        const pBtn = contentModal.querySelector('#note-preview-btn');
-        const searchBtn = contentModal.querySelector('#note-search-btn');
+        const sBtn = document.getElementById('note-save-btn');
+        const pBtn = document.getElementById('note-preview-btn');
+        const searchBtn = document.getElementById('note-search-btn');
         if (footerToolbar) {
             if (pBtn) footerToolbar.appendChild(pBtn);
             if (searchBtn) footerToolbar.appendChild(searchBtn);
@@ -14564,23 +14433,23 @@ function initNoteEditUI(modalBodyElem = null) {
     }
 
     // Ensure state-specific visibility
-    const modalContainer = modalBodyElem.closest('.note-modal') || document; const saveBtn = modalContainer.querySelector('.note-save-btn') || modalContainer.querySelector('#note-save-btn');
-    const previewBtn = modalContainer.querySelector('.note-preview-btn') || modalContainer.querySelector('#note-preview-btn');
-    const editBtn = modalContainer.querySelector('.note-edit-btn') || modalContainer.querySelector('#note-edit-btn');
-    const moveBtn = contentModal.querySelector('#note-move-btn');
+    const saveBtn = document.getElementById('note-save-btn');
+    const previewBtn = document.getElementById('note-preview-btn');
+    const editBtn = document.getElementById('note-edit-btn');
+    const moveBtn = document.getElementById('note-move-btn');
 
     if (saveBtn) { saveBtn.style.display = 'flex'; }
     if (previewBtn) { previewBtn.style.display = 'flex'; }
     if (editBtn) editBtn.style.display = 'none';
     const isNewNote = modalBodyEl && modalBodyEl.dataset.isNewNote === 'true';
     if (moveBtn) moveBtn.style.display = isNewNote ? 'flex' : 'none';
-    const duplicateBtn = contentModal.querySelector('#note-duplicate-btn');
+    const duplicateBtn = document.getElementById('note-duplicate-btn');
     if (duplicateBtn) duplicateBtn.style.display = 'none';
-    const calendarBtn = contentModal.querySelector('#note-calendar-btn');
+    const calendarBtn = document.getElementById('note-calendar-btn');
     if (calendarBtn) calendarBtn.style.display = 'flex';
-    const searchBtn = contentModal.querySelector('#note-search-btn');
+    const searchBtn = document.getElementById('note-search-btn');
     if (searchBtn) searchBtn.style.display = 'flex';
-    const colorBtn = modalContainer.querySelector('#modal-color-btn');
+    const colorBtn = document.getElementById('modal-color-btn');
     if (colorBtn) colorBtn.style.display = 'flex';
     // Remove graphical background for edit mode
     if (modalContentBox) {
@@ -14610,8 +14479,7 @@ document.addEventListener('click', (e) => {
     if (!e.ctrlKey) return;
 
     // Check for target is inside modal-body and NOT inside footer/header
-    let modalBodyElem = null;
-    try { modalBodyElem = e.target.closest('.modal-body-content') || document.getElementById('modal-body'); } catch (err) { }
+    const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
 
     // Explicitly ignore clicks on footer or copy button or any other elements appended to modalBody
@@ -14636,7 +14504,7 @@ document.addEventListener('click', (e) => {
 let editLongPressTimer;
 let editLongPressTriggered = false;
 document.addEventListener('touchstart', (e) => {
-    const modalBodyElem = textarea.closest('.modal-body-content') || document.getElementById('modal-body');
+    const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
     if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer') || e.target.closest('.code-block-copy')) return;
  
@@ -14670,8 +14538,7 @@ document.addEventListener('touchmove', () => {
 });*/
 
 document.addEventListener('contextmenu', (e) => {
-    let modalBodyElem = null;
-    try { modalBodyElem = e.target.closest('.modal-body-content') || document.getElementById('modal-body'); } catch (err) { }
+    const modalBodyElem = document.getElementById('modal-body');
     if (modalBodyElem && modalBodyElem.contains(e.target) && !e.target.closest('.note-footer') && !e.target.closest('.modal-note-footer')) {
         // If textarea exists, we ALLOW context menu for copy/paste
         if (modalBodyElem.querySelector('textarea')) {
@@ -14964,19 +14831,14 @@ async function resolveLoadedConflicts(duplicates) {
     if (wasVisible && loader) loader.style.display = 'flex';
 }
 
-async function checkUnsavedChanges(isClosingModal = true, modalElem = null) {
-    if (!modalElem) {
-        modalElem = document.querySelector('.active-note-modal');
-        if (!modalElem) return true;
-    }
-    const modalBodyElem = modalElem.querySelector('.modal-body-content');
-    if (!modalBodyElem) return true;
-    const textarea = modalBodyElem.querySelector('.note-edit-textarea') || modalBodyElem.querySelector('textarea');
-    const titleTextarea = modalBodyElem.querySelector('.note-edit-title-textarea') || modalBodyElem.querySelector('#note-edit-title-textarea');
+async function checkUnsavedChanges(isClosingModal = true) {
+    const modalBodyElem = document.getElementById('modal-body');
+    const textarea = document.getElementById('note-edit-textarea');
+    const titleTextarea = document.getElementById('note-edit-title-textarea');
     // If no textareas, we are not in edit mode
     if (!textarea && !titleTextarea) return true;
     // Check for actual changes
-    const initialContent = modalElem ? (modalElem.dataset.originalContent || "") : (currentModalContent || "");
+    const initialContent = currentModalContent || "";
     // Get the current content from the textareas (which might have masked links)
     const newBodyTextRaw = textarea ? textarea.value : (modalBodyElem.dataset.draftText || "");
     const newTitleTextRaw = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
@@ -15014,7 +14876,7 @@ async function checkUnsavedChanges(isClosingModal = true, modalElem = null) {
     // If there are changes, ask to save
     const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
     if (confirmed) {
-        await saveEditedNote(modalElem);
+        await saveEditedNote();
         return false; // Prevent the default close action, as saveEditedNote handles it
     } else {
         // User clicked "No", so we allow the modal to close without saving.
@@ -15023,17 +14885,15 @@ async function checkUnsavedChanges(isClosingModal = true, modalElem = null) {
 }
 
 // Unified Save Logic
-function saveEditedNote(modalElem = null) {
-    if (!modalElem) {
-        modalElem = document.querySelector('.active-note-modal');
-    }
-    const modalBodyElem = modalElem ? modalElem.querySelector('.modal-body-content') : document.getElementById('modal-body');
+function saveEditedNote() {
+    const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem) return;
 
     // --- ASYNC REFACTOR: Close modal immediately and save in background ---
     const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
     if (closeAfterSave) {
-        if (modalElem && modalElem.classList.contains('note-modal')) modalElem.remove();
+        const contentModal = document.getElementById('content-modal');
+        if (contentModal) contentModal.classList.remove('visible');
     } else {
         // If not closing, at least disable editing and show a preview
         disableNoteEditing(modalBodyElem);
@@ -15044,8 +14904,8 @@ function saveEditedNote(modalElem = null) {
 
     // --- The rest of the function now runs in the background ---
     (async () => {
-        const textarea = modalBodyElem.querySelector('.note-edit-textarea') || document.getElementById('note-edit-textarea');
-        const titleTextarea = modalBodyElem.querySelector('.note-edit-title-textarea') || modalBodyElem.querySelector('#note-edit-title-textarea');
+        const textarea = document.getElementById('note-edit-textarea');
+        const titleTextarea = document.getElementById('note-edit-title-textarea');
         if (!textarea && !modalBodyElem.dataset.draftText) return;
 
         let updateGDriveNow = useGoogleDb && !isOffline;
@@ -15478,7 +15338,7 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
     const isWeeklyView = weekCal && weekCal.style.display !== 'none';
     if (isWeeklyView) {
         if (newCalendarDate === 0) {
-            const contentModal = modalBodyElem ? modalBodyElem.closest('.note-modal') : document.getElementById('content-modal');
+            const contentModal = document.getElementById('content-modal');
             if (contentModal) contentModal.classList.remove('visible');
         }
         if (typeof renderWeeklyCalendarView === 'function') renderWeeklyCalendarView(currentWeeklyViewDate);
@@ -15490,13 +15350,11 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
 }
 
 // Unified Preview Logic
-function previewEditedNote(modalElement = null) {
-    const modalContainer = modalElement || document;
-    const textarea = modalContainer.querySelector('.note-edit-textarea') || modalContainer.querySelector('#note-edit-textarea');
-    if (!textarea) return;
-    const modalBodyElem = textarea.closest('.modal-body-content');
-    const titleTextarea = modalBodyElem ? (modalBodyElem.querySelector('.note-edit-title-textarea') || modalBodyElem.querySelector('#note-edit-title-textarea')) : null;
-    if (!modalBodyElem) return;
+function previewEditedNote() {
+    const modalBodyElem = document.getElementById('modal-body');
+    const textarea = document.getElementById('note-edit-textarea');
+    const titleTextarea = document.getElementById('note-edit-title-textarea');
+    if (!modalBodyElem || !textarea) return;
 
     const newText = textarea.value;
     const titleText = titleTextarea ? titleTextarea.value : "";
@@ -15531,96 +15389,59 @@ function previewEditedNote(modalElement = null) {
         finalFormat = stringifyFormatsArray(res.formats);
     }
 
-    // Render inline instead of calling showModal
-    let displayContent = "";
-    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(processedText) : processedText.indexOf('|');
-    // Check if the first pipe is part of a table (multiple pipes on the line)
-    let isTablePipe = false;
-    if (pipeIndex !== -1) {
-        let lineStart = processedText.lastIndexOf('\n', pipeIndex) + 1;
-        let lineEnd = processedText.indexOf('\n', pipeIndex);
-        if (lineEnd === -1) lineEnd = processedText.length;
-        let line = processedText.substring(lineStart, lineEnd);
-        let pipesOnLine = 0;
-        let lInCode = false;
-        for (let j = 0; j < line.length; j++) {
-            if (line[j] === '{' && line[j + 1] === '{') { lInCode = true; j++; }
-            else if (line[j] === '}' && line[j + 1] === '}') { lInCode = false; j++; }
-            else if (line[j] === '|' && !lInCode) pipesOnLine++;
-        }
-        isTablePipe = (pipesOnLine > 1);
+    if (typeof showModal === 'function') {
+        const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
+        const color = (modalNoteObj && modalNoteObj.color !== undefined) ? modalNoteObj.color : (modalBodyElem.dataset.color || 0);
+        const noteColorStr = (typeof color === 'number' && color >= 0 && color < noteColorMap.length) ? noteColorMap[color] : (typeof color === 'string' ? color : noteColorMap[0]);
+
+        showModal({
+            raw: processedText,
+            format: finalFormat,
+            titleFormat: finalTitleFormat,
+            color: noteColorStr,
+            boardId: boardId,
+            id: noteId,
+            gdid: noteGdid,
+            maskedLinks: maskedLinks
+        }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
+
+        // --- Custom preview state: Show Save, Preview AND Edit buttons ---
+        // 1. Re-initialize edit buttons (showModal cleaned them up)
+        initNoteEditUI();
+
+        // 2. Adjust visibility and positions for the 4-button preview layout
+        const saveBtn = document.getElementById('note-save-btn');
+        const previewBtn = document.getElementById('note-preview-btn');
+        const editBtn = document.getElementById('note-edit-btn');
+        const moveBtn = document.getElementById('note-move-btn');
+
+        if (saveBtn) { saveBtn.style.display = 'flex'; }
+        if (editBtn) { editBtn.style.display = 'flex'; }
+        if (previewBtn) { previewBtn.style.display = 'none'; }
+        if (moveBtn) { moveBtn.style.display = 'flex'; }
+        const dupBtn = document.getElementById('note-duplicate-btn');
+        if (dupBtn) dupBtn.style.display = 'none';
     }
-    if (isTablePipe) {
-        displayContent = renderMarkdownTableAsPseudoGraphic(processedText) || processNoteContent(processedText, true);
-    } else if (pipeIndex !== -1 && finalTitleFormat && finalTitleFormat.trim() !== '') {
-        const titlePart = processedText.substring(0, pipeIndex);
-        const bodyPart = processedText.substring(pipeIndex + 1);
-        const formattedTitle = formatText(titlePart, finalTitleFormat, true);
-        let formattedBody = '';
-        if (finalFormat && finalFormat.trim() !== '') {
-            formattedBody = formatText(bodyPart, finalFormat, true);
-        } else {
-            formattedBody = renderMarkdownTableAsPseudoGraphic(bodyPart) || processNoteContent(bodyPart, true);
-        }
-        displayContent = formattedTitle + '<br>' + formattedBody;
-    } else {
-        const pipeIdxForReplace = pipeIndex;
-        if (pipeIdxForReplace !== -1) {
-            const titlePart = processedText.substring(0, pipeIdxForReplace);
-            const bodyPart = processedText.substring(pipeIdxForReplace + 1);
-            const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
-            const formattedBody = tableHtml || processNoteContent(bodyPart, true);
-            displayContent = processNoteContent(titlePart, true) + '<br>' + formattedBody;
-        } else if (finalFormat && finalFormat.trim() !== '' && finalFormat !== '[]') {
-            displayContent = formatText(processedText, finalFormat, true);
-        } else {
-            displayContent = renderMarkdownTableAsPseudoGraphic(processedText) || processNoteContent(processedText, true);
-        }
-    }
-
-    modalBodyElem.innerHTML = displayContent;
-    modalBodyElem.dataset.renderedHtml = displayContent;
-
-    // We must restore graphic background if applicable, but user might want it to remain solid during preview
-    // Actually, let's keep it solid since they are still in edit/preview flow
-
-
-    // --- Custom preview state: Show Save, Preview AND Edit buttons ---
-    // 1. Re-initialize edit buttons (showModal cleaned them up)
-    initNoteEditUI(modalBodyElem);
-
-    // 2. Adjust visibility and positions for the 4-button preview layout
-    let localModalContainer = modalBodyElem.closest('.note-modal') || document; const saveBtn = localModalContainer.querySelector('.note-save-btn') || localModalContainer.querySelector('#note-save-btn');
-    const previewBtn = localModalContainer.querySelector('.note-preview-btn') || localModalContainer.querySelector('#note-preview-btn');
-    const editBtn = localModalContainer.querySelector('.note-edit-btn') || localModalContainer.querySelector('#note-edit-btn');
-    const moveBtn = localModalContainer.querySelector('#note-move-btn');
-
-    if (saveBtn) { saveBtn.style.display = 'flex'; }
-    if (editBtn) { editBtn.style.display = 'flex'; }
-    if (previewBtn) { previewBtn.style.display = 'none'; }
-    if (moveBtn) { moveBtn.style.display = 'flex'; }
-    const dupBtn = localModalContainer.querySelector('#note-duplicate-btn');
-    if (dupBtn) dupBtn.style.display = 'none';
 }
 
 function disableNoteEditing(modalBodyElem) {
     if (!modalBodyElem) return;
 
     // 1. Hide Save and Preview Buttons
-    const modalContainer = modalBodyElem.closest('.note-modal') || document; const saveBtn = modalContainer.querySelector('.note-save-btn') || modalContainer.querySelector('#note-save-btn');
+    const saveBtn = document.getElementById('note-save-btn');
     if (saveBtn) saveBtn.style.display = 'none';
-    const previewBtn = modalContainer.querySelector('.note-preview-btn') || modalContainer.querySelector('#note-preview-btn');
+    const previewBtn = document.getElementById('note-preview-btn');
     if (previewBtn) previewBtn.style.display = 'none';
 
     // 2. Show Edit Button (if it exists)
-    const editBtn = modalContainer.querySelector('.note-edit-btn') || modalContainer.querySelector('#note-edit-btn');
+    const editBtn = document.getElementById('note-edit-btn');
     if (editBtn) editBtn.style.display = 'flex';
     // 3. Hide Color Button
-    const colorBtn = modalContainer.querySelector('#modal-color-btn');
+    const colorBtn = document.getElementById('modal-color-btn');
     if (colorBtn) colorBtn.style.display = 'none';
     // 4. Restore graphical background if setting allows
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false';
-    const modalContentBox = modalBodyElem.closest('.modal-content-box');
+    const modalContentBox = document.querySelector('#content-modal .modal-content-box');
     if (modalContentBox) {
         if (imgBgrdEnabled) {
             modalContentBox.style.backgroundImage = '';
@@ -17284,201 +17105,3 @@ async function cleanupOrphanedImages() {
 
 // Задаваме периодична проверка за осиротели изображения
 // setInterval(cleanupOrphanedImages, 10 * 60 * 1000); // На всеки 10 минути
-
-// --- MULTI-NOTE MODAL FUNCTIONS ---
-let activeNoteModalsZIndex = 10000;
-
-function bringModalToFront(modalElement) {
-    if (!modalElement) return;
-
-    // Remove active class from all modals
-    document.querySelectorAll('.note-modal').forEach(m => m.classList.remove('active-note-modal'));
-
-    // Bring to front
-    activeNoteModalsZIndex++;
-    modalElement.style.zIndex = activeNoteModalsZIndex;
-    modalElement.classList.add('active-note-modal');
-
-    // Set focus to textarea if exists
-    const textarea = modalElement.querySelector('textarea');
-    if (textarea) textarea.focus();
-}
-
-function applyCascadePosition(modalElement) {
-    const modalBox = modalElement.querySelector('.modal-content-box');
-    if (!modalBox) return;
-
-    // Try to get height from offset, style, or fallback
-    let boxHeight = modalBox.offsetHeight;
-    if (!boxHeight && modalBox.style.height) boxHeight = parseInt(modalBox.style.height, 10);
-    boxHeight = boxHeight || 400;
-
-    let boxWidth = modalBox.offsetWidth;
-    if (!boxWidth && modalBox.style.width) boxWidth = parseInt(modalBox.style.width, 10);
-    boxWidth = boxWidth || 300;
-
-    // Find the previously active modal (the one with highest zIndex, excluding this one)
-    let maxZ = -1;
-    let prevBox = null;
-    document.querySelectorAll('.note-modal').forEach(m => {
-        if (m === modalElement) return;
-        const z = parseInt(m.style.zIndex || 0, 10);
-        if (z > maxZ) {
-            maxZ = z;
-            prevBox = m.querySelector('.modal-content-box');
-        }
-    });
-
-    let initialTop, initialLeft;
-    if (prevBox) {
-        const rect = prevBox.getBoundingClientRect();
-        initialTop = rect.top + 30;
-        initialLeft = rect.left + 30;
-
-        // Wrap offset to prevent going offscreen
-        if (initialTop > window.innerHeight - 50) initialTop = 50;
-        if (initialLeft > window.innerWidth - 50) initialLeft = 50;
-    } else {
-        // Basic center screen calculation
-        initialTop = Math.max(50, (window.innerHeight - boxHeight) / 2);
-        initialLeft = Math.max(50, (window.innerWidth - boxWidth) / 2);
-    }
-
-    modalBox.style.position = 'absolute';
-    modalBox.style.top = initialTop + 'px';
-    modalBox.style.left = initialLeft + 'px';
-    modalBox.style.right = 'auto'; // Disable default right
-    modalBox.style.bottom = 'auto';
-    modalBox.style.transform = 'none'; // Disable center translate
-
-    // Make draggable using existing makeElementDraggable structure
-    // but modify makeElementDraggable to accept specific elements or just write custom drag for it
-    makeModalDraggable(modalBox, modalElement);
-}
-
-
-function makeModalResizable(modalContentBox, resizeHandle) {
-    if (!modalContentBox || !resizeHandle) return;
-    let startX, startY, startWidth, startHeight;
-    function doDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
-        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
-        const newWidth = Math.round(startWidth + currentX - startX);
-        const newHeight = Math.round(startHeight + currentY - startY);
-        modalContentBox.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px'; // Limited by screen width
-        modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
-        modalContentBox.style.maxWidth = '100vw';
-        modalContentBox.style.maxHeight = 'none';
-    }
-
-    function stopDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        document.documentElement.removeEventListener('mousemove', doDrag, false);
-        document.documentElement.removeEventListener('mouseup', stopDrag, false);
-        document.documentElement.removeEventListener('touchmove', doDrag, false);
-        document.documentElement.removeEventListener('touchend', stopDrag, false);
-        localStorage.setItem('modalWidth', modalContentBox.style.width);
-        localStorage.setItem('modalHeight', modalContentBox.style.height);
-    }
-    function startDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        startX = e.touches ? e.touches[0].clientX : e.clientX;
-        startY = e.touches ? e.touches[0].clientY : e.clientY;
-        startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
-        startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
-        document.documentElement.addEventListener('mousemove', doDrag, false);
-        document.documentElement.addEventListener('mouseup', stopDrag, false);
-        document.documentElement.addEventListener('touchmove', doDrag, { passive: false });
-        document.documentElement.addEventListener('touchend', stopDrag, false);
-    }
-    resizeHandle.addEventListener('mousedown', startDrag);
-    resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
-}
-
-function makeModalDraggable(element, modalContainer) {
-    let isDragging = false;
-    let startX, startY, startTop, startLeft;
-
-    const header = element.querySelector('.modal-header-toolbar');
-    if (!header) return;
-
-    header.style.cursor = 'grab';
-
-    const onDragStart = (e) => {
-        // Prevent dragging if clicking buttons
-        if (e.target.closest('button') || e.target.closest('.modal-header-btn')) return;
-
-        // Prevent default to avoid text selection when dragging the header
-        e.preventDefault();
-
-        bringModalToFront(modalContainer); // Focus on click
-
-        const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
-        const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
-
-        isDragging = true;
-        startX = clientX;
-        startY = clientY;
-
-        const rect = element.getBoundingClientRect();
-        startTop = rect.top;
-        startLeft = rect.left;
-
-        header.style.cursor = 'grabbing';
-    };
-
-    const onDragMove = (e) => {
-        if (!isDragging) return;
-        e.preventDefault();
-
-        const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
-        const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
-
-        let newTop = startTop + (clientY - startY);
-        let newLeft = startLeft + (clientX - startX);
-
-        // Boundaries
-        newTop = Math.max(0, newTop); // Don't go above the top edge
-        if (element.offsetHeight < window.innerHeight) {
-            newTop = Math.min(newTop, window.innerHeight - element.offsetHeight);
-        }
-
-        // Don't go completely off-screen horizontally
-        newLeft = Math.max(-element.offsetWidth + 100, Math.min(newLeft, window.innerWidth - 100));
-
-        element.style.top = `${newTop}px`;
-        element.style.left = `${newLeft}px`;
-    };
-
-    const onDragEnd = () => {
-        if (!isDragging) return;
-        isDragging = false;
-        header.style.cursor = 'grab';
-    };
-
-    header.addEventListener('mousedown', onDragStart);
-    header.addEventListener('touchstart', onDragStart, { passive: false });
-    window.addEventListener('mousemove', onDragMove, { passive: false });
-    window.addEventListener('touchmove', onDragMove, { passive: false });
-    window.addEventListener('mouseup', onDragEnd);
-    window.addEventListener('touchend', onDragEnd);
-}
-
-// Function to close all modals
-async function closeAllNotes() {
-    const modals = Array.from(document.querySelectorAll('.note-modal'));
-    for (let modal of modals) {
-        if (!(await checkUnsavedChanges(true, modal))) {
-            // User aborted closing due to unsaved changes
-            return false;
-        }
-    }
-    // If we passed all checks, close them all
-    modals.forEach(m => m.remove());
-    return true;
-}
-// ------------------------------------
