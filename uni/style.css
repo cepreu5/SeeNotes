@@ -625,7 +625,7 @@ code {
 }
 
 .note-content a,
-#modal-body a {
+.modal-body-content a {
     color: #007bff;
     text-decoration: none;
     display: inline-block;
@@ -975,8 +975,8 @@ code {
 }
 
 /* Гарантираме, че съдържанието е над псевдо-елемента */
-#modal-body,
-#modal-board-name,
+.modal-body-content,
+.modal-board-name,
 .modal-header-btn,
 .modal-resize-handle {
     position: relative;
@@ -1004,7 +1004,7 @@ code {
     /* Let content define width */
 }
 
-#modal-body {
+.modal-body-content {
     padding-top: 1px;
     padding-right: 10px;
     overflow-y: auto;
@@ -1013,28 +1013,28 @@ code {
     flex-grow: 1;
 }
 
-#modal-body.no-bg-image {
+.modal-body-content.no-bg-image {
     padding: 0 0;
     /* Keeps vertical 0, but content-box handles side padding */
 }
 
 /* Custom scrollbar for modal content */
-#modal-body::-webkit-scrollbar {
+.modal-body-content::-webkit-scrollbar {
     width: 10px;
 }
 
-#modal-body::-webkit-scrollbar-track {
+.modal-body-content::-webkit-scrollbar-track {
     background: #c8a64b;
     /* Dark yellow background for the track */
 }
 
-#modal-body::-webkit-scrollbar-thumb {
+.modal-body-content::-webkit-scrollbar-thumb {
     background: #555;
     /* Darker handle for contrast */
     border-radius: 5px;
 }
 
-#modal-body::-webkit-scrollbar-thumb:hover {
+.modal-body-content::-webkit-scrollbar-thumb:hover {
     background: #333;
     /* Even darker on hover */
 }
@@ -1055,7 +1055,7 @@ code {
 }
 
 /* New style for board name in modal header */
-#modal-board-name {
+.modal-board-name {
     position: absolute;
     top: 15px;
     /* Moved 5px up */
@@ -1082,7 +1082,7 @@ code {
     box-sizing: border-box;
 }
 
-#copy-modal-btn svg {
+.copy-modal-btn svg {
     width: 16px;
     height: 16px;
     stroke: #333;
@@ -1097,11 +1097,11 @@ code {
 /* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
 /* Бутон за затваряне (X) е на right: 15px */
 /* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
-#prev-note-btn {
+.prev-note-btn {
     right: 235px;
 }
 
-#next-note-btn {
+.next-note-btn {
     right: 193px;
 }
 
@@ -1113,22 +1113,22 @@ code {
     }
 }
 
-#delete-modal-btn {
+.delete-modal-btn {
     right: 57px;
     /* 57px (delete) + 32px (width) + 10px (gap) */
 }
 
-#copy-modal-btn {
+.copy-modal-btn {
     right: 99px;
 }
 
-#calculate-modal-btn {
+.calculate-modal-btn {
     right: 151px;
     /* 151px (calculate) + 32px (width) + 10px (gap) */
 }
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
-#calculate-modal-btn svg {
+.calculate-modal-btn svg {
     pointer-events: none;
     /* Иконата не "поглъща" клика */
 }
@@ -3159,8 +3159,8 @@ body.selection-locked .note.active-selection-note .note-content {
     margin-bottom: 0px;
 }
 
-/* Adjustments for #modal-board-name when in toolbar */
-.modal-header-toolbar #modal-board-name {
+/* Adjustments for .modal-board-name when in toolbar */
+.modal-header-toolbar .modal-board-name {
     position: static !important;
     max-width: 60%;
     pointer-events: auto;
@@ -3292,7 +3292,7 @@ body.selection-locked .note.active-selection-note .note-content {
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-#copy-modal-btn svg {
+.copy-modal-btn svg {
     width: 24px !important;
     height: 24px !important;
     stroke-width: 2 !important;
@@ -3378,3 +3378,16 @@ body.selection-locked .note.active-selection-note .note-content {
 .n3  { right: 5px; top: 50%; transform: translateY(-50%); }
 .n6  { bottom: 5px; left: 50%; transform: translateX(-50%); }
 .n9  { left: 5px; top: 50%; transform: translateY(-50%); }
+
+/* Make multi-note modals non-blocking */
+.active-note-modal {
+    background: transparent !important;
+    pointer-events: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+.active-note-modal .modal-content-box {
+    pointer-events: auto !important; /* Re-enable clicks inside the modal */
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    position: absolute !important;
+}

@@ -243,14 +243,15 @@
         </div>
     </div>
 
-    <div id="content-modal" class="modal-overlay">
+    <!-- Template for note modals. Cloned dynamically for each open note. -->
+    <div id="content-modal-template" class="modal-overlay" style="display: none;">
         <div class="modal-content-box">
             <div class="modal-header-toolbar">
-                <div id="modal-board-name"></div>
+                <div class="modal-board-name"></div>
                 <div class="modal-header-buttons">
-                    <button id="prev-note-btn" class="modal-nav-btn" title="Предишна бележка">&lt;</button>
-                    <button id="next-note-btn" class="modal-nav-btn" title="Следваща бележка">&gt;</button>
-                    <button id="bullet-list-btn" class="modal-nav-btn" title="Списък с точки" style="display: none;">
+                    <button class="prev-note-btn modal-nav-btn" title="Предишна бележка">&lt;</button>
+                    <button class="next-note-btn modal-nav-btn" title="Следваща бележка">&gt;</button>
+                    <button class="bullet-list-btn modal-nav-btn" title="Списък с точки" style="display: none;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -261,7 +262,7 @@
                             <line x1="3" y1="18" x2="3.01" y2="18"></line>
                         </svg>
                     </button>
-                    <button id="numbered-list-btn" class="modal-nav-btn" title="Номериран списък"
+                    <button class="numbered-list-btn modal-nav-btn" title="Номериран списък"
                         style="display: none;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -273,7 +274,7 @@
                             <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path>
                         </svg>
                     </button>
-                    <button id="calculate-modal-btn" data-key-title="calculateTooltip" title="Изчисли израз">
+                    <button class="calculate-modal-btn" data-key-title="calculateTooltip" title="Изчисли израз">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                             stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -287,8 +288,8 @@
                             <line x1="16" y1="17" x2="16" y2="17.01" />
                         </svg>
                     </button>
-                    <button id="copy-modal-btn" data-key-title="copyTooltip" title="Копирай съдържанието"></button>
-                    <button id="delete-modal-btn" data-key-title="deleteNoteTooltip" title="Изтрий бележката">
+                    <button class="copy-modal-btn" data-key-title="copyTooltip" title="Копирай съдържанието"></button>
+                    <button class="delete-modal-btn" data-key-title="deleteNoteTooltip" title="Изтрий бележката">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                             stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -302,7 +303,7 @@
                     <button class="modal-close">&times;</button>
                 </div>
             </div>
-            <div id="modal-body"></div>
+            <div class="modal-body-content"></div>
             <div class="modal-resize-handle"></div>
         </div>
     </div>
