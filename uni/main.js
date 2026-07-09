@@ -1,4 +1,4 @@
-﻿// https://multinotes.app/gdviewer
+// https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
@@ -7688,6 +7688,7 @@ function showModal(options, noteElement = null) {
     contentModal = template.cloneNode(true);
     contentModal.id = 'note-modal-' + (options.isNewNote ? Date.now() : modalIdSuffix);
     contentModal.style.display = 'flex';
+    contentModal.classList.add('note-modal');
     contentModal.classList.add('active-note-modal');
     document.body.appendChild(contentModal);
 
@@ -14003,7 +14004,22 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     let correctedBodyIndex = -1;
 
     let titleText = "";
-    let bodyText = currentModalContent || "";
+    let bodyText = "";
+    if (modalBodyElem.dataset.draftText !== undefined) {
+        bodyText = modalBodyElem.dataset.draftText;
+        if (modalBodyElem.dataset.draftTitle) {
+            bodyText = modalBodyElem.dataset.draftTitle + '|' + bodyText;
+        }
+    } else if (noteObj) {
+        bodyText = noteObj.notetxt || "";
+    } else {
+        const modalContainer = modalBodyElem.closest('.note-modal');
+        if (modalContainer && modalContainer.dataset.originalContent !== undefined) {
+            bodyText = modalContainer.dataset.originalContent;
+        } else if (typeof currentModalContent !== 'undefined') {
+            bodyText = currentModalContent;
+        }
+    }
     let currentBodyFormats = parseFormatsString(modalBodyElem.dataset.format);
     let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
 
@@ -14418,7 +14434,7 @@ function initNoteEditUI(modalBodyElem = null) {
         previewBtn.title = _('previewTooltip') || "Preview changes";
         previewBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (typeof previewEditedNote === 'function') previewEditedNote();
+            if (typeof previewEditedNote === 'function') previewEditedNote(contentModal);
         });
 
         if (footerToolbar) {
@@ -14492,7 +14508,8 @@ document.addEventListener('click', (e) => {
     if (!e.ctrlKey) return;
 
     // Check for target is inside modal-body and NOT inside footer/header
-    const modalBodyElem = textarea.closest('.modal-body-content') || document.getElementById('modal-body');
+    let modalBodyElem = null;
+    try { modalBodyElem = e.target.closest('.modal-body-content') || document.getElementById('modal-body'); } catch(err) {}
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
 
     // Explicitly ignore clicks on footer or copy button or any other elements appended to modalBody
@@ -14551,7 +14568,8 @@ document.addEventListener('touchmove', () => {
 });*/
 
 document.addEventListener('contextmenu', (e) => {
-    const modalBodyElem = textarea.closest('.modal-body-content') || document.getElementById('modal-body');
+    let modalBodyElem = null;
+    try { modalBodyElem = e.target.closest('.modal-body-content') || document.getElementById('modal-body'); } catch(err) {}
     if (modalBodyElem && modalBodyElem.contains(e.target) && !e.target.closest('.note-footer') && !e.target.closest('.modal-note-footer')) {
         // If textarea exists, we ALLOW context menu for copy/paste
         if (modalBodyElem.querySelector('textarea')) {
@@ -14894,7 +14912,7 @@ async function checkUnsavedChanges(isClosingModal = true, modalElem = null) {
     // If there are changes, ask to save
     const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
     if (confirmed) {
-        await saveEditedNote();
+        await saveEditedNote(modalElem);
         return false; // Prevent the default close action, as saveEditedNote handles it
     } else {
         // User clicked "No", so we allow the modal to close without saving.
@@ -14904,13 +14922,16 @@ async function checkUnsavedChanges(isClosingModal = true, modalElem = null) {
 
 // Unified Save Logic
 function saveEditedNote(modalElem = null) {
-    const modalBodyElem = textarea.closest('.modal-body-content') || document.getElementById('modal-body');
+    if (!modalElem) {
+        modalElem = document.querySelector('.active-note-modal');
+    }
+    const modalBodyElem = modalElem ? modalElem.querySelector('.modal-body-content') : document.getElementById('modal-body');
     if (!modalBodyElem) return;
 
     // --- ASYNC REFACTOR: Close modal immediately and save in background ---
     const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
     if (closeAfterSave) {
-        if (modalContainer) modalContainer.remove();
+        if (modalElem && modalElem.classList.contains('note-modal')) modalElem.remove();
     } else {
         // If not closing, at least disable editing and show a preview
         disableNoteEditing(modalBodyElem);
@@ -15367,11 +15388,13 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
 }
 
 // Unified Preview Logic
-function previewEditedNote() {
-    const modalBodyElem = textarea.closest('.modal-body-content') || document.getElementById('modal-body');
-    const textarea = modalBodyElem.querySelector('.note-edit-textarea') || document.getElementById('note-edit-textarea');
-    const titleTextarea = modalBodyElem.querySelector('.note-edit-title-textarea') || modalBodyElem.querySelector('#note-edit-title-textarea');
-    if (!modalBodyElem || !textarea) return;
+function previewEditedNote(modalElement = null) {
+    const modalContainer = modalElement || document;
+    const textarea = modalContainer.querySelector('.note-edit-textarea') || modalContainer.querySelector('#note-edit-textarea');
+    if (!textarea) return;
+    const modalBodyElem = textarea.closest('.modal-body-content');
+    const titleTextarea = modalBodyElem ? (modalBodyElem.querySelector('.note-edit-title-textarea') || modalBodyElem.querySelector('#note-edit-title-textarea')) : null;
+    if (!modalBodyElem) return;
 
     const newText = textarea.value;
     const titleText = titleTextarea ? titleTextarea.value : "";
@@ -15406,39 +15429,58 @@ function previewEditedNote() {
         finalFormat = stringifyFormatsArray(res.formats);
     }
 
-    if (typeof showModal === 'function') {
-        const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
-        const color = (modalNoteObj && modalNoteObj.color !== undefined) ? modalNoteObj.color : (modalBodyElem.dataset.color || 0);
-        const noteColorStr = (typeof color === 'number' && color >= 0 && color < noteColorMap.length) ? noteColorMap[color] : (typeof color === 'string' ? color : noteColorMap[0]);
+    // Render inline instead of calling showModal
+    let displayContent = "";
+    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(processedText) : processedText.indexOf('|');
+    if (pipeIndex !== -1 && finalTitleFormat && finalTitleFormat.trim() !== '') {
+        const titlePart = processedText.substring(0, pipeIndex);
+        const bodyPart = processedText.substring(pipeIndex + 1);
+        const formattedTitle = formatText(titlePart, finalTitleFormat, true);
+        let formattedBody = '';
+        if (finalFormat && finalFormat.trim() !== '') {
+            formattedBody = formatText(bodyPart, finalFormat, true);
+        } else {
+            formattedBody = renderMarkdownTableAsPseudoGraphic(bodyPart) || processNoteContent(bodyPart, true);
+        }
+        displayContent = formattedTitle + '<br>' + formattedBody;
+    } else {
+        const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(processedText) : processedText.indexOf('|');
+        if (pipeIdxForReplace !== -1) {
+            const titlePart = processedText.substring(0, pipeIdxForReplace);
+            const bodyPart = processedText.substring(pipeIdxForReplace + 1);
+            const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
+            const formattedBody = tableHtml || processNoteContent(bodyPart, true);
+            displayContent = processNoteContent(titlePart, true) + '<br>' + formattedBody;
+        } else if (finalFormat && finalFormat.trim() !== '') {
+            displayContent = formatText(processedText, finalFormat, true);
+        } else {
+            displayContent = processNoteContent(processedText, true);
+        }
+    }
 
-        showModal({
-            raw: processedText,
-            format: finalFormat,
-            titleFormat: finalTitleFormat,
-            color: noteColorStr,
-            boardId: boardId,
-            id: noteId,
-            gdid: noteGdid,
-            maskedLinks: maskedLinks
-        }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
+    modalBodyElem.innerHTML = displayContent;
+    modalBodyElem.dataset.renderedHtml = displayContent;
+
+    // We must restore graphic background if applicable, but user might want it to remain solid during preview
+    // Actually, let's keep it solid since they are still in edit/preview flow
+
 
         // --- Custom preview state: Show Save, Preview AND Edit buttons ---
         // 1. Re-initialize edit buttons (showModal cleaned them up)
         initNoteEditUI(modalBodyElem);
 
         // 2. Adjust visibility and positions for the 4-button preview layout
-        const modalContainer = modalBodyElem.closest('.note-modal') || document; const saveBtn = modalContainer.querySelector('.note-save-btn') || modalContainer.querySelector('#note-save-btn');
-        const previewBtn = modalContainer.querySelector('.note-preview-btn') || modalContainer.querySelector('#note-preview-btn');
-        const editBtn = modalContainer.querySelector('.note-edit-btn') || modalContainer.querySelector('#note-edit-btn');
-        const moveBtn = contentModal.querySelector('#note-move-btn');
+        let localModalContainer = modalBodyElem.closest('.note-modal') || document; const saveBtn = localModalContainer.querySelector('.note-save-btn') || localModalContainer.querySelector('#note-save-btn');
+        const previewBtn = localModalContainer.querySelector('.note-preview-btn') || localModalContainer.querySelector('#note-preview-btn');
+        const editBtn = localModalContainer.querySelector('.note-edit-btn') || localModalContainer.querySelector('#note-edit-btn');
+        const moveBtn = localModalContainer.querySelector('#note-move-btn');
 
         if (saveBtn) { saveBtn.style.display = 'flex'; }
         if (editBtn) { editBtn.style.display = 'flex'; }
         if (previewBtn) { previewBtn.style.display = 'none'; }
         if (moveBtn) { moveBtn.style.display = 'flex'; }
-        const dupBtn = contentModal.querySelector('#note-duplicate-btn');
+        const dupBtn = localModalContainer.querySelector('#note-duplicate-btn');
         if (dupBtn) dupBtn.style.display = 'none';
-    }
 }
 
 function disableNoteEditing(modalBodyElem) {
@@ -17162,6 +17204,7 @@ function applyCascadePosition(modalElement) {
     const initialTop = Math.max(50, (window.innerHeight - boxHeight) / 2);
     const initialLeft = Math.max(50, (window.innerWidth - boxWidth) / 2);
 
+    modalBox.style.position = 'absolute';
     modalBox.style.top = (initialTop + (offset % 150)) + 'px'; // Wrap offset to prevent going offscreen
     modalBox.style.left = (initialLeft + (offset % 150)) + 'px';
     modalBox.style.right = 'auto'; // Disable default right
@@ -17228,6 +17271,9 @@ function makeModalDraggable(element, modalContainer) {
     const onDragStart = (e) => {
         // Prevent dragging if clicking buttons
         if (e.target.closest('button') || e.target.closest('.modal-header-btn')) return;
+        
+        // Prevent default to avoid text selection when dragging the header
+        e.preventDefault();
 
         bringModalToFront(modalContainer); // Focus on click
 

@@ -1852,7 +1852,7 @@ code {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 2000;
+    z-index: 30000;
     visibility: hidden;
     /* Hidden by default */
     opacity: 0;
@@ -3075,7 +3075,7 @@ body.selection-locked .note.active-selection-note .note-content {
     justify-content: space-between;
     align-items: center;
     z-index: 10001;
-    pointer-events: none;
+    pointer-events: auto;
     padding: 10px 15px;
     background-color: transparent;
     min-height: 40px;
@@ -3380,13 +3380,13 @@ body.selection-locked .note.active-selection-note .note-content {
 .n9  { left: 5px; top: 50%; transform: translateY(-50%); }
 
 /* Make multi-note modals non-blocking */
-.active-note-modal {
+.note-modal {
     background: transparent !important;
     pointer-events: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
-.active-note-modal .modal-content-box {
+.note-modal .modal-content-box {
     pointer-events: auto !important; /* Re-enable clicks inside the modal */
     box-shadow: 0 10px 40px rgba(0,0,0,0.3);
     position: absolute !important;
