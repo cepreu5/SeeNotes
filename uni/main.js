@@ -1,4 +1,4 @@
-// https://multinotes.app/gdviewer
+﻿// https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
@@ -627,9 +627,9 @@ async function runGoogleDriveSync() {
                                 for (const modalBodyElem of allModals) {
                                     const modalGdid = modalBodyElem.dataset.gdid;
                                     const modalNoteId = modalBodyElem.dataset.id;
-                                    if ((serverNote.gdid && String(serverNote.gdid) === String(modalGdid)) || 
+                                    if ((serverNote.gdid && String(serverNote.gdid) === String(modalGdid)) ||
                                         (serverNote.id && String(serverNote.id) === String(modalNoteId))) {
-                                        
+
                                         isOpenInModal = true;
                                         const textarea = modalBodyElem.querySelector('textarea');
                                         const titleArea = modalBodyElem.querySelector('.note-edit-title-textarea');
@@ -4985,7 +4985,7 @@ function initApp() {
         modal.addEventListener('click', async (e) => {
             // Затваряме само ако и натискането, и отпускането са били върху овърлея
             if (e.target === modal && !isMouseDownInside) {
-                
+
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
@@ -5013,8 +5013,8 @@ function initApp() {
     document.body.classList.toggle('hide-datemod', shouldHideDatemod);
 
 
-    
-    
+
+
     // Load saved searches and settings from localStorage
     lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
     savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
@@ -7692,14 +7692,16 @@ function showModal(options, noteElement = null) {
     contentModal.classList.add('active-note-modal');
     document.body.appendChild(contentModal);
 
+    bringModalToFront(contentModal);
+
     const modalBodyElem = contentModal.querySelector('.modal-body-content');
 
     const copyBtn = contentModal.querySelector('.copy-modal-btn');
-    
+
     contentModal.addEventListener('click', (e) => {
         e.stopPropagation();
     });
-    
+
 
 
     const modalContentBox = contentModal.querySelector('.modal-content-box');
@@ -7709,11 +7711,11 @@ function showModal(options, noteElement = null) {
     const initialModalFontSize = localStorage.getItem('modalFontSize') || 16;
     if (modalBodyElem) modalBodyElem.style.fontSize = `${initialModalFontSize}px`;
 
-const calculateBtn = contentModal.querySelector('.calculate-modal-btn');
+    const calculateBtn = contentModal.querySelector('.calculate-modal-btn');
     if (calculateBtn) {
         let longPressTimer;
         let isLongPress = false;
-        
+
         calculateBtn.addEventListener('click', (e) => {
             if (isLongPress) {
                 isLongPress = false;
@@ -7744,7 +7746,7 @@ const calculateBtn = contentModal.querySelector('.calculate-modal-btn');
         calculateBtn.addEventListener('touchstart', startPress, { passive: true });
         calculateBtn.addEventListener('touchend', endPress);
     }
-    
+
     if (copyBtn) {
         copyBtn.innerHTML = typeof copyIconSvg !== 'undefined' ? copyIconSvg : 'Copy';
         copyBtn.addEventListener('click', () => {
@@ -7765,7 +7767,7 @@ const calculateBtn = contentModal.querySelector('.calculate-modal-btn');
                     copyBtn.innerHTML = '&#10003;';
                     setTimeout(() => { copyBtn.innerHTML = typeof copyIconSvg !== 'undefined' ? copyIconSvg : 'Copy'; }, 5000);
                 }).catch(err => {
-                    if(typeof showToast === 'function') showToast(_('errorCopyFailed'));
+                    if (typeof showToast === 'function') showToast(_('errorCopyFailed'));
                 });
             }
         });
@@ -7822,7 +7824,7 @@ const calculateBtn = contentModal.querySelector('.calculate-modal-btn');
             modalContentBox.style.maxHeight = 'none';
         }
     }
-    
+
     // Apply cascade position AFTER dimensions are set
     applyCascadePosition(contentModal);
     // Размер на шрифта: от options (демо бележка) или от потребителските настройки
@@ -8730,7 +8732,7 @@ function showAllBoardsModal(onSelectCallback = null) {
     closeAllBtn.style.color = 'white';
     closeAllBtn.style.display = 'flex';
     closeAllBtn.style.justifyContent = 'center';
-    closeAllBtn.innerHTML = `<span>Затвори всички бележки</span>`;
+    closeAllBtn.innerHTML = `<span>Затвори бележките</span>`;
     closeAllBtn.href = '#';
     closeAllBtn.onclick = async (e) => {
         e.preventDefault();
@@ -14509,7 +14511,7 @@ document.addEventListener('click', (e) => {
 
     // Check for target is inside modal-body and NOT inside footer/header
     let modalBodyElem = null;
-    try { modalBodyElem = e.target.closest('.modal-body-content') || document.getElementById('modal-body'); } catch(err) {}
+    try { modalBodyElem = e.target.closest('.modal-body-content') || document.getElementById('modal-body'); } catch (err) { }
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
 
     // Explicitly ignore clicks on footer or copy button or any other elements appended to modalBody
@@ -14569,7 +14571,7 @@ document.addEventListener('touchmove', () => {
 
 document.addEventListener('contextmenu', (e) => {
     let modalBodyElem = null;
-    try { modalBodyElem = e.target.closest('.modal-body-content') || document.getElementById('modal-body'); } catch(err) {}
+    try { modalBodyElem = e.target.closest('.modal-body-content') || document.getElementById('modal-body'); } catch (err) { }
     if (modalBodyElem && modalBodyElem.contains(e.target) && !e.target.closest('.note-footer') && !e.target.closest('.modal-note-footer')) {
         // If textarea exists, we ALLOW context menu for copy/paste
         if (modalBodyElem.querySelector('textarea')) {
@@ -15465,22 +15467,22 @@ function previewEditedNote(modalElement = null) {
     // Actually, let's keep it solid since they are still in edit/preview flow
 
 
-        // --- Custom preview state: Show Save, Preview AND Edit buttons ---
-        // 1. Re-initialize edit buttons (showModal cleaned them up)
-        initNoteEditUI(modalBodyElem);
+    // --- Custom preview state: Show Save, Preview AND Edit buttons ---
+    // 1. Re-initialize edit buttons (showModal cleaned them up)
+    initNoteEditUI(modalBodyElem);
 
-        // 2. Adjust visibility and positions for the 4-button preview layout
-        let localModalContainer = modalBodyElem.closest('.note-modal') || document; const saveBtn = localModalContainer.querySelector('.note-save-btn') || localModalContainer.querySelector('#note-save-btn');
-        const previewBtn = localModalContainer.querySelector('.note-preview-btn') || localModalContainer.querySelector('#note-preview-btn');
-        const editBtn = localModalContainer.querySelector('.note-edit-btn') || localModalContainer.querySelector('#note-edit-btn');
-        const moveBtn = localModalContainer.querySelector('#note-move-btn');
+    // 2. Adjust visibility and positions for the 4-button preview layout
+    let localModalContainer = modalBodyElem.closest('.note-modal') || document; const saveBtn = localModalContainer.querySelector('.note-save-btn') || localModalContainer.querySelector('#note-save-btn');
+    const previewBtn = localModalContainer.querySelector('.note-preview-btn') || localModalContainer.querySelector('#note-preview-btn');
+    const editBtn = localModalContainer.querySelector('.note-edit-btn') || localModalContainer.querySelector('#note-edit-btn');
+    const moveBtn = localModalContainer.querySelector('#note-move-btn');
 
-        if (saveBtn) { saveBtn.style.display = 'flex'; }
-        if (editBtn) { editBtn.style.display = 'flex'; }
-        if (previewBtn) { previewBtn.style.display = 'none'; }
-        if (moveBtn) { moveBtn.style.display = 'flex'; }
-        const dupBtn = localModalContainer.querySelector('#note-duplicate-btn');
-        if (dupBtn) dupBtn.style.display = 'none';
+    if (saveBtn) { saveBtn.style.display = 'flex'; }
+    if (editBtn) { editBtn.style.display = 'flex'; }
+    if (previewBtn) { previewBtn.style.display = 'none'; }
+    if (moveBtn) { moveBtn.style.display = 'flex'; }
+    const dupBtn = localModalContainer.querySelector('#note-duplicate-btn');
+    if (dupBtn) dupBtn.style.display = 'none';
 }
 
 function disableNoteEditing(modalBodyElem) {
@@ -17188,9 +17190,6 @@ function applyCascadePosition(modalElement) {
     const modalBox = modalElement.querySelector('.modal-content-box');
     if (!modalBox) return;
 
-    const existingModals = document.querySelectorAll('.active-note-modal');
-    const offset = (existingModals.length - 1) * 30; // 30px cascade
-
     // Try to get height from offset, style, or fallback
     let boxHeight = modalBox.offsetHeight;
     if (!boxHeight && modalBox.style.height) boxHeight = parseInt(modalBox.style.height, 10);
@@ -17200,13 +17199,36 @@ function applyCascadePosition(modalElement) {
     if (!boxWidth && modalBox.style.width) boxWidth = parseInt(modalBox.style.width, 10);
     boxWidth = boxWidth || 300;
 
-    // Basic center screen calculation
-    const initialTop = Math.max(50, (window.innerHeight - boxHeight) / 2);
-    const initialLeft = Math.max(50, (window.innerWidth - boxWidth) / 2);
+    // Find the previously active modal (the one with highest zIndex, excluding this one)
+    let maxZ = -1;
+    let prevBox = null;
+    document.querySelectorAll('.note-modal').forEach(m => {
+        if (m === modalElement) return;
+        const z = parseInt(m.style.zIndex || 0, 10);
+        if (z > maxZ) {
+            maxZ = z;
+            prevBox = m.querySelector('.modal-content-box');
+        }
+    });
+
+    let initialTop, initialLeft;
+    if (prevBox) {
+        const rect = prevBox.getBoundingClientRect();
+        initialTop = rect.top + 30;
+        initialLeft = rect.left + 30;
+
+        // Wrap offset to prevent going offscreen
+        if (initialTop > window.innerHeight - 50) initialTop = 50;
+        if (initialLeft > window.innerWidth - 50) initialLeft = 50;
+    } else {
+        // Basic center screen calculation
+        initialTop = Math.max(50, (window.innerHeight - boxHeight) / 2);
+        initialLeft = Math.max(50, (window.innerWidth - boxWidth) / 2);
+    }
 
     modalBox.style.position = 'absolute';
-    modalBox.style.top = (initialTop + (offset % 150)) + 'px'; // Wrap offset to prevent going offscreen
-    modalBox.style.left = (initialLeft + (offset % 150)) + 'px';
+    modalBox.style.top = initialTop + 'px';
+    modalBox.style.left = initialLeft + 'px';
     modalBox.style.right = 'auto'; // Disable default right
     modalBox.style.bottom = 'auto';
     modalBox.style.transform = 'none'; // Disable center translate
@@ -17271,7 +17293,7 @@ function makeModalDraggable(element, modalContainer) {
     const onDragStart = (e) => {
         // Prevent dragging if clicking buttons
         if (e.target.closest('button') || e.target.closest('.modal-header-btn')) return;
-        
+
         // Prevent default to avoid text selection when dragging the header
         e.preventDefault();
 
@@ -17306,7 +17328,7 @@ function makeModalDraggable(element, modalContainer) {
         if (element.offsetHeight < window.innerHeight) {
             newTop = Math.min(newTop, window.innerHeight - element.offsetHeight);
         }
-        
+
         // Don't go completely off-screen horizontally
         newLeft = Math.max(-element.offsetWidth + 100, Math.min(newLeft, window.innerWidth - 100));
 
