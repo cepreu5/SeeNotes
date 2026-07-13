@@ -1,0 +1,222 @@
+﻿diff --git a/uni/main.js b/uni/main.js
+index 4de60f6..8893963 100644
+--- a/uni/main.js
++++ b/uni/main.js
+@@ -309,6 +309,13 @@ const noteBgCache = new Map();
+ 
+ window.getPipeIndex = function (text) {
+     if (!text) return -1;
++    const firstContentLine = String(text)
++        .replace(/\r\n/g, '\n')
++        .split('\n')
++        .find(line => line.trim());
++    if (firstContentLine && firstContentLine.trimStart().startsWith('|') && typeof parseMarkdownTable === 'function' && parseMarkdownTable(text)) {
++        return -1;
++    }
+     let inCode = false;
+     for (let i = 0; i < text.length; i++) {
+         if (text[i] === '{' && text[i + 1] === '{') {
+@@ -7914,8 +7921,11 @@ function showModal(options, noteElement = null) {
+     // For the full view in the modal, we want to show the entire content,
+     // just replacing the separator with a newline for better readability.
+     // Special case: if titleFormatString is provided, format the title part separately.
+-    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
+-    if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
++    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
++    const pipeIndex = fullTableHtml ? -1 : (typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|'));
++    if (fullTableHtml) {
++        displayContent = fullTableHtml;
++    } else if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
+         // Hidden note with title formatting: split, format each part, then combine
+         const titlePart = rawContent.substring(0, pipeIndex);
+         const bodyPart = rawContent.substring(pipeIndex + 1);
+@@ -7940,7 +7950,7 @@ function showModal(options, noteElement = null) {
+         } else if (formatString && formatString.trim() !== '') {
+             displayContent = formatText(rawContent, formatString, true); // isForModal = true
+         } else {
+-            displayContent = processNoteContent(rawContent, true); // isForModal = true
++            displayContent = renderMarkdownTableAsPseudoGraphic(rawContent) || processNoteContent(rawContent, true); // isForModal = true
+         }
+     }
+     modalBody.innerHTML = displayContent;
+@@ -11751,32 +11761,44 @@ function parseMarkdownTable(text) {
+         return normalized.split('|').map(cell => cell.trim());
+     };
+ 
++    const headerRow = parseRow(lines[separatorIndex - 1]);
+     const rows = [
+-        parseRow(lines[separatorIndex - 1]),
++        headerRow,
+         ...lines.slice(separatorIndex + 1).map(parseRow)
+     ].filter(row => row.length > 0);
+     if (rows.length < 2) return null;
+ 
+     const columnCount = Math.max(...rows.map(row => row.length));
+-    return rows.map(row => {
++    const paddedRows = rows.map(row => {
+         const padded = [...row];
+         while (padded.length < columnCount) padded.push('');
+         return padded;
+     });
++
++    const isBorderless = headerRow[0] === '%%' || (headerRow[0] === '' && headerRow.length > 1);
++    return {
++        borderless: isBorderless,
++        rows: paddedRows
++    };
+ }
+ 
+ function renderMarkdownTableAsPseudoGraphic(text) {
+-    const rows = parseMarkdownTable(text);
+-    if (!rows) return null;
+-    const widths = rows[0].map((_, colIndex) =>
+-        Math.max(...rows.map(row => String(row[colIndex] || '').length))
+-    );
+-    const border = '+' + widths.map(width => '-'.repeat(width + 2)).join('+') + '+';
+-    const renderRow = (row) => '| ' + row.map((cell, index) => String(cell || '').padEnd(widths[index], ' ')).join(' | ') + ' |';
+-    const output = [border, renderRow(rows[0]), border];
+-    rows.slice(1).forEach(row => output.push(renderRow(row)));
+-    output.push(border);
+-    return `<pre class="md-table-pseudo">${escapeHtml(output.join('\n'))}</pre>`;
++    const table = parseMarkdownTable(text);
++    if (!table) return null;
++    const renderCells = (row, tag) => row.map(cell => `<${tag}>${escapeHtml(String(cell || ''))}</${tag}>`).join('');
++
++    if (table.borderless) {
++        const bodyRows = table.rows.slice(1);
++        if (!bodyRows.length) return null;
++        const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
++        return `<div class="md-table-wrapper"><table class="md-table-render md-table-borderless"><tbody>${bodyHtml}</tbody></table></div>`;
++    }
++
++    const headerHtml = `<thead><tr>${renderCells(table.rows[0], 'th')}</tr></thead>`;
++    const bodyRows = table.rows.slice(1);
++    if (!bodyRows.length) return null;
++    const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
++    return `<div class="md-table-wrapper"><table class="md-table-render">${headerHtml}<tbody>${bodyHtml}</tbody></table></div>`;
+ }
+ 
+ function getPreviewBodyAfterTitle(fullText, titleText) {
+@@ -12489,14 +12511,21 @@ async function createNoteElement(noteContent) {
+     let displayContent = fileContent;
+     let previewTitleSourceText = '';
+     let adjustPreviewBodyToRenderedTitle = false;
++    let isBorderlessTableNote = false;
+     const showFullFirstLinePreview = localStorage.getItem('showFirstLine') === 'true';
+     if (isHiddenNote) {
+         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
+         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
+         noteTitle = previewContent.split('\n')[0].trim();
+     } else {
++        const markdownTable = parseMarkdownTable(fileContent);
+         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
+-        if (pipeIndex !== -1) {
++        if (markdownTable) {
++            const headerCells = markdownTable.rows[0] || [];
++            isBorderlessTableNote = markdownTable.borderless;
++            noteTitle = markdownTable.borderless ? '' : headerCells.filter(Boolean).join(' ').trim();
++            displayContent = fileContent;
++        } else if (pipeIndex !== -1) {
+             noteTitle = fileContent.substring(0, pipeIndex).trim();
+             displayContent = fileContent.substring(pipeIndex + 1).trim();
+         } else if (isType1Note) {
+@@ -12518,8 +12547,12 @@ async function createNoteElement(noteContent) {
+             adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
+         }
+     }
+-    if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
++    if (!noteTitle && !isHiddenNote && !isBorderlessTableNote) { noteTitle = '...'; }
++    if (isBorderlessTableNote) {
++        note.classList.add('note-borderless-table');
++    }
+     const titleWrapper = document.createElement('div');
++    titleWrapper.className = 'note-title-wrapper';
+     const titleEl = document.createElement('h3');
+     // For hidden notes with title_span, apply formatting to the title
+     if (isHiddenNote && titleSpan && titleSpan.trim() !== '') {
+@@ -12528,6 +12561,9 @@ async function createNoteElement(noteContent) {
+         titleEl.textContent = noteTitle;
+     }
+     titleEl.className = 'note-title-truncated';
++    if (isBorderlessTableNote) {
++        titleEl.style.display = 'none';
++    }
+     // Create header info container for date and time
+     const headerInfoContainer = document.createElement('div');
+     headerInfoContainer.className = 'note-header-info';
+@@ -15457,6 +15493,10 @@ function disableNoteEditing(modalBodyElem) {
+  * Превръща MD символи във форматирани области и изчиства текста.
+  */
+ function postEdit(text, formats, maskedLinks = []) {
++    if (parseMarkdownTable(text)) {
++        return { text, formats: [] };
++    }
++
+     let currentText = text;
+     let currentFormats = [...formats];
+ 
+diff --git a/uni/style.css b/uni/style.css
+index eb6cdf5..d64292a 100644
+--- a/uni/style.css
++++ b/uni/style.css
+@@ -518,6 +518,11 @@ main {
+     margin: 0 10% 10% 8%;
+ }
+ 
++.note-borderless-table .note-title-wrapper {
++    flex: 0 0 50px;
++    min-height: 50px;
++}
++
+ .note:not(.note-item) .note-content-wrapper>.note-content {
+     margin: 0;
+ }
+@@ -543,18 +548,41 @@ code {
+     user-select: contain;
+ }
+ 
+-.md-table-pseudo {
++.md-table-wrapper {
+     margin: 6px 0;
+-    padding: 6px;
+     max-width: 100%;
+     overflow-x: auto;
+     box-sizing: border-box;
+-    font-family: 'Courier New', Courier, monospace;
++    background: transparent;
++}
++
++.md-table-render {
++    width: 100%;
++    border-collapse: collapse;
++    table-layout: auto;
+     font-size: 0.95em;
+     line-height: 1.35;
+-    white-space: pre;
+-    background: rgba(255, 255, 255, 0.25);
+-    border-radius: 4px;
++    white-space: normal;
++}
++
++.md-table-render th,
++.md-table-render td {
++    padding: 4px 6px;
++    border: 1px solid rgba(0, 0, 0, 0.28);
++    text-align: left;
++    vertical-align: top;
++}
++
++.md-table-render th {
++    font-weight: 700;
++    background: rgba(255, 255, 255, 0.18);
++}
++
++.md-table-render.md-table-borderless th,
++.md-table-render.md-table-borderless td {
++    border: none;
++    background: transparent;
++    padding: 2px 10px 2px 0;
+ }
+ 
+ .code-block {
+

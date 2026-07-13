@@ -1,0 +1,38 @@
+diff a/uni/main.js b/uni/main.js	(rejected hunks)
+@@ -7914,8 +7921,11 @@ function showModal(options, noteElement = null) {
+     // For the full view in the modal, we want to show the entire content,
+     // just replacing the separator with a newline for better readability.
+     // Special case: if titleFormatString is provided, format the title part separately.
+-    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
+-    if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
++    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
++    const pipeIndex = fullTableHtml ? -1 : (typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|'));
++    if (fullTableHtml) {
++        displayContent = fullTableHtml;
++    } else if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
+         // Hidden note with title formatting: split, format each part, then combine
+         const titlePart = rawContent.substring(0, pipeIndex);
+         const bodyPart = rawContent.substring(pipeIndex + 1);
+@@ -7940,7 +7950,7 @@ function showModal(options, noteElement = null) {
+         } else if (formatString && formatString.trim() !== '') {
+             displayContent = formatText(rawContent, formatString, true); // isForModal = true
+         } else {
+-            displayContent = processNoteContent(rawContent, true); // isForModal = true
++            displayContent = renderMarkdownTableAsPseudoGraphic(rawContent) || processNoteContent(rawContent, true); // isForModal = true
+         }
+     }
+     modalBody.innerHTML = displayContent;
+@@ -12518,8 +12547,12 @@ async function createNoteElement(noteContent) {
+             adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
+         }
+     }
+-    if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
++    if (!noteTitle && !isHiddenNote && !isBorderlessTableNote) { noteTitle = '...'; }
++    if (isBorderlessTableNote) {
++        note.classList.add('note-borderless-table');
++    }
+     const titleWrapper = document.createElement('div');
++    titleWrapper.className = 'note-title-wrapper';
+     const titleEl = document.createElement('h3');
+     // For hidden notes with title_span, apply formatting to the title
+     if (isHiddenNote && titleSpan && titleSpan.trim() !== '') {

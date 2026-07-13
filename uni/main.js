@@ -1,4 +1,4 @@
-// https://multinotes.app/gdviewer
+﻿// https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
@@ -309,6 +309,13 @@ const noteBgCache = new Map();
 
 window.getPipeIndex = function (text) {
     if (!text) return -1;
+    const firstContentLine = String(text)
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .find(line => line.trim());
+    if (firstContentLine && firstContentLine.trimStart().startsWith('|') && typeof parseMarkdownTable === 'function' && parseMarkdownTable(text)) {
+        return -1;
+    }
     let inCode = false;
     for (let i = 0; i < text.length; i++) {
         if (text[i] === '{' && text[i + 1] === '{') {
@@ -7924,10 +7931,19 @@ function showModal(options, noteElement = null) {
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
     // Special case: if titleFormatString is provided, format the title part separately.
-    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
+    // const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
     // Check if the first pipe is a title separator (1 pipe on the line) or part of a table (multiple pipes)
     let isTablePipe = false;
-    if (pipeIndex !== -1) {
+    // if (pipeIndex !== -1) {
+    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
+    const pipeIndex = fullTableHtml ? -1 : (typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|'));
+    if (fullTableHtml) {
+        displayContent = fullTableHtml;
+    } else if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {    
+        // Hidden note with title formatting: split, format each part, then combine
+        const titlePart = rawContent.substring(0, pipeIndex);
+        const bodyPart = rawContent.substring(pipeIndex + 1);
+
         let lineStart = rawContent.lastIndexOf('\n', pipeIndex) + 1;
         let lineEnd = rawContent.indexOf('\n', pipeIndex);
         if (lineEnd === -1) lineEnd = rawContent.length;
@@ -11836,32 +11852,44 @@ function parseMarkdownTable(text) {
         return normalized.split('|').map(cell => cell.trim());
     };
 
+    const headerRow = parseRow(lines[separatorIndex - 1]);
     const rows = [
-        parseRow(lines[separatorIndex - 1]),
+        headerRow,
         ...lines.slice(separatorIndex + 1).map(parseRow)
     ].filter(row => row.length > 0);
     if (rows.length < 2) return null;
 
     const columnCount = Math.max(...rows.map(row => row.length));
-    return rows.map(row => {
+    const paddedRows = rows.map(row => {
         const padded = [...row];
         while (padded.length < columnCount) padded.push('');
         return padded;
     });
+
+    const isBorderless = headerRow[0] === '%%' || (headerRow[0] === '' && headerRow.length > 1);
+    return {
+        borderless: isBorderless,
+        rows: paddedRows
+    };
 }
 
 function renderMarkdownTableAsPseudoGraphic(text) {
-    const rows = parseMarkdownTable(text);
-    if (!rows) return null;
-    const widths = rows[0].map((_, colIndex) =>
-        Math.max(...rows.map(row => String(row[colIndex] || '').length))
-    );
-    const border = '+' + widths.map(width => '-'.repeat(width + 2)).join('+') + '+';
-    const renderRow = (row) => '| ' + row.map((cell, index) => String(cell || '').padEnd(widths[index], ' ')).join(' | ') + ' |';
-    const output = [border, renderRow(rows[0]), border];
-    rows.slice(1).forEach(row => output.push(renderRow(row)));
-    output.push(border);
-    return `<pre class="md-table-pseudo">${escapeHtml(output.join('\n'))}</pre>`;
+    const table = parseMarkdownTable(text);
+    if (!table) return null;
+    const renderCells = (row, tag) => row.map(cell => `<${tag}>${escapeHtml(String(cell || ''))}</${tag}>`).join('');
+
+    if (table.borderless) {
+        const bodyRows = table.rows.slice(1);
+        if (!bodyRows.length) return null;
+        const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
+        return `<div class="md-table-wrapper"><table class="md-table-render md-table-borderless"><tbody>${bodyHtml}</tbody></table></div>`;
+    }
+
+    const headerHtml = `<thead><tr>${renderCells(table.rows[0], 'th')}</tr></thead>`;
+    const bodyRows = table.rows.slice(1);
+    if (!bodyRows.length) return null;
+    const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
+    return `<div class="md-table-wrapper"><table class="md-table-render">${headerHtml}<tbody>${bodyHtml}</tbody></table></div>`;
 }
 
 function getPreviewBodyAfterTitle(fullText, titleText) {
@@ -12574,14 +12602,21 @@ async function createNoteElement(noteContent) {
     let displayContent = fileContent;
     let previewTitleSourceText = '';
     let adjustPreviewBodyToRenderedTitle = false;
+    let isBorderlessTableNote = false;
     const showFullFirstLinePreview = localStorage.getItem('showFirstLine') === 'true';
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
         noteTitle = previewContent.split('\n')[0].trim();
     } else {
+        const markdownTable = parseMarkdownTable(fileContent);
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
-        if (pipeIndex !== -1) {
+        if (markdownTable) {
+            const headerCells = markdownTable.rows[0] || [];
+            isBorderlessTableNote = markdownTable.borderless;
+            noteTitle = markdownTable.borderless ? '' : headerCells.filter(Boolean).join(' ').trim();
+            displayContent = fileContent;
+        } else if (pipeIndex !== -1) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
         } else if (isType1Note) {
@@ -12619,8 +12654,12 @@ async function createNoteElement(noteContent) {
             }
         }
     }
-    if (!noteTitle && !isHiddenNote) { noteTitle = '...'; }
+    if (!noteTitle && !isHiddenNote && !isBorderlessTableNote) { noteTitle = '...'; }
+    if (isBorderlessTableNote) {
+        note.classList.add('note-borderless-table');
+    }
     const titleWrapper = document.createElement('div');
+    titleWrapper.className = 'note-title-wrapper';
     const titleEl = document.createElement('h3');
     // For hidden notes with title_span, apply formatting to the title
     if (isHiddenNote && titleSpan && titleSpan.trim() !== '') {
@@ -12629,6 +12668,9 @@ async function createNoteElement(noteContent) {
         titleEl.textContent = noteTitle;
     }
     titleEl.className = 'note-title-truncated';
+    if (isBorderlessTableNote) {
+        titleEl.style.display = 'none';
+    }
     // Create header info container for date and time
     const headerInfoContainer = document.createElement('div');
     headerInfoContainer.className = 'note-header-info';
@@ -15636,6 +15678,10 @@ function disableNoteEditing(modalBodyElem) {
  * Превръща MD символи във форматирани области и изчиства текста.
  */
 function postEdit(text, formats, maskedLinks = []) {
+    if (parseMarkdownTable(text)) {
+        return { text, formats: [] };
+    }
+
     let currentText = text;
     let currentFormats = [...formats];
 
