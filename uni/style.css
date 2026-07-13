@@ -518,6 +518,11 @@ main {
     margin: 0 10% 10% 8%;
 }
 
+.note-borderless-table .note-title-wrapper {
+    flex: 0 0 50px;
+    min-height: 50px;
+}
+
 .note:not(.note-item) .note-content-wrapper>.note-content {
     margin: 0;
 }
@@ -543,18 +548,41 @@ code {
     user-select: contain;
 }
 
-.md-table-pseudo {
+.md-table-wrapper {
     margin: 6px 0;
-    padding: 6px;
     max-width: 100%;
     overflow-x: auto;
     box-sizing: border-box;
-    font-family: 'Courier New', Courier, monospace;
+    background: transparent;
+}
+
+.md-table-render {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
     font-size: 0.95em;
     line-height: 1.35;
-    white-space: pre;
-    background: rgba(255, 255, 255, 0.25);
-    border-radius: 4px;
+    white-space: normal;
+}
+
+.md-table-render th,
+.md-table-render td {
+    padding: 4px 6px;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    text-align: left;
+    vertical-align: top;
+}
+
+.md-table-render th {
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.md-table-render.md-table-borderless th,
+.md-table-render.md-table-borderless td {
+    border: none;
+    background: transparent;
+    padding: 2px 10px 2px 0;
 }
 
 .code-block {
