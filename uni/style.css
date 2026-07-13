@@ -555,6 +555,23 @@ code {
     box-sizing: border-box;
     background: transparent;
 }
+.modal-body-content .md-table-wrapper {
+    scrollbar-color: #555 #c8a64b;
+    scrollbar-width: thin;
+}
+.modal-body-content .md-table-wrapper::-webkit-scrollbar {
+    height: 10px;
+}
+.modal-body-content .md-table-wrapper::-webkit-scrollbar-track {
+    background: #c8a64b;
+}
+.modal-body-content .md-table-wrapper::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 5px;
+}
+.modal-body-content .md-table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #333;
+}
 
 .md-table-render {
     width: 100%;

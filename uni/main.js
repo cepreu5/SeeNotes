@@ -1,4 +1,4 @@
-﻿// https://multinotes.app/gdviewer
+// https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
@@ -7926,47 +7926,36 @@ function showModal(options, noteElement = null) {
         modalBoardNameEl.style.cursor = 'default';
         modalBoardNameEl.style.textDecoration = 'none';
     }
-    contentModal.dataset.originalContent = rawContent;
+    currentModalContent = rawContent;
     // For notes with a preview (pass: true), the '|' is a separator.
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
     // Special case: if titleFormatString is provided, format the title part separately.
-    // const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
-    // Check if the first pipe is a title separator (1 pipe on the line) or part of a table (multiple pipes)
-    let isTablePipe = false;
-    // if (pipeIndex !== -1) {
     const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
     const pipeIndex = fullTableHtml ? -1 : (typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|'));
     if (fullTableHtml) {
-        displayContent = fullTableHtml;
-    } else if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {    
-        // Hidden note with title formatting: split, format each part, then combine
-        const titlePart = rawContent.substring(0, pipeIndex);
-        const bodyPart = rawContent.substring(pipeIndex + 1);
-
-        let lineStart = rawContent.lastIndexOf('\n', pipeIndex) + 1;
-        let lineEnd = rawContent.indexOf('\n', pipeIndex);
-        if (lineEnd === -1) lineEnd = rawContent.length;
-        let line = rawContent.substring(lineStart, lineEnd);
-        let pipesOnLine = 0;
-        let lInCode = false;
-        for (let j = 0; j < line.length; j++) {
-            if (line[j] === '{' && line[j + 1] === '{') { lInCode = true; j++; }
-            else if (line[j] === '}' && line[j + 1] === '}') { lInCode = false; j++; }
-            else if (line[j] === '|' && !lInCode) pipesOnLine++;
+        // Check if there is text before the table that needs to be rendered
+        const allLines = rawContent.replace(/\r\n/g, '\n').split('\n');
+        const sepIdx = allLines.findIndex(line => {
+            const trimmed = line.trim();
+            if (!trimmed.includes('|')) return false;
+            const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
+            return cells.length > 0 && cells.every(c => /^:?-{1,}:?$/.test(c));
+        });
+        const hdrIdx = sepIdx > 0 ? sepIdx - 1 : -1;
+        const textBefore = hdrIdx > 0 ? allLines.slice(0, hdrIdx).filter(l => l.trim()).join('\n') : '';
+        if (textBefore) {
+            displayContent = processNoteContent(textBefore, true) + '<br>' + fullTableHtml;
+        } else {
+            displayContent = fullTableHtml;
         }
-        isTablePipe = (pipesOnLine > 1);
-    }
-    if (isTablePipe) {
-        // The pipe is part of a table — don't split, render as table
-        displayContent = renderMarkdownTableAsPseudoGraphic(rawContent) || processNoteContent(rawContent, true);
     } else if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
         // Hidden note with title formatting: split, format each part, then combine
         const titlePart = rawContent.substring(0, pipeIndex);
         const bodyPart = rawContent.substring(pipeIndex + 1);
         const formattedTitle = formatText(titlePart, titleFormatString, true);
         let formattedBody = '';
-        if (formatString && formatString.trim() !== '' && formatString !== '[]') {
+        if (formatString && formatString.trim() !== '') {
             formattedBody = formatText(bodyPart, formatString, true);
         } else {
             formattedBody = renderMarkdownTableAsPseudoGraphic(bodyPart) || processNoteContent(bodyPart, true);
@@ -7974,7 +7963,7 @@ function showModal(options, noteElement = null) {
         displayContent = formattedTitle + '<br>' + formattedBody;
     } else {
         // Standard logic: replace separator with newline for hidden notes
-        const pipeIdxForReplace = pipeIndex;
+        const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
         if (pipeIdxForReplace !== -1) {
             // Replace only the first separating pipe
             const titlePart = rawContent.substring(0, pipeIdxForReplace);
@@ -7982,12 +7971,29 @@ function showModal(options, noteElement = null) {
             const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
             const formattedBody = tableHtml || processNoteContent(bodyPart, true);
             displayContent = processNoteContent(titlePart, true) + '<br>' + formattedBody;
-        } else if (formatString && formatString.trim() !== '' && formatString !== '[]') {
+        } else if (formatString && formatString.trim() !== '') {
             displayContent = formatText(rawContent, formatString, true); // isForModal = true
         } else {
-            displayContent = renderMarkdownTableAsPseudoGraphic(rawContent) || processNoteContent(rawContent, true); // isForModal = true
+            const tblFallbackModal = renderMarkdownTableAsPseudoGraphic(rawContent);
+            if (tblFallbackModal) {
+                const allLinesM = rawContent.replace(/\r\n/g, '\n').split('\n');
+                const sepIdxM = allLinesM.findIndex(line => {
+                    const trimmed = line.trim();
+                    if (!trimmed.includes('|')) return false;
+                    const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
+                    return cells.length > 0 && cells.every(c => /^:?-{1,}:?$/.test(c));
+                });
+                const hdrIdxM = sepIdxM > 0 ? sepIdxM - 1 : -1;
+                const textBeforeM = hdrIdxM > 0 ? allLinesM.slice(0, hdrIdxM).filter(l => l.trim()).join('\n') : '';
+                displayContent = textBeforeM
+                    ? processNoteContent(textBeforeM, true) + '<br>' + tblFallbackModal
+                    : tblFallbackModal;
+            } else {
+                displayContent = processNoteContent(rawContent, true); // isForModal = true
+            }
         }
     }
+
     modalBodyElem.innerHTML = displayContent;
     modalBodyElem.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
 
@@ -11833,17 +11839,24 @@ function escapeHtml(text) {
 function parseMarkdownTable(text) {
     if (!text || !text.includes('|')) return null;
     const lines = text
-        .replace(/\r\n/g, '\n')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.includes('|'));
+        // .replace(/\r\n/g, '\n')
+        // .split('\n')
+        // .map(line => line.trim())
+        // .filter(line => line.includes('|'))
+        .replace(/\r\n/g, '\n') // Нормализиране на нов ред
+        .split('\n');
+
     if (lines.length < 2) return null;
 
     const separatorIndex = lines.findIndex(line => {
-        const cells = line.split('|').map(cell => cell.trim()).filter(Boolean);
+        // const cells = line.split('|').map(cell => cell.trim()).filter(Boolean);
+        const trimmedLine = line.trim();
+        if (!trimmedLine.includes('|')) return false;
+        const cells = trimmedLine.split('|').map(cell => cell.trim()).filter(Boolean);
         return cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell));
     });
-    if (separatorIndex < 1) return null;
+    // if (separatorIndex < 1) return null;
+    if (separatorIndex < 1 || !lines[separatorIndex - 1].includes('|')) return null;
 
     const parseRow = (line) => {
         let normalized = line.trim();
@@ -11866,7 +11879,7 @@ function parseMarkdownTable(text) {
         return padded;
     });
 
-    const isBorderless = headerRow[0] === '%%' || (headerRow[0] === '' && headerRow.length > 1);
+    const isBorderless = headerRow[0] === '%%' && headerRow.length > 1;
     return {
         borderless: isBorderless,
         rows: paddedRows
@@ -12614,7 +12627,23 @@ async function createNoteElement(noteContent) {
         if (markdownTable) {
             const headerCells = markdownTable.rows[0] || [];
             isBorderlessTableNote = markdownTable.borderless;
-            noteTitle = markdownTable.borderless ? '' : headerCells.filter(Boolean).join(' ').trim();
+            // Check if there are text lines before the table header
+            const allLines = fileContent.replace(/\r\n/g, '\n').split('\n');
+            const separatorIdx = allLines.findIndex(line => {
+                const trimmed = line.trim();
+                if (!trimmed.includes('|')) return false;
+                const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
+                return cells.length > 0 && cells.every(c => /^:?-{1,}:?$/.test(c));
+            });
+            const headerIdx = separatorIdx > 0 ? separatorIdx - 1 : -1;
+            const textBeforeTable = headerIdx > 0
+                ? allLines.slice(0, headerIdx).find(line => line.trim())
+                : null;
+            if (textBeforeTable) {
+                noteTitle = textBeforeTable.trim().substring(0, 50);
+            } else {
+                noteTitle = markdownTable.borderless ? '' : headerCells.filter(Boolean).join(' ').trim();
+            }
             displayContent = fileContent;
         } else if (pipeIndex !== -1) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
@@ -15398,6 +15427,9 @@ function saveEditedNote(modalElem = null) {
                 const noteColorStr = (typeof noteObj.color === 'number')
                     ? (noteObj.color >= 0 && noteObj.color < noteColorMap.length ? noteColorMap[noteObj.color] : (noteObj.color < 0 ? colorIntToHex(noteObj.color) : noteColorMap[0]))
                     : (typeof noteObj.color === 'string' ? noteObj.color : noteColorMap[0]);
+                // Remove existing modal so showModal creates a fresh one with rendered content
+                const existingModal = modalBodyElem.closest('.note-modal');
+                if (existingModal) existingModal.remove();
                 showModal({
                     raw: noteObj.notetxt,
                     format: noteObj.text_span,
@@ -15593,7 +15625,23 @@ function previewEditedNote(modalElement = null) {
         isTablePipe = (pipesOnLine > 1);
     }
     if (isTablePipe) {
-        displayContent = renderMarkdownTableAsPseudoGraphic(processedText) || processNoteContent(processedText, true);
+        const tblHtml = renderMarkdownTableAsPseudoGraphic(processedText);
+        if (tblHtml) {
+            const allLines = processedText.replace(/\r\n/g, '\n').split('\n');
+            const sepIdx = allLines.findIndex(line => {
+                const trimmed = line.trim();
+                if (!trimmed.includes('|')) return false;
+                const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
+                return cells.length > 0 && cells.every(c => /^:?-{1,}:?$/.test(c));
+            });
+            const hdrIdx = sepIdx > 0 ? sepIdx - 1 : -1;
+            const textBefore = hdrIdx > 0 ? allLines.slice(0, hdrIdx).filter(l => l.trim()).join('\n') : '';
+            displayContent = textBefore
+                ? processNoteContent(textBefore, true) + '<br>' + tblHtml
+                : tblHtml;
+        } else {
+            displayContent = processNoteContent(processedText, true);
+        }
     } else if (pipeIndex !== -1 && finalTitleFormat && finalTitleFormat.trim() !== '') {
         const titlePart = processedText.substring(0, pipeIndex);
         const bodyPart = processedText.substring(pipeIndex + 1);
@@ -15616,7 +15664,23 @@ function previewEditedNote(modalElement = null) {
         } else if (finalFormat && finalFormat.trim() !== '' && finalFormat !== '[]') {
             displayContent = formatText(processedText, finalFormat, true);
         } else {
-            displayContent = renderMarkdownTableAsPseudoGraphic(processedText) || processNoteContent(processedText, true);
+            const tblFallback = renderMarkdownTableAsPseudoGraphic(processedText);
+            if (tblFallback) {
+                const allLines2 = processedText.replace(/\r\n/g, '\n').split('\n');
+                const sepIdx2 = allLines2.findIndex(line => {
+                    const trimmed = line.trim();
+                    if (!trimmed.includes('|')) return false;
+                    const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
+                    return cells.length > 0 && cells.every(c => /^:?-{1,}:?$/.test(c));
+                });
+                const hdrIdx2 = sepIdx2 > 0 ? sepIdx2 - 1 : -1;
+                const textBefore2 = hdrIdx2 > 0 ? allLines2.slice(0, hdrIdx2).filter(l => l.trim()).join('\n') : '';
+                displayContent = textBefore2
+                    ? processNoteContent(textBefore2, true) + '<br>' + tblFallback
+                    : tblFallback;
+            } else {
+                displayContent = processNoteContent(processedText, true);
+            }
         }
     }
 
