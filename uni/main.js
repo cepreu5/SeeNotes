@@ -1,4 +1,4 @@
-﻿// https://multinotes.app/gdviewer
+// https://multinotes.app/gdviewer
 // terser main.js --compress --mangle --toplevel --output mainn.js
 // terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
 // terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
@@ -12918,12 +12918,13 @@ async function createNoteElement(noteContent) {
         }
         // Отваряме модала, само ако не е long press и кликът не е върху футъра
         if (!isLongPress && !e.target.closest('.note-footer')) {
+            const currentGdid = noteContent.gdid || note.dataset.g;
 
             // --- FORCE GDRIVE READ LOGIC ---
             const forceGDriveRead = localStorage.getItem('forceGDriveRead') === 'true';
-            if (forceGDriveRead && noteGdid) {
+            if (forceGDriveRead && currentGdid) {
                 showToast(_('loadingFromDrive'), 2000);
-                const txt = await fetchGDriveFileContent(noteGdid);
+                const txt = await fetchGDriveFileContent(currentGdid);
                 if (txt) {
                     try {
                         const newItem = JSON.parse(txt);
@@ -12941,7 +12942,7 @@ async function createNoteElement(noteContent) {
 
                         // Update global data array reference too (find and update)
                         if (typeof allNotesData !== 'undefined') {
-                            const noteInHeader = allNotesData.find(n => n.gdid === noteGdid);
+                            const noteInHeader = allNotesData.find(n => n.gdid === currentGdid);
                             if (noteInHeader) {
                                 Object.assign(noteInHeader, newItem);
                             }
@@ -12956,12 +12957,12 @@ async function createNoteElement(noteContent) {
             // --- END FORCE GDRIVE READ LOGIC ---
 
             const noteBgColor = (typeof noteColor === 'number' && noteColor >= 0 && noteColor < noteColorMap.length) ? noteColorMap[noteColor] : (typeof noteColor === 'string' ? noteColor : noteColorMap[0]);
-            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
+            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: currentGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
 
             // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
             const updateGDrive = useGoogleDb && !isOffline;
             if (e.ctrlKey) {
-                if ((typeof useIndexedDb !== 'undefined' && useIndexedDb) || (updateGDrive && noteGdid)) {
+                if ((typeof useIndexedDb !== 'undefined' && useIndexedDb) || (updateGDrive && currentGdid)) {
                     const modalBodyElem = document.getElementById('modal-body');
                     if (modalBodyElem) {
                         enableNoteEditing(modalBodyElem);
