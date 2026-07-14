@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.35table'; // App version
+const version = 'Beta 1.36code'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -309,22 +309,31 @@ const noteBgCache = new Map();
 
 window.getPipeIndex = function (text) {
     if (!text) return -1;
-    const firstContentLine = String(text)
-        .replace(/\r\n/g, '\n')
-        .split('\n')
-        .find(line => line.trim());
-    if (firstContentLine && firstContentLine.trimStart().startsWith('|') && typeof parseMarkdownTable === 'function' && parseMarkdownTable(text)) {
-        return -1;
+    let tableInfo = null;
+    if (typeof parseMarkdownTable === 'function') {
+        tableInfo = parseMarkdownTable(text);
     }
+
     let inCode = false;
+    let inBacktickCode = false;
+    let currentLine = 0;
+
     for (let i = 0; i < text.length; i++) {
-        if (text[i] === '{' && text[i + 1] === '{') {
+        if (text[i] === '\n') currentLine++;
+
+        if (text.substring(i, i + 2) === '{{') {
             inCode = true;
             i++;
-        } else if (text[i] === '}' && text[i + 1] === '}') {
+        } else if (text.substring(i, i + 2) === '}}') {
             inCode = false;
             i++;
-        } else if (text[i] === '|' && !inCode) {
+        } else if (text.substring(i, i + 3) === '```') {
+            inBacktickCode = !inBacktickCode;
+            i += 2;
+        } else if (text[i] === '|' && !inCode && !inBacktickCode) {
+            if (tableInfo && currentLine >= tableInfo.startIndex && currentLine <= tableInfo.endIndex) {
+                continue;
+            }
             return i;
         }
     }
@@ -11741,18 +11750,36 @@ function escapeHtml(text) {
 
 function parseMarkdownTable(text) {
     if (!text || !text.includes('|')) return null;
-    const lines = text
-        .replace(/\r\n/g, '\n')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.includes('|'));
-    if (lines.length < 2) return null;
 
-    const separatorIndex = lines.findIndex(line => {
-        const cells = line.split('|').map(cell => cell.trim()).filter(Boolean);
+    const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
+    const maskedText = text.replace(codeTagRegex, (match) => ' '.repeat(match.length));
+
+    const originalLines = maskedText.replace(/\r\n/g, '\n').split('\n');
+    const tableLinesInfo = originalLines.map((line, index) => ({ line: line.trim(), index }))
+        .filter(item => item.line.includes('|'));
+
+    if (tableLinesInfo.length < 2) return null;
+
+    const separatorIdxInFiltered = tableLinesInfo.findIndex(item => {
+        const cells = item.line.split('|').map(cell => cell.trim()).filter(Boolean);
         return cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell));
     });
-    if (separatorIndex < 1) return null;
+    if (separatorIdxInFiltered < 1) return null;
+
+    if (tableLinesInfo[separatorIdxInFiltered - 1].index !== tableLinesInfo[separatorIdxInFiltered].index - 1) {
+        return null;
+    }
+
+    const startIndex = tableLinesInfo[separatorIdxInFiltered - 1].index;
+    let lastValidIdxInFiltered = separatorIdxInFiltered;
+    for (let i = separatorIdxInFiltered + 1; i < tableLinesInfo.length; i++) {
+        if (tableLinesInfo[i].index === tableLinesInfo[i - 1].index + 1) {
+            lastValidIdxInFiltered = i;
+        } else {
+            break;
+        }
+    }
+    const endIndex = tableLinesInfo[lastValidIdxInFiltered].index;
 
     const parseRow = (line) => {
         let normalized = line.trim();
@@ -11761,10 +11788,10 @@ function parseMarkdownTable(text) {
         return normalized.split('|').map(cell => cell.trim());
     };
 
-    const headerRow = parseRow(lines[separatorIndex - 1]);
+    const headerRow = parseRow(tableLinesInfo[separatorIdxInFiltered - 1].line);
     const rows = [
         headerRow,
-        ...lines.slice(separatorIndex + 1).map(parseRow)
+        ...tableLinesInfo.slice(separatorIdxInFiltered + 1, lastValidIdxInFiltered + 1).map(item => parseRow(item.line))
     ].filter(row => row.length > 0);
     if (rows.length < 2) return null;
 
@@ -11778,7 +11805,9 @@ function parseMarkdownTable(text) {
     const isBorderless = headerRow[0] === '%%' || (headerRow[0] === '' && headerRow.length > 1);
     return {
         borderless: isBorderless,
-        rows: paddedRows
+        rows: paddedRows,
+        startIndex,
+        endIndex
     };
 }
 
@@ -11787,18 +11816,33 @@ function renderMarkdownTableAsPseudoGraphic(text) {
     if (!table) return null;
     const renderCells = (row, tag) => row.map(cell => `<${tag}>${escapeHtml(String(cell || ''))}</${tag}>`).join('');
 
+    let tableHtml = '';
     if (table.borderless) {
         const bodyRows = table.rows.slice(1);
-        if (!bodyRows.length) return null;
-        const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
-        return `<div class="md-table-wrapper"><table class="md-table-render md-table-borderless"><tbody>${bodyHtml}</tbody></table></div>`;
+        if (bodyRows.length) {
+            const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
+            tableHtml = `<div class="md-table-wrapper"><table class="md-table-render md-table-borderless"><tbody>${bodyHtml}</tbody></table></div>`;
+        }
+    } else {
+        const headerHtml = `<thead><tr>${renderCells(table.rows[0], 'th')}</tr></thead>`;
+        const bodyRows = table.rows.slice(1);
+        if (bodyRows.length) {
+            const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
+            tableHtml = `<div class="md-table-wrapper"><table class="md-table-render">${headerHtml}<tbody>${bodyHtml}</tbody></table></div>`;
+        }
     }
+    if (!tableHtml) return null;
 
-    const headerHtml = `<thead><tr>${renderCells(table.rows[0], 'th')}</tr></thead>`;
-    const bodyRows = table.rows.slice(1);
-    if (!bodyRows.length) return null;
-    const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
-    return `<div class="md-table-wrapper"><table class="md-table-render">${headerHtml}<tbody>${bodyHtml}</tbody></table></div>`;
+    const originalLines = text.replace(/\r\n/g, '\n').split('\n');
+    const beforeTable = originalLines.slice(0, table.startIndex).join('\n');
+    const afterTable = originalLines.slice(table.endIndex + 1).join('\n');
+
+    let finalHtml = '';
+    if (beforeTable.trim()) finalHtml += processNoteContent(beforeTable, true) + '<br>';
+    finalHtml += tableHtml;
+    if (afterTable.trim()) finalHtml += '<br>' + processNoteContent(afterTable, true);
+
+    return finalHtml;
 }
 
 function getPreviewBodyAfterTitle(fullText, titleText) {
@@ -12520,7 +12564,8 @@ async function createNoteElement(noteContent) {
     } else {
         const markdownTable = parseMarkdownTable(fileContent);
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
-        if (markdownTable) {
+        const textBeforeTable = markdownTable ? fileContent.replace(/\r\n/g, '\n').split('\n').slice(0, markdownTable.startIndex).join('\n').trim() : '';
+        if (markdownTable && !textBeforeTable) {
             const headerCells = markdownTable.rows[0] || [];
             isBorderlessTableNote = markdownTable.borderless;
             noteTitle = markdownTable.borderless ? '' : headerCells.filter(Boolean).join(' ').trim();
@@ -15501,12 +15546,27 @@ function postEdit(text, formats, maskedLinks = []) {
     let currentText = text;
     let currentFormats = [...formats];
 
+    const codeBlockRanges = [];
+    const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
+    let match;
+    while ((match = codeTagRegex.exec(currentText)) !== null) {
+        codeBlockRanges.push({ start: match.index, end: match.index + match[0].length });
+    }
+
     const shift = (pos, diff) => {
         const L = Math.abs(diff);
         currentFormats.forEach(f => {
             if (f.start > pos + L) f.start -= L; else if (f.start > pos) f.start = pos;
             if (f.end > pos + L) f.end -= L; else if (f.end > pos) f.end = pos;
         });
+        codeBlockRanges.forEach(cb => {
+            if (cb.start > pos + L) cb.start -= L; else if (cb.start > pos) cb.start = pos;
+            if (cb.end > pos + L) cb.end -= L; else if (cb.end > pos) cb.end = pos;
+        });
+    };
+
+    const isInsideCodeBlock = (start, end) => {
+        return codeBlockRanges.some(cb => Math.max(start, cb.start) < Math.min(end, cb.end));
     };
 
     // 1. Първоначално премахваме всички формати, които попадат в обхвата на mdClear (ръчно въведени --)
@@ -15529,6 +15589,10 @@ function postEdit(text, formats, maskedLinks = []) {
             }
             const rangeStart = start;
             const rangeEnd = end + mdClear.length;
+            if (isInsideCodeBlock(rangeStart, rangeEnd)) {
+                sIdx = start + mdClear.length;
+                continue;
+            }
             currentFormats = currentFormats.filter(f => !(f.start < rangeEnd && f.end > rangeStart));
             if (removeMarkers) {
                 currentText = currentText.substring(0, end) + currentText.substring(end + mdClear.length);
@@ -15563,6 +15627,10 @@ function postEdit(text, formats, maskedLinks = []) {
                 searchIdx = start + rule.s.length;
                 continue;
             }
+            if (isInsideCodeBlock(start, end + rule.e.length)) {
+                searchIdx = start + rule.s.length;
+                continue;
+            }
             const contentLen = end - start - rule.s.length;
             currentText = currentText.substring(0, end) + currentText.substring(end + rule.e.length);
             shift(end, -rule.e.length);
@@ -15578,6 +15646,9 @@ function postEdit(text, formats, maskedLinks = []) {
     while ((chMatch = checkRegex.exec(currentText)) !== null) {
         const fullMatch = chMatch[0];
         const start = chMatch.index;
+        if (isInsideCodeBlock(start, start + fullMatch.length)) {
+            continue;
+        }
         const isChecked = /[xXхХ]/.test(fullMatch);
         const sym = isChecked ? '☑' : '☐';
         currentText = currentText.substring(0, start) + sym + currentText.substring(start + fullMatch.length);
@@ -15603,6 +15674,10 @@ function postEdit(text, formats, maskedLinks = []) {
             if (found === -1) break;
             let lineEnd = currentText.indexOf('\n', found);
             if (lineEnd === -1) lineEnd = currentText.length;
+            if (isInsideCodeBlock(found, lineEnd)) {
+                hIdx = found + rule.md.length;
+                continue;
+            }
             currentText = currentText.substring(0, found) + currentText.substring(found + rule.md.length);
             shift(found, -rule.md.length);
             lineEnd -= rule.md.length;
