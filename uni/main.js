@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.36code'; // App version
+const version = 'Beta 1.36boards'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -720,14 +720,16 @@ async function runGoogleDriveSync() {
             }
         };
 
-        // loaderText.textContent = _('checkingForGDriveUpdates').split('{')[0] + "...";
-        console.time("runGoogleDriveSync_Parallel");
-        await Promise.all([
-            syncFileWorker('board.txt', BOARD_STORE_NAME, false),
-            syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
-            syncFileWorker('note.txt', NOTE_STORE_NAME, true)
-        ]);
-        console.timeEnd("runGoogleDriveSync_Parallel");
+        try {
+            console.time("runGoogleDriveSync_Parallel");
+            await Promise.all([
+                syncFileWorker('board.txt', BOARD_STORE_NAME, false),
+                syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
+                syncFileWorker('note.txt', NOTE_STORE_NAME, true)
+            ]);
+        } finally {
+            try { console.timeEnd("runGoogleDriveSync_Parallel"); } catch (e) { }
+        }
         console.log("[Sync-Run] Parallel sync workers finished. Updated count:", updatedFilesCount);
 
         await saveConfig('lastGDTimestamp', syncStartTime);
@@ -1031,6 +1033,9 @@ function notifyManualGoogleLoginRequired() {
     if (typeof showToast === 'function') {
         showToast(_('sessionExpired') || "Session expired. Please sign in again.", 5000);
     }
+    setTimeout(() => {
+        if (typeof initLoginPage === 'function') initLoginPage();
+    }, 1500);
 }
 
 /**
@@ -1063,34 +1068,35 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
 
     let attempts = 0;
     const maxAttempts = 3;
-
-    while (attempts < maxAttempts) {
-        attempts++;
-        try {
-            let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-            if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-            let tokenData = JSON.parse(storedTokenString);
-
-            allFiles = await listFiles(tokenData.access_token);
-            break;
-        } catch (e) {
-            if (e.status === 401 || (e.result && e.result.error && e.result.error.code === 401)) {
-                if (attempts >= maxAttempts) throw new Error("Drive API List failed (Auth) after retries.");
-                console.warn(`Got 401 during file list (Attempt ${attempts}), attempting token refresh...`);
-                try {
-                    const refreshed = await refreshAuthToken(false);
-                    if (!refreshed || !refreshed.pass) throw new Error("Token refresh failed.");
-                    await new Promise(r => setTimeout(r, 500));
-                } catch (refreshError) {
-                    console.error("Token refresh failed during retry:", refreshError);
-                    throw new Error("Drive API List failed (Auth Refresh Failed).");
-                }
-            } else throw e;
+    try {
+        while (attempts < maxAttempts) {
+            attempts++;
+            try {
+                let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+                let tokenData = JSON.parse(storedTokenString);
+                allFiles = await listFiles(tokenData.access_token);
+                break;
+            } catch (e) {
+                if (e.status === 401 || (e.result && e.result.error && e.result.error.code === 401)) {
+                    if (attempts >= maxAttempts) throw new Error("Drive API List failed (Auth) after retries.");
+                    console.warn(`Got 401 during file list (Attempt ${attempts}), attempting token refresh...`);
+                    try {
+                        const refreshed = await refreshAuthToken(false);
+                        if (!refreshed || !refreshed.pass) throw new Error("Token refresh failed.");
+                        await new Promise(r => setTimeout(r, 500));
+                    } catch (refreshError) {
+                        console.error("Token refresh failed during retry:", refreshError);
+                        notifyManualGoogleLoginRequired();
+                        throw new Error("Drive API List failed (Auth Refresh Failed).");
+                    }
+                } else throw e;
+            }
         }
-    }
-
-    if (filename) {
-        try { console.timeEnd(`fetchFiles_${filename}_List`); } catch (e) { }
+    } finally {
+        if (filename) {
+            try { console.timeEnd(`fetchFiles_${filename}_List`); } catch (e) { }
+        }
     }
     if (allFiles.length === 0) return [];
     let loadedFiles = 0;
@@ -8376,64 +8382,6 @@ function showModal(options, noteElement = null) {
     if (oldCalendarBtn) oldCalendarBtn.remove();
 
     if (canEdit && footerToolbar) {
-        // --- Duplicate (Copy) Button ---
-        const noteDuplicateBtn = document.createElement('div');
-        noteDuplicateBtn.id = 'note-duplicate-btn';
-        // Use a custom SVG to match the scale and style of other footer buttons
-        noteDuplicateBtn.innerHTML = copyIconSvg;
-        noteDuplicateBtn.className = 'modal-footer-btn';
-        noteDuplicateBtn.title = _('copyNoteTooltip') || 'Copy note';
-        noteDuplicateBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (!currentNoteObj) return;
-
-            // Clone the note object
-            const noteCopy = JSON.parse(JSON.stringify(currentNoteObj));
-
-            // Assign new unique IDs using global variables
-            // Ensure globals exist and use them
-            noteId++;
-            noteNumord++;
-            syncFolderDataAsync();
-            const newId = noteId;
-            const newNumord = noteNumord;
-
-
-            noteCopy.id = newId;
-            noteCopy.gdid = String(newId); // Temporary GDID
-            noteCopy.numord = newNumord;
-            noteCopy.date = Date.now();
-            noteCopy.datemod = Date.now();
-            noteCopy.isNewNote = true; // Mark as new for save logic
-
-            // Close original modal
-            contentModal.classList.remove('visible');
-
-            // Small delay to ensure clean transition
-            setTimeout(() => {
-                showModal({
-                    raw: noteCopy.notetxt || noteCopy.text || "",
-                    format: noteCopy.text_span,
-                    titleFormat: noteCopy.title_span,
-                    color: (typeof noteCopy.color === 'number' && noteCopy.color >= 0 && noteCopy.color < noteColorMap.length) ? noteColorMap[noteCopy.color] : (typeof noteCopy.color === 'string' ? noteCopy.color : noteColorMap[0]),
-                    boardId: noteCopy.boardid,
-                    id: noteCopy.id,
-                    isNewNote: true,
-                    originalNote: noteCopy
-                });
-
-                // Switch to edit mode automatically
-                setTimeout(() => {
-                    const mBody = document.getElementById('modal-body');
-                    if (mBody) {
-                        enableNoteEditing(mBody);
-                        showToast(_('copyNoteMessage'), 4000);
-                    }
-                }, 250);
-            }, 400);
-        });
-        footerToolbar.appendChild(noteDuplicateBtn);
-
         // --- Move Button ---
         const moveBtn = document.createElement('div');
         moveBtn.id = 'note-move-btn';
@@ -8510,6 +8458,64 @@ function showModal(options, noteElement = null) {
             }
         });
         footerToolbar.appendChild(calendarBtn);
+
+        // --- Duplicate (Copy) Button ---
+        const noteDuplicateBtn = document.createElement('div');
+        noteDuplicateBtn.id = 'note-duplicate-btn';
+        // Use a custom SVG to match the scale and style of other footer buttons
+        noteDuplicateBtn.innerHTML = copyIconSvg;
+        noteDuplicateBtn.className = 'modal-footer-btn';
+        noteDuplicateBtn.title = _('copyNoteTooltip') || 'Copy note';
+        noteDuplicateBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!currentNoteObj) return;
+
+            // Clone the note object
+            const noteCopy = JSON.parse(JSON.stringify(currentNoteObj));
+
+            // Assign new unique IDs using global variables
+            // Ensure globals exist and use them
+            noteId++;
+            noteNumord++;
+            syncFolderDataAsync();
+            const newId = noteId;
+            const newNumord = noteNumord;
+
+
+            noteCopy.id = newId;
+            noteCopy.gdid = String(newId); // Temporary GDID
+            noteCopy.numord = newNumord;
+            noteCopy.date = Date.now();
+            noteCopy.datemod = Date.now();
+            noteCopy.isNewNote = true; // Mark as new for save logic
+
+            // Close original modal
+            contentModal.classList.remove('visible');
+
+            // Small delay to ensure clean transition
+            setTimeout(() => {
+                showModal({
+                    raw: noteCopy.notetxt || noteCopy.text || "",
+                    format: noteCopy.text_span,
+                    titleFormat: noteCopy.title_span,
+                    color: (typeof noteCopy.color === 'number' && noteCopy.color >= 0 && noteCopy.color < noteColorMap.length) ? noteColorMap[noteCopy.color] : (typeof noteCopy.color === 'string' ? noteCopy.color : noteColorMap[0]),
+                    boardId: noteCopy.boardid,
+                    id: noteCopy.id,
+                    isNewNote: true,
+                    originalNote: noteCopy
+                });
+
+                // Switch to edit mode automatically
+                setTimeout(() => {
+                    const mBody = document.getElementById('modal-body');
+                    if (mBody) {
+                        enableNoteEditing(mBody);
+                        showToast(_('copyNoteMessage'), 4000);
+                    }
+                }, 250);
+            }, 400);
+        });
+        footerToolbar.appendChild(noteDuplicateBtn);
 
         // --- Search Button ---
         const searchBtn = document.createElement('div');
@@ -12575,8 +12581,8 @@ async function createNoteElement(noteContent) {
             displayContent = fileContent.substring(pipeIndex + 1).trim();
         } else if (isType1Note) {
             previewTitleSourceText = (fileContent.split('\n').find(line => line.trim()) || '').trim();
-            noteTitle = previewTitleSourceText.substring(0, 50);
-            displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, noteTitle);
+            noteTitle = previewTitleSourceText;
+            displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
             adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
         } else {
             const lines = fileContent.split('\n');
@@ -12584,11 +12590,11 @@ async function createNoteElement(noteContent) {
                 const trimmedLine = line.trim();
                 if (trimmedLine) {
                     previewTitleSourceText = trimmedLine;
-                    noteTitle = trimmedLine.substring(0, 50);
+                    noteTitle = trimmedLine;
                     break;
                 }
             }
-            displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, noteTitle);
+            displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
             adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
         }
     }
@@ -13042,23 +13048,21 @@ async function createNoteElement(noteContent) {
     contentWrapper.appendChild(titleWrapper);
     contentWrapper.appendChild(contentEl);
     if (adjustPreviewBodyToRenderedTitle && previewTitleSourceText) {
-        let measureAttempts = 0;
-        const updatePreviewBodyFromRenderedTitle = () => {
-            measureAttempts++;
-            if (!titleEl.clientWidth && measureAttempts < 20) {
-                requestAnimationFrame(updatePreviewBodyFromRenderedTitle);
-                return;
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.contentRect.width > 0) {
+                    observer.disconnect();
+                    const visibleTitleText = getVisibleTitleTextForElement(titleEl, previewTitleSourceText);
+                    if (!visibleTitleText) return;
+                    const adjustedContent = getPreviewBodyAfterTitle(fileContent, visibleTitleText);
+                    if (adjustedContent !== displayContent) {
+                        displayContent = adjustedContent;
+                        renderPreviewContent(displayContent);
+                    }
+                }
             }
-            if (!titleEl.clientWidth) return;
-            const visibleTitleText = getVisibleTitleTextForElement(titleEl, previewTitleSourceText);
-            if (!visibleTitleText) return;
-            const adjustedContent = getPreviewBodyAfterTitle(fileContent, visibleTitleText);
-            if (adjustedContent !== displayContent) {
-                displayContent = adjustedContent;
-                renderPreviewContent(displayContent);
-            }
-        };
-        requestAnimationFrame(updatePreviewBodyFromRenderedTitle);
+        });
+        observer.observe(titleEl);
     }
     // --- Създаване на футър с икони за прикачени файлове ---
     // Проверяваме дали има прикачени файлове (масивът `attachments` вече е попълнен правилно по-горе)
@@ -15933,13 +15937,29 @@ function showBoardReorderPopup() {
                 if (placeholder.parentNode) placeholder.remove();
                 draggedItem = null;
             });
+            let touchStartY = 0;
+            let touchStartX = 0;
+            let isDragging = false;
+            const DRAG_THRESHOLD = 10;
             item.addEventListener('touchstart', (e) => {
                 if (e.touches.length !== 1) return;
                 draggedItem = item;
-                item.style.opacity = '0.5';
+                isDragging = false;
+                touchStartY = e.touches[0].clientY;
+                touchStartX = e.touches[0].clientX;
             }, { passive: true });
             item.addEventListener('touchmove', (e) => {
                 if (!draggedItem || draggedItem !== item) return;
+                const dx = Math.abs(e.touches[0].clientX - touchStartX);
+                const dy = Math.abs(e.touches[0].clientY - touchStartY);
+                if (!isDragging) {
+                    if (dy > DRAG_THRESHOLD && dy > dx) {
+                        isDragging = true;
+                        item.style.opacity = '0.5';
+                    } else {
+                        return;
+                    }
+                }
                 e.preventDefault();
                 const y = e.touches[0].clientY;
                 const target = document.elementFromPoint(e.touches[0].clientX, y);
@@ -15953,11 +15973,12 @@ function showBoardReorderPopup() {
             item.addEventListener('touchend', () => {
                 if (!draggedItem) return;
                 item.style.opacity = '1';
-                if (placeholder.parentNode) {
+                if (isDragging && placeholder.parentNode) {
                     listContainer.insertBefore(item, placeholder);
                     placeholder.remove();
                 }
                 draggedItem = null;
+                isDragging = false;
             });
             listContainer.appendChild(item);
         });
