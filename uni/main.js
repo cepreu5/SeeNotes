@@ -15888,28 +15888,19 @@ function showBoardReorderPopup() {
         listContainer.innerHTML = '';
         entries.forEach((entry) => {
             const board = entry.board || null;
+            const row = document.createElement('div');
+            row.style.cssText = `display:flex;align-items:center;width:${itemWidth}px;margin-bottom:8px;flex-shrink:0;`;
             const item = document.createElement('div');
             item.className = `board-filter-link reorder-item ${entry.className || ''}`.trim();
             item.dataset.boardkey = getBoardOrderEntryKey(entry);
             item.draggable = true;
-            item.style.width = `${itemWidth}px`;
-            item.style.marginBottom = '8px';
-            item.style.cursor = 'grab';
-            item.style.flexShrink = '0';
-            item.style.display = 'flex';
-            item.style.alignItems = 'center';
-            item.style.justifyContent = 'flex-start';
-            item.style.padding = '0 10px';
+            item.style.cssText = `width:${itemWidth - 40}px;cursor:default;flex-shrink:0;display:flex;align-items:center;justify-content:flex-start;padding:0 10px;box-sizing:border-box;`;
             if (entry.backgroundColor) {
                 item.style.backgroundColor = entry.backgroundColor;
             } else if (board && board.color !== undefined && !isNaN(board.color)) {
                 if (board.color >= 0 && board.color <= 6) item.style.backgroundColor = `var(--board-bg-${board.color})`;
                 else if (board.color < 0) item.style.backgroundColor = '#' + (board.color >>> 0).toString(16).slice(-6);
             }
-            const grip = document.createElement('span');
-            grip.innerHTML = '⠿';
-            grip.style.cssText = 'margin-right:8px;font-size:16px;opacity:0.6;';
-            item.appendChild(grip);
             const text = document.createElement('span');
             text.textContent = entry.title;
             text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
@@ -15927,68 +15918,62 @@ function showBoardReorderPopup() {
                 text.style.color = 'black';
             }
             item.appendChild(text);
-            item.addEventListener('dragstart', (e) => {
-                draggedItem = item;
+            const handle = document.createElement('div');
+            handle.className = 'reorder-handle';
+            handle.innerHTML = '⠿';
+            handle.style.cssText = 'width:40px;height:100%;min-height:36px;display:flex;align-items:center;justify-content:center;cursor:grab;font-size:18px;opacity:0.5;color:#fff;flex-shrink:0;user-select:none;-webkit-user-select:none;';
+            row.appendChild(item);
+            row.appendChild(handle);
+            handle.addEventListener('dragstart', (e) => {
+                draggedItem = row;
                 e.dataTransfer.effectAllowed = 'move';
-                setTimeout(() => { item.style.opacity = '0'; }, 0);
+                setTimeout(() => { row.style.opacity = '0'; }, 0);
             });
-            item.addEventListener('dragend', () => {
-                draggedItem.style.opacity = '1';
+            handle.draggable = true;
+            handle.addEventListener('dragend', () => {
+                row.style.opacity = '1';
                 if (placeholder.parentNode) placeholder.remove();
                 draggedItem = null;
             });
-            let touchStartY = 0;
-            let touchStartX = 0;
-            let isDragging = false;
-            const DRAG_THRESHOLD = 10;
-            item.addEventListener('touchstart', (e) => {
+            handle.addEventListener('touchstart', (e) => {
                 if (e.touches.length !== 1) return;
-                draggedItem = item;
-                isDragging = false;
-                touchStartY = e.touches[0].clientY;
-                touchStartX = e.touches[0].clientX;
-            }, { passive: true });
-            item.addEventListener('touchmove', (e) => {
-                if (!draggedItem || draggedItem !== item) return;
-                const dx = Math.abs(e.touches[0].clientX - touchStartX);
-                const dy = Math.abs(e.touches[0].clientY - touchStartY);
-                if (!isDragging) {
-                    if (dy > DRAG_THRESHOLD && dy > dx) {
-                        isDragging = true;
-                        item.style.opacity = '0.5';
-                    } else {
-                        return;
-                    }
-                }
+                e.preventDefault();
+                draggedItem = row;
+                row.style.opacity = '0.5';
+            }, { passive: false });
+            handle.addEventListener('touchmove', (e) => {
+                if (!draggedItem || draggedItem !== row) return;
                 e.preventDefault();
                 const y = e.touches[0].clientY;
                 const target = document.elementFromPoint(e.touches[0].clientX, y);
                 const scrollItem = target ? target.closest('.reorder-item') : null;
-                if (scrollItem && scrollItem !== item) {
-                    const rect = scrollItem.getBoundingClientRect();
-                    if (y < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, scrollItem);
-                    else listContainer.insertBefore(placeholder, scrollItem.nextSibling);
+                const scrollRow = scrollItem ? scrollItem.parentElement : (target ? target.closest('.reorder-handle')?.parentElement : null);
+                if (scrollRow && scrollRow !== row && scrollRow.parentElement === listContainer) {
+                    const rect = scrollRow.getBoundingClientRect();
+                    if (y < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, scrollRow);
+                    else listContainer.insertBefore(placeholder, scrollRow.nextSibling);
                 }
             }, { passive: false });
-            item.addEventListener('touchend', () => {
+            handle.addEventListener('touchend', () => {
                 if (!draggedItem) return;
-                item.style.opacity = '1';
-                if (isDragging && placeholder.parentNode) {
-                    listContainer.insertBefore(item, placeholder);
+                row.style.opacity = '1';
+                if (placeholder.parentNode) {
+                    listContainer.insertBefore(row, placeholder);
                     placeholder.remove();
                 }
                 draggedItem = null;
-                isDragging = false;
             });
-            listContainer.appendChild(item);
+            listContainer.appendChild(row);
         });
     }
 
     renderList(orderedEntries);
     listContainer.addEventListener('dragover', (e) => {
         e.preventDefault();
-        const target = e.target.closest('.reorder-item');
-        if (target && target !== draggedItem) {
+        const itemTarget = e.target.closest('.reorder-item');
+        const handleTarget = e.target.closest('.reorder-handle');
+        const target = itemTarget ? itemTarget.parentElement : (handleTarget ? handleTarget.parentElement : null);
+        if (target && target !== draggedItem && target.parentElement === listContainer) {
             const rect = target.getBoundingClientRect();
             if (e.clientY < rect.top + rect.height / 2) listContainer.insertBefore(placeholder, target);
             else listContainer.insertBefore(placeholder, target.nextSibling);
@@ -16020,8 +16005,11 @@ function showBoardReorderPopup() {
     saveCloseBtn.style.cssText = 'padding:10px 30px;background:darkorange;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:1.1em;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.3);';
     saveCloseBtn.onclick = async () => {
         const newOrder = [...listContainer.children]
-            .filter(el => el.classList.contains('reorder-item'))
-            .map(el => el.dataset.boardkey);
+            .map(el => {
+                const ri = el.querySelector('.reorder-item');
+                return ri ? ri.dataset.boardkey : null;
+            })
+            .filter(Boolean);
         localStorage.setItem('boardMenuOrder', JSON.stringify(newOrder));
         syncFolderDataAsync();
         overlay.remove();
