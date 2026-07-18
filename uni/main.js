@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.36boards'; // App version
+const version = 'Beta 1.36off'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -961,6 +961,7 @@ async function refreshAuthToken(forcePopup = false) {
                 scope: SCOPES,
                 callback: (tokenResponse) => {
                     clearTimeout(requestTimeout); // Спираме таймера при отговор
+                    document.body.classList.remove('silent-token-refresh');
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
                         // Determine storage based on existing token location or rememberMe
@@ -1010,13 +1011,21 @@ async function refreshAuthToken(forcePopup = false) {
             // Таймер за безопасност: ако Google не отговори
             const isSilent = !forcePopup && tokenOptions.prompt === 'none';
             const timeoutDuration = isSilent ? 5000 : 30000; // 5s за тих опит, 30s за попъп
-
+            if (isSilent) {
+                if (!document.getElementById('silent-refresh-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'silent-refresh-style';
+                    style.textContent = 'body.silent-token-refresh iframe[src*="accounts.google.com"]{position:fixed!important;left:-9999px!important;top:-9999px!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;}';
+                    document.head.appendChild(style);
+                }
+                document.body.classList.add('silent-token-refresh');
+            }
             const requestTimeout = setTimeout(() => {
+                document.body.classList.remove('silent-token-refresh');
                 const errMsg = isSilent ? "Silent token refresh failed/blocked." : "Token refresh request timed out after 30s.";
                 console.warn(errMsg);
                 reject(new Error(errMsg));
             }, timeoutDuration);
-
             client.requestAccessToken(tokenOptions);
         } catch (error) {
             console.error("Critical error in refreshAuthToken:", error);
@@ -4706,15 +4715,30 @@ function initApp() {
     window.onscroll = scrollHandler;
 
     // --- Listener for Online/Offline Status (Added for Offline Mode) ---
+    let offlineTimeout;
     window.addEventListener('online', () => {
-        isOffline = false;
-        updateModeButton();
-        if (typeof showToast === 'function') showToast("Online mode restored", 2000);
+        clearTimeout(offlineTimeout);
+        if (isOffline) {
+            isOffline = false;
+            updateModeButton();
+            if (typeof showToast === 'function') showToast("Online mode restored", 2000);
+        }
     });
     window.addEventListener('offline', () => {
-        isOffline = true;
-        updateModeButton();
-        if (typeof showToast === 'function') showToast("Offline mode active", 2000);
+        clearTimeout(offlineTimeout);
+        offlineTimeout = setTimeout(async () => {
+            let reallyOnline = false;
+            try {
+                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
+                reallyOnline = response.ok;
+            } catch(e) {}
+            
+            if (!reallyOnline) {
+                isOffline = true;
+                updateModeButton();
+                if (typeof showToast === 'function') showToast("Offline mode active", 2000);
+            }
+        }, 3000);
     });
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     // --- Search Box Enhancements ---
@@ -6230,7 +6254,18 @@ async function goOffline() {
         console.warn("Error checking app-cache for 's':", e);
     }
     if (isOffline) return;
+
+    let reallyOnline = true;
     if (!navigator.onLine && hasS) {
+        try {
+            const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
+            reallyOnline = response.ok;
+        } catch(e) {
+            reallyOnline = false;
+        }
+    }
+
+    if (!reallyOnline && hasS) {
         isOffline = true;
         console.warn("Working in offline mode (s-record found).");
         if (document.querySelector('.login-box')) {
@@ -14921,8 +14956,9 @@ async function checkUnsavedChanges(isClosingModal = true) {
     const modalBodyElem = document.getElementById('modal-body');
     const textarea = document.getElementById('note-edit-textarea');
     const titleTextarea = document.getElementById('note-edit-title-textarea');
-    // If no textareas, we are not in edit mode
-    if (!textarea && !titleTextarea) return true;
+    const saveBtn = document.getElementById('note-save-btn');
+    const isEditingOrPreviewing = (textarea || titleTextarea) || (saveBtn && saveBtn.style.display !== 'none');
+    if (!isEditingOrPreviewing) return true;
     // Check for actual changes
     const initialContent = currentModalContent || "";
     // Get the current content from the textareas (which might have masked links)
@@ -15512,6 +15548,10 @@ function previewEditedNote() {
 
 function disableNoteEditing(modalBodyElem) {
     if (!modalBodyElem) return;
+
+    // Clear editing drafts
+    delete modalBodyElem.dataset.draftText;
+    delete modalBodyElem.dataset.draftTitle;
 
     // 1. Hide Save and Preview Buttons
     const saveBtn = document.getElementById('note-save-btn');

@@ -3358,15 +3358,30 @@ function initApp() {
     window.onscroll = scrollHandler;
 
     // --- Listener for Online/Offline Status (Added for Offline Mode) ---
+    let offlineTimeout;
     window.addEventListener('online', () => {
-        isOffline = false;
-        updateModeButton();
-        if (typeof showToast === 'function') showToast("Online mode restored", 2000);
+        clearTimeout(offlineTimeout);
+        if (isOffline) {
+            isOffline = false;
+            updateModeButton();
+            if (typeof showToast === 'function') showToast("Online mode restored", 2000);
+        }
     });
     window.addEventListener('offline', () => {
-        isOffline = true;
-        updateModeButton();
-        if (typeof showToast === 'function') showToast("Offline mode active", 2000);
+        clearTimeout(offlineTimeout);
+        offlineTimeout = setTimeout(async () => {
+            let reallyOnline = false;
+            try {
+                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
+                reallyOnline = response.ok;
+            } catch(e) {}
+            
+            if (!reallyOnline) {
+                isOffline = true;
+                updateModeButton();
+                if (typeof showToast === 'function') showToast("Offline mode active", 2000);
+            }
+        }, 3000);
     });
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     // --- Search Box Enhancements ---
@@ -4977,7 +4992,17 @@ async function goOffline() {
 
     if (isOffline) return; // Keep sticky offline mode if set manually
 
+    let reallyOnline = true;
     if (!navigator.onLine && hasS) {
+        try {
+            const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
+            reallyOnline = response.ok;
+        } catch(e) {
+            reallyOnline = false;
+        }
+    }
+
+    if (!reallyOnline && hasS) {
         isOffline = true;
         console.warn("Working in offline mode (s-record found).");
 
