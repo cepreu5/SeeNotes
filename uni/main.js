@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.36off'; // App version
+const version = 'Beta 1.36bgnd'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -306,6 +306,7 @@ function hexToColorInt(hex) {
     return (parseInt('FF' + hex, 16) | 0);
 }
 const noteBgCache = new Map();
+const customBgCache = new Map();
 
 window.getPipeIndex = function (text) {
     if (!text) return -1;
@@ -7046,6 +7047,28 @@ async function fetchAllDataFromLocalFolder() {
 async function fetchAllDataLocal() {
     console.log("Fetching all data from local IndexedDB...");
     boardsData = await getAllFromDB(BOARD_STORE_NAME);
+    /*
+    // --- TEMPORARY CLEANUP FOR customBgGdid ---
+    let needsCleanup = false;
+    for (let board of boardsData) {
+        if (board.customBgGdid !== undefined) {
+            if (!board.backpath && typeof board.customBgGdid === 'string' && board.customBgGdid.trim() !== '') {
+                board.backpath = board.customBgGdid;
+            }
+            delete board.customBgGdid;
+            needsCleanup = true;
+            if (useIndexedDb) {
+                bulkPutDB(BOARD_STORE_NAME, board, true).catch(e => console.error(e));
+            }
+            if (useGoogleDb && !isOffline && board.gdid) {
+                updateGDriveFile(board.gdid, JSON.stringify(board)).catch(e => console.error(e));
+            }
+        }
+    }
+    if (needsCleanup) console.log("Cleaned up customBgGdid from boards.");
+    // ----------------------------------------
+    */
+    
     trackMaxBoardIds(boardsData);
     mediaData = await getAllFromDB(MEDIA_STORE_NAME);
     const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
@@ -9026,15 +9049,53 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         currentBackground = 'Board.png';
     } else {
         let newBackground = 'Board.png';
-        const board = boardsData.find(b => b.gdid === boardId);
-        if (board && board.backnum) {
+        const board = boardsData.find(b => b.gdid === boardId || b.id == boardId);
+        
+        if (board && board.backpath && !board.backpath.includes('/')) {
+            const cacheKey = board.backpath;
+            if (customBgCache.has(cacheKey)) {
+                document.body.style.backgroundImage = `url('${customBgCache.get(cacheKey)}')`;
+            } else {
+                const loadCustomBg = async () => {
+                    const url = `https://www.googleapis.com/drive/v3/files/${board.backpath}?alt=media`;
+                    try {
+                        const cache = await caches.open('app-cache');
+                        let response = await cache.match(url);
+                        if (!response) {
+                            const token = (typeof authToken !== 'undefined' && authToken) ? authToken.access_token : null;
+                            if (!token) throw new Error("No token");
+                            response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                            if (response.ok) {
+                                cache.put(url, response.clone());
+                            } else {
+                                console.warn("Failed to fetch custom bg, reverting to default");
+                                board.backpath = "";
+                                board.backnum = 0;
+                                document.body.style.backgroundImage = `url('Board.png')`;
+                                return; 
+                            }
+                        }
+                        const blob = await response.blob();
+                        const objectUrl = URL.createObjectURL(blob);
+                        customBgCache.set(cacheKey, objectUrl);
+                        document.body.style.backgroundImage = `url('${objectUrl}')`;
+                    } catch (e) {
+                        console.warn("Error loading custom bg:", e);
+                        document.body.style.backgroundImage = `url('Board.png')`;
+                    }
+                };
+                loadCustomBg();
+            }
+        } else if (board && board.backnum) {
             switch (board.backnum) {
                 case 1: newBackground = 'Board1.png'; break;
                 case 2: newBackground = 'Board2.png'; break;
                 case 3: newBackground = 'Board3.png'; break;
             }
+            document.body.style.backgroundImage = `url('${newBackground}')`;
+        } else {
+            document.body.style.backgroundImage = `url('${newBackground}')`;
         }
-        document.body.style.backgroundImage = `url('${newBackground}')`;
         currentBackground = newBackground;
     }
     // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
@@ -16123,7 +16184,9 @@ async function showNewBoardModal() {
     let selectedBoardStatus = 0;
     let currentEditingBoard = null;
     let currentSystemBoardId = null;
-
+    let customBgBlob = null;
+    let customBgDataURL = null;
+    let customBgMimeType = null;
     // Populated dropdown with current boards
     if (editSelect) {
         while (editSelect.options.length > 1) editSelect.remove(1);
@@ -16205,7 +16268,9 @@ async function showNewBoardModal() {
             previewTab.style.color = (selectedColor == 1 || selectedColor == 5) ? '#000000' : '#FFFFFF';
         }
 
-        if (bgNames[selectedBackground]) {
+        if (selectedBackground === -1 && customBgDataURL) {
+            previewBg.style.backgroundImage = `url('${customBgDataURL}')`;
+        } else if (bgNames[selectedBackground]) {
             previewBg.style.backgroundImage = `url('${bgNames[selectedBackground]}')`;
         }
     }
@@ -16270,6 +16335,23 @@ async function showNewBoardModal() {
                 selectedFontColor = 0;
             }
             selectedBackground = (board.backnum !== undefined) ? Number(board.backnum) : 0;
+            if (board.backpath) {
+                selectedBackground = -1;
+                // Attempt to load from cache for preview
+                caches.open('app-cache').then(cache => {
+                    cache.match(`https://www.googleapis.com/drive/v3/files/${board.backpath}?alt=media`)
+                        .then(res => res ? res.blob() : null)
+                        .then(blob => {
+                            if (blob) {
+                                customBgBlob = blob;
+                                customBgMimeType = blob.type;
+                                customBgDataURL = URL.createObjectURL(blob);
+                                renderBackgroundOptions(selectedBackground);
+                                updatePreview();
+                            }
+                        });
+                });
+            }
             selectedBoardStatus = (board.status !== undefined) ? Number(board.status) : 0;
             saveBtn.textContent = _('updateButton') || "Обнови";
             if (editSelect) editSelect.value = (board.gdid || board.id).toString();
@@ -16507,6 +16589,62 @@ async function showNewBoardModal() {
             if (isMatch) bgDiv.style.transform = 'scale(1.08)';
             backgroundsContainer.appendChild(bgDiv);
         }
+
+        const customDiv = document.createElement('div');
+        const isCustomMatch = (current === -1);
+        Object.assign(customDiv.style, {
+            width: 'calc(95% - 15px)', aspectRatio: '15/10',
+            backgroundColor: 'rgba(255,255,255,0.1)',
+            backgroundImage: isCustomMatch && customBgDataURL ? `url('${customBgDataURL}')` : 'none',
+            backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', borderRadius: '4px',
+            border: isCustomMatch ? '3px solid #ddd' : '1px dashed rgba(226, 250, 14, 1)',
+            boxShadow: isCustomMatch ? '0 0 10px rgba(255,255,255,0.4)' : '0 2px 4px rgba(0,0,0,0.3)',
+            transition: 'transform 0.1s, border 0.2s',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            color: 'white', textAlign: 'center', padding: '5px', boxSizing: 'border-box'
+        });
+        
+        const btnText = document.createElement('span');
+        btnText.textContent = _('customBackgroundButton') || 'Custom';
+        btnText.style.fontWeight = 'bold';
+        btnText.style.textShadow = '0px 0px 3px black, 0px 0px 3px black';
+        
+        const limitText = document.createElement('span');
+        limitText.textContent = _('customBgSizeLimit') || '(Max 3MB)';
+        limitText.style.fontSize = '10px';
+        limitText.style.color = '#ccc';
+        limitText.style.textShadow = '0px 0px 2px black, 0px 0px 2px black';
+        
+        customDiv.appendChild(btnText);
+        customDiv.appendChild(limitText);
+
+        customDiv.onclick = () => {
+            const fileInput = document.getElementById('custom-board-bg-input');
+            if (fileInput) {
+                fileInput.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    if (file.size > 3 * 1024 * 1024) {
+                        alert(_('customBgSizeLimit') || "Max size 3MB");
+                        fileInput.value = '';
+                        return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        customBgBlob = file;
+                        customBgMimeType = file.type;
+                        customBgDataURL = event.target.result;
+                        selectedBackground = -1;
+                        renderBackgroundOptions(selectedBackground);
+                        updatePreview();
+                    };
+                    reader.readAsDataURL(file);
+                };
+                fileInput.click();
+            }
+        };
+        if (isCustomMatch) customDiv.style.transform = 'scale(1.08)';
+        backgroundsContainer.appendChild(customDiv);
     }
 
     titleInput.oninput = updatePreview;
@@ -16596,9 +16734,6 @@ async function showNewBoardModal() {
             return;
         }
 
-        modal.classList.remove('visible');
-        showToast((currentEditingBoard ? (_('updatingBoard') || "Обновяване на борд...") : (_('savingBoard') || "Записване на борд...")), 2000);
-
         const now = Date.now();
         let boardToSave;
 
@@ -16611,8 +16746,84 @@ async function showNewBoardModal() {
             syncFolderDataAsync();
             boardToSave = { "backcolor": 0, "backnum": selectedBackground, "backpath": "", "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "gdid": "", "id": boardIdCounter, "numord": boardIdCounter, "status": selectedBoardStatus, "title": title };
         }
+        
+        const oldBackpath = currentEditingBoard ? currentEditingBoard.backpath : null;
 
         try {
+            // --- NEW LOGIC FOR CUSTOM BG ---
+            if (selectedBackground === -1 && customBgBlob) {
+                const originalBtnHtml = saveBtn.innerHTML;
+                saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" style="display:inline-block;width:1rem;height:1rem;border:0.2em solid currentColor;border-right-color:transparent;border-radius:50%;animation:spinner-border .75s linear infinite;"></span> ' + (_('uploadingBackground') || "Качване на фон...");
+                saveBtn.disabled = true;
+                try {
+                    const arrayBuffer = await customBgBlob.arrayBuffer();
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                    
+                    const existingBoard = boardsData.find(b => b.customBgHash === hashHex && b.backpath);
+                    
+                    if (existingBoard) {
+                        // Reuse existing background GDID
+                        boardToSave.backpath = existingBoard.backpath;
+                        boardToSave.customBgHash = hashHex;
+                        boardToSave.backnum = -1;
+                        customBgCache.set(existingBoard.backpath, customBgDataURL);
+                    } else {
+                        const folderId = await getFolderID();
+                        if (folderId) {
+                            const uploadedGdid = await uploadBlobToGDrive(folderId, 'board_bg_' + Date.now() + '.png', customBgBlob, customBgMimeType);
+                            if (uploadedGdid) {
+                                boardToSave.backpath = uploadedGdid;
+                                boardToSave.customBgHash = hashHex;
+                                boardToSave.backnum = -1;
+                                customBgCache.set(uploadedGdid, customBgDataURL);
+                                
+                                // Cache the uploaded image immediately
+                                try {
+                                    const cache = await caches.open('app-cache');
+                                    const url = `https://www.googleapis.com/drive/v3/files/${uploadedGdid}?alt=media`;
+                                    const response = new Response(customBgBlob, {
+                                        headers: {
+                                            'Content-Type': customBgMimeType,
+                                            'Cache-Control': 'public, max-age=31536000'
+                                        }
+                                    });
+                                    await cache.put(url, response);
+                                } catch (e) {
+                                    console.warn("Failed to cache custom bg:", e);
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Failed to upload custom background:", err);
+                    showToast("Failed to upload background", 3000);
+                }
+                saveBtn.innerHTML = originalBtnHtml;
+                saveBtn.disabled = false;
+            } else if (selectedBackground !== -1) {
+                // Not a custom background, clear any existing custom paths
+                boardToSave.backpath = "";
+                if (boardToSave.customBgHash !== undefined) delete boardToSave.customBgHash;
+            }
+            
+            // Cleanup orphaned background cache
+            if (oldBackpath && oldBackpath !== boardToSave.backpath && !oldBackpath.includes('/')) {
+                const bId = (boardToSave.gdid || boardToSave.id).toString();
+                const isUsedByOther = boardsData.some(b => b.backpath === oldBackpath && (b.gdid || b.id).toString() !== bId);
+                if (!isUsedByOther) {
+                    if (customBgCache.has(oldBackpath)) customBgCache.delete(oldBackpath);
+                    caches.open('app-cache').then(cache => {
+                        cache.delete(`https://www.googleapis.com/drive/v3/files/${oldBackpath}?alt=media`);
+                    }).catch(e => console.warn("Failed to delete orphaned bg from cache:", e));
+                    
+                    if (useGoogleDb && !isOffline) {
+                        deleteGDriveFile(oldBackpath).catch(e => console.warn("Failed to delete orphaned bg from GDrive:", e));
+                    }
+                }
+            }
+
             const updateGDriveNow = useGoogleDb && !isOffline;
             if (updateGDriveNow) {
                 if (currentEditingBoard && currentEditingBoard.gdid) {
@@ -16670,8 +16881,11 @@ async function showNewBoardModal() {
 
             const boardsNote = document.querySelector('header .boards-note');
             if (boardsNote) boardsNote.remove();
-
+            
+            modal.classList.remove('visible');
             await renderUI({ boardParseError: false });
+            filterNotesByBoard((boardToSave.gdid || boardToSave.id).toString());
+            showToast((currentEditingBoard ? (_('updatingBoard') || "Обновяване на борд...") : (_('savingBoard') || "Записване на борд...")), 2000);
             showToast(_('settingsSavedSuccess'));
 
         } catch (error) {
