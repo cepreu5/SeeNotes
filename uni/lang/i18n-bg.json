@@ -55,6 +55,8 @@
     "customBackgroundButton": "Потребителски",
     "customBgSizeLimit": "(Макс 3MB)",
     "uploadingBackground": "Качване на фон...",
+    "toggleFullscreenTooltip": "Цял екран (Скрий/Покажи хедъра)",
+    "restoreHeaderTooltip": "Покажи хедъра",
     "startBoardLabel": "Стартов борд:",
     "deviceNameLabel": "Профил:",
     "settingSaved": "Настройката е записана",

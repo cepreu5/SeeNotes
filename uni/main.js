@@ -2186,6 +2186,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         emptyTrashFab.innerHTML = emptyTrashIconSvg;
         emptyTrashFab.addEventListener('click', emptyTrash);
     }
+    
+    initHeaderFullscreen();
 });
 
 // Добави този код в началото или края на main.js
@@ -8820,18 +8822,66 @@ function toggleModalSearch(modalContentBox, modalBody) {
     };
 }
 
+const fullscreenExpandIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`;
+const fullscreenCompressIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-10h-6V4m0 6l7-7M3 21l7-7"></path></svg>`;
+
+function toggleHeaderFullscreen() {
+    const header = document.querySelector('header');
+    if (!header) return;
+    const isCurrentlyHidden = (header.style.display === 'none');
+    if (isCurrentlyHidden) {
+        header.style.display = '';
+        localStorage.removeItem('isHeaderHidden');
+    } else {
+        header.style.display = 'none';
+        localStorage.setItem('isHeaderHidden', 'true');
+    }
+    // Затваряме модала с менюто веднага при превключване на Цял Екран (както при влизане, така и при излизане)
+    const boardsModal = document.getElementById('boards-menu-modal');
+    if (boardsModal) boardsModal.classList.remove('visible');
+
+    updateHeaderFullscreenUI();
+}
+
+function updateHeaderFullscreenUI() {
+    const header = document.querySelector('header');
+    const isHidden = header && (header.style.display === 'none');
+
+    document.querySelectorAll('.fullscreen-toggle-btn').forEach(btn => {
+        btn.innerHTML = isHidden ? fullscreenCompressIconSvg : fullscreenExpandIconSvg;
+        btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Покажи хедъра') : (_('toggleFullscreenTooltip') || 'Цял екран (Скрий хедъра)');
+    });
+}
+
+function initHeaderFullscreen() {
+    const isHidden = localStorage.getItem('isHeaderHidden') === 'true';
+    if (isHidden) {
+        const header = document.querySelector('header');
+        if (header) header.style.display = 'none';
+    }
+    updateHeaderFullscreenUI();
+}
+
 function showAllBoardsModal(onSelectCallback = null) {
     const modalContent = document.createElement('div');
     const boardsModal = document.getElementById('boards-menu-modal');
+    updateHeaderFullscreenUI();
     modalContent.className = 'all-boards-modal-container';
     // Взимаме всички бутони от главното меню в хедъра
     const headerMenuContainer = document.querySelector('header .board-menu-container');
     if (!headerMenuContainer) return; // Предпазна мярка
     const headerButtons = headerMenuContainer.querySelectorAll('.board-filter-link');
+    const modalUtilWidth = Math.max(30, Math.floor((maxWidthForButtons - 10) / 2));
     headerButtons.forEach(button => {
         const clone = button.cloneNode(true);
-        // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
-        clone.style.width = `${maxWidthForButtons}px`;
+        const isUtil = (button.dataset.boardid === 'reorder' || button.dataset.boardid === 'fullscreen');
+        if (!isUtil) {
+            clone.style.width = `${maxWidthForButtons}px`;
+        } else {
+            clone.style.width = `${modalUtilWidth}px`;
+            clone.style.minWidth = '30px';
+            clone.style.padding = '0';
+        }
         modalContent.appendChild(clone);
     });
     // Делегиран слушател за събития върху контейнера на модала
@@ -8840,6 +8890,11 @@ function showAllBoardsModal(onSelectCallback = null) {
         if (targetButton) {
             e.preventDefault();
             const boardId = targetButton.dataset.boardid;
+
+            if (boardId === 'fullscreen') {
+                toggleHeaderFullscreen();
+                return;
+            }
 
             if (onSelectCallback) {
                 onSelectCallback(boardId);
@@ -10019,6 +10074,25 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         showNewBoardModal(); // Вече отваряме модала за нов/редактиране на борд
     });
     allButtonLinks.push(reorderLink);
+
+    // --- БУТОН "ЦЯЛ ЕКРАН" (След Нареди) ---
+    const fullscreenLink = document.createElement('span');
+    fullscreenLink.classList.add('board-filter-link', 'fullscreen-toggle-btn');
+    fullscreenLink.dataset.boardid = 'fullscreen';
+    fullscreenLink.style.backgroundColor = '#455A64';
+    fullscreenLink.style.color = '#fff';
+    fullscreenLink.style.cursor = 'pointer';
+    fullscreenLink.style.display = 'flex';
+    fullscreenLink.style.alignItems = 'center';
+    fullscreenLink.style.justifyContent = 'center';
+    fullscreenLink.title = _('toggleFullscreenTooltip') || 'Цял екран (Скрий/Покажи хедъра)';
+    fullscreenLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleHeaderFullscreen();
+    });
+    allButtonLinks.push(fullscreenLink);
+
     try {
         const raw = localStorage.getItem('boardMenuOrder');
         if (raw) {
@@ -10030,13 +10104,19 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
                     const getLinkOrderKey = (link) => {
                         const boardId = link.dataset.boardid;
                         if (boardId === 'reorder') return 'system:reorder';
+                        if (boardId === 'fullscreen') return 'system:fullscreen';
                         const board = boardsData.find(b => String(b.gdid || b.id) === String(boardId));
                         if (board && board.title) return String(board.title);
                         return `system:${boardId}`;
                     };
                     allButtonLinks.sort((a, b) => {
-                        if (a.dataset.boardid === 'reorder') return 1;
-                        if (b.dataset.boardid === 'reorder') return -1;
+                        const isUtilA = (a.dataset.boardid === 'reorder' || a.dataset.boardid === 'fullscreen');
+                        const isUtilB = (b.dataset.boardid === 'reorder' || b.dataset.boardid === 'fullscreen');
+                        if (isUtilA && isUtilB) {
+                            return (a.dataset.boardid === 'reorder') ? -1 : 1;
+                        }
+                        if (isUtilA) return 1;
+                        if (isUtilB) return -1;
                         const keyA = getLinkOrderKey(a);
                         const keyB = getLinkOrderKey(b);
                         const posA = orderMap.has(keyA) ? orderMap.get(keyA) : 9999;
@@ -10054,20 +10134,23 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     document.body.appendChild(tempContainer);
     allButtonLinks.forEach(link => {
         tempContainer.appendChild(link);
-        if (link.dataset.boardid !== 'reorder') {
+        const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
+        if (!isUtil) {
             maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
         }
     });
 
     document.body.removeChild(tempContainer);
     maxWidthForButtons += 10;
+    const headerUtilWidth = Math.max(30, Math.floor((maxWidthForButtons - 5) / 2));
     allButtonLinks.forEach(link => {
-        if (link.dataset.boardid !== 'reorder') {
+        const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
+        if (!isUtil) {
             link.style.width = `${maxWidthForButtons}px`;
         } else {
-            link.style.width = 'auto';
-            link.style.minWidth = '40px';
-            link.style.padding = '0 10px';
+            link.style.width = `${headerUtilWidth}px`;
+            link.style.minWidth = '30px';
+            link.style.padding = '0';
         }
         contentEl.appendChild(link);
     });
@@ -10092,7 +10175,12 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
             e.stopPropagation();
             clearTimeout(clickTimer);
             clickTimer = setTimeout(() => {
-                showAllBoardsModal();
+                const boardsModal = document.getElementById('boards-menu-modal');
+                if (boardsModal && boardsModal.classList.contains('visible')) {
+                    boardsModal.classList.remove('visible');
+                } else {
+                    showAllBoardsModal();
+                }
             }, 200);
         });
         document.body.appendChild(allBoardsBtnForContainer);
