@@ -5221,7 +5221,7 @@ function initApp() {
     }
 
     // Click handler
-    modeButton.addEventListener('click', (e) => {
+    modeButton.addEventListener('click', async (e) => {
         if (isSyncSuspended) {
             isSyncSuspended = false;
             isOffline = false;
@@ -5230,7 +5230,20 @@ function initApp() {
             return;
         }
         if (isOffline) {
-            showToast(_('offlineModeMessage') || "Cannot sync while offline.", 3000);
+            if (typeof showToast === 'function') showToast(_('checkingNetwork') || "Checking network connection...", 2000);
+            let reallyOnline = false;
+            try {
+                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
+                reallyOnline = response.ok;
+            } catch (err) {}
+
+            if (reallyOnline) {
+                isOffline = false;
+                updateModeButton();
+                if (typeof showToast === 'function') showToast(_('onlineRestored') || "Online mode restored", 2000);
+            } else {
+                showToast(_('offlineModeMessage') || "Cannot sync while offline.", 3000);
+            }
             return;
         }
         updateGlobalStateFlags();
