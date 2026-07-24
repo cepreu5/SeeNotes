@@ -2566,7 +2566,7 @@ function renderCalendarView() {
                 } else {
                     // Fallback - показваме основния изглед без активен борд
                     calendarContainer.style.display = 'none';
-                    document.querySelector('header').style.display = 'flex';
+                    if (localStorage.getItem('isHeaderHidden') !== 'true') document.querySelector('header').style.display = 'flex';
                     notesContainer.style.display = 'flex';
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
@@ -2697,7 +2697,7 @@ function renderWeeklyCalendarView(dateForWeek) {
                 } else {
                     // Fallback - показваме основния изглед без активен борд
                     weeklyContainer.style.display = 'none';
-                    document.querySelector('header').style.display = 'flex';
+                    if (localStorage.getItem('isHeaderHidden') !== 'true') document.querySelector('header').style.display = 'flex';
                     notesContainer.style.display = 'flex';
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
@@ -9202,7 +9202,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const calendarContainer = document.getElementById('calendar-container');
         if (calendarContainer) calendarContainer.style.display = 'none';
         // Възстановяваме видимостта на основните елементи
-        document.querySelector('header').style.display = 'flex';
+        if (localStorage.getItem('isHeaderHidden') !== 'true') document.querySelector('header').style.display = 'flex';
         notesContainer.style.display = 'flex';
         // scrollTopBtn visibility is handled by the scroll event
         // scrollTopBtn.style.display = 'block';
@@ -10173,6 +10173,11 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         allBoardsBtnForContainer.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // Ctrl+клик превключва fullscreen режим без отваряне на менюто
+            if (e.ctrlKey) {
+                toggleHeaderFullscreen();
+                return;
+            }
             clearTimeout(clickTimer);
             clickTimer = setTimeout(() => {
                 const boardsModal = document.getElementById('boards-menu-modal');
@@ -10183,6 +10188,26 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
                 }
             }, 200);
         });
+        // Long press (мобилно) превключва fullscreen режим
+        let longPressTimer = null;
+        let longPressTriggered = false;
+        allBoardsBtnForContainer.addEventListener('touchstart', (e) => {
+            longPressTriggered = false;
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                toggleHeaderFullscreen();
+            }, 500);
+        }, { passive: true });
+        allBoardsBtnForContainer.addEventListener('touchend', (e) => {
+            clearTimeout(longPressTimer);
+            if (longPressTriggered) {
+                e.preventDefault();
+                longPressTriggered = false;
+            }
+        });
+        allBoardsBtnForContainer.addEventListener('touchmove', () => {
+            clearTimeout(longPressTimer);
+        }, { passive: true });
         document.body.appendChild(allBoardsBtnForContainer);
     } else {
         allBoardsBtnForContainer.innerHTML = boardIconSvg;

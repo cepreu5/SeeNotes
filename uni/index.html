@@ -1097,7 +1097,10 @@
                     return;
                 }*/
 
-                const rect = reloadBtn.getBoundingClientRect();
+                let rect = reloadBtn.getBoundingClientRect();
+                // Ако хедърът е скрит (fullscreen mode), search-box има нулеви размери.
+                // В този случай не показваме install бутона.
+                if (rect.width === 0 || rect.height === 0) return;
                 installBtn.style.position = 'fixed';
                 installBtn.style.left = rect.left + rect.width - rect.height + 'px';
                 installBtn.style.top = rect.top + 'px';
