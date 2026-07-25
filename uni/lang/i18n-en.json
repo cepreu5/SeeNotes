@@ -10,6 +10,8 @@
     "topTooltip": "Go to top",
     "boardsTitle": "Boards",
     "searchResultTitle": "Results",
+    "searchInBoardTooltip": "Search in current board (click to change)",
+    "searchEverywhereTooltip": "Search everywhere (click to change)",
     "viewFullContent": "View full content",
     "restoreNoteTooltip": "Restore note",
     "loadingFile": "Loading...",

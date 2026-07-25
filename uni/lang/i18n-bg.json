@@ -10,6 +10,8 @@
     "topTooltip": "Към началото",
     "boardsTitle": "Бордове",
     "searchResultTitle": "Резултати",
+    "searchInBoardTooltip": "Търсене в активния борд (клик за смяна)",
+    "searchEverywhereTooltip": "Търсене навсякъде (клик за смяна)",
     "viewFullContent": "Виж цялото съдържание",
     "restoreNoteTooltip": "Възстанови бележката",
     "loadingFile": "Четене...",

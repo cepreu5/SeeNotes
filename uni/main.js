@@ -96,6 +96,7 @@ let mediaData = []; // Съхранява данните за медия
 let folderIds = {}; // Съхранява ID-тата на папките за медия
 let currentBoardFilter = 'all';
 let boardBeforeSearch = 'all';
+let searchInBoardOnly = localStorage.getItem('searchInBoardOnly') === 'true';
 let currentBackground = 'Board.png';
 let currentCalendarDate = new Date();
 let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
@@ -2566,7 +2567,7 @@ function renderCalendarView() {
                 } else {
                     // Fallback - показваме основния изглед без активен борд
                     calendarContainer.style.display = 'none';
-                    if (localStorage.getItem('isHeaderHidden') !== 'true') document.querySelector('header').style.display = 'flex';
+                    document.querySelector('header').style.display = 'flex';
                     notesContainer.style.display = 'flex';
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
@@ -2697,7 +2698,7 @@ function renderWeeklyCalendarView(dateForWeek) {
                 } else {
                     // Fallback - показваме основния изглед без активен борд
                     weeklyContainer.style.display = 'none';
-                    if (localStorage.getItem('isHeaderHidden') !== 'true') document.querySelector('header').style.display = 'flex';
+                    document.querySelector('header').style.display = 'flex';
                     notesContainer.style.display = 'flex';
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
@@ -4746,10 +4747,24 @@ function initApp() {
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     // --- Search Box Enhancements ---
     const searchWrapper = document.getElementById('search-wrapper');
-    // 1. Static Search Icon (Left)
+    // 1. Static Search Icon (Left) — кликаем за превключване режим на търсене
     const staticSearchIcon = document.createElement('span');
     staticSearchIcon.className = 'search-icon-static';
-    staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
+    staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><circle class="search-mode-dot" cx="11" cy="11" r="3" fill="black" stroke="none" style="display:none"></circle></svg>`;
+    staticSearchIcon.style.cursor = 'pointer';
+    staticSearchIcon.title = searchInBoardOnly ? (_('searchInBoardTooltip') || 'Търсене в текущия борд') : (_('searchEverywhereTooltip') || 'Търсене навсякъде');
+    updateSearchModeIndicator();
+    staticSearchIcon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        searchInBoardOnly = !searchInBoardOnly;
+        localStorage.setItem('searchInBoardOnly', searchInBoardOnly);
+        updateSearchModeIndicator();
+        const searchBox = document.getElementById('search-box');
+        if (searchBox && searchBox.value.trim()) {
+            triggerSearch(false);
+        }
+    });
     // 2. Clear Button (Right, next to Save)
     const clearSearchBtn = document.createElement('span');
     clearSearchBtn.className = 'search-action-btn search-btn-clear';
@@ -4773,6 +4788,10 @@ function initApp() {
     searchWrapper.appendChild(clearSearchBtn); // Add Clear Button
     searchWrapper.appendChild(saveSearchBtn);
     searchWrapper.appendChild(savedSearchesPopup);
+    // Етикет за активен борд (видим само в fullscreen mode)
+    const fsBoardLabel = document.createElement('span');
+    fsBoardLabel.id = 'fullscreen-board-label';
+    searchWrapper.appendChild(fsBoardLabel);
 
     function renderSavedSearchesPopup() {
         const popup = document.getElementById('saved-searches-popup');
@@ -5405,6 +5424,23 @@ function updateSearchPlaceholder() {
     const installBtnEl = document.getElementById('install_button');
     if (installBtnEl && window.getComputedStyle(installBtnEl).display !== 'none') return;
     searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
+}
+
+function updateSearchModeIndicator() {
+    const dot = document.querySelector('.search-mode-dot');
+    const icon = document.querySelector('.search-icon-static');
+    if (!dot || !icon) return;
+    if (searchInBoardOnly) {
+        // Вземаме цвета на активния борд бутон
+        // const activeBtn = document.querySelector(`.board-filter-link.selected-board`);
+        // const boardColor = activeBtn ? getComputedStyle(activeBtn).backgroundColor : '#1976D2';
+        dot.style.display = '';
+        dot.setAttribute('fill', "black");
+        icon.title = _('searchInBoardTooltip') || 'Search in current board (click to change)';
+    } else {
+        dot.style.display = 'none';
+        icon.title = _('searchEverywhereTooltip') || 'Search everywhere (click to change)';
+    }
 }
 
 function saveSearchTerm(term) {
@@ -8828,38 +8864,55 @@ const fullscreenCompressIconSvg = `<svg width="24" height="24" viewBox="0 0 24 2
 function toggleHeaderFullscreen() {
     const header = document.querySelector('header');
     if (!header) return;
-    const isCurrentlyHidden = (header.style.display === 'none');
+    const isCurrentlyHidden = header.classList.contains('header-fullscreen');
     if (isCurrentlyHidden) {
-        header.style.display = '';
+        header.classList.remove('header-fullscreen');
         localStorage.removeItem('isHeaderHidden');
     } else {
-        header.style.display = 'none';
+        header.classList.add('header-fullscreen');
         localStorage.setItem('isHeaderHidden', 'true');
     }
-    // Затваряме модала с менюто веднага при превключване на Цял Екран (както при влизане, така и при излизане)
     const boardsModal = document.getElementById('boards-menu-modal');
     if (boardsModal) boardsModal.classList.remove('visible');
-
     updateHeaderFullscreenUI();
+    adjustFullscreenSearchLayout();
 }
 
 function updateHeaderFullscreenUI() {
     const header = document.querySelector('header');
-    const isHidden = header && (header.style.display === 'none');
-
+    const isHidden = header && header.classList.contains('header-fullscreen');
     document.querySelectorAll('.fullscreen-toggle-btn').forEach(btn => {
         btn.innerHTML = isHidden ? fullscreenCompressIconSvg : fullscreenExpandIconSvg;
         btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Покажи хедъра') : (_('toggleFullscreenTooltip') || 'Цял екран (Скрий хедъра)');
     });
 }
 
+function adjustFullscreenSearchLayout() {
+    const header = document.querySelector('header');
+    const isFullscreen = header && header.classList.contains('header-fullscreen');
+    const searchBox = document.getElementById('search-box');
+    const searchIcon = document.querySelector('.search-icon-static');
+    const fsBoardLabel = document.getElementById('fullscreen-board-label');
+    if (!searchBox || !searchIcon) return;
+    if (isFullscreen && fsBoardLabel && fsBoardLabel.textContent) {
+        const labelWidth = fsBoardLabel.offsetWidth;
+        const offset = labelWidth + 5;
+        searchIcon.style.left = (offset + 5) + 'px';
+        searchBox.style.paddingLeft = (offset + 34) + 'px';
+    } else {
+        searchIcon.style.left = '';
+        searchBox.style.paddingLeft = '';
+    }
+}
+
 function initHeaderFullscreen() {
     const isHidden = localStorage.getItem('isHeaderHidden') === 'true';
     if (isHidden) {
         const header = document.querySelector('header');
-        if (header) header.style.display = 'none';
+        if (header) header.classList.add('header-fullscreen');
     }
     updateHeaderFullscreenUI();
+    adjustFullscreenSearchLayout();
 }
 
 function showAllBoardsModal(onSelectCallback = null) {
@@ -9096,6 +9149,13 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         link.classList.toggle('active', isSelected);
         link.style.height = isSelected ? '39px' : '35px';
     });
+    // Обновяваме етикета за борд във fullscreen mode
+    const fsBoardLabel = document.getElementById('fullscreen-board-label');
+    if (fsBoardLabel) {
+        const board = boardsData.find(b => b.gdid == boardId || b.id == boardId);
+        fsBoardLabel.textContent = board ? board.title : (boardId === 'all' ? (_('allBoards') || 'All') : boardId);
+        adjustFullscreenSearchLayout();
+    }
     // --- Сменяме фона на body ПРЕДИ филтрирането ---
     if (boardId === 'all') {
         if (currentBackground !== 'Board.png') {
@@ -9202,7 +9262,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const calendarContainer = document.getElementById('calendar-container');
         if (calendarContainer) calendarContainer.style.display = 'none';
         // Възстановяваме видимостта на основните елементи
-        if (localStorage.getItem('isHeaderHidden') !== 'true') document.querySelector('header').style.display = 'flex';
+        document.querySelector('header').style.display = 'flex';
         notesContainer.style.display = 'flex';
         // scrollTopBtn visibility is handled by the scroll event
         // scrollTopBtn.style.display = 'block';
@@ -9492,6 +9552,18 @@ function applyFilters() {
         }
     }
     const trashSearch = localStorage.getItem('trashSearch') === 'true';
+    // Pre-calc за режим "търсене в борда": кои ID-та са валидни за boardBeforeSearch
+    let boardOnlyIds = [];
+    if (searchInBoardOnly && searchTerm !== '' && boardBeforeSearch && boardBeforeSearch !== 'all') {
+        boardOnlyIds = [boardBeforeSearch];
+        if (typeof boardsData !== 'undefined') {
+            const bbs = boardsData.find(b => b.gdid == boardBeforeSearch || b.id == boardBeforeSearch);
+            if (bbs) {
+                if (bbs.gdid) boardOnlyIds.push(bbs.gdid);
+                if (bbs.id) boardOnlyIds.push(bbs.id);
+            }
+        }
+    }
 
     for (const note of notes) {
         if (note.classList.contains('boards-note') || note.classList.contains('promo-note')) {
@@ -9533,7 +9605,12 @@ function applyFilters() {
             const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
             matchesSearch = noteText.toLowerCase().includes(searchTerm);
         }
-        if ((searchTerm !== '' ? (matchesSearch && (!isDeleted || trashSearch)) : isVisibleByBoard)) {
+        // Проверка за режим "търсене само в борда"
+        let inBoardScope = true;
+        if (searchInBoardOnly && searchTerm !== '' && boardOnlyIds.length > 0) {
+            inBoardScope = boardOnlyIds.some(id => note.dataset.b == id);
+        }
+        if ((searchTerm !== '' ? (matchesSearch && inBoardScope && (!isDeleted || trashSearch)) : isVisibleByBoard)) {
             note.style.display = 'flex';
             visibleCount++;
             if (isNewUpdates && isDeleted) {
