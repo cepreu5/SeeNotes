@@ -596,6 +596,8 @@ code {
     overflow-x: auto;
     box-sizing: border-box;
     background: transparent;
+    scrollbar-color: #555 #c8a64b;
+    scrollbar-width: thin;
 }
 
 .modal-body-content .md-table-wrapper {
