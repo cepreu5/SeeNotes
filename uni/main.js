@@ -159,6 +159,9 @@ const MEDIA_STORE_NAME = 'media';
 const NOTE_STORE_NAME = 'notes';
 const CONFIG_STORE_NAME = 'config';
 const NOTES_DB_VERSION = 3;
+const INTELLIGENT_SEARCH_MODULE_URL = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
+const INTELLIGENT_SEARCH_MODEL = 'Xenova/all-MiniLM-L6-v2';
+let intelligentSearchExtractorPromise = null;
 
 // --- SVG икони ---
 // const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
@@ -3319,7 +3322,35 @@ async function bulkPutDB(storeName, data, incremental = false) {
             const transaction = db.transaction([storeName], 'readwrite');
             const store = transaction.objectStore(storeName);
             const putData = () => {
-                data.forEach(item => store.put(item));
+                data.forEach(item => {
+                    // Synchronization writes complete note objects and normally do not know
+                    // about the local-only embedding fields. Keep a valid existing vector
+                    // when the text itself has not changed.
+                    if (storeName !== NOTE_STORE_NAME || !incremental || !item?.gdid || item.embedding) {
+                        store.put(item);
+                        return;
+                    }
+
+                    const existingRequest = store.get(item.gdid);
+                    existingRequest.onsuccess = () => {
+                        const existing = existingRequest.result;
+                        const incomingHash = hashEmbeddingSource(item.notetxt || item.text || '');
+                        if (existing?.embeddingModel === INTELLIGENT_SEARCH_MODEL &&
+                            existing.embeddingSourceHash === incomingHash &&
+                            Array.isArray(existing.embedding)) {
+                            store.put({
+                                ...item,
+                                embedding: existing.embedding,
+                                embeddingModel: existing.embeddingModel,
+                                embeddingSourceHash: existing.embeddingSourceHash,
+                                embeddingUpdatedAt: existing.embeddingUpdatedAt
+                            });
+                        } else {
+                            store.put(item);
+                        }
+                    };
+                    existingRequest.onerror = () => store.put(item);
+                });
             };
             transaction.oncomplete = () => {
                 db.close();
@@ -3337,6 +3368,101 @@ async function bulkPutDB(storeName, data, incremental = false) {
             reject(error);
         }
     });
+}
+
+function isIntelligentSearchEnabled() {
+    return localStorage.getItem('intelligentSearch') === 'true';
+}
+
+function hashEmbeddingSource(text) {
+    const source = String(text || '');
+    let hash = 2166136261;
+    for (let i = 0; i < source.length; i++) {
+        hash ^= source.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
+}
+
+async function getIntelligentSearchExtractor() {
+    if (!isIntelligentSearchEnabled()) return null;
+    if (!intelligentSearchExtractorPromise) {
+        intelligentSearchExtractorPromise = import(INTELLIGENT_SEARCH_MODULE_URL)
+            .then(async ({ pipeline, env }) => {
+                if (env) env.allowLocalModels = false;
+                return pipeline('feature-extraction', INTELLIGENT_SEARCH_MODEL);
+            })
+            .catch(error => {
+                intelligentSearchExtractorPromise = null;
+                throw error;
+            });
+    }
+    return intelligentSearchExtractorPromise;
+}
+
+async function prepareNoteForIndexedDb(note) {
+    const dbNote = { ...note };
+    if (!isIntelligentSearchEnabled()) return dbNote;
+
+    const noteText = dbNote.notetxt || dbNote.text || '';
+    const sourceHash = hashEmbeddingSource(noteText);
+    if (!String(noteText).trim()) {
+        delete dbNote.embedding;
+        delete dbNote.embeddingModel;
+        delete dbNote.embeddingSourceHash;
+        delete dbNote.embeddingUpdatedAt;
+        return dbNote;
+    }
+    if (dbNote.embeddingModel === INTELLIGENT_SEARCH_MODEL && dbNote.embeddingSourceHash === sourceHash && Array.isArray(dbNote.embedding)) {
+        return dbNote;
+    }
+
+    try {
+        const extractor = await getIntelligentSearchExtractor();
+        if (!extractor) return dbNote;
+        const output = await extractor(noteText, { pooling: 'mean', normalize: true });
+        dbNote.embedding = Array.from(output.data);
+        dbNote.embeddingModel = INTELLIGENT_SEARCH_MODEL;
+        dbNote.embeddingSourceHash = sourceHash;
+        dbNote.embeddingUpdatedAt = Date.now();
+    } catch (error) {
+        console.warn('[IntelligentSearch] Failed to generate note embedding:', error);
+    }
+    return dbNote;
+}
+
+async function indexNotesForIntelligentSearch() {
+    if (!isIntelligentSearchEnabled()) return 0;
+
+    try {
+        // Load the model once before changing any records, so a failed download does
+        // not repeatedly retry for every note.
+        await getIntelligentSearchExtractor();
+        const notes = await getAllFromDB(NOTE_STORE_NAME);
+        let indexedCount = 0;
+
+        for (const note of notes) {
+            const noteText = note.notetxt || note.text || '';
+            const sourceHash = hashEmbeddingSource(noteText);
+            const hasCurrentEmbedding = note.embeddingModel === INTELLIGENT_SEARCH_MODEL &&
+                note.embeddingSourceHash === sourceHash && Array.isArray(note.embedding);
+
+            if (!String(noteText).trim() || hasCurrentEmbedding) continue;
+
+            const preparedNote = await prepareNoteForIndexedDb(note);
+            if (Array.isArray(preparedNote.embedding)) {
+                await bulkPutDB(NOTE_STORE_NAME, preparedNote, true);
+                indexedCount++;
+            }
+        }
+
+        showToast((_("intelligentSearchIndexingComplete") || 'Indexing complete: {count} notes.').replace('{count}', indexedCount), 4000);
+        return indexedCount;
+    } catch (error) {
+        console.warn('[IntelligentSearch] Failed to index notes:', error);
+        showToast(_('intelligentSearchIndexingFailed') || 'Intelligent search indexing could not be started.', 5000);
+        return 0;
+    }
 }
 
 /**
@@ -4112,8 +4238,8 @@ function showConfirmation(message, options = {}) {
         }
         messagePara.textContent = message;
         folderIdInput.style.display = 'none';
-        okButton.textContent = _('confirmCreateDbYes');
-        noButton.textContent = _('confirmCreateDbNo');
+        okButton.textContent = options.okText || _('confirmCreateDbYes');
+        noButton.textContent = options.noText || _('confirmCreateDbNo');
         noButton.style.display = 'inline-block';
         // Show/hide cancel button
         if (options.showCancel) {
@@ -10297,7 +10423,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
 }
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
-    'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'showFirstLine', 'showNewBoard', 'oneTapLink',
+    'intelligentSearch', 'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'showFirstLine', 'showNewBoard', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd',
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
@@ -10682,6 +10808,7 @@ async function loadSettingsFromGDrive(silent = false) {
     } else if (!silent) showToast(_('errorLoadSettings'));
 }
 async function createSettingsUI(boardsData, boardParseError) {
+    await loadTranslations(currentLang);
     const settingsModalBody = document.getElementById('settings-modal-body');
     if (!settingsModalBody.dataset.initializedListeners) {
         const saveSettingsBtn = document.getElementById('save-settings-btn');
@@ -10753,6 +10880,8 @@ async function createSettingsUI(boardsData, boardParseError) {
     const clickToEditCheckbox = document.getElementById('click-to-edit-checkbox');
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
     const hideToastCheckbox = document.getElementById('hide-toast-checkbox');
+    const intelligentSearchCheckbox = document.getElementById('intelligent-search-checkbox');
+    const intelligentSearchLabel = document.querySelector('label[for="intelligent-search-checkbox"]');
     const activeFolderSelect = document.getElementById('active-folder-select');
     const deviceNameSelect = document.getElementById('device-name-select');
     const addDeviceBtn = document.getElementById('add-device-btn');
@@ -11059,6 +11188,35 @@ async function createSettingsUI(boardsData, boardParseError) {
             localStorage.setItem('trashSearch', trashSearchCheckbox.checked);
             showToast(_('settingSaved'), 2000);
             applyFilters();
+        });
+    }
+    if (intelligentSearchCheckbox) {
+        if (intelligentSearchLabel) intelligentSearchLabel.textContent = _('intelligentSearchLabel');
+        intelligentSearchCheckbox.checked = localStorage.getItem('intelligentSearch') === 'true';
+        intelligentSearchCheckbox.addEventListener('change', async () => {
+            if (!intelligentSearchCheckbox.checked) {
+                localStorage.setItem('intelligentSearch', 'false');
+                showToast(_('settingSaved'), 2000);
+                return;
+            }
+
+            intelligentSearchCheckbox.disabled = true;
+            const confirmed = await showConfirmation(
+                _('intelligentSearchIndexingRequired') || 'Intelligent search requires indexing.',
+                { okText: _('ok') || 'OK', noText: _('cancel') || 'Cancel' }
+            );
+
+            if (!confirmed) {
+                intelligentSearchCheckbox.checked = false;
+                localStorage.setItem('intelligentSearch', 'false');
+                intelligentSearchCheckbox.disabled = false;
+                return;
+            }
+
+            localStorage.setItem('intelligentSearch', 'true');
+            showToast(_('intelligentSearchIndexingStarted') || 'Indexing notes...', 4000);
+            await indexNotesForIntelligentSearch();
+            intelligentSearchCheckbox.disabled = false;
         });
     }
     // Zooom
@@ -11950,6 +12108,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             mainLogic(); // Извикваме основната логика отново
         }
     });
+    await setLanguage(currentLang);
     settingsModalBody.dataset.initialized = true;
 }
 // Always ensure the delete folder button has a listener (outside the initialization guard)
@@ -15532,7 +15691,7 @@ function saveEditedNote() {
                             await updateGDriveFile(newGdid, JSON.stringify(noteObj));
 
                             if (useIndexedDb) {
-                                await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+                                await bulkPutDB(NOTE_STORE_NAME, await prepareNoteForIndexedDb(noteObj), true);
                                 if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                             }
 
@@ -15574,7 +15733,7 @@ function saveEditedNote() {
             } else if (useIndexedDbNow) {
                 noteObj.type = -1; // Маркираме за офлайн синхронизация
             }
-            if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+            if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, await prepareNoteForIndexedDb(noteObj), true);
 
             const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
             const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
@@ -15674,7 +15833,7 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
                         const oldGdid = noteObj.gdid;
                         noteObj.gdid = newGdid;
                         if (useIndexedDb) {
-                            await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+                            await bulkPutDB(NOTE_STORE_NAME, await prepareNoteForIndexedDb(noteObj), true);
                             if (oldGdid && oldGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, oldGdid);
                         }
                     }
@@ -15704,7 +15863,7 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
             console.error("Failed to update local file in calendar update", e);
         }
     }
-    if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+    if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, await prepareNoteForIndexedDb(noteObj), true);
     if (typeof updateBoardCounterUI === 'function') {
         updateBoardCounterUI(noteObj.boardid);
         updateBoardCounterUI('reminder');

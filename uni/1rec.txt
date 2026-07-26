@@ -1,0 +1,18 @@
+function readFromIDB(dbName, storeName, key) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName);
+    req.onerror = () => reject(req.error);
+
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction(storeName, "readonly");
+      const store = tx.objectStore(storeName);
+      const getReq = store.get(key);
+
+      getReq.onsuccess = () => resolve(getReq.result);
+      getReq.onerror = () => reject(getReq.error);
+    };
+  });
+}
+
+readFromIDB("NotesDB", "notes", "1xeZOHNny9p10D9-zGQZTJ0NEeKpDFxSzN_BisrskSigE2fllPA").then(console.log);

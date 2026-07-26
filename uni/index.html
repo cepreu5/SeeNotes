@@ -11,7 +11,7 @@
     <link rel="apple-touch-icon" href="CXNotes180.png">
 
     <meta http-equiv="Content-Security-Policy"
-        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
+        content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com https://cdn.jsdelivr.net; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com https://cdn.jsdelivr.net https://huggingface.co https://*.huggingface.co https://*.hf.co https://*.cdn.hf.co;">
     <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
         crossorigin="anonymous">
     </script-->
@@ -512,6 +512,13 @@
                         data-key="trashSearchLabel">
                         Търсене в кошчето:</label>
                     <input type="checkbox" id="trash-search-checkbox" class="settings-checkbox">
+                </div>
+                <div class="settings-mobile-row zoom-control-wrapper" id="intelligent-search" style="margin-top: 10px;">
+                    <label for="intelligent-search-checkbox"
+                        style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                        data-key="intelligentSearchLabel">
+                        Интелигентно търсене:</label>
+                    <input type="checkbox" id="intelligent-search-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="hide-assistant" style="margin-top: 10px;">
