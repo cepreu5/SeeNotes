@@ -95,7 +95,7 @@ let boardsData = []; // Съхранява данните за бордовет�
 let mediaData = []; // Съхранява данните за медия
 let folderIds = {}; // Съхранява ID-тата на папките за медия
 let currentBoardFilter = 'all';
-let boardBeforeSearch = 'all';
+let boardBeforeSearch = localStorage.getItem('startBoard') || 'all';
 let searchInBoardOnly = localStorage.getItem('searchInBoardOnly') === 'true';
 let currentBackground = 'Board.png';
 let currentCalendarDate = new Date();
@@ -192,6 +192,7 @@ const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
 `;
 const emptyTrashIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="14" y2="17"></line><line x1="14" y1="11" x2="10" y2="17"></line></svg>`;
 const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+let searchScope = localStorage.getItem('searchScope') || 'everywhere'; // 'everywhere', 'board', 'intelligent'
 
 let SUPPORTED_LANGUAGES = [
     { id: 'en', label: 'EN' },
@@ -3389,8 +3390,13 @@ async function getIntelligentSearchExtractor() {
     if (!intelligentSearchExtractorPromise) {
         intelligentSearchExtractorPromise = import(INTELLIGENT_SEARCH_MODULE_URL)
             .then(async ({ pipeline, env }) => {
-                if (env) env.allowLocalModels = false;
-                return pipeline('feature-extraction', INTELLIGENT_SEARCH_MODEL);
+                if (env) {
+                    env.allowLocalModels = false;
+                    env.useFp16 = false;
+                }
+                return pipeline('feature-extraction', INTELLIGENT_SEARCH_MODEL, {
+                    quantized: false
+                });
             })
             .catch(error => {
                 intelligentSearchExtractorPromise = null;
@@ -3440,6 +3446,7 @@ async function indexNotesForIntelligentSearch() {
         await getIntelligentSearchExtractor();
         const notes = await getAllFromDB(NOTE_STORE_NAME);
         let indexedCount = 0;
+        let skippedCount = 0;
 
         for (const note of notes) {
             const noteText = note.notetxt || note.text || '';
@@ -3447,19 +3454,25 @@ async function indexNotesForIntelligentSearch() {
             const hasCurrentEmbedding = note.embeddingModel === INTELLIGENT_SEARCH_MODEL &&
                 note.embeddingSourceHash === sourceHash && Array.isArray(note.embedding);
 
-            if (!String(noteText).trim() || hasCurrentEmbedding) continue;
+            if (!String(noteText).trim() || hasCurrentEmbedding) {
+                skippedCount++;
+                continue;
+            }
 
             const preparedNote = await prepareNoteForIndexedDb(note);
             if (Array.isArray(preparedNote.embedding)) {
-                await bulkPutDB(NOTE_STORE_NAME, preparedNote, true);
+                await bulkPutDB(NOTE_STORE_NAME, [preparedNote], true);
                 indexedCount++;
+            } else {
+                console.warn(`[IntelligentSearch] Failed to generate embedding for note: ${note.gdid || note.id}`);
             }
         }
 
+        console.log(`[IntelligentSearch] Indexed ${indexedCount} notes, skipped ${skippedCount} (already indexed or empty)`);
         showToast((_("intelligentSearchIndexingComplete") || 'Indexing complete: {count} notes.').replace('{count}', indexedCount), 4000);
         return indexedCount;
     } catch (error) {
-        console.warn('[IntelligentSearch] Failed to index notes:', error);
+        console.error('[IntelligentSearch] Failed to index notes:', error);
         showToast(_('intelligentSearchIndexingFailed') || 'Intelligent search indexing could not be started.', 5000);
         return 0;
     }
@@ -4876,15 +4889,24 @@ function initApp() {
     // 1. Static Search Icon (Left) — кликаем за превключване режим на търсене
     const staticSearchIcon = document.createElement('span');
     staticSearchIcon.className = 'search-icon-static';
-    staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><circle class="search-mode-dot" cx="11" cy="11" r="3" fill="black" stroke="none" style="display:none"></circle></svg>`;
+    staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><circle class="search-mode-dot" cx="11" cy="11" r="3" fill="black" stroke="none" style="display:none"></circle><rect class="search-mode-brain" x="8" y="8" width="6" height="6" fill="red" stroke="none" style="display:none"></rect></svg>`;
     staticSearchIcon.style.cursor = 'pointer';
     staticSearchIcon.title = searchInBoardOnly ? (_('searchInBoardTooltip') || 'Search in current board (click to change)') : (_('searchEverywhereTooltip') || 'Search everywhere (click to change)');
     updateSearchModeIndicator();
     staticSearchIcon.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        searchInBoardOnly = !searchInBoardOnly;
-        localStorage.setItem('searchInBoardOnly', searchInBoardOnly);
+        // searchInBoardOnly = !searchInBoardOnly;
+        // localStorage.setItem('searchInBoardOnly', searchInBoardOnly);
+        const intelligentEnabled = isIntelligentSearchEnabled();
+        if (searchScope === 'everywhere') {
+            searchScope = 'board';
+        } else if (searchScope === 'board') {
+            searchScope = intelligentEnabled ? 'intelligent' : 'everywhere';
+        } else { // intelligent
+            searchScope = 'everywhere';
+        }
+        localStorage.setItem('searchScope', searchScope);
         updateSearchModeIndicator();
         const searchBox = document.getElementById('search-box');
         if (searchBox && searchBox.value.trim()) {
@@ -4957,8 +4979,101 @@ function initApp() {
         });
     }
 
+function cosineSimilarity(vecA, vecB) {
+    if (!vecA || !vecB) return 0;
+    let dotProduct = 0.0;
+    let normA = 0.0;
+    let normB = 0.0;
+    for (let i = 0; i < vecA.length; i++) {
+        dotProduct += vecA[i] * vecB[i];
+        normA += vecA[i] * vecA[i];
+        normB += vecB[i] * vecB[i];
+    }
+    if (normA === 0 || normB === 0) return 0;
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+async function getSearchExtractor() {
+    if (!intelligentSearchExtractorPromise) {
+        intelligentSearchExtractorPromise = (async () => {
+            try {
+                // Dynamically import the transformers library
+                const { pipeline, env } = await import(INTELLIGENT_SEARCH_MODULE_URL);
+                // Configure environment
+                env.allowLocalModels = false;
+                env.useFp16 = false;
+                // Create the feature-extraction pipeline
+                return await pipeline('feature-extraction', INTELLIGENT_SEARCH_MODEL, {
+                     quantized: false, // Use a lighter version of the model
+                });
+            } catch (e) {
+                console.error("Error loading intelligent search model:", e);
+                // In case of error, reset the promise to allow retrying
+                intelligentSearchExtractorPromise = null;
+                throw e;
+            }
+        })();
+    }
+    return intelligentSearchExtractorPromise;
+}
+
+// Function to generate embedding for a note's text
+async function generateEmbedding(text) {
+    try {
+        const extractor = await getSearchExtractor();
+        if (!extractor || !text) return null;
+        const output = await extractor(text, { pooling: 'mean', normalize: true });
+        return Array.from(output.data);
+    } catch (e) {
+        console.error("Error generating embedding:", e);
+        return null;
+    }
+}
+
+async function findRelevantNotes(userQuery) {
+    try {
+        const extractor = await getSearchExtractor();
+        if (!extractor) return [];
+
+        showToast(_('performingSemanticSearch') || 'performingSemanticSearch', 2000);
+
+        const queryOutput = await extractor(userQuery, { pooling: 'mean', normalize: true });
+        const queryEmbedding = Array.from(queryOutput.data);
+
+        //  IndexedDB
+        const allNotes = await getAllFromDB(NOTE_STORE_NAME); 
+        if (!allNotes) return [];
+
+        // Log embedding info
+        const notesWithEmbeddings = allNotes.filter(n => n.embedding);
+        const firstNoteEmbed = notesWithEmbeddings[0]?.embedding;
+        console.log(`[Semantic] Query embedding: [${queryEmbedding.slice(0, 3).map(x => x.toFixed(3)).join(', ')}...]`);
+        console.log(`[Semantic] First note embedding: [${firstNoteEmbed ? firstNoteEmbed.slice(0, 3).map(x => x.toFixed(3)).join(', ') + '...' : 'N/A'}]`);
+        console.log(`[Semantic] Notes with embeddings: ${notesWithEmbeddings.length}/${allNotes.length}`);
+        
+        const rankedNotes = allNotes.map(note => {
+            const score = note.embedding ? cosineSimilarity(queryEmbedding, note.embedding) : 0;
+            return { ...note, score };
+        });
+        
+        // Log score distribution
+        const scores = rankedNotes.map(n => n.score).sort((a, b) => b - a);
+        console.log(`[Semantic] Score distribution: min=${Math.min(...scores).toFixed(3)}, max=${Math.max(...scores).toFixed(3)}, avg=${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(3)}`);
+        console.log(`[Semantic] Top 5 scores: ${scores.slice(0, 5).map(s => s.toFixed(3)).join(', ')}`);
+        
+        // Use lower threshold since scores are systematically lower for semantic search
+        const resultNotes = rankedNotes.filter(note => note.score > 0.25).sort((a, b) => b.score - a.score).slice(0, 15);
+        console.log(`findRelevantNotes: Total ${allNotes.length}, threshold 0.25 → ${resultNotes.length} results`);
+        console.log(resultNotes);
+        return resultNotes;
+    } catch (error) {
+        console.error("Error in findRelevantNotes:", error);
+        showToast(_('semanticSearchError') || 'semanticSearchError', 3000);
+        return [];
+    }
+}
     // This function will be the single point for applying search and UI updates
-    const triggerSearch = (isUserTyping = false) => {
+    const triggerSearch = async (isUserTyping = false) => {
         if (isUserTyping) {
             // Only update the "last search" if the input is not empty
             if (searchBox.value.trim() !== '') {
@@ -4966,10 +5081,8 @@ function initApp() {
                 localStorage.setItem('lastSearchTerm', lastSearchTerm);
             }
         }
-
         const hasTextTrimmed = searchBox.value.trim().length > 0;
         const searchBoardBtn = document.getElementById('search-results-board-btn');
-
         if (!hasTextTrimmed && currentBoardFilter === 'search-results') {
             // Ако изчистваме търсенето, се връщаме към предния борд
             currentBoardFilter = boardBeforeSearch || 'all';
@@ -4984,8 +5097,46 @@ function initApp() {
                 searchBoardBtn.style.display = 'inline-flex';
             }
         }
-
-        applyFilters();
+        if (searchScope === 'intelligent' && hasTextTrimmed) {
+            const relevantNotes = await findRelevantNotes(searchBox.value);
+            const relevantIds = new Set(relevantNotes.map(n => n.gdid || n.id));
+            document.querySelectorAll('.note').forEach(noteEl => {
+                const gdid = noteEl.dataset.g;
+                const id = noteEl.dataset.i;
+                noteEl.style.display = (relevantIds.has(gdid) || relevantIds.has(id)) ? 'flex' : 'none';
+            });
+        } else if (searchScope === 'board' && hasTextTrimmed) {
+            // Search only in current board (or all search results if in search-results mode)
+            const searchText = searchBox.value.toLowerCase();
+            const isInSearchResultsMode = currentBoardFilter === 'search-results';
+            console.log(`[Board Search] Filter: board=${currentBoardFilter}, text="${searchText}"`);
+            let visibleCount = 0;
+            let hiddenByBoard = 0;
+            document.querySelectorAll('.note').forEach(noteEl => {
+                if (isInSearchResultsMode) {
+                    // In search-results mode, just filter by text (don't filter by board)
+                    const title = (noteEl.dataset.t || '').toLowerCase();
+                    const content = (noteEl.dataset.c || '').toLowerCase();
+                    const textMatch = title.includes(searchText) || content.includes(searchText);
+                    noteEl.style.display = textMatch ? 'flex' : 'none';
+                    if (textMatch) visibleCount++;
+                } else {
+                    // In normal board mode, filter by both board and text
+                    const noteBoard = noteEl.dataset.b || 'all';
+                    const boardMatch = (currentBoardFilter === 'all') || (String(noteBoard) === String(currentBoardFilter));
+                    const title = (noteEl.dataset.t || '').toLowerCase();
+                    const content = (noteEl.dataset.c || '').toLowerCase();
+                    const textMatch = title.includes(searchText) || content.includes(searchText);
+                    const shouldShow = boardMatch && textMatch;
+                    noteEl.style.display = shouldShow ? 'flex' : 'none';
+                    if (shouldShow) visibleCount++;
+                    if (!boardMatch) hiddenByBoard++;
+                }
+            });
+            console.log(`[Board Search] Result: ${visibleCount} visible${hiddenByBoard > 0 ? ', ' + hiddenByBoard + ' hidden by board filter' : ''}`);
+        } else {
+            applyFilters();
+        }
 
         // Update UI counters and active state
         updateBoardCounterUI('search-results');
@@ -5553,20 +5704,41 @@ function updateSearchPlaceholder() {
 }
 
 function updateSearchModeIndicator() {
-    const dot = document.querySelector('.search-mode-dot');
+    // const dot = document.querySelector('.search-mode-dot');
+    // if (!dot || !icon) return;
+    // if (searchInBoardOnly) {
+    //     // Вземаме цвета на активния борд бутон
+    //     // const activeBtn = document.querySelector(`.board-filter-link.selected-board`);
+    //     // const boardColor = activeBtn ? getComputedStyle(activeBtn).backgroundColor : '#1976D2';
+    //     dot.style.display = '';
+    //     dot.setAttribute('fill', "black");
+    //     icon.title = _('searchInBoardTooltip') || 'Search in current board (click to change)';
+    // } else {
+    //     dot.style.display = 'none';
+    //     icon.title = _('searchEverywhereTooltip') || 'Search everywhere (click to change)';
+    // }
     const icon = document.querySelector('.search-icon-static');
-    if (!dot || !icon) return;
-    if (searchInBoardOnly) {
-        // Вземаме цвета на активния борд бутон
-        // const activeBtn = document.querySelector(`.board-filter-link.selected-board`);
-        // const boardColor = activeBtn ? getComputedStyle(activeBtn).backgroundColor : '#1976D2';
-        dot.style.display = '';
-        dot.setAttribute('fill', "black");
-        icon.title = _('searchInBoardTooltip') || 'Search in current board (click to change)';
-    } else {
-        dot.style.display = 'none';
-        icon.title = _('searchEverywhereTooltip') || 'Search everywhere (click to change)';
-    }
+    if (!icon) return;
+    const dot = icon.querySelector('.search-mode-dot');
+    const brain = icon.querySelector('.search-mode-brain');
+    // if (!dot || !brain) return;
+    dot.style.display = 'none';
+    brain.style.display = 'none';
+    switch (searchScope) {
+        case 'board':
+            dot.style.display = '';
+            dot.setAttribute('fill', "black");
+            icon.title = _('searchInBoardTooltip') || 'Search in current board (click to change)';
+            break;
+        case 'intelligent':
+            brain.style.display = '';
+            icon.title = _('intelligentSearchTooltip') || 'Intelligent search (click to change)';
+            break;
+        case 'everywhere':
+        default:
+            icon.title = _('searchEverywhereTooltip') || 'Search everywhere (click to change)';
+            break;
+     }
 }
 
 function saveSearchTerm(term) {
