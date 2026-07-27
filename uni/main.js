@@ -14695,6 +14695,24 @@ function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD) {
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+window.addEventListener('orientationchange', () => {
+    const floatingButton = document.getElementById('popup-menu-btn-floating');
+    if (floatingButton) {
+        // Изчакваме малко, за да се установят новите размери на екрана
+        setTimeout(() => {
+            // Задаваме позицията вертикално в средата, отдясно
+            floatingButton.style.top = '50%';
+            floatingButton.style.right = '10px';
+            floatingButton.style.bottom = 'auto';
+            floatingButton.style.left = 'auto';
+            floatingButton.style.transform = 'translateY(-50%)';
+
+            // Запазваме новата позиция в localStorage, за да се помни
+            localStorage.setItem('popupMenuBtnPosition', JSON.stringify({ top: floatingButton.style.top, right: floatingButton.style.right, transform: floatingButton.style.transform }));
+        }, 200);
+    }
+});
+
 // --- Logic for preserving formatting during editing ---
 function handleEditInput(textarea, backdrop) {
     const modalBodyElem = document.getElementById('modal-body');
