@@ -159,6 +159,7 @@ const MEDIA_STORE_NAME = 'media';
 const NOTE_STORE_NAME = 'notes';
 const CONFIG_STORE_NAME = 'config';
 const NOTES_DB_VERSION = 3;
+const NOTES_DB_VERSION = 4;
 const INTELLIGENT_SEARCH_MODULE_URL = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
 const INTELLIGENT_SEARCH_MODEL = 'Xenova/all-MiniLM-L6-v2';
 let intelligentSearchExtractorPromise = null;
@@ -3277,6 +3278,11 @@ function openNotesDB() {
                 }
                 if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
                     db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
+                    const noteStore = db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
+                    noteStore.createIndex('embeddingModel', 'embeddingModel', { unique: false });
+                } else if (!db.transaction.objectStore(NOTE_STORE_NAME).indexNames.contains('embeddingModel')) {
+                    const noteStore = db.transaction.objectStore(NOTE_STORE_NAME);
+                    noteStore.createIndex('embeddingModel', 'embeddingModel', { unique: false });
                 }
                 if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
                     db.createObjectStore(CONFIG_STORE_NAME);
@@ -3439,12 +3445,18 @@ async function prepareNoteForIndexedDb(note) {
 
 async function indexNotesForIntelligentSearch() {
     if (!isIntelligentSearchEnabled()) return 0;
-
+    let reloadBtn = document.getElementById('reload_button');
+    const originalReloadHtml = reloadBtn ? reloadBtn.innerHTML : null;
+    if (reloadBtn) {
+        reloadBtn.style.pointerEvents = 'none';
+        reloadBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
+    }
     try {
         // Load the model once before changing any records, so a failed download does
         // not repeatedly retry for every note.
         await getIntelligentSearchExtractor();
         const notes = await getAllFromDB(NOTE_STORE_NAME);
+        const notes = await getNotesWithoutEmbeddingFromDB();
         let indexedCount = 0;
         let skippedCount = 0;
 
@@ -3467,11 +3479,18 @@ async function indexNotesForIntelligentSearch() {
                 console.warn(`[IntelligentSearch] Failed to generate embedding for note: ${note.gdid || note.id}`);
             }
         }
-
+        if (reloadBtn) {
+            reloadBtn.style.pointerEvents = 'auto';
+            reloadBtn.innerHTML = originalReloadHtml;
+        }
         console.log(`[IntelligentSearch] Indexed ${indexedCount} notes, skipped ${skippedCount} (already indexed or empty)`);
         showToast((_("intelligentSearchIndexingComplete") || 'Indexing complete: {count} notes.').replace('{count}', indexedCount), 4000);
         return indexedCount;
     } catch (error) {
+        if (reloadBtn) {
+            reloadBtn.style.pointerEvents = 'auto';
+            reloadBtn.innerHTML = originalReloadHtml;
+        }
         console.error('[IntelligentSearch] Failed to index notes:', error);
         showToast(_('intelligentSearchIndexingFailed') || 'Intelligent search indexing could not be started.', 5000);
         return 0;
@@ -3525,6 +3544,33 @@ async function getFromDB(storeName, key) {
     });
 }
 
+async function getNotesWithoutEmbeddingFromDB() {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(NOTE_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(NOTE_STORE_NAME);
+        const index = store.index('embeddingModel');
+
+        // IDBKeyRange.only(null) or IDBKeyRange.only(undefined) can be used.
+        // Using only(undefined) is slightly more robust if a value could be explicitly null.
+        const request = index.getAll(IDBKeyRange.only(undefined));
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            reject(`Error getting notes without embedding: ${event.target.error}`);
+        };
+
+        transaction.oncomplete = () => {
+            db.close();
+        };
+        transaction.onerror = () => {
+            db.close();
+        };
+    });
+}
 /**
  * Запазва стойност в config store-a.
  * @param {string} key - Ключ (напр. 'directoryHandle', 'lastLocalTimestamp').
@@ -4993,34 +5039,12 @@ function cosineSimilarity(vecA, vecB) {
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-async function getSearchExtractor() {
-    if (!intelligentSearchExtractorPromise) {
-        intelligentSearchExtractorPromise = (async () => {
-            try {
-                // Dynamically import the transformers library
-                const { pipeline, env } = await import(INTELLIGENT_SEARCH_MODULE_URL);
-                // Configure environment
-                env.allowLocalModels = false;
-                env.useFp16 = false;
-                // Create the feature-extraction pipeline
-                return await pipeline('feature-extraction', INTELLIGENT_SEARCH_MODEL, {
-                     quantized: false, // Use a lighter version of the model
-                });
-            } catch (e) {
-                console.error("Error loading intelligent search model:", e);
-                // In case of error, reset the promise to allow retrying
-                intelligentSearchExtractorPromise = null;
-                throw e;
-            }
-        })();
-    }
-    return intelligentSearchExtractorPromise;
-}
+
 
 // Function to generate embedding for a note's text
 async function generateEmbedding(text) {
     try {
-        const extractor = await getSearchExtractor();
+        const extractor = await getIntelligentSearchExtractor();
         if (!extractor || !text) return null;
         const output = await extractor(text, { pooling: 'mean', normalize: true });
         return Array.from(output.data);
@@ -5032,7 +5056,7 @@ async function generateEmbedding(text) {
 
 async function findRelevantNotes(userQuery) {
     try {
-        const extractor = await getSearchExtractor();
+        const extractor = await getIntelligentSearchExtractor();
         if (!extractor) return [];
 
         showToast(_('performingSemanticSearch') || 'performingSemanticSearch', 2000);
