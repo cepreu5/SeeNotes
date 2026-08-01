@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.36orient';
+const CACHE_NAME = 'cx-notes-b1.37design';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',

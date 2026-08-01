@@ -413,7 +413,7 @@
                         content.className = 'device-content';
                         const table = document.createElement('table');
                         const groups = {
-                            "Core Info": ['deviceName', 'active_folder_name', 'folderId', 'gdrive_folder_names', 'language', 'rememberMe'],
+                            "Core Info": ['deviceName', 'folderId', 'gdrive_folder_names', 'language', 'rememberMe'],
                             "UI Settings": ['zoomLevel', 'noteFontSize', 'modalFontSize', 'notesBgrd', 'imgBgrd', 'showDatemod', 'showNewBoard', 'oneTapLink', 'clickToEdit', 'closeAfterSave', 'hideAssistant', 'hideToast', 'modeButtonTooltip'],
                             "Board/Note Rules": ['sortCriteria', 'sortInReverse', 'sortRemindersTop', 'enableNoteSorting', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear', 'maxSavedSearches', 'savedSearches'],
                             "Positions": ['addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition', 'modalWidth', 'modalHeight'],
@@ -478,16 +478,24 @@
                     if (parsed && Array.isArray(parsed.folders)) {
                         const foldersTitle = document.getElementById('folders-json-title');
                         const foldersList = document.getElementById('folders-json-list');
+                        if (parsed.activeFolder) {
+                            foldersTitle.innerHTML = `Данни по папки (folders.json) — <span style="color:#2e7d32; font-weight:normal;">Текуща активна папка: <strong>${parsed.activeFolder}</strong></span>`;
+                        }
                         foldersTitle.style.display = 'block';
                         foldersList.style.display = 'block';
                         parsed.folders.forEach((folder, idx) => {
+                            const isCurrentActive = parsed.activeFolder === folder.name;
+                            const activeBadge = isCurrentActive ? ' <span style="background:#27ae60; color:#fff; padding:2px 8px; border-radius:12px; font-size:0.75em; margin-left:8px;">Активна папка</span>' : '';
                             const safeId = `folder-${idx}`;
                             const folderDiv = document.createElement('div');
                             folderDiv.className = 'folder-section';
                             folderDiv.dataset.folderIdx = idx;
                             const fHeader = document.createElement('div');
                             fHeader.className = 'folder-header';
-                            fHeader.innerHTML = `<span>Папка: ${folder.name}</span>
+                            if (isCurrentActive) {
+                                fHeader.style.backgroundColor = '#2e7d32';
+                            }
+                            fHeader.innerHTML = `<span>Папка: ${folder.name}${activeBadge}</span>
                                 <div style="display:flex; align-items:center;">
                                     <button class="delete-btn" onclick="toggleDeleteFolder(${idx})" title="Изтрий папката">Del</button>
                                     <button class="toggle-btn" onclick="toggleRaw('folder-${idx}')">JSON</button>

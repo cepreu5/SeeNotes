@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.36newfs'; // App version
+const version = 'Beta 1.37design'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -215,7 +215,11 @@ function renderLanguageSwitchers(onChangeCallback) {
             const newSelect = container.cloneNode(true);
             container.parentNode.replaceChild(newSelect, container);
             if (typeof onChangeCallback === 'function') {
-                newSelect.addEventListener('change', (e) => onChangeCallback(e.target.value));
+                newSelect.addEventListener('change', (e) => {
+                    const lang = e.target.value;
+                    localStorage.setItem('language', lang);
+                    onChangeCallback(lang);
+                });
             }
             return;
         }
@@ -236,7 +240,11 @@ function renderLanguageSwitchers(onChangeCallback) {
         });
 
         if (typeof onChangeCallback === 'function') {
-            select.addEventListener('change', (e) => onChangeCallback(e.target.value));
+            select.addEventListener('change', (e) => {
+                const lang = e.target.value;
+                localStorage.setItem('language', lang);
+                onChangeCallback(lang);
+            });
         }
         container.appendChild(select);
     };
@@ -259,18 +267,28 @@ function renderLanguageSwitchers(onChangeCallback) {
         .catch(err => console.warn('languages.json fallback to default', err));
 }
 
+let currentLang = localStorage.getItem('language') || 'en';
+
 function applyLanguageFromUrl() {
+    const search = window.location.search.toLowerCase();
     const params = new URLSearchParams(window.location.search);
-    const shortLang = SUPPORTED_LANGUAGES.find(lang => params.has(lang.id));
-    const requestedLang = params.get('lang') || params.get('language') || (shortLang ? shortLang.id : '');
-    const isSupported = SUPPORTED_LANGUAGES.some(lang => lang.id === requestedLang);
+    let requestedLang = params.get('lang') || params.get('language') || '';
+    if (!requestedLang) {
+        const matched = SUPPORTED_LANGUAGES.find(lang => {
+            const id = lang.id.toLowerCase();
+            return search === `?${id}` || search.startsWith(`?${id}&`) || params.has(lang.id);
+        });
+        if (matched) requestedLang = matched.id;
+    }
+    const isSupported = SUPPORTED_LANGUAGES.some(lang => lang.id.toLowerCase() === requestedLang.toLowerCase());
     if (isSupported) {
         localStorage.setItem('language', requestedLang);
+        currentLang = requestedLang;
+        window.hasUrlLanguage = true;
     }
 }
 
 applyLanguageFromUrl();
-let currentLang = localStorage.getItem('language') || 'en';
 
 let appTranslations = {};
 
@@ -2187,7 +2205,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         emptyTrashFab.innerHTML = emptyTrashIconSvg;
         emptyTrashFab.addEventListener('click', emptyTrash);
     }
-    
+
     initHeaderFullscreen();
 });
 
@@ -4735,8 +4753,8 @@ function initApp() {
             try {
                 const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
                 reallyOnline = response.ok;
-            } catch(e) {}
-            
+            } catch (e) { }
+
             if (!reallyOnline) {
                 isOffline = true;
                 updateModeButton();
@@ -5257,7 +5275,7 @@ function initApp() {
             try {
                 const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
                 reallyOnline = response.ok;
-            } catch (err) {}
+            } catch (err) { }
 
             if (reallyOnline) {
                 isOffline = false;
@@ -6312,7 +6330,7 @@ async function goOffline() {
         try {
             const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
             reallyOnline = response.ok;
-        } catch(e) {
+        } catch (e) {
             reallyOnline = false;
         }
     }
@@ -7106,7 +7124,7 @@ async function fetchAllDataLocal() {
     if (needsCleanup) console.log("Cleaned up customBgGdid from boards.");
     // ----------------------------------------
     */
-    
+
     trackMaxBoardIds(boardsData);
     mediaData = await getAllFromDB(MEDIA_STORE_NAME);
     const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
@@ -9165,7 +9183,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     } else {
         let newBackground = 'Board.png';
         const board = boardsData.find(b => b.gdid === boardId || b.id == boardId);
-        
+
         if (board && board.backpath && !board.backpath.includes('/')) {
             const cacheKey = board.backpath;
             if (customBgCache.has(cacheKey)) {
@@ -9187,7 +9205,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
                                 board.backpath = "";
                                 board.backnum = 0;
                                 document.body.style.backgroundImage = `url('Board.png')`;
-                                return; 
+                                return;
                             }
                         }
                         const blob = await response.blob();
@@ -10305,7 +10323,7 @@ const appSettingsKeys = [
     'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'lastSearchTerm', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
-    'active_folder_name', 'gdrive_folder_names', 'deviceName',
+    'gdrive_folder_names', 'deviceName',
     'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
 ];
 async function findGDFileByName(folderId, fileName) {
@@ -10551,7 +10569,20 @@ async function saveSettingsToGDrive(silent = false) {
         if (val !== null) {
             if ((val.startsWith('[') && val.endsWith(']')) || (val.startsWith('{') && val.endsWith('}'))) {
                 try {
-                    settings[key] = JSON.parse(val);
+                    let parsedVal = JSON.parse(val);
+                    if (key.endsWith('Position') && parsedVal && typeof parsedVal === 'object') {
+                        Object.keys(parsedVal).forEach(posKey => {
+                            if (typeof parsedVal[posKey] === 'string' && parsedVal[posKey].endsWith('px')) {
+                                const num = parseFloat(parsedVal[posKey]);
+                                if (!isNaN(num)) {
+                                    parsedVal[posKey] = Math.round(num) + 'px';
+                                }
+                            } else if (typeof parsedVal[posKey] === 'number') {
+                                parsedVal[posKey] = Math.round(parsedVal[posKey]);
+                            }
+                        });
+                    }
+                    settings[key] = parsedVal;
                 } catch (e) {
                     settings[key] = val;
                 }
@@ -10658,6 +10689,7 @@ async function loadSettingsFromGDrive(silent = false) {
                 }
             }
             const preservedKeys = ['useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id', 'folderId', 'deviceName'];
+            if (window.hasUrlLanguage) preservedKeys.push('language');
             Object.keys(settings).forEach(key => {
                 const isBoardKey = key.startsWith('board_');
                 if (appSettingsKeys.includes(key) || isBoardKey) {
@@ -16811,18 +16843,18 @@ async function showNewBoardModal() {
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             color: 'white', textAlign: 'center', padding: '5px', boxSizing: 'border-box'
         });
-        
+
         const btnText = document.createElement('span');
         btnText.textContent = _('customBackgroundButton') || 'Custom';
         btnText.style.fontWeight = 'bold';
         btnText.style.textShadow = '0px 0px 3px black, 0px 0px 3px black';
-        
+
         const limitText = document.createElement('span');
         limitText.textContent = _('customBgSizeLimit') || '(Max 3MB)';
         limitText.style.fontSize = '10px';
         limitText.style.color = '#ccc';
         limitText.style.textShadow = '0px 0px 2px black, 0px 0px 2px black';
-        
+
         customDiv.appendChild(btnText);
         customDiv.appendChild(limitText);
 
@@ -16954,7 +16986,7 @@ async function showNewBoardModal() {
             syncFolderDataAsync();
             boardToSave = { "backcolor": 0, "backnum": selectedBackground, "backpath": "", "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "gdid": "", "id": boardIdCounter, "numord": boardIdCounter, "status": selectedBoardStatus, "title": title };
         }
-        
+
         const oldBackpath = currentEditingBoard ? currentEditingBoard.backpath : null;
 
         try {
@@ -16968,9 +17000,9 @@ async function showNewBoardModal() {
                     const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
                     const hashArray = Array.from(new Uint8Array(hashBuffer));
                     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-                    
+
                     const existingBoard = boardsData.find(b => b.customBgHash === hashHex && b.backpath);
-                    
+
                     if (existingBoard) {
                         // Reuse existing background GDID
                         boardToSave.backpath = existingBoard.backpath;
@@ -16986,7 +17018,7 @@ async function showNewBoardModal() {
                                 boardToSave.customBgHash = hashHex;
                                 boardToSave.backnum = -1;
                                 customBgCache.set(uploadedGdid, customBgDataURL);
-                                
+
                                 // Cache the uploaded image immediately
                                 try {
                                     const cache = await caches.open('app-cache');
@@ -17015,7 +17047,7 @@ async function showNewBoardModal() {
                 boardToSave.backpath = "";
                 if (boardToSave.customBgHash !== undefined) delete boardToSave.customBgHash;
             }
-            
+
             // Cleanup orphaned background cache
             if (oldBackpath && oldBackpath !== boardToSave.backpath && !oldBackpath.includes('/')) {
                 const bId = (boardToSave.gdid || boardToSave.id).toString();
@@ -17025,7 +17057,7 @@ async function showNewBoardModal() {
                     caches.open('app-cache').then(cache => {
                         cache.delete(`https://www.googleapis.com/drive/v3/files/${oldBackpath}?alt=media`);
                     }).catch(e => console.warn("Failed to delete orphaned bg from cache:", e));
-                    
+
                     if (useGoogleDb && !isOffline) {
                         deleteGDriveFile(oldBackpath).catch(e => console.warn("Failed to delete orphaned bg from GDrive:", e));
                     }
@@ -17089,7 +17121,7 @@ async function showNewBoardModal() {
 
             const boardsNote = document.querySelector('header .boards-note');
             if (boardsNote) boardsNote.remove();
-            
+
             modal.classList.remove('visible');
             await renderUI({ boardParseError: false });
             filterNotesByBoard((boardToSave.gdid || boardToSave.id).toString());
