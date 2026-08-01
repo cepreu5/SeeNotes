@@ -428,5 +428,8 @@
     "uploadingSharedImage": "Uploading image...",
     "sharedImageSaved": "Image attached to note",
     "openLink": "Open",
-    "systemBoardSortLabel": "System board:"
+    "systemBoardSortLabel": "System board:",
+    "confirmDisableIntelligentSearch": "Are you sure you want to disable intelligent search? This will delete all local data and re-sync from your connected storage (GDrive/Local Folder) to remove embedding data.",
+    "reloadingWithoutEmbeddings": "Disabling intelligent search and reloading data...",
+    "errorDeletingDb": "Error deleting local database. Please try again."
 }

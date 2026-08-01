@@ -707,17 +707,6 @@ async function runGoogleDriveSync() {
                             }
                         }
                     }
-                    // Process embeddings for notes before saving to IndexedDB
-                    if (useIndexedDb && isIntelligentSearchEnabled()) {
-                        for (let i = 0; i < dataToPut.length; i++) {
-                            const note = dataToPut[i];
-                            // Only embed if missing embedding and note text exists
-                            if (note && !note.embedding && note.notetxt && String(note.notetxt).trim()) {
-                                const updatedNote = await addEmbeddingToNote(note);
-                                dataToPut[i] = updatedNote;
-                            }
-                        }
-                    }
                     await bulkPutDB(storeName, dataToPut, true);
 
                     // Update allNotesData in memory to prevent stale data
@@ -748,7 +737,6 @@ async function runGoogleDriveSync() {
             try { console.timeEnd("runGoogleDriveSync_Parallel"); } catch (e) { }
         }
         console.log("[Sync-Run] Parallel sync workers finished. Updated count:", updatedFilesCount);
-// Embedding block moved into syncFileWorker; removed redundant post-sync embedding logic.
 
         await saveConfig('lastGDTimestamp', syncStartTime);
 
@@ -3394,8 +3382,8 @@ function hashEmbeddingSource(text) {
     return (hash >>> 0).toString(16);
 }
 
-async function getIntelligentSearchExtractor(skipEnabledCheck = false) {
-    if (!skipEnabledCheck && !isIntelligentSearchEnabled()) return null;
+async function getIntelligentSearchExtractor() {
+    if (!isIntelligentSearchEnabled()) return null;
     if (!intelligentSearchExtractorPromise) {
         intelligentSearchExtractorPromise = import(INTELLIGENT_SEARCH_MODULE_URL)
             .then(async ({ pipeline, env }) => {
@@ -3408,7 +3396,6 @@ async function getIntelligentSearchExtractor(skipEnabledCheck = false) {
                 });
             })
             .catch(error => {
-                console.error("Error loading intelligent search model:", error);
                 intelligentSearchExtractorPromise = null;
                 throw error;
             });
@@ -3491,140 +3478,38 @@ async function indexNotesForIntelligentSearch() {
     if (!isIntelligentSearchEnabled()) return 0;
 
     try {
-        // 1. Зареждаме модела ВЕДНЪЖ преди всичко (fail-fast)
-        const extractor = await getIntelligentSearchExtractor();
-        if (!extractor) {
-            showToast(_('intelligentSearchIndexingFailed') || 'Model loading failed.', 5000);
-            return 0;
-        }
-
+        // Load the model once before changing any records, so a failed download does
+        // not repeatedly retry for every note.
+        await getIntelligentSearchExtractor();
         const notes = await getAllFromDB(NOTE_STORE_NAME);
-        if (!notes || notes.length === 0) return 0;
-
-        // 2. Филтрираме бележките, които НАИСТИНА се нуждаят от индексиране
-        const notesToIndex = notes.filter(note => {
-            const noteText = note.notetxt || note.text || '';
-            if (!String(noteText).trim()) return false;
-            const sourceHash = hashEmbeddingSource(noteText);
-            return !(note.embeddingSourceHash === sourceHash && Array.isArray(note.embedding));
-        });
-
-        const totalToIndex = notesToIndex.length;
-        const alreadyIndexed = notes.length - totalToIndex;
-
-        if (totalToIndex === 0) {
-            showToast((_('intelligentSearchAlreadyIndexed') || 'All {count} notes already indexed.').replace('{count}', alreadyIndexed), 4000);
-            return 0;
-        }
-
-        console.log(`[IntelligentSearch] Starting: ${totalToIndex} to index, ${alreadyIndexed} already done.`);
-
-        // 3. Batch обработка с yield към UI
-        const BATCH_SIZE = 10; // Брой бележки на батч
-        const WRITE_BATCH_SIZE = 20; // Натрупваме записи преди запис в DB
         let indexedCount = 0;
-        let errorCount = 0;
-        let writeBuffer = [];
-        let isCancelled = false;
+        let skippedCount = 0;
 
-        // 4. Показваме прогрес в loader-а
-        const loaderContainer = document.getElementById('loader-container');
-        const loaderText = document.getElementById('loader-text');
-        const loaderTitle = document.getElementById('loader-title');
-        const cancelBtn = document.getElementById('cancel-load-btn');
+        for (const note of notes) {
+            const noteText = note.notetxt || note.text || '';
+            const sourceHash = hashEmbeddingSource(noteText);
+            const hasCurrentEmbedding = note.embeddingSourceHash === sourceHash && Array.isArray(note.embedding);
 
-        if (loaderContainer) loaderContainer.style.display = 'block';
-        if (loaderTitle) loaderTitle.textContent = _('intelligentSearchIndexingTitle') || 'Indexing notes...';
-
-        // Слушател за прекъсване
-        const cancelHandler = () => { isCancelled = true; };
-        if (cancelBtn) cancelBtn.addEventListener('click', cancelHandler);
-
-        const startTime = performance.now();
-
-        for (let i = 0; i < totalToIndex; i += BATCH_SIZE) {
-            // Проверка за прекъсване
-            if (isCancelled) {
-                console.log(`[IntelligentSearch] Cancelled by user at ${indexedCount}/${totalToIndex}`);
-                break;
+            if (!String(noteText).trim() || hasCurrentEmbedding) {
+                skippedCount++;
+                continue;
             }
 
-            const batch = notesToIndex.slice(i, i + BATCH_SIZE);
-
-            // 5. Обработваме батча паралелно (в рамките на BATCH_SIZE)
-            const results = await Promise.allSettled(
-                batch.map(async (note) => {
-                    const noteText = note.notetxt || note.text || '';
-                    const sourceHash = hashEmbeddingSource(noteText);
-
-                    try {
-                        const output = await extractor(noteText, { pooling: 'mean', normalize: true });
-                        return {
-                            ...note,
-                            embedding: Array.from(output.data),
-                            embeddingSourceHash: sourceHash
-                        };
-                    } catch (e) {
-                        console.warn(`[IntelligentSearch] Failed for note ${note.gdid || note.id}:`, e.message);
-                        return null;
-                    }
-                })
-            );
-
-            // 6. Събираме успешните резултати в буфер за запис
-            for (const result of results) {
-                if (result.status === 'fulfilled' && result.value) {
-                    writeBuffer.push(result.value);
-                    indexedCount++;
-                } else if (result.status === 'rejected') {
-                    errorCount++;
-                }
+            const preparedNote = await prepareNoteForIndexedDb(note);
+            if (Array.isArray(preparedNote.embedding)) {
+                await bulkPutDB(NOTE_STORE_NAME, [preparedNote], true);
+                indexedCount++;
+            } else {
+                console.warn(`[IntelligentSearch] Failed to generate embedding for note: ${note.gdid || note.id}`);
             }
-
-            // 7. Записваме в DB на порции (намалява I/O операциите)
-            if (writeBuffer.length >= WRITE_BATCH_SIZE || i + BATCH_SIZE >= totalToIndex) {
-                if (writeBuffer.length > 0) {
-                    await bulkPutDB(NOTE_STORE_NAME, writeBuffer, true);
-                    writeBuffer = [];
-                }
-            }
-
-            // 8. Обновяваме прогреса
-            const progress = Math.min(i + BATCH_SIZE, totalToIndex);
-            const percent = Math.round((progress / totalToIndex) * 100);
-            if (loaderText) {
-                loaderText.textContent = `${progress}/${totalToIndex} (${percent}%)`;
-            }
-
-            // 9. Yield към UI — позволяваме на браузъра да прерисува
-            await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        // 10. Записваме остатъка в буфера
-        if (writeBuffer.length > 0) {
-            await bulkPutDB(NOTE_STORE_NAME, writeBuffer, true);
-        }
-
-        // Почистваме
-        if (cancelBtn) cancelBtn.removeEventListener('click', cancelHandler);
-        if (loaderContainer) loaderContainer.style.display = 'none';
-
-        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-        const statusMsg = isCancelled ? 'cancelled' : 'complete';
-        console.log(`[IntelligentSearch] Indexing ${statusMsg}: ${indexedCount} indexed, ${errorCount} errors, ${elapsed}s`);
-
-        const toastMsg = isCancelled
-            ? (_('intelligentSearchIndexingCancelled') || 'Indexing cancelled: {count} notes indexed.').replace('{count}', indexedCount)
-            : (_('intelligentSearchIndexingComplete') || 'Indexing complete: {count} notes indexed.').replace('{count}', indexedCount);
-
-        showToast(toastMsg, 4000);
+        console.log(`[IntelligentSearch] Indexed ${indexedCount} notes, skipped ${skippedCount} (already indexed or empty)`);
+        showToast((_("intelligentSearchIndexingComplete") || 'Indexing complete: {count} notes.').replace('{count}', indexedCount), 4000);
         return indexedCount;
-
     } catch (error) {
-        console.error('[IntelligentSearch] Critical failure:', error);
-        const loaderContainer = document.getElementById('loader-container');
-        if (loaderContainer) loaderContainer.style.display = 'none';
-        showToast(_('intelligentSearchIndexingFailed') || 'Indexing failed.', 5000);
+        console.error('[IntelligentSearch] Failed to index notes:', error);
+        showToast(_('intelligentSearchIndexingFailed') || 'Intelligent search indexing could not be started.', 5000);
         return 0;
     }
 }
@@ -5131,87 +5016,98 @@ function initApp() {
     }
 
     function cosineSimilarity(vecA, vecB) {
-        // За нормализирани вектори: cos(a,b) = dot(a,b)
-        // Спестяваме 2× sqrt + 2× norm изчисления
         if (!vecA || !vecB) return 0;
-        let dot = 0;
+        let dotProduct = 0.0;
+        let normA = 0.0;
+        let normB = 0.0;
         for (let i = 0; i < vecA.length; i++) {
-            dot += vecA[i] * vecB[i];
+            dotProduct += vecA[i] * vecB[i];
+            normA += vecA[i] * vecA[i];
+            normB += vecB[i] * vecB[i];
         }
-        return dot;
+        if (normA === 0 || normB === 0) return 0;
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
-    // async function getSearchExtractor() {
-    //     if (!intelligentSearchExtractorPromise) {
-    //         intelligentSearchExtractorPromise = (async () => {
-    //             try {
-    //                 // Dynamically import the transformers library
-    //                 const { pipeline, env } = await import(INTELLIGENT_SEARCH_MODULE_URL);
-    //                 // Configure environment
-    //                 env.allowLocalModels = false;
-    //                 env.useFp16 = false;
-    //                 // Create the feature-extraction pipeline
-    //                 return await pipeline('feature-extraction', INTELLIGENT_SEARCH_MODEL, {
-    //                     quantized: false, // Use a lighter version of the model
-    //                 });
-    //             } catch (e) {
-    //                 console.error("Error loading intelligent search model:", e);
-    //                 // In case of error, reset the promise to allow retrying
-    //                 intelligentSearchExtractorPromise = null;
-    //                 throw e;
-    //             }
-    //         })();
-    //     }
-    //     return intelligentSearchExtractorPromise;
-    // }
+    async function getSearchExtractor() {
+        if (!intelligentSearchExtractorPromise) {
+            intelligentSearchExtractorPromise = (async () => {
+                try {
+                    // Dynamically import the transformers library
+                    const { pipeline, env } = await import(INTELLIGENT_SEARCH_MODULE_URL);
+                    // Configure environment
+                    env.allowLocalModels = false;
+                    env.useFp16 = false;
+                    // Create the feature-extraction pipeline
+                    return await pipeline('feature-extraction', INTELLIGENT_SEARCH_MODEL, {
+                        quantized: false, // Use a lighter version of the model
+                    });
+                } catch (e) {
+                    console.error("Error loading intelligent search model:", e);
+                    // In case of error, reset the promise to allow retrying
+                    intelligentSearchExtractorPromise = null;
+                    throw e;
+                }
+            })();
+        }
+        return intelligentSearchExtractorPromise;
+    }
 
     // Function to generate embedding for a note's text
-    // async function generateEmbedding(text) {
-    //     try {
-    //         const extractor = await getSearchExtractor();
-    //         if (!extractor || !text) return null;
-    //         const output = await extractor(text, { pooling: 'mean', normalize: true });
-    //         return Array.from(output.data);
-    //     } catch (e) {
-    //         console.error("Error generating embedding:", e);
-    //         return null;
-    //     }
-    // }
+    async function generateEmbedding(text) {
+        try {
+            const extractor = await getSearchExtractor();
+            if (!extractor || !text) return null;
+            const output = await extractor(text, { pooling: 'mean', normalize: true });
+            return Array.from(output.data);
+        } catch (e) {
+            console.error("Error generating embedding:", e);
+            return null;
+        }
+    }
 
     async function findRelevantNotes(userQuery) {
         try {
-            const extractor = await getIntelligentSearchExtractor(true); // ← глобалната, без проверка
+            const extractor = await getSearchExtractor();
             if (!extractor) return [];
+
+            showToast(_('performingSemanticSearch') || 'performingSemanticSearch', 2000);
 
             const queryOutput = await extractor(userQuery, { pooling: 'mean', normalize: true });
             const queryEmbedding = Array.from(queryOutput.data);
 
-            // Оптимизация: Зареждаме САМО бележки с embeddings
+            //  IndexedDB
             const allNotes = await getAllFromDB(NOTE_STORE_NAME);
             if (!allNotes) return [];
 
-            // Early exit ако няма индексирани бележки
-            const notesWithEmbeddings = allNotes.filter(n => Array.isArray(n.embedding) && n.embedding.length > 0);
-            if (notesWithEmbeddings.length === 0) {
-                showToast(_('noIndexedNotes') || 'No indexed notes found. Please run indexing first.', 3000);
-                return [];
-            }
+            // Log embedding info
+            const notesWithEmbeddings = allNotes.filter(n => n.embedding);
+            const firstNoteEmbed = notesWithEmbeddings[0]?.embedding;
+            console.log(`[Semantic] Query embedding: [${queryEmbedding.slice(0, 3).map(x => x.toFixed(3)).join(', ')}...]`);
+            console.log(`[Semantic] First note embedding: [${firstNoteEmbed ? firstNoteEmbed.slice(0, 3).map(x => x.toFixed(3)).join(', ') + '...' : 'N/A'}]`);
+            console.log(`[Semantic] Notes with embeddings: ${notesWithEmbeddings.length}/${allNotes.length}`);
 
-            // Бързо изчисление (вече само индексираните)
-            const results = notesWithEmbeddings
-                .map(note => ({ ...note, score: cosineSimilarity(queryEmbedding, note.embedding) }))
-                .filter(note => note.score > 0.3) // Леко повишен праг за по-релевантни резултати
-                .sort((a, b) => b.score - a.score)
-                .slice(0, 15);
+            const rankedNotes = allNotes.map(note => {
+                const score = note.embedding ? cosineSimilarity(queryEmbedding, note.embedding) : 0;
+                return { ...note, score };
+            });
 
-            console.log(`[Semantic] ${notesWithEmbeddings.length} indexed, ${results.length} results (threshold 0.3)`);
-            return results;
+            // Log score distribution
+            const scores = rankedNotes.map(n => n.score).sort((a, b) => b - a);
+            console.log(`[Semantic] Score distribution: min=${Math.min(...scores).toFixed(3)}, max=${Math.max(...scores).toFixed(3)}, avg=${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(3)}`);
+            console.log(`[Semantic] Top 5 scores: ${scores.slice(0, 5).map(s => s.toFixed(3)).join(', ')}`);
+
+            // Use lower threshold since scores are systematically lower for semantic search
+            const resultNotes = rankedNotes.filter(note => note.score > 0.25).sort((a, b) => b.score - a.score).slice(0, 15);
+            console.log(`findRelevantNotes: Total ${allNotes.length}, threshold 0.25 → ${resultNotes.length} results`);
+            console.log(resultNotes);
+            return resultNotes;
         } catch (error) {
-            console.error('[Semantic] Search error:', error);
+            console.error("Error in findRelevantNotes:", error);
+            showToast(_('semanticSearchError') || 'semanticSearchError', 3000);
             return [];
         }
     }
-
     // This function will be the single point for applying search and UI updates
     const triggerSearch = async (isUserTyping = false) => {
         if (isUserTyping) {
@@ -15989,7 +15885,7 @@ function saveEditedNote() {
                     const folderId = await getFolderID();
                     if (folderId) {
                         const fileContent = JSON.stringify(noteObj);
-                        const fileName = 'note.txt';
+                        const fileName = 'note.txt'; // @@ 
                         try {
                             const tempGdid = noteObj.gdid;
                             const newGdid = await createGDriveFile(folderId, fileName, fileContent);
@@ -16002,8 +15898,8 @@ function saveEditedNote() {
                             // Synchronize internal GDrive ID inside the file content
                             await updateGDriveFile(newGdid, JSON.stringify(noteObj));
 
-                            if (useIndexedDbNow) {
-                                await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+                            if (useIndexedDb) {
+                                await bulkPutDB(NOTE_STORE_NAME, await prepareNoteForIndexedDb(noteObj), true);
                                 if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
                             }
 
@@ -16045,29 +15941,8 @@ function saveEditedNote() {
             } else if (useIndexedDbNow) {
                 noteObj.type = -1; // Маркираме за офлайн синхронизация
             }
-            // --- Save to IndexedDB (without embedding — will be added async below) ---
-            if (useIndexedDbNow) {
-                await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
-            }
-            // --- INCREMENTAL INTELLIGENT SEARCH INDEXING (non-blocking) ---
-            if (isIntelligentSearchEnabled() && useIndexedDbNow) {
-                addEmbeddingToNote(noteObj).then(enrichedNote => {
-                    if (enrichedNote.embedding) {
-                        // Записваме в DB
-                        bulkPutDB(NOTE_STORE_NAME, [enrichedNote], true);
+            if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, await prepareNoteForIndexedDb(noteObj), true);
 
-                        // Синхронизираме в паметта (allNotesData)
-                        const memNote = allNotesData.find(n =>
-                            (n.gdid && String(n.gdid) === String(enrichedNote.gdid)) ||
-                            (n.id && String(n.id) === String(enrichedNote.id))
-                        );
-                        if (memNote) {
-                            memNote.embedding = enrichedNote.embedding;
-                            memNote.embeddingSourceHash = enrichedNote.embeddingSourceHash;
-                        }
-                    }
-                }).catch(e => console.warn('[IS] Background embedding failed:', e));
-            }
             const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
             const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
 
@@ -16123,7 +15998,6 @@ function saveEditedNote() {
         }
     })(); // End of async background function
 }
-
 
 async function updateNoteCalendarDate(noteRef, selectedDate) {
     const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteRef.gdid)) || (n.id && String(n.id) === String(noteRef.id)));
