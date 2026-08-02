@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.37design'; // App version
+const version = 'Beta 1.37lan'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -218,7 +218,7 @@ function renderLanguageSwitchers(onChangeCallback) {
                 newSelect.addEventListener('change', (e) => {
                     const lang = e.target.value;
                     localStorage.setItem('language', lang);
-                    onChangeCallback(lang);
+                    window.location.reload();
                 });
             }
             return;
@@ -243,7 +243,7 @@ function renderLanguageSwitchers(onChangeCallback) {
             select.addEventListener('change', (e) => {
                 const lang = e.target.value;
                 localStorage.setItem('language', lang);
-                onChangeCallback(lang);
+                window.location.reload();
             });
         }
         container.appendChild(select);
@@ -10226,12 +10226,20 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
     tempContainer.style.visibility = 'hidden';
+    tempContainer.style.whiteSpace = 'nowrap';
+    tempContainer.style.display = 'inline-block';
     document.body.appendChild(tempContainer);
     allButtonLinks.forEach(link => {
-        tempContainer.appendChild(link);
         const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
         if (!isUtil) {
-            maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
+            link.style.width = 'auto';
+            link.style.display = 'inline-block';
+            link.style.whiteSpace = 'nowrap';
+            tempContainer.appendChild(link);
+            const w = Math.ceil(link.getBoundingClientRect().width || link.offsetWidth || link.scrollWidth);
+            maxWidthForButtons = Math.max(maxWidthForButtons, w);
+        } else {
+            tempContainer.appendChild(link);
         }
     });
 
@@ -10242,6 +10250,11 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
         if (!isUtil) {
             link.style.width = `${maxWidthForButtons}px`;
+            link.style.display = 'inline-block';
+            link.style.boxSizing = 'border-box';
+            link.style.overflow = 'hidden';
+            link.style.textOverflow = 'ellipsis';
+            link.style.whiteSpace = 'nowrap';
         } else {
             link.style.width = `${headerUtilWidth}px`;
             link.style.minWidth = '30px';
@@ -10754,6 +10767,31 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
         settingsModalBody.dataset.initializedListeners = 'true';
     }
+    // --- Language Select in Settings (populated dynamically on UI creation) ---
+    const settingsLangSelect = document.getElementById('settings-lang-select');
+    if (settingsLangSelect) {
+        settingsLangSelect.innerHTML = '';
+        SUPPORTED_LANGUAGES.forEach(lang => {
+            const option = document.createElement('option');
+            option.value = lang.id;
+            option.textContent = lang.label;
+            if (lang.id === currentLang) option.selected = true;
+            settingsLangSelect.appendChild(option);
+        });
+        if (!settingsLangSelect.dataset.hasChangeListener) {
+            settingsLangSelect.dataset.hasChangeListener = 'true';
+            settingsLangSelect.addEventListener('change', () => {
+                const newLang = settingsLangSelect.value;
+                localStorage.setItem('language', newLang);
+                window.location.reload();
+            });
+        }
+    }
+    const settingsLangLabel = document.querySelector('#settings-lang-wrapper label');
+    if (settingsLangLabel && typeof _ === 'function') {
+        settingsLangLabel.textContent = _('languageLabel') || 'Език:';
+    }
+
     // --- Get Element References ---
     const scaleSlider = document.getElementById('scaleSlider');
     const scaleInput = document.getElementById('scaleInput');
