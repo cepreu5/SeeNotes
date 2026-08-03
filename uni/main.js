@@ -190,6 +190,7 @@ const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
 const emptyTrashIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="14" y2="17"></line><line x1="14" y1="11" x2="10" y2="17"></line></svg>`;
 const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 
+
 let SUPPORTED_LANGUAGES = [
     { id: 'en', label: 'EN' },
     { id: 'bg', label: 'BG' }
@@ -396,6 +397,637 @@ async function preloadNoteBackgrounds(notesData) {
 }
 // Времено решение за проблем със скролирането до последната бележка при презареждане от иконата на браузъра
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+
+// =================================================================================
+// IV.a. ЛОКАЛНИ ДАННИ (INDEXEDDB)
+// =================================================================================
+/**
+ * Зарежда всички данни (boards, media, notes) от локалната IndexedDB.
+ */
+async function fetchAllDataLocal() {
+    console.log("Fetching all data from local IndexedDB...");
+    boardsData = await getAllFromDB(BOARD_STORE_NAME);
+    /*
+    // --- TEMPORARY CLEANUP FOR customBgGdid ---
+    let needsCleanup = false;
+    for (let board of boardsData) {
+        if (board.customBgGdid !== undefined) {
+            if (!board.backpath && typeof board.customBgGdid === 'string' && board.customBgGdid.trim() !== '') {
+                board.backpath = board.customBgGdid;
+            }
+            delete board.customBgGdid;
+            needsCleanup = true;
+            if (useIndexedDb) {
+                bulkPutDB(BOARD_STORE_NAME, board, true).catch(e => console.error(e));
+            }
+            if (useGoogleDb && !isOffline && board.gdid) {
+                updateGDriveFile(board.gdid, JSON.stringify(board)).catch(e => console.error(e));
+            }
+        }
+    }
+    if (needsCleanup) console.log("Cleaned up customBgGdid from boards.");
+    // ----------------------------------------
+    */
+
+    trackMaxBoardIds(boardsData);
+    mediaData = await getAllFromDB(MEDIA_STORE_NAME);
+    const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
+    allNotesData = notesFromDB;
+    trackMaxIds(allNotesData);
+    // --- REFRESH GLOBAL FLAGS FROM DB CONFIG ---
+    dbSourceGlobal = await getConfig('dbSource');
+    dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
+    console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
+    console.log(`[fetchAllDataLocal] dbSourceGlobal: ${dbSourceGlobal}, dbNoteIdTypeGlobal: ${dbNoteIdTypeGlobal}`);
+}
+
+/**
+ * Управлява процеса на локална синхронизация с файловата система.
+ */
+async function runLocalSync() {
+    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+    if (!useIndexedDb) {
+        console.log("Skipping local sync because IndexedDB is disabled for this mode.");
+        return 0;
+    }
+    const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
+    const updateDate = lastLocalTimestamp ? new Date(lastLocalTimestamp) : null;
+    let updatedCount = 0;
+    const handle = await getDirectoryHandle();
+    if (!handle) return 0;
+    loaderText.innerText = updateDate
+        ? _('updatingFilesSince').replace('{date}', updateDate.toLocaleString())
+        : _('performingFullSync');
+    // Коригирана проверка: използваме 'updateFromSource' вместо старата 'updateIndexedDb'
+    if (localStorage.getItem('updateFromSource') !== 'false') {
+        updatedCount = await processDirectoryContent(lastLocalTimestamp);
+        await saveConfig('lastLocalTimestamp', Date.now());
+    } else {
+        console.log("Skipping local file scan because IndexedDB update is disabled.");
+        loaderText.textContent = _('skippedFileScan');
+    }
+    // Show toast only for incremental updates (not the very first sync)
+    if (updateDate) {
+        const message = updatedCount > 0
+            ? _('localUpdatesFound').replace('{count}', updatedCount)
+            : _('localNoUpdates');
+        showToast(message, 3000);
+    }
+    return updatedCount;
+}
+
+/**
+ * Проверява дали избраната папка съдържа само файлове от очаквания тип.
+ * Функцията проверява дали файловете в основната директория започват с 'note', 'media', или 'board' и завършват на '.txt'.
+ * Игнорира под-директории и скрити файлове (започващи с точка).
+ * @param {FileSystemDirectoryHandle} directoryHandle - Handle на папката за проверка.
+ * @returns {Promise<{isValid: boolean, invalidFile: string|null}>} 
+ * Връща обект, който показва дали папката е валидна (`isValid`) 
+ * и името на първия невалиден файл (`invalidFile`), ако такъв е намерен.
+ */
+async function validateFolderContent(directoryHandle) {
+    const boardPattern = /^board.*\.txt$/i;
+    const notePattern = /^note.*\.txt$/i;
+    let boardFileCount = 0;
+    let noteFileCount = 0;
+    try {
+        for await (const entry of directoryHandle.values()) {
+            if (entry.kind === 'file') {
+                if (boardPattern.test(entry.name)) {
+                    boardFileCount++;
+                } else if (notePattern.test(entry.name)) {
+                    noteFileCount++;
+                }
+                // Прекъсваме проверката веднага щом условията са изпълнени
+                if (boardFileCount >= 1 && noteFileCount >= 3) {
+                    console.log(`Validation successful: Found at least 1 board file and 3 note files.`);
+                    return { isValid: true, reason: null };
+                }
+            }
+        }
+    } catch (error) {
+        console.log("Error during folder validation:", error);
+        return { isValid: false, reason: 'error' };
+    }
+    // Ако цикълът приключи без да са изпълнени условията
+    console.log(`Validation failed: Found ${boardFileCount} board file(s) and ${noteFileCount} note file(s). Required: >=1 board, >=3 notes.`);
+    return { isValid: false, reason: 'criteria_not_met' };
+}
+
+async function validateArhFolderContent(directoryHandle) {
+    const boardPattern = /^boards.*\.bcp$/i;
+    const notePattern = /^notes.*\.bcp$/i;
+    let boardsFile = false;
+    let notesFile = false
+    try {
+        for await (const entry of directoryHandle.values()) {
+            if (entry.kind === 'file') {
+                if (boardPattern.test(entry.name)) {
+                    boardsFile = true;
+                } else if (notePattern.test(entry.name)) {
+                    notesFile = true;
+                }
+                // Прекъсваме проверката веднага щом условията са изпълнени
+                if (boardsFile && notesFile) {
+                    console.log(`Arh validation successful: Found files.`);
+                    return { isValid: true, reason: null };
+                }
+            }
+        }
+    } catch (error) {
+        console.log("Error during arh folder validation:", error);
+        return { isValid: false, reason: 'error' };
+    }
+    // Ако цикълът приключи без да са изпълнени условията
+    console.log('Arh validation failed: Not found boards.bcp or notes.bcp.');
+    return { isValid: false, reason: 'criteria_not_met' };
+}
+/**
+ * Взима handle на директория - от паметта, от IndexedDB или чрез избор от потребителя.
+ * @param {boolean} promptUser - Дали да се покаже диалог за избор, ако няма запазен handle.
+ * @returns {Promise<FileSystemDirectoryHandle|null>}
+ */
+async function getDirectoryHandle(promptUser = false) {
+    try {
+        // Определяме кой handle да заредим въз основа на активната настройка в localStorage
+        const useLocal = localStorage.getItem('useLocalDb') === 'true';
+        const useArh = localStorage.getItem('useArhDb') === 'true';
+        const configKey = useLocal ? 'directoryHandle' : (useArh ? 'arhHandle' : null);
+        const savedHandle = configKey ? await getConfig(configKey) : null;
+        if (savedHandle) {
+            const verifiedHandle = await verifyPermission(savedHandle);
+            if (verifiedHandle) {
+                dirHandle = verifiedHandle;
+                return dirHandle;
+            }
+        }
+        if (promptUser) {
+            const newHandle = await window.showDirectoryPicker();
+            // Запазването ще се случи в извикващата функция СЛЕД валидация.
+            // dirHandle = newHandle; // Глобалната променлива също ще се зададе там.
+            return newHandle;
+        }
+        if (localStorage.getItem('useLocalDb') === 'true') showToast(_('errorLocalFolderNotSelected'), 10000);
+        return null;
+    } catch (error) {
+        if (error.name !== 'AbortError') console.log("Error getting directory handle:", error);
+        return null;
+    }
+}
+
+/**
+ * Проверява и иска разрешение за достъп до handle на директория.
+ * @param {FileSystemDirectoryHandle} handle
+ * @returns {Promise<FileSystemDirectoryHandle|null>}
+ */
+async function verifyPermission(handle) {
+    const options = { mode: 'readwrite' };
+    if (await handle.queryPermission(options) === 'granted') return handle;
+    if (await handle.requestPermission(options) === 'granted') return handle;
+    return null;
+}
+
+/**
+ * Обхожда избраната локална директория и обновява IndexedDB.
+ * @param {Date} [minModificationDate] - Минимална дата на модификация за инкрементално обновяване.
+ */
+async function processDirectoryContent(minModificationDate) {
+    // --- КЛЮЧОВА ПРОВЕРКА ---
+    // Ако опцията за използване на IndexedDB е изключена, не трябва да записваме нищо.
+    if (localStorage.getItem('useIndexedDb') !== 'true') {
+        console.log("Skipping processDirectoryContent because useIndexedDb is disabled.");
+        return 0; // Връщаме 0, защото нищо не е обновено.
+    }
+    const minTimestamp = minModificationDate || 0;
+    console.log(`--- Local Folder sync sequence started (minTimestamp: ${minTimestamp}) ---`);
+    const startTime = performance.now();
+    const handle = await getDirectoryHandle();
+    if (!handle) return 0;
+    const stores = {
+        [BOARD_STORE_NAME]: [],
+        [MEDIA_STORE_NAME]: [],
+        [NOTE_STORE_NAME]: []
+    };
+    let updatedCount = 0;
+    let skippedNotesCount = 0;
+    const entries = [];
+    for await (const entry of handle.values()) {
+        if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
+            const lowerName = entry.name.toLowerCase();
+            const isBoard = lowerName.includes('board');
+            const isMedia = lowerName.includes('media');
+            const isNote = lowerName.includes('note');
+            if (isBoard || isMedia || isNote) {
+                entries.push({ entry, lowerName, isBoard, isMedia, isNote });
+            }
+        }
+    }
+    console.log(`[Local Sync] Found ${entries.length} valid .txt files for sync check.`);
+    const CHUNK_SIZE = 80;
+    const gdidMap = new Map(); // Track duplicates during sync
+    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+        const chunk = entries.slice(i, i + CHUNK_SIZE);
+        loaderText.textContent = _('checkedFilesCount').replace('{count}', Math.min(i + CHUNK_SIZE, entries.length));
+        await Promise.all(chunk.map(async (item) => {
+            try {
+                const file = await item.entry.getFile();
+                if (file.lastModified >= minTimestamp) {
+                    updatedCount++;
+                    const content = await file.text();
+                    const fileObject = JSON.parse(content);
+                    if (fileObject.gdid) {
+                        if (gdidMap.has(fileObject.gdid)) {
+                            const error = `[Duplicate ID] GDID '${fileObject.gdid}' found in multiple files during sync: '${gdidMap.get(fileObject.gdid)}' and '${item.entry.name}'`;
+                            console.error(error);
+                            dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name, mode: 'sync' });
+                        } else {
+                            gdidMap.set(fileObject.gdid, item.entry.name);
+                            localFileMap.set(fileObject.gdid, item.entry.name); // Попълваме глобалната карта
+                        }
+                        if (item.isBoard) {
+                            stores[BOARD_STORE_NAME].push(fileObject);
+                        } else if (item.isMedia) {
+                            stores[MEDIA_STORE_NAME].push(fileObject);
+                        } else if (item.isNote) {
+                            stores[NOTE_STORE_NAME].push(fileObject);
+                            const localNote = allNotesData.find(n => n.gdid == fileObject.gdid);
+                            if (!localNote || (parseInt(fileObject.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
+                                if (!updatedNoteGdims.includes(fileObject.gdid)) {
+                                    updatedNoteGdims.push(fileObject.gdid);
+                                }
+                            } else {
+                                skippedNotesCount++;
+                            }
+                        }
+                    } else {
+                        const error = `[Missing ID] File '${item.entry.name}' skipped: missing 'gdid' property.`;
+                        console.warn(error);
+                        dataIntegrityIssues.push({ type: 'missing', file: item.entry.name, mode: 'sync' });
+                    }
+                }
+            } catch (error) {
+                console.log(`Error processing local file '${item.entry.name}':`, error);
+            }
+        }));
+    }
+    for (const storeName in stores) {
+        if (stores[storeName].length > 0) {
+            await bulkPutDB(storeName, stores[storeName], true); // Use incremental put
+        }
+    }
+    const endTime = performance.now();
+    console.log(`--- Local Folder sync sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
+    console.log(`[Summary] Updated items: ${updatedCount} (Boards: ${stores[BOARD_STORE_NAME].length}, Media: ${stores[MEDIA_STORE_NAME].length}, Notes: ${stores[NOTE_STORE_NAME].length})`);
+    console.log("[Local Sync] Updated objects:", stores);
+    return Math.max(0, updatedCount - skippedNotesCount);
+}
+
+/**
+ * Показва модален прозорец на цял екран за преглед на изображение или видео.
+ * @param {string} src - URL адресът на медийния файл.
+ * @param {boolean} isVideo - True, ако файлът е видео.
+ */
+function showImageVideoOverlay(src, isVideo = false) {
+    const overlay = document.createElement('div');
+    overlay.className = 'fullscreen-preview-overlay';
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+    const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
+    mediaElement.src = src;
+    if (isVideo) {
+        mediaElement.controls = true;
+        mediaElement.autoplay = true;
+    }
+    overlay.appendChild(mediaElement);
+    const closeButton = document.createElement('button');
+    closeButton.className = 'modal-close';
+    closeButton.innerHTML = '&times;';
+    closeButton.addEventListener('click', () => overlay.remove());
+    overlay.appendChild(closeButton);
+    document.body.appendChild(overlay);
+}
+
+/**
+ * Извлича URL за преглед от Google Drive и показва овърлей.
+ * @param {string} fileId - ID на файла в Google Drive.
+ * @param {boolean} isVideo - True, ако файлът е видео.
+ */
+async function showGdrivePreview(fileId, isVideo = false) {
+    if (!fileId) throw new Error("No file ID provided for Google Drive preview.");
+
+    const sendRequest = async (token) => {
+        return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink,webContentLink`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
+
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
+        let tokenData = JSON.parse(storedTokenString);
+
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401) {
+            let refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                resp = await sendRequest(tokenData.access_token);
+            }
+        }
+
+        if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
+        const result = await resp.json();
+        const thumbnailUrl = result.thumbnailLink;
+
+        if (thumbnailUrl) {
+            showImageVideoOverlay(thumbnailUrl.replace(/=s\d+/, '=s1600'), isVideo);
+        } else {
+            throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
+        }
+    } catch (e) {
+        console.error("showGdrivePreview error:", e);
+        throw e;
+    }
+}
+
+async function showLocalPreview(folderName, fileName, mode) {
+    const fileHandle = await (await dirHandle.getDirectoryHandle(folderName, { create: false })).getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    showImageVideoOverlay(URL.createObjectURL(file), file.type.startsWith('video'));
+}
+/**
+ * Показва преглед на изображение/видео в рамките на самата бележка.
+ * @param {HTMLElement} noteElement - DOM елементът на бележката.
+ * @param {Array} attachments - Масив с прикачени файлове.
+ * @param {number} startIndex - Начален индекс.
+ * @param {string} sourceMode - 'gdrive', 'local' или 'archive'.
+ * @param {boolean} isVideo - Дали файлът е видео.
+ */
+async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
+    if (!noteElement) return;
+    // Support legacy calls with single string fileId instead of attachments array
+    if (typeof attachments === 'string') {
+        const fileId = attachments;
+        attachments = [{ path: fileId, pathGD: fileId, type: isVideo ? 4 : 1 }];
+        startIndex = 0;
+    }
+    // Remove if already exists to replace it
+    const existingOverlay = noteElement.querySelector('.image-preview-overlay');
+    if (existingOverlay) existingOverlay.remove();
+    let currentIndex = startIndex;
+    // 1. Create overlay immediately
+    const overlay = document.createElement('div');
+    overlay.className = 'image-preview-overlay';
+    // Ensure parent has position: relative or higher to contain the absolute overlay
+    const parentPos = getComputedStyle(noteElement).position;
+    if (parentPos === 'static') {
+        noteElement.style.position = 'relative';
+    }
+    Object.assign(overlay.style, {
+        position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
+        backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: '1000', borderRadius: '8px', padding: '5px', boxSizing: 'border-box',
+        flexDirection: 'column'
+    });
+    // Prevent bubbling
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+        // Prevent closing if clicking on buttons or their children, but allow if clicking on img/video or background
+        // Wait, arrow buttons stop propagation themselves. Close button stops propagation.
+        // So any click reaching here is either on the container/background OR on the media itself (if media doesn't stop prop)
+        // Check if the click target is a button or inside a button (just in case)
+        if (e.target.closest('button')) return;
+        e.stopPropagation();
+        cleanup();
+    });
+    // Create container for media to easily clear/replace it
+    const mediaContainer = document.createElement('div');
+    Object.assign(mediaContainer.style, {
+        width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
+    });
+    overlay.appendChild(mediaContainer);
+    // --- Navigation Arrows ---
+    if (attachments.length > 1) {
+        const createArrow = (direction) => {
+            const btn = document.createElement('button');
+            btn.innerHTML = direction === 'prev' ? '&lt;' : '&gt;';
+            Object.assign(btn.style, {
+                position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                [direction === 'prev' ? 'left' : 'right']: '5px',
+                background: 'rgba(255,255,255,0.3)', color: 'white', border: 'none',
+                borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '20px', fontWeight: 'bold', zIndex: '20'
+            });
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (direction === 'prev') {
+                    currentIndex = (currentIndex - 1 + attachments.length) % attachments.length;
+                } else {
+                    currentIndex = (currentIndex + 1) % attachments.length;
+                }
+                loadMedia(currentIndex);
+            });
+            return btn;
+        };
+        overlay.appendChild(createArrow('prev'));
+        overlay.appendChild(createArrow('next'));
+    }
+    // Close button
+    const closeButton = document.createElement('button');
+    closeButton.className = 'view-button';
+    closeButton.innerHTML = eyeOffIconSvg;
+    Object.assign(closeButton.style, { position: 'absolute', top: '5px', right: '5px', zIndex: '21' });
+    if (closeButton.querySelector('svg')) closeButton.querySelector('svg').style.stroke = 'white';
+    // Cleanup function
+    const cleanup = () => {
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        if (overlay.mediaUrlToRevoke) {
+            URL.revokeObjectURL(overlay.mediaUrlToRevoke);
+        }
+    };
+    closeButton.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        cleanup();
+    });
+    overlay.appendChild(closeButton);
+    noteElement.appendChild(overlay);
+    // --- Load Media Function ---
+    async function loadMedia(index) {
+        // Clear container
+        mediaContainer.innerHTML = '';
+        // Revoke previous URL if any (local scope reuse)
+        if (overlay.mediaUrlToRevoke) {
+            URL.revokeObjectURL(overlay.mediaUrlToRevoke);
+            overlay.mediaUrlToRevoke = null;
+        }
+        // Add spinner
+        const spinner = document.createElement('div');
+        spinner.className = 'loader';
+        Object.assign(spinner.style, { width: '40px', height: '40px', border: '4px solid #f3f3f3', borderTop: '4px solid #3498db', borderRadius: '50%', animation: 'spin 1s linear infinite' });
+        mediaContainer.appendChild(spinner);
+        const attachment = attachments[index];
+        const isActuallyVideo = attachment.type === 4 || isVideo;
+        const isActuallySound = attachment.type === 2;
+        const folderName = isActuallyVideo ? 'Video' : (isActuallySound ? 'Sound' : 'Images');
+        const fileIdOrPath = sourceMode === 'gdrive' ? attachment.pathGD : attachment.path;
+        let mediaUrl;
+        try {
+            if (sourceMode === 'gdrive') {
+                if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
+                    await loadGoogleApis();
+                }
+                // Check if token is valid or expired using the actual authToken object
+                let isTokenExpired = true;
+                if (authToken && authToken.issued_at) {
+                    const elapsedSeconds = (Date.now() - authToken.issued_at) / 1000;
+                    const expiresIn = authToken.expires_in || 3599;
+                    if (elapsedSeconds < (expiresIn - 300)) { // Refresh if less than 5 mins remaining
+                        isTokenExpired = false;
+                    }
+                }
+                if (!authToken || isTokenExpired) {
+                    console.log("Token expired or missing in preview, refreshing...");
+                    const newToken = await checkAuth(); // checkAuth handles the actual refresh logic
+                    if (newToken) {
+                        authToken = newToken;
+                        // Update gapi client if needed
+                        if (typeof gapi !== 'undefined' && gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
+                    }
+                }
+                const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken :
+                    ((typeof gapi !== 'undefined' && gapi.auth) ? gapi.auth.getToken() : null);
+                if (!tokenObj) throw new Error(_('errorTokenMissing'));
+                if (isActuallyVideo || isActuallySound) {
+                    try {
+                        const mediaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
+                            headers: {
+                                'Authorization': `Bearer ${tokenObj.access_token}`,
+                                'Range': 'bytes=0-10000000'
+                            }
+                        });
+                        if (!mediaResponse.ok) throw new Error(`Media fetch failed: ${mediaResponse.status}`);
+                        const mediaBlob = await mediaResponse.blob();
+                        mediaUrl = URL.createObjectURL(mediaBlob);
+                        overlay.mediaUrlToRevoke = mediaUrl;
+                    } catch (err) {
+                        console.log("Failed to load GDrive media blob:", err);
+                        throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
+                    }
+                } else {
+                    // Image high-res thumbnail
+                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`, {
+                        headers: { 'Authorization': `Bearer ${tokenObj.access_token}` }
+                    });
+                    if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
+                    const fileMetadata = await response.json();
+                    const thumbnailUrl = fileMetadata.thumbnailLink;
+                    if (!thumbnailUrl) throw new Error(_('noImgPreview'));
+                    mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                }
+            } else { // 'local' or 'archive'
+                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+                if (isDbOnlyMode && !dirHandle && (sourceMode === 'local' || sourceMode === 'archive')) {
+                    const dbSource = await getConfig('dbSource');
+                    let handleKey = null;
+                    if (dbSource === 2) handleKey = 'directoryHandle';
+                    else if (dbSource === 3) handleKey = 'arhHandle';
+                    if (handleKey) {
+                        const handle = await getConfig(handleKey);
+                        const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                        if (verifiedHandle) {
+                            dirHandle = verifiedHandle;
+                        } else {
+                            showToast(_('noUpdateMode'), 10000);
+                            cleanup();
+                            return;
+                        }
+                    }
+                }
+                let fileHandle;
+                const fileName = fileIdOrPath.split('/').pop();
+                if (sourceMode === 'local') {
+                    const folderHandle = await dirHandle.getDirectoryHandle(folderName, { create: false });
+                    fileHandle = await folderHandle.getFileHandle(fileName);
+                } else { // 'archive'
+                    fileHandle = await dirHandle.getFileHandle(fileName);
+                }
+                const file = await fileHandle.getFile();
+                mediaUrl = URL.createObjectURL(file);
+                overlay.mediaUrlToRevoke = mediaUrl;
+            }
+            // Remove spinner
+            if (spinner.parentNode) spinner.remove();
+            let mediaElement;
+            if (isActuallyVideo) {
+                mediaElement = document.createElement('video');
+                mediaElement.controls = true;
+                mediaElement.autoplay = true;
+                // Limit preview to 15 seconds if it's a blob-based partial fetch
+                if (sourceMode === 'gdrive') {
+                    mediaElement.addEventListener('timeupdate', () => {
+                        if (mediaElement.currentTime > 15) {
+                            mediaElement.pause();
+                        }
+                    });
+                }
+            } else if (isActuallySound) {
+                mediaElement = document.createElement('audio');
+                mediaElement.controls = true;
+                mediaElement.autoplay = true;
+            } else {
+                mediaElement = document.createElement('img');
+            }
+            mediaElement.src = mediaUrl;
+            if (mediaElement.load) mediaElement.load(); // Explicitly load for better media handling
+            Object.assign(mediaElement.style, {
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                padding: '5px',
+                boxSizing: 'border-box',
+                display: 'block',
+                margin: 'auto'
+            });
+            mediaContainer.appendChild(mediaElement);
+        } catch (e) {
+            console.log("Preview failed:", e);
+            if (spinner.parentNode) spinner.remove();
+            const errorMsg = document.createElement('div');
+            errorMsg.style.color = 'white';
+            errorMsg.style.textAlign = 'center';
+            errorMsg.style.padding = '20px';
+            errorMsg.textContent = e.message || 'Error loading preview';
+            mediaContainer.appendChild(errorMsg);
+        }
+    }
+    // Initial load
+    loadMedia(currentIndex);
+}
+
+function addInNotePreviewListener(element, attachments, indexOrSource, sourceMode, isVideo) {
+    element.style.cursor = 'pointer';
+    element.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const noteElement = e.currentTarget.closest('.note') || e.currentTarget.closest('#modal-body') || document.getElementById('modal-body');
+        // Handle both signatures:
+        // 1. (element, attachmentsArray, startIndex, sourceMode, isVideo)
+        // 2. (element, fileIdString, sourceMode, isVideo)
+        if (typeof attachments === 'string') {
+            // Legacy: attachments=fileId, indexOrSource=sourceMode, sourceMode=isVideo
+            showInNotePreview(noteElement, attachments, 0, indexOrSource, sourceMode);
+        } else {
+            showInNotePreview(noteElement, attachments, indexOrSource, sourceMode, isVideo);
+        }
+    });
+
+}
+
 
 // =================================================================================
 // IX. LOAD MODULE (Google Drive Data Fetching & Sync)
@@ -2122,6 +2754,1435 @@ async function getMultinotesDataFolderID() {
 }
 
 // =================================================================================
+// III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
+// =================================================================================
+
+
+
+async function silentLoginWithIframe(loginHint) {
+    const REDIRECT_URI = window.location.origin + window.location.pathname;
+    return new Promise((resolve, reject) => {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${SCOPES}&redirect_uri=${REDIRECT_URI}&prompt=none&login_hint=${loginHint}`;
+        // Слушаме за съобщения от iframe
+        const messageListener = (event) => {
+            // Приемаме съобщения от нашия собствен origin (след redirect)
+            if (event.origin !== window.location.origin) {
+                return;
+            }
+            const hash = event.data;
+            if (hash && hash.includes('access_token')) {
+                const params = new URLSearchParams(hash.substring(1)); // Премахваме #
+                const accessToken = params.get('access_token');
+                const expiresIn = params.get('expires_in');
+                const tokenWithTimestamp = {
+                    access_token: accessToken,
+                    expires_in: expiresIn,
+                    issued_at: Date.now()
+                };
+                // Обновяваме storage според rememberMe
+                const rememberMe = localStorage.getItem('rememberMe') === 'true';
+                const storage = rememberMe ? localStorage : sessionStorage;
+                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                window.removeEventListener('message', messageListener);
+                if (document.body.contains(iframe)) {
+                    document.body.removeChild(iframe);
+                }
+                resolve(tokenWithTimestamp);
+            } else {
+                window.removeEventListener('message', messageListener);
+                if (document.body.contains(iframe)) {
+                    document.body.removeChild(iframe);
+                }
+                resolve(null);
+            }
+        };
+        window.addEventListener('message', messageListener);
+        document.body.appendChild(iframe);
+        // Таймаут за безопасност
+        setTimeout(() => {
+            window.removeEventListener('message', messageListener);
+            if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+            }
+            resolve(null); // Връщаме null вместо reject
+        }, 5000); // 5 секунди
+    });
+
+}
+
+async function handleAuthClick() {
+    if (isOffline) {
+        document.getElementById('login-page').hidden = true;
+        document.getElementById('login-page').style.display = 'none';
+        startApp(true);
+        return;
+    }
+    if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: async (resp) => {
+                if (resp.error) {
+                    throw (resp);
+                }
+                await authCallback(resp);
+            },
+        });
+    }
+    if (tokenClient) {
+        const rememberMe = localStorage.getItem('rememberMe') === 'true';
+        const loginHint = localStorage.getItem('google_login_hint');
+        if (rememberMe && loginHint) {
+            tokenClient.requestAccessToken({ hint: loginHint });
+        } else {
+            tokenClient.requestAccessToken({ prompt: 'select_account' });
+        }
+    } else {
+        console.warn("Google Identity Services not loaded. Checking for offline capability...");
+        let hasS = false;
+        try {
+            const cache = await caches.open('app-cache');
+            const cachedResponse = await cache.match('s');
+            hasS = !!cachedResponse;
+        } catch (e) { console.warn(e); }
+        if (hasS) {
+            if (confirm("Google services could not be loaded (likely due to connection issues).\n\nDo you want to start in Offline Mode?")) {
+                isOffline = true;
+                document.getElementById('login-page').hidden = true;
+                document.getElementById('login-page').style.display = 'none';
+                startApp(true);
+                return;
+            }
+        }
+        console.error("Google Identity Services not loaded.");
+        alert("Google services are not loaded yet. Please check your connection and reload via F5.");
+    }
+}
+
+async function checkWhitelist(delayed = false) {
+    if (isOffline) return null;
+    if (delayed) {
+        // Изчакваме 2 секунди, за да не пречим на началната синхронизация 
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
+    const action = isTrialStart ? 'log' : 'check';
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+
+    console.log('>>> Executing whitelist check (action: ' + action + ')...');
+    console.log('>>> Email for whitelist:', currentUserEmail);
+
+    if (!currentUserEmail) return null;
+
+    try {
+        // проверка без extended - const response = await fetch('https://script.google.com/macros/s/AKfycbymxrrIXy9ULL8CBOP06yaVVoDqHzjhvFgb1bPdRK-nZ3nLKAciIyExnn_InAYBBcXDFQ/exec', {
+        const response = await fetch('https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                email: currentUserEmail,
+                action: action
+            })
+        });
+        const data = await response.json();
+        console.log('>>> Whitelist response:', data);
+
+        if (isTrialStart) {
+            sessionStorage.removeItem('isTrialStart');
+            console.log('>>> Trial registered for:', currentUserEmail);
+        }
+        return data;
+    } catch (err) {
+        if (err.name === 'TypeError' || err.message === 'Failed to fetch') {
+            console.log('>>> Whitelist check: Service unavailable (likely offline).');
+        } else {
+            console.log('>>> Whitelist check fail:', err);
+        }
+        return null;
+    }
+}
+
+async function checkAuth(isExplicitLogin = false) {
+    console.log("checkAuth");
+    const searchInput = document.getElementById('search-box');
+    if (searchInput) {
+        const val = searchInput.value.trim();
+        // По-толерантен regex: приема ?token= или само token=
+        const tokenMatch = val.match(/^\??token=(.+)$/);
+        if (tokenMatch) {
+            const tokenValue = tokenMatch[1].trim();
+            if (tokenValue) {
+                localStorage.setItem('urlToken', tokenValue);
+                searchInput.value = '';
+                cachedLicenseData = null; // Изчистваме кеша за лиценза
+                if (saveSearchBtn) saveSearchBtn.style.display = 'none';
+            }
+        }
+    }
+    const sessionToken = sessionStorage.getItem('google_auth_token');
+    const localToken = localStorage.getItem('google_auth_token');
+    const storedTokenString = sessionToken || localToken;
+    if (isOffline && (storedTokenString || isExplicitLogin)) return { pass: true };
+    if (!storedTokenString) {
+        await initLoginPage();
+        window.authListenersAdded = true;
+        return { pass: false };
+    }
+    const tokenData = JSON.parse(storedTokenString);
+    if (window.gapi && window.gapi.client && tokenData.access_token) window.gapi.client.setToken(tokenData);
+    tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
+    const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
+    if (isExpired) {
+        console.log("Token expired. Attempting silent refresh...");
+        try {
+            const refreshResult = await refreshAuthToken();
+            if (refreshResult && refreshResult.pass) return refreshResult;
+            console.warn("Silent refresh returned non-pass result:", refreshResult);
+        } catch (refreshErr) {
+            console.warn("Silent refresh failed:", refreshErr);
+        }
+        let hasLocalData = false;
+        if (dbExists) {
+            try {
+                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (boardsInDb && boardsInDb.length > 0) hasLocalData = true;
+            } catch (e) {
+                console.warn("Failed to check local DB in checkAuth:", e);
+            }
+        }
+        if (hasLocalData) {
+            isOffline = true;
+            isSyncSuspended = true;
+            console.log("[Auth] Switching to local-only mode (sync suspended).");
+            return { pass: true, tokenData };
+        }
+        sessionStorage.removeItem('google_auth_token');
+        localStorage.removeItem('google_auth_token');
+        initLoginPage();
+        return { pass: false };
+    }
+    const licenseData = await decryptLicenseToken();
+    tokenRemainingDays = licenseData.remainingDays;
+    pass = licenseData.pass;
+    if (licenseData.pass) {
+        console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
+        if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
+    } else {
+        console.warn("License required. Showing login page.");
+        initLoginPage();
+        return null;
+    }
+    return { tokenData, pass };
+}
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+    });
+}
+
+async function loadGoogleApis() {
+    if (isOffline) return;
+    if (typeof gapi !== 'undefined' && gapi.client) return;
+    try {
+        await loadScript('https://apis.google.com/js/api.js');
+        await new Promise(resolve => gapi.load('client', resolve));
+        await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+    } catch (error) {
+        throw new Error(_('errorGoogleLibs'));
+    }
+}
+
+function handleSignoutClick() {
+    // Премахваме само ключовете, свързани с удостоверяването
+    localStorage.removeItem('google_auth_token');
+    sessionStorage.removeItem('google_auth_token');
+    sessionStorage.removeItem('google_auth_email_hint');
+    // Премахваме кешираните ID-та на папки, за да не се ползват от друг потребител
+    localStorage.removeItem('gdrive_multinotes_data_id');
+    localStorage.removeItem('gdrive_folder_id_Other');
+    localStorage.removeItem('gdrive_folder_id_Sound');
+    localStorage.removeItem('gdrive_folder_id_Video');
+    localStorage.removeItem('gdrive_folder_id_Images');
+    // Премахваме google_login_hint САМО ако "Запомни ме" НЕ е активно
+    const rememberMe = localStorage.getItem('rememberMe') === 'true';
+    if (!rememberMe) {
+        localStorage.removeItem('google_login_hint'); // Спираме автоматичния вход
+    }
+    // Задаваме флаг за изход, за да се покаже login формата
+    sessionStorage.setItem('logout_flag', 'true');
+    // Презареждаме страницата - checkAuth ще покаже login формата
+    window.location.reload();
+}
+
+// =================================================================================
+// IV. ЧЕТЕНЕ НА ДАННИ ОТ GOOGLE DRIVE
+// =================================================================================
+// --- GDrive Data Loading logic moved to load.js ---
+/**
+ * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
+ * Ако има несъответствие, превключва приложението в ограничен режим.
+ */
+async function userCheck() {
+    if (!dbExists) {
+        // Базата не съществува, не правим нищо.
+        // Потребителят ще бъде записан при първоначалното създаване на базата.
+        isDbOwner = true;
+        return;
+    }
+    // Базата съществува, продължаваме с проверката на потребителя
+    const storedUserEmail = await getConfig('userEmail');
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+    // Проверяваме за несъответствие само ако има записан потребител в базата
+    if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
+        isDbOwner = false;
+        await handleUserMismatch(storedUserEmail);
+    } else {
+        isDbOwner = true;
+    }
+}
+
+/**
+ * Обработва случая на несъответствие на потребители.
+ * Показва съобщение и заключва настройките за управление на данни.
+ */
+async function handleUserMismatch(storedUser) {
+    // --- КОРЕКЦИЯ: Добавяме динамичен източник към съобщението ---
+    let sourceName = '';
+    if (localStorage.getItem('useGoogleDb') !== 'false') {
+        sourceName = _('sourceGoogleDrive');
+    } else if (localStorage.getItem('useLocalDb') === 'true') {
+        sourceName = _('sourceLocalFolder');
+    } else if (localStorage.getItem('useArhDb') === 'true') {
+        sourceName = _('sourceArchive');
+    } else {
+        // Fallback, ако нищо не е избрано, въпреки че не би трябвало да се случва
+        sourceName = _('sourceGoogleDrive');
+    }
+    showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceName), 15000);
+    // Принудително превключваме към режим "Google Drive" без IndexedDB
+    localStorage.setItem('useIndexedDb', 'false');
+    localStorage.setItem('useGoogleDb', 'true');
+    localStorage.setItem('useLocalDb', 'false');
+    localStorage.setItem('useArhDb', 'false'); // Добавяме и архива
+    updateGlobalStateFlags();
+    updateModeButton();
+    // Деактивираме контролите в настройките
+    const settingsModal = document.getElementById('settings-modal');
+    // Проверяваме дали модалът за настройки изобщо съществува в DOM
+    if (!settingsModal) return;
+    const controlsToDisable = [
+        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
+        'create-db-btn', // 'delete-db-btn',
+        'select-folder-btn', 'select-arh-btn'
+    ];
+    controlsToDisable.forEach(id => {
+        const el = settingsModal.querySelector(`#${id}`);
+        if (el) {
+            // Ако елементът е чекбокс, първо го изключваме
+            if (el.type === 'checkbox') {
+                el.checked = false;
+            }
+            el.disabled = true;
+        }
+    });
+    // Деактивираме и целия акордеон за разширени настройки
+    const accordionHeader = settingsModal.querySelector('.accordion-header');
+    if (accordionHeader) {
+        accordionHeader.style.pointerEvents = 'none';
+        accordionHeader.style.opacity = '0.5';
+    }
+    const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
+    googleDbCheckbox.checked = true; // Маркираме го
+    // --- КОРЕКЦИЯ: Заключваме и него, за да е ясно, че режимът е принудителен ---
+    // googleDbCheckbox.disabled = false; // Оставяме го активно, но заключено
+    // googleDbCheckbox.disabled = true;
+}
+
+/**
+ * Активира контролите в настройките, които може да са били деактивирани
+ * от `handleUserMismatch`. Извиква се след изтриване на базата данни.
+ */
+function enableSettingsControls() {
+    const settingsModal = document.getElementById('settings-modal');
+    if (!settingsModal) return;
+    const controlsToEnable = [
+        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
+        'create-db-btn', 'select-folder-btn', 'select-arh-btn'
+    ];
+    controlsToEnable.forEach(id => {
+        const el = settingsModal.querySelector(`#${id}`);
+        if (el) {
+            el.disabled = false;
+        }
+    });
+    // Активираме и акордеона за разширени настройки
+    const accordionHeader = settingsModal.querySelector('.accordion-header');
+    if (accordionHeader) {
+        accordionHeader.style.pointerEvents = 'auto';
+        accordionHeader.style.opacity = '1';
+    }
+    console.log("Settings controls have been re-enabled after DB deletion.");
+}
+
+/**
+ * Създава или пресъздава цялата база данни от данните, заредени в паметта.
+ * @returns {Promise<boolean>} Връща true при успех и false при грешка.
+ */
+async function createDatabaseFromMemory() {
+    if (boardsData.length === 0 && allNotesData.length === 0) {
+        showToast(_('dbCreateFailedNoData'), 10000);
+        return false;
+    }
+    try {
+        // --- КЛЮЧОВА КОРЕКЦИЯ: Осигуряваме gdid за IndexedDB (особено за архиви) ---
+        // Тъй като базата използва 'gdid' като keyPath, ако полето е празно (както е в архивите),
+        // всички записи ще се презаписват един друг.
+        const ensureGdid = (data) => data.map(item => {
+            // АКО СМЕ В РЕЖИМ АРХИВ: Винаги използваме цифровия 'id' като основен ключ 'gdid' за базата.
+            // Това гарантира, че връзките в архива ще работят правилно в IndexedDB.
+            // if (useArhDb && item.id !== undefined) {
+            //    return { ...item, gdid: String(item.id) };
+            // }
+            // ЗА ДРУГИ РЕЖИМИ: Само ако gdid липсва, ползваме id като резервен вариант.
+            if ((!item.gdid || item.gdid === "") && item.id !== undefined) {
+                return { ...item, gdid: String(item.id) };
+            }
+            return item;
+        });
+        // Почистване на временни полета преди запис
+        const cleanItem = (item) => {
+            const cleaned = { ...item };
+            delete cleaned.noteCount;
+            delete cleaned.reminderNoteCount;
+            delete cleaned.calendarNoteCount;
+            return cleaned;
+        };
+        const preparedBoards = ensureGdid(boardsData).map(cleanItem);
+        const preparedMedia = ensureGdid(mediaData);
+        const preparedNotes = ensureGdid(allNotesData);
+        await bulkPutDB(BOARD_STORE_NAME, preparedBoards);
+        await bulkPutDB(MEDIA_STORE_NAME, preparedMedia);
+        await bulkPutDB(NOTE_STORE_NAME, preparedNotes);
+        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+        if (currentUserEmail) {
+            await saveConfig('userEmail', currentUserEmail);
+        }
+        // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
+        const noteIdType = useArhDb ? 'id' : 'gdid';
+        await saveConfig('dbNoteIdType', noteIdType);
+        const dbSource = useArhDb ? 3 : (useLocalFolder ? 2 : 1);
+        // Запазваме timestamp само за източника, от който създаваме базата.
+        // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
+        const now = Date.now();
+        if (dbSource === 1) { // Google Drive
+            await saveConfig('lastGDTimestamp', now); // В IndexedDB
+        } else if (dbSource === 2) { // Local Folder
+            await saveConfig('lastLocalTimestamp', now);
+        }
+        await saveConfig('dbSource', dbSource);
+        await saveConfig('dbCreatedFolderName', activeFolderName);
+        // Записваме кога е създадена базата
+        await saveConfig('dbCreatedTimestamp', now);
+        // --- IMMEDIATELY UPDATE GLOBALS FOR CURRENT SESSION ---
+        dbSourceGlobal = dbSource;
+        dbNoteIdTypeGlobal = noteIdType;
+        console.log(`[createDatabaseFromMemory] Session globals updated: Source=${dbSourceGlobal}, IdType=${dbNoteIdTypeGlobal}`);
+        dbExists = true; // Маркираме, че базата вече съществува
+        return true;
+    } catch (error) {
+        console.log("Failed to create/recreate DB from memory:", error);
+        return false;
+    }
+}
+
+/**
+ * Финализира процеса по създаване на база данни, като записва
+ * необходимата конфигурация (timestamps, потребител).
+ */
+async function finalizeDbCreation() {
+    const now = Date.now();
+    await saveConfig('lastGDTimestamp', now);
+    await saveConfig('lastLocalTimestamp', now);
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+    if (currentUserEmail) {
+        await saveConfig('userEmail', currentUserEmail);
+    }
+}
+
+function areBoardsIdentical(memBoards, dbBoards) {
+    if (!memBoards || memBoards.length === 0 || !dbBoards || dbBoards.length === 0) return true; // Празни данни не са несъответствие в този контекст
+
+    const dbGdidSet = new Set(dbBoards.map(b => String(b.gdid)));
+    const dbTitleSet = new Set(dbBoards.map(b => String(b.title || '').trim().toLowerCase()));
+
+    // Проверяваме дали всички бордове от паметта присъстват в базата
+    for (const mb of memBoards) {
+        const memGdid = mb.gdid ? String(mb.gdid) : (mb.id !== undefined ? String(mb.id) : null);
+        const memTitle = String(mb.title || '').trim().toLowerCase();
+
+        if (memGdid !== null && !dbGdidSet.has(memGdid) && !dbTitleSet.has(memTitle)) {
+            console.warn(`Mismatch: Memory board "${mb.title}" (ID: ${memGdid}) not in DB.`);
+            return false;
+        }
+    }
+
+    // Проверяваме и обратното (само ако имаме бордове в базата)
+    if (dbBoards.length > 0) {
+        const memGdidSet = new Set(memBoards.map(mb => mb.gdid ? String(mb.gdid) : (mb.id !== undefined ? String(mb.id) : null)));
+        const memTitleSet = new Set(memBoards.map(mb => String(mb.title || '').trim().toLowerCase()));
+
+        for (const db of dbBoards) {
+            const dbGdid = String(db.gdid);
+            const dbTitle = String(db.title || '').trim().toLowerCase();
+            if (!memGdidSet.has(dbGdid) && !memTitleSet.has(dbTitle)) {
+                console.warn(`Mismatch: DB board "${db.title}" (GDID: ${dbGdid}) not in memory.`);
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Актуализира иконата и tooltip-а на бутона за режим, за да покаже текущия източник на данни.
+ */
+function updateModeButton() {
+    // Тази функция се извиква преди mainLogic, затова трябва да прочете актуалните стойности.
+    const currentUseGoogleDb = localStorage.getItem('useGoogleDb') !== 'false';
+    const currentUseLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
+    const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
+    const modeButton = document.getElementById('mode_button');
+    if (!modeButton) return;
+    let iconWrapper = modeButton.querySelector('.mode-icon-wrapper');
+    if (!iconWrapper) {
+        iconWrapper = document.createElement('div');
+        iconWrapper.className = 'mode-icon-wrapper';
+        modeButton.prepend(iconWrapper);
+    }
+    let iconSrc = '';
+    let title = '';
+    // --- РАЗШИРЕНА ЛОГИКА: Проверяваме за всяка комбинация с база данни ---
+    const isCombinedWithDb = currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb);
+
+    if (!modeButton.querySelector('#mode-button-loading-icon')) {
+        const loadingIcon = document.createElement('img');
+        loadingIcon.src = 'Refresh.png';
+        loadingIcon.id = 'mode-button-loading-icon';
+        modeButton.appendChild(loadingIcon);
+    }
+
+    if (isOffline) {
+        iconSrc = 'Database.png';
+        title = _('offlineMode') || "Offline Mode";
+        // Ensure overlay is hidden in offline mode unless we want to show it's disabled?
+        // For now, let's keep it simple or maybe show a 'OFF' overlay?
+    } else if (isCombinedWithDb) {
+        // Когато имаме комбинация, базата е основна
+        iconSrc = 'Database.png';
+        if (currentUseGoogleDb) title = _('modeDbAndDrive');
+        else if (currentUseLocalFolder) title = _('modeDbAndLocal');
+        else if (currentUseArhDb) title = _('modeDbAndArchive');
+    } else if (currentUseArhDb) {
+        iconSrc = 'Zip.png';
+        title = _('modeArchiveTitle');
+    } else if (currentUseLocalFolder) {
+        iconSrc = 'Folder.png';
+        title = _('modeLocalTitle');
+    } else if (currentUseGoogleDb) {
+        iconSrc = 'GDrive.png';
+        title = _('modeDrive');
+    } else if (currentUseIndexedDb) {
+        iconSrc = 'Database.png';
+        title = _('modeDb');
+    } else {
+        // Fallback: Ако няма избран източник
+        iconSrc = 'Database.png';
+        title = _('noData');
+    }
+    iconWrapper.innerHTML = '';
+    const mainIcon = document.createElement('img');
+    mainIcon.src = iconSrc;
+    mainIcon.alt = title;
+    mainIcon.style.width = '24px';
+    mainIcon.style.height = '24px';
+    iconWrapper.appendChild(mainIcon);
+    // Добавяме иконата за наслагване
+    let overlaySrc = '';
+    let overlayAlt = '';
+    if (isOffline) {
+        // overlaySrc = 'Offline.png'; overlayAlt = 'Offline Mode';
+        overlaySrc = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAAERElEQVR4nO2YW2hcVRSGT1pFBS/4JGqb2WsSSGIlFWvO6IMo1JkMSuYkMTU++OKlVIvYh0LVGIngrdpWDZ21xlFRES8Y6YsXUoIKal8KovggUvGCivUWSmatSYXmsmWfSew0c+bMmWQymYH5YcPMnL33Wd/Ze/9rnbGshhpaHdmxvs1WvSoSSzxpxxKzkXjPHVY9Bh/pdrRpdQfRFXWucoNeAHAhup2ZSMwZtOpFdjyxzQ06H6LeVsJuQNQRxMaD05cplEEg2atIDinib4BkEkiyQKIXmvk8aa6ZPkDyTIjk9g2p6cvXCMKZu3LXq+MK5Ye8IJfbfgTiF0KUudbSuql6EPE+3TE0vtLg9ZL2E5Dsbh2dvLBiwV+R/Ot8QHm8/ZGJbCTer6sAoRVJRqE8HU6fuGj5kWvdBCTbFPIvixO3D3+sqwUBuTapUHZZY3p9WbE3p7OXKuQJr0mLQWza/c5RQH7YQANOdzXTVNjMAy/LJe7ng9mrw8j9CnmPIn5bEf9Wxop8oZInQ4GCD2PmFkXyt9+EBsKO982v1GJb01MtBnrBufwhUKaM2/lOqEgeAOK5EhMdAcz0dN3ce1sl80QLTW8B5DcU8YwvDPKop1sByrMlAj8aejFz3WonO5XKbgbiT0tAvF5wLlSKdwDyvMeArLlWzKO9LbZXdzz0YRaQZ91GckKhfA/E40C8TyXZaaapi/1ATKIz47wB5LEi9EsgkL9SlGnz7Dym10OSBxTJ+21DEzPlupNCPqWQPzL7+oYRfZbXLVrw5EYg+SxQ8IsC5Lvdc4B8uO2Vfy4o6DCi16kkb89l0NLuFMRilbFq5J1eIOY3IEnn3IhHrCAKpeRGL+819gjEX/u504ryBMq3QHx9QUBaN4WTstVatkb0OiAeMsteKoiVQ/CsInmq2LYqW62j+hxAfjfAjf81e9qAdm7fv9eOOWe+2cWcuc776E1F8p7x9ADzHfbcwuXKOEYRd1rIkiYJZe5aWoD5Waz7UIhvVSif+54N436VkJfFKuJfjdX5lcB2NDFQKk9ASqK5vR/QKisBoZDfClopBoEIvabPBeTnVy34fAhF/GCx6znf5nvcYg3liEleiuRYx54PvrPjvSVrpzBm7lTEj1rVFqB0AsmY31lpH/6k0J1ia/yO7S49yUt+gdcsxIYD+jxF/GUgb69VCFgsO+oZQhVYLP9hSvNQMhtvScqmEHIHkNykSJ4AlJ/zIezu3rmagAgh3+tWl8TDZmsV67clrc+GlNxvsrbJ2HYAi62azB9cy+lr1xLEcmXXGsTpzGrOAx9XxM+Z3+oGAvLLgtO104FS4+xagXCffOFb159Bxtq1AOEFAMS/Bx1vrzWE2S4eAPvKmSMScwaXQkS6E6eu2doftlZb5sC6EMjH3UOMvN+8xJQ7j33mSsxH4s5Oq95kRxMD5snXZfCLsqM98P+XhhqyKqr/AEJezD2/ik84AAAAAElFTkSuQmCC'; overlayAlt = 'Offline Mode';
+    } else if (isCombinedWithDb) {
+        if (currentUseGoogleDb) {
+            overlaySrc = 'GDrive.png'; overlayAlt = 'Google Drive Sync';
+        } else if (currentUseLocalFolder) {
+            overlaySrc = 'Folder.png'; overlayAlt = 'Local Folder Sync';
+        } else if (currentUseArhDb) {
+            overlaySrc = 'Zip.png'; overlayAlt = 'Archive Source';
+        }
+    }
+    if (overlaySrc) {
+        const overlay = document.createElement('div');
+        overlay.className = 'mode-db-overlay';
+        const filterStyle = isOffline ? ' style="filter: brightness(0);"' : '';
+        overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}"${filterStyle}>`;
+        iconWrapper.appendChild(overlay);
+    }
+    if (isSyncSuspended) {
+        title = (_('syncSuspendedTooltip') || 'Синхронизацията е спряна. Кликнете за свързване.');
+        iconWrapper.style.position = 'relative';
+        const warnBadge = document.createElement('span');
+        warnBadge.textContent = '⚠️';
+        warnBadge.style.cssText = 'position:absolute;bottom:-4px;right:-4px;font-size:12px;line-height:1;';
+        iconWrapper.appendChild(warnBadge);
+    }
+    modeButton.title = title;
+}
+
+/**
+ * Обновява глобалните променливи за режим на работа от localStorage.
+ * Извиква се, за да се синхронизира състоянието на приложението с настройките.
+ */
+function updateGlobalStateFlags() {
+    useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
+    useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
+    useArhDb = localStorage.getItem('useArhDb') === 'true';
+    useIndexedDb = localStorage.getItem('useIndexedDb') !== 'false'; // true по подразбиране
+    automatedTimer = localStorage.getItem('automatedTimer') !== 'false'; // true по подразбиране
+    updateLocalFolder = localStorage.getItem('updateLocalFolder') === 'true';
+}
+
+/**
+ * Проверява дали е избран поне един източник на данни.
+ * Ако не е, показва съобщение и отваря настройките.
+ * @returns {boolean} Връща true, ако има избран източник, и false, ако няма.
+ */
+function validateDataSourceSelection() {
+    if (!useGoogleDb && !useLocalFolder && !useArhDb && !useIndexedDb) {
+        showToast(_('errorNoDataSourceSelected'), 15000);
+        document.getElementById('settings-modal').classList.add('visible');
+        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+        if (advancedSettingsSpan) {
+            advancedSettingsSpan.removeAttribute('hidden');
+            localStorage.setItem('showAdvancedSettings', 'true');
+        }
+        setTimeout(() => {
+            const accordionHeader = document.querySelector('.accordion-header');
+            const advancedSettingsContent = document.getElementById('advanced-settings');
+            if (advancedSettingsContent && advancedSettingsContent.style.display === 'none' && accordionHeader) {
+                accordionHeader.click();
+            }
+        }, 100);
+
+        if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
+
+        loaderContainer.style.display = 'none'; // Скриваме лоудъра
+        // Изчистваме осиротели файлове при старт
+        // cleanupOrphanedImages();
+        return false; // Сигнализираме, че проверката е неуспешна
+    }
+    return true; // Всичко е наред
+}
+
+/**
+ * Отчита проблеми с целостта на данните (липсващи или дублирани ID-та).
+ */
+async function goOffline() {
+    if (isOfflineChecked) return;
+    isOfflineChecked = true;
+    let hasS = false;
+    try {
+        const cache = await caches.open('app-cache');
+        const cachedResponse = await cache.match('s');
+        hasS = !!cachedResponse;
+    } catch (e) {
+        console.warn("Error checking app-cache for 's':", e);
+    }
+    if (isOffline) return;
+
+    let reallyOnline = true;
+    if (!navigator.onLine && hasS) {
+        try {
+            const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
+            reallyOnline = response.ok;
+        } catch (e) {
+            reallyOnline = false;
+        }
+    }
+
+    if (!reallyOnline && hasS) {
+        isOffline = true;
+        console.warn("Working in offline mode (s-record found).");
+        if (document.querySelector('.login-box')) {
+            document.querySelector('.login-box').style.display = 'block';
+        }
+        if (dbExists) {
+            try {
+                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (boardsInDb && boardsInDb.length > 0) {
+                    localStorage.setItem('useIndexedDb', 'true');
+                    localStorage.setItem('useGoogleDb', 'false');
+                    localStorage.setItem('forceGDriveRead', 'false');
+                    updateGlobalStateFlags();
+                }
+            } catch (e) {
+                console.error("Error checking DB in goOffline:", e);
+            }
+        }
+    } else {
+        isOffline = false;
+    }
+}
+
+function reportDataIntegrityIssues() {
+    if (dataIntegrityIssues.length === 0) return;
+    const duplicates = dataIntegrityIssues.filter(i => i.type === 'duplicate');
+    const missing = dataIntegrityIssues.filter(i => i.type === 'missing');
+    console.group('%c Data Integrity Report ', 'background: #f44336; color: white; font-weight: bold;');
+    if (duplicates.length > 0) {
+        console.warn(`Found ${duplicates.length} duplicate IDs. IndexedDB will only keep the LAST version of each.`);
+        duplicates.forEach(d => {
+            console.log(` - ID: ${d.gdid} | Mode: ${d.mode || 'direct'} | Files: [${d.file1}] and [${d.file2}]`);
+        });
+    }
+    if (missing.length > 0) {
+        console.warn(`Found ${missing.length} items missing an ID property. These were likely skipped.`);
+        missing.forEach(m => {
+            console.log(` - File: ${m.file} | Mode: ${m.mode || 'direct'} | Content: "${(m.text || '').substring(0, 50)}..."`);
+        });
+    }
+    console.groupEnd();
+    // Show a small toast if there are many issues
+    if (duplicates.length > 0) {
+        let previewText = '';
+        // Find the content of the first duplicate to show as a hint
+        const firstDupId = duplicates[0].gdid;
+        const dupNote = allNotesData.find(n => n.gdid === firstDupId);
+        if (dupNote) {
+            const content = dupNote.notetxt || dupNote.text || '';
+            previewText = content.substring(0, 50).replace(/\n/g, ' ');
+            if (content.length > 50) previewText += '...';
+        }
+        const msg = `${_('duplicateNotes')}: ${duplicates.length}. ${_('content')}: "${previewText}"`;
+        showToast(msg, 10000);
+    }
+}
+
+/**
+ * Филтрира бележките, за да остави само по 5 за всеки борд (за демо версия).
+ */
+function filterNotesForDemo() {
+    if (!DEMO_MODE) return; // Изпълнява се само ако демо флагът е активен
+    console.log("DEMO MODE: Filtering notes to 5 per board.");
+    if (!boardsData || boardsData.length === 0 || !allNotesData || allNotesData.length === 0) {
+        return;
+    }
+    const filteredNotes = new Set();
+    const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
+    boardsData.forEach(board => {
+        const boardIdToMatch = isArh ? board.id : board.gdid;
+        const notesForBoard = allNotesData
+            .filter(note => note.boardid == boardIdToMatch)
+            .sort((a, b) => (a.numord || 0) - (b.numord || 0)) // Сортираме за консистентност
+            .slice(0, DEMO_NOTE_LIMIT); // Взимаме броя бележки от константата
+        notesForBoard.forEach(note => filteredNotes.add(note));
+    });
+    const originalCount = allNotesData.length;
+    allNotesData = Array.from(filteredNotes);
+    console.log(`DEMO MODE: Notes reduced from ${originalCount} to ${allNotesData.length}.`);
+}
+
+/**
+ * Обработва първоначалното зареждане, когато settings.json и folders.json не съществуват.
+ * Ред:
+ * 1. Създава борд Main в AppDataFolder и го задава като стартов борд
+ * 2. Проверява дали в GD съществува папка multinotes_data и пита потребителя
+ * 3. Задава активна папка (AppDataFolder или multinotes_data)
+ * 4. Създава folders.json и settings.json с профил Default
+ * @returns {boolean} true ако е извършена първоначална настройка, false ако не е необходима
+ */
+async function handleFirstRunSetup() {
+    if (isOffline) return false;
+    // Проверка дали вече е настроено (локално или в сесията)
+    if (localStorage.getItem('initial_setup_complete') === 'true' || sessionStorage.getItem('first_run_lock')) return false;
+    const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
+    if (hasLocalSettings) return false;
+
+    sessionStorage.setItem('first_run_lock', 'true'); // Временна блокировка за текущата сесия
+
+    // Проверка дали settings.json съществува в AppSettings папката
+    try {
+        const appSettingsFolderId = await getAppSettingsFolderId();
+        if (!appSettingsFolderId) return false;
+        const settingsFiles = await findGDFileByName(appSettingsFolderId, 'settings.json');
+        if (settingsFiles && settingsFiles.length > 0) {
+            localStorage.setItem('initial_setup_complete', 'true');
+            return false;
+        }
+        const foldersFiles = await findGDFileByName(appSettingsFolderId, 'folders.json');
+        if (foldersFiles && foldersFiles.length > 0) {
+            localStorage.setItem('initial_setup_complete', 'true');
+            return false;
+        }
+    } catch (e) {
+        console.warn('[FirstRun] Error checking AppSettings:', e);
+        return false;
+    }
+    console.log('[FirstRun] First-time setup detected. Starting initial configuration...');
+    if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunSetup');
+    // --- СТЪПКА 1: Проверка за multinotes_data в Google Drive ---
+    let chosenFolder = 'AppDataFolder';
+    let multinotesFound = false;
+    try {
+        const multinotesId = await getFolderIDByName('multinotes_data');
+        if (multinotesId) {
+            multinotesFound = true;
+            const useMultinotes = await showConfirmation(_('firstRunMultinotesFound'));
+            if (useMultinotes) {
+                chosenFolder = 'multinotes_data';
+                localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
+            }
+        }
+    } catch (e) {
+        console.warn('[FirstRun] Error checking for multinotes_data:', e);
+    }
+
+    // --- СТЪПКА 2: Задаване на активна папка ---
+    activeFolderName = chosenFolder;
+    localStorage.setItem('active_folder_name', chosenFolder);
+    cachedMainFolderId = null;
+    const loaderFolderInfo = document.getElementById('loader-folder-info');
+    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+    console.log('[FirstRun] Active folder selected:', chosenFolder);
+
+    const folderNames = ['AppDataFolder'];
+    if (multinotesFound) folderNames.push('multinotes_data');
+    localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+
+    // --- СТЪПКА 3: Създаване на борд Main (САМО ако е избрана AppDataFolder) ---
+    if (chosenFolder === 'AppDataFolder') {
+        try {
+            console.log('[FirstRun] Creating Main board in AppDataFolder...');
+
+            const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
+
+            if (existingMainBoards && existingMainBoards.length > 0) {
+                console.log('[FirstRun] Main board already exists in AppDataFolder');
+                localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
+            } else {
+                const now = Date.now();
+                boardIdCounter = 1;
+                localStorage.setItem('boardIdCounter', '1');
+                const boardToSave = {
+                    "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+                    "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
+                    "numord": 1, "status": 0, "title": "Main"
+                };
+
+                const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
+                if (gdid) {
+                    boardToSave.gdid = gdid;
+                    await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+                    console.log('[FirstRun] Main board created in AppDataFolder');
+                    localStorage.setItem('startBoard_AppDataFolder', gdid);
+                }
+            }
+        } catch (e) {
+            console.error('[FirstRun] Error creating Main board in AppDataFolder:', e);
+        }
+    }
+
+    // --- СТЪПКА 4: Създаване на folders.json ---
+    try {
+        // ПРЕДПАЗНА МЯРКА: Ако сме създали борд, трябва да е в boardsData, за да се запише в folders.json
+        if (typeof boardsData !== 'undefined' && boardsData.length === 0) {
+            const startBoardId = localStorage.getItem('startBoard_AppDataFolder');
+            if (startBoardId) {
+                // Търсим дали имаме вече някаква информация или слагаме дефолтния Main
+                boardsData = [{ id: 1, title: 'Main', gdid: startBoardId, numord: 1 }];
+            }
+        }
+        await syncGlobalFoldersJson();
+        console.log('[FirstRun] folders.json created.');
+    } catch (e) {
+        console.warn('[FirstRun] Error creating folders.json:', e);
+    }
+    // --- СТЪПКА 5: Подразбиращи се координати за плаващите бутони ---
+    // localStorage.setItem('popupMenuBtnPosition', JSON.stringify({ top: '60px', right: '10px' }));
+    // Задаваме FAB бутона малко по-вляво от KB Assistant (който е на right: 10px)
+    // localStorage.setItem('addNoteFabPosition', JSON.stringify({ top: (window.innerHeight - 80) + 'px', right: '70px' }));
+    // localStorage.setItem('kbFabPosition', JSON.stringify({ bottom: '10px', right: '10px' }));
+    // localStorage.setItem('scrollTopBtnPosition', JSON.stringify({ bottom: '50px', right: '10px' }));
+    // --- СТЪПКА 6: Създаване на settings.json с профил Default ---
+    try {
+        await saveSettingsToGDrive(true); // silent=true
+        console.log('[FirstRun] settings.json created with Default profile.');
+    } catch (e) {
+        console.warn('[FirstRun] Error creating settings.json:', e);
+    }
+    if (typeof showToast === 'function') showToast(_('firstRunComplete'), 5000);
+    localStorage.setItem('initial_setup_complete', 'true');
+    console.log('[FirstRun] First-time setup complete.');
+    return true;
+}
+
+async function mainLogic() {
+    const loaderFolderInfo = document.getElementById('loader-folder-info');
+    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+    const settingsOverride = localStorage.getItem('settings_json_full_override'); //@@ прилагане на промени, направени в set.html
+    if (settingsOverride) {
+        localStorage.removeItem('settings_json_full_override');
+        try {
+            const parsed = JSON.parse(settingsOverride);
+            const currentDevice = localStorage.getItem('deviceName') || 'Default';
+            if (parsed[currentDevice]) {
+                const devSettings = parsed[currentDevice];
+                Object.keys(devSettings).forEach(k => {
+                    let val = devSettings[k];
+                    if (k === 'boardMenuOrder' && (!val || (Array.isArray(val) && val.length === 0))) return;
+                    if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
+                    localStorage.setItem(k, val);
+                });
+                console.log("[Settings-Override] Applied settings for device:", currentDevice);
+            }
+            if (!isOffline) {
+                (async () => {
+                    try {
+                        const folderId = await getFolderIDByName('multinotes_data');
+                        if (folderId) {
+                            const existingFiles = await findGDFileByName(folderId, 'settings.json');
+                            if (existingFiles && existingFiles.length > 0) {
+                                await updateGDriveFile(existingFiles[0].id, settingsOverride);
+                                console.log("[Settings-Override] Pushed to GDrive.");
+                            }
+                        }
+                    } catch (err) {
+                        console.error("GDrive push error for settings override:", err);
+                    }
+                })();
+            }
+        } catch (e) {
+            console.error("Error applying settings override:", e);
+        }
+    }
+    if (isOffline) {
+        console.log("Working in offline mode. Skipping sync.");
+        loaderText.textContent = _('loadingFromLocal');
+
+        // --- КОРЕКЦИЯ: Инициализация на състоянието и в офлайн режим ---
+        updateGlobalStateFlags();
+        if (useArhDb) {
+            dbSourceGlobal = 3; dbNoteIdTypeGlobal = 'id';
+        } else if (useLocalFolder) {
+            dbSourceGlobal = 2; dbNoteIdTypeGlobal = 'gdid';
+        } else if (useGoogleDb) {
+            dbSourceGlobal = 1; dbNoteIdTypeGlobal = 'gdid';
+        }
+        updateModeButton();
+        initializeLoad(); // Нулираме контейнерите и подготвяме за нови данни
+
+        try {
+            await fetchAllDataLocal();
+            await renderUI({ boardParseError: false });
+        } catch (e) {
+            console.error("Error loading local data in offline mode:", e);
+        }
+
+        // --- КОРЕКЦИЯ: Осигуряваме видимост на UI елементите ---
+        showAppUI();
+
+        if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
+            const addNoteFab = document.getElementById('add-note-fab');
+            if (addNoteFab) addNoteFab.style.display = 'flex';
+        }
+
+        // Показваме бутона за инсталиране, ако има такъв
+        if (window.showInstallButton) window.showInstallButton();
+
+        return;
+    }
+    if (isMainLogicRunning) {
+        console.log("mainLogic is already running, skipping...");
+        return;
+    }
+    isMainLogicRunning = true;
+    try {
+        dbSourceGlobal = null; // Нулираме глобалните променливи
+        isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
+        updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
+        dataIntegrityIssues = []; // Reset integrity report
+        isInitialLoad = true; // --- КОРЕКЦИЯ: Нулираме флага, за да работи скролирането при презареждане ---
+        updateGlobalStateFlags();
+        enableSettingsControls();
+        // Извикваме новата функция за валидация
+        if (!validateDataSourceSelection()) return;
+        // --- ЗАДАВАНЕ НА ГЛОБАЛЕН ИЗТОЧНИК И ТИП ВРЪЗКА ЗА ТЕКУЩАТА СЕСИЯ ---
+        // Това е необходимо, за да работят коректно функции като createNoteElement,
+        // дори когато не се използва база данни.
+        if (useArhDb) {
+            dbSourceGlobal = 3; // 3: Архив
+            dbNoteIdTypeGlobal = 'id';
+        } else if (useLocalFolder) {
+            dbSourceGlobal = 2; // 2: Локална папка
+            dbNoteIdTypeGlobal = 'gdid';
+        } else if (useGoogleDb) {
+            dbSourceGlobal = 1; // 1: Google Drive
+            dbNoteIdTypeGlobal = 'gdid';
+        }
+        initializeLoad(); // Resets state and shows the loader screen
+        let hasLocalData = false;
+        if (useIndexedDb) {
+            dbExists = await checkDbExists(NOTES_DB_NAME);
+            if (dbExists) {
+                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (boardsInDb && boardsInDb.length > 0) {
+                    hasLocalData = true;
+                }
+            }
+        }
+        if (!hasLocalData) {
+            if (!authToken) {
+                const authResult = await checkAuth(isExplicitLogin);
+                if (!authResult || !authResult.pass) {
+                    if (isLoadCancelled) return;
+                    showAppUI();
+                    return;
+                }
+                authToken = authResult.tokenData;
+            }
+            if (!isOffline) await loadGlobalFoldersJson();
+            if (!isOffline) {
+                const wasFirstRun = await handleFirstRunSetup();
+                if (wasFirstRun) {
+                    console.log('[mainLogic] First run setup completed. Reloading to start normal cycle...');
+                    location.reload();
+                    return;
+                }
+            }
+        }
+        const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
+        updateModeButton(); // Актуализираме иконата за режим веднага
+        // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
+        let boardsInDb = [];
+        if (useIndexedDb) {
+            dbExists = await checkDbExists(NOTES_DB_NAME);
+            if (dbExists) {
+                boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (isLoadCancelled) return;
+            }
+            // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
+            // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
+            if (dbExists && boardsInDb.length > 0) {
+                // Извличаме конфигурацията на базата САМО ВЕДНЪЖ тук
+                // Взимаме стойностите от базата само ако не са зададени вече от активен източник (GD, Local, Arh).
+                // Това е важно за режим "само база данни".
+                const dbSource = await getConfig('dbSource');
+                const dbNoteIdType = await getConfig('dbNoteIdType');
+                dbSourceGlobal = dbSource;
+                dbNoteIdTypeGlobal = dbNoteIdType;
+                console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
+                if (dbNoteIdType) { // Проверяваме само ако типът е записан
+                    // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
+                    const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
+                    if (isAnySourceActive) {
+                        if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
+                            console.warn(`[mainLogic] Data source mismatch! DB expects ${dbNoteIdType}, but current mode is different.`);
+                            showToast(_('errorDbSourceMismatch'), 15000);
+                        }
+                    }
+                }
+            }
+            // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
+            // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
+            // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
+            if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
+                const dbSource = await getConfig('dbSource');
+                let handleKey = null;
+                if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
+                else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
+                if (handleKey) {
+                    const handle = await getConfig(handleKey);
+                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                    if (verifiedHandle) {
+                        dirHandle = verifiedHandle; // Задаваме глобалния handle
+                    } else {
+                        showToast(_('noUpdateMode'), 10000);
+                    }
+                }
+            }
+        }
+        // --- КОРЕКЦИЯ: Извикваме проверката за потребител тук, след като UI е готов ---
+        if (!hasLocalData) {
+            await userCheck();
+        }
+        if (isLoadCancelled) return;
+        // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
+        updateGlobalStateFlags();
+        // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
+        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
+            showToast(_('errorDbOnlyAndEmpty'), 15000);
+            if (isLoadCancelled) return;
+            document.getElementById('settings-modal').classList.add('visible');
+            loaderContainer.style.display = 'none'; // Скриваме лоудъра
+            return; // Прекратяваме изпълнението
+        }
+        try {
+            // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
+            // Зареждаме API-то само ако ще работим с Google Drive.
+            if (useGoogleDb) {
+                if (typeof gapi !== 'undefined' && gapi.client) {
+                    gapi.client.setToken({ access_token: authToken.access_token });
+                }
+            }
+            if (useArhDb) {
+                // --- РЕЖИМ 0: Зареждане от Архив ---
+                console.log("Mode: Archive");
+                if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
+                // --- КОРЕКЦИЯ: Задаваме правилното заглавие на лоудъра ---
+                // Преди: Показваше "Избери архивна папка", дори когато такава вече е избрана.
+                // Сега: Показва "Зареждане директно от архив", което е по-коректно.
+                if (loaderTitle) {
+                    loaderTitle.textContent = useIndexedDb ? _('dbManagementTitle') : _('loadedFromArhNoDb');
+                }
+                const arhHandle = await getConfig('arhHandle');
+                if (!arhHandle) {
+                    showToast(_('errorArhFolderNotSelected'), 10000);
+                    if (isLoadCancelled) return;
+                    document.getElementById('settings-modal').classList.add('visible');
+                    return; // Stop execution if no archive handle
+                }
+                const verifiedHandle = await verifyPermission(arhHandle);
+                if (isLoadCancelled) return;
+                if (!verifiedHandle) {
+                    showToast(_('permissionDenied'), 10000);
+                    return; // Stop execution if no permission
+                }
+                dirHandle = verifiedHandle; // <-- ДОБАВЕН РЕД
+                if (useIndexedDb) {
+                    // Archive + IndexedDB mode
+                    console.log("Mode: Archive + IndexedDB");
+                    if (!dbExists || boardsInDb.length === 0) {
+                        // DB is empty or does not exist, prompt for creation from archive
+                        const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
+                        if (confirmed) {
+                            loaderText.textContent = _('creatingDbFromArh');
+                            if (isLoadCancelled) return;
+                            const success = await readArh(verifiedHandle); // Read archive into memory
+                            if (success) {
+                                if (isLoadCancelled) return;
+                                const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
+                                if (dbCreatedSuccessfully) {
+                                    showToast(_('dbCreated'), 10000);
+                                    if (isLoadCancelled) return;
+                                    await fetchAllDataLocal(); // Load from the newly created DB
+                                    await renderUI({ boardParseError: false });
+                                } else {
+                                    showToast(_('dbCreateFailedNoData'), 10000);
+                                    // Fallback to direct archive load if DB creation fails
+                                    await readArh(verifiedHandle); // Re-read archive into memory for direct display
+                                    await renderUI({ boardParseError: false });
+                                }
+                            } else {
+                                // If reading archive failed, cannot create DB.
+                                showToast(_('errorReadArh'), 10000);
+                                // What to do here? Maybe just show an empty UI or an error.
+                            }
+                        } else {
+                            // User declined to create DB, load directly from archive for this session
+                            showToast(_('loadedFromArhNoDb'), 10000);
+                            if (isLoadCancelled) return;
+                            const success = await readArh(verifiedHandle);
+                            if (success) {
+                                await renderUI({ boardParseError: false });
+                            }
+                        }
+                    } else {
+                        // DB exists and has data, load from DB
+                        loaderText.textContent = _('loadingFromDb');
+                        if (isLoadCancelled) return;
+                        await fetchAllDataLocal();
+                        await renderUI({ boardParseError: false });
+                    }
+                } else {
+                    // Archive mode without IndexedDB
+                    console.log("Mode: Archive (no IndexedDB)");
+                    // КЛЮЧОВА СТЪПКА: Задаваме dirHandle и при директно четене
+                    dirHandle = verifiedHandle;
+                    if (isLoadCancelled) return;
+                    const success = await readArh(verifiedHandle);
+                    if (success) {
+                        await renderUI({ boardParseError: false });
+                    }
+                }
+            } else if (!useIndexedDb) {
+                // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
+                console.log("Mode: Direct from source (IndexedDB is OFF)");
+                if (useGoogleDb) {
+                    // Нулираме dirHandle тук, за да сме сигурни, че няма да се използват стари handles от локален/архивен режим
+                    dirHandle = null;
+                    console.log("Source: Google Drive");
+                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
+                    if (isLoadCancelled) return;
+                    const result = await fetchAllData(null, false); // false -> не записвай в DB
+                    if (result.error) return;
+                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
+                    filterNotesForDemo();
+                    await renderUI({ boardParseError: result.boardParseError });
+                } else if (useLocalFolder) {
+                    console.log("Source: Local Folder");
+                    if (loaderTitle) loaderTitle.textContent = _('sourceLocalFolder');
+                    const { boardParseError } = await fetchAllDataFromLocalFolder();
+                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
+                    filterNotesForDemo();
+                    await renderUI({ boardParseError });
+                }
+            } else {
+                // --- РЕЖИМ 2: С IndexedDB
+                console.log("Mode: Using IndexedDB");
+                if (!dbExists || boardsInDb.length === 0) {
+                    // Първоначално създаване на базата данни
+                    console.log("DB is empty or does not exist. Performing initial data load.");
+                    if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
+                    loaderText.textContent = _('initialDataLoad');
+                    if (useGoogleDb) {
+                        console.log("Source for initial load: Google Drive");
+                        if (isLoadCancelled) return;
+                        const result = await fetchAllData(null);
+                        if (result.error) { // Проверяваме за грешка при зареждането
+                            return; // Прекратяваме, ако няма файлове
+                        }
+                        // Разрешаваме дублираните бележки, ако има такива (преди запис в базата)
+                        if (result.duplicates && result.duplicates.length > 0) {
+                            await resolveLoadedConflicts(result.duplicates);
+                        }
+                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
+                        filterNotesForDemo();
+                        await createDatabaseFromMemory();
+                        await renderUI({ boardParseError: result.boardParseError });
+                    } else if (useLocalFolder) {
+                        console.log("Source for initial load: Local Folder");
+                        const { boardParseError } = await fetchAllDataFromLocalFolder();
+                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
+                        filterNotesForDemo();
+                        await createDatabaseFromMemory();
+                        await renderUI({ boardParseError });
+                    }
+                    showToast(_('dbCreated'), 10000);
+                } else {
+                    // DB exists and has data, load from DB FIRST then sync in background
+                    console.log("[mainLogic] DB exists. Fast loading local data first.");
+                    loaderText.textContent = _('fetchingFromDb');
+                    if (isLoadCancelled) return;
+                    await fetchAllDataLocal();
+
+                    // --- ПЪРВОНАЧАЛНО РЕНДИРАНЕ (ОТ БАЗАТА) ---
+                    await renderUI({ boardParseError: false });
+
+                    // Background Sync Task - стартираме го веднага след първото рендиране
+                    const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
+                    if (updateFromSource && !isOffline) {
+                        (async () => {
+                            try {
+                                if (hasLocalData) {
+                                    if (!authToken) {
+                                        const authResult = await checkAuth(isExplicitLogin);
+                                        if (authResult && authResult.pass) {
+                                            authToken = authResult.tokenData;
+                                        }
+                                    }
+                                    if (authToken) {
+                                        if (useGoogleDb && typeof gapi !== 'undefined' && gapi.client) {
+                                            gapi.client.setToken({ access_token: authToken.access_token });
+                                        }
+                                        await loadGlobalFoldersJson();
+                                        const wasFirstRun = await handleFirstRunSetup();
+                                        if (wasFirstRun) {
+                                            location.reload();
+                                            return;
+                                        }
+                                        await userCheck();
+                                        updateGlobalStateFlags();
+                                    } else {
+                                        return;
+                                    }
+                                }
+                                console.log("[mainLogic] Starting background sync task...");
+                                let updatedCount = 0;
+                                if (useGoogleDb) {
+                                    updatedCount = await runGoogleDriveSync();
+                                } else if (useLocalFolder) {
+                                    updatedCount = await runLocalSync();
+                                }
+                                if (updatedCount > 0) {
+                                    console.log(`[mainLogic] Background sync finished: ${updatedCount} updates found.`);
+                                    await fetchAllDataLocal();
+                                    if (updatedNoteGdims.length > 0 && !document.getElementById('modal-body')) {
+                                        currentBoardFilter = 'new-updates';
+                                    }
+                                    await renderUI({ boardParseError: false });
+                                    showToast(useGoogleDb ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('localUpdatesFound').replace('{count}', updatedCount), 5000);
+                                } else {
+                                    console.log("[mainLogic] Background sync finished. No new updates.");
+                                }
+                            } catch (e) {
+                                console.error("[mainLogic] Background sync error:", e);
+                            }
+                        })();
+                    }
+                }
+            }
+            reportDataIntegrityIssues(); // Generate report before finishing loading
+        } catch (err) {
+            console.log("Error in mainLogic:", err);
+            showToast(_('errorProcessingFiles'));
+            loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
+        } finally {
+            if (isLoadCancelled) return; // Не скриваме лоудъра, ако е отказано, за да не "премигне"
+            // Изчистваме текстовете в лоудъра, преди да го скрием
+            const loaderTitle = document.getElementById('loader-title');
+            if (loaderTitle) loaderTitle.textContent = '';
+            const loaderFolderInfo = document.getElementById('loader-folder-info');
+            if (loaderFolderInfo) loaderFolderInfo.textContent = '';
+            loaderText.textContent = ''; // Изчистваме текста за прогреса
+            updateSearchPlaceholder();
+            document.body.style.backgroundImage = `url('Board.png')`; // Reset background
+            // Скриваме лоудъра и логин страницата
+            loaderContainer.style.display = 'none';
+            document.getElementById('login-page').style.display = 'none';
+            document.getElementById('login-page').hidden = true;
+            // Показваме основните елементи, след като всичко е заредено
+            document.querySelector('header').style.visibility = 'visible';
+            document.querySelector('#search-wrapper').style.display = 'flex';
+            notesContainer.style.visibility = 'visible';
+            isMainLogicRunning = false;
+
+            if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
+                const addNoteFab = document.getElementById('add-note-fab');
+                if (addNoteFab) addNoteFab.style.display = 'flex';
+            }
+            if (window.showInstallButton) window.showInstallButton();
+            if (!isOffline) loadSettingsFromGDrive(true);
+        }
+    } finally {
+        // Изчистваме осиротели файлове след зареждане на всичко
+        // cleanupOrphanedImages();
+        isMainLogicRunning = false;
+    }
+}
+
+/**
+ * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
+ * Аналогична на fetchAllData, но за локален източник.
+ */
+async function fetchAllDataFromLocalFolder() {
+    console.log("--- Local Folder fetch sequence started ---");
+    const startTime = performance.now();
+    const handle = await getDirectoryHandle();
+    if (!handle) {
+        window.wasOpenedForMissingFolder = true; // Вдигаме флага
+        showToast(_('errorLocalFolderNotSelected'), 10000);
+        document.getElementById('settings-modal').classList.add('visible');
+        return { boardParseError: false };
+    }
+    let localBoards = [];
+    let localMedia = [];
+    let localNotes = [];
+    let boardParseError = false;
+    const gdidMap = new Map(); // To track duplicates for processing
+    localFileMap.clear(); // Изчистваме глобалната карта преди ново зареждане
+    try {
+        const entries = [];
+        for await (const entry of handle.values()) {
+            if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
+                const lowerName = entry.name.toLowerCase();
+                const isBoard = lowerName.includes('board');
+                const isMedia = lowerName.includes('media');
+                const isNote = lowerName.includes('note');
+                if (isBoard || isMedia || isNote) {
+                    entries.push({ entry, lowerName, isBoard, isMedia, isNote });
+                }
+            }
+        }
+        console.log(`[Local Folder] Found ${entries.length} valid .txt files for processing.`);
+        const CHUNK_SIZE = 80; // Balanced parallelism
+        for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+            const chunk = entries.slice(i, i + CHUNK_SIZE);
+            // Optimize UI updates - only update once per chunk
+            loaderText.textContent = `${_('loadingFile')} (${Math.min(i + CHUNK_SIZE, entries.length)}/${entries.length})`;
+            await Promise.all(chunk.map(async (item) => {
+                try {
+                    const file = await item.entry.getFile();
+                    const content = await file.text();
+                    const fileObject = JSON.parse(content);
+                    if (!fileObject.gdid) {
+                        const error = `[Missing ID] File '${item.entry.name}' is missing 'gdid' property.`;
+                        console.warn(error);
+                        dataIntegrityIssues.push({ type: 'missing', file: item.entry.name, gdid: null });
+                    } else {
+                        if (gdidMap.has(fileObject.gdid)) {
+                            const error = `[Duplicate ID] GDID '${fileObject.gdid}' found in multiple files: '${gdidMap.get(fileObject.gdid)}' and '${item.entry.name}'`;
+                            console.error(error);
+                            dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name });
+                        } else {
+                            gdidMap.set(fileObject.gdid, item.entry.name);
+                            localFileMap.set(fileObject.gdid, item.entry.name); // Попълваме глобалната карта
+                        }
+                    }
+                    if (item.isBoard) {
+                        localBoards.push(fileObject);
+                    } else if (item.isMedia) {
+                        localMedia.push(fileObject);
+                    } else if (item.isNote) {
+                        localNotes.push(fileObject);
+                    }
+                } catch (e) {
+                    console.log(`Failed to process ${item.entry.name}:`, e);
+                }
+            }));
+        }
+    } catch (err) {
+        if (err.name === 'NotFoundError') {
+            console.log("Local folder not found:", err);
+            showToast(_('errorLocalFolderNotFound'), 15000);
+            // Изчистваме невалидния handle от базата данни
+            await saveConfig('directoryHandle', null);
+            // Отваряме настройките, за да може потребителят да избере нова папка
+            document.getElementById('settings-modal').classList.add('visible');
+            // Нулираме и UI елемента, показващ името на папката
+            const folderNameDisplay = document.getElementById('local-sync-folder-name');
+            if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
+        } else {
+            console.log("Error parsing local files:", err);
+            showToast(_('errorNoteParse'));
+        }
+        boardParseError = true; // Вдигаме флага за грешка и в двата случая
+    }
+    // Зареждаме данните в глобалните променливи
+    boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
+    mediaData = localMedia.flat();
+    allNotesData = localNotes;
+    trackMaxIds(allNotesData);
+    trackMaxBoardIds(boardsData);
+    const endTime = performance.now();
+    console.log(`--- Local Folder fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
+    console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
+    return { boardParseError };
+}
+
+
+// =================================================================================
 
 async function authCallback(tokenResponse) {
     if (tokenResponse && tokenResponse.access_token) {
@@ -3589,4139 +5650,6 @@ async function deleteFromDB(storeName, key) {
     });
 }
 
-// =================================================================================
-// II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
-// =================================================================================
-// --- Web Share Target API Handler ---
-async function handleShareTarget(externalData = null) {
-    const url = new URL(window.location.href);
-    const sharedTitle = externalData ? externalData.shared_title : url.searchParams.get('shared_title');
-    const sharedText = externalData ? externalData.shared_text : url.searchParams.get('shared_text');
-    const sharedUrl = externalData ? externalData.shared_url : url.searchParams.get('shared_url');
-    const hasSharedImage = externalData ? (externalData.shared_image === '1') : (url.searchParams.get('shared_image') === '1');
-    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
-    // Съставяме съдържанието на бележката от споделените данни
-    const parts = [];
-    // if (sharedTitle) parts.push(sharedTitle);
-    // if (sharedText) parts.push(sharedText);
-    // if (sharedUrl && sharedUrl !== sharedText) parts.push(sharedUrl);
-    // const noteContent = parts.join('\n') || (hasSharedImage ? '📷' : '');
-    const cleanTitle = sharedTitle ? sharedTitle.trim() : '';
-    const cleanText = sharedText ? sharedText.trim() : '';
-    const cleanUrl = sharedUrl ? sharedUrl.trim() : '';
-    const normalize = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-    const normTitle = normalize(cleanTitle);
-    const normText = normalize(cleanText);
-    const normUrl = normalize(cleanUrl);
-    if (cleanTitle) {
-        const isTitleInText = cleanText && normText.includes(normTitle);
-        if (!isTitleInText) parts.push(cleanTitle);
-    }
-    if (cleanText) {
-        parts.push(cleanText);
-    }
-    if (cleanUrl) {
-        const isUrlInText = cleanText && (normText.includes(normUrl) || normText.replace(/\s+/g, '').includes(normUrl.replace(/\s+/g, '')));
-        const isUrlInTitle = cleanTitle && (normTitle.includes(normUrl) || normTitle.replace(/\s+/g, '').includes(normUrl.replace(/\s+/g, '')));
-        if (!isUrlInText && !isUrlInTitle && cleanUrl !== cleanText && cleanUrl !== cleanTitle) {
-            parts.push(cleanUrl);
-        }
-    }
-    const noteContent = parts.join('\n') || (hasSharedImage ? '📷' : '');
-    // Изчистваме share параметрите от URL-а, за да не се обработват повторно
-    url.searchParams.delete('shared_title');
-    url.searchParams.delete('shared_text');
-    url.searchParams.delete('shared_url');
-    url.searchParams.delete('shared_image');
-    window.history.replaceState({}, document.title, url.pathname + url.search);
-    // copilot version
-    // const url = new URL(window.location.href);
-    // const get = (key) => externalData ? externalData[key] : url.searchParams.get(key);
-    // const rawTitle = get('shared_title') || '';
-    // const rawText = get('shared_text') || '';
-    // const rawUrl = get('shared_url') || '';
-    // const hasImage = get('shared_image') === '1';
-    // const clean = (s) => s.trim();
-    // const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-    // const strip = (s) => s.toLowerCase().replace(/\s+/g, '');
-    // const title = clean(rawTitle);
-    // const text = clean(rawText);
-    // const link = clean(rawUrl);
-    // const nTitle = norm(title);
-    // const nText = norm(text);
-    // const nLink = norm(link);
-    // const sTitle = strip(title);
-    // const sText = strip(text);
-    // const sLink = strip(link);
-    // const parts = [];
-    // // Добавяме заглавие само ако не е част от текста
-    // if (title && !(nText.includes(nTitle) || sText.includes(sTitle))) {
-    //     parts.push(title);
-    // }
-    // // Добавяме текст винаги (ако го има)
-    // if (text) {
-    //     parts.push(text);
-    // }
-    // // Добавяме URL само ако не се съдържа в заглавието или текста
-    // if (link &&
-    //     !(nText.includes(nLink) || sText.includes(sLink)) &&
-    //     !(nTitle.includes(nLink) || sTitle.includes(sLink)) &&
-    //     link !== text &&
-    //     link !== title
-    // ) {
-    //     parts.push(link);
-    // }
-    // const noteContent = parts.join('\n') || (hasImage ? '📷' : '');
-    // // Премахваме share параметрите
-    // ['shared_title', 'shared_text', 'shared_url', 'shared_image']
-    //     .forEach(k => url.searchParams.delete(k));
-    // window.history.replaceState({}, document.title, url.pathname + url.search);
-    // Подготвяме нова бележка (копирано от createNewNote логиката)
-    noteId++;
-    noteNumord++;
-    syncFolderDataAsync();
-    const now = Date.now();
-    // Определяме борда: ако сме в системен борд, ползваме 'Main' или първия наличен
-    let boardId = currentBoardFilter;
-    const systemBoards = ['all', 'calendar', 'reminders', 'photos', 'videos', 'sounds', 'other', 'new-updates', 'search', 'favorites', 'archived'];
-    const isRealBoard = boardsData.some(b => String(b.gdid) === String(boardId));
-    if (systemBoards.includes(boardId) || (!isRealBoard && boardsData.length > 0)) {
-        const mainBoard = boardsData.find(b => b.title === 'Main' || b.gdid === 'Main');
-        boardId = mainBoard ? mainBoard.gdid : (boardsData.length > 0 ? boardsData[0].gdid : 'Main');
-    }
-    // --- Обработка на споделено изображение ---
-    let sharedImageBlob = null;
-    let sharedImageFilename = `shared_${now}.jpg`;
-    let sharedImageMimeType = 'image/jpeg';
-    if (hasSharedImage) {
-        try {
-            const cache = await caches.open('share-target-image');
-            const response = await cache.match('shared-image');
-            if (response) {
-                sharedImageBlob = await response.blob();
-                sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
-                sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
-                await cache.delete('shared-image');
-            }
-        } catch (e) {
-            console.error('Error retrieving shared image from cache:', e);
-        }
-    }
-    // Показваме модала със споделеното съдържание
-    setTimeout(async () => {
-        if (typeof showModal === 'function') {
-            showModal({
-                raw: noteContent,
-                format: null,
-                color: '#FBFF86', // Жълт фон по подразбиране
-                boardId: boardId,
-                id: noteId,
-                isNewNote: true
-            });
-            // Автоматично влизаме в режим на редактиране, за да може потребителят да запише
-            setTimeout(() => {
-                const editBtn = document.getElementById('note-edit-btn');
-                if (editBtn) editBtn.click();
-            }, 150);
-        }
-        showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
-        // --- Ако има споделено изображение, качваме го в GDrive ---
-        if (sharedImageBlob && !isOffline) {
-            try {
-                showToast(_('uploadingSharedImage') || '📤 Uploading image...', 5000);
-                const folderId = await getFolderID();
-                if (!folderId) throw new Error('Folder ID not available');
-                // 1. Осигуряваме Images папка
-                let imagesFolderId = folderIds['Images'] || localStorage.getItem('gdrive_folder_id_Images');
-                if (!imagesFolderId) {
-                    imagesFolderId = await createNewGDriveFolder('Images', folderId);
-                    if (imagesFolderId) {
-                        folderIds['Images'] = imagesFolderId;
-                        localStorage.setItem('gdrive_folder_id_Images', imagesFolderId);
-                    }
-                }
-                if (!imagesFolderId) throw new Error('Could not get/create Images folder');
-                // 2. Качваме изображението в Images папка
-                const imageGdid = await uploadBlobToGDrive(imagesFolderId, sharedImageFilename, sharedImageBlob, sharedImageMimeType);
-                if (!imageGdid) throw new Error('Image upload failed');
-                // 3. Намираме gdid на бележката (след запис)
-                // Търсим бележката по id - тя може вече да е записана с gdid
-                const waitForNoteGdid = () => {
-                    return new Promise(resolve => {
-                        const check = (attempts = 0) => {
-                            // Търсим в allNotesData по локалното id
-                            const noteInData = allNotesData.find(n => String(n.id) === String(noteId));
-                            // Важно: gdid трябва да е низ (string) от Google Drive
-                            if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                                resolve(noteInData.gdid);
-                            } else if (attempts < 80) { // До 40 секунди
-                                setTimeout(() => check(attempts + 1), 500);
-                            } else {
-                                resolve(null);
-                            }
-                        };
-                        check();
-                    });
-                };
-                const noteGdid = await waitForNoteGdid();
-                if (!noteGdid) {
-                    console.warn('[ShareTarget] Note gdid not available after timeout. Media entry NOT created.');
-                    showToast('⚠️ Image uploaded, but link failed (note not saved to GDrive in time).', 7000);
-                    return;
-                }
-                // 4. Създаваме media.txt запис в GDrive (използваме само истински GDID)
-                const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
-                const mediaEntry = {
-                    datemod: now,
-                    description: '',
-                    gdid: '',
-                    id: maxMediaId + 1,
-                    noteid: noteGdid, // STRING GDID
-                    path: sharedImageFilename, // Само името на файла (логика от Multinotes)
-                    pathGD: imageGdid,
-                    type: 1
-                };
-                const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-                if (mediaFileGdid) {
-                    mediaEntry.gdid = mediaFileGdid;
-                    await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                    // 5. Обновяваме локалните данни и UI
-                    mediaData.push(mediaEntry);
-                    if (useIndexedDb) {
-                        await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
-                    }
-                    console.log('[ShareTarget] Media entry added to mediaData:', mediaEntry);
-                    showToast(_('sharedImageSaved') || '✅ Image attached to note', 3000);
-
-                    // Хирургично обновяваме само тази бележка, вместо цялото табло
-                    if (typeof refreshNoteUI === 'function') {
-                        console.log('[ShareTarget] Refreshing single note UI...');
-                        await refreshNoteUI(noteGdid);
-                    } else {
-                        renderNotes();
-                    }
-                }
-            } catch (e) {
-                console.error('[ShareTarget] Error processing shared image:', e);
-                showToast('❌ Error uploading shared image: ' + e.message, 5000);
-            }
-        }
-    }, 500);
-}
-
-// --- Support for LaunchQueue (Modern browsers like Chrome/Edge) ---
-if ('launchQueue' in window) {
-    window.launchQueue.setConsumer(async (launchParams) => {
-        if (!launchParams.targetURL) return;
-        const url = new URL(launchParams.targetURL);
-        const params = {
-            shared_title: url.searchParams.get('shared_title'),
-            shared_text: url.searchParams.get('shared_text'),
-            shared_url: url.searchParams.get('shared_url'),
-            shared_image: url.searchParams.get('shared_image')
-        };
-        if (params.shared_title || params.shared_text || params.shared_url || params.shared_image === '1') {
-            handleShareTarget(params);
-        }
-    });
-}
-
-// --- Основна стартова функция ---
-async function startApp(isExplicitLogin = false) {
-    if (isAppStarted) return;
-    isAppStarted = true;
-
-    // --- КОРЕКЦИЯ: Показваме лоудъра ВЕДНАГА при стартиране ---
-    const lc = document.getElementById('loader-container');
-    if (lc) lc.style.display = 'block';
-
-    // --- Автоматична проверка за режим Online/Offline ---
-    if (!navigator.onLine) {
-        isOffline = true;
-        isExplicitLogin = true;
-    } else {
-        await goOffline();
-        if (isOffline) isExplicitLogin = true;
-    }
-    // --- Активна проверка за реална мрежова свързаност (non-blocking) ---
-    // Стартираме пробата паралелно с другата инициализация. Ще изчакаме резултата само ако е нужен.
-    let networkProbePromise = null;
-    if (!isOffline) {
-        networkProbePromise = fetch('https://www.googleapis.com/generate_204', {
-            method: 'HEAD', mode: 'no-cors', cache: 'no-store'
-        }).catch(() => null);
-    }
-
-    // --- NEW: Graceful fallback for KB Assistant ---
-    // If the assistant script failed to load or has errors, create a dummy object
-    // to prevent runtime errors in the main application.
-    if (typeof window.kbAssistant === 'undefined') {
-        console.warn("Knowledge Base Assistant not found. Creating a dummy object to ensure application stability.");
-        window.kbAssistant = {
-            init: () => Promise.resolve(false), // init is async, return false on failure
-            showGuide: () => { console.warn("KB Assistant not loaded."); },
-            terminateGuide: () => { },
-            updateLanguage: () => { },
-            isInitialized: false // This is important for conditional UI features
-        };
-    }
-    try {
-        // ts = await getFirstStartEncoded(); // Move to after UI prep if needed, but it's fine here
-        console.log('First start:', Date.now());
-        ts = await getFirstStartEncoded();
-        console.log('First start in cache:', ts);
-        // Преводите вече са заредени от IIFE — не дублираме setLanguage()
-        initApp(); // Инициализира UI елементите и event listeners
-
-        // Актуализираме текста на лоудъра след зареждане на преводите
-        const lt = document.getElementById('loader-title');
-        if (lt) lt.textContent = typeof _ === 'function' ? _('initialDataLoad') : 'Initial Data Load';
-
-        // --- КОРЕКЦИЯ: Осигуряваме наличност на имейла при безшумен старт ---
-        // Използваме САМО записания от логина hint (ако е избрано 'Запомни ме'),
-        // за да избегнем несъответствие с лицензния имейл.
-        if (!sessionStorage.getItem('google_auth_email_hint')) {
-            const emailHint = localStorage.getItem('google_login_hint');
-            if (emailHint) {
-                sessionStorage.setItem('google_auth_email_hint', emailHint);
-            }
-        }
-        // --- Задаване на настройки по подразбиране при първо стартиране ---
-        // Ако никога не са задавани настройки за източник на данни,
-        // избираме Google Drive + База данни по подразбиране.
-        if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
-            localStorage.setItem('useGoogleDb', 'true');
-            localStorage.setItem('useIndexedDb', 'true');
-        }
-        // --- Изчакваме мрежовата проба, ако е стартирана ---
-        if (networkProbePromise) {
-            const probeResult = await networkProbePromise;
-            if (probeResult === null) {
-                console.log('Network probe failed — switching to offline mode.');
-                isOffline = true;
-                isExplicitLogin = true;
-            }
-        }
-        // --- Проверяваме за базата данни (нужно за userCheck) ---
-        if (dbExists === null || typeof dbExists === 'undefined') {
-            dbExists = await checkDbExists(NOTES_DB_NAME);
-        }
-        // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-        const authResult = await checkAuth(isExplicitLogin);
-        if (!authResult || !authResult.pass) {
-            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
-            loaderContainer.style.display = 'none';
-            // checkAuth вече е показал грешка или е пренасочил
-            isAppStarted = false; // Allow re-try
-            return;
-        }
-        authToken = authResult.tokenData;
-        // Скриваме логин страницата, ако е била показана
-        document.getElementById('login-page').hidden = true;
-        document.getElementById('login-page').style.display = 'none';
-        // --- WHITELIST CHECK (On every login) ---
-        checkWhitelist(true); // Delayed background check to log session and update state
-        // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
-        updateGlobalStateFlags();
-
-        // --- PRE-LOAD START BOARD SETTING ---
-        // Avoid FOUC by setting currentBoardFilter immediately from storage
-        const savedStartBoard = localStorage.getItem('startBoard');
-        if (savedStartBoard && (isDbOwner || savedStartBoard === 'all')) {
-            currentBoardFilter = savedStartBoard;
-        }
-
-        await createBoardsUI([], false);
-        await createSettingsUI([], false); // Предварително създава UI на настройките
-        // Проверката за потребител и основната логика се извикват директно.
-        // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
-        // само ако е необходимо.
-        // --- Инициализация на KB Assistant след успешно логване ---
-        window.kbAssistant.init();
-        // Инициализация на draggable бутони
-        const initDraggableButtons = () => {
-            // ScrollTop Button
-            const scrollTopBtnElement = document.getElementById('scrollTopBtn');
-            if (scrollTopBtnElement) {
-                makeElementDraggable(scrollTopBtnElement, 'scrollTopBtnPosition');
-            }
-            // KB Assistant Button (wait for it if necessary)
-            // Since KBUI might initialize later, we attempt to find it
-            const initKbFab = () => {
-                const kbFab = document.getElementById('kb-fab');
-                if (kbFab) {
-                    makeElementDraggable(kbFab, 'kbFabPosition');
-                } else {
-                    // Retry once after a short delay in case of async rendering
-                    setTimeout(() => {
-                        const kbFabRetry = document.getElementById('kb-fab');
-                        if (kbFabRetry) makeElementDraggable(kbFabRetry, 'kbFabPosition');
-                    }, 1000);
-                }
-            };
-            initKbFab();
-        };
-        initDraggableButtons();
-        await mainLogic();
-        handleShareTarget();
-    } catch (err) {
-        console.error("Error in startApp:", err);
-        // Fallback for network errors during mainLogic
-        if (err.message === 'Failed to fetch' || err instanceof TypeError || (err.message && err.message.includes('Google libraries'))) {
-            const hasS = await checkDbExists(NOTES_DB_NAME) || await caches.open('app-cache').then(c => c.match('s'));
-            if (hasS) {
-                const promptMsg = (typeof _ === 'function' ? (_('errorGoogleLibs') + "\n\n" + (_('offlineStartPrompt') || "Do you want to start in Offline Mode?")) : "Network error. Do you want to start in Offline Mode?");
-                if (confirm(promptMsg)) {
-                    isOffline = true;
-                    // Reset UI and restart
-                    if (loaderContainer) loaderContainer.style.display = 'none';
-                    isAppStarted = false;
-                    startApp();
-                    return;
-                }
-            }
-        }
-    }
-}
-
-// Записва timestamp като кодиран низ (Base64) при поискване
-async function getFirstStartEncoded(shouldSave = false) {
-    const cache = await caches.open('app-cache');
-    const cachedResponse = await cache.match('s'); // /firstStart.json
-    if (cachedResponse) {
-        // Четене на текста от кеша
-        const encoded = await cachedResponse.text();
-        const decodedTs = parseInt(atob(encoded), 10);
-        return decodedTs;
-    } else {
-        // Първо стартиране → генерираме timestamp
-        const nowTs = Date.now();
-        if (shouldSave) {
-            const encoded = btoa(String(nowTs));  // кодиране в Base64 → низ
-            const response = new Response(encoded, {
-                headers: { 'Content-Type': 'text/plain' }
-            });
-            await cache.put('s', response);
-        }
-        return nowTs;
-    }
-}
-
-// function _(key) {
-//     if (appTranslations[currentLang] && appTranslations[currentLang][key]) {
-//         return appTranslations[currentLang][key];
-//     }
-//     return key;
-// }
-
-/**
- * Показва основния интерфейс на приложението и скрива лоудъра.
- * Извиква се, когато всичко е готово (преводи, данни, състояние).
- */
-function showAppUI() {
-    // Малък delay, за да сме сигурни, че DOM е обновен и готов за показване
-    requestAnimationFrame(() => {
-        document.body.classList.add('app-ready');
-        const loader = document.getElementById('loader-container');
-        if (loader) {
-            loader.style.display = 'none';
-        }
-    });
-}
-
-function _(key) {
-    if (!appTranslations[currentLang]) {
-        // Fallback: This should rarely happen if loadTranslations was awaited
-        return key;
-    }
-    return appTranslations[currentLang][key] || key;
-}
-
-function hideToast() {
-    const toast = document.getElementById('toastNotification');
-    if (toast.classList.contains('show')) {
-        clearTimeout(toastTimeout);
-        toast.classList.remove('show');
-        isShowingToast = false;
-    }
-}
-
-function showToast(message, duration = 10000) {
-    if (isToastHidden) return;
-    if (isShowingToast) {
-        hideToast();
-        // Short delay to allow the hide animation to finish before showing the new one
-        setTimeout(() => showToast(message, duration), 300);
-        return;
-    }
-    isShowingToast = true;
-    const toast = document.getElementById('toastNotification');
-    toast.textContent = message;
-    toast.classList.add('show');
-    toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
-}
-
-function showMessagePopup(message, showInput = false) {
-    folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
-    folderIdInput = document.getElementById('folderIdInput');
-    submitFolderIdBtn = document.getElementById('submitFolderIdBtn');
-    document.querySelector('#folderIdPromptPopup p').textContent = message;
-    if (showInput) {
-        folderIdInput.style.display = 'block';
-        submitFolderIdBtn.textContent = _('submitButton');
-        folderIdInput.value = '';
-        folderIdInput.focus();
-    } else {
-        folderIdInput.style.display = 'none';
-        submitFolderIdBtn.textContent = _('okButton');
-    }
-    folderIdPromptPopup.classList.add('show');
-}
-
-function hideFolderIdPrompt() {
-    if (folderIdPromptPopup) {
-        folderIdPromptPopup.classList.remove('show');
-    }
-}
-
-function handleSubmitFolderId() {
-    // If input is not visible, just close the popup
-    if (folderIdInput.style.display === 'none') {
-        hideFolderIdPrompt();
-        return;
-    }
-    // Logic for submitting the folder ID would go here
-}
-
-function showConfirmation(message, options = {}) {
-    return new Promise(resolve => {
-        const popup = document.getElementById('folderIdPromptPopup');
-        const popupContent = popup.querySelector('.popup-content');
-        const messagePara = popup.querySelector('p');
-        const okButton = document.getElementById('submitFolderIdBtn');
-        const folderIdInput = document.getElementById('folderIdInput');
-        let noButton = document.getElementById('prompt-no-btn');
-        if (!noButton) {
-            noButton = document.createElement('button');
-            noButton.id = 'prompt-no-btn';
-            noButton.className = 'zoom-btn settings-close-btn';
-            noButton.style.marginLeft = '10px';
-            okButton.parentNode.appendChild(noButton);
-        }
-        // Cancel button (optional)
-        let cancelButton = document.getElementById('prompt-cancel-btn');
-        if (!cancelButton) {
-            cancelButton = document.createElement('button');
-            cancelButton.id = 'prompt-cancel-btn';
-            cancelButton.className = 'zoom-btn settings-close-btn';
-            cancelButton.style.marginLeft = '10px';
-            okButton.parentNode.appendChild(cancelButton);
-        }
-        // Save original inline styles to restore later
-        const originalStyles = {
-            backgroundColor: popupContent.style.backgroundColor,
-            width: popupContent.style.width,
-            maxWidth: popupContent.style.maxWidth
-        };
-        if (options.backgroundColor) popupContent.style.backgroundColor = options.backgroundColor;
-        if (options.width) {
-            popupContent.style.width = options.width;
-            popupContent.style.maxWidth = '90vw';
-        }
-        messagePara.textContent = message;
-        folderIdInput.style.display = 'none';
-        okButton.textContent = _('confirmCreateDbYes');
-        noButton.textContent = _('confirmCreateDbNo');
-        noButton.style.display = 'inline-block';
-        // Show/hide cancel button
-        if (options.showCancel) {
-            cancelButton.textContent = options.cancelText || _('cancel') || 'Cancel';
-            cancelButton.style.display = 'inline-block';
-        } else {
-            cancelButton.style.display = 'none';
-        }
-        // Remove existing listener to avoid conflicts
-        okButton.removeEventListener('click', handleSubmitFolderId);
-        const cleanup = () => {
-            popup.classList.remove('show');
-            okButton.removeEventListener('click', onOk);
-            noButton.removeEventListener('click', onNo);
-            cancelButton.removeEventListener('click', onCancel);
-            noButton.style.display = 'none';
-            cancelButton.style.display = 'none';
-            // Restore original listener
-            okButton.addEventListener('click', handleSubmitFolderId);
-            // Restore Styles
-            popupContent.style.backgroundColor = originalStyles.backgroundColor;
-            popupContent.style.width = originalStyles.width;
-            popupContent.style.maxWidth = originalStyles.maxWidth;
-        };
-        const onOk = () => {
-            cleanup();
-            resolve(true);
-        };
-        const onNo = () => {
-            cleanup();
-            resolve(false);
-        };
-        const onCancel = () => {
-            cleanup();
-            resolve('cancel');
-        };
-        okButton.addEventListener('click', onOk);
-        noButton.addEventListener('click', onNo);
-        cancelButton.addEventListener('click', onCancel);
-        popup.classList.add('show');
-    });
-}
-
-/**
- * Показва избор с три опции при синхронизация: Да, Не, Всички.
- */
-function showSyncChoiceModal(noteSummary) {
-    return new Promise(resolve => {
-        const popup = document.getElementById('folderIdPromptPopup');
-        const popupContent = popup.querySelector('.popup-content');
-        const messagePara = popup.querySelector('p');
-        const yesBtn = document.getElementById('submitFolderIdBtn');
-        let noBtn = document.getElementById('prompt-no-btn');
-        let allBtn = document.getElementById('prompt-cancel-btn');
-
-        if (!noBtn) {
-            noBtn = document.createElement('button');
-            noBtn.id = 'prompt-no-btn';
-            noBtn.className = 'zoom-btn settings-close-btn';
-            noBtn.style.marginLeft = '10px';
-            yesBtn.parentNode.appendChild(noBtn);
-        }
-        if (!allBtn) {
-            allBtn = document.createElement('button');
-            allBtn.id = 'prompt-cancel-btn';
-            allBtn.className = 'zoom-btn settings-close-btn';
-            allBtn.style.marginLeft = '10px';
-            yesBtn.parentNode.appendChild(allBtn);
-        }
-
-        const promptText = (typeof _ === 'function' ? _('syncPromptNote') : 'Sync note:');
-        messagePara.innerHTML = `<div style="font-weight:bold; margin-bottom:10px;">${promptText}</div><div style="font-style:italic; color:#555; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:10px; border-radius:4px; text-align:left;">${noteSummary}</div>`;
-
-        // Разширяваме прозореца за по-добър преглед
-        popupContent.style.width = '450px';
-        popupContent.style.maxWidth = '90vw';
-
-        yesBtn.textContent = (typeof _ === 'function' ? _('confirmCreateDbYes') : 'Yes');
-        noBtn.textContent = (typeof _ === 'function' ? _('confirmCreateDbNo') : 'No');
-        allBtn.textContent = (typeof _ === 'function' ? _('allEntries') : 'All');
-
-        noBtn.style.display = 'inline-block';
-        allBtn.style.display = 'inline-block';
-
-        const cleanup = () => {
-            popup.classList.remove('show');
-            yesBtn.removeEventListener('click', onYes);
-            noBtn.removeEventListener('click', onNo);
-            allBtn.removeEventListener('click', onAll);
-            yesBtn.addEventListener('click', handleSubmitFolderId);
-            // Restore original width
-            popupContent.style.width = '';
-            popupContent.style.maxWidth = '';
-        };
-
-        const onYes = () => { cleanup(); resolve('yes'); };
-        const onNo = () => { cleanup(); resolve('no'); };
-        const onAll = () => { cleanup(); resolve('all'); };
-
-        yesBtn.removeEventListener('click', handleSubmitFolderId);
-        yesBtn.addEventListener('click', onYes);
-        noBtn.addEventListener('click', onNo);
-        allBtn.addEventListener('click', onAll);
-
-        popup.classList.add('show');
-    });
-}
-function showPrompt(message, defaultValue = '') {
-    return new Promise(resolve => {
-        const popup = document.getElementById('folderIdPromptPopup');
-        const messagePara = popup.querySelector('p');
-        const okButton = document.getElementById('submitFolderIdBtn');
-        const folderIdInput = document.getElementById('folderIdInput');
-        let noButton = document.getElementById('prompt-no-btn');
-        if (!noButton) {
-            noButton = document.createElement('button');
-            noButton.id = 'prompt-no-btn';
-            noButton.className = 'zoom-btn settings-close-btn';
-            noButton.style.marginLeft = '10px';
-            okButton.parentNode.appendChild(noButton);
-        }
-
-        messagePara.textContent = message;
-        folderIdInput.style.display = 'block';
-        folderIdInput.value = defaultValue;
-        okButton.textContent = _('submitButton');
-        noButton.textContent = _('cancel') || 'Cancel';
-        noButton.style.display = 'inline-block';
-
-        const cleanup = () => {
-            popup.classList.remove('show');
-            okButton.removeEventListener('click', onOk);
-            noButton.removeEventListener('click', onCancel);
-            noButton.style.display = 'none';
-            okButton.addEventListener('click', handleSubmitFolderId);
-        };
-        const onOk = () => {
-            const val = folderIdInput.value;
-            cleanup();
-            resolve(val);
-        };
-        const onCancel = () => {
-            cleanup();
-            resolve(null);
-        };
-
-        okButton.removeEventListener('click', handleSubmitFolderId);
-        okButton.addEventListener('click', onOk);
-        noButton.addEventListener('click', onCancel);
-        popup.classList.add('show');
-        folderIdInput.focus();
-    });
-}
-
-/**
- * Добавя event listeners към елемент за разпознаване на "long press" или Ctrl+клик.
- * @param {HTMLElement} element - Елементът, към който да се добавят събитията.
- * @param {Function} callback - Функцията, която да се изпълни при задействане.
- */
-function addLongPressOrCtrlClick(element, callback) {
-    let longPressTimer;
-    let isLongPress = false;
-    const startPress = (e) => {
-        isLongPress = false;
-        // Започваме таймер за продължително натискане
-        longPressTimer = setTimeout(() => {
-            isLongPress = true;
-            // callback(e); // ВРЕМЕННО: Изключено изтриване при long press
-        }, 500); // 500ms за long press
-    };
-    const endPress = () => {
-        clearTimeout(longPressTimer);
-    };
-    element.addEventListener('mousedown', startPress);
-    element.addEventListener('mouseup', endPress);
-    element.addEventListener('mouseleave', endPress);
-    element.addEventListener('touchstart', startPress, { passive: true });
-    element.addEventListener('touchend', endPress);
-    element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
-}
-
-function extractAndFormat(text, onlyChecked = false) {
-    let lines = text.split('\n');
-    let results = []
-    lines.forEach(line => {
-        let trimmedLine = line.trim();
-        if (!trimmedLine) return;
-        // Първична нормализация на символите
-        // ПРОВЕРКА ЗА ФЛАГ: Ако 'onlyChecked' е вдигнат, пропускаме редове без ☑
-        if (onlyChecked && !trimmedLine.includes('☑')) {
-            return;
-        }
-        // Ако редът съдържа чекбокс за "неотметнато" (☐) или "отказано" (☒), 
-        // го пропускаме в изчисленията (стандартно поведение за списъци)
-        // if (trimmedLine.includes('☐') || trimmedLine.includes('☒')) {
-        //     return;
-        // }
-        let normalized = trimmedLine
-            // Премахваме чекбоксовете в началото на реда
-            .replace(/^[☑☒☐]\s*/, '')
-            .replace(/(\d),(\d)/g, '$1.$2') // запетая -> точка
-            .replace(/[xх*]/gi, '*')        // х -> *
-            .replace(/[:\/]/g, '/');        // : -> /
-        // Универсално чистене на номерация и чекбоксове/символи в началото
-        // Премахваме ☑, ☒, ☐ и номерация, ако след тях има текст и после числа
-        // УСЪВЪРШЕНСТВАНО ЧИСТЕНЕ НА НОМЕРАЦИЯ (Защита за 1733.90)
-        // Тук казваме: Премахни число+точка в началото, САМО АКО след него има поне два интервала 
-        // или ако след него има букви (текст), преди да започне математическия израз.
-        // \p{L} хваща всякаква буква (латиница, кирилица, гръцки, арабски и т.н.)
-        // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.
-        // let cleanLine = normalized.replace(/^\d+[☑☒☐|\d\.\)]+\s*(?=\p{L})/gu, '');
-        let cleanLine = normalized.replace(/^\d+(?:[.\d\)|]+)\s*(?=\p{L})/gu, '');
-        // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
-        // НЕ го пипаме, защото това е част от сумата.
-        // Залепяме операторите (чистим интервалите omkring тях)
-        cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
-        // 4. Екстракция на математическия блок
-        // Търсим най-дългата поредица от цифри и оператори
-        let mathMatch = cleanLine.match(/[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g);
-        if (mathMatch) {
-            // Вземаме последното съвпадение (обикновено сумата е в края на реда)
-            let expression = mathMatch[mathMatch.length - 1];
-            // 5. Финална проверка за знака в самото начало на целия низ
-            if (/^\d/.test(expression)) {
-                expression = '+' + expression;
-            }
-            results.push(expression);
-        }
-    });
-    // 5. Генерираме финалния стринг
-    let finalSequence = results.join('');
-    // Премахваме водещия '+' ако има такъв
-    if (finalSequence.startsWith('+')) {
-        finalSequence = finalSequence.slice(1);
-    }
-    console.log(text);
-    console.log(finalSequence);
-    return (finalSequence);
-}
-
-/**
- * Обработва клик върху бутона за калкулатор в модалния прозорец.
- * Взима маркирания текст, изчислява го като математически израз и замества селекцията с резултата.
- */
-async function handleCalculateClick(checkList) {
-    const selection = window.getSelection();
-    const modalBody = document.getElementById('modal-body');
-    let expression = '';
-    let isFromClipboard = false;
-    let range = null;
-    // Проверяваме дали има маркиран текст в модалния прозорез
-    if (selection.rangeCount > 0 && selection.toString().trim() !== '') {
-        const tempRange = selection.getRangeAt(0);
-        if (modalBody.contains(tempRange.commonAncestorContainer)) {
-            expression = selection.toString().trim();
-            range = tempRange;
-        }
-    }
-    // Ако няма маркиран текст, опитваме да четем от клипборда
-    if (expression === '') {
-        try {
-            expression = await navigator.clipboard.readText();
-            expression = expression.trim();
-            isFromClipboard = true;
-        } catch (err) {
-            console.log('Failed to read clipboard contents: ', err);
-            // Добавяме грешката в края на бележката вместо toast
-            const errorText = `\n${_('errorClipboardRead')}`;
-            const errorNode = document.createTextNode(errorText);
-            modalBody.appendChild(errorNode);
-            return;
-        }
-    }
-    if (expression === '') return;
-    try {
-
-        /*/ Премахваме всички интервали от израза
-        expression = expression.replace(/\s/g, '');
-        // Заменяме запетаите с точки за поддръжка на европейски формат за десетични числа
-        expression = expression.replace(/,/g, '.');
-        // Основна проверка за сигурност - позволяваме само определени символи
-        const sanitizedExpression = expression.replace(/[^0-9+\-*__/().]/g, ''); // __ дабавени заради коментарането на блока - махни ги, ако решиш да използваш
-        if (sanitizedExpression !== expression) {
-            throw new Error("Invalid characters in expression.");
-        }*/
-        const sanitizedExpression = extractAndFormat(expression, checkList);
-        // Използваме Function конструктор, който е малко по-сигурен от директен eval()
-        const result = new Function('return ' + sanitizedExpression)();
-        // Форматираме резултата с 2 десетични знака
-        const formattedResult = result.toFixed(2);
-        const resultText = ` = ${formattedResult}`;
-
-        // Ако имаме селекция и не е от клипборда, вмъкваме резултата след маркирания текст
-        if (range && !isFromClipboard) {
-            // Създаваме текстов възел с резултата
-            const resultNode = document.createTextNode(resultText);
-            // Вмъкваме го след оригиналната селекция
-            range.collapse(false); // Свиваме обхвата до края му
-            range.insertNode(resultNode);
-            // Създаваме нов обхват (range), който да обхване само числото
-            const newRange = document.createRange();
-            newRange.setStart(resultNode, resultText.indexOf(formattedResult.toString())); // Начало на числото
-            newRange.setEnd(resultNode, resultText.length); // Край на текста
-            selection.removeAllRanges(); // Изчистваме старата селекция
-            selection.addRange(newRange); // Добавяме новата селекция
-        } else {
-            // Ако е от клипборда, добавяме цялото изчисление в края на бележката
-            const fullResultText = `\n${sanitizedExpression} = ${formattedResult}`;
-            const resultNode = document.createTextNode(fullResultText);
-            modalBody.appendChild(resultNode);
-        }
-    } catch (error) {
-        // Добавяме грешката в края на бележката вместо toast
-        const errorText = `\n${_('invalidExpression')}`;
-        const errorNode = document.createTextNode(errorText);
-        modalBody.appendChild(errorNode);
-        console.log("Calculation error:", error);
-    }
-}
-
-let isUIInitialized = false;
-function initApp() {
-    if (isUIInitialized) return;
-    isUIInitialized = true;
-    // Inject custom styles dynamically to fix UI issues
-    // const style = document.createElement('style');
-    // style.textContent = `
-    //     .all-boards-filter-btn span { text-align: center; width: 100%; }
-    //     .sounds-filter-btn { color: #fcfcfc !important; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); }
-    // `;
-    // // Добавяме CSS правило за стилизиране на иконата за дублиране
-    // style.textContent += `
-    //     #copy-modal-btn svg {
-    //         width: 24px !important;
-    //         height: 24px !important;
-    //         stroke-width: 2 !important;
-    //     }`;
-    // document.head.appendChild(style);
-    // Set default showBoardAll to false if not set
-    if (localStorage.getItem('showBoardAll') === null) {
-        localStorage.setItem('showBoardAll', 'false');
-    }
-    // Set default showWeeklyCalendar to true if not set
-    if (localStorage.getItem('showWeeklyCalendar') === null) {
-        localStorage.setItem('showWeeklyCalendar', 'true');
-    }
-    // Set default updateGDrive to true if not set
-    // Removed updateGDrive default check
-    // Set default useIndexedDb to true if not set
-    if (localStorage.getItem('useIndexedDb') === null) {
-        localStorage.setItem('useIndexedDb', 'true');
-    }
-    // Инициализация на DOM елементи
-    signoutButton = document.getElementById('signout_button');
-    if (signoutButton) {
-        signoutButton.addEventListener('click', handleSignoutClick);
-    }
-    reloadButton = document.getElementById('reload_button');
-    settingsButton = document.getElementById('settings_button');
-    notesContainer = document.getElementById('notes-container');
-    // --- Global Event Delegation for Note Tooltips ---
-    let titleTimeout;
-    notesContainer.addEventListener('mouseover', (e) => {
-        if (e.target.classList.contains('note-title-truncated')) {
-            const titleEl = e.target;
-            if (!titleEl.title) { // Only set timeout if title isn't already set
-                titleTimeout = setTimeout(() => {
-                    if (document.body.contains(titleEl) && !titleEl.title) {
-                        titleEl.title = titleEl.textContent;
-                    }
-                }, 500);
-            }
-        }
-    });
-    notesContainer.addEventListener('mouseout', (e) => {
-        if (e.target.classList.contains('note-title-truncated')) {
-            clearTimeout(titleTimeout);
-        }
-    });
-    contentModal = document.getElementById('content-modal');
-    modalBody = document.getElementById('modal-body');
-
-    copyBtn = document.getElementById('copy-modal-btn');
-    scrollTopBtn = document.getElementById("scrollTopBtn");
-    // Allow context menu for system actions (copy/paste)
-    // Removed: modalBody.addEventListener('contextmenu', e => e.preventDefault());
-    // Removed: modalBody.addEventListener('pointerup', e => { ... });
-
-    searchBox = document.getElementById('search-box');
-    loaderContainer = document.getElementById('loader-container');
-    loaderText = document.getElementById('loader-text');
-    // --- Add Title to Loader (Idempotent) ---
-    let loaderTitle = document.getElementById('loader-title');
-    if (!loaderTitle) {
-        loaderTitle = document.createElement('h3');
-        loaderTitle.id = 'loader-title';
-        loaderTitle.style.marginTop = '0';
-        loaderTitle.style.marginBottom = '5px';
-        loaderContainer.prepend(loaderTitle);
-    }
-    let loaderFolderInfo = document.getElementById('loader-folder-info');
-    if (!loaderFolderInfo) {
-        loaderFolderInfo = document.createElement('div');
-        loaderFolderInfo.id = 'loader-folder-info';
-        loaderFolderInfo.style.fontSize = '0.9em';
-        loaderFolderInfo.style.opacity = '0.8';
-        loaderFolderInfo.style.marginBottom = '15px';
-        loaderTitle.after(loaderFolderInfo);
-    }
-    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-    // --- Add Cancel Button to Loader (Idempotent) ---
-    let cancelButton = document.getElementById('cancel-load-btn');
-    if (!cancelButton) {
-        cancelButton = document.createElement('button');
-        cancelButton.id = 'cancel-load-btn';
-        cancelButton.className = 'zoom-btn settings-close-btn'; // Reuse existing styles
-        cancelButton.style.marginTop = '20px';
-        cancelButton.dataset.key = 'cancelButton'; // For i18n
-        loaderContainer.appendChild(cancelButton);
-        cancelButton.addEventListener('click', (e) => {
-            // --- КОРЕКЦИЯ: Предотвратяваме други event listeners да се задействат ---
-            e.preventDefault();
-            e.stopPropagation();
-            console.log("Load operation cancelled by user.");
-            isLoadCancelled = true;
-            // Hide loader and show settings
-            loaderContainer.style.display = 'none';
-            document.getElementById('settings-modal').classList.add('visible');
-        });
-    }
-    // Инициализираме KB Assistant - ще се инициализира от startApp след логване
-    // if (window.kbAssistant && !window.kbAssistant.isInitialized) {
-    //     window.kbAssistant.init();
-    // }
-    // Настройване на UI и езикови настройки
-    const toast = document.getElementById('toastNotification');
-    toast.addEventListener('click', hideToast);
-
-    // Инициализираме местенето на FAB бутона
-    initFABDragging();
-
-    scrollTopBtn.innerHTML = arrowSvg;
-    const appTitle = document.querySelector('header h1');
-    if (appTitle) {
-        appTitle.style.cursor = 'pointer';
-        appTitle.addEventListener('click', async () => {
-            console.log('Title clicked');
-            // Trigger the assistant-1 guide
-            if (window.kbAssistant && window.kbAssistant.isInitialized) {
-                console.log('KB Assistant is initialized');
-                // Search in general section where assistant-1 is located
-                const assistantGuide = window.kbAssistant.kbData?.general?.find(item => item.id === 'assistant-1')
-                console.log('Found guide:', assistantGuide);
-                if (assistantGuide && assistantGuide.guide) {
-                    console.log('Showing guide');
-                    window.kbAssistant.showGuide(assistantGuide.guide);
-                } else {
-                    console.warn('assistant-1 guide not found');
-                }
-            } else {
-                console.warn('KB Assistant not initialized');
-            }
-        });
-
-    }
-    reloadButton.addEventListener('click', () => {
-        const hasDirtyNotes = allNotesData && allNotesData.some(n => n.type === -1);
-        if (hasDirtyNotes) {
-            if (isOffline) {
-                showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
-            } else {
-                syncDirtyNotes();
-            }
-        } else {
-            mainLogic();
-        }
-    });
-
-    // --- Long Press Logic for Settings Button (Mobile) ---
-    let settingsLongPressTimer;
-    settingsButton.addEventListener('touchstart', (e) => {
-        settingsLongPressTimer = setTimeout(() => {
-            // Simulate Ctrl+Click behavior
-            settingsButton.dispatchEvent(new MouseEvent('click', {
-                ctrlKey: true,
-                bubbles: true,
-                cancelable: true
-            }));
-            // Provide feedback (haptic) if available
-            if (navigator.vibrate) navigator.vibrate(50);
-        }, 600); // 600ms threshold for long press
-    }, { passive: true });
-
-    settingsButton.addEventListener('touchend', () => clearTimeout(settingsLongPressTimer));
-    settingsButton.addEventListener('touchmove', () => clearTimeout(settingsLongPressTimer));
-    settingsButton.addEventListener('contextmenu', (e) => {
-        // On mobile, long press usually triggers context menu. prevent it here to depend only on our custom logic
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-    });
-
-    settingsButton.addEventListener('click', (e) => {
-        // Toggle Advanced Settings based on Ctrl Key or if force-opened
-        // Logic adapted for Accordion + hidden span structure
-        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
-        const accordionHeader = document.querySelector('.accordion-header');
-
-        // Check if we need to show advanced settings (Ctrl click or validation flow which might trigger this)
-        if (e.ctrlKey) {
-            if (advancedSettingsSpan) {
-                const isHidden = advancedSettingsSpan.hasAttribute('hidden');
-                if (isHidden) {
-                    advancedSettingsSpan.removeAttribute('hidden');
-                    localStorage.setItem('showAdvancedSettings', 'true');
-                }
-                // Попълваме dropdown-а ПРАВИЛНО чрез централизираната функция
-                populateFoldersDropdown();
-                // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
-                loadGlobalFoldersJson().then(changed => {
-                    if (changed) {
-                        // Обновяваме dropdown-а, тъй като folders.json може да е заредил нови имена
-                        populateFoldersDropdown();
-                    }
-                });
-                // Expand accordion if not already expanded (check for active class if you used it, or just click if content is hidden)
-                // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
-                // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
-                setTimeout(() => {
-                    // Check state via class on accordion wrapper
-                    const accordionHeader = document.querySelector('.accordion-header');
-                    if (accordionHeader) {
-                        const accordion = accordionHeader.parentElement;
-                        const isActive = accordion.classList.contains('active');
-
-                        if (!isActive) {
-                            // Closed -> Open it (this triggers scroll in listener)
-                            accordionHeader.click();
-                        } else {
-                            // Already Open -> Just scroll to it/bottom
-                            const settingsModalBody = document.getElementById('settings-modal-body');
-                            if (settingsModalBody) {
-                                settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
-                            } else {
-                                accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
-                        }
-                    }
-                }, 100);
-            }
-        }
-
-        // Запомняме началното състояние на чекбоксовете при отваряне на настройките
-        // Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
-        const useGDCheckbox = document.getElementById('use-google-db-checkbox');
-        const useLocCheckbox = document.getElementById('use-local-db-checkbox');
-        const useArhCheckbox = document.getElementById('use-arh-db-checkbox');
-        const useIdbCheckbox = document.getElementById('use-indexeddb-checkbox');
-
-        if (useGDCheckbox) useGDCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
-        if (useLocCheckbox) useLocCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
-        if (useArhCheckbox) useArhCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
-        if (useIdbCheckbox) useIdbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-
-        settingsInitialState = {
-            useGoogleDb: useGDCheckbox ? useGDCheckbox.checked : true,
-            useLocalDb: useLocCheckbox ? useLocCheckbox.checked : false,
-            useArhDb: useArhCheckbox ? useArhCheckbox.checked : false,
-            useIndexedDb: useIdbCheckbox ? useIdbCheckbox.checked : false
-        };
-        document.getElementById('settings-modal').classList.add('visible');
-        if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
-        // ВИНАГИ попълваме dropdown-а при отваряне на настройките
-        populateFoldersDropdown();
-        // Ако Разширени настройки вече са видими, актуализираме gdrive_folder_names от folders.json
-        const advSpanOnOpen = document.getElementById('advanced-settings-span');
-        if (advSpanOnOpen && !advSpanOnOpen.hasAttribute('hidden') && !isOffline) {
-            loadGlobalFoldersJson().then(changed => {
-                if (changed) populateFoldersDropdown();
-            });
-        }
-        // if (guide) showStep(4); // Настройки
-    });
-
-    const scrollHandler = function () {
-        const scrolled = document.documentElement.scrollTop || document.body.scrollTop;
-        // Check both scroll threshold and body visibility to ensure button doesn't appear on hidden/login pages
-        if (
-            (scrolled > 50) &&
-            document.body.style.display !== 'none' &&
-            // Also check if we are not on the login page (hidden check acts as proxy often)
-            // but explicitly: the login page should have its own logic, 
-            // verifying specific container visibility is safer if body is always visible.
-            // Using user's strict condition:
-            document.body.style.display !== 'none'
-        ) {
-            // Keep the user's logic exactly as requested
-            scrollTopBtn.style.display = "flex";
-        } else {
-            scrollTopBtn.style.display = "none";
-        }
-    };
-    window.onscroll = scrollHandler;
-
-    // --- Listener for Online/Offline Status (Added for Offline Mode) ---
-    let offlineTimeout;
-    window.addEventListener('online', () => {
-        clearTimeout(offlineTimeout);
-        if (isOffline) {
-            isOffline = false;
-            updateModeButton();
-            if (typeof showToast === 'function') showToast("Online mode restored", 2000);
-        }
-    });
-    window.addEventListener('offline', () => {
-        clearTimeout(offlineTimeout);
-        offlineTimeout = setTimeout(async () => {
-            let reallyOnline = false;
-            try {
-                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
-                reallyOnline = response.ok;
-            } catch (e) { }
-
-            if (!reallyOnline) {
-                isOffline = true;
-                updateModeButton();
-                if (typeof showToast === 'function') showToast("Offline mode active", 2000);
-            }
-        }, 3000);
-    });
-    scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-    // --- Search Box Enhancements ---
-    const searchWrapper = document.getElementById('search-wrapper');
-    // 1. Static Search Icon (Left) — кликаем за превключване режим на търсене
-    const staticSearchIcon = document.createElement('span');
-    staticSearchIcon.className = 'search-icon-static';
-    staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><circle class="search-mode-dot" cx="11" cy="11" r="3" fill="black" stroke="none" style="display:none"></circle></svg>`;
-    staticSearchIcon.style.cursor = 'pointer';
-    staticSearchIcon.title = searchInBoardOnly ? (_('searchInBoardTooltip') || 'Search in current board (click to change)') : (_('searchEverywhereTooltip') || 'Search everywhere (click to change)');
-    updateSearchModeIndicator();
-    staticSearchIcon.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        searchInBoardOnly = !searchInBoardOnly;
-        localStorage.setItem('searchInBoardOnly', searchInBoardOnly);
-        updateSearchModeIndicator();
-        const searchBox = document.getElementById('search-box');
-        if (searchBox && searchBox.value.trim()) {
-            triggerSearch(false);
-        }
-    });
-    // 2. Clear Button (Right, next to Save)
-    const clearSearchBtn = document.createElement('span');
-    clearSearchBtn.className = 'search-action-btn search-btn-clear';
-    clearSearchBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
-    clearSearchBtn.style.display = 'none'; // Hidden initially
-    clearSearchBtn.title = _('clearButton') || 'Clear'; // Updated from closeButton to clearButton
-    // REMOVED: searchModeToggle logic. We now always search in content (which includes title).
-    // Ensure placeholder is correct for content search
-    updateSearchPlaceholder();
-    saveSearchBtn = document.createElement('span');
-    saveSearchBtn.id = 'save-search-btn';
-    saveSearchBtn.className = 'search-action-btn search-btn-save'; // Updated class
-    saveSearchBtn.innerHTML = saveSearchSvg;
-    saveSearchBtn.style.display = 'none';
-    // saveSearchBtn.style.marginTop = '2px'; // Removed as we use flex centering
-    saveSearchBtn.title = _('searchSavedTip');
-    const savedSearchesPopup = document.createElement('div');
-    savedSearchesPopup.id = 'saved-searches-popup';
-    // Add all icons and popups to the wrapper
-    searchWrapper.prepend(staticSearchIcon); // Add Magnifier
-    searchWrapper.appendChild(clearSearchBtn); // Add Clear Button
-    searchWrapper.appendChild(saveSearchBtn);
-    searchWrapper.appendChild(savedSearchesPopup);
-    // Етикет за активен борд (видим само в fullscreen mode)
-    const fsBoardLabel = document.createElement('span');
-    fsBoardLabel.id = 'fullscreen-board-label';
-    searchWrapper.appendChild(fsBoardLabel);
-
-    function renderSavedSearchesPopup() {
-        const popup = document.getElementById('saved-searches-popup');
-        if (!popup) return;
-        popup.style.display = 'block';
-        popup.innerHTML = ''; // Clear everything
-        // --- Close Button ---
-        const closeBtn = document.createElement('div');
-        closeBtn.className = 'saved-search-close-btn';
-        closeBtn.innerHTML = '&times;';
-        closeBtn.title = _('closeButton') || 'Close';
-        closeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            popup.style.display = 'none';
-        });
-        popup.appendChild(closeBtn);
-        // Create a dedicated container for the scrollable items
-        const contentContainer = document.createElement('div');
-        contentContainer.className = 'saved-searches-content';
-        popup.appendChild(contentContainer);
-        // Комбинираме последното търсене със запазените и премахваме дубликати,
-        // за да сме сигурни, че всяко търсене се показва само веднъж.
-        const allSearchesForDisplay = [...new Set([lastSearchTerm, ...savedSearches])];
-        allSearchesForDisplay.forEach((term, index) => {
-            if (index > 0 && !term) return; // Don't show empty saved searches
-            const item = document.createElement('div');
-            item.className = 'saved-search-item';
-            item.textContent = term;
-            item.addEventListener('click', () => {
-                if (searchBox) {
-                    searchBox.value = term;
-                    triggerSearch(true);
-                }
-                popup.style.display = 'none';
-            });
-            contentContainer.appendChild(item); // Add items to the new container
-        });
-    }
-
-    // This function will be the single point for applying search and UI updates
-    const triggerSearch = (isUserTyping = false) => {
-        if (isUserTyping) {
-            // Only update the "last search" if the input is not empty
-            if (searchBox.value.trim() !== '') {
-                lastSearchTerm = searchBox.value;
-                localStorage.setItem('lastSearchTerm', lastSearchTerm);
-            }
-        }
-
-        const hasTextTrimmed = searchBox.value.trim().length > 0;
-        const searchBoardBtn = document.getElementById('search-results-board-btn');
-
-        if (!hasTextTrimmed && currentBoardFilter === 'search-results') {
-            // Ако изчистваме търсенето, се връщаме към предния борд
-            currentBoardFilter = boardBeforeSearch || 'all';
-            if (searchBoardBtn) searchBoardBtn.style.display = 'none';
-        } else if (hasTextTrimmed) {
-            // Ако започваме търсене и не сме в режим търсене
-            if (currentBoardFilter !== 'search-results') {
-                boardBeforeSearch = currentBoardFilter;
-                currentBoardFilter = 'search-results';
-            }
-            if (searchBoardBtn) {
-                searchBoardBtn.style.display = 'inline-flex';
-            }
-        }
-
-        applyFilters();
-
-        // Update UI counters and active state
-        updateBoardCounterUI('search-results');
-
-        // Force UI update for active button state
-        const buttonBoardId = (currentBoardFilter === 'search-results') ? 'search-results' : currentBoardFilter;
-        document.querySelectorAll('.board-filter-link').forEach(link => {
-            const isSelected = link.dataset.boardid === String(buttonBoardId);
-            link.classList.toggle('selected-board', isSelected);
-            link.classList.toggle('active', isSelected);
-            link.style.height = isSelected ? '39px' : '35px';
-        });
-
-        const hasText = searchBox.value.length > 0;
-        clearSearchBtn.style.display = hasText ? 'flex' : 'none';
-        saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
-
-        if (hasTextTrimmed && searchBoardBtn) {
-            setTimeout(() => {
-                searchBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            }, 100);
-        } else if (!hasTextTrimmed) {
-            // Скролираме до активния борд след изчистване на търсенето
-            const activeBtn = document.querySelector(`.board-filter-link[data-boardid="${buttonBoardId}"]`);
-            if (activeBtn) {
-                setTimeout(() => {
-                    activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-                }, 100);
-            }
-        }
-    };
-
-    // Listen for user typing with Debounce
-    let searchDebounceTimeout;
-    searchBox.addEventListener('input', (event) => {
-        // Immediate UI update for buttons (no debounce needed for visibility)
-        const val = searchBox.value.trim();
-        const hasText = val.length > 0;
-        clearSearchBtn.style.display = hasText ? 'flex' : 'none';
-        // Save button might wait for debounce, but usually safer to show immediately too
-        saveSearchBtn.style.display = hasText ? 'flex' : 'none';
-
-        // По-толерантна проверка за токен в реално време
-        if (val.match(/^\??token=/)) {
-            saveSearchBtn.title = (typeof _ === 'function') ? _('saveTokenTooltip') : "Update token";
-        } else {
-            saveSearchBtn.title = (typeof _ === 'function') ? _('searchSavedTip') : "Save search term";
-        }
-        if (!event.isTrusted) return;
-        clearTimeout(searchDebounceTimeout);
-        searchDebounceTimeout = setTimeout(() => {
-            triggerSearch(true);
-        }, 300); // Wait 300ms after last keystroke
-    });
-
-    // Handle Enter key
-    searchBox.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-            event.preventDefault(); // Prevent form submission if any
-            searchBox.blur(); // Hide keyboard on mobile
-            triggerSearch(true); // Ensure search is applied
-            document.getElementById('saved-searches-popup').style.display = 'none'; // Close popup
-        }
-    });
-
-    // Clear Button Logic
-    clearSearchBtn.addEventListener('click', () => {
-        searchBox.value = '';
-        lastSearchTerm = '';
-        localStorage.setItem('lastSearchTerm', lastSearchTerm);
-        triggerSearch(true);
-        searchBox.blur();
-        const popup = document.getElementById('saved-searches-popup');
-        if (popup) popup.style.display = 'none';
-    });
-
-    searchBox.addEventListener('focus', () => {
-        renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
-    });
-    saveSearchBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const searchTerm = searchBox.value.trim();
-        // Обработка на токен за лиценз
-        const tokenMatch = searchTerm.match(/^\??token=(.+)$/);
-        if (tokenMatch) {
-            const tokenValue = tokenMatch[1].trim();
-            if (tokenValue) {
-                localStorage.setItem('urlToken', tokenValue);
-                searchBox.value = '';
-                saveSearchBtn.style.display = 'none';
-                clearSearchBtn.style.display = 'none';
-                cachedLicenseData = null; // Изчистваме кеша за лиценза
-                isAppStarted = false; // Позволяваме рестартиране на приложението
-                startApp(true);
-            }
-            return;
-        }
-        if (searchTerm && !savedSearches.includes(searchTerm)) {
-            saveSearchTerm(searchTerm);
-            // Animate the save button instead of showing a toast
-            saveSearchBtn.classList.add('saved-animation');
-            setTimeout(() => saveSearchBtn.classList.remove('saved-animation'), 600);
-            renderSavedSearchesPopup(); // Re-render to show the new term immediately
-            document.getElementById('saved-searches-popup').style.display = 'block';
-        }
-    });
-
-    // --- Calculator Button ---
-    const calculateBtn = document.getElementById('calculate-modal-btn');
-    let longPressTimer;
-    let isLongPress = false;
-
-    // Обработка на click събитие
-    calculateBtn.addEventListener('click', (e) => {
-        if (isLongPress) {
-            isLongPress = false;
-            return;
-        }
-        if (e.ctrlKey) {
-            // Ctrl+клик - извикваме с true
-            handleCalculateClick(true);
-        } else {
-            // Обикновен клик
-            handleCalculateClick(false);
-        }
-    });
-
-    // Обработка на long press
-    const startPress = (e) => {
-        isLongPress = false;
-        longPressTimer = setTimeout(() => {
-            isLongPress = true;
-            handleCalculateClick(true);
-        }, 500); // 500ms за long press
-    };
-
-    const endPress = () => {
-        clearTimeout(longPressTimer);
-    };
-
-    calculateBtn.addEventListener('mousedown', startPress);
-    calculateBtn.addEventListener('mouseup', endPress);
-    calculateBtn.addEventListener('mouseleave', endPress);
-    calculateBtn.addEventListener('touchstart', startPress, { passive: true });
-    calculateBtn.addEventListener('touchend', endPress);
-    // --- КОРЕКЦИЯ: Преместваме бутоните в хедъра на модала ---
-    const modalHeader = contentModal.querySelector('.modal-header-controls');
-    const modalCloseBtn = contentModal.querySelector('.modal-close');
-    if (modalHeader && modalCloseBtn) {
-        // Вмъкваме бутоните преди бутона за затваряне
-        modalHeader.insertBefore(calculateBtn, modalCloseBtn);
-        modalHeader.insertBefore(copyBtn, modalCloseBtn);
-    }
-    // --- Край на корекцията ---
-    copyBtn.innerHTML = copyIconSvg;
-    copyBtn.addEventListener('click', () => {
-        if (!navigator.clipboard) return;
-        const selection = window.getSelection();
-        let textToCopy = '';
-        // Проверяваме дали има маркиран текст и дали той се намира в модалния прозорец
-        if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
-            const range = selection.getRangeAt(0);
-            // Уверяваме се, че селекцията е започнала вътре в modalBody
-            if (modalBody.contains(range.commonAncestorContainer)) {
-                textToCopy = selection.toString();
-            }
-        }
-        // Ако няма избран текст, копираме цялото съдържание на бележката
-        if (textToCopy === '') {
-            textToCopy = currentModalContent?.trim() || '';
-        }
-        if (textToCopy) {
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                copyBtn.innerHTML = '&#10003;'; // Показваме отметка за успех
-                setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 5000);
-            }).catch(err => {
-                showToast(_('errorCopyFailed'));
-            });
-        }
-    });
-
-    // Event listener for submit button in folder ID popup
-    document.getElementById('submitFolderIdBtn').addEventListener('click', handleSubmitFolderId);
-    document.getElementById('folderIdInput').addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-            handleSubmitFolderId();
-        }
-    });
-
-    document.querySelectorAll('.modal-close').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            const modal = e.currentTarget.closest('.modal-overlay');
-            if (modal && modal.id === 'content-modal') {
-                if (!(await checkUnsavedChanges())) return;
-            }
-            if (modal) modal.classList.remove('visible');
-            if (modal && modal.id === 'settings-modal') {
-                window.kbAssistant.terminateGuide();
-                if (notesBgrdChanged || oneTapLinkChanged) {
-                    mainLogic();
-                    notesBgrdChanged = false;
-                    oneTapLinkChanged = false;
-                }
-            }
-        });
-
-    });
-    // Specific listener for the settings close button (not class 'modal-close')
-    const settingsCloseBtnPrimary = document.getElementById('settings-close-btn');
-
-    // Add same long-press touch simulation as settings_button
-    let closeBtnLongPressTimer;
-    settingsCloseBtnPrimary.addEventListener('touchstart', (e) => {
-        closeBtnLongPressTimer = setTimeout(() => {
-            settingsCloseBtnPrimary.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true, cancelable: true }));
-            if (navigator.vibrate) navigator.vibrate(50);
-        }, 600);
-    }, { passive: true });
-    settingsCloseBtnPrimary.addEventListener('touchend', () => clearTimeout(closeBtnLongPressTimer));
-    settingsCloseBtnPrimary.addEventListener('touchmove', () => clearTimeout(closeBtnLongPressTimer));
-    settingsCloseBtnPrimary.addEventListener('contextmenu', (e) => {
-        e.preventDefault(); e.stopPropagation(); return false;
-    });
-
-    settingsCloseBtnPrimary.addEventListener('click', (e) => {
-        if (e && e.ctrlKey) {
-            const sb = document.getElementById('settings_button');
-            if (sb) sb.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
-            return;
-        }
-        document.getElementById('settings-modal').classList.remove('visible');
-        if (window.kbAssistant) window.kbAssistant.terminateGuide();
-        if (notesBgrdChanged || oneTapLinkChanged) {
-            mainLogic();
-            notesBgrdChanged = false;
-            oneTapLinkChanged = false;
-        }
-        if (!isOffline) {
-            const advSpan = document.getElementById('advanced-settings-span');
-            if (advSpan && !advSpan.hasAttribute('hidden')) {
-                syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
-            }
-        }
-    });
-
-    document.querySelectorAll('.modal-overlay').forEach(modal => {
-        let isMouseDownInside = false;
-
-        modal.addEventListener('mousedown', (e) => {
-            // Маркираме дали натискането е започнало вътре в съдържанието
-            isMouseDownInside = e.target !== modal;
-        });
-
-        modal.addEventListener('touchstart', (e) => {
-            // Аналогично за мобилни устройства
-            isMouseDownInside = e.target !== modal;
-        }, { passive: true });
-
-        modal.addEventListener('click', async (e) => {
-            // Затваряме само ако и натискането, и отпускането са били върху овърлея
-            if (e.target === modal && !isMouseDownInside) {
-                if (modal.id === 'content-modal') {
-                    if (!(await checkUnsavedChanges())) return;
-                }
-                modal.classList.remove('visible');
-                if (modal.id === 'settings-modal') {
-                    if (window.kbAssistant) window.kbAssistant.terminateGuide();
-                    if (notesBgrdChanged || oneTapLinkChanged) {
-                        mainLogic();
-                        notesBgrdChanged = false;
-                        oneTapLinkChanged = false;
-                    }
-                    if (!isOffline) {
-                        const advSpan = document.getElementById('advanced-settings-span');
-                        if (advSpan && !advSpan.hasAttribute('hidden')) {
-                            syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
-                        }
-                    }
-                }
-            }
-        });
-    });
-    // Prevent clicks inside the content modal from propagating to the underlying notes
-    contentModal.addEventListener('click', (e) => {
-        e.stopPropagation();
-    });
-
-    // Apply initial font size settings from localStorage
-    const initialNoteFontSize = localStorage.getItem('noteFontSize') || 16;
-    document.documentElement.style.setProperty('--note-font-size', `${initialNoteFontSize}px`);
-    // Apply initial state for datemod visibility
-    const shouldHideDatemod = localStorage.getItem('showDatemod') === 'false';
-    document.body.classList.toggle('hide-datemod', shouldHideDatemod);
-    const initialModalFontSize = localStorage.getItem('modalFontSize') || 16;
-    modalBody.style.fontSize = `${initialModalFontSize}px`;
-    // Add a listener to reset the modal font size when it's closed,
-    // as it might be changed by other parts of the app (like formatText).
-    contentModal.addEventListener('transitionend', () => {
-        if (!contentModal.classList.contains('visible')) {
-            modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
-        }
-    });
-
-    // --- Modal Resizing Logic ---
-    const modalContentBox = contentModal.querySelector('.modal-content-box');
-    const resizeHandle = contentModal.querySelector('.modal-resize-handle');
-    let startX, startY, startWidth, startHeight;
-    function doDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
-        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
-        const newWidth = Math.round(startWidth + currentX - startX);
-        const newHeight = Math.round(startHeight + currentY - startY);
-        modalContentBox.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px'; // Limited by screen width
-        modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
-        modalContentBox.style.maxWidth = '100vw';
-        modalContentBox.style.maxHeight = 'none';
-    }
-
-    function stopDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        document.documentElement.removeEventListener('mousemove', doDrag, false);
-        document.documentElement.removeEventListener('mouseup', stopDrag, false);
-        document.documentElement.removeEventListener('touchmove', doDrag, false);
-        document.documentElement.removeEventListener('touchend', stopDrag, false);
-        localStorage.setItem('modalWidth', modalContentBox.style.width);
-        localStorage.setItem('modalHeight', modalContentBox.style.height);
-    }
-    function startDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        startX = e.touches ? e.touches[0].clientX : e.clientX;
-        startY = e.touches ? e.touches[0].clientY : e.clientY;
-        startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
-        startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
-        // Attach listeners for both mouse and touch
-        document.documentElement.addEventListener('mousemove', doDrag, false);
-        document.documentElement.addEventListener('mouseup', stopDrag, false);
-        document.documentElement.addEventListener('touchmove', doDrag, false);
-        document.documentElement.addEventListener('touchend', stopDrag, false);
-    }
-
-    // Attach start event for both mouse and touch
-    resizeHandle.addEventListener('mousedown', startDrag);
-    resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
-    // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
-    resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
-            <path d="M12 2 L2 12" />
-            <path d="M12 7 L7 12" />
-            <!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
-            <path d="M10 4 L4 4 L4 10" />
-        </svg>`;
-    // Load saved searches and settings from localStorage
-    lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
-    savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
-    maxSavedSearches = parseInt(localStorage.getItem('maxSavedSearches') || '20', 10);
-    setLanguage(currentLang);
-    // Add app version to the settings modal title
-    const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
-    if (settingsTitle) {
-        settingsTitle.textContent += `${version}`;
-    }
-    // Set initial placeholder text correctly
-    updateSearchPlaceholder();
-    // Hide saved searches popup when clicking outside
-    document.addEventListener('click', (e) => {
-        if (savedSearchesPopup.style.display === 'block' && !searchWrapper.contains(e.target)) {
-            savedSearchesPopup.style.display = 'none';
-        }
-    });
-
-    // --- Mode Button Logic ---
-    const modeButton = document.getElementById('mode_button');
-    const calendarButton = document.getElementById('calendar_button');
-    if (calendarButton) {
-        calendarButton.addEventListener('click', () => {
-            filterNotesByBoard('calendar');
-        });
-    }
-
-    // Click handler
-    modeButton.addEventListener('click', async (e) => {
-        if (isSyncSuspended) {
-            isSyncSuspended = false;
-            isOffline = false;
-            isAppStarted = false;
-            handleAuthClick();
-            return;
-        }
-        if (isOffline) {
-            if (typeof showToast === 'function') showToast(_('checkingNetwork') || "Checking network connection...", 2000);
-            let reallyOnline = false;
-            try {
-                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
-                reallyOnline = response.ok;
-            } catch (err) { }
-
-            if (reallyOnline) {
-                isOffline = false;
-                updateModeButton();
-                if (typeof showToast === 'function') showToast(_('onlineRestored') || "Online mode restored", 2000);
-            } else {
-                showToast(_('offlineModeMessage') || "Cannot sync while offline.", 3000);
-            }
-            return;
-        }
-        updateGlobalStateFlags();
-        const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-        if (isDbOnlyMode && dbExists) {
-            triggerSync();
-        } else {
-            document.getElementById('settings_button').click();
-        }
-    });
-
-    async function triggerSync() {
-        updatedNoteGdims = []; // Clear previous updates
-        loaderContainer.style.display = 'block'; // Показваме статус панела
-        const dbSource = await getConfig('dbSource');
-        let updatedCount = 0;
-        // Показваме лоудъра
-        loaderContainer.style.display = 'block';
-        const loaderTitle = document.getElementById('loader-title');
-        if (dbSource === 1) { // Базата е създадена от Google Drive
-            // --- КОРЕКЦИЯ: Зареждаме Google API, тъй като тази функция го пропуска ---
-            try {
-                if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
-                    await loadGoogleApis();
-                }
-                if (typeof gapi !== 'undefined' && gapi.client) {
-                    gapi.client.setToken({ access_token: authToken.access_token });
-                }
-            } catch (error) {
-                throw new Error(_('errorGoogleLibs'));
-            }
-            console.log("Triggering Google Drive sync...");
-            console.trace("[Sync-Trace] triggerSync called");
-            if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
-            try {
-                updatedCount = await runGoogleDriveSync();
-            } catch (err) {
-                console.warn("GD Sync failed, attempting token refresh...", err);
-                const refreshResult = await refreshAuthToken();
-                if (refreshResult && refreshResult.pass) {
-                    authToken = refreshResult.tokenData;
-                    // Update gapi client with new token
-                    if (typeof gapi !== 'undefined' && gapi.client) {
-                        gapi.client.setToken({ access_token: authToken.access_token });
-                    }
-                    updatedCount = await runGoogleDriveSync();
-                } else {
-                    showToast(_('errorSessionExpired'));
-                    loaderContainer.style.display = 'none';
-                    return;
-                }
-            }
-            showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 5000);
-        } else if (dbSource === 2) { // Базата е създадена от Локална папка
-            console.log("Triggering Local Folder sync...");
-            if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
-            updatedCount = await runLocalSync();
-            showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 5000);
-        } else {
-            loaderContainer.style.display = 'none';
-            return; // Не правим нищо, ако базата е от архив
-        }
-        // --- НОВА, ПО-ЕФИКАСНА ЛОГИКА ЗА ОБНОВЯВАНЕ ---
-        if (updatedCount > 0) {
-            // 1. Извличаме само новите бележки от базата данни
-            const newNotesContent = await Promise.all(
-                updatedNoteGdims.map(gdid => getFromDB(NOTE_STORE_NAME, gdid))
-            );
-            const validNewNotes = newNotesContent.filter(Boolean);
-            // 2. Обновяваме данните в паметта и DOM-а
-            for (const newNote of validNewNotes) {
-                // A. Обновяване на данните
-                const existingIndex = allNotesData.findIndex(n => n.gdid === newNote.gdid);
-                if (existingIndex !== -1) {
-                    allNotesData[existingIndex] = newNote; // Заместваме старата версия
-                } else {
-                    allNotesData.push(newNote); // Добавяме, ако е нова
-                }
-                // B. Обновяване на DOM-а
-                // Първо премахваме съществуващия елемент, ако има такъв
-                const existingEl = document.querySelector(`.note[data-g="${newNote.gdid}"]`);
-                if (existingEl) {
-                    existingEl.remove();
-                }
-                // Създаваме и добавяме новия елемент
-                const newEl = await createNoteElement(newNote);
-                if (newEl) {
-                    notesContainer.prepend(newEl);
-                }
-            }
-            trackMaxIds(validNewNotes);
-            // 4. Обновяваме броячите и менюто с бордове
-            currentBoardFilter = 'new-updates'; // Switch to New board
-            await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            applyFilters(); // Прилагаме филтрите отново
-        }
-        loaderContainer.style.display = 'none';
-    }
-
-    // Добавяме event listener за показване на системна информация при клик на брояча
-    const noteCounter = document.getElementById('note-counter');
-    noteCounter.addEventListener('click', async () => {
-        if (isLoadCancelled) return;
-        try {
-            const dbOwnerEmail = await getConfig('userEmail') || _('noData');
-            const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || _('noData');
-            const lastGDTimestamp = await getConfig('lastGDTimestamp');
-            const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
-            const dbNoteIdType = await getConfig('dbNoteIdType') || _('noData');
-            const dbSourceValue = await getConfig('dbSource');
-            let dbSourceText = _('noData');
-            if (dbSourceValue === 1) { // Google Drive
-                dbSourceText = _('sourceGoogleDrive');
-            } else if (dbSourceValue === 2) {
-                dbSourceText = _('sourceLocalFolder');
-            } else if (dbSourceValue === 3) {
-                dbSourceText = _('sourceArchive');
-            }
-            const dbCreatedTimestamp = await getConfig('dbCreatedTimestamp');
-            const dbCreatedFolderName = await getConfig('dbCreatedFolderName') || '';
-            const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
-            const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
-            const dbCreatedDate = dbCreatedTimestamp ? formatDateTime(dbCreatedTimestamp) : '';
-            const loadTimeDate = initialLoadTimestamp ? formatDateTime(initialLoadTimestamp) : '';
-
-            // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
-            const content = [
-                `${_('activeFolderLabel')} ${activeFolderName}`,
-                `${_('sysInfoLoadTime')}: ${initialLoadTime ? initialLoadTime + ' s' + (loadTimeDate ? ' (' + loadTimeDate + ')' : '') : _('noData')}`,
-                ``,
-                `${_('sysInfoUser')}: ${currentUserEmail}`,
-                `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
-                `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedFolderName ? ' (' + dbCreatedFolderName + ')' : ''}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
-                `${_('sysInfoLastLocalSync')}: ${localDate}`,
-                `${_('sysInfoLastGDSync')}: ${gdDate}`,
-                `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
-                ``,
-                ...(tokenRemainingDays !== null ? [`${_('remainingDays')}: ${tokenRemainingDays}`] : []),
-            ].join('\n');
-            showModal({ raw: content, color: '#f0f0f0', readonly: true });
-        } catch (error) {
-            console.log("Error fetching system info:", error);
-            showToast(_('errorSysInfo'));
-        }
-    });
-
-}
-
-/**
- * Актуализира текста в полето за търсене, за да покаже текущия режим.
- */
-function updateSearchPlaceholder() {
-    const searchInput = document.getElementById('search-box');
-    if (!searchInput) return;
-    // Don't overwrite if install button is currently visible over the search box
-    const installBtnEl = document.getElementById('install_button');
-    if (installBtnEl && window.getComputedStyle(installBtnEl).display !== 'none') return;
-    searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
-}
-
-function updateSearchModeIndicator() {
-    const dot = document.querySelector('.search-mode-dot');
-    const icon = document.querySelector('.search-icon-static');
-    if (!dot || !icon) return;
-    if (searchInBoardOnly) {
-        // Вземаме цвета на активния борд бутон
-        // const activeBtn = document.querySelector(`.board-filter-link.selected-board`);
-        // const boardColor = activeBtn ? getComputedStyle(activeBtn).backgroundColor : '#1976D2';
-        dot.style.display = '';
-        dot.setAttribute('fill', "black");
-        icon.title = _('searchInBoardTooltip') || 'Search in current board (click to change)';
-    } else {
-        dot.style.display = 'none';
-        icon.title = _('searchEverywhereTooltip') || 'Search everywhere (click to change)';
-    }
-}
-
-function saveSearchTerm(term) {
-    const existingIndex = savedSearches.indexOf(term);
-    if (existingIndex > -1) {
-        savedSearches.splice(existingIndex, 1);
-    }
-    savedSearches.unshift(term);
-    if (maxSavedSearches > 0 && savedSearches.length > maxSavedSearches) {
-        savedSearches.length = maxSavedSearches;
-    } else if (maxSavedSearches === 0) {
-        savedSearches = [];
-    }
-    localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-    if (!isOffline) {
-        saveSettingsToGDrive(true).catch(e => console.warn("Failed to auto-save settings on search save:", e));
-    }
-}
-
-
-// Проверяваме дали има токен преди да стартираме приложението
-// Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
-(async () => {
-    const cache = await caches.open('app-cache');
-    const cachedResponse = await cache.match('s');
-    if (!cachedResponse) {
-        initLoginPage();
-        return;
-    }
-    const sessionToken = sessionStorage.getItem('google_auth_token');
-    const localToken = localStorage.getItem('google_auth_token');
-    if (sessionToken || localToken) {
-        startApp();
-    } else {
-        // Няма токен - показваме login страницата веднага и инициализираме event listeners
-        initLoginPage();
-        // gisLoaded() ще инициализира Google authentication когато се зареди
-    }
-    // --- Selection Locking Logic ---
-    // Persistent lock strategy: Lock strictly enforces selection on the active note. 
-    // It remains active until the user clicks somewhere else.
-    document.addEventListener('mousedown', (e) => {
-        // 1. Identify target
-        const note = e.target.closest('.note');
-        // Exclude the boards menu (header note) from selection locking
-        if (note && note.classList.contains('boards-note')) return;
-        const isNoteContent = note && e.target.closest('.note-content');
-        // 2. Clean up previous active state
-        document.querySelectorAll('.active-selection-note').forEach(n => {
-            if (n !== note) n.classList.remove('active-selection-note');
-        });
-        // 3. Apply logic
-        if (isNoteContent) {
-            // User clicked in a note content -> Lock everything else, activate this one
-            document.body.classList.add('selection-locked');
-            note.classList.add('active-selection-note');
-        } else {
-            // User clicked outside note content (e.g. background, header, footer) -> Unlock everything
-            // This restores default behavior when not interacting with text.
-            document.body.classList.remove('selection-locked');
-            document.querySelectorAll('.active-selection-note').forEach(n => n.classList.remove('active-selection-note'));
-            // If the user clicked on the note container (but not content), allow selection to clear?
-            // Default browser behavior handles focus handling.
-        }
-    });
-    // We no longer remove the lock on mouseup, because doing so allows the browser to 
-    // "expand" the selection to the mouse up position if it was outside the note.
-    // By keeping the lock, we force the selection to stay contained.
-})();
-
-// След успешно удостоверяване gisLoaded() ще извика startApp()
-
-// Функция за инициализация на login страницата
-async function initLoginPage() {
-    document.getElementById('login-page').hidden = false;
-    document.getElementById('login-page').style.display = 'block';
-
-    // Header и search се показват чрез класа app-ready
-    updateSearchPlaceholder(); // Обновяваме placeholder-а с преложения език
-
-    // --- Button Visibility Logic (Restored & Consolidated) ---
-    const loginBox = document.querySelector('.login-box');
-    const authBtn = document.getElementById("authorize_button");
-    const trialBtn = document.getElementById("trialBtn");
-
-    if (loginBox) loginBox.style.display = 'block';
-
-    let hasS = false;
-    try {
-        const cache = await caches.open('app-cache');
-        const cachedResponse = await cache.match('s');
-        hasS = !!cachedResponse;
-    } catch (e) {
-        console.warn("Error checking cache in initLoginPage:", e);
-    }
-
-    const licenseData = await decryptLicenseToken();
-    const isLicenseExpired = hasS && !licenseData.pass;
-    window.isAppErrorState = isLicenseExpired; // Mark as error state to hide assistant if needed
-
-    // --- UI Messaging Logic ---
-    const rememberMeCheck = document.getElementById('rememberMe');
-    if (isLicenseExpired) {
-        const loginPrompt = document.querySelector('[data-key="loginPrompt"]');
-        if (loginPrompt) {
-            loginPrompt.setAttribute('data-key', 'invalidCertificate');
-            loginPrompt.innerHTML = _('invalidCertificate');
-        }
-        if (rememberMeCheck && rememberMeCheck.parentElement) {
-            rememberMeCheck.parentElement.style.display = 'none';
-        }
-    } else {
-        const loginPrompt = document.querySelector('[data-key="loginPrompt"], [data-key="invalidCertificate"]');
-        if (loginPrompt) {
-            loginPrompt.setAttribute('data-key', 'loginPrompt');
-            loginPrompt.innerHTML = _('loginPrompt');
-        }
-        if (rememberMeCheck && rememberMeCheck.parentElement) {
-            rememberMeCheck.parentElement.style.display = 'block';
-        }
-    }
-
-    if (isOffline) {
-        // Offline Mode: Show "Start Offline" only if we have data ('s') and license is still OK
-        if (authBtn) {
-            authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
-            authBtn.style.display = (hasS && !isLicenseExpired) ? 'inline-block' : 'none';
-            authBtn.disabled = false;
-        }
-        if (trialBtn) trialBtn.style.display = 'none'; // No trial in offline mode
-    } else {
-        // Online Mode
-        if (authBtn) {
-            authBtn.textContent = (typeof _ === 'function') ? _('authorizeButton') : "Authorize with Google";
-            // Show Auth if we have trial started and it's not expired
-            authBtn.style.display = (hasS && !isLicenseExpired) ? 'inline-block' : 'none';
-            authBtn.disabled = false;
-        }
-        if (trialBtn) {
-            // Show Trial button only if we haven't started one yet
-            trialBtn.style.display = !hasS ? 'inline-block' : 'none';
-            trialBtn.textContent = (typeof _ === 'function') ? _('trialButton') : "Start 30-day trial period";
-        }
-    }
-
-    // Language switcher event listeners
-    const switchLanguage = (lang) => {
-        localStorage.setItem('language', lang);
-        location.reload();
-    };
-    if (typeof renderLanguageSwitchers === 'function') renderLanguageSwitchers(switchLanguage);
-    // Добавяне на действие при натискане на trial бутона
-    if (trialBtn && trialBtn.parentNode) {
-        // Cloning to remove any previous event listeners (simple way to avoid dupes)
-        const newTrialBtn = trialBtn.cloneNode(true);
-        trialBtn.parentNode.replaceChild(newTrialBtn, trialBtn);
-        newTrialBtn.addEventListener("click", async (e) => {
-            console.log("Trial button clicked");
-            e.preventDefault(); // Предотвратяваме стандартното действие
-            // 1. Взимаме токена от TRIAL_URL
-            const url = new URL(TRIAL_URL);
-            const trialToken = url.searchParams.get("token");
-            // 2. Запазваме го в localStorage, за да е наличен след логване
-            if (trialToken) {
-                localStorage.setItem('urlToken', trialToken);
-                sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
-                // --- НОВО: Записваме 's' в кеша веднага, за да се знае, че е стартиран пробния период ---
-                await getFirstStartEncoded(true);
-            }
-            // 3. Директно извикваме функцията за авторизация (вместо клик върху скрития бутон)
-            console.log("Starting Google authorization...");
-            handleAuthClick();
-        });
-    }
-    // Запазваме състоянието на "Запомни ме" при промяна
-    const rememberMeCheckbox = document.getElementById('rememberMe');
-    if (rememberMeCheckbox) {
-        rememberMeCheckbox.addEventListener('change', () => {
-            localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
-        });
-    }
-    // Event listener за authorize бутона
-    const authorizeBtn = document.getElementById('authorize_button');
-    if (authorizeBtn) {
-        authorizeBtn.addEventListener('click', handleAuthClick);
-    }
-    showAppUI();
-}
-
-function updateSignoutTooltip() {
-    const email = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
-    const signoutBtn = document.getElementById('signout_button');
-    if (signoutBtn) {
-        const baseTooltip = _('signoutButtonTooltip');
-        if (email) {
-            const username = email.split('@')[0];
-            let tooltipText = `${baseTooltip} (${username})`;
-            if (tokenRemainingDays !== null) {
-                tooltipText += ` [${tokenRemainingDays}]`;
-            }
-            signoutBtn.title = tooltipText;
-        } else {
-            signoutBtn.title = baseTooltip + (tokenRemainingDays !== null ? ` [${tokenRemainingDays}]` : '');
-        }
-    }
-}
-
-// =================================================================================
-// III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
-// =================================================================================
-
-
-
-async function silentLoginWithIframe(loginHint) {
-    const REDIRECT_URI = window.location.origin + window.location.pathname;
-    return new Promise((resolve, reject) => {
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${SCOPES}&redirect_uri=${REDIRECT_URI}&prompt=none&login_hint=${loginHint}`;
-        // Слушаме за съобщения от iframe
-        const messageListener = (event) => {
-            // Приемаме съобщения от нашия собствен origin (след redirect)
-            if (event.origin !== window.location.origin) {
-                return;
-            }
-            const hash = event.data;
-            if (hash && hash.includes('access_token')) {
-                const params = new URLSearchParams(hash.substring(1)); // Премахваме #
-                const accessToken = params.get('access_token');
-                const expiresIn = params.get('expires_in');
-                const tokenWithTimestamp = {
-                    access_token: accessToken,
-                    expires_in: expiresIn,
-                    issued_at: Date.now()
-                };
-                // Обновяваме storage според rememberMe
-                const rememberMe = localStorage.getItem('rememberMe') === 'true';
-                const storage = rememberMe ? localStorage : sessionStorage;
-                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                window.removeEventListener('message', messageListener);
-                if (document.body.contains(iframe)) {
-                    document.body.removeChild(iframe);
-                }
-                resolve(tokenWithTimestamp);
-            } else {
-                window.removeEventListener('message', messageListener);
-                if (document.body.contains(iframe)) {
-                    document.body.removeChild(iframe);
-                }
-                resolve(null);
-            }
-        };
-        window.addEventListener('message', messageListener);
-        document.body.appendChild(iframe);
-        // Таймаут за безопасност
-        setTimeout(() => {
-            window.removeEventListener('message', messageListener);
-            if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
-            }
-            resolve(null); // Връщаме null вместо reject
-        }, 5000); // 5 секунди
-    });
-
-}
-
-async function handleAuthClick() {
-    if (isOffline) {
-        document.getElementById('login-page').hidden = true;
-        document.getElementById('login-page').style.display = 'none';
-        startApp(true);
-        return;
-    }
-    if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: async (resp) => {
-                if (resp.error) {
-                    throw (resp);
-                }
-                await authCallback(resp);
-            },
-        });
-    }
-    if (tokenClient) {
-        const rememberMe = localStorage.getItem('rememberMe') === 'true';
-        const loginHint = localStorage.getItem('google_login_hint');
-        if (rememberMe && loginHint) {
-            tokenClient.requestAccessToken({ hint: loginHint });
-        } else {
-            tokenClient.requestAccessToken({ prompt: 'select_account' });
-        }
-    } else {
-        console.warn("Google Identity Services not loaded. Checking for offline capability...");
-        let hasS = false;
-        try {
-            const cache = await caches.open('app-cache');
-            const cachedResponse = await cache.match('s');
-            hasS = !!cachedResponse;
-        } catch (e) { console.warn(e); }
-        if (hasS) {
-            if (confirm("Google services could not be loaded (likely due to connection issues).\n\nDo you want to start in Offline Mode?")) {
-                isOffline = true;
-                document.getElementById('login-page').hidden = true;
-                document.getElementById('login-page').style.display = 'none';
-                startApp(true);
-                return;
-            }
-        }
-        console.error("Google Identity Services not loaded.");
-        alert("Google services are not loaded yet. Please check your connection and reload via F5.");
-    }
-}
-
-async function checkWhitelist(delayed = false) {
-    if (isOffline) return null;
-    if (delayed) {
-        // Изчакваме 2 секунди, за да не пречим на началната синхронизация 
-        await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
-    const action = isTrialStart ? 'log' : 'check';
-    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-
-    console.log('>>> Executing whitelist check (action: ' + action + ')...');
-    console.log('>>> Email for whitelist:', currentUserEmail);
-
-    if (!currentUserEmail) return null;
-
-    try {
-        // проверка без extended - const response = await fetch('https://script.google.com/macros/s/AKfycbymxrrIXy9ULL8CBOP06yaVVoDqHzjhvFgb1bPdRK-nZ3nLKAciIyExnn_InAYBBcXDFQ/exec', {
-        const response = await fetch('https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec', {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
-                email: currentUserEmail,
-                action: action
-            })
-        });
-        const data = await response.json();
-        console.log('>>> Whitelist response:', data);
-
-        if (isTrialStart) {
-            sessionStorage.removeItem('isTrialStart');
-            console.log('>>> Trial registered for:', currentUserEmail);
-        }
-        return data;
-    } catch (err) {
-        if (err.name === 'TypeError' || err.message === 'Failed to fetch') {
-            console.log('>>> Whitelist check: Service unavailable (likely offline).');
-        } else {
-            console.log('>>> Whitelist check fail:', err);
-        }
-        return null;
-    }
-}
-
-async function checkAuth(isExplicitLogin = false) {
-    console.log("checkAuth");
-    const searchInput = document.getElementById('search-box');
-    if (searchInput) {
-        const val = searchInput.value.trim();
-        // По-толерантен regex: приема ?token= или само token=
-        const tokenMatch = val.match(/^\??token=(.+)$/);
-        if (tokenMatch) {
-            const tokenValue = tokenMatch[1].trim();
-            if (tokenValue) {
-                localStorage.setItem('urlToken', tokenValue);
-                searchInput.value = '';
-                cachedLicenseData = null; // Изчистваме кеша за лиценза
-                if (saveSearchBtn) saveSearchBtn.style.display = 'none';
-            }
-        }
-    }
-    const sessionToken = sessionStorage.getItem('google_auth_token');
-    const localToken = localStorage.getItem('google_auth_token');
-    const storedTokenString = sessionToken || localToken;
-    if (isOffline && (storedTokenString || isExplicitLogin)) return { pass: true };
-    if (!storedTokenString) {
-        await initLoginPage();
-        window.authListenersAdded = true;
-        return { pass: false };
-    }
-    const tokenData = JSON.parse(storedTokenString);
-    if (window.gapi && window.gapi.client && tokenData.access_token) window.gapi.client.setToken(tokenData);
-    tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
-    const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
-    if (isExpired) {
-        console.log("Token expired. Attempting silent refresh...");
-        try {
-            const refreshResult = await refreshAuthToken();
-            if (refreshResult && refreshResult.pass) return refreshResult;
-            console.warn("Silent refresh returned non-pass result:", refreshResult);
-        } catch (refreshErr) {
-            console.warn("Silent refresh failed:", refreshErr);
-        }
-        let hasLocalData = false;
-        if (dbExists) {
-            try {
-                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (boardsInDb && boardsInDb.length > 0) hasLocalData = true;
-            } catch (e) {
-                console.warn("Failed to check local DB in checkAuth:", e);
-            }
-        }
-        if (hasLocalData) {
-            isOffline = true;
-            isSyncSuspended = true;
-            console.log("[Auth] Switching to local-only mode (sync suspended).");
-            return { pass: true, tokenData };
-        }
-        sessionStorage.removeItem('google_auth_token');
-        localStorage.removeItem('google_auth_token');
-        initLoginPage();
-        return { pass: false };
-    }
-    const licenseData = await decryptLicenseToken();
-    tokenRemainingDays = licenseData.remainingDays;
-    pass = licenseData.pass;
-    if (licenseData.pass) {
-        console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
-        if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
-    } else {
-        console.warn("License required. Showing login page.");
-        initLoginPage();
-        return null;
-    }
-    return { tokenData, pass };
-}
-
-function loadScript(src) {
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = src;
-        script.onload = resolve;
-        script.onerror = reject;
-        script.async = true;
-        script.defer = true;
-        document.head.appendChild(script);
-    });
-}
-
-async function loadGoogleApis() {
-    if (isOffline) return;
-    if (typeof gapi !== 'undefined' && gapi.client) return;
-    try {
-        await loadScript('https://apis.google.com/js/api.js');
-        await new Promise(resolve => gapi.load('client', resolve));
-        await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
-    } catch (error) {
-        throw new Error(_('errorGoogleLibs'));
-    }
-}
-
-function handleSignoutClick() {
-    // Премахваме само ключовете, свързани с удостоверяването
-    localStorage.removeItem('google_auth_token');
-    sessionStorage.removeItem('google_auth_token');
-    sessionStorage.removeItem('google_auth_email_hint');
-    // Премахваме кешираните ID-та на папки, за да не се ползват от друг потребител
-    localStorage.removeItem('gdrive_multinotes_data_id');
-    localStorage.removeItem('gdrive_folder_id_Other');
-    localStorage.removeItem('gdrive_folder_id_Sound');
-    localStorage.removeItem('gdrive_folder_id_Video');
-    localStorage.removeItem('gdrive_folder_id_Images');
-    // Премахваме google_login_hint САМО ако "Запомни ме" НЕ е активно
-    const rememberMe = localStorage.getItem('rememberMe') === 'true';
-    if (!rememberMe) {
-        localStorage.removeItem('google_login_hint'); // Спираме автоматичния вход
-    }
-    // Задаваме флаг за изход, за да се покаже login формата
-    sessionStorage.setItem('logout_flag', 'true');
-    // Презареждаме страницата - checkAuth ще покаже login формата
-    window.location.reload();
-}
-
-// =================================================================================
-// IV. ЧЕТЕНЕ НА ДАННИ ОТ GOOGLE DRIVE
-// =================================================================================
-// --- GDrive Data Loading logic moved to load.js ---
-/**
- * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
- * Ако има несъответствие, превключва приложението в ограничен режим.
- */
-async function userCheck() {
-    if (!dbExists) {
-        // Базата не съществува, не правим нищо.
-        // Потребителят ще бъде записан при първоначалното създаване на базата.
-        isDbOwner = true;
-        return;
-    }
-    // Базата съществува, продължаваме с проверката на потребителя
-    const storedUserEmail = await getConfig('userEmail');
-    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-    // Проверяваме за несъответствие само ако има записан потребител в базата
-    if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
-        isDbOwner = false;
-        await handleUserMismatch(storedUserEmail);
-    } else {
-        isDbOwner = true;
-    }
-}
-
-/**
- * Обработва случая на несъответствие на потребители.
- * Показва съобщение и заключва настройките за управление на данни.
- */
-async function handleUserMismatch(storedUser) {
-    // --- КОРЕКЦИЯ: Добавяме динамичен източник към съобщението ---
-    let sourceName = '';
-    if (localStorage.getItem('useGoogleDb') !== 'false') {
-        sourceName = _('sourceGoogleDrive');
-    } else if (localStorage.getItem('useLocalDb') === 'true') {
-        sourceName = _('sourceLocalFolder');
-    } else if (localStorage.getItem('useArhDb') === 'true') {
-        sourceName = _('sourceArchive');
-    } else {
-        // Fallback, ако нищо не е избрано, въпреки че не би трябвало да се случва
-        sourceName = _('sourceGoogleDrive');
-    }
-    showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceName), 15000);
-    // Принудително превключваме към режим "Google Drive" без IndexedDB
-    localStorage.setItem('useIndexedDb', 'false');
-    localStorage.setItem('useGoogleDb', 'true');
-    localStorage.setItem('useLocalDb', 'false');
-    localStorage.setItem('useArhDb', 'false'); // Добавяме и архива
-    updateGlobalStateFlags();
-    updateModeButton();
-    // Деактивираме контролите в настройките
-    const settingsModal = document.getElementById('settings-modal');
-    // Проверяваме дали модалът за настройки изобщо съществува в DOM
-    if (!settingsModal) return;
-    const controlsToDisable = [
-        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
-        'create-db-btn', // 'delete-db-btn',
-        'select-folder-btn', 'select-arh-btn'
-    ];
-    controlsToDisable.forEach(id => {
-        const el = settingsModal.querySelector(`#${id}`);
-        if (el) {
-            // Ако елементът е чекбокс, първо го изключваме
-            if (el.type === 'checkbox') {
-                el.checked = false;
-            }
-            el.disabled = true;
-        }
-    });
-    // Деактивираме и целия акордеон за разширени настройки
-    const accordionHeader = settingsModal.querySelector('.accordion-header');
-    if (accordionHeader) {
-        accordionHeader.style.pointerEvents = 'none';
-        accordionHeader.style.opacity = '0.5';
-    }
-    const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
-    googleDbCheckbox.checked = true; // Маркираме го
-    // --- КОРЕКЦИЯ: Заключваме и него, за да е ясно, че режимът е принудителен ---
-    // googleDbCheckbox.disabled = false; // Оставяме го активно, но заключено
-    // googleDbCheckbox.disabled = true;
-}
-
-/**
- * Активира контролите в настройките, които може да са били деактивирани
- * от `handleUserMismatch`. Извиква се след изтриване на базата данни.
- */
-function enableSettingsControls() {
-    const settingsModal = document.getElementById('settings-modal');
-    if (!settingsModal) return;
-    const controlsToEnable = [
-        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
-        'create-db-btn', 'select-folder-btn', 'select-arh-btn'
-    ];
-    controlsToEnable.forEach(id => {
-        const el = settingsModal.querySelector(`#${id}`);
-        if (el) {
-            el.disabled = false;
-        }
-    });
-    // Активираме и акордеона за разширени настройки
-    const accordionHeader = settingsModal.querySelector('.accordion-header');
-    if (accordionHeader) {
-        accordionHeader.style.pointerEvents = 'auto';
-        accordionHeader.style.opacity = '1';
-    }
-    console.log("Settings controls have been re-enabled after DB deletion.");
-}
-
-/**
- * Създава или пресъздава цялата база данни от данните, заредени в паметта.
- * @returns {Promise<boolean>} Връща true при успех и false при грешка.
- */
-async function createDatabaseFromMemory() {
-    if (boardsData.length === 0 && allNotesData.length === 0) {
-        showToast(_('dbCreateFailedNoData'), 10000);
-        return false;
-    }
-    try {
-        // --- КЛЮЧОВА КОРЕКЦИЯ: Осигуряваме gdid за IndexedDB (особено за архиви) ---
-        // Тъй като базата използва 'gdid' като keyPath, ако полето е празно (както е в архивите),
-        // всички записи ще се презаписват един друг.
-        const ensureGdid = (data) => data.map(item => {
-            // АКО СМЕ В РЕЖИМ АРХИВ: Винаги използваме цифровия 'id' като основен ключ 'gdid' за базата.
-            // Това гарантира, че връзките в архива ще работят правилно в IndexedDB.
-            // if (useArhDb && item.id !== undefined) {
-            //    return { ...item, gdid: String(item.id) };
-            // }
-            // ЗА ДРУГИ РЕЖИМИ: Само ако gdid липсва, ползваме id като резервен вариант.
-            if ((!item.gdid || item.gdid === "") && item.id !== undefined) {
-                return { ...item, gdid: String(item.id) };
-            }
-            return item;
-        });
-        // Почистване на временни полета преди запис
-        const cleanItem = (item) => {
-            const cleaned = { ...item };
-            delete cleaned.noteCount;
-            delete cleaned.reminderNoteCount;
-            delete cleaned.calendarNoteCount;
-            return cleaned;
-        };
-        const preparedBoards = ensureGdid(boardsData).map(cleanItem);
-        const preparedMedia = ensureGdid(mediaData);
-        const preparedNotes = ensureGdid(allNotesData);
-        await bulkPutDB(BOARD_STORE_NAME, preparedBoards);
-        await bulkPutDB(MEDIA_STORE_NAME, preparedMedia);
-        await bulkPutDB(NOTE_STORE_NAME, preparedNotes);
-        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-        if (currentUserEmail) {
-            await saveConfig('userEmail', currentUserEmail);
-        }
-        // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
-        const noteIdType = useArhDb ? 'id' : 'gdid';
-        await saveConfig('dbNoteIdType', noteIdType);
-        const dbSource = useArhDb ? 3 : (useLocalFolder ? 2 : 1);
-        // Запазваме timestamp само за източника, от който създаваме базата.
-        // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
-        const now = Date.now();
-        if (dbSource === 1) { // Google Drive
-            await saveConfig('lastGDTimestamp', now); // В IndexedDB
-        } else if (dbSource === 2) { // Local Folder
-            await saveConfig('lastLocalTimestamp', now);
-        }
-        await saveConfig('dbSource', dbSource);
-        await saveConfig('dbCreatedFolderName', activeFolderName);
-        // Записваме кога е създадена базата
-        await saveConfig('dbCreatedTimestamp', now);
-        // --- IMMEDIATELY UPDATE GLOBALS FOR CURRENT SESSION ---
-        dbSourceGlobal = dbSource;
-        dbNoteIdTypeGlobal = noteIdType;
-        console.log(`[createDatabaseFromMemory] Session globals updated: Source=${dbSourceGlobal}, IdType=${dbNoteIdTypeGlobal}`);
-        dbExists = true; // Маркираме, че базата вече съществува
-        return true;
-    } catch (error) {
-        console.log("Failed to create/recreate DB from memory:", error);
-        return false;
-    }
-}
-
-/**
- * Финализира процеса по създаване на база данни, като записва
- * необходимата конфигурация (timestamps, потребител).
- */
-async function finalizeDbCreation() {
-    const now = Date.now();
-    await saveConfig('lastGDTimestamp', now);
-    await saveConfig('lastLocalTimestamp', now);
-    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-    if (currentUserEmail) {
-        await saveConfig('userEmail', currentUserEmail);
-    }
-}
-
-function areBoardsIdentical(memBoards, dbBoards) {
-    if (!memBoards || memBoards.length === 0 || !dbBoards || dbBoards.length === 0) return true; // Празни данни не са несъответствие в този контекст
-
-    const dbGdidSet = new Set(dbBoards.map(b => String(b.gdid)));
-    const dbTitleSet = new Set(dbBoards.map(b => String(b.title || '').trim().toLowerCase()));
-
-    // Проверяваме дали всички бордове от паметта присъстват в базата
-    for (const mb of memBoards) {
-        const memGdid = mb.gdid ? String(mb.gdid) : (mb.id !== undefined ? String(mb.id) : null);
-        const memTitle = String(mb.title || '').trim().toLowerCase();
-
-        if (memGdid !== null && !dbGdidSet.has(memGdid) && !dbTitleSet.has(memTitle)) {
-            console.warn(`Mismatch: Memory board "${mb.title}" (ID: ${memGdid}) not in DB.`);
-            return false;
-        }
-    }
-
-    // Проверяваме и обратното (само ако имаме бордове в базата)
-    if (dbBoards.length > 0) {
-        const memGdidSet = new Set(memBoards.map(mb => mb.gdid ? String(mb.gdid) : (mb.id !== undefined ? String(mb.id) : null)));
-        const memTitleSet = new Set(memBoards.map(mb => String(mb.title || '').trim().toLowerCase()));
-
-        for (const db of dbBoards) {
-            const dbGdid = String(db.gdid);
-            const dbTitle = String(db.title || '').trim().toLowerCase();
-            if (!memGdidSet.has(dbGdid) && !memTitleSet.has(dbTitle)) {
-                console.warn(`Mismatch: DB board "${db.title}" (GDID: ${dbGdid}) not in memory.`);
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
-/**
- * Актуализира иконата и tooltip-а на бутона за режим, за да покаже текущия източник на данни.
- */
-function updateModeButton() {
-    // Тази функция се извиква преди mainLogic, затова трябва да прочете актуалните стойности.
-    const currentUseGoogleDb = localStorage.getItem('useGoogleDb') !== 'false';
-    const currentUseLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-    const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
-    const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-    const modeButton = document.getElementById('mode_button');
-    if (!modeButton) return;
-    let iconWrapper = modeButton.querySelector('.mode-icon-wrapper');
-    if (!iconWrapper) {
-        iconWrapper = document.createElement('div');
-        iconWrapper.className = 'mode-icon-wrapper';
-        modeButton.prepend(iconWrapper);
-    }
-    let iconSrc = '';
-    let title = '';
-    // --- РАЗШИРЕНА ЛОГИКА: Проверяваме за всяка комбинация с база данни ---
-    const isCombinedWithDb = currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb);
-
-    if (!modeButton.querySelector('#mode-button-loading-icon')) {
-        const loadingIcon = document.createElement('img');
-        loadingIcon.src = 'Refresh.png';
-        loadingIcon.id = 'mode-button-loading-icon';
-        modeButton.appendChild(loadingIcon);
-    }
-
-    if (isOffline) {
-        iconSrc = 'Database.png';
-        title = _('offlineMode') || "Offline Mode";
-        // Ensure overlay is hidden in offline mode unless we want to show it's disabled?
-        // For now, let's keep it simple or maybe show a 'OFF' overlay?
-    } else if (isCombinedWithDb) {
-        // Когато имаме комбинация, базата е основна
-        iconSrc = 'Database.png';
-        if (currentUseGoogleDb) title = _('modeDbAndDrive');
-        else if (currentUseLocalFolder) title = _('modeDbAndLocal');
-        else if (currentUseArhDb) title = _('modeDbAndArchive');
-    } else if (currentUseArhDb) {
-        iconSrc = 'Zip.png';
-        title = _('modeArchiveTitle');
-    } else if (currentUseLocalFolder) {
-        iconSrc = 'Folder.png';
-        title = _('modeLocalTitle');
-    } else if (currentUseGoogleDb) {
-        iconSrc = 'GDrive.png';
-        title = _('modeDrive');
-    } else if (currentUseIndexedDb) {
-        iconSrc = 'Database.png';
-        title = _('modeDb');
-    } else {
-        // Fallback: Ако няма избран източник
-        iconSrc = 'Database.png';
-        title = _('noData');
-    }
-    iconWrapper.innerHTML = '';
-    const mainIcon = document.createElement('img');
-    mainIcon.src = iconSrc;
-    mainIcon.alt = title;
-    mainIcon.style.width = '24px';
-    mainIcon.style.height = '24px';
-    iconWrapper.appendChild(mainIcon);
-    // Добавяме иконата за наслагване
-    let overlaySrc = '';
-    let overlayAlt = '';
-    if (isOffline) {
-        // overlaySrc = 'Offline.png'; overlayAlt = 'Offline Mode';
-        overlaySrc = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAAERElEQVR4nO2YW2hcVRSGT1pFBS/4JGqb2WsSSGIlFWvO6IMo1JkMSuYkMTU++OKlVIvYh0LVGIngrdpWDZ21xlFRES8Y6YsXUoIKal8KovggUvGCivUWSmatSYXmsmWfSew0c+bMmWQymYH5YcPMnL33Wd/Ze/9rnbGshhpaHdmxvs1WvSoSSzxpxxKzkXjPHVY9Bh/pdrRpdQfRFXWucoNeAHAhup2ZSMwZtOpFdjyxzQ06H6LeVsJuQNQRxMaD05cplEEg2atIDinib4BkEkiyQKIXmvk8aa6ZPkDyTIjk9g2p6cvXCMKZu3LXq+MK5Ye8IJfbfgTiF0KUudbSuql6EPE+3TE0vtLg9ZL2E5Dsbh2dvLBiwV+R/Ot8QHm8/ZGJbCTer6sAoRVJRqE8HU6fuGj5kWvdBCTbFPIvixO3D3+sqwUBuTapUHZZY3p9WbE3p7OXKuQJr0mLQWza/c5RQH7YQANOdzXTVNjMAy/LJe7ng9mrw8j9CnmPIn5bEf9Wxop8oZInQ4GCD2PmFkXyt9+EBsKO982v1GJb01MtBnrBufwhUKaM2/lOqEgeAOK5EhMdAcz0dN3ce1sl80QLTW8B5DcU8YwvDPKop1sByrMlAj8aejFz3WonO5XKbgbiT0tAvF5wLlSKdwDyvMeArLlWzKO9LbZXdzz0YRaQZ91GckKhfA/E40C8TyXZaaapi/1ATKIz47wB5LEi9EsgkL9SlGnz7Dym10OSBxTJ+21DEzPlupNCPqWQPzL7+oYRfZbXLVrw5EYg+SxQ8IsC5Lvdc4B8uO2Vfy4o6DCi16kkb89l0NLuFMRilbFq5J1eIOY3IEnn3IhHrCAKpeRGL+819gjEX/u504ryBMq3QHx9QUBaN4WTstVatkb0OiAeMsteKoiVQ/CsInmq2LYqW62j+hxAfjfAjf81e9qAdm7fv9eOOWe+2cWcuc776E1F8p7x9ADzHfbcwuXKOEYRd1rIkiYJZe5aWoD5Waz7UIhvVSif+54N436VkJfFKuJfjdX5lcB2NDFQKk9ASqK5vR/QKisBoZDfClopBoEIvabPBeTnVy34fAhF/GCx6znf5nvcYg3liEleiuRYx54PvrPjvSVrpzBm7lTEj1rVFqB0AsmY31lpH/6k0J1ia/yO7S49yUt+gdcsxIYD+jxF/GUgb69VCFgsO+oZQhVYLP9hSvNQMhtvScqmEHIHkNykSJ4AlJ/zIezu3rmagAgh3+tWl8TDZmsV67clrc+GlNxvsrbJ2HYAi62azB9cy+lr1xLEcmXXGsTpzGrOAx9XxM+Z3+oGAvLLgtO104FS4+xagXCffOFb159Bxtq1AOEFAMS/Bx1vrzWE2S4eAPvKmSMScwaXQkS6E6eu2doftlZb5sC6EMjH3UOMvN+8xJQ7j33mSsxH4s5Oq95kRxMD5snXZfCLsqM98P+XhhqyKqr/AEJezD2/ik84AAAAAElFTkSuQmCC'; overlayAlt = 'Offline Mode';
-    } else if (isCombinedWithDb) {
-        if (currentUseGoogleDb) {
-            overlaySrc = 'GDrive.png'; overlayAlt = 'Google Drive Sync';
-        } else if (currentUseLocalFolder) {
-            overlaySrc = 'Folder.png'; overlayAlt = 'Local Folder Sync';
-        } else if (currentUseArhDb) {
-            overlaySrc = 'Zip.png'; overlayAlt = 'Archive Source';
-        }
-    }
-    if (overlaySrc) {
-        const overlay = document.createElement('div');
-        overlay.className = 'mode-db-overlay';
-        const filterStyle = isOffline ? ' style="filter: brightness(0);"' : '';
-        overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}"${filterStyle}>`;
-        iconWrapper.appendChild(overlay);
-    }
-    if (isSyncSuspended) {
-        title = (_('syncSuspendedTooltip') || 'Синхронизацията е спряна. Кликнете за свързване.');
-        iconWrapper.style.position = 'relative';
-        const warnBadge = document.createElement('span');
-        warnBadge.textContent = '⚠️';
-        warnBadge.style.cssText = 'position:absolute;bottom:-4px;right:-4px;font-size:12px;line-height:1;';
-        iconWrapper.appendChild(warnBadge);
-    }
-    modeButton.title = title;
-}
-
-/**
- * Обновява глобалните променливи за режим на работа от localStorage.
- * Извиква се, за да се синхронизира състоянието на приложението с настройките.
- */
-function updateGlobalStateFlags() {
-    useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
-    useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-    useArhDb = localStorage.getItem('useArhDb') === 'true';
-    useIndexedDb = localStorage.getItem('useIndexedDb') !== 'false'; // true по подразбиране
-    automatedTimer = localStorage.getItem('automatedTimer') !== 'false'; // true по подразбиране
-    updateLocalFolder = localStorage.getItem('updateLocalFolder') === 'true';
-}
-
-/**
- * Проверява дали е избран поне един източник на данни.
- * Ако не е, показва съобщение и отваря настройките.
- * @returns {boolean} Връща true, ако има избран източник, и false, ако няма.
- */
-function validateDataSourceSelection() {
-    if (!useGoogleDb && !useLocalFolder && !useArhDb && !useIndexedDb) {
-        showToast(_('errorNoDataSourceSelected'), 15000);
-        document.getElementById('settings-modal').classList.add('visible');
-        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
-        if (advancedSettingsSpan) {
-            advancedSettingsSpan.removeAttribute('hidden');
-            localStorage.setItem('showAdvancedSettings', 'true');
-        }
-        setTimeout(() => {
-            const accordionHeader = document.querySelector('.accordion-header');
-            const advancedSettingsContent = document.getElementById('advanced-settings');
-            if (advancedSettingsContent && advancedSettingsContent.style.display === 'none' && accordionHeader) {
-                accordionHeader.click();
-            }
-        }, 100);
-
-        if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
-
-        loaderContainer.style.display = 'none'; // Скриваме лоудъра
-        // Изчистваме осиротели файлове при старт
-        // cleanupOrphanedImages();
-        return false; // Сигнализираме, че проверката е неуспешна
-    }
-    return true; // Всичко е наред
-}
-
-/**
- * Отчита проблеми с целостта на данните (липсващи или дублирани ID-та).
- */
-async function goOffline() {
-    if (isOfflineChecked) return;
-    isOfflineChecked = true;
-    let hasS = false;
-    try {
-        const cache = await caches.open('app-cache');
-        const cachedResponse = await cache.match('s');
-        hasS = !!cachedResponse;
-    } catch (e) {
-        console.warn("Error checking app-cache for 's':", e);
-    }
-    if (isOffline) return;
-
-    let reallyOnline = true;
-    if (!navigator.onLine && hasS) {
-        try {
-            const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
-            reallyOnline = response.ok;
-        } catch (e) {
-            reallyOnline = false;
-        }
-    }
-
-    if (!reallyOnline && hasS) {
-        isOffline = true;
-        console.warn("Working in offline mode (s-record found).");
-        if (document.querySelector('.login-box')) {
-            document.querySelector('.login-box').style.display = 'block';
-        }
-        if (dbExists) {
-            try {
-                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (boardsInDb && boardsInDb.length > 0) {
-                    localStorage.setItem('useIndexedDb', 'true');
-                    localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('forceGDriveRead', 'false');
-                    updateGlobalStateFlags();
-                }
-            } catch (e) {
-                console.error("Error checking DB in goOffline:", e);
-            }
-        }
-    } else {
-        isOffline = false;
-    }
-}
-
-function reportDataIntegrityIssues() {
-    if (dataIntegrityIssues.length === 0) return;
-    const duplicates = dataIntegrityIssues.filter(i => i.type === 'duplicate');
-    const missing = dataIntegrityIssues.filter(i => i.type === 'missing');
-    console.group('%c Data Integrity Report ', 'background: #f44336; color: white; font-weight: bold;');
-    if (duplicates.length > 0) {
-        console.warn(`Found ${duplicates.length} duplicate IDs. IndexedDB will only keep the LAST version of each.`);
-        duplicates.forEach(d => {
-            console.log(` - ID: ${d.gdid} | Mode: ${d.mode || 'direct'} | Files: [${d.file1}] and [${d.file2}]`);
-        });
-    }
-    if (missing.length > 0) {
-        console.warn(`Found ${missing.length} items missing an ID property. These were likely skipped.`);
-        missing.forEach(m => {
-            console.log(` - File: ${m.file} | Mode: ${m.mode || 'direct'} | Content: "${(m.text || '').substring(0, 50)}..."`);
-        });
-    }
-    console.groupEnd();
-    // Show a small toast if there are many issues
-    if (duplicates.length > 0) {
-        let previewText = '';
-        // Find the content of the first duplicate to show as a hint
-        const firstDupId = duplicates[0].gdid;
-        const dupNote = allNotesData.find(n => n.gdid === firstDupId);
-        if (dupNote) {
-            const content = dupNote.notetxt || dupNote.text || '';
-            previewText = content.substring(0, 50).replace(/\n/g, ' ');
-            if (content.length > 50) previewText += '...';
-        }
-        const msg = `${_('duplicateNotes')}: ${duplicates.length}. ${_('content')}: "${previewText}"`;
-        showToast(msg, 10000);
-    }
-}
-
-/**
- * Филтрира бележките, за да остави само по 5 за всеки борд (за демо версия).
- */
-function filterNotesForDemo() {
-    if (!DEMO_MODE) return; // Изпълнява се само ако демо флагът е активен
-    console.log("DEMO MODE: Filtering notes to 5 per board.");
-    if (!boardsData || boardsData.length === 0 || !allNotesData || allNotesData.length === 0) {
-        return;
-    }
-    const filteredNotes = new Set();
-    const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-    boardsData.forEach(board => {
-        const boardIdToMatch = isArh ? board.id : board.gdid;
-        const notesForBoard = allNotesData
-            .filter(note => note.boardid == boardIdToMatch)
-            .sort((a, b) => (a.numord || 0) - (b.numord || 0)) // Сортираме за консистентност
-            .slice(0, DEMO_NOTE_LIMIT); // Взимаме броя бележки от константата
-        notesForBoard.forEach(note => filteredNotes.add(note));
-    });
-    const originalCount = allNotesData.length;
-    allNotesData = Array.from(filteredNotes);
-    console.log(`DEMO MODE: Notes reduced from ${originalCount} to ${allNotesData.length}.`);
-}
-
-/**
- * Обработва първоначалното зареждане, когато settings.json и folders.json не съществуват.
- * Ред:
- * 1. Създава борд Main в AppDataFolder и го задава като стартов борд
- * 2. Проверява дали в GD съществува папка multinotes_data и пита потребителя
- * 3. Задава активна папка (AppDataFolder или multinotes_data)
- * 4. Създава folders.json и settings.json с профил Default
- * @returns {boolean} true ако е извършена първоначална настройка, false ако не е необходима
- */
-async function handleFirstRunSetup() {
-    if (isOffline) return false;
-    // Проверка дали вече е настроено (локално или в сесията)
-    if (localStorage.getItem('initial_setup_complete') === 'true' || sessionStorage.getItem('first_run_lock')) return false;
-    const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
-    if (hasLocalSettings) return false;
-
-    sessionStorage.setItem('first_run_lock', 'true'); // Временна блокировка за текущата сесия
-
-    // Проверка дали settings.json съществува в AppSettings папката
-    try {
-        const appSettingsFolderId = await getAppSettingsFolderId();
-        if (!appSettingsFolderId) return false;
-        const settingsFiles = await findGDFileByName(appSettingsFolderId, 'settings.json');
-        if (settingsFiles && settingsFiles.length > 0) {
-            localStorage.setItem('initial_setup_complete', 'true');
-            return false;
-        }
-        const foldersFiles = await findGDFileByName(appSettingsFolderId, 'folders.json');
-        if (foldersFiles && foldersFiles.length > 0) {
-            localStorage.setItem('initial_setup_complete', 'true');
-            return false;
-        }
-    } catch (e) {
-        console.warn('[FirstRun] Error checking AppSettings:', e);
-        return false;
-    }
-    console.log('[FirstRun] First-time setup detected. Starting initial configuration...');
-    if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunSetup');
-    // --- СТЪПКА 1: Проверка за multinotes_data в Google Drive ---
-    let chosenFolder = 'AppDataFolder';
-    let multinotesFound = false;
-    try {
-        const multinotesId = await getFolderIDByName('multinotes_data');
-        if (multinotesId) {
-            multinotesFound = true;
-            const useMultinotes = await showConfirmation(_('firstRunMultinotesFound'));
-            if (useMultinotes) {
-                chosenFolder = 'multinotes_data';
-                localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
-            }
-        }
-    } catch (e) {
-        console.warn('[FirstRun] Error checking for multinotes_data:', e);
-    }
-
-    // --- СТЪПКА 2: Задаване на активна папка ---
-    activeFolderName = chosenFolder;
-    localStorage.setItem('active_folder_name', chosenFolder);
-    cachedMainFolderId = null;
-    const loaderFolderInfo = document.getElementById('loader-folder-info');
-    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-    console.log('[FirstRun] Active folder selected:', chosenFolder);
-
-    const folderNames = ['AppDataFolder'];
-    if (multinotesFound) folderNames.push('multinotes_data');
-    localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-
-    // --- СТЪПКА 3: Създаване на борд Main (САМО ако е избрана AppDataFolder) ---
-    if (chosenFolder === 'AppDataFolder') {
-        try {
-            console.log('[FirstRun] Creating Main board in AppDataFolder...');
-
-            const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
-
-            if (existingMainBoards && existingMainBoards.length > 0) {
-                console.log('[FirstRun] Main board already exists in AppDataFolder');
-                localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
-            } else {
-                const now = Date.now();
-                boardIdCounter = 1;
-                localStorage.setItem('boardIdCounter', '1');
-                const boardToSave = {
-                    "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
-                    "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
-                    "numord": 1, "status": 0, "title": "Main"
-                };
-
-                const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
-                if (gdid) {
-                    boardToSave.gdid = gdid;
-                    await updateGDriveFile(gdid, JSON.stringify(boardToSave));
-                    console.log('[FirstRun] Main board created in AppDataFolder');
-                    localStorage.setItem('startBoard_AppDataFolder', gdid);
-                }
-            }
-        } catch (e) {
-            console.error('[FirstRun] Error creating Main board in AppDataFolder:', e);
-        }
-    }
-
-    // --- СТЪПКА 4: Създаване на folders.json ---
-    try {
-        // ПРЕДПАЗНА МЯРКА: Ако сме създали борд, трябва да е в boardsData, за да се запише в folders.json
-        if (typeof boardsData !== 'undefined' && boardsData.length === 0) {
-            const startBoardId = localStorage.getItem('startBoard_AppDataFolder');
-            if (startBoardId) {
-                // Търсим дали имаме вече някаква информация или слагаме дефолтния Main
-                boardsData = [{ id: 1, title: 'Main', gdid: startBoardId, numord: 1 }];
-            }
-        }
-        await syncGlobalFoldersJson();
-        console.log('[FirstRun] folders.json created.');
-    } catch (e) {
-        console.warn('[FirstRun] Error creating folders.json:', e);
-    }
-    // --- СТЪПКА 5: Подразбиращи се координати за плаващите бутони ---
-    // localStorage.setItem('popupMenuBtnPosition', JSON.stringify({ top: '60px', right: '10px' }));
-    // Задаваме FAB бутона малко по-вляво от KB Assistant (който е на right: 10px)
-    // localStorage.setItem('addNoteFabPosition', JSON.stringify({ top: (window.innerHeight - 80) + 'px', right: '70px' }));
-    // localStorage.setItem('kbFabPosition', JSON.stringify({ bottom: '10px', right: '10px' }));
-    // localStorage.setItem('scrollTopBtnPosition', JSON.stringify({ bottom: '50px', right: '10px' }));
-    // --- СТЪПКА 6: Създаване на settings.json с профил Default ---
-    try {
-        await saveSettingsToGDrive(true); // silent=true
-        console.log('[FirstRun] settings.json created with Default profile.');
-    } catch (e) {
-        console.warn('[FirstRun] Error creating settings.json:', e);
-    }
-    if (typeof showToast === 'function') showToast(_('firstRunComplete'), 5000);
-    localStorage.setItem('initial_setup_complete', 'true');
-    console.log('[FirstRun] First-time setup complete.');
-    return true;
-}
-
-async function mainLogic() {
-    const loaderFolderInfo = document.getElementById('loader-folder-info');
-    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-    const settingsOverride = localStorage.getItem('settings_json_full_override'); //@@ прилагане на промени, направени в set.html
-    if (settingsOverride) {
-        localStorage.removeItem('settings_json_full_override');
-        try {
-            const parsed = JSON.parse(settingsOverride);
-            const currentDevice = localStorage.getItem('deviceName') || 'Default';
-            if (parsed[currentDevice]) {
-                const devSettings = parsed[currentDevice];
-                Object.keys(devSettings).forEach(k => {
-                    let val = devSettings[k];
-                    if (k === 'boardMenuOrder' && (!val || (Array.isArray(val) && val.length === 0))) return;
-                    if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
-                    localStorage.setItem(k, val);
-                });
-                console.log("[Settings-Override] Applied settings for device:", currentDevice);
-            }
-            if (!isOffline) {
-                (async () => {
-                    try {
-                        const folderId = await getFolderIDByName('multinotes_data');
-                        if (folderId) {
-                            const existingFiles = await findGDFileByName(folderId, 'settings.json');
-                            if (existingFiles && existingFiles.length > 0) {
-                                await updateGDriveFile(existingFiles[0].id, settingsOverride);
-                                console.log("[Settings-Override] Pushed to GDrive.");
-                            }
-                        }
-                    } catch (err) {
-                        console.error("GDrive push error for settings override:", err);
-                    }
-                })();
-            }
-        } catch (e) {
-            console.error("Error applying settings override:", e);
-        }
-    }
-    if (isOffline) {
-        console.log("Working in offline mode. Skipping sync.");
-        loaderText.textContent = _('loadingFromLocal');
-
-        // --- КОРЕКЦИЯ: Инициализация на състоянието и в офлайн режим ---
-        updateGlobalStateFlags();
-        if (useArhDb) {
-            dbSourceGlobal = 3; dbNoteIdTypeGlobal = 'id';
-        } else if (useLocalFolder) {
-            dbSourceGlobal = 2; dbNoteIdTypeGlobal = 'gdid';
-        } else if (useGoogleDb) {
-            dbSourceGlobal = 1; dbNoteIdTypeGlobal = 'gdid';
-        }
-        updateModeButton();
-        initializeLoad(); // Нулираме контейнерите и подготвяме за нови данни
-
-        try {
-            await fetchAllDataLocal();
-            await renderUI({ boardParseError: false });
-        } catch (e) {
-            console.error("Error loading local data in offline mode:", e);
-        }
-
-        // --- КОРЕКЦИЯ: Осигуряваме видимост на UI елементите ---
-        showAppUI();
-
-        if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
-            const addNoteFab = document.getElementById('add-note-fab');
-            if (addNoteFab) addNoteFab.style.display = 'flex';
-        }
-
-        // Показваме бутона за инсталиране, ако има такъв
-        if (window.showInstallButton) window.showInstallButton();
-
-        return;
-    }
-    if (isMainLogicRunning) {
-        console.log("mainLogic is already running, skipping...");
-        return;
-    }
-    isMainLogicRunning = true;
-    try {
-        dbSourceGlobal = null; // Нулираме глобалните променливи
-        isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
-        updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
-        dataIntegrityIssues = []; // Reset integrity report
-        isInitialLoad = true; // --- КОРЕКЦИЯ: Нулираме флага, за да работи скролирането при презареждане ---
-        updateGlobalStateFlags();
-        enableSettingsControls();
-        // Извикваме новата функция за валидация
-        if (!validateDataSourceSelection()) return;
-        // --- ЗАДАВАНЕ НА ГЛОБАЛЕН ИЗТОЧНИК И ТИП ВРЪЗКА ЗА ТЕКУЩАТА СЕСИЯ ---
-        // Това е необходимо, за да работят коректно функции като createNoteElement,
-        // дори когато не се използва база данни.
-        if (useArhDb) {
-            dbSourceGlobal = 3; // 3: Архив
-            dbNoteIdTypeGlobal = 'id';
-        } else if (useLocalFolder) {
-            dbSourceGlobal = 2; // 2: Локална папка
-            dbNoteIdTypeGlobal = 'gdid';
-        } else if (useGoogleDb) {
-            dbSourceGlobal = 1; // 1: Google Drive
-            dbNoteIdTypeGlobal = 'gdid';
-        }
-        initializeLoad(); // Resets state and shows the loader screen
-        let hasLocalData = false;
-        if (useIndexedDb) {
-            dbExists = await checkDbExists(NOTES_DB_NAME);
-            if (dbExists) {
-                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (boardsInDb && boardsInDb.length > 0) {
-                    hasLocalData = true;
-                }
-            }
-        }
-        if (!hasLocalData) {
-            if (!authToken) {
-                const authResult = await checkAuth(isExplicitLogin);
-                if (!authResult || !authResult.pass) {
-                    if (isLoadCancelled) return;
-                    showAppUI();
-                    return;
-                }
-                authToken = authResult.tokenData;
-            }
-            if (!isOffline) await loadGlobalFoldersJson();
-            if (!isOffline) {
-                const wasFirstRun = await handleFirstRunSetup();
-                if (wasFirstRun) {
-                    console.log('[mainLogic] First run setup completed. Reloading to start normal cycle...');
-                    location.reload();
-                    return;
-                }
-            }
-        }
-        const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
-        updateModeButton(); // Актуализираме иконата за режим веднага
-        // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
-        let boardsInDb = [];
-        if (useIndexedDb) {
-            dbExists = await checkDbExists(NOTES_DB_NAME);
-            if (dbExists) {
-                boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (isLoadCancelled) return;
-            }
-            // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
-            // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
-            if (dbExists && boardsInDb.length > 0) {
-                // Извличаме конфигурацията на базата САМО ВЕДНЪЖ тук
-                // Взимаме стойностите от базата само ако не са зададени вече от активен източник (GD, Local, Arh).
-                // Това е важно за режим "само база данни".
-                const dbSource = await getConfig('dbSource');
-                const dbNoteIdType = await getConfig('dbNoteIdType');
-                dbSourceGlobal = dbSource;
-                dbNoteIdTypeGlobal = dbNoteIdType;
-                console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
-                if (dbNoteIdType) { // Проверяваме само ако типът е записан
-                    // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
-                    const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
-                    if (isAnySourceActive) {
-                        if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
-                            console.warn(`[mainLogic] Data source mismatch! DB expects ${dbNoteIdType}, but current mode is different.`);
-                            showToast(_('errorDbSourceMismatch'), 15000);
-                        }
-                    }
-                }
-            }
-            // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
-            // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
-            // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
-            if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
-                const dbSource = await getConfig('dbSource');
-                let handleKey = null;
-                if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
-                else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
-                if (handleKey) {
-                    const handle = await getConfig(handleKey);
-                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                    if (verifiedHandle) {
-                        dirHandle = verifiedHandle; // Задаваме глобалния handle
-                    } else {
-                        showToast(_('noUpdateMode'), 10000);
-                    }
-                }
-            }
-        }
-        // --- КОРЕКЦИЯ: Извикваме проверката за потребител тук, след като UI е готов ---
-        if (!hasLocalData) {
-            await userCheck();
-        }
-        if (isLoadCancelled) return;
-        // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
-        updateGlobalStateFlags();
-        // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
-        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
-            showToast(_('errorDbOnlyAndEmpty'), 15000);
-            if (isLoadCancelled) return;
-            document.getElementById('settings-modal').classList.add('visible');
-            loaderContainer.style.display = 'none'; // Скриваме лоудъра
-            return; // Прекратяваме изпълнението
-        }
-        try {
-            // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
-            // Зареждаме API-то само ако ще работим с Google Drive.
-            if (useGoogleDb) {
-                if (typeof gapi !== 'undefined' && gapi.client) {
-                    gapi.client.setToken({ access_token: authToken.access_token });
-                }
-            }
-            if (useArhDb) {
-                // --- РЕЖИМ 0: Зареждане от Архив ---
-                console.log("Mode: Archive");
-                if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
-                // --- КОРЕКЦИЯ: Задаваме правилното заглавие на лоудъра ---
-                // Преди: Показваше "Избери архивна папка", дори когато такава вече е избрана.
-                // Сега: Показва "Зареждане директно от архив", което е по-коректно.
-                if (loaderTitle) {
-                    loaderTitle.textContent = useIndexedDb ? _('dbManagementTitle') : _('loadedFromArhNoDb');
-                }
-                const arhHandle = await getConfig('arhHandle');
-                if (!arhHandle) {
-                    showToast(_('errorArhFolderNotSelected'), 10000);
-                    if (isLoadCancelled) return;
-                    document.getElementById('settings-modal').classList.add('visible');
-                    return; // Stop execution if no archive handle
-                }
-                const verifiedHandle = await verifyPermission(arhHandle);
-                if (isLoadCancelled) return;
-                if (!verifiedHandle) {
-                    showToast(_('permissionDenied'), 10000);
-                    return; // Stop execution if no permission
-                }
-                dirHandle = verifiedHandle; // <-- ДОБАВЕН РЕД
-                if (useIndexedDb) {
-                    // Archive + IndexedDB mode
-                    console.log("Mode: Archive + IndexedDB");
-                    if (!dbExists || boardsInDb.length === 0) {
-                        // DB is empty or does not exist, prompt for creation from archive
-                        const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
-                        if (confirmed) {
-                            loaderText.textContent = _('creatingDbFromArh');
-                            if (isLoadCancelled) return;
-                            const success = await readArh(verifiedHandle); // Read archive into memory
-                            if (success) {
-                                if (isLoadCancelled) return;
-                                const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
-                                if (dbCreatedSuccessfully) {
-                                    showToast(_('dbCreated'), 10000);
-                                    if (isLoadCancelled) return;
-                                    await fetchAllDataLocal(); // Load from the newly created DB
-                                    await renderUI({ boardParseError: false });
-                                } else {
-                                    showToast(_('dbCreateFailedNoData'), 10000);
-                                    // Fallback to direct archive load if DB creation fails
-                                    await readArh(verifiedHandle); // Re-read archive into memory for direct display
-                                    await renderUI({ boardParseError: false });
-                                }
-                            } else {
-                                // If reading archive failed, cannot create DB.
-                                showToast(_('errorReadArh'), 10000);
-                                // What to do here? Maybe just show an empty UI or an error.
-                            }
-                        } else {
-                            // User declined to create DB, load directly from archive for this session
-                            showToast(_('loadedFromArhNoDb'), 10000);
-                            if (isLoadCancelled) return;
-                            const success = await readArh(verifiedHandle);
-                            if (success) {
-                                await renderUI({ boardParseError: false });
-                            }
-                        }
-                    } else {
-                        // DB exists and has data, load from DB
-                        loaderText.textContent = _('loadingFromDb');
-                        if (isLoadCancelled) return;
-                        await fetchAllDataLocal();
-                        await renderUI({ boardParseError: false });
-                    }
-                } else {
-                    // Archive mode without IndexedDB
-                    console.log("Mode: Archive (no IndexedDB)");
-                    // КЛЮЧОВА СТЪПКА: Задаваме dirHandle и при директно четене
-                    dirHandle = verifiedHandle;
-                    if (isLoadCancelled) return;
-                    const success = await readArh(verifiedHandle);
-                    if (success) {
-                        await renderUI({ boardParseError: false });
-                    }
-                }
-            } else if (!useIndexedDb) {
-                // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
-                console.log("Mode: Direct from source (IndexedDB is OFF)");
-                if (useGoogleDb) {
-                    // Нулираме dirHandle тук, за да сме сигурни, че няма да се използват стари handles от локален/архивен режим
-                    dirHandle = null;
-                    console.log("Source: Google Drive");
-                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
-                    if (isLoadCancelled) return;
-                    const result = await fetchAllData(null, false); // false -> не записвай в DB
-                    if (result.error) return;
-                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
-                    filterNotesForDemo();
-                    await renderUI({ boardParseError: result.boardParseError });
-                } else if (useLocalFolder) {
-                    console.log("Source: Local Folder");
-                    if (loaderTitle) loaderTitle.textContent = _('sourceLocalFolder');
-                    const { boardParseError } = await fetchAllDataFromLocalFolder();
-                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
-                    filterNotesForDemo();
-                    await renderUI({ boardParseError });
-                }
-            } else {
-                // --- РЕЖИМ 2: С IndexedDB
-                console.log("Mode: Using IndexedDB");
-                if (!dbExists || boardsInDb.length === 0) {
-                    // Първоначално създаване на базата данни
-                    console.log("DB is empty or does not exist. Performing initial data load.");
-                    if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
-                    loaderText.textContent = _('initialDataLoad');
-                    if (useGoogleDb) {
-                        console.log("Source for initial load: Google Drive");
-                        if (isLoadCancelled) return;
-                        const result = await fetchAllData(null);
-                        if (result.error) { // Проверяваме за грешка при зареждането
-                            return; // Прекратяваме, ако няма файлове
-                        }
-                        // Разрешаваме дублираните бележки, ако има такива (преди запис в базата)
-                        if (result.duplicates && result.duplicates.length > 0) {
-                            await resolveLoadedConflicts(result.duplicates);
-                        }
-                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
-                        filterNotesForDemo();
-                        await createDatabaseFromMemory();
-                        await renderUI({ boardParseError: result.boardParseError });
-                    } else if (useLocalFolder) {
-                        console.log("Source for initial load: Local Folder");
-                        const { boardParseError } = await fetchAllDataFromLocalFolder();
-                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
-                        filterNotesForDemo();
-                        await createDatabaseFromMemory();
-                        await renderUI({ boardParseError });
-                    }
-                    showToast(_('dbCreated'), 10000);
-                } else {
-                    // DB exists and has data, load from DB FIRST then sync in background
-                    console.log("[mainLogic] DB exists. Fast loading local data first.");
-                    loaderText.textContent = _('fetchingFromDb');
-                    if (isLoadCancelled) return;
-                    await fetchAllDataLocal();
-
-                    // --- ПЪРВОНАЧАЛНО РЕНДИРАНЕ (ОТ БАЗАТА) ---
-                    await renderUI({ boardParseError: false });
-
-                    // Background Sync Task - стартираме го веднага след първото рендиране
-                    const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
-                    if (updateFromSource && !isOffline) {
-                        (async () => {
-                            try {
-                                if (hasLocalData) {
-                                    if (!authToken) {
-                                        const authResult = await checkAuth(isExplicitLogin);
-                                        if (authResult && authResult.pass) {
-                                            authToken = authResult.tokenData;
-                                        }
-                                    }
-                                    if (authToken) {
-                                        if (useGoogleDb && typeof gapi !== 'undefined' && gapi.client) {
-                                            gapi.client.setToken({ access_token: authToken.access_token });
-                                        }
-                                        await loadGlobalFoldersJson();
-                                        const wasFirstRun = await handleFirstRunSetup();
-                                        if (wasFirstRun) {
-                                            location.reload();
-                                            return;
-                                        }
-                                        await userCheck();
-                                        updateGlobalStateFlags();
-                                    } else {
-                                        return;
-                                    }
-                                }
-                                console.log("[mainLogic] Starting background sync task...");
-                                let updatedCount = 0;
-                                if (useGoogleDb) {
-                                    updatedCount = await runGoogleDriveSync();
-                                } else if (useLocalFolder) {
-                                    updatedCount = await runLocalSync();
-                                }
-                                if (updatedCount > 0) {
-                                    console.log(`[mainLogic] Background sync finished: ${updatedCount} updates found.`);
-                                    await fetchAllDataLocal();
-                                    if (updatedNoteGdims.length > 0 && !document.getElementById('modal-body')) {
-                                        currentBoardFilter = 'new-updates';
-                                    }
-                                    await renderUI({ boardParseError: false });
-                                    showToast(useGoogleDb ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('localUpdatesFound').replace('{count}', updatedCount), 5000);
-                                } else {
-                                    console.log("[mainLogic] Background sync finished. No new updates.");
-                                }
-                            } catch (e) {
-                                console.error("[mainLogic] Background sync error:", e);
-                            }
-                        })();
-                    }
-                }
-            }
-            reportDataIntegrityIssues(); // Generate report before finishing loading
-        } catch (err) {
-            console.log("Error in mainLogic:", err);
-            showToast(_('errorProcessingFiles'));
-            loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
-        } finally {
-            if (isLoadCancelled) return; // Не скриваме лоудъра, ако е отказано, за да не "премигне"
-            // Изчистваме текстовете в лоудъра, преди да го скрием
-            const loaderTitle = document.getElementById('loader-title');
-            if (loaderTitle) loaderTitle.textContent = '';
-            const loaderFolderInfo = document.getElementById('loader-folder-info');
-            if (loaderFolderInfo) loaderFolderInfo.textContent = '';
-            loaderText.textContent = ''; // Изчистваме текста за прогреса
-            updateSearchPlaceholder();
-            document.body.style.backgroundImage = `url('Board.png')`; // Reset background
-            // Скриваме лоудъра и логин страницата
-            loaderContainer.style.display = 'none';
-            document.getElementById('login-page').style.display = 'none';
-            document.getElementById('login-page').hidden = true;
-            // Показваме основните елементи, след като всичко е заредено
-            document.querySelector('header').style.visibility = 'visible';
-            document.querySelector('#search-wrapper').style.display = 'flex';
-            notesContainer.style.visibility = 'visible';
-            isMainLogicRunning = false;
-
-            if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
-                const addNoteFab = document.getElementById('add-note-fab');
-                if (addNoteFab) addNoteFab.style.display = 'flex';
-            }
-            if (window.showInstallButton) window.showInstallButton();
-            if (!isOffline) loadSettingsFromGDrive(true);
-        }
-    } finally {
-        // Изчистваме осиротели файлове след зареждане на всичко
-        // cleanupOrphanedImages();
-        isMainLogicRunning = false;
-    }
-}
-
-/**
- * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
- * Аналогична на fetchAllData, но за локален източник.
- */
-async function fetchAllDataFromLocalFolder() {
-    console.log("--- Local Folder fetch sequence started ---");
-    const startTime = performance.now();
-    const handle = await getDirectoryHandle();
-    if (!handle) {
-        window.wasOpenedForMissingFolder = true; // Вдигаме флага
-        showToast(_('errorLocalFolderNotSelected'), 10000);
-        document.getElementById('settings-modal').classList.add('visible');
-        return { boardParseError: false };
-    }
-    let localBoards = [];
-    let localMedia = [];
-    let localNotes = [];
-    let boardParseError = false;
-    const gdidMap = new Map(); // To track duplicates for processing
-    localFileMap.clear(); // Изчистваме глобалната карта преди ново зареждане
-    try {
-        const entries = [];
-        for await (const entry of handle.values()) {
-            if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
-                const lowerName = entry.name.toLowerCase();
-                const isBoard = lowerName.includes('board');
-                const isMedia = lowerName.includes('media');
-                const isNote = lowerName.includes('note');
-                if (isBoard || isMedia || isNote) {
-                    entries.push({ entry, lowerName, isBoard, isMedia, isNote });
-                }
-            }
-        }
-        console.log(`[Local Folder] Found ${entries.length} valid .txt files for processing.`);
-        const CHUNK_SIZE = 80; // Balanced parallelism
-        for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
-            const chunk = entries.slice(i, i + CHUNK_SIZE);
-            // Optimize UI updates - only update once per chunk
-            loaderText.textContent = `${_('loadingFile')} (${Math.min(i + CHUNK_SIZE, entries.length)}/${entries.length})`;
-            await Promise.all(chunk.map(async (item) => {
-                try {
-                    const file = await item.entry.getFile();
-                    const content = await file.text();
-                    const fileObject = JSON.parse(content);
-                    if (!fileObject.gdid) {
-                        const error = `[Missing ID] File '${item.entry.name}' is missing 'gdid' property.`;
-                        console.warn(error);
-                        dataIntegrityIssues.push({ type: 'missing', file: item.entry.name, gdid: null });
-                    } else {
-                        if (gdidMap.has(fileObject.gdid)) {
-                            const error = `[Duplicate ID] GDID '${fileObject.gdid}' found in multiple files: '${gdidMap.get(fileObject.gdid)}' and '${item.entry.name}'`;
-                            console.error(error);
-                            dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name });
-                        } else {
-                            gdidMap.set(fileObject.gdid, item.entry.name);
-                            localFileMap.set(fileObject.gdid, item.entry.name); // Попълваме глобалната карта
-                        }
-                    }
-                    if (item.isBoard) {
-                        localBoards.push(fileObject);
-                    } else if (item.isMedia) {
-                        localMedia.push(fileObject);
-                    } else if (item.isNote) {
-                        localNotes.push(fileObject);
-                    }
-                } catch (e) {
-                    console.log(`Failed to process ${item.entry.name}:`, e);
-                }
-            }));
-        }
-    } catch (err) {
-        if (err.name === 'NotFoundError') {
-            console.log("Local folder not found:", err);
-            showToast(_('errorLocalFolderNotFound'), 15000);
-            // Изчистваме невалидния handle от базата данни
-            await saveConfig('directoryHandle', null);
-            // Отваряме настройките, за да може потребителят да избере нова папка
-            document.getElementById('settings-modal').classList.add('visible');
-            // Нулираме и UI елемента, показващ името на папката
-            const folderNameDisplay = document.getElementById('local-sync-folder-name');
-            if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
-        } else {
-            console.log("Error parsing local files:", err);
-            showToast(_('errorNoteParse'));
-        }
-        boardParseError = true; // Вдигаме флага за грешка и в двата случая
-    }
-    // Зареждаме данните в глобалните променливи
-    boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
-    mediaData = localMedia.flat();
-    allNotesData = localNotes;
-    trackMaxIds(allNotesData);
-    trackMaxBoardIds(boardsData);
-    const endTime = performance.now();
-    console.log(`--- Local Folder fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
-    console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
-    return { boardParseError };
-}
-
-// =================================================================================
-// IV.a. ЛОКАЛНИ ДАННИ (INDEXEDDB)
-// =================================================================================
-/**
- * Зарежда всички данни (boards, media, notes) от локалната IndexedDB.
- */
-async function fetchAllDataLocal() {
-    console.log("Fetching all data from local IndexedDB...");
-    boardsData = await getAllFromDB(BOARD_STORE_NAME);
-    /*
-    // --- TEMPORARY CLEANUP FOR customBgGdid ---
-    let needsCleanup = false;
-    for (let board of boardsData) {
-        if (board.customBgGdid !== undefined) {
-            if (!board.backpath && typeof board.customBgGdid === 'string' && board.customBgGdid.trim() !== '') {
-                board.backpath = board.customBgGdid;
-            }
-            delete board.customBgGdid;
-            needsCleanup = true;
-            if (useIndexedDb) {
-                bulkPutDB(BOARD_STORE_NAME, board, true).catch(e => console.error(e));
-            }
-            if (useGoogleDb && !isOffline && board.gdid) {
-                updateGDriveFile(board.gdid, JSON.stringify(board)).catch(e => console.error(e));
-            }
-        }
-    }
-    if (needsCleanup) console.log("Cleaned up customBgGdid from boards.");
-    // ----------------------------------------
-    */
-
-    trackMaxBoardIds(boardsData);
-    mediaData = await getAllFromDB(MEDIA_STORE_NAME);
-    const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
-    allNotesData = notesFromDB;
-    trackMaxIds(allNotesData);
-    // --- REFRESH GLOBAL FLAGS FROM DB CONFIG ---
-    dbSourceGlobal = await getConfig('dbSource');
-    dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
-    console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
-    console.log(`[fetchAllDataLocal] dbSourceGlobal: ${dbSourceGlobal}, dbNoteIdTypeGlobal: ${dbNoteIdTypeGlobal}`);
-}
-
-/**
- * Управлява процеса на локална синхронизация с файловата система.
- */
-async function runLocalSync() {
-    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-    if (!useIndexedDb) {
-        console.log("Skipping local sync because IndexedDB is disabled for this mode.");
-        return 0;
-    }
-    const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
-    const updateDate = lastLocalTimestamp ? new Date(lastLocalTimestamp) : null;
-    let updatedCount = 0;
-    const handle = await getDirectoryHandle();
-    if (!handle) return 0;
-    loaderText.innerText = updateDate
-        ? _('updatingFilesSince').replace('{date}', updateDate.toLocaleString())
-        : _('performingFullSync');
-    // Коригирана проверка: използваме 'updateFromSource' вместо старата 'updateIndexedDb'
-    if (localStorage.getItem('updateFromSource') !== 'false') {
-        updatedCount = await processDirectoryContent(lastLocalTimestamp);
-        await saveConfig('lastLocalTimestamp', Date.now());
-    } else {
-        console.log("Skipping local file scan because IndexedDB update is disabled.");
-        loaderText.textContent = _('skippedFileScan');
-    }
-    // Show toast only for incremental updates (not the very first sync)
-    if (updateDate) {
-        const message = updatedCount > 0
-            ? _('localUpdatesFound').replace('{count}', updatedCount)
-            : _('localNoUpdates');
-        showToast(message, 3000);
-    }
-    return updatedCount;
-}
-
-/**
- * Проверява дали избраната папка съдържа само файлове от очаквания тип.
- * Функцията проверява дали файловете в основната директория започват с 'note', 'media', или 'board' и завършват на '.txt'.
- * Игнорира под-директории и скрити файлове (започващи с точка).
- * @param {FileSystemDirectoryHandle} directoryHandle - Handle на папката за проверка.
- * @returns {Promise<{isValid: boolean, invalidFile: string|null}>} 
- * Връща обект, който показва дали папката е валидна (`isValid`) 
- * и името на първия невалиден файл (`invalidFile`), ако такъв е намерен.
- */
-async function validateFolderContent(directoryHandle) {
-    const boardPattern = /^board.*\.txt$/i;
-    const notePattern = /^note.*\.txt$/i;
-    let boardFileCount = 0;
-    let noteFileCount = 0;
-    try {
-        for await (const entry of directoryHandle.values()) {
-            if (entry.kind === 'file') {
-                if (boardPattern.test(entry.name)) {
-                    boardFileCount++;
-                } else if (notePattern.test(entry.name)) {
-                    noteFileCount++;
-                }
-                // Прекъсваме проверката веднага щом условията са изпълнени
-                if (boardFileCount >= 1 && noteFileCount >= 3) {
-                    console.log(`Validation successful: Found at least 1 board file and 3 note files.`);
-                    return { isValid: true, reason: null };
-                }
-            }
-        }
-    } catch (error) {
-        console.log("Error during folder validation:", error);
-        return { isValid: false, reason: 'error' };
-    }
-    // Ако цикълът приключи без да са изпълнени условията
-    console.log(`Validation failed: Found ${boardFileCount} board file(s) and ${noteFileCount} note file(s). Required: >=1 board, >=3 notes.`);
-    return { isValid: false, reason: 'criteria_not_met' };
-}
-
-async function validateArhFolderContent(directoryHandle) {
-    const boardPattern = /^boards.*\.bcp$/i;
-    const notePattern = /^notes.*\.bcp$/i;
-    let boardsFile = false;
-    let notesFile = false
-    try {
-        for await (const entry of directoryHandle.values()) {
-            if (entry.kind === 'file') {
-                if (boardPattern.test(entry.name)) {
-                    boardsFile = true;
-                } else if (notePattern.test(entry.name)) {
-                    notesFile = true;
-                }
-                // Прекъсваме проверката веднага щом условията са изпълнени
-                if (boardsFile && notesFile) {
-                    console.log(`Arh validation successful: Found files.`);
-                    return { isValid: true, reason: null };
-                }
-            }
-        }
-    } catch (error) {
-        console.log("Error during arh folder validation:", error);
-        return { isValid: false, reason: 'error' };
-    }
-    // Ако цикълът приключи без да са изпълнени условията
-    console.log('Arh validation failed: Not found boards.bcp or notes.bcp.');
-    return { isValid: false, reason: 'criteria_not_met' };
-}
-/**
- * Взима handle на директория - от паметта, от IndexedDB или чрез избор от потребителя.
- * @param {boolean} promptUser - Дали да се покаже диалог за избор, ако няма запазен handle.
- * @returns {Promise<FileSystemDirectoryHandle|null>}
- */
-async function getDirectoryHandle(promptUser = false) {
-    try {
-        // Определяме кой handle да заредим въз основа на активната настройка в localStorage
-        const useLocal = localStorage.getItem('useLocalDb') === 'true';
-        const useArh = localStorage.getItem('useArhDb') === 'true';
-        const configKey = useLocal ? 'directoryHandle' : (useArh ? 'arhHandle' : null);
-        const savedHandle = configKey ? await getConfig(configKey) : null;
-        if (savedHandle) {
-            const verifiedHandle = await verifyPermission(savedHandle);
-            if (verifiedHandle) {
-                dirHandle = verifiedHandle;
-                return dirHandle;
-            }
-        }
-        if (promptUser) {
-            const newHandle = await window.showDirectoryPicker();
-            // Запазването ще се случи в извикващата функция СЛЕД валидация.
-            // dirHandle = newHandle; // Глобалната променлива също ще се зададе там.
-            return newHandle;
-        }
-        if (localStorage.getItem('useLocalDb') === 'true') showToast(_('errorLocalFolderNotSelected'), 10000);
-        return null;
-    } catch (error) {
-        if (error.name !== 'AbortError') console.log("Error getting directory handle:", error);
-        return null;
-    }
-}
-
-/**
- * Проверява и иска разрешение за достъп до handle на директория.
- * @param {FileSystemDirectoryHandle} handle
- * @returns {Promise<FileSystemDirectoryHandle|null>}
- */
-async function verifyPermission(handle) {
-    const options = { mode: 'readwrite' };
-    if (await handle.queryPermission(options) === 'granted') return handle;
-    if (await handle.requestPermission(options) === 'granted') return handle;
-    return null;
-}
-
-/**
- * Обхожда избраната локална директория и обновява IndexedDB.
- * @param {Date} [minModificationDate] - Минимална дата на модификация за инкрементално обновяване.
- */
-async function processDirectoryContent(minModificationDate) {
-    // --- КЛЮЧОВА ПРОВЕРКА ---
-    // Ако опцията за използване на IndexedDB е изключена, не трябва да записваме нищо.
-    if (localStorage.getItem('useIndexedDb') !== 'true') {
-        console.log("Skipping processDirectoryContent because useIndexedDb is disabled.");
-        return 0; // Връщаме 0, защото нищо не е обновено.
-    }
-    const minTimestamp = minModificationDate || 0;
-    console.log(`--- Local Folder sync sequence started (minTimestamp: ${minTimestamp}) ---`);
-    const startTime = performance.now();
-    const handle = await getDirectoryHandle();
-    if (!handle) return 0;
-    const stores = {
-        [BOARD_STORE_NAME]: [],
-        [MEDIA_STORE_NAME]: [],
-        [NOTE_STORE_NAME]: []
-    };
-    let updatedCount = 0;
-    let skippedNotesCount = 0;
-    const entries = [];
-    for await (const entry of handle.values()) {
-        if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
-            const lowerName = entry.name.toLowerCase();
-            const isBoard = lowerName.includes('board');
-            const isMedia = lowerName.includes('media');
-            const isNote = lowerName.includes('note');
-            if (isBoard || isMedia || isNote) {
-                entries.push({ entry, lowerName, isBoard, isMedia, isNote });
-            }
-        }
-    }
-    console.log(`[Local Sync] Found ${entries.length} valid .txt files for sync check.`);
-    const CHUNK_SIZE = 80;
-    const gdidMap = new Map(); // Track duplicates during sync
-    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
-        const chunk = entries.slice(i, i + CHUNK_SIZE);
-        loaderText.textContent = _('checkedFilesCount').replace('{count}', Math.min(i + CHUNK_SIZE, entries.length));
-        await Promise.all(chunk.map(async (item) => {
-            try {
-                const file = await item.entry.getFile();
-                if (file.lastModified >= minTimestamp) {
-                    updatedCount++;
-                    const content = await file.text();
-                    const fileObject = JSON.parse(content);
-                    if (fileObject.gdid) {
-                        if (gdidMap.has(fileObject.gdid)) {
-                            const error = `[Duplicate ID] GDID '${fileObject.gdid}' found in multiple files during sync: '${gdidMap.get(fileObject.gdid)}' and '${item.entry.name}'`;
-                            console.error(error);
-                            dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name, mode: 'sync' });
-                        } else {
-                            gdidMap.set(fileObject.gdid, item.entry.name);
-                            localFileMap.set(fileObject.gdid, item.entry.name); // Попълваме глобалната карта
-                        }
-                        if (item.isBoard) {
-                            stores[BOARD_STORE_NAME].push(fileObject);
-                        } else if (item.isMedia) {
-                            stores[MEDIA_STORE_NAME].push(fileObject);
-                        } else if (item.isNote) {
-                            stores[NOTE_STORE_NAME].push(fileObject);
-                            const localNote = allNotesData.find(n => n.gdid == fileObject.gdid);
-                            if (!localNote || (parseInt(fileObject.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
-                                if (!updatedNoteGdims.includes(fileObject.gdid)) {
-                                    updatedNoteGdims.push(fileObject.gdid);
-                                }
-                            } else {
-                                skippedNotesCount++;
-                            }
-                        }
-                    } else {
-                        const error = `[Missing ID] File '${item.entry.name}' skipped: missing 'gdid' property.`;
-                        console.warn(error);
-                        dataIntegrityIssues.push({ type: 'missing', file: item.entry.name, mode: 'sync' });
-                    }
-                }
-            } catch (error) {
-                console.log(`Error processing local file '${item.entry.name}':`, error);
-            }
-        }));
-    }
-    for (const storeName in stores) {
-        if (stores[storeName].length > 0) {
-            await bulkPutDB(storeName, stores[storeName], true); // Use incremental put
-        }
-    }
-    const endTime = performance.now();
-    console.log(`--- Local Folder sync sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
-    console.log(`[Summary] Updated items: ${updatedCount} (Boards: ${stores[BOARD_STORE_NAME].length}, Media: ${stores[MEDIA_STORE_NAME].length}, Notes: ${stores[NOTE_STORE_NAME].length})`);
-    console.log("[Local Sync] Updated objects:", stores);
-    return Math.max(0, updatedCount - skippedNotesCount);
-}
-
-/**
- * Показва модален прозорец на цял екран за преглед на изображение или видео.
- * @param {string} src - URL адресът на медийния файл.
- * @param {boolean} isVideo - True, ако файлът е видео.
- */
-function showImageVideoOverlay(src, isVideo = false) {
-    const overlay = document.createElement('div');
-    overlay.className = 'fullscreen-preview-overlay';
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-    const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
-    mediaElement.src = src;
-    if (isVideo) {
-        mediaElement.controls = true;
-        mediaElement.autoplay = true;
-    }
-    overlay.appendChild(mediaElement);
-    const closeButton = document.createElement('button');
-    closeButton.className = 'modal-close';
-    closeButton.innerHTML = '&times;';
-    closeButton.addEventListener('click', () => overlay.remove());
-    overlay.appendChild(closeButton);
-    document.body.appendChild(overlay);
-}
-
-/**
- * Извлича URL за преглед от Google Drive и показва овърлей.
- * @param {string} fileId - ID на файла в Google Drive.
- * @param {boolean} isVideo - True, ако файлът е видео.
- */
-async function showGdrivePreview(fileId, isVideo = false) {
-    if (!fileId) throw new Error("No file ID provided for Google Drive preview.");
-
-    const sendRequest = async (token) => {
-        return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink,webContentLink`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        let tokenData = JSON.parse(storedTokenString);
-
-        let resp = await sendRequest(tokenData.access_token);
-        if (resp.status === 401) {
-            let refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                tokenData = refresh.tokenData;
-                resp = await sendRequest(tokenData.access_token);
-            }
-        }
-
-        if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
-        const result = await resp.json();
-        const thumbnailUrl = result.thumbnailLink;
-
-        if (thumbnailUrl) {
-            showImageVideoOverlay(thumbnailUrl.replace(/=s\d+/, '=s1600'), isVideo);
-        } else {
-            throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
-        }
-    } catch (e) {
-        console.error("showGdrivePreview error:", e);
-        throw e;
-    }
-}
-
-async function showLocalPreview(folderName, fileName, mode) {
-    const fileHandle = await (await dirHandle.getDirectoryHandle(folderName, { create: false })).getFileHandle(fileName);
-    const file = await fileHandle.getFile();
-    showImageVideoOverlay(URL.createObjectURL(file), file.type.startsWith('video'));
-}
-/**
- * Показва преглед на изображение/видео в рамките на самата бележка.
- * @param {HTMLElement} noteElement - DOM елементът на бележката.
- * @param {Array} attachments - Масив с прикачени файлове.
- * @param {number} startIndex - Начален индекс.
- * @param {string} sourceMode - 'gdrive', 'local' или 'archive'.
- * @param {boolean} isVideo - Дали файлът е видео.
- */
-async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
-    if (!noteElement) return;
-    // Support legacy calls with single string fileId instead of attachments array
-    if (typeof attachments === 'string') {
-        const fileId = attachments;
-        attachments = [{ path: fileId, pathGD: fileId, type: isVideo ? 4 : 1 }];
-        startIndex = 0;
-    }
-    // Remove if already exists to replace it
-    const existingOverlay = noteElement.querySelector('.image-preview-overlay');
-    if (existingOverlay) existingOverlay.remove();
-    let currentIndex = startIndex;
-    // 1. Create overlay immediately
-    const overlay = document.createElement('div');
-    overlay.className = 'image-preview-overlay';
-    // Ensure parent has position: relative or higher to contain the absolute overlay
-    const parentPos = getComputedStyle(noteElement).position;
-    if (parentPos === 'static') {
-        noteElement.style.position = 'relative';
-    }
-    Object.assign(overlay.style, {
-        position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
-        backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: '1000', borderRadius: '8px', padding: '5px', boxSizing: 'border-box',
-        flexDirection: 'column'
-    });
-    // Prevent bubbling
-    // Close on overlay click
-    overlay.addEventListener('click', (e) => {
-        // Prevent closing if clicking on buttons or their children, but allow if clicking on img/video or background
-        // Wait, arrow buttons stop propagation themselves. Close button stops propagation.
-        // So any click reaching here is either on the container/background OR on the media itself (if media doesn't stop prop)
-        // Check if the click target is a button or inside a button (just in case)
-        if (e.target.closest('button')) return;
-        e.stopPropagation();
-        cleanup();
-    });
-    // Create container for media to easily clear/replace it
-    const mediaContainer = document.createElement('div');
-    Object.assign(mediaContainer.style, {
-        width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
-    });
-    overlay.appendChild(mediaContainer);
-    // --- Navigation Arrows ---
-    if (attachments.length > 1) {
-        const createArrow = (direction) => {
-            const btn = document.createElement('button');
-            btn.innerHTML = direction === 'prev' ? '&lt;' : '&gt;';
-            Object.assign(btn.style, {
-                position: 'absolute', top: '50%', transform: 'translateY(-50%)',
-                [direction === 'prev' ? 'left' : 'right']: '5px',
-                background: 'rgba(255,255,255,0.3)', color: 'white', border: 'none',
-                borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '20px', fontWeight: 'bold', zIndex: '20'
-            });
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (direction === 'prev') {
-                    currentIndex = (currentIndex - 1 + attachments.length) % attachments.length;
-                } else {
-                    currentIndex = (currentIndex + 1) % attachments.length;
-                }
-                loadMedia(currentIndex);
-            });
-            return btn;
-        };
-        overlay.appendChild(createArrow('prev'));
-        overlay.appendChild(createArrow('next'));
-    }
-    // Close button
-    const closeButton = document.createElement('button');
-    closeButton.className = 'view-button';
-    closeButton.innerHTML = eyeOffIconSvg;
-    Object.assign(closeButton.style, { position: 'absolute', top: '5px', right: '5px', zIndex: '21' });
-    if (closeButton.querySelector('svg')) closeButton.querySelector('svg').style.stroke = 'white';
-    // Cleanup function
-    const cleanup = () => {
-        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-        if (overlay.mediaUrlToRevoke) {
-            URL.revokeObjectURL(overlay.mediaUrlToRevoke);
-        }
-    };
-    closeButton.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        cleanup();
-    });
-    overlay.appendChild(closeButton);
-    noteElement.appendChild(overlay);
-    // --- Load Media Function ---
-    async function loadMedia(index) {
-        // Clear container
-        mediaContainer.innerHTML = '';
-        // Revoke previous URL if any (local scope reuse)
-        if (overlay.mediaUrlToRevoke) {
-            URL.revokeObjectURL(overlay.mediaUrlToRevoke);
-            overlay.mediaUrlToRevoke = null;
-        }
-        // Add spinner
-        const spinner = document.createElement('div');
-        spinner.className = 'loader';
-        Object.assign(spinner.style, { width: '40px', height: '40px', border: '4px solid #f3f3f3', borderTop: '4px solid #3498db', borderRadius: '50%', animation: 'spin 1s linear infinite' });
-        mediaContainer.appendChild(spinner);
-        const attachment = attachments[index];
-        const isActuallyVideo = attachment.type === 4 || isVideo;
-        const isActuallySound = attachment.type === 2;
-        const folderName = isActuallyVideo ? 'Video' : (isActuallySound ? 'Sound' : 'Images');
-        const fileIdOrPath = sourceMode === 'gdrive' ? attachment.pathGD : attachment.path;
-        let mediaUrl;
-        try {
-            if (sourceMode === 'gdrive') {
-                if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
-                    await loadGoogleApis();
-                }
-                // Check if token is valid or expired using the actual authToken object
-                let isTokenExpired = true;
-                if (authToken && authToken.issued_at) {
-                    const elapsedSeconds = (Date.now() - authToken.issued_at) / 1000;
-                    const expiresIn = authToken.expires_in || 3599;
-                    if (elapsedSeconds < (expiresIn - 300)) { // Refresh if less than 5 mins remaining
-                        isTokenExpired = false;
-                    }
-                }
-                if (!authToken || isTokenExpired) {
-                    console.log("Token expired or missing in preview, refreshing...");
-                    const newToken = await checkAuth(); // checkAuth handles the actual refresh logic
-                    if (newToken) {
-                        authToken = newToken;
-                        // Update gapi client if needed
-                        if (typeof gapi !== 'undefined' && gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
-                    }
-                }
-                const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken :
-                    ((typeof gapi !== 'undefined' && gapi.auth) ? gapi.auth.getToken() : null);
-                if (!tokenObj) throw new Error(_('errorTokenMissing'));
-                if (isActuallyVideo || isActuallySound) {
-                    try {
-                        const mediaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
-                            headers: {
-                                'Authorization': `Bearer ${tokenObj.access_token}`,
-                                'Range': 'bytes=0-10000000'
-                            }
-                        });
-                        if (!mediaResponse.ok) throw new Error(`Media fetch failed: ${mediaResponse.status}`);
-                        const mediaBlob = await mediaResponse.blob();
-                        mediaUrl = URL.createObjectURL(mediaBlob);
-                        overlay.mediaUrlToRevoke = mediaUrl;
-                    } catch (err) {
-                        console.log("Failed to load GDrive media blob:", err);
-                        throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
-                    }
-                } else {
-                    // Image high-res thumbnail
-                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`, {
-                        headers: { 'Authorization': `Bearer ${tokenObj.access_token}` }
-                    });
-                    if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
-                    const fileMetadata = await response.json();
-                    const thumbnailUrl = fileMetadata.thumbnailLink;
-                    if (!thumbnailUrl) throw new Error(_('noImgPreview'));
-                    mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                }
-            } else { // 'local' or 'archive'
-                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-                if (isDbOnlyMode && !dirHandle && (sourceMode === 'local' || sourceMode === 'archive')) {
-                    const dbSource = await getConfig('dbSource');
-                    let handleKey = null;
-                    if (dbSource === 2) handleKey = 'directoryHandle';
-                    else if (dbSource === 3) handleKey = 'arhHandle';
-                    if (handleKey) {
-                        const handle = await getConfig(handleKey);
-                        const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                        if (verifiedHandle) {
-                            dirHandle = verifiedHandle;
-                        } else {
-                            showToast(_('noUpdateMode'), 10000);
-                            cleanup();
-                            return;
-                        }
-                    }
-                }
-                let fileHandle;
-                const fileName = fileIdOrPath.split('/').pop();
-                if (sourceMode === 'local') {
-                    const folderHandle = await dirHandle.getDirectoryHandle(folderName, { create: false });
-                    fileHandle = await folderHandle.getFileHandle(fileName);
-                } else { // 'archive'
-                    fileHandle = await dirHandle.getFileHandle(fileName);
-                }
-                const file = await fileHandle.getFile();
-                mediaUrl = URL.createObjectURL(file);
-                overlay.mediaUrlToRevoke = mediaUrl;
-            }
-            // Remove spinner
-            if (spinner.parentNode) spinner.remove();
-            let mediaElement;
-            if (isActuallyVideo) {
-                mediaElement = document.createElement('video');
-                mediaElement.controls = true;
-                mediaElement.autoplay = true;
-                // Limit preview to 15 seconds if it's a blob-based partial fetch
-                if (sourceMode === 'gdrive') {
-                    mediaElement.addEventListener('timeupdate', () => {
-                        if (mediaElement.currentTime > 15) {
-                            mediaElement.pause();
-                        }
-                    });
-                }
-            } else if (isActuallySound) {
-                mediaElement = document.createElement('audio');
-                mediaElement.controls = true;
-                mediaElement.autoplay = true;
-            } else {
-                mediaElement = document.createElement('img');
-            }
-            mediaElement.src = mediaUrl;
-            if (mediaElement.load) mediaElement.load(); // Explicitly load for better media handling
-            Object.assign(mediaElement.style, {
-                maxWidth: '100%',
-                maxHeight: '100%',
-                width: 'auto',
-                height: 'auto',
-                objectFit: 'contain',
-                padding: '5px',
-                boxSizing: 'border-box',
-                display: 'block',
-                margin: 'auto'
-            });
-            mediaContainer.appendChild(mediaElement);
-        } catch (e) {
-            console.log("Preview failed:", e);
-            if (spinner.parentNode) spinner.remove();
-            const errorMsg = document.createElement('div');
-            errorMsg.style.color = 'white';
-            errorMsg.style.textAlign = 'center';
-            errorMsg.style.padding = '20px';
-            errorMsg.textContent = e.message || 'Error loading preview';
-            mediaContainer.appendChild(errorMsg);
-        }
-    }
-    // Initial load
-    loadMedia(currentIndex);
-}
-
-function addInNotePreviewListener(element, attachments, indexOrSource, sourceMode, isVideo) {
-    element.style.cursor = 'pointer';
-    element.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        const noteElement = e.currentTarget.closest('.note') || e.currentTarget.closest('#modal-body') || document.getElementById('modal-body');
-        // Handle both signatures:
-        // 1. (element, attachmentsArray, startIndex, sourceMode, isVideo)
-        // 2. (element, fileIdString, sourceMode, isVideo)
-        if (typeof attachments === 'string') {
-            // Legacy: attachments=fileId, indexOrSource=sourceMode, sourceMode=isVideo
-            showInNotePreview(noteElement, attachments, 0, indexOrSource, sourceMode);
-        } else {
-            showInNotePreview(noteElement, attachments, indexOrSource, sourceMode, isVideo);
-        }
-    });
-
-}
 
 // =================================================================================
 // V. СЪЗДАВАНЕ И УПРАВЛЕНИЕ НА UI ЕЛЕМЕНТИ
@@ -10726,6 +8654,7 @@ async function loadSettingsFromGDrive(silent = false) {
         } catch (err) { console.error("Parse error:", err); if (!silent) showToast(_('errorLoadSettings')); }
     } else if (!silent) showToast(_('errorLoadSettings'));
 }
+
 async function createSettingsUI(boardsData, boardParseError) {
     const settingsModalBody = document.getElementById('settings-modal-body');
     if (!settingsModalBody.dataset.initializedListeners) {
@@ -12041,6 +9970,2084 @@ if (advancedSettings) {
 }
 
 // Асинхронно зареждане на името на папката за архив и локална синхронизация
+
+// =================================================================================
+// II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
+// =================================================================================
+// --- Web Share Target API Handler ---
+async function handleShareTarget(externalData = null) {
+    const url = new URL(window.location.href);
+    const sharedTitle = externalData ? externalData.shared_title : url.searchParams.get('shared_title');
+    const sharedText = externalData ? externalData.shared_text : url.searchParams.get('shared_text');
+    const sharedUrl = externalData ? externalData.shared_url : url.searchParams.get('shared_url');
+    const hasSharedImage = externalData ? (externalData.shared_image === '1') : (url.searchParams.get('shared_image') === '1');
+    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
+    // Съставяме съдържанието на бележката от споделените данни
+    const parts = [];
+    // if (sharedTitle) parts.push(sharedTitle);
+    // if (sharedText) parts.push(sharedText);
+    // if (sharedUrl && sharedUrl !== sharedText) parts.push(sharedUrl);
+    // const noteContent = parts.join('\n') || (hasSharedImage ? '📷' : '');
+    const cleanTitle = sharedTitle ? sharedTitle.trim() : '';
+    const cleanText = sharedText ? sharedText.trim() : '';
+    const cleanUrl = sharedUrl ? sharedUrl.trim() : '';
+    const normalize = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const normTitle = normalize(cleanTitle);
+    const normText = normalize(cleanText);
+    const normUrl = normalize(cleanUrl);
+    if (cleanTitle) {
+        const isTitleInText = cleanText && normText.includes(normTitle);
+        if (!isTitleInText) parts.push(cleanTitle);
+    }
+    if (cleanText) {
+        parts.push(cleanText);
+    }
+    if (cleanUrl) {
+        const isUrlInText = cleanText && (normText.includes(normUrl) || normText.replace(/\s+/g, '').includes(normUrl.replace(/\s+/g, '')));
+        const isUrlInTitle = cleanTitle && (normTitle.includes(normUrl) || normTitle.replace(/\s+/g, '').includes(normUrl.replace(/\s+/g, '')));
+        if (!isUrlInText && !isUrlInTitle && cleanUrl !== cleanText && cleanUrl !== cleanTitle) {
+            parts.push(cleanUrl);
+        }
+    }
+    const noteContent = parts.join('\n') || (hasSharedImage ? '📷' : '');
+    // Изчистваме share параметрите от URL-а, за да не се обработват повторно
+    url.searchParams.delete('shared_title');
+    url.searchParams.delete('shared_text');
+    url.searchParams.delete('shared_url');
+    url.searchParams.delete('shared_image');
+    window.history.replaceState({}, document.title, url.pathname + url.search);
+    // copilot version
+    // const url = new URL(window.location.href);
+    // const get = (key) => externalData ? externalData[key] : url.searchParams.get(key);
+    // const rawTitle = get('shared_title') || '';
+    // const rawText = get('shared_text') || '';
+    // const rawUrl = get('shared_url') || '';
+    // const hasImage = get('shared_image') === '1';
+    // const clean = (s) => s.trim();
+    // const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    // const strip = (s) => s.toLowerCase().replace(/\s+/g, '');
+    // const title = clean(rawTitle);
+    // const text = clean(rawText);
+    // const link = clean(rawUrl);
+    // const nTitle = norm(title);
+    // const nText = norm(text);
+    // const nLink = norm(link);
+    // const sTitle = strip(title);
+    // const sText = strip(text);
+    // const sLink = strip(link);
+    // const parts = [];
+    // // Добавяме заглавие само ако не е част от текста
+    // if (title && !(nText.includes(nTitle) || sText.includes(sTitle))) {
+    //     parts.push(title);
+    // }
+    // // Добавяме текст винаги (ако го има)
+    // if (text) {
+    //     parts.push(text);
+    // }
+    // // Добавяме URL само ако не се съдържа в заглавието или текста
+    // if (link &&
+    //     !(nText.includes(nLink) || sText.includes(sLink)) &&
+    //     !(nTitle.includes(nLink) || sTitle.includes(sLink)) &&
+    //     link !== text &&
+    //     link !== title
+    // ) {
+    //     parts.push(link);
+    // }
+    // const noteContent = parts.join('\n') || (hasImage ? '📷' : '');
+    // // Премахваме share параметрите
+    // ['shared_title', 'shared_text', 'shared_url', 'shared_image']
+    //     .forEach(k => url.searchParams.delete(k));
+    // window.history.replaceState({}, document.title, url.pathname + url.search);
+    // Подготвяме нова бележка (копирано от createNewNote логиката)
+    noteId++;
+    noteNumord++;
+    syncFolderDataAsync();
+    const now = Date.now();
+    // Определяме борда: ако сме в системен борд, ползваме 'Main' или първия наличен
+    let boardId = currentBoardFilter;
+    const systemBoards = ['all', 'calendar', 'reminders', 'photos', 'videos', 'sounds', 'other', 'new-updates', 'search', 'favorites', 'archived'];
+    const isRealBoard = boardsData.some(b => String(b.gdid) === String(boardId));
+    if (systemBoards.includes(boardId) || (!isRealBoard && boardsData.length > 0)) {
+        const mainBoard = boardsData.find(b => b.title === 'Main' || b.gdid === 'Main');
+        boardId = mainBoard ? mainBoard.gdid : (boardsData.length > 0 ? boardsData[0].gdid : 'Main');
+    }
+    // --- Обработка на споделено изображение ---
+    let sharedImageBlob = null;
+    let sharedImageFilename = `shared_${now}.jpg`;
+    let sharedImageMimeType = 'image/jpeg';
+    if (hasSharedImage) {
+        try {
+            const cache = await caches.open('share-target-image');
+            const response = await cache.match('shared-image');
+            if (response) {
+                sharedImageBlob = await response.blob();
+                sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
+                sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
+                await cache.delete('shared-image');
+            }
+        } catch (e) {
+            console.error('Error retrieving shared image from cache:', e);
+        }
+    }
+    // Показваме модала със споделеното съдържание
+    setTimeout(async () => {
+        if (typeof showModal === 'function') {
+            showModal({
+                raw: noteContent,
+                format: null,
+                color: '#FBFF86', // Жълт фон по подразбиране
+                boardId: boardId,
+                id: noteId,
+                isNewNote: true
+            });
+            // Автоматично влизаме в режим на редактиране, за да може потребителят да запише
+            setTimeout(() => {
+                const editBtn = document.getElementById('note-edit-btn');
+                if (editBtn) editBtn.click();
+            }, 150);
+        }
+        showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
+        // --- Ако има споделено изображение, качваме го в GDrive ---
+        if (sharedImageBlob && !isOffline) {
+            try {
+                showToast(_('uploadingSharedImage') || '📤 Uploading image...', 5000);
+                const folderId = await getFolderID();
+                if (!folderId) throw new Error('Folder ID not available');
+                // 1. Осигуряваме Images папка
+                let imagesFolderId = folderIds['Images'] || localStorage.getItem('gdrive_folder_id_Images');
+                if (!imagesFolderId) {
+                    imagesFolderId = await createNewGDriveFolder('Images', folderId);
+                    if (imagesFolderId) {
+                        folderIds['Images'] = imagesFolderId;
+                        localStorage.setItem('gdrive_folder_id_Images', imagesFolderId);
+                    }
+                }
+                if (!imagesFolderId) throw new Error('Could not get/create Images folder');
+                // 2. Качваме изображението в Images папка
+                const imageGdid = await uploadBlobToGDrive(imagesFolderId, sharedImageFilename, sharedImageBlob, sharedImageMimeType);
+                if (!imageGdid) throw new Error('Image upload failed');
+                // 3. Намираме gdid на бележката (след запис)
+                // Търсим бележката по id - тя може вече да е записана с gdid
+                const waitForNoteGdid = () => {
+                    return new Promise(resolve => {
+                        const check = (attempts = 0) => {
+                            // Търсим в allNotesData по локалното id
+                            const noteInData = allNotesData.find(n => String(n.id) === String(noteId));
+                            // Важно: gdid трябва да е низ (string) от Google Drive
+                            if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
+                                resolve(noteInData.gdid);
+                            } else if (attempts < 80) { // До 40 секунди
+                                setTimeout(() => check(attempts + 1), 500);
+                            } else {
+                                resolve(null);
+                            }
+                        };
+                        check();
+                    });
+                };
+                const noteGdid = await waitForNoteGdid();
+                if (!noteGdid) {
+                    console.warn('[ShareTarget] Note gdid not available after timeout. Media entry NOT created.');
+                    showToast('⚠️ Image uploaded, but link failed (note not saved to GDrive in time).', 7000);
+                    return;
+                }
+                // 4. Създаваме media.txt запис в GDrive (използваме само истински GDID)
+                const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
+                const mediaEntry = {
+                    datemod: now,
+                    description: '',
+                    gdid: '',
+                    id: maxMediaId + 1,
+                    noteid: noteGdid, // STRING GDID
+                    path: sharedImageFilename, // Само името на файла (логика от Multinotes)
+                    pathGD: imageGdid,
+                    type: 1
+                };
+                const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
+                if (mediaFileGdid) {
+                    mediaEntry.gdid = mediaFileGdid;
+                    await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
+                    // 5. Обновяваме локалните данни и UI
+                    mediaData.push(mediaEntry);
+                    if (useIndexedDb) {
+                        await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                    }
+                    console.log('[ShareTarget] Media entry added to mediaData:', mediaEntry);
+                    showToast(_('sharedImageSaved') || '✅ Image attached to note', 3000);
+
+                    // Хирургично обновяваме само тази бележка, вместо цялото табло
+                    if (typeof refreshNoteUI === 'function') {
+                        console.log('[ShareTarget] Refreshing single note UI...');
+                        await refreshNoteUI(noteGdid);
+                    } else {
+                        renderNotes();
+                    }
+                }
+            } catch (e) {
+                console.error('[ShareTarget] Error processing shared image:', e);
+                showToast('❌ Error uploading shared image: ' + e.message, 5000);
+            }
+        }
+    }, 500);
+}
+
+// --- Support for LaunchQueue (Modern browsers like Chrome/Edge) ---
+if ('launchQueue' in window) {
+    window.launchQueue.setConsumer(async (launchParams) => {
+        if (!launchParams.targetURL) return;
+        const url = new URL(launchParams.targetURL);
+        const params = {
+            shared_title: url.searchParams.get('shared_title'),
+            shared_text: url.searchParams.get('shared_text'),
+            shared_url: url.searchParams.get('shared_url'),
+            shared_image: url.searchParams.get('shared_image')
+        };
+        if (params.shared_title || params.shared_text || params.shared_url || params.shared_image === '1') {
+            handleShareTarget(params);
+        }
+    });
+}
+
+// --- Основна стартова функция ---
+async function startApp(isExplicitLogin = false) {
+    if (isAppStarted) return;
+    isAppStarted = true;
+
+    // --- КОРЕКЦИЯ: Показваме лоудъра ВЕДНАГА при стартиране ---
+    const lc = document.getElementById('loader-container');
+    if (lc) lc.style.display = 'block';
+
+    // --- Автоматична проверка за режим Online/Offline ---
+    if (!navigator.onLine) {
+        isOffline = true;
+        isExplicitLogin = true;
+    } else {
+        await goOffline();
+        if (isOffline) isExplicitLogin = true;
+    }
+    // --- Активна проверка за реална мрежова свързаност (non-blocking) ---
+    // Стартираме пробата паралелно с другата инициализация. Ще изчакаме резултата само ако е нужен.
+    let networkProbePromise = null;
+    if (!isOffline) {
+        networkProbePromise = fetch('https://www.googleapis.com/generate_204', {
+            method: 'HEAD', mode: 'no-cors', cache: 'no-store'
+        }).catch(() => null);
+    }
+
+    // --- NEW: Graceful fallback for KB Assistant ---
+    // If the assistant script failed to load or has errors, create a dummy object
+    // to prevent runtime errors in the main application.
+    if (typeof window.kbAssistant === 'undefined') {
+        console.warn("Knowledge Base Assistant not found. Creating a dummy object to ensure application stability.");
+        window.kbAssistant = {
+            init: () => Promise.resolve(false), // init is async, return false on failure
+            showGuide: () => { console.warn("KB Assistant not loaded."); },
+            terminateGuide: () => { },
+            updateLanguage: () => { },
+            isInitialized: false // This is important for conditional UI features
+        };
+    }
+    try {
+        // ts = await getFirstStartEncoded(); // Move to after UI prep if needed, but it's fine here
+        console.log('First start:', Date.now());
+        ts = await getFirstStartEncoded();
+        console.log('First start in cache:', ts);
+        // Преводите вече са заредени от IIFE — не дублираме setLanguage()
+        initApp(); // Инициализира UI елементите и event listeners
+
+        // Актуализираме текста на лоудъра след зареждане на преводите
+        const lt = document.getElementById('loader-title');
+        if (lt) lt.textContent = typeof _ === 'function' ? _('initialDataLoad') : 'Initial Data Load';
+
+        // --- КОРЕКЦИЯ: Осигуряваме наличност на имейла при безшумен старт ---
+        // Използваме САМО записания от логина hint (ако е избрано 'Запомни ме'),
+        // за да избегнем несъответствие с лицензния имейл.
+        if (!sessionStorage.getItem('google_auth_email_hint')) {
+            const emailHint = localStorage.getItem('google_login_hint');
+            if (emailHint) {
+                sessionStorage.setItem('google_auth_email_hint', emailHint);
+            }
+        }
+        // --- Задаване на настройки по подразбиране при първо стартиране ---
+        // Ако никога не са задавани настройки за източник на данни,
+        // избираме Google Drive + База данни по подразбиране.
+        if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
+            localStorage.setItem('useGoogleDb', 'true');
+            localStorage.setItem('useIndexedDb', 'true');
+        }
+        // --- Изчакваме мрежовата проба, ако е стартирана ---
+        if (networkProbePromise) {
+            const probeResult = await networkProbePromise;
+            if (probeResult === null) {
+                console.log('Network probe failed — switching to offline mode.');
+                isOffline = true;
+                isExplicitLogin = true;
+            }
+        }
+        // --- Проверяваме за базата данни (нужно за userCheck) ---
+        if (dbExists === null || typeof dbExists === 'undefined') {
+            dbExists = await checkDbExists(NOTES_DB_NAME);
+        }
+        // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
+        const authResult = await checkAuth(isExplicitLogin);
+        if (!authResult || !authResult.pass) {
+            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
+            loaderContainer.style.display = 'none';
+            // checkAuth вече е показал грешка или е пренасочил
+            isAppStarted = false; // Allow re-try
+            return;
+        }
+        authToken = authResult.tokenData;
+        // Скриваме логин страницата, ако е била показана
+        document.getElementById('login-page').hidden = true;
+        document.getElementById('login-page').style.display = 'none';
+        // --- WHITELIST CHECK (On every login) ---
+        checkWhitelist(true); // Delayed background check to log session and update state
+        // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
+        updateGlobalStateFlags();
+
+        // --- PRE-LOAD START BOARD SETTING ---
+        // Avoid FOUC by setting currentBoardFilter immediately from storage
+        const savedStartBoard = localStorage.getItem('startBoard');
+        if (savedStartBoard && (isDbOwner || savedStartBoard === 'all')) {
+            currentBoardFilter = savedStartBoard;
+        }
+
+        await createBoardsUI([], false);
+        await createSettingsUI([], false); // Предварително създава UI на настройките
+        // Проверката за потребител и основната логика се извикват директно.
+        // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
+        // само ако е необходимо.
+        // --- Инициализация на KB Assistant след успешно логване ---
+        window.kbAssistant.init();
+        // Инициализация на draggable бутони
+        const initDraggableButtons = () => {
+            // ScrollTop Button
+            const scrollTopBtnElement = document.getElementById('scrollTopBtn');
+            if (scrollTopBtnElement) {
+                makeElementDraggable(scrollTopBtnElement, 'scrollTopBtnPosition');
+            }
+            // KB Assistant Button (wait for it if necessary)
+            // Since KBUI might initialize later, we attempt to find it
+            const initKbFab = () => {
+                const kbFab = document.getElementById('kb-fab');
+                if (kbFab) {
+                    makeElementDraggable(kbFab, 'kbFabPosition');
+                } else {
+                    // Retry once after a short delay in case of async rendering
+                    setTimeout(() => {
+                        const kbFabRetry = document.getElementById('kb-fab');
+                        if (kbFabRetry) makeElementDraggable(kbFabRetry, 'kbFabPosition');
+                    }, 1000);
+                }
+            };
+            initKbFab();
+        };
+        initDraggableButtons();
+        await mainLogic();
+        handleShareTarget();
+    } catch (err) {
+        console.error("Error in startApp:", err);
+        // Fallback for network errors during mainLogic
+        if (err.message === 'Failed to fetch' || err instanceof TypeError || (err.message && err.message.includes('Google libraries'))) {
+            const hasS = await checkDbExists(NOTES_DB_NAME) || await caches.open('app-cache').then(c => c.match('s'));
+            if (hasS) {
+                const promptMsg = (typeof _ === 'function' ? (_('errorGoogleLibs') + "\n\n" + (_('offlineStartPrompt') || "Do you want to start in Offline Mode?")) : "Network error. Do you want to start in Offline Mode?");
+                if (confirm(promptMsg)) {
+                    isOffline = true;
+                    // Reset UI and restart
+                    if (loaderContainer) loaderContainer.style.display = 'none';
+                    isAppStarted = false;
+                    startApp();
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// Записва timestamp като кодиран низ (Base64) при поискване
+async function getFirstStartEncoded(shouldSave = false) {
+    const cache = await caches.open('app-cache');
+    const cachedResponse = await cache.match('s'); // /firstStart.json
+    if (cachedResponse) {
+        // Четене на текста от кеша
+        const encoded = await cachedResponse.text();
+        const decodedTs = parseInt(atob(encoded), 10);
+        return decodedTs;
+    } else {
+        // Първо стартиране → генерираме timestamp
+        const nowTs = Date.now();
+        if (shouldSave) {
+            const encoded = btoa(String(nowTs));  // кодиране в Base64 → низ
+            const response = new Response(encoded, {
+                headers: { 'Content-Type': 'text/plain' }
+            });
+            await cache.put('s', response);
+        }
+        return nowTs;
+    }
+}
+
+// function _(key) {
+//     if (appTranslations[currentLang] && appTranslations[currentLang][key]) {
+//         return appTranslations[currentLang][key];
+//     }
+//     return key;
+// }
+
+/**
+ * Показва основния интерфейс на приложението и скрива лоудъра.
+ * Извиква се, когато всичко е готово (преводи, данни, състояние).
+ */
+function showAppUI() {
+    // Малък delay, за да сме сигурни, че DOM е обновен и готов за показване
+    requestAnimationFrame(() => {
+        document.body.classList.add('app-ready');
+        const loader = document.getElementById('loader-container');
+        if (loader) {
+            loader.style.display = 'none';
+        }
+    });
+}
+
+function _(key) {
+    if (!appTranslations[currentLang]) {
+        // Fallback: This should rarely happen if loadTranslations was awaited
+        return key;
+    }
+    return appTranslations[currentLang][key] || key;
+}
+
+function hideToast() {
+    const toast = document.getElementById('toastNotification');
+    if (toast.classList.contains('show')) {
+        clearTimeout(toastTimeout);
+        toast.classList.remove('show');
+        isShowingToast = false;
+    }
+}
+
+function showToast(message, duration = 10000) {
+    if (isToastHidden) return;
+    if (isShowingToast) {
+        hideToast();
+        // Short delay to allow the hide animation to finish before showing the new one
+        setTimeout(() => showToast(message, duration), 300);
+        return;
+    }
+    isShowingToast = true;
+    const toast = document.getElementById('toastNotification');
+    toast.textContent = message;
+    toast.classList.add('show');
+    toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
+}
+
+function showMessagePopup(message, showInput = false) {
+    folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
+    folderIdInput = document.getElementById('folderIdInput');
+    submitFolderIdBtn = document.getElementById('submitFolderIdBtn');
+    document.querySelector('#folderIdPromptPopup p').textContent = message;
+    if (showInput) {
+        folderIdInput.style.display = 'block';
+        submitFolderIdBtn.textContent = _('submitButton');
+        folderIdInput.value = '';
+        folderIdInput.focus();
+    } else {
+        folderIdInput.style.display = 'none';
+        submitFolderIdBtn.textContent = _('okButton');
+    }
+    folderIdPromptPopup.classList.add('show');
+}
+
+function hideFolderIdPrompt() {
+    if (folderIdPromptPopup) {
+        folderIdPromptPopup.classList.remove('show');
+    }
+}
+
+function handleSubmitFolderId() {
+    // If input is not visible, just close the popup
+    if (folderIdInput.style.display === 'none') {
+        hideFolderIdPrompt();
+        return;
+    }
+    // Logic for submitting the folder ID would go here
+}
+
+function showConfirmation(message, options = {}) {
+    return new Promise(resolve => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        const popupContent = popup.querySelector('.popup-content');
+        const messagePara = popup.querySelector('p');
+        const okButton = document.getElementById('submitFolderIdBtn');
+        const folderIdInput = document.getElementById('folderIdInput');
+        let noButton = document.getElementById('prompt-no-btn');
+        if (!noButton) {
+            noButton = document.createElement('button');
+            noButton.id = 'prompt-no-btn';
+            noButton.className = 'zoom-btn settings-close-btn';
+            noButton.style.marginLeft = '10px';
+            okButton.parentNode.appendChild(noButton);
+        }
+        // Cancel button (optional)
+        let cancelButton = document.getElementById('prompt-cancel-btn');
+        if (!cancelButton) {
+            cancelButton = document.createElement('button');
+            cancelButton.id = 'prompt-cancel-btn';
+            cancelButton.className = 'zoom-btn settings-close-btn';
+            cancelButton.style.marginLeft = '10px';
+            okButton.parentNode.appendChild(cancelButton);
+        }
+        // Save original inline styles to restore later
+        const originalStyles = {
+            backgroundColor: popupContent.style.backgroundColor,
+            width: popupContent.style.width,
+            maxWidth: popupContent.style.maxWidth
+        };
+        if (options.backgroundColor) popupContent.style.backgroundColor = options.backgroundColor;
+        if (options.width) {
+            popupContent.style.width = options.width;
+            popupContent.style.maxWidth = '90vw';
+        }
+        messagePara.textContent = message;
+        folderIdInput.style.display = 'none';
+        okButton.textContent = _('confirmCreateDbYes');
+        noButton.textContent = _('confirmCreateDbNo');
+        noButton.style.display = 'inline-block';
+        // Show/hide cancel button
+        if (options.showCancel) {
+            cancelButton.textContent = options.cancelText || _('cancel') || 'Cancel';
+            cancelButton.style.display = 'inline-block';
+        } else {
+            cancelButton.style.display = 'none';
+        }
+        // Remove existing listener to avoid conflicts
+        okButton.removeEventListener('click', handleSubmitFolderId);
+        const cleanup = () => {
+            popup.classList.remove('show');
+            okButton.removeEventListener('click', onOk);
+            noButton.removeEventListener('click', onNo);
+            cancelButton.removeEventListener('click', onCancel);
+            noButton.style.display = 'none';
+            cancelButton.style.display = 'none';
+            // Restore original listener
+            okButton.addEventListener('click', handleSubmitFolderId);
+            // Restore Styles
+            popupContent.style.backgroundColor = originalStyles.backgroundColor;
+            popupContent.style.width = originalStyles.width;
+            popupContent.style.maxWidth = originalStyles.maxWidth;
+        };
+        const onOk = () => {
+            cleanup();
+            resolve(true);
+        };
+        const onNo = () => {
+            cleanup();
+            resolve(false);
+        };
+        const onCancel = () => {
+            cleanup();
+            resolve('cancel');
+        };
+        okButton.addEventListener('click', onOk);
+        noButton.addEventListener('click', onNo);
+        cancelButton.addEventListener('click', onCancel);
+        popup.classList.add('show');
+    });
+}
+
+/**
+ * Показва избор с три опции при синхронизация: Да, Не, Всички.
+ */
+function showSyncChoiceModal(noteSummary) {
+    return new Promise(resolve => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        const popupContent = popup.querySelector('.popup-content');
+        const messagePara = popup.querySelector('p');
+        const yesBtn = document.getElementById('submitFolderIdBtn');
+        let noBtn = document.getElementById('prompt-no-btn');
+        let allBtn = document.getElementById('prompt-cancel-btn');
+
+        if (!noBtn) {
+            noBtn = document.createElement('button');
+            noBtn.id = 'prompt-no-btn';
+            noBtn.className = 'zoom-btn settings-close-btn';
+            noBtn.style.marginLeft = '10px';
+            yesBtn.parentNode.appendChild(noBtn);
+        }
+        if (!allBtn) {
+            allBtn = document.createElement('button');
+            allBtn.id = 'prompt-cancel-btn';
+            allBtn.className = 'zoom-btn settings-close-btn';
+            allBtn.style.marginLeft = '10px';
+            yesBtn.parentNode.appendChild(allBtn);
+        }
+
+        const promptText = (typeof _ === 'function' ? _('syncPromptNote') : 'Sync note:');
+        messagePara.innerHTML = `<div style="font-weight:bold; margin-bottom:10px;">${promptText}</div><div style="font-style:italic; color:#555; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:10px; border-radius:4px; text-align:left;">${noteSummary}</div>`;
+
+        // Разширяваме прозореца за по-добър преглед
+        popupContent.style.width = '450px';
+        popupContent.style.maxWidth = '90vw';
+
+        yesBtn.textContent = (typeof _ === 'function' ? _('confirmCreateDbYes') : 'Yes');
+        noBtn.textContent = (typeof _ === 'function' ? _('confirmCreateDbNo') : 'No');
+        allBtn.textContent = (typeof _ === 'function' ? _('allEntries') : 'All');
+
+        noBtn.style.display = 'inline-block';
+        allBtn.style.display = 'inline-block';
+
+        const cleanup = () => {
+            popup.classList.remove('show');
+            yesBtn.removeEventListener('click', onYes);
+            noBtn.removeEventListener('click', onNo);
+            allBtn.removeEventListener('click', onAll);
+            yesBtn.addEventListener('click', handleSubmitFolderId);
+            // Restore original width
+            popupContent.style.width = '';
+            popupContent.style.maxWidth = '';
+        };
+
+        const onYes = () => { cleanup(); resolve('yes'); };
+        const onNo = () => { cleanup(); resolve('no'); };
+        const onAll = () => { cleanup(); resolve('all'); };
+
+        yesBtn.removeEventListener('click', handleSubmitFolderId);
+        yesBtn.addEventListener('click', onYes);
+        noBtn.addEventListener('click', onNo);
+        allBtn.addEventListener('click', onAll);
+
+        popup.classList.add('show');
+    });
+}
+function showPrompt(message, defaultValue = '') {
+    return new Promise(resolve => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        const messagePara = popup.querySelector('p');
+        const okButton = document.getElementById('submitFolderIdBtn');
+        const folderIdInput = document.getElementById('folderIdInput');
+        let noButton = document.getElementById('prompt-no-btn');
+        if (!noButton) {
+            noButton = document.createElement('button');
+            noButton.id = 'prompt-no-btn';
+            noButton.className = 'zoom-btn settings-close-btn';
+            noButton.style.marginLeft = '10px';
+            okButton.parentNode.appendChild(noButton);
+        }
+
+        messagePara.textContent = message;
+        folderIdInput.style.display = 'block';
+        folderIdInput.value = defaultValue;
+        okButton.textContent = _('submitButton');
+        noButton.textContent = _('cancel') || 'Cancel';
+        noButton.style.display = 'inline-block';
+
+        const cleanup = () => {
+            popup.classList.remove('show');
+            okButton.removeEventListener('click', onOk);
+            noButton.removeEventListener('click', onCancel);
+            noButton.style.display = 'none';
+            okButton.addEventListener('click', handleSubmitFolderId);
+        };
+        const onOk = () => {
+            const val = folderIdInput.value;
+            cleanup();
+            resolve(val);
+        };
+        const onCancel = () => {
+            cleanup();
+            resolve(null);
+        };
+
+        okButton.removeEventListener('click', handleSubmitFolderId);
+        okButton.addEventListener('click', onOk);
+        noButton.addEventListener('click', onCancel);
+        popup.classList.add('show');
+        folderIdInput.focus();
+    });
+}
+
+/**
+ * Добавя event listeners към елемент за разпознаване на "long press" или Ctrl+клик.
+ * @param {HTMLElement} element - Елементът, към който да се добавят събитията.
+ * @param {Function} callback - Функцията, която да се изпълни при задействане.
+ */
+function addLongPressOrCtrlClick(element, callback) {
+    let longPressTimer;
+    let isLongPress = false;
+    const startPress = (e) => {
+        isLongPress = false;
+        // Започваме таймер за продължително натискане
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            // callback(e); // ВРЕМЕННО: Изключено изтриване при long press
+        }, 500); // 500ms за long press
+    };
+    const endPress = () => {
+        clearTimeout(longPressTimer);
+    };
+    element.addEventListener('mousedown', startPress);
+    element.addEventListener('mouseup', endPress);
+    element.addEventListener('mouseleave', endPress);
+    element.addEventListener('touchstart', startPress, { passive: true });
+    element.addEventListener('touchend', endPress);
+    element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
+}
+
+function extractAndFormat(text, onlyChecked = false) {
+    let lines = text.split('\n');
+    let results = []
+    lines.forEach(line => {
+        let trimmedLine = line.trim();
+        if (!trimmedLine) return;
+        // Първична нормализация на символите
+        // ПРОВЕРКА ЗА ФЛАГ: Ако 'onlyChecked' е вдигнат, пропускаме редове без ☑
+        if (onlyChecked && !trimmedLine.includes('☑')) {
+            return;
+        }
+        // Ако редът съдържа чекбокс за "неотметнато" (☐) или "отказано" (☒), 
+        // го пропускаме в изчисленията (стандартно поведение за списъци)
+        // if (trimmedLine.includes('☐') || trimmedLine.includes('☒')) {
+        //     return;
+        // }
+        let normalized = trimmedLine
+            // Премахваме чекбоксовете в началото на реда
+            .replace(/^[☑☒☐]\s*/, '')
+            .replace(/(\d),(\d)/g, '$1.$2') // запетая -> точка
+            .replace(/[xх*]/gi, '*')        // х -> *
+            .replace(/[:\/]/g, '/');        // : -> /
+        // Универсално чистене на номерация и чекбоксове/символи в началото
+        // Премахваме ☑, ☒, ☐ и номерация, ако след тях има текст и после числа
+        // УСЪВЪРШЕНСТВАНО ЧИСТЕНЕ НА НОМЕРАЦИЯ (Защита за 1733.90)
+        // Тук казваме: Премахни число+точка в началото, САМО АКО след него има поне два интервала 
+        // или ако след него има букви (текст), преди да започне математическия израз.
+        // \p{L} хваща всякаква буква (латиница, кирилица, гръцки, арабски и т.н.)
+        // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.
+        // let cleanLine = normalized.replace(/^\d+[☑☒☐|\d\.\)]+\s*(?=\p{L})/gu, '');
+        let cleanLine = normalized.replace(/^\d+(?:[.\d\)|]+)\s*(?=\p{L})/gu, '');
+        // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
+        // НЕ го пипаме, защото това е част от сумата.
+        // Залепяме операторите (чистим интервалите omkring тях)
+        cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
+        // 4. Екстракция на математическия блок
+        // Търсим най-дългата поредица от цифри и оператори
+        let mathMatch = cleanLine.match(/[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g);
+        if (mathMatch) {
+            // Вземаме последното съвпадение (обикновено сумата е в края на реда)
+            let expression = mathMatch[mathMatch.length - 1];
+            // 5. Финална проверка за знака в самото начало на целия низ
+            if (/^\d/.test(expression)) {
+                expression = '+' + expression;
+            }
+            results.push(expression);
+        }
+    });
+    // 5. Генерираме финалния стринг
+    let finalSequence = results.join('');
+    // Премахваме водещия '+' ако има такъв
+    if (finalSequence.startsWith('+')) {
+        finalSequence = finalSequence.slice(1);
+    }
+    console.log(text);
+    console.log(finalSequence);
+    return (finalSequence);
+}
+
+/**
+ * Обработва клик върху бутона за калкулатор в модалния прозорец.
+ * Взима маркирания текст, изчислява го като математически израз и замества селекцията с резултата.
+ */
+async function handleCalculateClick(checkList) {
+    const selection = window.getSelection();
+    const modalBody = document.getElementById('modal-body');
+    let expression = '';
+    let isFromClipboard = false;
+    let range = null;
+    // Проверяваме дали има маркиран текст в модалния прозорез
+    if (selection.rangeCount > 0 && selection.toString().trim() !== '') {
+        const tempRange = selection.getRangeAt(0);
+        if (modalBody.contains(tempRange.commonAncestorContainer)) {
+            expression = selection.toString().trim();
+            range = tempRange;
+        }
+    }
+    // Ако няма маркиран текст, опитваме да четем от клипборда
+    if (expression === '') {
+        try {
+            expression = await navigator.clipboard.readText();
+            expression = expression.trim();
+            isFromClipboard = true;
+        } catch (err) {
+            console.log('Failed to read clipboard contents: ', err);
+            // Добавяме грешката в края на бележката вместо toast
+            const errorText = `\n${_('errorClipboardRead')}`;
+            const errorNode = document.createTextNode(errorText);
+            modalBody.appendChild(errorNode);
+            return;
+        }
+    }
+    if (expression === '') return;
+    try {
+
+        /*/ Премахваме всички интервали от израза
+        expression = expression.replace(/\s/g, '');
+        // Заменяме запетаите с точки за поддръжка на европейски формат за десетични числа
+        expression = expression.replace(/,/g, '.');
+        // Основна проверка за сигурност - позволяваме само определени символи
+        const sanitizedExpression = expression.replace(/[^0-9+\-*__/().]/g, ''); // __ дабавени заради коментарането на блока - махни ги, ако решиш да използваш
+        if (sanitizedExpression !== expression) {
+            throw new Error("Invalid characters in expression.");
+        }*/
+        const sanitizedExpression = extractAndFormat(expression, checkList);
+        // Използваме Function конструктор, който е малко по-сигурен от директен eval()
+        const result = new Function('return ' + sanitizedExpression)();
+        // Форматираме резултата с 2 десетични знака
+        const formattedResult = result.toFixed(2);
+        const resultText = ` = ${formattedResult}`;
+
+        // Ако имаме селекция и не е от клипборда, вмъкваме резултата след маркирания текст
+        if (range && !isFromClipboard) {
+            // Създаваме текстов възел с резултата
+            const resultNode = document.createTextNode(resultText);
+            // Вмъкваме го след оригиналната селекция
+            range.collapse(false); // Свиваме обхвата до края му
+            range.insertNode(resultNode);
+            // Създаваме нов обхват (range), който да обхване само числото
+            const newRange = document.createRange();
+            newRange.setStart(resultNode, resultText.indexOf(formattedResult.toString())); // Начало на числото
+            newRange.setEnd(resultNode, resultText.length); // Край на текста
+            selection.removeAllRanges(); // Изчистваме старата селекция
+            selection.addRange(newRange); // Добавяме новата селекция
+        } else {
+            // Ако е от клипборда, добавяме цялото изчисление в края на бележката
+            const fullResultText = `\n${sanitizedExpression} = ${formattedResult}`;
+            const resultNode = document.createTextNode(fullResultText);
+            modalBody.appendChild(resultNode);
+        }
+    } catch (error) {
+        // Добавяме грешката в края на бележката вместо toast
+        const errorText = `\n${_('invalidExpression')}`;
+        const errorNode = document.createTextNode(errorText);
+        modalBody.appendChild(errorNode);
+        console.log("Calculation error:", error);
+    }
+}
+
+let isUIInitialized = false;
+function initApp() {
+    if (isUIInitialized) return;
+    isUIInitialized = true;
+    // Inject custom styles dynamically to fix UI issues
+    // const style = document.createElement('style');
+    // style.textContent = `
+    //     .all-boards-filter-btn span { text-align: center; width: 100%; }
+    //     .sounds-filter-btn { color: #fcfcfc !important; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); }
+    // `;
+    // // Добавяме CSS правило за стилизиране на иконата за дублиране
+    // style.textContent += `
+    //     #copy-modal-btn svg {
+    //         width: 24px !important;
+    //         height: 24px !important;
+    //         stroke-width: 2 !important;
+    //     }`;
+    // document.head.appendChild(style);
+    // Set default showBoardAll to false if not set
+    if (localStorage.getItem('showBoardAll') === null) {
+        localStorage.setItem('showBoardAll', 'false');
+    }
+    // Set default showWeeklyCalendar to true if not set
+    if (localStorage.getItem('showWeeklyCalendar') === null) {
+        localStorage.setItem('showWeeklyCalendar', 'true');
+    }
+    // Set default updateGDrive to true if not set
+    // Removed updateGDrive default check
+    // Set default useIndexedDb to true if not set
+    if (localStorage.getItem('useIndexedDb') === null) {
+        localStorage.setItem('useIndexedDb', 'true');
+    }
+    // Инициализация на DOM елементи
+    signoutButton = document.getElementById('signout_button');
+    if (signoutButton) {
+        signoutButton.addEventListener('click', handleSignoutClick);
+    }
+    reloadButton = document.getElementById('reload_button');
+    settingsButton = document.getElementById('settings_button');
+    notesContainer = document.getElementById('notes-container');
+    // --- Global Event Delegation for Note Tooltips ---
+    let titleTimeout;
+    notesContainer.addEventListener('mouseover', (e) => {
+        if (e.target.classList.contains('note-title-truncated')) {
+            const titleEl = e.target;
+            if (!titleEl.title) { // Only set timeout if title isn't already set
+                titleTimeout = setTimeout(() => {
+                    if (document.body.contains(titleEl) && !titleEl.title) {
+                        titleEl.title = titleEl.textContent;
+                    }
+                }, 500);
+            }
+        }
+    });
+    notesContainer.addEventListener('mouseout', (e) => {
+        if (e.target.classList.contains('note-title-truncated')) {
+            clearTimeout(titleTimeout);
+        }
+    });
+    contentModal = document.getElementById('content-modal');
+    modalBody = document.getElementById('modal-body');
+
+    copyBtn = document.getElementById('copy-modal-btn');
+    scrollTopBtn = document.getElementById("scrollTopBtn");
+    // Allow context menu for system actions (copy/paste)
+    // Removed: modalBody.addEventListener('contextmenu', e => e.preventDefault());
+    // Removed: modalBody.addEventListener('pointerup', e => { ... });
+
+    searchBox = document.getElementById('search-box');
+    loaderContainer = document.getElementById('loader-container');
+    loaderText = document.getElementById('loader-text');
+    // --- Add Title to Loader (Idempotent) ---
+    let loaderTitle = document.getElementById('loader-title');
+    if (!loaderTitle) {
+        loaderTitle = document.createElement('h3');
+        loaderTitle.id = 'loader-title';
+        loaderTitle.style.marginTop = '0';
+        loaderTitle.style.marginBottom = '5px';
+        loaderContainer.prepend(loaderTitle);
+    }
+    let loaderFolderInfo = document.getElementById('loader-folder-info');
+    if (!loaderFolderInfo) {
+        loaderFolderInfo = document.createElement('div');
+        loaderFolderInfo.id = 'loader-folder-info';
+        loaderFolderInfo.style.fontSize = '0.9em';
+        loaderFolderInfo.style.opacity = '0.8';
+        loaderFolderInfo.style.marginBottom = '15px';
+        loaderTitle.after(loaderFolderInfo);
+    }
+    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+    // --- Add Cancel Button to Loader (Idempotent) ---
+    let cancelButton = document.getElementById('cancel-load-btn');
+    if (!cancelButton) {
+        cancelButton = document.createElement('button');
+        cancelButton.id = 'cancel-load-btn';
+        cancelButton.className = 'zoom-btn settings-close-btn'; // Reuse existing styles
+        cancelButton.style.marginTop = '20px';
+        cancelButton.dataset.key = 'cancelButton'; // For i18n
+        loaderContainer.appendChild(cancelButton);
+        cancelButton.addEventListener('click', (e) => {
+            // --- КОРЕКЦИЯ: Предотвратяваме други event listeners да се задействат ---
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("Load operation cancelled by user.");
+            isLoadCancelled = true;
+            // Hide loader and show settings
+            loaderContainer.style.display = 'none';
+            document.getElementById('settings-modal').classList.add('visible');
+        });
+    }
+    // Инициализираме KB Assistant - ще се инициализира от startApp след логване
+    // if (window.kbAssistant && !window.kbAssistant.isInitialized) {
+    //     window.kbAssistant.init();
+    // }
+    // Настройване на UI и езикови настройки
+    const toast = document.getElementById('toastNotification');
+    toast.addEventListener('click', hideToast);
+
+    // Инициализираме местенето на FAB бутона
+    initFABDragging();
+
+    scrollTopBtn.innerHTML = arrowSvg;
+    const appTitle = document.querySelector('header h1');
+    if (appTitle) {
+        appTitle.style.cursor = 'pointer';
+        appTitle.addEventListener('click', async () => {
+            console.log('Title clicked');
+            // Trigger the assistant-1 guide
+            if (window.kbAssistant && window.kbAssistant.isInitialized) {
+                console.log('KB Assistant is initialized');
+                // Search in general section where assistant-1 is located
+                const assistantGuide = window.kbAssistant.kbData?.general?.find(item => item.id === 'assistant-1')
+                console.log('Found guide:', assistantGuide);
+                if (assistantGuide && assistantGuide.guide) {
+                    console.log('Showing guide');
+                    window.kbAssistant.showGuide(assistantGuide.guide);
+                } else {
+                    console.warn('assistant-1 guide not found');
+                }
+            } else {
+                console.warn('KB Assistant not initialized');
+            }
+        });
+
+    }
+    reloadButton.addEventListener('click', () => {
+        const hasDirtyNotes = allNotesData && allNotesData.some(n => n.type === -1);
+        if (hasDirtyNotes) {
+            if (isOffline) {
+                showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
+            } else {
+                syncDirtyNotes();
+            }
+        } else {
+            mainLogic();
+        }
+    });
+
+    // --- Long Press Logic for Settings Button (Mobile) ---
+    let settingsLongPressTimer;
+    settingsButton.addEventListener('touchstart', (e) => {
+        settingsLongPressTimer = setTimeout(() => {
+            // Simulate Ctrl+Click behavior
+            settingsButton.dispatchEvent(new MouseEvent('click', {
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true
+            }));
+            // Provide feedback (haptic) if available
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 600); // 600ms threshold for long press
+    }, { passive: true });
+
+    settingsButton.addEventListener('touchend', () => clearTimeout(settingsLongPressTimer));
+    settingsButton.addEventListener('touchmove', () => clearTimeout(settingsLongPressTimer));
+    settingsButton.addEventListener('contextmenu', (e) => {
+        // On mobile, long press usually triggers context menu. prevent it here to depend only on our custom logic
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    });
+
+    settingsButton.addEventListener('click', (e) => {
+        // Toggle Advanced Settings based on Ctrl Key or if force-opened
+        // Logic adapted for Accordion + hidden span structure
+        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+        const accordionHeader = document.querySelector('.accordion-header');
+
+        // Check if we need to show advanced settings (Ctrl click or validation flow which might trigger this)
+        if (e.ctrlKey) {
+            if (advancedSettingsSpan) {
+                const isHidden = advancedSettingsSpan.hasAttribute('hidden');
+                if (isHidden) {
+                    advancedSettingsSpan.removeAttribute('hidden');
+                    localStorage.setItem('showAdvancedSettings', 'true');
+                }
+                // Попълваме dropdown-а ПРАВИЛНО чрез централизираната функция
+                populateFoldersDropdown();
+                // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
+                loadGlobalFoldersJson().then(changed => {
+                    if (changed) {
+                        // Обновяваме dropdown-а, тъй като folders.json може да е заредил нови имена
+                        populateFoldersDropdown();
+                    }
+                });
+                // Expand accordion if not already expanded (check for active class if you used it, or just click if content is hidden)
+                // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
+                // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
+                setTimeout(() => {
+                    // Check state via class on accordion wrapper
+                    const accordionHeader = document.querySelector('.accordion-header');
+                    if (accordionHeader) {
+                        const accordion = accordionHeader.parentElement;
+                        const isActive = accordion.classList.contains('active');
+
+                        if (!isActive) {
+                            // Closed -> Open it (this triggers scroll in listener)
+                            accordionHeader.click();
+                        } else {
+                            // Already Open -> Just scroll to it/bottom
+                            const settingsModalBody = document.getElementById('settings-modal-body');
+                            if (settingsModalBody) {
+                                settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
+                            } else {
+                                accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }
+                    }
+                }, 100);
+            }
+        }
+
+        // Запомняме началното състояние на чекбоксовете при отваряне на настройките
+        // Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
+        const useGDCheckbox = document.getElementById('use-google-db-checkbox');
+        const useLocCheckbox = document.getElementById('use-local-db-checkbox');
+        const useArhCheckbox = document.getElementById('use-arh-db-checkbox');
+        const useIdbCheckbox = document.getElementById('use-indexeddb-checkbox');
+
+        if (useGDCheckbox) useGDCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
+        if (useLocCheckbox) useLocCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
+        if (useArhCheckbox) useArhCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
+        if (useIdbCheckbox) useIdbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+
+        settingsInitialState = {
+            useGoogleDb: useGDCheckbox ? useGDCheckbox.checked : true,
+            useLocalDb: useLocCheckbox ? useLocCheckbox.checked : false,
+            useArhDb: useArhCheckbox ? useArhCheckbox.checked : false,
+            useIndexedDb: useIdbCheckbox ? useIdbCheckbox.checked : false
+        };
+        document.getElementById('settings-modal').classList.add('visible');
+        if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
+        // ВИНАГИ попълваме dropdown-а при отваряне на настройките
+        populateFoldersDropdown();
+        // Ако Разширени настройки вече са видими, актуализираме gdrive_folder_names от folders.json
+        const advSpanOnOpen = document.getElementById('advanced-settings-span');
+        if (advSpanOnOpen && !advSpanOnOpen.hasAttribute('hidden') && !isOffline) {
+            loadGlobalFoldersJson().then(changed => {
+                if (changed) populateFoldersDropdown();
+            });
+        }
+        // if (guide) showStep(4); // Настройки
+    });
+
+    const scrollHandler = function () {
+        const scrolled = document.documentElement.scrollTop || document.body.scrollTop;
+        // Check both scroll threshold and body visibility to ensure button doesn't appear on hidden/login pages
+        if (
+            (scrolled > 50) &&
+            document.body.style.display !== 'none' &&
+            // Also check if we are not on the login page (hidden check acts as proxy often)
+            // but explicitly: the login page should have its own logic, 
+            // verifying specific container visibility is safer if body is always visible.
+            // Using user's strict condition:
+            document.body.style.display !== 'none'
+        ) {
+            // Keep the user's logic exactly as requested
+            scrollTopBtn.style.display = "flex";
+        } else {
+            scrollTopBtn.style.display = "none";
+        }
+    };
+    window.onscroll = scrollHandler;
+
+    // --- Listener for Online/Offline Status (Added for Offline Mode) ---
+    let offlineTimeout;
+    window.addEventListener('online', () => {
+        clearTimeout(offlineTimeout);
+        if (isOffline) {
+            isOffline = false;
+            updateModeButton();
+            if (typeof showToast === 'function') showToast("Online mode restored", 2000);
+        }
+    });
+    window.addEventListener('offline', () => {
+        clearTimeout(offlineTimeout);
+        offlineTimeout = setTimeout(async () => {
+            let reallyOnline = false;
+            try {
+                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
+                reallyOnline = response.ok;
+            } catch (e) { }
+
+            if (!reallyOnline) {
+                isOffline = true;
+                updateModeButton();
+                if (typeof showToast === 'function') showToast("Offline mode active", 2000);
+            }
+        }, 3000);
+    });
+    scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    // --- Search Box Enhancements ---
+    const searchWrapper = document.getElementById('search-wrapper');
+    // 1. Static Search Icon (Left) — кликаем за превключване режим на търсене
+    const staticSearchIcon = document.createElement('span');
+    staticSearchIcon.className = 'search-icon-static';
+    staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><circle class="search-mode-dot" cx="11" cy="11" r="3" fill="black" stroke="none" style="display:none"></circle></svg>`;
+    staticSearchIcon.style.cursor = 'pointer';
+    staticSearchIcon.title = searchInBoardOnly ? (_('searchInBoardTooltip') || 'Search in current board (click to change)') : (_('searchEverywhereTooltip') || 'Search everywhere (click to change)');
+    updateSearchModeIndicator();
+    staticSearchIcon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        searchInBoardOnly = !searchInBoardOnly;
+        localStorage.setItem('searchInBoardOnly', searchInBoardOnly);
+        updateSearchModeIndicator();
+        const searchBox = document.getElementById('search-box');
+        if (searchBox && searchBox.value.trim()) {
+            triggerSearch(false);
+        }
+    });
+    // 2. Clear Button (Right, next to Save)
+    const clearSearchBtn = document.createElement('span');
+    clearSearchBtn.className = 'search-action-btn search-btn-clear';
+    clearSearchBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+    clearSearchBtn.style.display = 'none'; // Hidden initially
+    clearSearchBtn.title = _('clearButton') || 'Clear'; // Updated from closeButton to clearButton
+    // REMOVED: searchModeToggle logic. We now always search in content (which includes title).
+    // Ensure placeholder is correct for content search
+    updateSearchPlaceholder();
+    saveSearchBtn = document.createElement('span');
+    saveSearchBtn.id = 'save-search-btn';
+    saveSearchBtn.className = 'search-action-btn search-btn-save'; // Updated class
+    saveSearchBtn.innerHTML = saveSearchSvg;
+    saveSearchBtn.style.display = 'none';
+    // saveSearchBtn.style.marginTop = '2px'; // Removed as we use flex centering
+    saveSearchBtn.title = _('searchSavedTip');
+    const savedSearchesPopup = document.createElement('div');
+    savedSearchesPopup.id = 'saved-searches-popup';
+    // Add all icons and popups to the wrapper
+    searchWrapper.prepend(staticSearchIcon); // Add Magnifier
+    searchWrapper.appendChild(clearSearchBtn); // Add Clear Button
+    searchWrapper.appendChild(saveSearchBtn);
+    searchWrapper.appendChild(savedSearchesPopup);
+    // Етикет за активен борд (видим само в fullscreen mode)
+    const fsBoardLabel = document.createElement('span');
+    fsBoardLabel.id = 'fullscreen-board-label';
+    searchWrapper.appendChild(fsBoardLabel);
+
+    function renderSavedSearchesPopup() {
+        const popup = document.getElementById('saved-searches-popup');
+        if (!popup) return;
+        popup.style.display = 'block';
+        popup.innerHTML = ''; // Clear everything
+        // --- Close Button ---
+        const closeBtn = document.createElement('div');
+        closeBtn.className = 'saved-search-close-btn';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.title = _('closeButton') || 'Close';
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            popup.style.display = 'none';
+        });
+        popup.appendChild(closeBtn);
+        // Create a dedicated container for the scrollable items
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'saved-searches-content';
+        popup.appendChild(contentContainer);
+        // Комбинираме последното търсене със запазените и премахваме дубликати,
+        // за да сме сигурни, че всяко търсене се показва само веднъж.
+        const allSearchesForDisplay = [...new Set([lastSearchTerm, ...savedSearches])];
+        allSearchesForDisplay.forEach((term, index) => {
+            if (index > 0 && !term) return; // Don't show empty saved searches
+            const item = document.createElement('div');
+            item.className = 'saved-search-item';
+            item.textContent = term;
+            item.addEventListener('click', () => {
+                if (searchBox) {
+                    searchBox.value = term;
+                    triggerSearch(true);
+                }
+                popup.style.display = 'none';
+            });
+            contentContainer.appendChild(item); // Add items to the new container
+        });
+    }
+
+    // This function will be the single point for applying search and UI updates
+    const triggerSearch = (isUserTyping = false) => {
+        if (isUserTyping) {
+            // Only update the "last search" if the input is not empty
+            if (searchBox.value.trim() !== '') {
+                lastSearchTerm = searchBox.value;
+                localStorage.setItem('lastSearchTerm', lastSearchTerm);
+            }
+        }
+
+        const hasTextTrimmed = searchBox.value.trim().length > 0;
+        const searchBoardBtn = document.getElementById('search-results-board-btn');
+
+        if (!hasTextTrimmed && currentBoardFilter === 'search-results') {
+            // Ако изчистваме търсенето, се връщаме към предния борд
+            currentBoardFilter = boardBeforeSearch || 'all';
+            if (searchBoardBtn) searchBoardBtn.style.display = 'none';
+        } else if (hasTextTrimmed) {
+            // Ако започваме търсене и не сме в режим търсене
+            if (currentBoardFilter !== 'search-results') {
+                boardBeforeSearch = currentBoardFilter;
+                currentBoardFilter = 'search-results';
+            }
+            if (searchBoardBtn) {
+                searchBoardBtn.style.display = 'inline-flex';
+            }
+        }
+
+        applyFilters();
+
+        // Update UI counters and active state
+        updateBoardCounterUI('search-results');
+
+        // Force UI update for active button state
+        const buttonBoardId = (currentBoardFilter === 'search-results') ? 'search-results' : currentBoardFilter;
+        document.querySelectorAll('.board-filter-link').forEach(link => {
+            const isSelected = link.dataset.boardid === String(buttonBoardId);
+            link.classList.toggle('selected-board', isSelected);
+            link.classList.toggle('active', isSelected);
+            link.style.height = isSelected ? '39px' : '35px';
+        });
+
+        const hasText = searchBox.value.length > 0;
+        clearSearchBtn.style.display = hasText ? 'flex' : 'none';
+        saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
+
+        if (hasTextTrimmed && searchBoardBtn) {
+            setTimeout(() => {
+                searchBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }, 100);
+        } else if (!hasTextTrimmed) {
+            // Скролираме до активния борд след изчистване на търсенето
+            const activeBtn = document.querySelector(`.board-filter-link[data-boardid="${buttonBoardId}"]`);
+            if (activeBtn) {
+                setTimeout(() => {
+                    activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }, 100);
+            }
+        }
+    };
+
+    // Listen for user typing with Debounce
+    let searchDebounceTimeout;
+    searchBox.addEventListener('input', (event) => {
+        // Immediate UI update for buttons (no debounce needed for visibility)
+        const val = searchBox.value.trim();
+        const hasText = val.length > 0;
+        clearSearchBtn.style.display = hasText ? 'flex' : 'none';
+        // Save button might wait for debounce, but usually safer to show immediately too
+        saveSearchBtn.style.display = hasText ? 'flex' : 'none';
+
+        // По-толерантна проверка за токен в реално време
+        if (val.match(/^\??token=/)) {
+            saveSearchBtn.title = (typeof _ === 'function') ? _('saveTokenTooltip') : "Update token";
+        } else {
+            saveSearchBtn.title = (typeof _ === 'function') ? _('searchSavedTip') : "Save search term";
+        }
+        if (!event.isTrusted) return;
+        clearTimeout(searchDebounceTimeout);
+        searchDebounceTimeout = setTimeout(() => {
+            triggerSearch(true);
+        }, 300); // Wait 300ms after last keystroke
+    });
+
+    // Handle Enter key
+    searchBox.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent form submission if any
+            searchBox.blur(); // Hide keyboard on mobile
+            triggerSearch(true); // Ensure search is applied
+            document.getElementById('saved-searches-popup').style.display = 'none'; // Close popup
+        }
+    });
+
+    // Clear Button Logic
+    clearSearchBtn.addEventListener('click', () => {
+        searchBox.value = '';
+        lastSearchTerm = '';
+        localStorage.setItem('lastSearchTerm', lastSearchTerm);
+        triggerSearch(true);
+        searchBox.blur();
+        const popup = document.getElementById('saved-searches-popup');
+        if (popup) popup.style.display = 'none';
+    });
+
+    searchBox.addEventListener('focus', () => {
+        renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
+    });
+    saveSearchBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const searchTerm = searchBox.value.trim();
+        // Обработка на токен за лиценз
+        const tokenMatch = searchTerm.match(/^\??token=(.+)$/);
+        if (tokenMatch) {
+            const tokenValue = tokenMatch[1].trim();
+            if (tokenValue) {
+                localStorage.setItem('urlToken', tokenValue);
+                searchBox.value = '';
+                saveSearchBtn.style.display = 'none';
+                clearSearchBtn.style.display = 'none';
+                cachedLicenseData = null; // Изчистваме кеша за лиценза
+                isAppStarted = false; // Позволяваме рестартиране на приложението
+                startApp(true);
+            }
+            return;
+        }
+        if (searchTerm && !savedSearches.includes(searchTerm)) {
+            saveSearchTerm(searchTerm);
+            // Animate the save button instead of showing a toast
+            saveSearchBtn.classList.add('saved-animation');
+            setTimeout(() => saveSearchBtn.classList.remove('saved-animation'), 600);
+            renderSavedSearchesPopup(); // Re-render to show the new term immediately
+            document.getElementById('saved-searches-popup').style.display = 'block';
+        }
+    });
+
+    // --- Calculator Button ---
+    const calculateBtn = document.getElementById('calculate-modal-btn');
+    let longPressTimer;
+    let isLongPress = false;
+
+    // Обработка на click събитие
+    calculateBtn.addEventListener('click', (e) => {
+        if (isLongPress) {
+            isLongPress = false;
+            return;
+        }
+        if (e.ctrlKey) {
+            // Ctrl+клик - извикваме с true
+            handleCalculateClick(true);
+        } else {
+            // Обикновен клик
+            handleCalculateClick(false);
+        }
+    });
+
+    // Обработка на long press
+    const startPress = (e) => {
+        isLongPress = false;
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            handleCalculateClick(true);
+        }, 500); // 500ms за long press
+    };
+
+    const endPress = () => {
+        clearTimeout(longPressTimer);
+    };
+
+    calculateBtn.addEventListener('mousedown', startPress);
+    calculateBtn.addEventListener('mouseup', endPress);
+    calculateBtn.addEventListener('mouseleave', endPress);
+    calculateBtn.addEventListener('touchstart', startPress, { passive: true });
+    calculateBtn.addEventListener('touchend', endPress);
+    // --- КОРЕКЦИЯ: Преместваме бутоните в хедъра на модала ---
+    const modalHeader = contentModal.querySelector('.modal-header-controls');
+    const modalCloseBtn = contentModal.querySelector('.modal-close');
+    if (modalHeader && modalCloseBtn) {
+        // Вмъкваме бутоните преди бутона за затваряне
+        modalHeader.insertBefore(calculateBtn, modalCloseBtn);
+        modalHeader.insertBefore(copyBtn, modalCloseBtn);
+    }
+    // --- Край на корекцията ---
+    copyBtn.innerHTML = copyIconSvg;
+    copyBtn.addEventListener('click', () => {
+        if (!navigator.clipboard) return;
+        const selection = window.getSelection();
+        let textToCopy = '';
+        // Проверяваме дали има маркиран текст и дали той се намира в модалния прозорец
+        if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
+            const range = selection.getRangeAt(0);
+            // Уверяваме се, че селекцията е започнала вътре в modalBody
+            if (modalBody.contains(range.commonAncestorContainer)) {
+                textToCopy = selection.toString();
+            }
+        }
+        // Ако няма избран текст, копираме цялото съдържание на бележката
+        if (textToCopy === '') {
+            textToCopy = currentModalContent?.trim() || '';
+        }
+        if (textToCopy) {
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                copyBtn.innerHTML = '&#10003;'; // Показваме отметка за успех
+                setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 5000);
+            }).catch(err => {
+                showToast(_('errorCopyFailed'));
+            });
+        }
+    });
+
+    // Event listener for submit button in folder ID popup
+    document.getElementById('submitFolderIdBtn').addEventListener('click', handleSubmitFolderId);
+    document.getElementById('folderIdInput').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            handleSubmitFolderId();
+        }
+    });
+
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const modal = e.currentTarget.closest('.modal-overlay');
+            if (modal && modal.id === 'content-modal') {
+                if (!(await checkUnsavedChanges())) return;
+            }
+            if (modal) modal.classList.remove('visible');
+            if (modal && modal.id === 'settings-modal') {
+                window.kbAssistant.terminateGuide();
+                if (notesBgrdChanged || oneTapLinkChanged) {
+                    mainLogic();
+                    notesBgrdChanged = false;
+                    oneTapLinkChanged = false;
+                }
+            }
+        });
+
+    });
+    // Specific listener for the settings close button (not class 'modal-close')
+    const settingsCloseBtnPrimary = document.getElementById('settings-close-btn');
+
+    // Add same long-press touch simulation as settings_button
+    let closeBtnLongPressTimer;
+    settingsCloseBtnPrimary.addEventListener('touchstart', (e) => {
+        closeBtnLongPressTimer = setTimeout(() => {
+            settingsCloseBtnPrimary.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true, cancelable: true }));
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 600);
+    }, { passive: true });
+    settingsCloseBtnPrimary.addEventListener('touchend', () => clearTimeout(closeBtnLongPressTimer));
+    settingsCloseBtnPrimary.addEventListener('touchmove', () => clearTimeout(closeBtnLongPressTimer));
+    settingsCloseBtnPrimary.addEventListener('contextmenu', (e) => {
+        e.preventDefault(); e.stopPropagation(); return false;
+    });
+
+    settingsCloseBtnPrimary.addEventListener('click', (e) => {
+        if (e && e.ctrlKey) {
+            const sb = document.getElementById('settings_button');
+            if (sb) sb.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
+            return;
+        }
+        document.getElementById('settings-modal').classList.remove('visible');
+        if (window.kbAssistant) window.kbAssistant.terminateGuide();
+        if (notesBgrdChanged || oneTapLinkChanged) {
+            mainLogic();
+            notesBgrdChanged = false;
+            oneTapLinkChanged = false;
+        }
+        if (!isOffline) {
+            const advSpan = document.getElementById('advanced-settings-span');
+            if (advSpan && !advSpan.hasAttribute('hidden')) {
+                syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
+            }
+        }
+    });
+
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        let isMouseDownInside = false;
+
+        modal.addEventListener('mousedown', (e) => {
+            // Маркираме дали натискането е започнало вътре в съдържанието
+            isMouseDownInside = e.target !== modal;
+        });
+
+        modal.addEventListener('touchstart', (e) => {
+            // Аналогично за мобилни устройства
+            isMouseDownInside = e.target !== modal;
+        }, { passive: true });
+
+        modal.addEventListener('click', async (e) => {
+            // Затваряме само ако и натискането, и отпускането са били върху овърлея
+            if (e.target === modal && !isMouseDownInside) {
+                if (modal.id === 'content-modal') {
+                    if (!(await checkUnsavedChanges())) return;
+                }
+                modal.classList.remove('visible');
+                if (modal.id === 'settings-modal') {
+                    if (window.kbAssistant) window.kbAssistant.terminateGuide();
+                    if (notesBgrdChanged || oneTapLinkChanged) {
+                        mainLogic();
+                        notesBgrdChanged = false;
+                        oneTapLinkChanged = false;
+                    }
+                    if (!isOffline) {
+                        const advSpan = document.getElementById('advanced-settings-span');
+                        if (advSpan && !advSpan.hasAttribute('hidden')) {
+                            syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
+                        }
+                    }
+                }
+            }
+        });
+    });
+    // Prevent clicks inside the content modal from propagating to the underlying notes
+    contentModal.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
+    // Apply initial font size settings from localStorage
+    const initialNoteFontSize = localStorage.getItem('noteFontSize') || 16;
+    document.documentElement.style.setProperty('--note-font-size', `${initialNoteFontSize}px`);
+    // Apply initial state for datemod visibility
+    const shouldHideDatemod = localStorage.getItem('showDatemod') === 'false';
+    document.body.classList.toggle('hide-datemod', shouldHideDatemod);
+    const initialModalFontSize = localStorage.getItem('modalFontSize') || 16;
+    modalBody.style.fontSize = `${initialModalFontSize}px`;
+    // Add a listener to reset the modal font size when it's closed,
+    // as it might be changed by other parts of the app (like formatText).
+    contentModal.addEventListener('transitionend', () => {
+        if (!contentModal.classList.contains('visible')) {
+            modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
+        }
+    });
+
+    // --- Modal Resizing Logic ---
+    const modalContentBox = contentModal.querySelector('.modal-content-box');
+    const resizeHandle = contentModal.querySelector('.modal-resize-handle');
+    let startX, startY, startWidth, startHeight;
+    function doDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+        const newWidth = Math.round(startWidth + currentX - startX);
+        const newHeight = Math.round(startHeight + currentY - startY);
+        modalContentBox.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px'; // Limited by screen width
+        modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
+        modalContentBox.style.maxWidth = '100vw';
+        modalContentBox.style.maxHeight = 'none';
+    }
+
+    function stopDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        document.documentElement.removeEventListener('mousemove', doDrag, false);
+        document.documentElement.removeEventListener('mouseup', stopDrag, false);
+        document.documentElement.removeEventListener('touchmove', doDrag, false);
+        document.documentElement.removeEventListener('touchend', stopDrag, false);
+        localStorage.setItem('modalWidth', modalContentBox.style.width);
+        localStorage.setItem('modalHeight', modalContentBox.style.height);
+    }
+    function startDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        startY = e.touches ? e.touches[0].clientY : e.clientY;
+        startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
+        startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
+        // Attach listeners for both mouse and touch
+        document.documentElement.addEventListener('mousemove', doDrag, false);
+        document.documentElement.addEventListener('mouseup', stopDrag, false);
+        document.documentElement.addEventListener('touchmove', doDrag, false);
+        document.documentElement.addEventListener('touchend', stopDrag, false);
+    }
+
+    // Attach start event for both mouse and touch
+    resizeHandle.addEventListener('mousedown', startDrag);
+    resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
+    // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
+    resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
+            <path d="M12 2 L2 12" />
+            <path d="M12 7 L7 12" />
+            <!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
+            <path d="M10 4 L4 4 L4 10" />
+        </svg>`;
+    // Load saved searches and settings from localStorage
+    lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
+    savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
+    maxSavedSearches = parseInt(localStorage.getItem('maxSavedSearches') || '20', 10);
+    setLanguage(currentLang);
+    // Add app version to the settings modal title
+    const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
+    if (settingsTitle) {
+        settingsTitle.textContent += `${version}`;
+    }
+    // Set initial placeholder text correctly
+    updateSearchPlaceholder();
+    // Hide saved searches popup when clicking outside
+    document.addEventListener('click', (e) => {
+        if (savedSearchesPopup.style.display === 'block' && !searchWrapper.contains(e.target)) {
+            savedSearchesPopup.style.display = 'none';
+        }
+    });
+
+    // --- Mode Button Logic ---
+    const modeButton = document.getElementById('mode_button');
+    const calendarButton = document.getElementById('calendar_button');
+    if (calendarButton) {
+        calendarButton.addEventListener('click', () => {
+            filterNotesByBoard('calendar');
+        });
+    }
+
+    // Click handler
+    modeButton.addEventListener('click', async (e) => {
+        if (isSyncSuspended) {
+            isSyncSuspended = false;
+            isOffline = false;
+            isAppStarted = false;
+            handleAuthClick();
+            return;
+        }
+        if (isOffline) {
+            if (typeof showToast === 'function') showToast(_('checkingNetwork') || "Checking network connection...", 2000);
+            let reallyOnline = false;
+            try {
+                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
+                reallyOnline = response.ok;
+            } catch (err) { }
+
+            if (reallyOnline) {
+                isOffline = false;
+                updateModeButton();
+                if (typeof showToast === 'function') showToast(_('onlineRestored') || "Online mode restored", 2000);
+            } else {
+                showToast(_('offlineModeMessage') || "Cannot sync while offline.", 3000);
+            }
+            return;
+        }
+        updateGlobalStateFlags();
+        const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
+        if (isDbOnlyMode && dbExists) {
+            triggerSync();
+        } else {
+            document.getElementById('settings_button').click();
+        }
+    });
+
+    async function triggerSync() {
+        updatedNoteGdims = []; // Clear previous updates
+        loaderContainer.style.display = 'block'; // Показваме статус панела
+        const dbSource = await getConfig('dbSource');
+        let updatedCount = 0;
+        // Показваме лоудъра
+        loaderContainer.style.display = 'block';
+        const loaderTitle = document.getElementById('loader-title');
+        if (dbSource === 1) { // Базата е създадена от Google Drive
+            // --- КОРЕКЦИЯ: Зареждаме Google API, тъй като тази функция го пропуска ---
+            try {
+                if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
+                    await loadGoogleApis();
+                }
+                if (typeof gapi !== 'undefined' && gapi.client) {
+                    gapi.client.setToken({ access_token: authToken.access_token });
+                }
+            } catch (error) {
+                throw new Error(_('errorGoogleLibs'));
+            }
+            console.log("Triggering Google Drive sync...");
+            console.trace("[Sync-Trace] triggerSync called");
+            if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
+            try {
+                updatedCount = await runGoogleDriveSync();
+            } catch (err) {
+                console.warn("GD Sync failed, attempting token refresh...", err);
+                const refreshResult = await refreshAuthToken();
+                if (refreshResult && refreshResult.pass) {
+                    authToken = refreshResult.tokenData;
+                    // Update gapi client with new token
+                    if (typeof gapi !== 'undefined' && gapi.client) {
+                        gapi.client.setToken({ access_token: authToken.access_token });
+                    }
+                    updatedCount = await runGoogleDriveSync();
+                } else {
+                    showToast(_('errorSessionExpired'));
+                    loaderContainer.style.display = 'none';
+                    return;
+                }
+            }
+            showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 5000);
+        } else if (dbSource === 2) { // Базата е създадена от Локална папка
+            console.log("Triggering Local Folder sync...");
+            if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
+            updatedCount = await runLocalSync();
+            showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 5000);
+        } else {
+            loaderContainer.style.display = 'none';
+            return; // Не правим нищо, ако базата е от архив
+        }
+        // --- НОВА, ПО-ЕФИКАСНА ЛОГИКА ЗА ОБНОВЯВАНЕ ---
+        if (updatedCount > 0) {
+            // 1. Извличаме само новите бележки от базата данни
+            const newNotesContent = await Promise.all(
+                updatedNoteGdims.map(gdid => getFromDB(NOTE_STORE_NAME, gdid))
+            );
+            const validNewNotes = newNotesContent.filter(Boolean);
+            // 2. Обновяваме данните в паметта и DOM-а
+            for (const newNote of validNewNotes) {
+                // A. Обновяване на данните
+                const existingIndex = allNotesData.findIndex(n => n.gdid === newNote.gdid);
+                if (existingIndex !== -1) {
+                    allNotesData[existingIndex] = newNote; // Заместваме старата версия
+                } else {
+                    allNotesData.push(newNote); // Добавяме, ако е нова
+                }
+                // B. Обновяване на DOM-а
+                // Първо премахваме съществуващия елемент, ако има такъв
+                const existingEl = document.querySelector(`.note[data-g="${newNote.gdid}"]`);
+                if (existingEl) {
+                    existingEl.remove();
+                }
+                // Създаваме и добавяме новия елемент
+                const newEl = await createNoteElement(newNote);
+                if (newEl) {
+                    notesContainer.prepend(newEl);
+                }
+            }
+            trackMaxIds(validNewNotes);
+            // 4. Обновяваме броячите и менюто с бордове
+            currentBoardFilter = 'new-updates'; // Switch to New board
+            await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+            applyFilters(); // Прилагаме филтрите отново
+        }
+        loaderContainer.style.display = 'none';
+    }
+
+    // Добавяме event listener за показване на системна информация при клик на брояча
+    const noteCounter = document.getElementById('note-counter');
+    noteCounter.addEventListener('click', async () => {
+        if (isLoadCancelled) return;
+        try {
+            const dbOwnerEmail = await getConfig('userEmail') || _('noData');
+            const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || _('noData');
+            const lastGDTimestamp = await getConfig('lastGDTimestamp');
+            const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
+            const dbNoteIdType = await getConfig('dbNoteIdType') || _('noData');
+            const dbSourceValue = await getConfig('dbSource');
+            let dbSourceText = _('noData');
+            if (dbSourceValue === 1) { // Google Drive
+                dbSourceText = _('sourceGoogleDrive');
+            } else if (dbSourceValue === 2) {
+                dbSourceText = _('sourceLocalFolder');
+            } else if (dbSourceValue === 3) {
+                dbSourceText = _('sourceArchive');
+            }
+            const dbCreatedTimestamp = await getConfig('dbCreatedTimestamp');
+            const dbCreatedFolderName = await getConfig('dbCreatedFolderName') || '';
+            const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
+            const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
+            const dbCreatedDate = dbCreatedTimestamp ? formatDateTime(dbCreatedTimestamp) : '';
+            const loadTimeDate = initialLoadTimestamp ? formatDateTime(initialLoadTimestamp) : '';
+
+            // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
+            const content = [
+                `${_('activeFolderLabel')} ${activeFolderName}`,
+                `${_('sysInfoLoadTime')}: ${initialLoadTime ? initialLoadTime + ' s' + (loadTimeDate ? ' (' + loadTimeDate + ')' : '') : _('noData')}`,
+                ``,
+                `${_('sysInfoUser')}: ${currentUserEmail}`,
+                `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
+                `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedFolderName ? ' (' + dbCreatedFolderName + ')' : ''}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
+                `${_('sysInfoLastLocalSync')}: ${localDate}`,
+                `${_('sysInfoLastGDSync')}: ${gdDate}`,
+                `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
+                ``,
+                ...(tokenRemainingDays !== null ? [`${_('remainingDays')}: ${tokenRemainingDays}`] : []),
+            ].join('\n');
+            showModal({ raw: content, color: '#f0f0f0', readonly: true });
+        } catch (error) {
+            console.log("Error fetching system info:", error);
+            showToast(_('errorSysInfo'));
+        }
+    });
+
+}
+
+/**
+ * Актуализира текста в полето за търсене, за да покаже текущия режим.
+ */
+function updateSearchPlaceholder() {
+    const searchInput = document.getElementById('search-box');
+    if (!searchInput) return;
+    // Don't overwrite if install button is currently visible over the search box
+    const installBtnEl = document.getElementById('install_button');
+    if (installBtnEl && window.getComputedStyle(installBtnEl).display !== 'none') return;
+    searchInput.placeholder = _('searchPlaceholder') || "Enter text...";
+}
+
+function updateSearchModeIndicator() {
+    const dot = document.querySelector('.search-mode-dot');
+    const icon = document.querySelector('.search-icon-static');
+    if (!dot || !icon) return;
+    if (searchInBoardOnly) {
+        // Вземаме цвета на активния борд бутон
+        // const activeBtn = document.querySelector(`.board-filter-link.selected-board`);
+        // const boardColor = activeBtn ? getComputedStyle(activeBtn).backgroundColor : '#1976D2';
+        dot.style.display = '';
+        dot.setAttribute('fill', "black");
+        icon.title = _('searchInBoardTooltip') || 'Search in current board (click to change)';
+    } else {
+        dot.style.display = 'none';
+        icon.title = _('searchEverywhereTooltip') || 'Search everywhere (click to change)';
+    }
+}
+
+function saveSearchTerm(term) {
+    const existingIndex = savedSearches.indexOf(term);
+    if (existingIndex > -1) {
+        savedSearches.splice(existingIndex, 1);
+    }
+    savedSearches.unshift(term);
+    if (maxSavedSearches > 0 && savedSearches.length > maxSavedSearches) {
+        savedSearches.length = maxSavedSearches;
+    } else if (maxSavedSearches === 0) {
+        savedSearches = [];
+    }
+    localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
+    if (!isOffline) {
+        saveSettingsToGDrive(true).catch(e => console.warn("Failed to auto-save settings on search save:", e));
+    }
+}
+
+
+// Проверяваме дали има токен преди да стартираме приложението
+// Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
+(async () => {
+    const cache = await caches.open('app-cache');
+    const cachedResponse = await cache.match('s');
+    if (!cachedResponse) {
+        initLoginPage();
+        return;
+    }
+    const sessionToken = sessionStorage.getItem('google_auth_token');
+    const localToken = localStorage.getItem('google_auth_token');
+    if (sessionToken || localToken) {
+        startApp();
+    } else {
+        // Няма токен - показваме login страницата веднага и инициализираме event listeners
+        initLoginPage();
+        // gisLoaded() ще инициализира Google authentication когато се зареди
+    }
+    // --- Selection Locking Logic ---
+    // Persistent lock strategy: Lock strictly enforces selection on the active note. 
+    // It remains active until the user clicks somewhere else.
+    document.addEventListener('mousedown', (e) => {
+        // 1. Identify target
+        const note = e.target.closest('.note');
+        // Exclude the boards menu (header note) from selection locking
+        if (note && note.classList.contains('boards-note')) return;
+        const isNoteContent = note && e.target.closest('.note-content');
+        // 2. Clean up previous active state
+        document.querySelectorAll('.active-selection-note').forEach(n => {
+            if (n !== note) n.classList.remove('active-selection-note');
+        });
+        // 3. Apply logic
+        if (isNoteContent) {
+            // User clicked in a note content -> Lock everything else, activate this one
+            document.body.classList.add('selection-locked');
+            note.classList.add('active-selection-note');
+        } else {
+            // User clicked outside note content (e.g. background, header, footer) -> Unlock everything
+            // This restores default behavior when not interacting with text.
+            document.body.classList.remove('selection-locked');
+            document.querySelectorAll('.active-selection-note').forEach(n => n.classList.remove('active-selection-note'));
+            // If the user clicked on the note container (but not content), allow selection to clear?
+            // Default browser behavior handles focus handling.
+        }
+    });
+    // We no longer remove the lock on mouseup, because doing so allows the browser to 
+    // "expand" the selection to the mouse up position if it was outside the note.
+    // By keeping the lock, we force the selection to stay contained.
+})();
+
+// След успешно удостоверяване gisLoaded() ще извика startApp()
+
+// Функция за инициализация на login страницата
+async function initLoginPage() {
+    document.getElementById('login-page').hidden = false;
+    document.getElementById('login-page').style.display = 'block';
+
+    // Header и search се показват чрез класа app-ready
+    updateSearchPlaceholder(); // Обновяваме placeholder-а с преложения език
+
+    // --- Button Visibility Logic (Restored & Consolidated) ---
+    const loginBox = document.querySelector('.login-box');
+    const authBtn = document.getElementById("authorize_button");
+    const trialBtn = document.getElementById("trialBtn");
+
+    if (loginBox) loginBox.style.display = 'block';
+
+    let hasS = false;
+    try {
+        const cache = await caches.open('app-cache');
+        const cachedResponse = await cache.match('s');
+        hasS = !!cachedResponse;
+    } catch (e) {
+        console.warn("Error checking cache in initLoginPage:", e);
+    }
+
+    const licenseData = await decryptLicenseToken();
+    const isLicenseExpired = hasS && !licenseData.pass;
+    window.isAppErrorState = isLicenseExpired; // Mark as error state to hide assistant if needed
+
+    // --- UI Messaging Logic ---
+    const rememberMeCheck = document.getElementById('rememberMe');
+    if (isLicenseExpired) {
+        const loginPrompt = document.querySelector('[data-key="loginPrompt"]');
+        if (loginPrompt) {
+            loginPrompt.setAttribute('data-key', 'invalidCertificate');
+            loginPrompt.innerHTML = _('invalidCertificate');
+        }
+        if (rememberMeCheck && rememberMeCheck.parentElement) {
+            rememberMeCheck.parentElement.style.display = 'none';
+        }
+    } else {
+        const loginPrompt = document.querySelector('[data-key="loginPrompt"], [data-key="invalidCertificate"]');
+        if (loginPrompt) {
+            loginPrompt.setAttribute('data-key', 'loginPrompt');
+            loginPrompt.innerHTML = _('loginPrompt');
+        }
+        if (rememberMeCheck && rememberMeCheck.parentElement) {
+            rememberMeCheck.parentElement.style.display = 'block';
+        }
+    }
+
+    if (isOffline) {
+        // Offline Mode: Show "Start Offline" only if we have data ('s') and license is still OK
+        if (authBtn) {
+            authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
+            authBtn.style.display = (hasS && !isLicenseExpired) ? 'inline-block' : 'none';
+            authBtn.disabled = false;
+        }
+        if (trialBtn) trialBtn.style.display = 'none'; // No trial in offline mode
+    } else {
+        // Online Mode
+        if (authBtn) {
+            authBtn.textContent = (typeof _ === 'function') ? _('authorizeButton') : "Authorize with Google";
+            // Show Auth if we have trial started and it's not expired
+            authBtn.style.display = (hasS && !isLicenseExpired) ? 'inline-block' : 'none';
+            authBtn.disabled = false;
+        }
+        if (trialBtn) {
+            // Show Trial button only if we haven't started one yet
+            trialBtn.style.display = !hasS ? 'inline-block' : 'none';
+            trialBtn.textContent = (typeof _ === 'function') ? _('trialButton') : "Start 30-day trial period";
+        }
+    }
+
+    // Language switcher event listeners
+    const switchLanguage = (lang) => {
+        localStorage.setItem('language', lang);
+        location.reload();
+    };
+    if (typeof renderLanguageSwitchers === 'function') renderLanguageSwitchers(switchLanguage);
+    // Добавяне на действие при натискане на trial бутона
+    if (trialBtn && trialBtn.parentNode) {
+        // Cloning to remove any previous event listeners (simple way to avoid dupes)
+        const newTrialBtn = trialBtn.cloneNode(true);
+        trialBtn.parentNode.replaceChild(newTrialBtn, trialBtn);
+        newTrialBtn.addEventListener("click", async (e) => {
+            console.log("Trial button clicked");
+            e.preventDefault(); // Предотвратяваме стандартното действие
+            // 1. Взимаме токена от TRIAL_URL
+            const url = new URL(TRIAL_URL);
+            const trialToken = url.searchParams.get("token");
+            // 2. Запазваме го в localStorage, за да е наличен след логване
+            if (trialToken) {
+                localStorage.setItem('urlToken', trialToken);
+                sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
+                // --- НОВО: Записваме 's' в кеша веднага, за да се знае, че е стартиран пробния период ---
+                await getFirstStartEncoded(true);
+            }
+            // 3. Директно извикваме функцията за авторизация (вместо клик върху скрития бутон)
+            console.log("Starting Google authorization...");
+            handleAuthClick();
+        });
+    }
+    // Запазваме състоянието на "Запомни ме" при промяна
+    const rememberMeCheckbox = document.getElementById('rememberMe');
+    if (rememberMeCheckbox) {
+        rememberMeCheckbox.addEventListener('change', () => {
+            localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
+        });
+    }
+    // Event listener за authorize бутона
+    const authorizeBtn = document.getElementById('authorize_button');
+    if (authorizeBtn) {
+        authorizeBtn.addEventListener('click', handleAuthClick);
+    }
+    showAppUI();
+}
+
+function updateSignoutTooltip() {
+    const email = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
+    const signoutBtn = document.getElementById('signout_button');
+    if (signoutBtn) {
+        const baseTooltip = _('signoutButtonTooltip');
+        if (email) {
+            const username = email.split('@')[0];
+            let tooltipText = `${baseTooltip} (${username})`;
+            if (tokenRemainingDays !== null) {
+                tooltipText += ` [${tokenRemainingDays}]`;
+            }
+            signoutBtn.title = tooltipText;
+        } else {
+            signoutBtn.title = baseTooltip + (tokenRemainingDays !== null ? ` [${tokenRemainingDays}]` : '');
+        }
+    }
+}
+
 async function updateSpecialFolderNames() {
     try {
         const arhFolderNameDisplay = document.getElementById('arh-folder-name');
@@ -17775,3 +17782,5 @@ async function cleanupOrphanedImages() {
 
 // Задаваме периодична проверка за осиротели изображения
 // setInterval(cleanupOrphanedImages, 10 * 60 * 1000); // На всеки 10 минути
+
+
