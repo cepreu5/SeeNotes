@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.37lan'; // App version
+const version = 'Beta 1.37assist'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -191,6 +191,7 @@ const emptyTrashIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 
 
+
 let SUPPORTED_LANGUAGES = [
     { id: 'en', label: 'EN' },
     { id: 'bg', label: 'BG' }
@@ -216,9 +217,11 @@ function renderLanguageSwitchers(onChangeCallback) {
             const newSelect = container.cloneNode(true);
             container.parentNode.replaceChild(newSelect, container);
             if (typeof onChangeCallback === 'function') {
-                newSelect.addEventListener('change', (e) => {
+                newSelect.addEventListener('change', async (e) => {
                     const lang = e.target.value;
                     localStorage.setItem('language', lang);
+                    currentLang = lang;
+                    await saveSettingsToGDrive(true);
                     window.location.reload();
                 });
             }
@@ -241,9 +244,11 @@ function renderLanguageSwitchers(onChangeCallback) {
         });
 
         if (typeof onChangeCallback === 'function') {
-            select.addEventListener('change', (e) => {
+            select.addEventListener('change', async (e) => {
                 const lang = e.target.value;
                 localStorage.setItem('language', lang);
+                currentLang = lang;
+                await saveSettingsToGDrive(true);
                 window.location.reload();
             });
         }
@@ -7689,7 +7694,7 @@ function applyFilters() {
 
     // --- PROMO NOTE LOGIC: INSERT AT RANDOM PLACE ---
     // Skip this entire logic during initial load to prevent flickering before UI is stable
-    if (!isInitialLoad && localStorage.getItem('hideAssistant') !== 'true') {
+    if (!isInitialLoad) {
         const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
 
         if (isDismissedInBoard) {
@@ -8620,20 +8625,27 @@ async function loadSettingsFromGDrive(silent = false) {
         try {
             let settings = JSON.parse(content);
             const currentDevice = localStorage.getItem('deviceName') || 'Default';
+            // If the settings file uses the new per‑device structure, extract the object for the active device.
             if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
                 const topLevelKeys = Object.keys(settings);
                 const looksOld = topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
                 if (!looksOld) {
-                    if (settings[currentDevice]) settings = settings[currentDevice];
-                    else if (settings['Default']) settings = settings['Default'];
-                    else if (!silent) { showToast("Settings for device '" + currentDevice + "' not found."); return; }
+                    // New format: settings is an object of devices.
+                    if (!settings[currentDevice]) {
+                        // Profile missing – create a fresh entry based on current localStorage values.
+                        settings[currentDevice] = {};
+                        // Persist the newly created profile so future loads find it.
+                        await saveSettingsToGDrive(true);
+                        showToast(_('newProfileCreated'), 2000);
+                    }
+                    settings = settings[currentDevice];
                 }
             }
+            // Apply the settings to localStorage (preserving essential keys)
             const preservedKeys = ['useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id', 'folderId', 'deviceName'];
             if (window.hasUrlLanguage) preservedKeys.push('language');
             Object.keys(settings).forEach(key => {
-                const isBoardKey = key.startsWith('board_');
-                if (appSettingsKeys.includes(key) || isBoardKey) {
+                if (appSettingsKeys.includes(key) || key.startsWith('board_')) {
                     if (!preservedKeys.includes(key)) {
                         let val = settings[key];
                         if (key === 'boardMenuOrder' && (!val || (Array.isArray(val) && val.length === 0))) return;
@@ -8642,14 +8654,18 @@ async function loadSettingsFromGDrive(silent = false) {
                     }
                 }
             });
+            // After loading a new profile we need a full reload so UI components (assistant, FAB, etc.) re‑initialise.
             if (silent) {
-                await renderUI({ rerenderOnlyMenu: true });
-                restoreAllFloatingPositions();
+                // Guard against infinite reload loops using sessionStorage.
+                if (!sessionStorage.getItem('profileReloaded')) {
+                    sessionStorage.setItem('profileReloaded', '1');
+                    // Trigger a reload after a short delay to let UI settle.
+                    setTimeout(() => location.reload(), 150);
+                }
             } else {
-                setTimeout(async () => {
-                    const confirmed = await showConfirmation(_('settingsLoadedSuccess'));
-                    if (confirmed) location.reload();
-                }, 100);
+                // Non‑silent load (initial startup) – clear any previous reload flag.
+                sessionStorage.removeItem('profileReloaded');
+                // No automatic reload needed here.
             }
         } catch (err) { console.error("Parse error:", err); if (!silent) showToast(_('errorLoadSettings')); }
     } else if (!silent) showToast(_('errorLoadSettings'));
@@ -8709,9 +8725,10 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
         if (!settingsLangSelect.dataset.hasChangeListener) {
             settingsLangSelect.dataset.hasChangeListener = 'true';
-            settingsLangSelect.addEventListener('change', () => {
+            settingsLangSelect.addEventListener('change', async () => {
                 const newLang = settingsLangSelect.value;
                 localStorage.setItem('language', newLang);
+                await saveSettingsToGDrive(true);
                 window.location.reload();
             });
         }
@@ -9029,25 +9046,27 @@ async function createSettingsUI(boardsData, boardParseError) {
     // Hide Assistant Logic
     if (hideAssistantCheckbox) {
         hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
-        hideAssistantCheckbox.addEventListener('change', () => {
+        hideAssistantCheckbox.addEventListener('change', async () => {
             const isChecked = hideAssistantCheckbox.checked;
             localStorage.setItem('hideAssistant', isChecked);
+            // Persist change to active profile on Google Drive
+            await saveSettingsToGDrive(true);
             const fabButton = document.getElementById('kb-fab');
             if (fabButton) {
                 fabButton.style.display = isChecked ? 'none' : 'block';
             }
-            // Ако скрием асистента, скриваме и промо бележката веднага
-            if (isChecked) {
-                if (promoNoteElement) {
-                    promoNoteElement.style.display = 'none';
-                }
-                // Изчистваме флаговете за затворени промо бележки, за да се покажат отново при включване
-                Object.keys(localStorage).forEach(key => {
-                    if (key.startsWith('dismissedPromo_')) {
-                        localStorage.removeItem(key);
-                    }
-                });
+            // If showing the assistant (checkbox unchecked), reload the page to initialize it
+            if (!isChecked) {
+                // Slight delay to allow UI updates before reload
+                setTimeout(() => {
+                    location.reload();
+                }, 100);
             }
+            // When assistant is hidden, we do NOT hide promo notes – they are managed separately.
+            if (isChecked) {
+                // No promo‑note handling here.
+            }
+            await saveSettingsToGDrive(true);
             showToast(_('settingSaved'), 2000);
         });
     }
@@ -10319,7 +10338,9 @@ async function startApp(isExplicitLogin = false) {
         // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
         // само ако е необходимо.
         // --- Инициализация на KB Assistant след успешно логване ---
-        window.kbAssistant.init();
+        if (localStorage.getItem('hideAssistant') !== 'true' && typeof window.kbAssistant?.init === 'function') {
+            window.kbAssistant.init();
+        }
         // Инициализация на draggable бутони
         const initDraggableButtons = () => {
             // ScrollTop Button

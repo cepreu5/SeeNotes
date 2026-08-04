@@ -23,9 +23,11 @@ function renderLanguageSwitchers(onChangeCallback) {
             const newSelect = container.cloneNode(true);
             container.parentNode.replaceChild(newSelect, container);
             if (typeof onChangeCallback === 'function') {
-                newSelect.addEventListener('change', (e) => {
+                newSelect.addEventListener('change', async (e) => {
                     const lang = e.target.value;
                     localStorage.setItem('language', lang);
+                    currentLang = lang;
+                    await saveSettingsToGDrive(true);
                     window.location.reload();
                 });
             }
@@ -48,9 +50,11 @@ function renderLanguageSwitchers(onChangeCallback) {
         });
 
         if (typeof onChangeCallback === 'function') {
-            select.addEventListener('change', (e) => {
+            select.addEventListener('change', async (e) => {
                 const lang = e.target.value;
                 localStorage.setItem('language', lang);
+                currentLang = lang;
+                await saveSettingsToGDrive(true);
                 window.location.reload();
             });
         }

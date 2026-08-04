@@ -52,9 +52,10 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
         if (!settingsLangSelect.dataset.hasChangeListener) {
             settingsLangSelect.dataset.hasChangeListener = 'true';
-            settingsLangSelect.addEventListener('change', () => {
+            settingsLangSelect.addEventListener('change', async () => {
                 const newLang = settingsLangSelect.value;
                 localStorage.setItem('language', newLang);
+                await saveSettingsToGDrive(true);
                 window.location.reload();
             });
         }
@@ -372,25 +373,27 @@ async function createSettingsUI(boardsData, boardParseError) {
     // Hide Assistant Logic
     if (hideAssistantCheckbox) {
         hideAssistantCheckbox.checked = localStorage.getItem('hideAssistant') === 'true';
-        hideAssistantCheckbox.addEventListener('change', () => {
+        hideAssistantCheckbox.addEventListener('change', async () => {
             const isChecked = hideAssistantCheckbox.checked;
             localStorage.setItem('hideAssistant', isChecked);
+            // Persist change to active profile on Google Drive
+            await saveSettingsToGDrive(true);
             const fabButton = document.getElementById('kb-fab');
             if (fabButton) {
                 fabButton.style.display = isChecked ? 'none' : 'block';
             }
-            // Ако скрием асистента, скриваме и промо бележката веднага
-            if (isChecked) {
-                if (promoNoteElement) {
-                    promoNoteElement.style.display = 'none';
-                }
-                // Изчистваме флаговете за затворени промо бележки, за да се покажат отново при включване
-                Object.keys(localStorage).forEach(key => {
-                    if (key.startsWith('dismissedPromo_')) {
-                        localStorage.removeItem(key);
-                    }
-                });
+            // If showing the assistant (checkbox unchecked), reload the page to initialize it
+            if (!isChecked) {
+                // Slight delay to allow UI updates before reload
+                setTimeout(() => {
+                    location.reload();
+                }, 100);
             }
+            // When assistant is hidden, we do NOT hide promo notes – they are managed separately.
+            if (isChecked) {
+                // No promo‑note handling here.
+            }
+            await saveSettingsToGDrive(true);
             showToast(_('settingSaved'), 2000);
         });
     }

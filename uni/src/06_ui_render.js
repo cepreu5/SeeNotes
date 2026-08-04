@@ -2036,7 +2036,7 @@ function applyFilters() {
 
     // --- PROMO NOTE LOGIC: INSERT AT RANDOM PLACE ---
     // Skip this entire logic during initial load to prevent flickering before UI is stable
-    if (!isInitialLoad && localStorage.getItem('hideAssistant') !== 'true') {
+    if (!isInitialLoad) {
         const isDismissedInBoard = currentBoardFilter && localStorage.getItem(`dismissedPromo_${currentBoardFilter}`) === 'true';
 
         if (isDismissedInBoard) {
@@ -2967,20 +2967,27 @@ async function loadSettingsFromGDrive(silent = false) {
         try {
             let settings = JSON.parse(content);
             const currentDevice = localStorage.getItem('deviceName') || 'Default';
+            // If the settings file uses the new per‑device structure, extract the object for the active device.
             if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
                 const topLevelKeys = Object.keys(settings);
                 const looksOld = topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
                 if (!looksOld) {
-                    if (settings[currentDevice]) settings = settings[currentDevice];
-                    else if (settings['Default']) settings = settings['Default'];
-                    else if (!silent) { showToast("Settings for device '" + currentDevice + "' not found."); return; }
+                    // New format: settings is an object of devices.
+                    if (!settings[currentDevice]) {
+                        // Profile missing – create a fresh entry based on current localStorage values.
+                        settings[currentDevice] = {};
+                        // Persist the newly created profile so future loads find it.
+                        await saveSettingsToGDrive(true);
+                        showToast(_('newProfileCreated'), 2000);
+                    }
+                    settings = settings[currentDevice];
                 }
             }
+            // Apply the settings to localStorage (preserving essential keys)
             const preservedKeys = ['useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id', 'folderId', 'deviceName'];
             if (window.hasUrlLanguage) preservedKeys.push('language');
             Object.keys(settings).forEach(key => {
-                const isBoardKey = key.startsWith('board_');
-                if (appSettingsKeys.includes(key) || isBoardKey) {
+                if (appSettingsKeys.includes(key) || key.startsWith('board_')) {
                     if (!preservedKeys.includes(key)) {
                         let val = settings[key];
                         if (key === 'boardMenuOrder' && (!val || (Array.isArray(val) && val.length === 0))) return;
@@ -2989,14 +2996,18 @@ async function loadSettingsFromGDrive(silent = false) {
                     }
                 }
             });
+            // After loading a new profile we need a full reload so UI components (assistant, FAB, etc.) re‑initialise.
             if (silent) {
-                await renderUI({ rerenderOnlyMenu: true });
-                restoreAllFloatingPositions();
+                // Guard against infinite reload loops using sessionStorage.
+                if (!sessionStorage.getItem('profileReloaded')) {
+                    sessionStorage.setItem('profileReloaded', '1');
+                    // Trigger a reload after a short delay to let UI settle.
+                    setTimeout(() => location.reload(), 150);
+                }
             } else {
-                setTimeout(async () => {
-                    const confirmed = await showConfirmation(_('settingsLoadedSuccess'));
-                    if (confirmed) location.reload();
-                }, 100);
+                // Non‑silent load (initial startup) – clear any previous reload flag.
+                sessionStorage.removeItem('profileReloaded');
+                // No automatic reload needed here.
             }
         } catch (err) { console.error("Parse error:", err); if (!silent) showToast(_('errorLoadSettings')); }
     } else if (!silent) showToast(_('errorLoadSettings'));

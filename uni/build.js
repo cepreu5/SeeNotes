@@ -66,3 +66,25 @@ async function runBuild() {
 }
 
 runBuild();
+
+// Enable watch mode when started with "--watch"
+if (process.argv.includes('--watch')) {
+    const watchDir = path.join(__dirname, 'src');
+    console.log('👀 Watching src directory for changes...');
+    let rebuildTimer;
+    let pendingLog = false;
+    fs.watch(watchDir, { recursive: true }, (eventType, filename) => {
+        // Only process actual content changes
+        if (eventType !== 'change') return;
+        clearTimeout(rebuildTimer);
+        if (!pendingLog) {
+            console.log(`🔄 Detected ${eventType} in ${filename}, scheduling rebuild...`);
+            pendingLog = true;
+        }
+        rebuildTimer = setTimeout(() => {
+            console.log('⏱️ Rebuilding after debounce...');
+            runBuild();
+            pendingLog = false;
+        }, 800);
+    });
+}

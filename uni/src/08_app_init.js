@@ -346,7 +346,9 @@ async function startApp(isExplicitLogin = false) {
         // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
         // само ако е необходимо.
         // --- Инициализация на KB Assistant след успешно логване ---
-        window.kbAssistant.init();
+        if (localStorage.getItem('hideAssistant') !== 'true' && typeof window.kbAssistant?.init === 'function') {
+            window.kbAssistant.init();
+        }
         // Инициализация на draggable бутони
         const initDraggableButtons = () => {
             // ScrollTop Button
