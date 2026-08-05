@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.37assist';
+const CACHE_NAME = 'cx-notes-b1.38';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -110,15 +110,16 @@ function swLog(...args) {
 
 self.addEventListener('install', (event) => {
   swLog('[SW] Install event triggered.');
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return Promise.allSettled(
-        ASSETS_TO_CACHE.map(url =>
-          cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
-        )
-      );
-    })
-  );
+  // Start caching assets without blocking the page load
+  caches.open(CACHE_NAME).then((cache) => {
+    return Promise.allSettled(
+      ASSETS_TO_CACHE.map(url =>
+        cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
+      )
+    );
+  });
+  // Immediately take control of the page, avoiding install‑time delay
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

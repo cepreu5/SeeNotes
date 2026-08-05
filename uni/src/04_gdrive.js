@@ -1847,16 +1847,16 @@ async function checkWhitelist(delayed = false) {
     if (!currentUserEmail) return null;
 
     try {
-        // проверка без extended - const response = await fetch('https://script.google.com/macros/s/AKfycbymxrrIXy9ULL8CBOP06yaVVoDqHzjhvFgb1bPdRK-nZ3nLKAciIyExnn_InAYBBcXDFQ/exec', {
-        const response = await fetch('https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec', {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
-                email: currentUserEmail,
-                action: action
-            })
+        // Use robust fetch wrapper
+        const whitelistUrl = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
+        const data = await fetchJson(whitelistUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            email: currentUserEmail,
+            action: action
+          })
         });
-        const data = await response.json();
         console.log('>>> Whitelist response:', data);
 
         if (isTrialStart) {

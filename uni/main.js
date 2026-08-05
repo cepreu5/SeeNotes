@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.37assist'; // App version
+const version = 'Beta 1.38'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -2883,16 +2883,16 @@ async function checkWhitelist(delayed = false) {
     if (!currentUserEmail) return null;
 
     try {
-        // проверка без extended - const response = await fetch('https://script.google.com/macros/s/AKfycbymxrrIXy9ULL8CBOP06yaVVoDqHzjhvFgb1bPdRK-nZ3nLKAciIyExnn_InAYBBcXDFQ/exec', {
-        const response = await fetch('https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec', {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
-                email: currentUserEmail,
-                action: action
-            })
+        // Use robust fetch wrapper
+        const whitelistUrl = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
+        const data = await fetchJson(whitelistUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            email: currentUserEmail,
+            action: action
+          })
         });
-        const data = await response.json();
         console.log('>>> Whitelist response:', data);
 
         if (isTrialStart) {
@@ -6834,7 +6834,7 @@ function updateHeaderFullscreenUI() {
     const isHidden = header && header.classList.contains('header-fullscreen');
     document.querySelectorAll('.fullscreen-toggle-btn').forEach(btn => {
         btn.innerHTML = isHidden ? fullscreenCompressIconSvg : fullscreenExpandIconSvg;
-        btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Покажи хедъра') : (_('toggleFullscreenTooltip') || 'Цял екран (Скрий хедъра)');
+        btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Show Header') : (_('toggleFullscreenTooltip') || 'Full screen (Hide/Show Header)');
     });
 }
 
@@ -8113,7 +8113,11 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     fullscreenLink.style.display = 'flex';
     fullscreenLink.style.alignItems = 'center';
     fullscreenLink.style.justifyContent = 'center';
-    fullscreenLink.title = _('toggleFullscreenTooltip') || 'Цял екран (Скрий/Покажи хедъра)';
+    fullscreenLink.title = _('toggleFullscreenTooltip') || 'Full Screen (Hide/Show Header)';
+    // Set initial SVG icon according to current header fullscreen state
+    const headerEl = document.querySelector('header');
+    const isHidden = headerEl && headerEl.classList.contains('header-fullscreen');
+    fullscreenLink.innerHTML = isHidden ? fullscreenCompressIconSvg : fullscreenExpandIconSvg;
     fullscreenLink.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -8670,6 +8674,25 @@ async function loadSettingsFromGDrive(silent = false) {
         } catch (err) { console.error("Parse error:", err); if (!silent) showToast(_('errorLoadSettings')); }
     } else if (!silent) showToast(_('errorLoadSettings'));
 }
+
+
+/* Fetch JSON helper */
+async function fetchJson(url, options = {}) {
+  try {
+    const resp = await fetch(url, options);
+    const txt = await resp.text();
+    if (resp.ok && (resp.headers.get('content-type')?.includes('application/json') || txt.trim().startsWith('{'))) {
+      return JSON.parse(txt);
+    }
+    console.warn('[Whitelist] Unexpected response (status:', resp.status, ') – falling back to empty data');
+    return null;
+  } catch (e) {
+    console.warn('[Whitelist] Fetch error:', e);
+    return null;
+  }
+}
+// Expose globally for other modules
+window.fetchJson = fetchJson;
 
 async function createSettingsUI(boardsData, boardParseError) {
     const settingsModalBody = document.getElementById('settings-modal-body');
@@ -13562,7 +13585,7 @@ async function toggleNotePinned(noteGdid, noteId) {
     if (noteToUpdate.version) noteToUpdate.version = parseInt(noteToUpdate.version, 10) + 1;
     else noteToUpdate.version = 1;
     noteToUpdate.pinnedAt = wasPinned ? 0 : Date.now();
-    noteToUpdate.datemod = Date.now();
+
 
     const updateGDriveNow = useGoogleDb && !isOffline;
     const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true' && !isOffline;

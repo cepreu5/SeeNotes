@@ -1,3 +1,21 @@
+/* Fetch JSON helper */
+async function fetchJson(url, options = {}) {
+  try {
+    const resp = await fetch(url, options);
+    const txt = await resp.text();
+    if (resp.ok && (resp.headers.get('content-type')?.includes('application/json') || txt.trim().startsWith('{'))) {
+      return JSON.parse(txt);
+    }
+    console.warn('[Whitelist] Unexpected response (status:', resp.status, ') – falling back to empty data');
+    return null;
+  } catch (e) {
+    console.warn('[Whitelist] Fetch error:', e);
+    return null;
+  }
+}
+// Expose globally for other modules
+window.fetchJson = fetchJson;
+
 async function createSettingsUI(boardsData, boardParseError) {
     const settingsModalBody = document.getElementById('settings-modal-body');
     if (!settingsModalBody.dataset.initializedListeners) {

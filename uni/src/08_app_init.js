@@ -3570,7 +3570,7 @@ async function toggleNotePinned(noteGdid, noteId) {
     if (noteToUpdate.version) noteToUpdate.version = parseInt(noteToUpdate.version, 10) + 1;
     else noteToUpdate.version = 1;
     noteToUpdate.pinnedAt = wasPinned ? 0 : Date.now();
-    noteToUpdate.datemod = Date.now();
+
 
     const updateGDriveNow = useGoogleDb && !isOffline;
     const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true' && !isOffline;

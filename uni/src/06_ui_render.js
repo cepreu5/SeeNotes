@@ -1176,7 +1176,7 @@ function updateHeaderFullscreenUI() {
     const isHidden = header && header.classList.contains('header-fullscreen');
     document.querySelectorAll('.fullscreen-toggle-btn').forEach(btn => {
         btn.innerHTML = isHidden ? fullscreenCompressIconSvg : fullscreenExpandIconSvg;
-        btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Покажи хедъра') : (_('toggleFullscreenTooltip') || 'Цял екран (Скрий хедъра)');
+        btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Show Header') : (_('toggleFullscreenTooltip') || 'Full screen (Hide/Show Header)');
     });
 }
 
@@ -2455,7 +2455,11 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     fullscreenLink.style.display = 'flex';
     fullscreenLink.style.alignItems = 'center';
     fullscreenLink.style.justifyContent = 'center';
-    fullscreenLink.title = _('toggleFullscreenTooltip') || 'Цял екран (Скрий/Покажи хедъра)';
+    fullscreenLink.title = _('toggleFullscreenTooltip') || 'Full Screen (Hide/Show Header)';
+    // Set initial SVG icon according to current header fullscreen state
+    const headerEl = document.querySelector('header');
+    const isHidden = headerEl && headerEl.classList.contains('header-fullscreen');
+    fullscreenLink.innerHTML = isHidden ? fullscreenCompressIconSvg : fullscreenExpandIconSvg;
     fullscreenLink.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -3011,4 +3015,4 @@ async function loadSettingsFromGDrive(silent = false) {
             }
         } catch (err) { console.error("Parse error:", err); if (!silent) showToast(_('errorLoadSettings')); }
     } else if (!silent) showToast(_('errorLoadSettings'));
-}
+}
