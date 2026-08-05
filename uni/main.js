@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.37lan'; // App version
+const version = 'Beta 1.38'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -10180,7 +10180,8 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     fullscreenLink.style.display = 'flex';
     fullscreenLink.style.alignItems = 'center';
     fullscreenLink.style.justifyContent = 'center';
-    fullscreenLink.title = _('toggleFullscreenTooltip') || 'Цял екран (Скрий/Покажи хедъра)';
+    fullscreenLink.innerHTML = fullscreenExpandIconSvg;
+    fullscreenLink.title = _('toggleFullscreenTooltip') || 'Toggle fullscreen (Hide/Show header)';
     fullscreenLink.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
