@@ -110,16 +110,15 @@ function swLog(...args) {
 
 self.addEventListener('install', (event) => {
   swLog('[SW] Install event triggered.');
-  // Start caching assets without blocking the page load
-  caches.open(CACHE_NAME).then((cache) => {
-    return Promise.allSettled(
-      ASSETS_TO_CACHE.map(url =>
-        cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
-      )
-    );
-  });
-  // Immediately take control of the page, avoiding install‑time delay
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return Promise.allSettled(
+        ASSETS_TO_CACHE.map(url =>
+          cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
+        )
+      );
+    })
+  );
 });
 
 self.addEventListener('activate', (event) => {
