@@ -408,7 +408,7 @@
     "folderEmptiedSuccess": "Папката е изпразнена успешно.",
     "emptyFolderBtn": "Изпразни",
     "firstRunSetup": "Настройка при първо стартиране...",
-    "firstRunMultinotesFound": "Намерена е папка multinotes_data в Google Drive. Желаете ли да работите с нея?",
+    "firstRunMultinotesFound": "В Google Drive е намерена папката на MultiNotes (multinotes_data). Желаете ли да работите с нея?",
     "firstRunCreatingBoard": "Създаване на начален борд...",
     "firstRunComplete": "Първоначалната настройка е завършена!",
     "syncPromptNote": "Синхронизиране на бележка:",

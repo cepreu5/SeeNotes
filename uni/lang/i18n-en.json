@@ -410,7 +410,7 @@
     "folderEmptiedSuccess": "Folder emptied successfully.",
     "emptyFolderBtn": "Empty",
     "firstRunSetup": "First-time setup...",
-    "firstRunMultinotesFound": "A multinotes_data folder was found in your Google Drive. Would you like to work with it?",
+    "firstRunMultinotesFound": "The MultiNotes folder (multinotes_data) was found in your Google Drive. Would you like to work with it?",
     "firstRunCreatingBoard": "Creating initial board...",
     "firstRunComplete": "First-time setup complete!",
     "syncPromptNote": "Sync note:",

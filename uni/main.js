@@ -215,10 +215,13 @@ function renderLanguageSwitchers(onChangeCallback) {
             const newSelect = container.cloneNode(true);
             container.parentNode.replaceChild(newSelect, container);
             if (typeof onChangeCallback === 'function') {
-                newSelect.addEventListener('change', (e) => {
+                newSelect.addEventListener('change', async (e) => {
                     const lang = e.target.value;
                     localStorage.setItem('language', lang);
-                    window.location.reload();
+                    if (typeof saveSettingsToGDrive === 'function') {
+                        try { await saveSettingsToGDrive(true); } catch (err) { console.warn('Failed to save settings on language change:', err); }
+                    }
+                    onChangeCallback(lang);
                 });
             }
             return;
@@ -240,10 +243,13 @@ function renderLanguageSwitchers(onChangeCallback) {
         });
 
         if (typeof onChangeCallback === 'function') {
-            select.addEventListener('change', (e) => {
+            select.addEventListener('change', async (e) => {
                 const lang = e.target.value;
                 localStorage.setItem('language', lang);
-                window.location.reload();
+                if (typeof saveSettingsToGDrive === 'function') {
+                    try { await saveSettingsToGDrive(true); } catch (err) { console.warn('Failed to save settings on language change:', err); }
+                }
+                onChangeCallback(lang);
             });
         }
         container.appendChild(select);
@@ -5605,8 +5611,11 @@ async function initLoginPage() {
     }
 
     // Language switcher event listeners
-    const switchLanguage = (lang) => {
+    const switchLanguage = async (lang) => {
         localStorage.setItem('language', lang);
+        if (typeof saveSettingsToGDrive === 'function') {
+            try { await saveSettingsToGDrive(true); } catch (err) { console.warn('Failed to save settings on language change:', err); }
+        }
         location.reload();
     };
     if (typeof renderLanguageSwitchers === 'function') renderLanguageSwitchers(switchLanguage);
@@ -10781,9 +10790,12 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
         if (!settingsLangSelect.dataset.hasChangeListener) {
             settingsLangSelect.dataset.hasChangeListener = 'true';
-            settingsLangSelect.addEventListener('change', () => {
+            settingsLangSelect.addEventListener('change', async () => {
                 const newLang = settingsLangSelect.value;
                 localStorage.setItem('language', newLang);
+                if (typeof saveSettingsToGDrive === 'function') {
+                    try { await saveSettingsToGDrive(true); } catch (err) { console.warn('Failed to save settings on language change:', err); }
+                }
                 window.location.reload();
             });
         }
@@ -17318,8 +17330,6 @@ function showFolderDeletePopup() {
 function populateFoldersDropdown() {
     const activeFolderSelect = document.getElementById('active-folder-select');
     if (!activeFolderSelect) return;
-
-    // Гарантираме, че стационарните опции съществуват
     if (!activeFolderSelect.querySelector('option[value="select_folder"]')) {
         const selectOption = document.createElement('option');
         selectOption.value = 'select_folder';
@@ -17332,38 +17342,30 @@ function populateFoldersDropdown() {
         newOption.textContent = _('newFolderOption');
         activeFolderSelect.appendChild(newOption);
     }
-
     const defaultFolder = 'multinotes_data';
     let folderNamesStr = localStorage.getItem('gdrive_folder_names');
     let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
-    if (!folderNames.includes(defaultFolder)) folderNames.unshift(defaultFolder);
     if (typeof activeFolderName !== 'undefined' && activeFolderName && !folderNames.includes(activeFolderName)) folderNames.push(activeFolderName);
-
-    // Изчистваме старите опции за данни
     Array.from(activeFolderSelect.options).forEach(opt => {
         if (opt.value !== 'select_folder' && opt.value !== 'new_folder') {
             opt.remove();
         }
     });
-
-    // Вмъкваме опциите за папките ПРЕДИ стационарните опции
     const insertBeforeNode = activeFolderSelect.querySelector('option[value="select_folder"]') || activeFolderSelect.firstChild;
-
     folderNames.forEach(name => {
-        if (name === 'AppDataFolder') return; // Вече ще го добавим като специална опция
+        if (name === 'AppDataFolder') return;
         const option = document.createElement('option');
         option.value = name;
         option.textContent = name;
         if (typeof activeFolderName !== 'undefined' && name === activeFolderName) option.selected = true;
         activeFolderSelect.insertBefore(option, insertBeforeNode);
     });
-
-    // Добавяме AppDataFolder като специална опция (винаги, точно веднъж)
     const appDataOption = document.createElement('option');
     appDataOption.value = 'AppDataFolder';
     appDataOption.textContent = (typeof _ === 'function') ? _('appDataFolderLabel') : 'AppDataFolder (Hidden)';
     if (typeof activeFolderName !== 'undefined' && activeFolderName === 'AppDataFolder') appDataOption.selected = true;
     activeFolderSelect.insertBefore(appDataOption, insertBeforeNode);
+    if (typeof activeFolderName !== 'undefined' && activeFolderName) activeFolderSelect.value = activeFolderName;
 }
 
 function updateReloadButtonState() {
