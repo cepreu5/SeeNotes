@@ -647,6 +647,22 @@
                 }
             }
         },
+        "Beta 1.39": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.39"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.39<br><br><span align='left'>- Here will be displayed the added functions in the new version.</span>"
+                }
+            }
+        },
         "offline-mode": {
             "keywords": [
                 "offline",

@@ -425,5 +425,14 @@
     "unpinNoteTooltip": "Откачи бележка",
     "notePinned": "Бележката е закачена.",
     "noteUnpinned": "Бележката е откачена.",
-    "systemBoardSortLabel": "Системен борд:"
+    "systemBoardSortLabel": "Системен борд:",
+    "multiNotesFoundTitle": "Намерена е папка multinotes_data в Google Drive!",
+    "multiNotesSyncWarn": "⚠️ Забележка: Редакциите и новите бележки от това уеб приложение няма да се отразят автоматично в Android приложението MultiNotes без пълна синхронизация (бавен процес).",
+    "multiNotesOptDirectTitle": "1. Директна работа с multinotes_data",
+    "multiNotesOptDirectDesc": "Използва съществуващата папка multinotes_data за активна. Промените се записват там.",
+    "multiNotesOptCopyTitle": "2. Копиране на данните в системната AppDataFolder (Препоръчително)",
+    "multiNotesOptCopyDesc": "Копира всички бордове, бележки и прикачени медийни файлове в скритата папка AppDataFolder. Оригиналните данни в multinotes_data остават непокътнати.",
+    "multiNotesOptFreshTitle": "3. Започване на чисто в AppDataFolder",
+    "multiNotesOptFreshDesc": "Започва с празна системна папка AppDataFolder и създава нов начален борд Main.",
+    "multiNotesSettingsWarn": "⚠️ Внимание: Промените в папката multinotes_data няма да се отразят автоматично в Android приложението MultiNotes без пълна синхронизация. Сигурни ли сте, че искате да превключите към тази папка?"
 }

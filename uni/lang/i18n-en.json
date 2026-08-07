@@ -423,5 +423,14 @@
     "uploadingSharedImage": "Uploading image...",
     "sharedImageSaved": "Image attached to note",
     "openLink": "Open",
-    "systemBoardSortLabel": "System board:"
+    "systemBoardSortLabel": "System board:",
+    "multiNotesFoundTitle": "A multinotes_data folder was found in your Google Drive!",
+    "multiNotesSyncWarn": "⚠️ Note: Edits and new notes from this web app will not automatically reflect in the Android MultiNotes app without a full sync (slow process).",
+    "multiNotesOptDirectTitle": "1. Work directly with multinotes_data",
+    "multiNotesOptDirectDesc": "Uses the existing multinotes_data folder as the active folder. Changes are saved there.",
+    "multiNotesOptCopyTitle": "2. Copy data to the system AppDataFolder (Recommended)",
+    "multiNotesOptCopyDesc": "Copies all boards, notes, and attached media files to the hidden AppDataFolder. Your original data in multinotes_data remains untouched.",
+    "multiNotesOptFreshTitle": "3. Start fresh in AppDataFolder",
+    "multiNotesOptFreshDesc": "Starts with an empty system folder and creates a new initial Main board.",
+    "multiNotesSettingsWarn": "⚠️ Warning: Changes in the multinotes_data folder will not automatically reflect in the Android MultiNotes app without a full sync. Are you sure you want to switch to this folder?"
 }

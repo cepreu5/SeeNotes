@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.38'; // App version
+const version = 'Beta 1.39'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -819,46 +819,61 @@ async function decryptLicenseToken() {
             console.log("Using hardcoded trial token.");
         } catch (e) { }
     }
-    const cachedEmail = localStorage.getItem('cached_whitelist_email');
-    if (cachedEmail && cachedEmail !== currentEmail) {
-        localStorage.removeItem('cached_whitelist_data');
-        localStorage.removeItem('cached_whitelist_time');
-        localStorage.removeItem('cached_whitelist_email');
-    }
-    const cachedDataStr = localStorage.getItem('cached_whitelist_data');
-    const cachedTimeStr = localStorage.getItem('cached_whitelist_time');
     let whitelistData = null;
-    let cacheIsValid = false;
-    if (cachedDataStr && cachedTimeStr && !isOffline) {
-        const cachedTime = parseInt(cachedTimeStr, 10);
-        if (Date.now() - cachedTime < 24 * 60 * 60 * 1000) {
-            try {
-                whitelistData = JSON.parse(cachedDataStr);
-                cacheIsValid = true;
-                console.log("[License] Using cached whitelist data (age: " + Math.round((Date.now() - cachedTime) / 60000) + " minutes).");
-                if (Date.now() - cachedTime > 12 * 60 * 60 * 1000) {
-                    setTimeout(() => {
-                        checkWhitelist(false).then(freshData => {
-                            if (freshData) {
-                                localStorage.setItem('cached_whitelist_data', JSON.stringify(freshData));
-                                localStorage.setItem('cached_whitelist_time', Date.now().toString());
-                                localStorage.setItem('cached_whitelist_email', currentEmail || '');
-                                console.log("[License] Background whitelist update successful.");
-                            }
-                        }).catch(e => console.warn("Background whitelist update failed:", e));
-                    }, 5000);
+    if (currentEmail) {
+        const cachedEmail = localStorage.getItem('cached_whitelist_email');
+        if (cachedEmail && cachedEmail !== currentEmail) {
+            localStorage.removeItem('cached_whitelist_data');
+            localStorage.removeItem('cached_whitelist_time');
+            localStorage.removeItem('cached_whitelist_email');
+        }
+        const cachedDataStr = localStorage.getItem('cached_whitelist_data');
+        const cachedTimeStr = localStorage.getItem('cached_whitelist_time');
+        let cacheIsValid = false;
+        if (cachedDataStr && cachedTimeStr && !isOffline) {
+            const cachedTime = parseInt(cachedTimeStr, 10);
+            if (Date.now() - cachedTime < 24 * 60 * 60 * 1000) {
+                try {
+                    whitelistData = JSON.parse(cachedDataStr);
+                    cacheIsValid = true;
+                    console.log("[License] Using cached whitelist data (age: " + Math.round((Date.now() - cachedTime) / 60000) + " minutes).");
+                    if (Date.now() - cachedTime > 12 * 60 * 60 * 1000) {
+                        setTimeout(() => {
+                            checkWhitelist(false).then(freshData => {
+                                if (freshData) {
+                                    localStorage.setItem('cached_whitelist_data', JSON.stringify(freshData));
+                                    localStorage.setItem('cached_whitelist_time', Date.now().toString());
+                                    localStorage.setItem('cached_whitelist_email', currentEmail || '');
+                                    console.log("[License] Background whitelist update successful.");
+                                }
+                            }).catch(e => console.warn("Background whitelist update failed:", e));
+                        }, 5000);
+                    }
+                } catch (e) {
+                    console.warn("Error parsing cached whitelist data:", e);
                 }
-            } catch (e) {
-                console.warn("Error parsing cached whitelist data:", e);
             }
         }
-    }
-    if (!cacheIsValid && !isOffline) {
-        whitelistData = await checkWhitelist();
-        if (whitelistData) {
-            localStorage.setItem('cached_whitelist_data', JSON.stringify(whitelistData));
-            localStorage.setItem('cached_whitelist_time', Date.now().toString());
-            localStorage.setItem('cached_whitelist_email', currentEmail || '');
+        if (!cacheIsValid && !isOffline) {
+            whitelistData = await checkWhitelist();
+            if (whitelistData) {
+                localStorage.setItem('cached_whitelist_data', JSON.stringify(whitelistData));
+                localStorage.setItem('cached_whitelist_time', Date.now().toString());
+                localStorage.setItem('cached_whitelist_email', currentEmail || '');
+            }
+        }
+    } else {
+        // Без email (logout) — изчисляваме оставащия срок от запазените данни
+        const savedDays = localStorage.getItem('license_remaining_days');
+        const savedTime = localStorage.getItem('license_remaining_timestamp');
+        if (savedDays && savedTime) {
+            const elapsed = (Date.now() - parseInt(savedTime, 10)) / (1000 * 60 * 60 * 24);
+            const remaining = Math.max(0, Math.floor(parseFloat(savedDays) - elapsed));
+            cachedLicenseData.pass = remaining > 0;
+            cachedLicenseData.remainingDays = remaining;
+            console.log(`[License] No user email; using stored license data (${remaining} days remaining).`);
+            cachedLicenseEmailHint = currentEmail;
+            return cachedLicenseData;
         }
     }
     if (whitelistData) {
@@ -883,10 +898,12 @@ async function decryptLicenseToken() {
         }
         cachedLicenseData.email = whitelistData.email;
         if (cachedLicenseData.pass) {
+            localStorage.setItem('license_remaining_days', String(cachedLicenseData.remainingDays));
+            localStorage.setItem('license_remaining_timestamp', String(Date.now()));
             cachedLicenseEmailHint = currentEmail;
             return cachedLicenseData;
         }
-    } else if (!isOffline) {
+    } else if (!isOffline && currentEmail) {
         console.warn("Whitelist check failed.");
     }
     if (!urlToken) {
@@ -2181,7 +2198,9 @@ async function gisLoaded() {
     const loginBox = document.querySelector('.login-box');
     const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
     const isLogout = sessionStorage.getItem('logout_flag') === 'true';
-    await startApp();
+    if (!isLogout) {
+        await startApp();
+    }
     if (hasToken && !isLogout) {
         console.log("Existing token found in GIS callback, silente mode handled by startApp...");
     } else {
@@ -5786,32 +5805,31 @@ async function handleAuthClick() {
 async function checkWhitelist(delayed = false) {
     if (isOffline) return null;
     if (delayed) {
-        // Изчакваме 2 секунди, за да не пречим на началната синхронизация 
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
-
     const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
     const action = isTrialStart ? 'log' : 'check';
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-
     console.log('>>> Executing whitelist check (action: ' + action + ')...');
     console.log('>>> Email for whitelist:', currentUserEmail);
-
     if (!currentUserEmail) return null;
-
     try {
-        // проверка без extended - const response = await fetch('https://script.google.com/macros/s/AKfycbymxrrIXy9ULL8CBOP06yaVVoDqHzjhvFgb1bPdRK-nZ3nLKAciIyExnn_InAYBBcXDFQ/exec', {
         const response = await fetch('https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec', {
             method: 'POST',
+            mode: 'cors',
+            credentials: 'omit',
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
                 email: currentUserEmail,
                 action: action
             })
         });
+        if (!response.ok) {
+            console.warn('>>> Whitelist check HTTP error:', response.status);
+            return null;
+        }
         const data = await response.json();
         console.log('>>> Whitelist response:', data);
-
         if (isTrialStart) {
             sessionStorage.removeItem('isTrialStart');
             console.log('>>> Trial registered for:', currentUserEmail);
@@ -5956,15 +5974,11 @@ function handleSignoutClick() {
  */
 async function userCheck() {
     if (!dbExists) {
-        // Базата не съществува, не правим нищо.
-        // Потребителят ще бъде записан при първоначалното създаване на базата.
         isDbOwner = true;
         return;
     }
-    // Базата съществува, продължаваме с проверката на потребителя
     const storedUserEmail = await getConfig('userEmail');
-    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-    // Проверяваме за несъответствие само ако има записан потребител в базата
+    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint');
     if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
         isDbOwner = false;
         await handleUserMismatch(storedUserEmail);
@@ -6099,7 +6113,7 @@ async function createDatabaseFromMemory() {
         if (currentUserEmail) {
             await saveConfig('userEmail', currentUserEmail);
         }
-        // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
+// ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
         const noteIdType = useArhDb ? 'id' : 'gdid';
         await saveConfig('dbNoteIdType', noteIdType);
         const dbSource = useArhDb ? 3 : (useLocalFolder ? 2 : 1);
@@ -6125,6 +6139,222 @@ async function createDatabaseFromMemory() {
         console.log("Failed to create/recreate DB from memory:", error);
         return false;
     }
+}
+/**
+ * Показва модален прозорец с 3 опции за избор при откриване на multinotes_data.
+ * @returns {Promise<string>} 'direct' | 'copy' | 'fresh'
+ */
+function showMultiNotesChoiceModal() {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        const modal = document.createElement('div');
+        modal.style.cssText = 'background:#2a2a2a;color:#eee;border-radius:12px;padding:24px;max-width:520px;width:90vw;max-height:85vh;overflow-y:auto;font-family:sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+        const title = document.createElement('h3');
+        title.style.cssText = 'margin:0 0 12px 0;font-size:17px;color:#fff;';
+        title.textContent = _('multiNotesFoundTitle') || 'A multinotes_data folder was found in your Google Drive!';
+        modal.appendChild(title);
+        const warn = document.createElement('p');
+        warn.style.cssText = 'margin:0 0 16px 0;font-size:13px;color:#ffb74d;line-height:1.5;';
+        warn.textContent = _('multiNotesSyncWarn') || 'Edits from this web app will not automatically reflect in the Android MultiNotes app without a full sync.';
+        modal.appendChild(warn);
+        const options = [
+            { value: 'direct', titleKey: 'multiNotesOptDirectTitle', descKey: 'multiNotesOptDirectDesc', titleFb: '1. Work directly with multinotes_data', descFb: 'Uses the existing folder. Changes are saved there.' },
+            { value: 'copy', titleKey: 'multiNotesOptCopyTitle', descKey: 'multiNotesOptCopyDesc', titleFb: '2. Copy data to AppDataFolder (Recommended)', descFb: 'Copies all data to AppDataFolder. Original data remains untouched.' },
+            { value: 'fresh', titleKey: 'multiNotesOptFreshTitle', descKey: 'multiNotesOptFreshDesc', titleFb: '3. Start fresh in AppDataFolder', descFb: 'Starts with an empty folder and a new Main board.' }
+        ];
+        let selected = 'copy';
+        const radioGroup = document.createElement('div');
+        radioGroup.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-bottom:20px;';
+        options.forEach(opt => {
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:10px;border:1px solid #444;border-radius:8px;transition:background 0.2s;';
+            if (opt.value === selected) label.style.background = '#3a3a3a';
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'multinotes-choice';
+            radio.value = opt.value;
+            radio.checked = opt.value === selected;
+            radio.style.cssText = 'margin-top:3px;flex-shrink:0;';
+            radio.addEventListener('change', () => {
+                selected = opt.value;
+                radioGroup.querySelectorAll('label').forEach(l => l.style.background = '');
+                label.style.background = '#3a3a3a';
+            });
+            const textDiv = document.createElement('div');
+            const titleSpan = document.createElement('div');
+            titleSpan.style.cssText = 'font-weight:600;font-size:14px;margin-bottom:4px;';
+            titleSpan.textContent = _(opt.titleKey) || opt.titleFb;
+            textDiv.appendChild(titleSpan);
+            const descSpan = document.createElement('div');
+            descSpan.style.cssText = 'font-size:12px;color:#aaa;line-height:1.4;';
+            descSpan.textContent = _(opt.descKey) || opt.descFb;
+            textDiv.appendChild(descSpan);
+            label.appendChild(radio);
+            label.appendChild(textDiv);
+            radioGroup.appendChild(label);
+        });
+        modal.appendChild(radioGroup);
+        const btnWrap = document.createElement('div');
+        btnWrap.style.cssText = 'text-align:center;';
+        const confirmBtn = document.createElement('button');
+        confirmBtn.style.cssText = 'padding:10px 32px;border:none;border-radius:8px;background:#4CAF50;color:#fff;font-size:15px;cursor:pointer;font-weight:600;';
+        confirmBtn.textContent = _('confirmCreateDbYes') || 'Confirm';
+        confirmBtn.addEventListener('click', () => {
+            overlay.remove();
+            resolve(selected);
+        });
+        btnWrap.appendChild(confirmBtn);
+        modal.appendChild(btnWrap);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+    });
+}
+/**
+ * Проверява дали е първото стартиране и настройва приложението.
+ * 1. Създава борд Main в AppDataFolder и го задава като стартов борд
+ * 2. Създава folders.json
+ * 3. Задава активна папка (AppDataFolder или multinotes_data)
+ * 4. Създава folders.json и settings.json с профил Default
+ * @returns {boolean} true ако е извършена първоначална настройка, false ако не е необходима
+ */
+async function handleFirstRunSetup() {
+    if (isOffline) return false;
+    if (localStorage.getItem('initial_setup_complete') === 'true' || sessionStorage.getItem('first_run_lock')) return false;
+    const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
+    if (hasLocalSettings) return false;
+    sessionStorage.setItem('first_run_lock', 'true');
+    try {
+        const appSettingsFolderId = await getAppSettingsFolderId();
+        if (!appSettingsFolderId) return false;
+        const settingsFiles = await findGDFileByName(appSettingsFolderId, 'settings.json');
+        if (settingsFiles && settingsFiles.length > 0) {
+            localStorage.setItem('initial_setup_complete', 'true');
+            return false;
+        }
+        const foldersFiles = await findGDFileByName(appSettingsFolderId, 'folders.json');
+        if (foldersFiles && foldersFiles.length > 0) {
+            localStorage.setItem('initial_setup_complete', 'true');
+            return false;
+        }
+    } catch (e) {
+        console.warn('[FirstRun] Error checking AppSettings:', e);
+        return false;
+    }
+    console.log('[FirstRun] First-time setup detected. Starting initial configuration...');
+    if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunSetup');
+    let chosenFolder = 'AppDataFolder';
+    let multinotesFound = false;
+    let multinotesId = null;
+    let userChoice = 'fresh';
+    try {
+        multinotesId = await getFolderIDByName('multinotes_data');
+        if (multinotesId) {
+            multinotesFound = true;
+            localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
+            userChoice = await showMultiNotesChoiceModal();
+            console.log('[FirstRun] User choice:', userChoice);
+            if (userChoice === 'direct') {
+                chosenFolder = 'multinotes_data';
+            }
+        }
+    } catch (e) {
+        console.warn('[FirstRun] Error checking for multinotes_data:', e);
+    }
+    activeFolderName = chosenFolder;
+    localStorage.setItem('active_folder_name', chosenFolder);
+    cachedMainFolderId = null;
+    const loaderFolderInfo = document.getElementById('loader-folder-info');
+    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+    console.log('[FirstRun] Active folder selected:', chosenFolder);
+    const folderNames = ['AppDataFolder'];
+    if (multinotesFound) folderNames.push('multinotes_data');
+    localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+    if (userChoice === 'copy' && multinotesId) {
+        try {
+            console.log('[FirstRun] Copying data from multinotes_data to AppDataFolder...');
+            if (typeof loaderText !== 'undefined') loaderText.textContent = _('migratingData') || 'Copying data...';
+            const result = await fetchAllData(multinotesId, false);
+            if (result && !result.error) {
+                // Изчистваме съществуващите бордове в AppDataFolder, за да избегнем дубликати
+                try {
+                    const existingBoards = await findGDFileByName('appDataFolder', 'board.txt');
+                    if (existingBoards && existingBoards.length > 0) {
+                        console.log(`[FirstRun] Deleting ${existingBoards.length} existing board(s) in AppDataFolder before copy...`);
+                        for (const b of existingBoards) {
+                            await deleteGDriveFile(b.id);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[FirstRun] Error cleaning existing boards:', e);
+                }
+                const migrationSuccess = await migrateDataToNewFolder('appDataFolder');
+                if (migrationSuccess) {
+                    console.log('[FirstRun] Data copied successfully to AppDataFolder.');
+                    if (typeof showToast === 'function') showToast(_('migrationSuccess'), 5000);
+                } else {
+                    console.error('[FirstRun] Migration failed, falling back to fresh start.');
+                    userChoice = 'fresh';
+                }
+            } else {
+                console.error('[FirstRun] Could not load data from multinotes_data, falling back to fresh start.');
+                userChoice = 'fresh';
+            }
+        } catch (e) {
+            console.error('[FirstRun] Error copying data from multinotes_data:', e);
+            userChoice = 'fresh';
+        }
+    }
+    if (chosenFolder === 'AppDataFolder' && userChoice !== 'copy') {
+        try {
+            console.log('[FirstRun] Creating Main board in AppDataFolder...');
+            const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
+            if (existingMainBoards && existingMainBoards.length > 0) {
+                console.log('[FirstRun] Main board already exists in AppDataFolder');
+                localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
+            } else {
+                const now = Date.now();
+                boardIdCounter = 1;
+                localStorage.setItem('boardIdCounter', '1');
+                const boardToSave = {
+                    "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+                    "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
+                    "numord": 1, "status": 0, "title": "Main"
+                };
+                const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
+                if (gdid) {
+                    boardToSave.gdid = gdid;
+                    await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+                    console.log('[FirstRun] Main board created in AppDataFolder');
+                    localStorage.setItem('startBoard_AppDataFolder', gdid);
+                }
+            }
+        } catch (e) {
+            console.error('[FirstRun] Error creating Main board in AppDataFolder:', e);
+        }
+    }
+    try {
+        if (typeof boardsData !== 'undefined' && boardsData.length === 0) {
+            const startBoardId = localStorage.getItem('startBoard_AppDataFolder');
+            if (startBoardId) {
+                boardsData = [{ id: 1, title: 'Main', gdid: startBoardId, numord: 1 }];
+            }
+        }
+        await syncGlobalFoldersJson();
+        console.log('[FirstRun] folders.json created.');
+    } catch (e) {
+        console.warn('[FirstRun] Error creating folders.json:', e);
+    }
+    try {
+        await saveSettingsToGDrive(true);
+        console.log('[FirstRun] settings.json created with Default profile.');
+    } catch (e) {
+        console.warn('[FirstRun] Error creating settings.json:', e);
+    }
+    if (typeof showToast === 'function') showToast(_('firstRunComplete'), 5000);
+    localStorage.setItem('initial_setup_complete', 'true');
+    console.log('[FirstRun] First-time setup complete.');
+    return true;
 }
 
 /**
@@ -6426,139 +6656,6 @@ function filterNotesForDemo() {
     console.log(`DEMO MODE: Notes reduced from ${originalCount} to ${allNotesData.length}.`);
 }
 
-/**
- * Обработва първоначалното зареждане, когато settings.json и folders.json не съществуват.
- * Ред:
- * 1. Създава борд Main в AppDataFolder и го задава като стартов борд
- * 2. Проверява дали в GD съществува папка multinotes_data и пита потребителя
- * 3. Задава активна папка (AppDataFolder или multinotes_data)
- * 4. Създава folders.json и settings.json с профил Default
- * @returns {boolean} true ако е извършена първоначална настройка, false ако не е необходима
- */
-async function handleFirstRunSetup() {
-    if (isOffline) return false;
-    // Проверка дали вече е настроено (локално или в сесията)
-    if (localStorage.getItem('initial_setup_complete') === 'true' || sessionStorage.getItem('first_run_lock')) return false;
-    const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
-    if (hasLocalSettings) return false;
-
-    sessionStorage.setItem('first_run_lock', 'true'); // Временна блокировка за текущата сесия
-
-    // Проверка дали settings.json съществува в AppSettings папката
-    try {
-        const appSettingsFolderId = await getAppSettingsFolderId();
-        if (!appSettingsFolderId) return false;
-        const settingsFiles = await findGDFileByName(appSettingsFolderId, 'settings.json');
-        if (settingsFiles && settingsFiles.length > 0) {
-            localStorage.setItem('initial_setup_complete', 'true');
-            return false;
-        }
-        const foldersFiles = await findGDFileByName(appSettingsFolderId, 'folders.json');
-        if (foldersFiles && foldersFiles.length > 0) {
-            localStorage.setItem('initial_setup_complete', 'true');
-            return false;
-        }
-    } catch (e) {
-        console.warn('[FirstRun] Error checking AppSettings:', e);
-        return false;
-    }
-    console.log('[FirstRun] First-time setup detected. Starting initial configuration...');
-    if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunSetup');
-    // --- СТЪПКА 1: Проверка за multinotes_data в Google Drive ---
-    let chosenFolder = 'AppDataFolder';
-    let multinotesFound = false;
-    try {
-        const multinotesId = await getFolderIDByName('multinotes_data');
-        if (multinotesId) {
-            multinotesFound = true;
-            const useMultinotes = await showConfirmation(_('firstRunMultinotesFound'));
-            if (useMultinotes) {
-                chosenFolder = 'multinotes_data';
-                localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
-            }
-        }
-    } catch (e) {
-        console.warn('[FirstRun] Error checking for multinotes_data:', e);
-    }
-
-    // --- СТЪПКА 2: Задаване на активна папка ---
-    activeFolderName = chosenFolder;
-    localStorage.setItem('active_folder_name', chosenFolder);
-    cachedMainFolderId = null;
-    const loaderFolderInfo = document.getElementById('loader-folder-info');
-    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-    console.log('[FirstRun] Active folder selected:', chosenFolder);
-
-    const folderNames = ['AppDataFolder'];
-    if (multinotesFound) folderNames.push('multinotes_data');
-    localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-
-    // --- СТЪПКА 3: Създаване на борд Main (САМО ако е избрана AppDataFolder) ---
-    if (chosenFolder === 'AppDataFolder') {
-        try {
-            console.log('[FirstRun] Creating Main board in AppDataFolder...');
-
-            const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
-
-            if (existingMainBoards && existingMainBoards.length > 0) {
-                console.log('[FirstRun] Main board already exists in AppDataFolder');
-                localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
-            } else {
-                const now = Date.now();
-                boardIdCounter = 1;
-                localStorage.setItem('boardIdCounter', '1');
-                const boardToSave = {
-                    "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
-                    "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
-                    "numord": 1, "status": 0, "title": "Main"
-                };
-
-                const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
-                if (gdid) {
-                    boardToSave.gdid = gdid;
-                    await updateGDriveFile(gdid, JSON.stringify(boardToSave));
-                    console.log('[FirstRun] Main board created in AppDataFolder');
-                    localStorage.setItem('startBoard_AppDataFolder', gdid);
-                }
-            }
-        } catch (e) {
-            console.error('[FirstRun] Error creating Main board in AppDataFolder:', e);
-        }
-    }
-
-    // --- СТЪПКА 4: Създаване на folders.json ---
-    try {
-        // ПРЕДПАЗНА МЯРКА: Ако сме създали борд, трябва да е в boardsData, за да се запише в folders.json
-        if (typeof boardsData !== 'undefined' && boardsData.length === 0) {
-            const startBoardId = localStorage.getItem('startBoard_AppDataFolder');
-            if (startBoardId) {
-                // Търсим дали имаме вече някаква информация или слагаме дефолтния Main
-                boardsData = [{ id: 1, title: 'Main', gdid: startBoardId, numord: 1 }];
-            }
-        }
-        await syncGlobalFoldersJson();
-        console.log('[FirstRun] folders.json created.');
-    } catch (e) {
-        console.warn('[FirstRun] Error creating folders.json:', e);
-    }
-    // --- СТЪПКА 5: Подразбиращи се координати за плаващите бутони ---
-    // localStorage.setItem('popupMenuBtnPosition', JSON.stringify({ top: '60px', right: '10px' }));
-    // Задаваме FAB бутона малко по-вляво от KB Assistant (който е на right: 10px)
-    // localStorage.setItem('addNoteFabPosition', JSON.stringify({ top: (window.innerHeight - 80) + 'px', right: '70px' }));
-    // localStorage.setItem('kbFabPosition', JSON.stringify({ bottom: '10px', right: '10px' }));
-    // localStorage.setItem('scrollTopBtnPosition', JSON.stringify({ bottom: '50px', right: '10px' }));
-    // --- СТЪПКА 6: Създаване на settings.json с профил Default ---
-    try {
-        await saveSettingsToGDrive(true); // silent=true
-        console.log('[FirstRun] settings.json created with Default profile.');
-    } catch (e) {
-        console.warn('[FirstRun] Error creating settings.json:', e);
-    }
-    if (typeof showToast === 'function') showToast(_('firstRunComplete'), 5000);
-    localStorage.setItem('initial_setup_complete', 'true');
-    console.log('[FirstRun] First-time setup complete.');
-    return true;
-}
 
 async function mainLogic() {
     const loaderFolderInfo = document.getElementById('loader-folder-info');
@@ -6745,12 +6842,8 @@ async function mainLogic() {
                 }
             }
         }
-        // --- КОРЕКЦИЯ: Извикваме проверката за потребител тук, след като UI е готов ---
-        if (!hasLocalData) {
-            await userCheck();
-        }
+        await userCheck();
         if (isLoadCancelled) return;
-        // ПРЕЗАРЕЖДАМЕ флаговете, в случай че userCheck ги е променил!
         updateGlobalStateFlags();
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
         if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
@@ -6943,7 +7036,16 @@ async function mainLogic() {
                                 console.log("[mainLogic] Starting background sync task...");
                                 let updatedCount = 0;
                                 if (useGoogleDb) {
-                                    updatedCount = await runGoogleDriveSync();
+                                    if (!isDbOwner) {
+                                        console.log("[mainLogic] User mismatch detected! Fetching notes directly from Google Drive...");
+                                        const result = await fetchAllData(null, false);
+                                        if (result && !result.error) {
+                                            filterNotesForDemo();
+                                            await renderUI({ boardParseError: result.boardParseError });
+                                        }
+                                    } else {
+                                        updatedCount = await runGoogleDriveSync();
+                                    }
                                 } else if (useLocalFolder) {
                                     updatedCount = await runLocalSync();
                                 }
@@ -11000,7 +11102,14 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
 
                 if (targetFolderName === activeFolderName) return;
-
+                // Предупреждение при превключване към multinotes_data
+                if (targetFolderName === 'multinotes_data') {
+                    const confirmed = await showConfirmation(_('multiNotesSettingsWarn') || 'Warning: Changes in the multinotes_data folder will not automatically reflect in the Android MultiNotes app without a full sync. Are you sure you want to switch to this folder?');
+                    if (!confirmed) {
+                        activeFolderSelect.value = activeFolderName;
+                        return;
+                    }
+                }
                 try {
                     if (!targetFolderId) {
                         targetFolderId = await getFolderIDByName(targetFolderName);
