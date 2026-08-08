@@ -5,6 +5,26 @@
  * Използва keyword matching, fuzzy search и scoring система
  */
 
+/**
+ * Compares the numeric part of version labels such as "Beta 1.39".
+ * Each dot-separated segment is compared numerically, so 1.10 is newer than 1.9.
+ */
+function compareVersions(first, second) {
+    const getParts = (value) => {
+        const match = String(value || '').match(/[0-9]+(?:\.[0-9]+)*/);
+        return match ? match[0].split('.').map(Number) : [0];
+    };
+    const firstParts = getParts(first);
+    const secondParts = getParts(second);
+    const length = Math.max(firstParts.length, secondParts.length);
+
+    for (let index = 0; index < length; index++) {
+        const difference = (firstParts[index] || 0) - (secondParts[index] || 0);
+        if (difference !== 0) return difference;
+    }
+    return 0;
+}
+
 class KBMatcher {
     constructor(kbData) {
         this.kbData = kbData;
@@ -95,10 +115,9 @@ class KBMatcher {
             .sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
                 // При равни точки, ако са версии, предпочитаме ПО-НОВАТА версия
-                const parseV = (v) => { if (!v) return 0; const match = String(v).match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
                 const isVersionHeader = (id) => id && /^(Beta|Version)/i.test(id);
                 if (isVersionHeader(a.item.id) && isVersionHeader(b.item.id)) {
-                    return parseV(b.item.id) - parseV(a.item.id);
+                    return compareVersions(b.item.id, a.item.id);
                 }
                 return 0;
             });
@@ -441,7 +460,7 @@ class KBAssistant {
     }
 
     /**
-     * Checks if the app version has changed and triggers sequential guides for skipped versions
+     * Checks if the app version has changed and shows the guide for the current version.
      */
     checkVersionUpdates() {
         const guideFlag = localStorage.getItem('guide');
@@ -453,8 +472,6 @@ class KBAssistant {
         if (lastSeenVersion === currentVersion) return;
 
         const allItems = [...(this.kbData.general || []), ...(this.kbData.settings || [])];
-        const parseV = (v) => { if (!v) return 0; const match = v.match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
-
         // Fresh install: Show the latest update scenario (Beta/Version)
         if (!lastSeenVersion) {
             localStorage.setItem('app_version_seen', currentVersion);
@@ -462,7 +479,7 @@ class KBAssistant {
                 item.guide && /^(Beta|Version)/i.test(item.id)
             );
             if (versionScenarios.length > 0) {
-                versionScenarios.sort((a, b) => parseV(b.id) - parseV(a.id));
+                versionScenarios.sort((a, b) => compareVersions(b.id, a.id));
                 const latest = versionScenarios[0];
                 // Show the latest available record if we have no lastSeenVersion (fresh/forced)
                 console.log(`[KB Assistant] Fresh install/Force. Showing news for: ${latest.id} (Current App: ${currentVersion})`);
@@ -471,26 +488,15 @@ class KBAssistant {
             return;
         }
 
-        console.log(`[KB Assistant] Version changed from ${lastSeenVersion} to ${currentVersion}. Checking for update guides...`);
+        console.log(`[KB Assistant] Version changed from ${lastSeenVersion} to ${currentVersion}. Checking for current-version news...`);
 
-        const lastV = parseV(lastSeenVersion);
-        const currV = parseV(currentVersion);
+        const currentVersionScenario = allItems.find(item =>
+            item.id === currentVersion && item.guide
+        );
 
-        // Find all items whose ID matches a version string and are between last and current
-        const updateScenarios = allItems.filter(item => {
-            const itemV = parseV(item.id);
-            return itemV > lastV && itemV <= currV && item.guide;
-        });
-
-        // Sort by version ascending
-        updateScenarios.sort((a, b) => parseV(a.id) - parseV(b.id));
-
-        if (updateScenarios.length > 0) {
-            console.log(`[KB Assistant] Found ${updateScenarios.length} update scenarios. Building combined tour for ${currentVersion}...`);
-            const virtualGuide = this._buildCombinedVersionTour(updateScenarios, currentVersion);
-            if (virtualGuide) {
-                this.showGuide(virtualGuide);
-            }
+        if (currentVersionScenario) {
+            console.log(`[KB Assistant] Showing news for: ${currentVersionScenario.id}`);
+            this.showGuide({ ...currentVersionScenario.guide, id: currentVersionScenario.id });
         }
 
         // Update stored version
@@ -506,9 +512,8 @@ class KBAssistant {
     _buildCombinedVersionTour(scenarios, guideId = 'CombinedVersionTour') {
         if (!scenarios || scenarios.length === 0) return null;
 
-        const parseV = (v) => { if (!v) return 0; const match = String(v).match(/[0-9.]+/); return match ? parseFloat(match[0]) : 0; };
         // Sort ascending (chronological history)
-        scenarios.sort((a, b) => parseV(a.id) - parseV(b.id));
+        scenarios.sort((a, b) => compareVersions(a.id, b.id));
         console.log(`[KB Assistant] Final tour sequence:`, scenarios.map(s => s.id));
 
         const virtualGuide = {

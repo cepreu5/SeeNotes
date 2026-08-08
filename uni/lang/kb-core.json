@@ -1302,6 +1302,27 @@
             }
         },
         {
+            "id": "Beta 1.39",
+            "category": "workflow",
+            "guide": {
+                "1": {
+                    "image": "msm/expl.png",
+                    "height": 100,
+                    "time": 50000,
+                    "x": -10,
+                    "y": 11,
+                    "bx": 102,
+                    "by": 90,
+                    "bWidth": 265,
+                    "bHeight": 180,
+                    "target": "#search-box"
+                },
+                "stopAfter": true,
+                "action": "explain",
+                "context": ""
+            }
+        },
+        {
             "id": "offline-mode",
             "category": "data-management"
         }

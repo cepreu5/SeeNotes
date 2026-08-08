@@ -18,6 +18,30 @@ if (guide === 'false') {
 }
 else guide = true;
 
+let initialBoardModalPending = false;
+
+function showInitialBoardModalAfterGuide() {
+    if (initialBoardModalPending) return;
+
+    const openModal = () => {
+        initialBoardModalPending = false;
+        if (boardsData.length === 0 && typeof showNewBoardModal === 'function') {
+            showNewBoardModal();
+        }
+    };
+
+    // The introduction is scheduled after the first render. Defer the board
+    // dialog when it is pending or already visible, and resume on completion
+    // or when the user explicitly stops the guide.
+    if (guide === true || window.isGuideActive || document.querySelector('.guide-container')) {
+        initialBoardModalPending = true;
+        window.addEventListener('guide-finished', openModal, { once: true });
+        return;
+    }
+
+    openModal();
+}
+
 // --- OAuth Redirect Handler for iframe ---
 // Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
 if (window.location.hash && window.location.hash.includes('access_token')) {
@@ -499,6 +523,29 @@ async function loadAndParseFile(filename, folderId, modifiedSince = null, onProg
 async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     let folderId = folderIdFromPrompt || await getFolderID();
     if (!folderId) {
+        // При първо стартиране multinotes_data може да липсва. В този случай
+        // продължаваме с работната папка на web приложението, вместо да
+        // прекъсваме началното зареждане с грешка.
+        const isFirstRun = !folderIdFromPrompt && localStorage.getItem('initial_setup_complete') !== 'true';
+        if (isFirstRun && activeFolderName !== 'AppDataFolder') {
+            console.warn('[FirstRun] Active folder was not found. Switching to AppDataFolder.');
+            activeFolderName = 'AppDataFolder';
+            localStorage.setItem('active_folder_name', activeFolderName);
+            localStorage.removeItem('gdrive_multinotes_data_id');
+            ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
+            cachedMainFolderId = null;
+            folderIds = {};
+
+            // Няма открита папка на MultiNotes, затова не запазваме стари или
+            // подразбиращи се записи за multinotes_data в списъка с папки.
+            localStorage.setItem('gdrive_folder_names', JSON.stringify(['AppDataFolder']));
+
+            const loaderFolderInfo = document.getElementById('loader-folder-info');
+            if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+            if (typeof showToast === 'function') showToast(_('firstRunAppDataFolderSelected'), 7000);
+
+            return fetchAllData('appDataFolder', modifiedSince);
+        }
         if (useIndexedDb && useGoogleDb) {
             try {
                 await fetchAllDataLocal();
@@ -556,7 +603,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     checkIntegrity(allNotesData, 'note.txt');
     if (boardsData.length === 0) {
         showToast(_('errorNoBoardFilesFound'), 10000);
-        if (typeof showNewBoardModal === 'function') showNewBoardModal();
+        showInitialBoardModalAfterGuide();
         // Не връщаме грешка, за да позволим създаването на празна база данни и рендиране на UI
     }
     if (allNotesData.length === 0) {
@@ -6074,9 +6121,9 @@ function enableSettingsControls() {
  * Създава или пресъздава цялата база данни от данните, заредени в паметта.
  * @returns {Promise<boolean>} Връща true при успех и false при грешка.
  */
-async function createDatabaseFromMemory() {
+async function createDatabaseFromMemory({ suppressEmptyDataToast = false } = {}) {
     if (boardsData.length === 0 && allNotesData.length === 0) {
-        showToast(_('dbCreateFailedNoData'), 10000);
+        if (!suppressEmptyDataToast) showToast(_('dbCreateFailedNoData'), 10000);
         return false;
     }
     try {
@@ -6223,17 +6270,52 @@ async function handleFirstRunSetup() {
     if (localStorage.getItem('initial_setup_complete') === 'true' || sessionStorage.getItem('first_run_lock')) return false;
     const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
     if (hasLocalSettings) return false;
+    const isFreshLocalSetup = localStorage.getItem('initial_setup_complete') !== 'true';
     sessionStorage.setItem('first_run_lock', 'true');
     try {
         const appSettingsFolderId = await getAppSettingsFolderId();
         if (!appSettingsFolderId) return false;
         const settingsFiles = await findGDFileByName(appSettingsFolderId, 'settings.json');
-        if (settingsFiles && settingsFiles.length > 0) {
-            localStorage.setItem('initial_setup_complete', 'true');
-            return false;
-        }
         const foldersFiles = await findGDFileByName(appSettingsFolderId, 'folders.json');
-        if (foldersFiles && foldersFiles.length > 0) {
+        if ((settingsFiles && settingsFiles.length > 0) || (foldersFiles && foldersFiles.length > 0)) {
+            // При чиста локална инсталация може да има AppSettings от предишно
+            // използване на същия Drive акаунт. Потвърждаваме наличието на
+            // multinotes_data, вместо да я оставим като остарял запис.
+            if (isFreshLocalSetup) {
+                let folderNames = [];
+                try {
+                    const savedFolderNames = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]');
+                    folderNames = Array.isArray(savedFolderNames) ? savedFolderNames : [];
+                } catch (e) {
+                    console.warn('[FirstRun] Invalid saved folder list:', e);
+                }
+
+                // При чиста локална инсталация нямаме надежден локален
+                // признак дали папката съществува. Проверяваме Drive точно
+                // веднъж, за да не пропуснем налична multinotes_data.
+                const multinotesId = await getFolderIDByName('multinotes_data');
+                if (!multinotesId) {
+                    activeFolderName = 'AppDataFolder';
+                    localStorage.setItem('active_folder_name', activeFolderName);
+                    localStorage.removeItem('gdrive_multinotes_data_id');
+                    cachedMainFolderId = null;
+
+                    // При чист старт списъкът е празен и записваме само
+                    // AppDataFolder. Премахваме multinotes_data единствено
+                    // като защита за стар синхронизиран списък.
+                    const normalizedFolderNames = folderNames.includes('multinotes_data')
+                        ? folderNames.filter(name => name !== 'multinotes_data')
+                        : folderNames;
+                    if (!normalizedFolderNames.includes('AppDataFolder')) normalizedFolderNames.push('AppDataFolder');
+                    localStorage.setItem('gdrive_folder_names', JSON.stringify(normalizedFolderNames));
+
+                    const loaderFolderInfo = document.getElementById('loader-folder-info');
+                    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+                    if (typeof showToast === 'function') showToast(_('firstRunAppDataFolderSelected'), 7000);
+                } else {
+                    localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
+                }
+            }
             localStorage.setItem('initial_setup_complete', 'true');
             return false;
         }
@@ -6971,6 +7053,7 @@ async function mainLogic() {
                     console.log("DB is empty or does not exist. Performing initial data load.");
                     if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
                     loaderText.textContent = _('initialDataLoad');
+                    let dbCreatedSuccessfully = false;
                     if (useGoogleDb) {
                         console.log("Source for initial load: Google Drive");
                         if (isLoadCancelled) return;
@@ -6984,17 +7067,17 @@ async function mainLogic() {
                         }
                         // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
                         filterNotesForDemo();
-                        await createDatabaseFromMemory();
+                        dbCreatedSuccessfully = await createDatabaseFromMemory({ suppressEmptyDataToast: true });
                         await renderUI({ boardParseError: result.boardParseError });
                     } else if (useLocalFolder) {
                         console.log("Source for initial load: Local Folder");
                         const { boardParseError } = await fetchAllDataFromLocalFolder();
                         // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
                         filterNotesForDemo();
-                        await createDatabaseFromMemory();
+                        dbCreatedSuccessfully = await createDatabaseFromMemory({ suppressEmptyDataToast: true });
                         await renderUI({ boardParseError });
                     }
-                    showToast(_('dbCreated'), 10000);
+                    if (dbCreatedSuccessfully) showToast(_('dbCreated'), 10000);
                 } else {
                     // DB exists and has data, load from DB FIRST then sync in background
                     console.log("[mainLogic] DB exists. Fast loading local data first.");
@@ -8041,7 +8124,10 @@ function restoreAllFloatingPositions() {
 
     mappings.forEach(m => {
         const el = document.getElementById(m.id);
-        if (el) {
+        // При чист старт началната позиция вече е зададена от първата
+        // инициализация. Не я пресмятаме отново след тихото зареждане на
+        // настройките, освен ако профилът действително съдържа позиция.
+        if (el && localStorage.getItem(m.key)) {
             makeElementDraggable(el, m.key, true);
         }
     });
@@ -10343,9 +10429,11 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     document.body.appendChild(tempContainer);
     allButtonLinks.forEach(link => {
         const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
+        const isSearchResults = link.dataset.boardid === 'search-results';
         if (!isUtil) {
             link.style.width = 'auto';
-            link.style.display = 'inline-block';
+            // Results е временен борд: остава скрит, докато няма заявка за търсене.
+            if (!isSearchResults) link.style.display = 'inline-block';
             link.style.whiteSpace = 'nowrap';
             tempContainer.appendChild(link);
             const w = Math.ceil(link.getBoundingClientRect().width || link.offsetWidth || link.scrollWidth);
@@ -10360,9 +10448,10 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     const headerUtilWidth = Math.max(30, Math.floor((maxWidthForButtons - 5) / 2));
     allButtonLinks.forEach(link => {
         const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
+        const isSearchResults = link.dataset.boardid === 'search-results';
         if (!isUtil) {
             link.style.width = `${maxWidthForButtons}px`;
-            link.style.display = 'inline-block';
+            if (!isSearchResults) link.style.display = 'inline-block';
             link.style.boxSizing = 'border-box';
             link.style.overflow = 'hidden';
             link.style.textOverflow = 'ellipsis';
@@ -10618,7 +10707,10 @@ async function loadGlobalFoldersJson() {
         let changed = false;
         // Merge folder names
         const localFolderNamesStr = localStorage.getItem('gdrive_folder_names');
-        const localFolderNames = localFolderNamesStr ? JSON.parse(localFolderNamesStr) : ['multinotes_data'];
+        // При чиста локална инсталация не добавяме multinotes_data по
+        // подразбиране. Тя се включва само ако е записана в folders.json или
+        // действително е открита при първоначалната настройка.
+        const localFolderNames = localFolderNamesStr ? JSON.parse(localFolderNamesStr) : [];
 
         // Пречистваме remote names от дубликати и празни
         const cleanRemote = [...new Set(remoteFolderNames.filter(Boolean))];
@@ -11065,7 +11157,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 let targetFolderName = null;
                 let targetFolderId = null;
                 const folderNamesStr = localStorage.getItem('gdrive_folder_names');
-                const folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : ['multinotes_data'];
+                const folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
 
                 if (selectedValue === 'new_folder' || selectedValue === 'select_folder') {
                     const isNew = selectedValue === 'new_folder';
@@ -16587,6 +16679,7 @@ async function showNewBoardModal() {
     let customBgBlob = null;
     let customBgDataURL = null;
     let customBgMimeType = null;
+    let isBoardSaveInProgress = false;
     // Populated dropdown with current boards
     if (editSelect) {
         while (editSelect.options.length > 1) editSelect.remove(1);
@@ -17126,8 +17219,22 @@ async function showNewBoardModal() {
     // (Removed outdated initialization)
 
     saveBtn.onclick = async () => {
+        if (isBoardSaveInProgress) return;
+
         const title = titleInput.value.trim();
+        const normalizedTitle = title.normalize('NFKC').toLocaleLowerCase();
+        const currentBoardId = currentEditingBoard && (currentEditingBoard.gdid || currentEditingBoard.id);
+        const duplicateBoard = boardsData.some(board => {
+            const boardId = board.gdid || board.id;
+            return String(board.title || '').trim().normalize('NFKC').toLocaleLowerCase() === normalizedTitle &&
+                String(boardId) !== String(currentBoardId);
+        });
         if (!title) { showToast(_('errorEmptyTitle') || "Моля, въведете заглавие", 3000); return; }
+
+        if (duplicateBoard) {
+            showToast(_('errorDuplicateBoardTitle') || 'A board with this name already exists.', 4000);
+            return;
+        }
 
         if (!currentEditingBoard && isOffline) {
             showToast(_('errorOfflineBoardCreate') || "Не може да създавате нов борд в офлайн режим.", 5000);
@@ -17135,6 +17242,9 @@ async function showNewBoardModal() {
         }
 
         const now = Date.now();
+        isBoardSaveInProgress = true;
+        saveBtn.disabled = true;
+
         let boardToSave;
 
         if (currentEditingBoard) {
@@ -17291,6 +17401,9 @@ async function showNewBoardModal() {
         } catch (error) {
             console.error("Board operation failed:", error);
             showToast("Error: " + error.message, 5000);
+        } finally {
+            isBoardSaveInProgress = false;
+            saveBtn.disabled = false;
         }
     };
 
@@ -17337,7 +17450,7 @@ function showFolderDeletePopup() {
     console.log('Deleting folder...');
     const defaultFolder = 'multinotes_data';
     let folderNamesStr = localStorage.getItem('gdrive_folder_names');
-    let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
+    let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
 
     // Филтрираме активната папка и основната папка - те не могат да се трият
     const currentActive = (typeof activeFolderName !== 'undefined') ? activeFolderName : localStorage.getItem('active_folder_name');
@@ -17451,9 +17564,8 @@ function populateFoldersDropdown() {
         newOption.textContent = _('newFolderOption');
         activeFolderSelect.appendChild(newOption);
     }
-    const defaultFolder = 'multinotes_data';
     let folderNamesStr = localStorage.getItem('gdrive_folder_names');
-    let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [defaultFolder];
+    let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
     if (typeof activeFolderName !== 'undefined' && activeFolderName && !folderNames.includes(activeFolderName)) folderNames.push(activeFolderName);
     Array.from(activeFolderSelect.options).forEach(opt => {
         if (opt.value !== 'select_folder' && opt.value !== 'new_folder') {

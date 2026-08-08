@@ -246,6 +246,18 @@ header h1 {
     transform-origin: center;
 }
 
+/* Fallback loading indicator while switching boards if the mode button has no spinner. */
+@keyframes board-filter-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.board-filter-loading {
+    animation: board-filter-spin 0.8s linear infinite;
+    transform-origin: center;
+}
+
 /* Стил за иконата за зареждане в бутона за режим */
 #mode-button-loading-icon {
     display: none;

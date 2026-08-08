@@ -7279,6 +7279,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
     const modeButton = document.getElementById('mode_button');
     const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
+    const reloadButtonIcon = document.querySelector('#reload_button img, #reload_button svg');
     let animationStartTime = 0;
     const runFilter = () => {
         applyFilters();
@@ -7301,15 +7302,26 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
                     console.log(`Board "${logName}" (${count} notes) render duration: ${duration.toFixed(0)}ms`);
                 }, 0);
             }
+        } else if (reloadButtonIcon) {
+            reloadButtonIcon.classList.remove('board-filter-loading');
         }
+    };
+    const scheduleFilterAfterPaint = () => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(runFilter);
+        });
     };
     if (modeButton && loadingIcon) {
         animationStartTime = performance.now();
         modeButton.classList.add('mode-button-loading');
         loadingIcon.classList.add('button-loading');
-        // Използваме setTimeout, за да позволим на браузъра да рендира анимацията
-        // преди да започне тежката операция по филтриране.
-        setTimeout(runFilter, 10);
+        // Wait for one complete paint before starting the synchronous filter. A short timeout can
+        // still run before the next paint, leaving the active board and loading indicator invisible
+        // until filtering has finished.
+        scheduleFilterAfterPaint();
+    } else if (reloadButtonIcon) {
+        reloadButtonIcon.classList.add('board-filter-loading');
+        scheduleFilterAfterPaint();
     } else {
         runFilter(); // За всички други бутони, изпълняваме веднага
     }

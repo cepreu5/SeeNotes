@@ -21,12 +21,7 @@ window.showGuideStep = function (step) {
 
 window.toggleHero = function () {
   if (container && document.body.contains(container)) {
-    container.remove();
-    container = null;
-    let dbg = document.getElementById('msm-debug-overlay');
-    if (dbg) dbg.remove();
-    if (stepTimer) clearTimeout(stepTimer);
-    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    window.removeGuide();
     return false;
   } else {
     if (activeSteps.length === 0) {
@@ -72,6 +67,10 @@ window.removeGuide = function () {
     const modal = document.getElementById('content-modal');
     if (modal) modal.classList.remove('visible');
     isTempNoteOpen = false;
+  }
+  if (window.isGuideActive) {
+    window.isGuideActive = false;
+    window.dispatchEvent(new CustomEvent('guide-finished'));
   }
 };
 
@@ -222,6 +221,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     window.removeGuide();
     return;
   }
+  window.isGuideActive = true;
   // Execute onStart hook
   if (step.onStart && typeof step.onStart === 'function') {
     try {
