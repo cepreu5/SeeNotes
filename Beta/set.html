@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="bg">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Settings & Board Menu Viewer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #1f3b52;
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            background: #e3f2fd;
+            padding: 10px 15px;
+            border-radius: 6px;
+            color: #1565c0;
+            font-size: 1.2em;
+            margin-top: 30px;
+        }
+
+        .device-section {
+            margin-bottom: 40px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .device-header {
+            background-color: #4285F4;
+            color: white;
+            padding: 12px 20px;
+            font-size: 1.1em;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .device-content {
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+            word-break: break-all;
+            overflow-wrap: break-word;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            width: 35%;
+            color: #666;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            word-break: break-word;
+        }
+
+        @media (max-width: 500px) {
+            table {
+                table-layout: auto;
+            }
+
+            th,
+            td {
+                display: block;
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            th {
+                border-bottom: none;
+                padding-bottom: 2px;
+                font-weight: bold;
+            }
+
+            td {
+                padding-top: 2px;
+            }
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background-color: #f9f9f9;
+        }
+
+        .list-container {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+
+        ol {
+            margin: 0;
+            padding-left: 25px;
+        }
+
+        li {
+            padding: 4px 0;
+            border-bottom: 1px dashed #eee;
+        }
+
+        li:last-child {
+            border-bottom: none;
+        }
+
+        .error-msg {
+            color: #d93025;
+            background: #fce8e6;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            width: 100%;
+        }
+
+        .toggle-btn {
+            background: none;
+            border: 1px solid white;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75em;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .delete-btn {
+            background: none;
+            border: 1px solid white;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75em;
+            display: inline-flex;
+            align-items: center;
+            opacity: 0.8;
+            transition: background 0.2s, opacity 0.2s;
+            margin-right: 10px;
+        }
+
+        .delete-btn:hover {
+            background: rgba(255, 0, 0, 0.3);
+            opacity: 1;
+        }
+
+        .device-section.marked-for-delete {
+            opacity: 0.5;
+            filter: grayscale(1);
+        }
+
+        .device-section.marked-for-delete .device-header {
+            background-color: #666 !important;
+            text-decoration: line-through;
+        }
+
+        .save-container {
+            position: sticky;
+            top: 20px;
+            z-index: 100;
+            margin-bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .save-btn {
+            pointer-events: auto;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .save-btn:hover {
+            background-color: #2ecc71;
+            transform: translateY(-2px);
+        }
+
+        .save-btn:active {
+            transform: translateY(0);
+        }
+
+        .json-edit {
+            width: calc(100% - 20px);
+            height: 300px;
+            margin: 10px;
+            background: #272822;
+            color: #f8f8f2;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9em;
+            border: 1px solid #444;
+            display: none;
+            resize: vertical;
+        }
+
+        .folder-section {
+            margin-bottom: 25px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+
+        .folder-header {
+            background-color: #607d8b;
+            color: white;
+            padding: 10px 15px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .folder-body {
+            padding: 10px;
+        }
+
+        @keyframes simple-spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .saving {
+            pointer-events: none !important;
+            opacity: 0.7 !important;
+        }
+
+        .saving::after {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-left: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: simple-spin 0.8s linear infinite;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" id="main-container">
+        <h1>Profiles & Folders</h1>
+        <div class="save-container">
+            <button id="save-all-btn" class="save-btn" style="display:none;">Запази промените</button>
+        </div>
+        <div id="content">Зареждане на данни от облака...</div>
+
+        <div class="delete-files-container"
+            style="margin-top: 60px; padding: 30px; border-top: 3px double #e74c3c; display: flex; flex-direction: column; gap: 15px; align-items: center; background: #fff5f5; border-radius: 0 0 12px 12px;">
+            <p style="color: #c0392b; font-weight: bold; margin-bottom: 10px;">Опасна зона - триене на системни файлове
+                от облака:</p>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+                <button id="del-settings-file-btn" class="save-btn"
+                    style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий
+                    settings.json</button>
+                <button id="del-folders-file-btn" class="save-btn"
+                    style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий
+                    folders.json</button>
+                <button id="del-all-appdata-btn" class="save-btn"
+                    style="background-color: #000; color: #ff0000; border: 2px solid #ff0000; box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);">!!!
+                    ИЗТРИЙ ВСИЧКО В APPDATAFOLDER !!!</button>
+            </div>
+        </div>
+
+        <div id="saved-order-title" class="folder-section" style="display:none; margin-top: 20px;">
+            <div class="folder-header">
+                <span>Запазен ред в облака/локално (boardMenuOrder)</span>
+                <button class="toggle-btn" onclick="toggleRaw('order')">JSON</button>
+            </div>
+            <div id="saved-order-list" class="folder-body"></div>
+        </div>
+        <h2 id="folders-json-title" style="display:none;">Данни по папки (folders.json)</h2>
+        <div id="folders-json-list" style="display:none;"></div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const contentDiv = document.getElementById('content');
+            let token = null;
+            try {
+                const storedToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                if (storedToken) token = JSON.parse(storedToken).access_token;
+            } catch (e) { console.error("Token error:", e); }
+            async function gfetch(url) {
+                return fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            }
+            async function findInAppData(name, parentId = 'appDataFolder') {
+                if (!token) return null;
+                const q = encodeURIComponent(`name='${name}' and '${parentId}' in parents and trashed=false`);
+                const res = await gfetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=files(id)`);
+                const data = await res.json();
+                return data.files && data.files.length > 0 ? data.files[0].id : null;
+            }
+            async function getGDContent(id) {
+                if (!token || !id) return null;
+                const res = await gfetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
+                return res.ok ? await res.text() : null;
+            }
+            // 0. Зареждане от AppDataFolder
+            let cloudSettings = null;
+            let cloudFolders = null;
+            if (token) {
+                try {
+                    const settingsDir = await findInAppData('AppSettings');
+                    if (settingsDir) {
+                        const sid = await findInAppData('settings.json', settingsDir);
+                        if (sid) cloudSettings = await getGDContent(sid);
+                        const fid = await findInAppData('folders.json', settingsDir);
+                        if (fid) cloudFolders = await getGDContent(fid);
+                    }
+                } catch (e) { console.error("Cloud fetch error:", e); }
+            }
+            const rawSettings = cloudSettings || sessionStorage.getItem('full_settings_json') || "{}";
+            const rawOrder = sessionStorage.getItem('boardMenuOrder') || "[]";
+            const rawFolders = cloudFolders || sessionStorage.getItem('full_folders_json') || '{"folders":[]}';
+
+            if (cloudSettings) sessionStorage.setItem('full_settings_json', cloudSettings);
+            else if (token) sessionStorage.removeItem('full_settings_json');
+
+            if (cloudFolders) sessionStorage.setItem('full_folders_json', cloudFolders);
+            else if (token) sessionStorage.removeItem('full_folders_json');
+
+            // 1. Показване на настройките
+            if (rawSettings && rawSettings !== "null" && rawSettings !== "undefined") {
+                try {
+                    const settings = JSON.parse(rawSettings);
+                    contentDiv.innerHTML = '';
+                    const topLevelKeys = Object.keys(settings);
+                    let isNestedProfiles = false;
+                    if (topLevelKeys.length > 0) {
+                        const hasOldKeys = topLevelKeys.some(k => ['zoomLevel', 'noteFontSize', 'modalFontSize', 'startBoard', 'showDatemod'].includes(k) || k.startsWith('board_'));
+                        const allObjects = topLevelKeys.every(k => typeof settings[k] === 'object' && settings[k] !== null && !Array.isArray(settings[k]));
+                        if (allObjects && !hasOldKeys) {
+                            isNestedProfiles = true;
+                        }
+                    }
+                    const devices = isNestedProfiles ? settings : { 'Default': settings };
+                    const deviceNames = Object.keys(devices);
+                    if (deviceNames.length > 0) document.getElementById('save-all-btn').style.display = 'block';
+                    deviceNames.forEach(deviceName => {
+                        const deviceSettings = devices[deviceName];
+                        const safeId = deviceName.replace(/[^\w-]/g, '-');
+                        const section = document.createElement('div');
+                        section.className = 'device-sectionProfile';
+                        section.classList.add('device-section');
+                        section.dataset.deviceName = deviceName;
+                        section.id = `section-${safeId}`;
+                        const header = document.createElement('div');
+                        header.className = 'device-header';
+                        header.innerHTML = `<span>Профил: ${deviceName}</span>
+                            <div style="display:flex; align-items:center;">
+                                <button class="delete-btn" onclick="toggleDelete('${safeId}')" title="Изтрий профила">Del</button>
+                                <button class="toggle-btn" onclick="toggleRaw('${safeId}')">JSON</button>
+                            </div>`;
+                        const content = document.createElement('div');
+                        content.className = 'device-content';
+                        const table = document.createElement('table');
+                        const groups = {
+                            "Core Info": ['deviceName', 'folderId', 'gdrive_folder_names', 'language', 'rememberMe'],
+                            "UI Settings": ['zoomLevel', 'noteFontSize', 'modalFontSize', 'notesBgrd', 'imgBgrd', 'showDatemod', 'showNewBoard', 'oneTapLink', 'clickToEdit', 'closeAfterSave', 'hideAssistant', 'hideToast', 'modeButtonTooltip'],
+                            "Board/Note Rules": ['sortCriteria', 'sortInReverse', 'sortRemindersTop', 'enableNoteSorting', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear', 'maxSavedSearches', 'savedSearches'],
+                            "Positions": ['addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition', 'modalWidth', 'modalHeight'],
+                            "Visibility": ['showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind']
+                        };
+                        const allKeys = Object.keys(deviceSettings);
+                        const assignedKeys = new Set();
+
+                        Object.entries(groups).forEach(([groupName, groupKeys]) => {
+                            const matchingKeys = groupKeys.filter(k => allKeys.includes(k));
+                            if (matchingKeys.length === 0) return;
+
+                            const groupHeader = document.createElement('tr');
+                            groupHeader.innerHTML = `<th colspan="2" style="background-color: #eee; color: #333; font-weight: bold; text-align: center; font-size: 0.8em; letter-spacing: 1px;">--- ${groupName.toUpperCase()} ---</th>`;
+                            table.appendChild(groupHeader);
+
+                            matchingKeys.forEach(key => {
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = `<th>${key}</th><td>${(typeof deviceSettings[key] === 'object') ? JSON.stringify(deviceSettings[key]) : String(deviceSettings[key])}</td>`;
+                                table.appendChild(tr);
+                                assignedKeys.add(key);
+                            });
+                        });
+
+                        // Dynamic and unassigned keys
+                        const remainingKeys = allKeys.filter(k => !assignedKeys.has(k)).sort((a, b) => {
+                            const isDynamicA = a.startsWith('board_') || a.startsWith('startBoard_');
+                            const isDynamicB = b.startsWith('board_') || b.startsWith('startBoard_');
+                            if (isDynamicA && !isDynamicB) return 1;
+                            if (!isDynamicA && isDynamicB) return -1;
+                            return a.localeCompare(b);
+                        });
+
+                        if (remainingKeys.length > 0) {
+                            const groupHeader = document.createElement('tr');
+                            groupHeader.innerHTML = `<th colspan="2" style="background-color: #eee; color: #333; font-weight: bold; text-align: center; font-size: 0.8em; letter-spacing: 1px;">--- DYNAMIC & OTHERS ---</th>`;
+                            table.appendChild(groupHeader);
+
+                            remainingKeys.forEach(key => {
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = `<th>${key}</th><td>${(typeof deviceSettings[key] === 'object') ? JSON.stringify(deviceSettings[key]) : String(deviceSettings[key])}</td>`;
+                                table.appendChild(tr);
+                            });
+                        }
+                        const rawEdit = document.createElement('textarea');
+                        rawEdit.className = 'json-edit';
+                        rawEdit.id = `edit-${safeId}`;
+                        rawEdit.value = JSON.stringify(deviceSettings, null, 2);
+                        content.appendChild(rawEdit);
+                        content.appendChild(table);
+                        section.appendChild(header);
+                        section.appendChild(content);
+                        contentDiv.appendChild(section);
+                    });
+                } catch (e) { console.error(e); }
+            }
+            // 2. Показване на folders.json
+            try {
+                const titlesMap = JSON.parse(sessionStorage.getItem('boardTitlesMap') || '{}');
+                if (rawFolders) {
+                    const parsed = JSON.parse(rawFolders);
+                    if (parsed && Array.isArray(parsed.folders)) {
+                        const foldersTitle = document.getElementById('folders-json-title');
+                        const foldersList = document.getElementById('folders-json-list');
+                        if (parsed.activeFolder) {
+                            foldersTitle.innerHTML = `Данни по папки (folders.json) — <span style="color:#2e7d32; font-weight:normal;">Текуща активна папка: <strong>${parsed.activeFolder}</strong></span>`;
+                        }
+                        foldersTitle.style.display = 'block';
+                        foldersList.style.display = 'block';
+                        parsed.folders.forEach((folder, idx) => {
+                            const isCurrentActive = parsed.activeFolder === folder.name;
+                            const activeBadge = isCurrentActive ? ' <span style="background:#27ae60; color:#fff; padding:2px 8px; border-radius:12px; font-size:0.75em; margin-left:8px;">Активна папка</span>' : '';
+                            const safeId = `folder-${idx}`;
+                            const folderDiv = document.createElement('div');
+                            folderDiv.className = 'folder-section';
+                            folderDiv.dataset.folderIdx = idx;
+                            const fHeader = document.createElement('div');
+                            fHeader.className = 'folder-header';
+                            if (isCurrentActive) {
+                                fHeader.style.backgroundColor = '#2e7d32';
+                            }
+                            fHeader.innerHTML = `<span>Папка: ${folder.name}${activeBadge}</span>
+                                <div style="display:flex; align-items:center;">
+                                    <button class="delete-btn" onclick="toggleDeleteFolder(${idx})" title="Изтрий папката">Del</button>
+                                    <button class="toggle-btn" onclick="toggleRaw('folder-${idx}')">JSON</button>
+                                </div>`;
+                            const fBody = document.createElement('div');
+                            fBody.className = 'folder-body';
+                            fBody.innerHTML = '';
+                            if (Array.isArray(folder.boardMenuOrder)) {
+                                fBody.innerHTML = '<ol>' + folder.boardMenuOrder.map(id => {
+                                    const title = titlesMap[id] || id;
+                                    const label = (title !== id) ? ` <small style="color:#888;">(${id})</small>` : '';
+                                    return `<li>${title}${label}</li>`;
+                                }).join('') + '</ol>';
+                            }
+                            fBody.innerHTML += `<div style="font-size:0.85em; color:#666; margin-top:10px; border-top:1px solid #eee; padding-top:10px;"><strong>Start Board:</strong> ${folder.startBoard || 'Default'}<br><strong>Last Note ID:</strong> ${folder.lastNoteId || '-'}<br><strong>Last Board ID:</strong> ${folder.lastBoardId || '-'}</div>`;
+                            const rawEdit = document.createElement('textarea');
+                            rawEdit.className = 'json-edit';
+                            rawEdit.id = `edit-folder-${idx}`;
+                            rawEdit.value = JSON.stringify(folder, null, 2);
+                            fBody.prepend(rawEdit);
+                            folderDiv.appendChild(fHeader);
+                            folderDiv.appendChild(fBody);
+                            foldersList.appendChild(folderDiv);
+                        });
+                        // Запазваме активната папка и имейла за saveAll
+                        foldersList.dataset.fullJson = rawFolders;
+                    }
+                }
+            } catch (e) { console.error(e); }
+            // 3. Показване на boardMenuOrder
+            if (rawOrder) {
+                try {
+                    const order = JSON.parse(rawOrder);
+                    const list = document.getElementById('saved-order-list');
+                    document.getElementById('saved-order-title').style.display = 'block';
+                    list.style.display = 'block';
+                    list.innerHTML = '';
+
+                    const rawEdit = document.createElement('textarea');
+                    rawEdit.className = 'json-edit';
+                    rawEdit.id = 'edit-order';
+                    rawEdit.value = JSON.stringify(order, null, 2);
+                    list.appendChild(rawEdit);
+
+                    if (Array.isArray(order) && order.length > 0) {
+                        const ol = document.createElement('ol');
+                        order.forEach(item => { const li = document.createElement('li'); li.textContent = item; ol.appendChild(li); });
+                        list.appendChild(ol);
+                    }
+                } catch (e) { }
+            }
+            document.getElementById('save-all-btn').addEventListener('click', saveAll);
+            document.getElementById('del-settings-file-btn').addEventListener('click', () => deleteGDFile('settings.json'));
+            document.getElementById('del-folders-file-btn').addEventListener('click', () => deleteGDFile('folders.json'));
+            document.getElementById('del-all-appdata-btn').addEventListener('click', deleteAllAppData);
+        });
+        async function findInAppDataInternal(name, parentId = 'appDataFolder') {
+            const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!stored) return null;
+            const t = JSON.parse(stored).access_token;
+            const q = encodeURIComponent(`name='${name}' and '${parentId}' in parents and trashed=false`);
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=files(id)`, {
+                headers: { 'Authorization': `Bearer ${t}` }
+            });
+            const data = await res.json();
+            return data.files && data.files.length > 0 ? data.files[0].id : null;
+        }
+
+        async function deleteAllAppData() {
+            if (!confirm("ВНИМАНИЕ! Това ще изтрие ВСИЧКИ файлове (бордове, настройки, папки) от системното пространство AppDataFolder. Действието е НЕОБРАТИМО. Желаете ли да продължите?")) return;
+            if (!confirm("ПОСЛЕДНО ПОТВЪРЖДЕНИЕ: Наистина ли искате да заличите всичко в AppDataFolder?")) return;
+
+            const btn = document.getElementById('del-all-appdata-btn');
+            const originalText = btn.innerText;
+
+            try {
+                btn.classList.add('saving');
+                btn.innerText = "Изтриване...";
+
+                const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                if (!stored) throw new Error("Липсва оторизация.");
+                const t = JSON.parse(stored).access_token;
+
+                let deletedCount = 0;
+                let nextPageToken = null;
+
+                do {
+                    const q = encodeURIComponent("trashed = false");
+                    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=nextPageToken,files(id,name)&pageToken=${nextPageToken || ''}`;
+                    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${t}` } });
+                    const data = await res.json();
+
+                    if (data.files && data.files.length > 0) {
+                        const CHUNK_SIZE = 10; // Пакетно триене на 10 файла едновременно
+                        for (let i = 0; i < data.files.length; i += CHUNK_SIZE) {
+                            const chunk = data.files.slice(i, i + CHUNK_SIZE);
+                            await Promise.all(chunk.map(async (file) => {
+                                try {
+                                    const delRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
+                                        method: 'DELETE',
+                                        headers: { 'Authorization': `Bearer ${t}` }
+                                    });
+                                    if (delRes.ok) {
+                                        console.log('Deleted AppData file:', file.name);
+                                        deletedCount++;
+                                    }
+                                } catch (err) {
+                                    console.warn('Failed to delete AppData file:', file.name, err);
+                                }
+                            }));
+                        }
+                    }
+                    nextPageToken = data.nextPageToken;
+                } while (nextPageToken);
+
+                alert(`Операцията завърши. Изтрити обекти от облака: ${deletedCount}. Локалното хранилище и сесията също са нулирани за напълно чисто начало.`);
+                localStorage.clear();
+                sessionStorage.clear();
+                location.reload();
+            } catch (e) {
+                btn.classList.remove('saving');
+                btn.innerText = originalText;
+                alert("Критична грешка при изтриване: " + e.message);
+            }
+        }
+
+        function toggleRaw(id) {
+            const el = document.getElementById(`edit-${id}`) || document.getElementById(`edit-folder-${id.split('-')[1]}`);
+            if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+        function toggleDelete(id) {
+            const section = document.getElementById(`section-${id}`);
+            if (section) section.classList.toggle('marked-for-delete');
+        }
+        function toggleDeleteFolder(idx) {
+            const sections = document.querySelectorAll('.folder-section');
+            sections.forEach(s => {
+                if (parseInt(s.dataset.folderIdx) === idx) {
+                    s.classList.toggle('marked-for-delete');
+                }
+            });
+        }
+        async function deleteGDFile(name) {
+            if (!confirm(`Сигурни ли сте, че искате да изтриете ${name} окончателно от облака?`)) return;
+            try {
+                const settingsDir = await findInAppDataInternal('AppSettings');
+                if (settingsDir) {
+                    const fid = await findInAppDataInternal(name, settingsDir);
+                    if (fid) {
+                        const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                        const t = JSON.parse(stored).access_token;
+                        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fid}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${t}` }
+                        });
+                        if (res.ok) {
+                            if (name === 'settings.json') sessionStorage.removeItem('full_settings_json');
+                            if (name === 'folders.json') sessionStorage.removeItem('full_folders_json');
+                            alert(`${name} е изтрит успешно!`);
+                            location.reload();
+                        } else {
+                            alert(`Грешка при триене: ${res.status}`);
+                        }
+                    } else {
+                        alert(`Файлът ${name} не е намерен.`);
+                    }
+                }
+            } catch (e) { alert("Грешка: " + e.message); }
+        }
+        async function saveAll() {
+            const profileSections = document.querySelectorAll('.device-sectionProfile');
+            const finalSettings = {};
+            profileSections.forEach(section => {
+                if (section.classList.contains('marked-for-delete')) return;
+                const name = section.dataset.deviceName;
+                try {
+                    finalSettings[name] = JSON.parse(document.getElementById(`edit-${section.id.replace('section-', '')}`).value);
+                } catch (e) { alert(`Грешка в JSON за профил ${name}`); return; }
+            });
+            const folderSections = document.querySelectorAll('.folder-section');
+            const foldersListEl = document.getElementById('folders-json-list');
+            let foldersData = JSON.parse(foldersListEl.dataset.fullJson || '{"folders":[]}');
+            const newFolders = [];
+            folderSections.forEach(f => {
+                if (f.classList.contains('marked-for-delete')) return;
+                const idx = f.dataset.folderIdx;
+                try {
+                    newFolders.push(JSON.parse(document.getElementById(`edit-folder-${idx}`).value));
+                } catch (e) { alert(`Грешка в JSON за папка ${idx}`); return; }
+            });
+            foldersData.folders = newFolders;
+
+            let orderContent = null;
+            const orderEl = document.getElementById('edit-order');
+            if (orderEl) {
+                try {
+                    const parsedOrder = JSON.parse(orderEl.value);
+                    if (Array.isArray(parsedOrder)) {
+                        orderContent = JSON.stringify(parsedOrder);
+                        sessionStorage.setItem('boardMenuOrder', orderContent);
+                        if (window.opener && !window.opener.closed) {
+                            window.opener.localStorage.setItem('boardMenuOrder', orderContent);
+
+                            // Също така запазваме и за конкретната папка, ако тя е активна
+                            const activeFolder = window.opener.document.getElementById('active-folder-select')?.value;
+                            if (activeFolder) {
+                                window.opener.localStorage.setItem('boardMenuOrder_' + activeFolder, orderContent);
+                            }
+                        }
+                    } else {
+                        alert("boardMenuOrder трябва да бъде масив!"); return;
+                    }
+                } catch (e) { alert("Грешка в JSON за boardMenuOrder"); return; }
+            }
+
+            const settingsContent = JSON.stringify(finalSettings, null, 2);
+            const foldersContent = JSON.stringify(foldersData, null, 2);
+            sessionStorage.setItem('full_settings_json', settingsContent);
+            sessionStorage.setItem('full_folders_json', foldersContent);
+            if (window.opener && !window.opener.closed) {
+                try {
+                    const settingsDir = await findInAppDataInternal('AppSettings');
+                    if (settingsDir) {
+                        const sid = await findInAppDataInternal('settings.json', settingsDir);
+                        if (sid) await window.opener.updateGDriveFile(sid, settingsContent);
+                        const fid = await findInAppDataInternal('folders.json', settingsDir);
+                        if (fid) await window.opener.updateGDriveFile(fid, foldersContent);
+                        alert("Промените са запазени в AppDataFolder!");
+                    }
+                } catch (e) { alert("Грешка при запис в облака: " + e.message); }
+            }
+        }
+        async function findInAppDataInternal(name, parentId = 'appDataFolder') {
+            const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!stored) return null;
+            const t = JSON.parse(stored).access_token;
+            const q = encodeURIComponent(`name='${name}' and '${parentId}' in parents and trashed=false`);
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=files(id)`, {
+                headers: { 'Authorization': `Bearer ${t}` }
+            });
+            const d = await res.json();
+            return d.files && d.files.length > 0 ? d.files[0].id : null;
+        }
+    </script>
+</body>
+
+</html>
