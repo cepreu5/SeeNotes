@@ -4843,7 +4843,10 @@ function initApp() {
     staticSearchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><circle class="search-mode-dot" cx="11" cy="11" r="3" fill="black" stroke="none" style="display:none"></circle></svg>`;
     staticSearchIcon.style.cursor = 'pointer';
     staticSearchIcon.title = searchInBoardOnly ? (_('searchInBoardTooltip') || 'Search in current board (click to change)') : (_('searchEverywhereTooltip') || 'Search everywhere (click to change)');
-    updateSearchModeIndicator();
+    if (searchInBoardOnly) {
+        const dot = staticSearchIcon.querySelector('.search-mode-dot');
+        if (dot) { dot.style.display = ''; dot.setAttribute('fill', 'black'); }
+    }
     staticSearchIcon.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
@@ -8206,17 +8209,7 @@ function showModal(options, noteElement = null) {
             const board = boardsData.find(b => b.gdid == options.boardId);
             if (board) {
                 modalBoardNameEl.textContent = board.title;
-                // Show board names when viewing from All/Other boards, but hide if in that specific board
-                const shouldShow = (typeof currentBoardFilter !== 'undefined' && String(currentBoardFilter) !== String(options.boardId)) ||
-                    (options && options.forceShowBoardName);
-                if (shouldShow) {
-                    modalBoardNameEl.style.display = 'block';
-                } else {
-                    modalBoardNameEl.style.display = 'block';
-                    modalBoardNameEl.textContent = '📝';
-                    modalBoardNameEl.style.cursor = 'default';
-                    modalBoardNameEl.style.textDecoration = 'none';
-                }
+                modalBoardNameEl.style.display = 'block';
 
                 // --- Make Board Name Clickable ---
                 modalBoardNameEl.style.cursor = 'pointer';
@@ -9769,10 +9762,11 @@ function applyFilters() {
     const trashSearch = localStorage.getItem('trashSearch') === 'true';
     // Pre-calc за режим "търсене в борда": кои ID-та са валидни за boardBeforeSearch
     let boardOnlyIds = [];
-    if (searchInBoardOnly && searchTerm !== '' && boardBeforeSearch && boardBeforeSearch !== 'all') {
-        boardOnlyIds = [boardBeforeSearch];
+    const effectiveBoardBefore = (boardBeforeSearch && boardBeforeSearch !== 'all') ? boardBeforeSearch : currentBoardFilter;
+    if (searchInBoardOnly && searchTerm !== '' && effectiveBoardBefore && effectiveBoardBefore !== 'all' && effectiveBoardBefore !== 'search-results') {
+        boardOnlyIds = [effectiveBoardBefore];
         if (typeof boardsData !== 'undefined') {
-            const bbs = boardsData.find(b => b.gdid == boardBeforeSearch || b.id == boardBeforeSearch);
+            const bbs = boardsData.find(b => b.gdid == effectiveBoardBefore || b.id == effectiveBoardBefore);
             if (bbs) {
                 if (bbs.gdid) boardOnlyIds.push(bbs.gdid);
                 if (bbs.id) boardOnlyIds.push(bbs.id);
@@ -10445,6 +10439,8 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
 
     document.body.removeChild(tempContainer);
     maxWidthForButtons += 10;
+    // Ограничаваме максималната ширина до 200px, за да не стават бутоните прекалено големи
+    maxWidthForButtons = Math.min(maxWidthForButtons, 200);
     const headerUtilWidth = Math.max(30, Math.floor((maxWidthForButtons - 5) / 2));
     allButtonLinks.forEach(link => {
         const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
