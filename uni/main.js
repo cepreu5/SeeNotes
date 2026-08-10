@@ -555,6 +555,35 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
                 }
             } catch (e) { }
         }
+        // Папката не е намерена — предлагаме да я създадем или да превключим към AppDataFolder
+        if (activeFolderName !== 'AppDataFolder') {
+            const confirmMsg = (_('folderNotFoundCreate') || `Folder "${activeFolderName}" was not found in Google Drive. Create it now?`)
+                .replace('{folder}', activeFolderName);
+            const confirmed = await showConfirmation(confirmMsg);
+            if (confirmed) {
+                try {
+                    const newId = await createNewGDriveFolder(activeFolderName);
+                    if (newId) {
+                        localStorage.setItem('gdrive_multinotes_data_id', newId);
+                        cachedMainFolderId = newId;
+                        if (typeof showToast === 'function') showToast((_('folderCreated') || `Folder "${activeFolderName}" created.`).replace('{folder}', activeFolderName), 5000);
+                        return fetchAllData(newId, modifiedSince);
+                    }
+                } catch (createErr) {
+                    console.error('[fetchAllData] Failed to create folder:', createErr);
+                    if (typeof showToast === 'function') showToast(_('errorCreateFolder') || 'Failed to create folder.', 5000);
+                }
+            }
+            // Потребителят отказа или създаването се провали — превключваме към AppDataFolder
+            console.warn('[fetchAllData] Falling back to AppDataFolder.');
+            activeFolderName = 'AppDataFolder';
+            localStorage.setItem('active_folder_name', activeFolderName);
+            localStorage.removeItem('gdrive_multinotes_data_id');
+            ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
+            cachedMainFolderId = null;
+            folderIds = {};
+            return fetchAllData('appDataFolder', modifiedSince);
+        }
         showMessagePopup(_('errorFolderNotFound'));
         throw new Error("Main folder ID not found.");
     }
@@ -1049,11 +1078,39 @@ async function refreshAuthToken(forcePopup = false) {
             const client = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
-                callback: (tokenResponse) => {
+                callback: async (tokenResponse) => {
                     clearTimeout(requestTimeout); // Спираме таймера при отговор
                     document.body.classList.remove('silent-token-refresh');
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
+
+                        // Проверяваме дали акаунтът не се е променил при опресняване на токена
+                        try {
+                            const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                                headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+                            });
+                            if (userInfoResp.ok) {
+                                const userInfo = await userInfoResp.json();
+                                const previousEmail = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
+                                if (previousEmail && userInfo.email && previousEmail !== userInfo.email) {
+                                    console.warn(`[refreshAuthToken] User account changed: ${previousEmail} → ${userInfo.email}. Resetting folder settings.`);
+                                    localStorage.removeItem('active_folder_name');
+                                    localStorage.removeItem('gdrive_multinotes_data_id');
+                                    localStorage.removeItem('initial_setup_complete');
+                                    ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
+                                    activeFolderName = 'AppDataFolder';
+                                    cachedMainFolderId = null;
+                                    folderIds = {};
+                                }
+                                if (userInfo.email) {
+                                    sessionStorage.setItem('google_auth_email_hint', userInfo.email);
+                                    localStorage.setItem('google_login_hint', userInfo.email);
+                                }
+                            }
+                        } catch (uErr) {
+                            console.warn('[refreshAuthToken] Could not verify userinfo during token refresh:', uErr);
+                        }
+
                         // Determine storage based on existing token location or rememberMe
                         if (sessionStorage.getItem('google_auth_token')) {
                             sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
@@ -2170,41 +2227,70 @@ async function getMultinotesDataFolderID() {
 
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`name='${activeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1`, {
+        const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true`;
+        console.log(`[getMultinotesDataFolderID] Requesting: ${url}`);
+        return fetch(url, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
         });
     };
 
+    const maxAttempts = 3;
+    const retryDelays = [1000, 2000, 4000];
+    let tokenData = null;
     try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        const sessionToken = sessionStorage.getItem('google_auth_token');
+        const localToken = localStorage.getItem('google_auth_token');
+        const storedTokenString = sessionToken || localToken;
         if (!storedTokenString) return null;
-        let tokenData = JSON.parse(storedTokenString);
-        let resp = await sendRequest(tokenData.access_token);
-
-        if (resp.status === 401) {
-            console.warn("Got 401 in getMultinotesDataFolderID, attempting refresh...");
-            let refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                tokenData = refresh.tokenData;
-                resp = await sendRequest(tokenData.access_token);
-            }
-        }
-
-        if (!resp.ok) return null;
-        const result = await resp.json();
-        const id = result.files?.[0]?.id || null;
-        if (id) localStorage.setItem('gdrive_multinotes_data_id', id);
-        return id;
+        tokenData = JSON.parse(storedTokenString);
+        const tokenSource = sessionToken ? 'sessionStorage' : 'localStorage';
+        const emailHint = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint') || '?';
+        console.log(`[getMultinotesDataFolderID] Token from: ${tokenSource}, email hint: ${emailHint}, searching for folder: '${activeFolderName}'`);
     } catch (e) {
-        if (e instanceof TypeError || (e.message && e.message.includes('Failed to fetch'))) {
-            console.log('getMultinotesDataFolderID: Network unavailable, switching to offline mode.');
-            isOffline = true;
-        } else {
-            console.error("Error in getMultinotesDataFolderID:", e);
-        }
+        console.error("Error parsing auth token in getMultinotesDataFolderID:", e);
         return null;
     }
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            let resp = await sendRequest(tokenData.access_token);
+            if (resp.status === 401) {
+                console.warn("Got 401 in getMultinotesDataFolderID, attempting refresh...");
+                const refresh = await refreshAuthToken(false);
+                if (refresh && refresh.pass) {
+                    tokenData = refresh.tokenData;
+                    resp = await sendRequest(tokenData.access_token);
+                }
+            }
+            if (!resp.ok) {
+                console.warn(`[getMultinotesDataFolderID] Attempt ${attempt + 1}: HTTP ${resp.status}`);
+                try { console.warn('[getMultinotesDataFolderID] Response body:', await resp.text()); } catch (_) {}
+            } else {
+                const result = await resp.json();
+                console.log(`[getMultinotesDataFolderID] Attempt ${attempt + 1} response:`, JSON.stringify(result));
+                const id = result.files?.[0]?.id || null;
+                if (id) {
+                    if (attempt > 0) console.log(`[getMultinotesDataFolderID] Found folder on attempt ${attempt + 1}.`);
+                    localStorage.setItem('gdrive_multinotes_data_id', id);
+                    return id;
+                }
+                console.warn(`[getMultinotesDataFolderID] Attempt ${attempt + 1}: Folder '${activeFolderName}' not found in GDrive response.`);
+            }
+        } catch (e) {
+            if (e instanceof TypeError || (e.message && e.message.includes('Failed to fetch'))) {
+                console.log('getMultinotesDataFolderID: Network unavailable, switching to offline mode.');
+                isOffline = true;
+                return null;
+            }
+            console.error(`[getMultinotesDataFolderID] Attempt ${attempt + 1} error:`, e);
+        }
+        if (attempt < maxAttempts - 1) {
+            console.log(`[getMultinotesDataFolderID] Retrying in ${retryDelays[attempt]}ms...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
+        }
+    }
+    console.warn(`[getMultinotesDataFolderID] All ${maxAttempts} attempts exhausted. Folder not found.`);
+    return null;
 }
 
 // =================================================================================
@@ -2224,6 +2310,17 @@ async function authCallback(tokenResponse) {
             if (userInfoResponse.ok) {
                 const userInfo = await userInfoResponse.json();
                 console.log('User info received:', userInfo.email);
+                const previousEmail = localStorage.getItem('google_login_hint');
+                if (previousEmail && previousEmail !== userInfo.email) {
+                    console.warn(`[authCallback] Account changed: ${previousEmail} → ${userInfo.email}. Resetting folder settings.`);
+                    localStorage.removeItem('active_folder_name');
+                    localStorage.removeItem('gdrive_multinotes_data_id');
+                    localStorage.removeItem('initial_setup_complete');
+                    ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
+                    activeFolderName = 'AppDataFolder';
+                    cachedMainFolderId = null;
+                    folderIds = {};
+                }
                 sessionStorage.setItem('google_auth_email_hint', userInfo.email);
                 localStorage.setItem('google_login_hint', userInfo.email);
             } else {
