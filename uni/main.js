@@ -1089,12 +1089,14 @@ async function refreshAuthToken(forcePopup = false) {
                 },
             });
 
-            const loginHint = localStorage.getItem('google_login_hint') ||
+            const loginHint = sessionStorage.getItem('google_auth_email_hint') ||
+                localStorage.getItem('google_login_hint') ||
+                cachedLicenseEmailHint ||
                 (cachedLicenseData && cachedLicenseData.email_hint);
 
             // Request the token
             const tokenOptions = {
-                prompt: forcePopup ? 'select_account' : 'none'
+                prompt: forcePopup ? 'select_account consent' : 'none'
             };
             if (loginHint) tokenOptions.hint = loginHint;
 
@@ -1110,11 +1112,22 @@ async function refreshAuthToken(forcePopup = false) {
                 }
                 document.body.classList.add('silent-token-refresh');
             }
-            const requestTimeout = setTimeout(() => {
+            const requestTimeout = setTimeout(async () => {
                 document.body.classList.remove('silent-token-refresh');
                 const errMsg = isSilent ? "Silent token refresh failed/blocked." : "Token refresh request timed out after 30s.";
                 console.warn(errMsg);
-                reject(new Error(errMsg));
+                if (isSilent) {
+                    console.log("Attempting token refresh with interactive popup...");
+                    try {
+                        refreshPromise = null;
+                        const popupResult = await refreshAuthToken(true);
+                        resolve(popupResult);
+                    } catch (popupErr) {
+                        reject(popupErr);
+                    }
+                } else {
+                    reject(new Error(errMsg));
+                }
             }, timeoutDuration);
             client.requestAccessToken(tokenOptions);
         } catch (error) {
@@ -1959,28 +1972,31 @@ async function getAppSettingsFolderId() {
             if (!storedTokenString) return null;
             let tokenData = JSON.parse(storedTokenString);
             let resp = await findFolder(tokenData.access_token);
-            if (resp.status === 401) {
+            if (resp.status === 401 || resp.status === 403) {
                 let refresh = await refreshAuthToken(false);
                 if (refresh && refresh.pass) {
                     tokenData = refresh.tokenData;
                     resp = await findFolder(tokenData.access_token);
                 }
             }
-            if (resp.ok) {
-                const result = await resp.json();
-                if (result.files && result.files.length > 0) {
-                    // Ако има дубликати на папката AppSettings, изтриваме старите и оставяме най-новата
-                    if (result.files.length > 1) {
-                        console.warn("[Sync] Cleanup duplicates for AppSettings folder.");
-                        for (let i = 1; i < result.files.length; i++) {
-                            deleteGDriveFile(result.files[i].id).catch(err => console.error("Error deleting duplicate folder:", err));
-                        }
-                    }
-                    const id = result.files[0].id;
-                    cachedFolderIdsByName['appDataFolder:AppSettings'] = id;
-                    return id;
-                }
+            if (!resp.ok) {
+                console.warn(`[AppSettings] Search failed with status ${resp.status}`);
+                return null;
             }
+            const result = await resp.json();
+            if (result.files && result.files.length > 0) {
+                // Ако има дубликати на папката AppSettings, изтриваме старите и оставяме най-новата
+                if (result.files.length > 1) {
+                    console.warn("[Sync] Cleanup duplicates for AppSettings folder.");
+                    for (let i = 1; i < result.files.length; i++) {
+                        deleteGDriveFile(result.files[i].id).catch(err => console.error("Error deleting duplicate folder:", err));
+                    }
+                }
+                const id = result.files[0].id;
+                cachedFolderIdsByName['appDataFolder:AppSettings'] = id;
+                return id;
+            }
+            // Търсенето е успешно (resp.ok), но папка AppSettings наистина не съществува в AppDataFolder -> създаваме я
             const newId = await createNewGDriveFolder('AppSettings', 'appDataFolder');
             if (newId) cachedFolderIdsByName['appDataFolder:AppSettings'] = newId;
             return newId;
@@ -2245,15 +2261,20 @@ async function gisLoaded() {
     const loginBox = document.querySelector('.login-box');
     const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
     const isLogout = sessionStorage.getItem('logout_flag') === 'true';
-    if (!isLogout) {
-        await startApp();
-    }
-    if (hasToken && !isLogout) {
-        console.log("Existing token found in GIS callback, silente mode handled by startApp...");
-    } else {
+
+    if (isLogout) {
         if (loginBox) loginBox.style.visibility = 'visible';
         const authBtn = document.getElementById('authorize_button');
         if (authBtn) authBtn.disabled = false;
+    } else {
+        // Keep login box hidden during background auth attempt to prevent flashing buttons
+        if (loginBox && hasToken) loginBox.style.visibility = 'hidden';
+        await startApp();
+        if (!hasToken && loginBox) {
+            loginBox.style.visibility = 'visible';
+            const authBtn = document.getElementById('authorize_button');
+            if (authBtn) authBtn.disabled = false;
+        }
     }
 }
 
@@ -3907,13 +3928,42 @@ async function startApp(isExplicitLogin = false) {
     const lc = document.getElementById('loader-container');
     if (lc) lc.style.display = 'block';
 
+    // --- Поддръжка за URL параметър ?offline ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const forceOfflineParam = urlParams.has('offline') || urlParams.get('mode') === 'offline';
+
+    let hasLocalDataOrCache = false;
+    try {
+        const cache = await caches.open('app-cache');
+        const cachedResponse = await cache.match('s');
+        hasLocalDataOrCache = !!cachedResponse;
+        if (!hasLocalDataOrCache && typeof checkDbExists === 'function') {
+            hasLocalDataOrCache = await checkDbExists(NOTES_DB_NAME);
+        }
+    } catch (e) {
+        console.warn("Error checking cache/db for offline capability:", e);
+    }
+
+    if (forceOfflineParam) {
+        if (hasLocalDataOrCache) {
+            console.log("[Offline] Force offline mode enabled via URL parameter.");
+            isOffline = true;
+            isExplicitLogin = true;
+        } else {
+            console.warn("[Offline] URL parameter ?offline specified, but no local cache/data found. Falling back to online mode.");
+            showToast(_('offlineNoCacheWarning') || "За офлайн работа е необходимо поне едно онлайн стартиране.", 6000);
+        }
+    }
+
     // --- Автоматична проверка за режим Online/Offline ---
-    if (!navigator.onLine) {
-        isOffline = true;
-        isExplicitLogin = true;
-    } else {
-        await goOffline();
-        if (isOffline) isExplicitLogin = true;
+    if (!isOffline) {
+        if (!navigator.onLine) {
+            isOffline = true;
+            isExplicitLogin = true;
+        } else {
+            await goOffline();
+            if (isOffline) isExplicitLogin = true;
+        }
     }
     // --- Активна проверка за реална мрежова свързаност (non-blocking) ---
     // Стартираме пробата паралелно с другата инициализация. Ще изчакаме резултата само ако е нужен.
@@ -4288,12 +4338,16 @@ function showSyncChoiceModal(noteSummary) {
         noBtn.style.display = 'inline-block';
         allBtn.style.display = 'inline-block';
 
+        const folderIdInput = document.getElementById('folderIdInput');
+        if (folderIdInput) folderIdInput.style.display = 'none';
+
         const cleanup = () => {
             popup.classList.remove('show');
             yesBtn.removeEventListener('click', onYes);
             noBtn.removeEventListener('click', onNo);
             allBtn.removeEventListener('click', onAll);
             yesBtn.addEventListener('click', handleSubmitFolderId);
+            if (folderIdInput) folderIdInput.style.display = '';
             // Restore original width
             popupContent.style.width = '';
             popupContent.style.maxWidth = '';
@@ -5345,19 +5399,41 @@ function initApp() {
             return;
         }
         if (isOffline) {
-            if (typeof showToast === 'function') showToast(_('checkingNetwork') || "Checking network connection...", 2000);
+            const checkingMsg = _('checkingnetwork') || _('checkingNetwork') || "Проверка на мрежовата връзка...";
+            if (typeof showToast === 'function') showToast(checkingMsg, 2000);
             let reallyOnline = false;
-            try {
-                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
-                reallyOnline = response.ok;
-            } catch (err) { }
+            if (navigator.onLine) {
+                try {
+                    const probe = await fetch('https://www.googleapis.com/generate_204', {
+                        method: 'HEAD', mode: 'no-cors', cache: 'no-store'
+                    });
+                    reallyOnline = true;
+                } catch (err) {
+                    try {
+                        const res = await fetch(window.location.origin + window.location.pathname + '?_=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+                        reallyOnline = res.ok;
+                    } catch (e2) { }
+                }
+            }
 
             if (reallyOnline) {
                 isOffline = false;
+                isSyncSuspended = false;
+                // Премахваме ?offline от URL адреса, за да не се задейства при презареждане
+                const url = new URL(window.location.href);
+                if (url.searchParams.has('offline') || url.searchParams.get('mode') === 'offline') {
+                    url.searchParams.delete('offline');
+                    url.searchParams.delete('mode');
+                    window.history.replaceState({}, document.title, url.pathname + url.search);
+                }
                 updateModeButton();
-                if (typeof showToast === 'function') showToast(_('onlineRestored') || "Online mode restored", 2000);
+                const restoredMsg = _('onlineRestored') || _('onlinerestored') || "Възстановен е онлайн режим";
+                if (typeof showToast === 'function') showToast(restoredMsg, 3000);
+                // Стартираме онлайн автентикация и синхронизация
+                isAppStarted = false;
+                await startApp(true);
             } else {
-                showToast(_('offlineModeMessage') || "Cannot sync while offline.", 3000);
+                showToast(_('offlineModeMessage') || "Няма връзка с мрежата. Синхронизацията е невъзможна.", 3000);
             }
             return;
         }
@@ -5723,6 +5799,7 @@ async function initLoginPage() {
     if (authorizeBtn) {
         authorizeBtn.addEventListener('click', handleAuthClick);
     }
+    if (loginBox) loginBox.style.visibility = 'visible';
     showAppUI();
 }
 
@@ -5928,27 +6005,20 @@ async function checkAuth(isExplicitLogin = false) {
     if (isExpired) {
         console.log("Token expired. Attempting silent refresh...");
         try {
-            const refreshResult = await refreshAuthToken();
+            let refreshResult = await refreshAuthToken(false);
             if (refreshResult && refreshResult.pass) return refreshResult;
-            console.warn("Silent refresh returned non-pass result:", refreshResult);
-        } catch (refreshErr) {
-            console.warn("Silent refresh failed:", refreshErr);
+        } catch (silentErr) {
+            console.warn("Silent refresh failed, opening interactive popup...", silentErr);
         }
-        let hasLocalData = false;
-        if (dbExists) {
-            try {
-                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (boardsInDb && boardsInDb.length > 0) hasLocalData = true;
-            } catch (e) {
-                console.warn("Failed to check local DB in checkAuth:", e);
-            }
+        // Ако тихият refresh не стане, ВЕДНАГА отваряме попъпа за автентикация
+        try {
+            let popupResult = await refreshAuthToken(true);
+            if (popupResult && popupResult.pass) return popupResult;
+        } catch (popupErr) {
+            console.warn("Interactive auth popup failed or was closed:", popupErr);
         }
-        if (hasLocalData) {
-            isOffline = true;
-            isSyncSuspended = true;
-            console.log("[Auth] Switching to local-only mode (sync suspended).");
-            return { pass: true, tokenData };
-        }
+
+        // Ако и попъпът се провали или потребителят го затвори, почистваме изтеклия токен и показваме логин формата
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token');
         initLoginPage();
@@ -15573,19 +15643,13 @@ function saveEditedNote() {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem) return;
 
-    // --- ASYNC REFACTOR: Close modal immediately and save in background ---
     const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
     if (closeAfterSave) {
         const contentModal = document.getElementById('content-modal');
         if (contentModal) contentModal.classList.remove('visible');
-    } else {
-        // If not closing, at least disable editing and show a preview
-        disableNoteEditing(modalBodyElem);
     }
-
     // Show a toast message to indicate saving is in progress
     showToast(_('savingChanges') || 'Saving changes...', 2000);
-
     // --- The rest of the function now runs in the background ---
     (async () => {
         const textarea = document.getElementById('note-edit-textarea');
@@ -15607,6 +15671,10 @@ function saveEditedNote() {
         const titleText = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
         const formatStr = modalBodyElem.dataset.format || "";
         const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
+
+        if (!closeAfterSave) {
+            disableNoteEditing(modalBodyElem);
+        }
 
         if (newText === undefined) return;
 
@@ -15769,7 +15837,8 @@ function saveEditedNote() {
         }
 
         // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
-        const hasChanges = isNewNote || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color);
+        const hasDrafts = !!modalBodyElem.dataset.draftText;
+        const hasChanges = isNewNote || hasDrafts || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color);
 
         if (hasChanges) {
             // --- Apply Changes ---
@@ -16088,6 +16157,23 @@ function previewEditedNote() {
             gdid: noteGdid,
             maskedLinks: maskedLinks
         }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
+
+        // Preserve editing dataset state on the new modalBodyElem for saveEditedNote to work after preview
+        const newModalBodyElem = document.getElementById('modal-body');
+        if (newModalBodyElem) {
+            newModalBodyElem.dataset.draftText = newText;
+            newModalBodyElem.dataset.draftTitle = titleText;
+            if (modalBodyElem.dataset.gdid) newModalBodyElem.dataset.gdid = modalBodyElem.dataset.gdid;
+            if (modalBodyElem.dataset.id) newModalBodyElem.dataset.id = modalBodyElem.dataset.id;
+            if (modalBodyElem.dataset.numord) newModalBodyElem.dataset.numord = modalBodyElem.dataset.numord;
+            if (modalBodyElem.dataset.boardId) newModalBodyElem.dataset.boardId = modalBodyElem.dataset.boardId;
+            if (modalBodyElem.dataset.colorIndex) newModalBodyElem.dataset.colorIndex = modalBodyElem.dataset.colorIndex;
+            if (modalBodyElem.dataset.baseDatemod) newModalBodyElem.dataset.baseDatemod = modalBodyElem.dataset.baseDatemod;
+            if (modalBodyElem.dataset.baseNote) newModalBodyElem.dataset.baseNote = modalBodyElem.dataset.baseNote;
+            if (modalBodyElem.dataset.maskedLinks) newModalBodyElem.dataset.maskedLinks = modalBodyElem.dataset.maskedLinks;
+            if (modalBodyElem.dataset.format) newModalBodyElem.dataset.format = modalBodyElem.dataset.format;
+            if (modalBodyElem.dataset.titleFormat) newModalBodyElem.dataset.titleFormat = modalBodyElem.dataset.titleFormat;
+        }
 
         // --- Custom preview state: Show Save, Preview AND Edit buttons ---
         // 1. Re-initialize edit buttons (showModal cleaned them up)
