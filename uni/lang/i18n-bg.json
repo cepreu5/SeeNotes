@@ -370,6 +370,8 @@
     "selectFolderPrompt": "Въведете име на съществуваща папка в Google Drive:",
     "errorFolderNotFoundDrive": "Папката не е намерена в Google Drive.",
     "folderNotFoundCreate": "Папката '{folder}' не е намерена в Google Drive. Искате ли да я създадете сега?",
+    "folderNotFoundSwitchedToMultinotes": "Папката '{oldFolder}' не бе намерена в Google Drive. Автоматично бе превключено към намерената папка 'multinotes_data'.",
+    "folderNotFoundRemovedFromList": "Папката '{folder}' не съществува в Google Drive и бе премахната от списъка с папки.",
     "deleteFolderLabel": "Изтриване на папка:",
     "deleteFolderBtn": "Изтрий",
     "confirmDeleteFolder": "Сигурни ли сте, че искате да изтриете папка \"{folderName}\" и цялото ѝ съдържание?",

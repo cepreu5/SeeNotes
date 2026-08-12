@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.40'; // App version
+const version = 'Beta 1.41'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -523,7 +523,47 @@ async function loadAndParseFile(filename, folderId, modifiedSince = null, onProg
 async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     let folderId = folderIdFromPrompt || await getFolderID();
     if (!folderId) {
-        // При първо стартиране multinotes_data може да липсва. В този случай
+        // Премахваме несъществуващата папка от списъка с папки
+        if (activeFolderName && activeFolderName !== 'AppDataFolder') {
+            removeFolderFromList(activeFolderName);
+        }
+
+        // 1. Първо проверяваме дали "multinotes_data" съществува в Google Drive за текущия акаунт
+        if (activeFolderName !== 'multinotes_data') {
+            try {
+                const multinotesId = await getFolderIDByName('multinotes_data');
+                if (multinotesId) {
+                    console.log(`[fetchAllData] Active folder "${activeFolderName}" was not found, but "multinotes_data" exists (ID: ${multinotesId}). Switching automatically.`);
+                    const oldFolder = activeFolderName;
+                    activeFolderName = 'multinotes_data';
+                    localStorage.setItem('active_folder_name', activeFolderName);
+                    localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
+                    cachedMainFolderId = multinotesId;
+
+                    let folderNames = [];
+                    try { folderNames = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]'); } catch (e) { }
+                    if (!folderNames.includes('multinotes_data')) {
+                        folderNames.push('multinotes_data');
+                        localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+                    }
+
+                    const loaderFolderInfo = document.getElementById('loader-folder-info');
+                    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+
+                    if (typeof showToast === 'function') {
+                        const toastMsg = (_('folderNotFoundSwitchedToMultinotes') || `Папката "${oldFolder}" не бе намерена. Автоматично е превключено към намерената папка "multinotes_data".`)
+                            .replace('{oldFolder}', oldFolder);
+                        showToast(toastMsg, 6000);
+                    }
+
+                    return fetchAllData(multinotesId, modifiedSince);
+                }
+            } catch (e) {
+                console.warn('[fetchAllData] Error checking for multinotes_data fallback:', e);
+            }
+        }
+
+        // 2. При първо стартиране multinotes_data може да липсва. В този случай
         // продължаваме с работната папка на web приложението, вместо да
         // прекъсваме началното зареждане с грешка.
         const isFirstRun = !folderIdFromPrompt && localStorage.getItem('initial_setup_complete') !== 'true';
@@ -555,7 +595,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
                 }
             } catch (e) { }
         }
-        // Папката не е намерена — предлагаме да я създадем или да превключим към AppDataFolder
+        // 3. Папката не е намерена и multinotes_data също я няма — предлагаме да я създадем или да превключим към AppDataFolder
         if (activeFolderName !== 'AppDataFolder') {
             const confirmMsg = (_('folderNotFoundCreate') || `Folder "${activeFolderName}" was not found in Google Drive. Create it now?`)
                 .replace('{folder}', activeFolderName);
@@ -1097,6 +1137,9 @@ async function refreshAuthToken(forcePopup = false) {
                                     localStorage.removeItem('active_folder_name');
                                     localStorage.removeItem('gdrive_multinotes_data_id');
                                     localStorage.removeItem('initial_setup_complete');
+                                    localStorage.removeItem('settings_multinotes_data');
+                                    localStorage.removeItem('gdrive_folder_names');
+                                    sessionStorage.removeItem('first_run_lock');
                                     ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
                                     activeFolderName = 'AppDataFolder';
                                     cachedMainFolderId = null;
@@ -1981,7 +2024,7 @@ async function getFolderIDByName(name) {
     if (cachedFolderIdsByName[name]) return cachedFolderIdsByName[name];
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1`, {
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -2264,7 +2307,7 @@ async function getMultinotesDataFolderID() {
             }
             if (!resp.ok) {
                 console.warn(`[getMultinotesDataFolderID] Attempt ${attempt + 1}: HTTP ${resp.status}`);
-                try { console.warn('[getMultinotesDataFolderID] Response body:', await resp.text()); } catch (_) {}
+                try { console.warn('[getMultinotesDataFolderID] Response body:', await resp.text()); } catch (_) { }
             } else {
                 const result = await resp.json();
                 console.log(`[getMultinotesDataFolderID] Attempt ${attempt + 1} response:`, JSON.stringify(result));
@@ -2312,14 +2355,7 @@ async function authCallback(tokenResponse) {
                 console.log('User info received:', userInfo.email);
                 const previousEmail = localStorage.getItem('google_login_hint');
                 if (previousEmail && previousEmail !== userInfo.email) {
-                    console.warn(`[authCallback] Account changed: ${previousEmail} → ${userInfo.email}. Resetting folder settings.`);
-                    localStorage.removeItem('active_folder_name');
-                    localStorage.removeItem('gdrive_multinotes_data_id');
-                    localStorage.removeItem('initial_setup_complete');
-                    ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
-                    activeFolderName = 'AppDataFolder';
-                    cachedMainFolderId = null;
-                    folderIds = {};
+                    await handleAccountSwitchReset(previousEmail, userInfo.email);
                 }
                 sessionStorage.setItem('google_auth_email_hint', userInfo.email);
                 localStorage.setItem('google_login_hint', userInfo.email);
@@ -4863,14 +4899,14 @@ function initApp() {
         const advancedSettingsSpan = document.getElementById('advanced-settings-span');
         const accordionHeader = document.querySelector('.accordion-header');
 
-        // Check if we need to show advanced settings (Ctrl click or validation flow which might trigger this)
-        if (e.ctrlKey) {
+        // Check if we need to show advanced settings (Ctrl click or stored in localStorage)
+        if (e.ctrlKey || localStorage.getItem('showAdvancedSettings') === 'true') {
             if (advancedSettingsSpan) {
                 const isHidden = advancedSettingsSpan.hasAttribute('hidden');
                 if (isHidden) {
                     advancedSettingsSpan.removeAttribute('hidden');
-                    localStorage.setItem('showAdvancedSettings', 'true');
                 }
+                localStorage.setItem('showAdvancedSettings', 'true');
                 // Попълваме dropdown-а ПРАВИЛНО чрез централизираната функция
                 populateFoldersDropdown();
                 // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
@@ -6037,36 +6073,40 @@ async function checkWhitelist(delayed = false) {
     console.log('>>> Executing whitelist check (action: ' + action + ')...');
     console.log('>>> Email for whitelist:', currentUserEmail);
     if (!currentUserEmail) return null;
-    try {
-        const response = await fetch('https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec', {
-            method: 'POST',
-            mode: 'cors',
-            credentials: 'omit',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
-                email: currentUserEmail,
-                action: action
-            })
-        });
-        if (!response.ok) {
-            console.warn('>>> Whitelist check HTTP error:', response.status);
-            return null;
+
+    const url = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
+    const maxAttempts = 2;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                mode: 'cors',
+                credentials: 'omit',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    email: currentUserEmail,
+                    action: action
+                })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                console.log('>>> Whitelist response:', data);
+                if (isTrialStart) {
+                    sessionStorage.removeItem('isTrialStart');
+                    console.log('>>> Trial registered for:', currentUserEmail);
+                }
+                return data;
+            }
+            console.log(`>>> Whitelist check attempt ${attempt} HTTP status: ${response.status}`);
+        } catch (err) {
+            console.log(`>>> Whitelist check attempt ${attempt} network error:`, err.message || err);
         }
-        const data = await response.json();
-        console.log('>>> Whitelist response:', data);
-        if (isTrialStart) {
-            sessionStorage.removeItem('isTrialStart');
-            console.log('>>> Trial registered for:', currentUserEmail);
+        if (attempt < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
         }
-        return data;
-    } catch (err) {
-        if (err.name === 'TypeError' || err.message === 'Failed to fetch') {
-            console.log('>>> Whitelist check: Service unavailable (likely offline).');
-        } else {
-            console.log('>>> Whitelist check fail:', err);
-        }
-        return null;
     }
+    return null;
 }
 
 async function checkAuth(isExplicitLogin = false) {
@@ -6160,25 +6200,49 @@ async function loadGoogleApis() {
 }
 
 function handleSignoutClick() {
-    // Премахваме само ключовете, свързани с удостоверяването
+    // Премахваме ключовете, свързани с удостоверяването
     localStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_email_hint');
-    // Премахваме кешираните ID-та на папки, за да не се ползват от друг потребител
+    localStorage.removeItem('google_login_hint');
     localStorage.removeItem('gdrive_multinotes_data_id');
     localStorage.removeItem('gdrive_folder_id_Other');
     localStorage.removeItem('gdrive_folder_id_Sound');
     localStorage.removeItem('gdrive_folder_id_Video');
     localStorage.removeItem('gdrive_folder_id_Images');
-    // Премахваме google_login_hint САМО ако "Запомни ме" НЕ е активно
-    const rememberMe = localStorage.getItem('rememberMe') === 'true';
-    if (!rememberMe) {
-        localStorage.removeItem('google_login_hint'); // Спираме автоматичния вход
-    }
-    // Задаваме флаг за изход, за да се покаже login формата
     sessionStorage.setItem('logout_flag', 'true');
-    // Презареждаме страницата - checkAuth ще покаже login формата
     window.location.reload();
+}
+
+/**
+ * Изчиства старото състояние и изтрива старата локална база при смяна на акаунта.
+ */
+async function handleAccountSwitchReset(previousEmail, newEmail) {
+    console.warn(`[AccountSwitch] Account changed from ${previousEmail} to ${newEmail}. Resetting state and deleting old local database.`);
+    localStorage.removeItem('active_folder_name');
+    localStorage.removeItem('gdrive_multinotes_data_id');
+    localStorage.removeItem('initial_setup_complete');
+    localStorage.removeItem('settings_multinotes_data');
+    localStorage.removeItem('gdrive_folder_names');
+    sessionStorage.removeItem('first_run_lock');
+    ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
+    activeFolderName = 'AppDataFolder';
+    cachedMainFolderId = null;
+    folderIds = {};
+    allNotesData = [];
+    boardsData = [];
+    mediaData = [];
+    if (typeof noteBgCache !== 'undefined' && noteBgCache && noteBgCache.clear) {
+        noteBgCache.clear();
+    }
+    try {
+        await deleteNotesDB();
+        dbExists = false;
+        boardsInDb = [];
+        notesInDb = [];
+    } catch (e) {
+        console.warn('Error deleting old NotesDB on account switch:', e);
+    }
 }
 
 // =================================================================================
@@ -6187,7 +6251,7 @@ function handleSignoutClick() {
 // --- GDrive Data Loading logic moved to load.js ---
 /**
  * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
- * Ако има несъответствие, превключва приложението в ограничен режим.
+ * Ако има несъответствие, нулира старата база за новия потребител.
  */
 async function userCheck() {
     if (!dbExists) {
@@ -6197,8 +6261,8 @@ async function userCheck() {
     const storedUserEmail = await getConfig('userEmail');
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint');
     if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
-        isDbOwner = false;
-        await handleUserMismatch(storedUserEmail);
+        await handleAccountSwitchReset(storedUserEmail, currentUserEmail);
+        isDbOwner = true;
     } else {
         isDbOwner = true;
     }
@@ -8420,38 +8484,7 @@ function showModal(options, noteElement = null) {
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
     // Special case: if titleFormatString is provided, format the title part separately.
-    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
-    const pipeIndex = fullTableHtml ? -1 : (typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|'));
-    if (fullTableHtml) {
-        displayContent = fullTableHtml;
-    } else if (pipeIndex !== -1 && titleFormatString && titleFormatString.trim() !== '') {
-        // Hidden note with title formatting: split, format each part, then combine
-        const titlePart = rawContent.substring(0, pipeIndex);
-        const bodyPart = rawContent.substring(pipeIndex + 1);
-        const formattedTitle = formatText(titlePart, titleFormatString, true);
-        let formattedBody = '';
-        if (formatString && formatString.trim() !== '') {
-            formattedBody = formatText(bodyPart, formatString, true);
-        } else {
-            formattedBody = renderMarkdownTableAsPseudoGraphic(bodyPart) || processNoteContent(bodyPart, true);
-        }
-        displayContent = formattedTitle + '<br>' + formattedBody;
-    } else {
-        // Standard logic: replace separator with newline for hidden notes
-        const pipeIdxForReplace = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
-        if (pipeIdxForReplace !== -1) {
-            // Replace only the first separating pipe
-            const titlePart = rawContent.substring(0, pipeIdxForReplace);
-            const bodyPart = rawContent.substring(pipeIdxForReplace + 1);
-            const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
-            const formattedBody = tableHtml || processNoteContent(bodyPart, true);
-            displayContent = processNoteContent(titlePart, true) + '<br>' + formattedBody;
-        } else if (formatString && formatString.trim() !== '') {
-            displayContent = formatText(rawContent, formatString, true); // isForModal = true
-        } else {
-            displayContent = renderMarkdownTableAsPseudoGraphic(rawContent) || processNoteContent(rawContent, true); // isForModal = true
-        }
-    }
+    displayContent = getFormattedNoteHtml(rawContent, formatString, titleFormatString, true);
     modalBody.innerHTML = displayContent;
     modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
 
@@ -11370,6 +11403,16 @@ async function createSettingsUI(boardsData, boardParseError) {
                         targetFolderId = await getFolderIDByName(targetFolderName);
                     }
 
+                    if (!targetFolderId && targetFolderName !== 'AppDataFolder') {
+                        // Папката не съществува в Google Drive — премахваме я от списъка с папки
+                        removeFolderFromList(targetFolderName);
+                        const msg = (_('folderNotFoundRemovedFromList') || `Папката "${targetFolderName}" не съществува в Google Drive и бе премахната от списъка.`)
+                            .replace('{folder}', targetFolderName);
+                        if (typeof showToast === 'function') showToast(msg, 5000);
+                        activeFolderSelect.value = activeFolderName;
+                        return;
+                    }
+
                     if (targetFolderId) {
                         const oldActiveFolderName = activeFolderName;
                         console.log(`[Folder-Switch] Changing folder to: "${targetFolderName}" (ID: ${targetFolderId})`);
@@ -11464,11 +11507,10 @@ async function createSettingsUI(boardsData, boardParseError) {
                         syncGlobalFoldersJson();
                         setTimeout(() => location.reload(), 1500);
                     } else {
-                        throw new Error("Folder ID not found");
+                        activeFolderSelect.value = activeFolderName;
                     }
                 } catch (err) {
                     console.error("Error switching folder:", err);
-                    showToast(_('errorLoadSettings'));
                     activeFolderSelect.value = activeFolderName;
                 }
             });
@@ -12661,6 +12703,71 @@ function getVisibleTitleTextForElement(titleEl, sourceText) {
 }
 
 /**
+ * Коригира символните офсети в JSON форматиращия низ, когато съдържанието е съкратено
+ * (напр. когато първият ред се показва като заглавие на борда).
+ */
+function adjustFormatStringOffset(formatString, offset) {
+    if (!formatString || !offset || offset <= 0) return formatString;
+    try {
+        let isPipeSeparated = formatString.endsWith('|');
+        let str = isPipeSeparated ? formatString.slice(0, -1) : formatString;
+        const delimiter = isPipeSeparated ? '|' : '\n';
+        const formats = str.split(/[|\n]/).map(f => {
+            try { return JSON.parse(f); } catch (e) { return null; }
+        }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
+        if (formats.length === 0) return formatString;
+        const adjusted = formats.map(f => {
+            const newStart = Math.max(0, f.start - offset);
+            const newEnd = Math.max(0, f.end - offset);
+            return JSON.stringify({ ...f, start: newStart, end: newEnd });
+        });
+        return adjusted.join(delimiter) + (isPipeSeparated ? '|' : '');
+    } catch (e) {
+        return formatString;
+    }
+}
+
+/**
+ * Унифицирана функция за форматиране и рендиране на съдържанието на бележка.
+ * Използва се напълно еднакво както в модала за преглед, така и на картичките в борда.
+ */
+function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString = null, isForModal = false) {
+    if (!rawContent) return '';
+
+    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
+    if (fullTableHtml) return fullTableHtml;
+
+    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
+    if (pipeIndex !== -1) {
+        const titlePart = rawContent.substring(0, pipeIndex);
+        const bodyPart = rawContent.substring(pipeIndex + 1);
+
+        let formattedTitle = '';
+        if (titleFormatString && titleFormatString.trim() !== '') {
+            formattedTitle = formatText(titlePart, titleFormatString, isForModal);
+        } else {
+            formattedTitle = processNoteContent(titlePart, isForModal);
+        }
+
+        let formattedBody = '';
+        const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
+        if (tableHtml) {
+            formattedBody = tableHtml;
+        } else if (formatString && formatString.trim() !== '') {
+            formattedBody = formatText(bodyPart, formatString, isForModal);
+        } else {
+            formattedBody = processNoteContent(bodyPart, isForModal);
+        }
+        return formattedTitle + '<br>' + formattedBody;
+    }
+
+    if (formatString && formatString.trim() !== '') {
+        return formatText(rawContent, formatString, isForModal);
+    }
+    return processNoteContent(rawContent, isForModal);
+}
+
+/**
  * Processes note content to handle links, code blocks, and newlines.
  * @param {string} text - The raw text content of the note.
  * @param {boolean} isForModal - Flag to indicate if the content is for the modal view.
@@ -12682,13 +12789,13 @@ function processNoteContent(text, isForModal = false) { // isForModal is now use
     const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true'; // false by default
     let html;
     if (isForModal || oneTapLinksEnabled) {
-        // В модала или ако е включено - показваме линковете
+        // В модала или ако е включено - показваме линковете като <a>
         const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
         html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     } else {
-        // В затворената бележка и е изключено - НЕ показваме текста на линковете
+        // За запазване на символното отместване (offsets), запазваме текста на линка без <a> таг
         const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-        html = escapedText.replace(urlRegex, ''); // Премахваме линковете изцяло
+        html = escapedText.replace(urlRegex, '$1');
     }
     // 4. Re-insert code blocks
     codeBlocks.forEach(block => {
@@ -13250,8 +13357,8 @@ async function createNoteElement(noteContent) {
             if (noteContent.text_span) {
                 textSpan = noteContent.text_span;
             }
-            if (noteContent.title_span) {
-                titleSpan = noteContent.title_span;
+            if (noteContent.title_span || noteContent.title_text_span) {
+                titleSpan = noteContent.title_span || noteContent.title_text_span;
             }
             extraData = { ...noteContent };
             delete extraData.notetxt;
@@ -13577,30 +13684,21 @@ async function createNoteElement(noteContent) {
     contentEl.className = 'note-content';
     const isForModal = (note.closest('#modal-body') !== null);
     const renderPreviewContent = (contentForPreview) => {
-        const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
-        const tablePreviewHtml = renderMarkdownTableAsPseudoGraphic(contentForPreview);
-        if (tablePreviewHtml) {
-            contentEl.innerHTML = tablePreviewHtml;
-        } else if (formatSource) {
-            // Use the exact same logic as in showModal to ensure indices match
-            let contentToFormat = fileContent;
-            const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(contentToFormat) !== -1 : contentToFormat.includes('|');
-            if (hasPipe) {
-                contentToFormat = contentForPreview;
-            } else {
-                contentToFormat = contentForPreview;
-            }
-            // Format the content
-            let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
-            contentEl.innerHTML = formattedHtml;
-        } else {
-            contentEl.innerHTML = processNoteContent(contentForPreview, isForModal);
+        let formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
+        const titleFormatSource = (titleSpan && titleSpan.trim() !== '') ? titleSpan : null;
+        // Намираме точния символен офсет, ако първият ред (заглавието) е отделен
+        const rawOffset = fileContent.indexOf(contentForPreview);
+        const offset = rawOffset !== -1 ? rawOffset : Math.max(0, fileContent.length - contentForPreview.length);
+        if (offset > 0 && formatSource) {
+            formatSource = adjustFormatStringOffset(formatSource, offset);
         }
+        contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal);
     };
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
-        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
-        contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
+        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
+        const titleFormatSource = (titleSpan && titleSpan.trim() !== '') ? titleSpan : null;
+        contentEl.innerHTML = getFormattedNoteHtml(previewContent, null, titleFormatSource, isForModal);
     } else {
         renderPreviewContent(displayContent);
     }
@@ -14714,6 +14812,13 @@ if (settingsCloseX) {
  */
 async function updateAdvancedSettingsVisibility() {
     const saveIndividualWrapper = document.getElementById('save-individual-wrapper');
+    const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+
+    if (advancedSettingsSpan) {
+        if (localStorage.getItem('showAdvancedSettings') === 'true') {
+            advancedSettingsSpan.removeAttribute('hidden');
+        }
+    }
 
     // Sync checkboxes
     const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
@@ -17723,6 +17828,30 @@ function showFolderDeletePopup() {
     box.appendChild(listContainer);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+}
+
+/**
+ * Премахва несъществуваща папка от gdrive_folder_names и я обновява в падащото меню.
+ */
+function removeFolderFromList(folderName) {
+    if (!folderName || folderName === 'AppDataFolder') return;
+    try {
+        let folderNamesStr = localStorage.getItem('gdrive_folder_names');
+        let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
+        if (folderNames.includes(folderName)) {
+            folderNames = folderNames.filter(n => n !== folderName);
+            localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+            localStorage.removeItem('startBoard_' + folderName);
+            localStorage.removeItem('boardMenuOrder_' + folderName);
+            localStorage.removeItem('lastNoteId_' + folderName);
+            localStorage.removeItem('lastNoteNumord_' + folderName);
+            localStorage.removeItem('lastBoardId_' + folderName);
+            populateFoldersDropdown();
+            if (typeof syncGlobalFoldersJson === 'function') syncGlobalFoldersJson();
+        }
+    } catch (e) {
+        console.warn('Error removing folder from list:', e);
+    }
 }
 
 /**

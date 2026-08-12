@@ -372,6 +372,8 @@
     "selectFolderOption": "Select folder...",
     "errorFolderNotFoundDrive": "Folder not found in Google Drive.",
     "folderNotFoundCreate": "Folder '{folder}' was not found in Google Drive. Would you like to create it now?",
+    "folderNotFoundSwitchedToMultinotes": "Folder '{oldFolder}' was not found in Google Drive. Automatically switched to the found 'multinotes_data' folder.",
+    "folderNotFoundRemovedFromList": "Folder '{folder}' does not exist in Google Drive and was removed from the folder list.",
     "deleteFolderBtn": "Delete",
     "deleteFolderLabel": "Delete folder:",
     "confirmDeleteFolder": "Are you sure you want to delete folder \"{folderName}\" and all its contents?",
