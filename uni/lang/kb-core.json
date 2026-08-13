@@ -1169,6 +1169,17 @@
                     "bHeight": 50,
                     "target": "#sbox"
                 },
+                "4": {
+                    "image": "msm/l-up-w.png",
+                    "height": 100,
+                    "x": 21,
+                    "y": 26,
+                    "bx": 179,
+                    "by": -22,
+                    "bWidth": 239,
+                    "bHeight": 146,
+                    "target": "#search-box"
+                },
                 "stopAfter": false,
                 "action": "explain!",
                 "context": ""
@@ -1303,6 +1314,27 @@
         },
         {
             "id": "Beta 1.39",
+            "category": "workflow",
+            "guide": {
+                "1": {
+                    "image": "msm/expl.png",
+                    "height": 100,
+                    "time": 50000,
+                    "x": -10,
+                    "y": 11,
+                    "bx": 102,
+                    "by": 90,
+                    "bWidth": 265,
+                    "bHeight": 180,
+                    "target": "#search-box"
+                },
+                "stopAfter": true,
+                "action": "explain",
+                "context": ""
+            }
+        },
+        {
+            "id": "Beta 1.42",
             "category": "workflow",
             "guide": {
                 "1": {

@@ -548,6 +548,9 @@
                 },
                 "3": {
                     "text": "The next lines show the saved searches — they remain unchanged."
+                },
+                "4": {
+                    "text": "The search is performed in all notes or only in the notes of the active board. You can switch between searching in <i>all notes</i> and <i>notes from the active board</i> by clicking the magnifying glass."
                 }
             }
         },
@@ -659,7 +662,23 @@
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.39<br><br><span align='left'>- Here will be displayed the added functions in the new version.</span>"
+                    "text": "Beta 1.39<br>(click Assistant to close this window)<br><br><span align='left'>- Here will be displayed the added functions in the new version.</span>"
+                }
+            }
+        },
+        "Beta 1.42": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.42"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.42<br>(click Assistant to close this window)<br><br><span align='left'>- Speeding up loading.</span>"
                 }
             }
         },

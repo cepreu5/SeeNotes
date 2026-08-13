@@ -125,7 +125,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             container.className = 'guide-container';
             container.style.position = 'absolute';
             container.style.opacity = '0'; // Hide initially to prevent jump
-            container.style.zIndex = '10000';
+            container.style.zIndex = '10500';
             container.style.pointerEvents = 'none'; // Pass clicks through container
             container.style.transition = 'none'; // Ensure no transition initially
             document.body.appendChild(container);

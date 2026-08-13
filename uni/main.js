@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.41'; // App version
+const version = 'Beta 1.42'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -4914,7 +4914,7 @@ function initApp() {
         // Проверяваме актуалното състояние (може да е било току-що включено)
         if (localStorage.getItem('showAdvancedSettings') === 'true') {
             if (advancedSettingsSpan) advancedSettingsSpan.removeAttribute('hidden');
-            
+
             // Попълваме dropdown-а ПРАВИЛНО чрез централизираната функция
             populateFoldersDropdown();
             // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
@@ -4923,7 +4923,7 @@ function initApp() {
                     populateFoldersDropdown();
                 }
             });
-            
+
             setTimeout(() => {
                 if (accordionHeader) {
                     const accordion = accordionHeader.parentElement;
@@ -10227,7 +10227,7 @@ function initializeLoad() {
     loaderContainer.style.display = 'block'; // Показваме лоудъра веднага
     // Задаваме първоначален текст, за да избегнем "премигване" на празен панел
     const loaderTitle = document.getElementById('loader-title');
-    if (loaderTitle) loaderTitle.textContent = _('initialDataLoad');
+    if (loaderTitle) loaderTitle.textContent = '';
     currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
     const popup = document.getElementById('board-filter-popup');
     if (popup) {
@@ -11256,7 +11256,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 console.log('[DEBUG] loadDeviceProfiles(): parsed devices from cache:', devices);
             } catch (e) { console.warn('[DEBUG] parse error on cachedProfiles:', e); }
         }
-        
+
         // Always fetch from GDrive in background if not offline to discover new profiles
         if (!isOffline && (!cachedProfiles || forceRefresh || true)) {
             (async () => {
@@ -11282,7 +11282,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                                 const currentDevice = localStorage.getItem('deviceName') || 'Default';
                                 if (!remoteDevices.includes(currentDevice)) remoteDevices.push(currentDevice);
                                 if (!remoteDevices.includes('Default')) remoteDevices.push('Default');
-                                
+
                                 // Check if we found new devices compared to cache
                                 const newDevicesStr = JSON.stringify(remoteDevices);
                                 if (newDevicesStr !== cachedProfiles) {

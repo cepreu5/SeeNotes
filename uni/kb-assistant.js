@@ -7,22 +7,15 @@
 
 /**
  * Compares the numeric part of version labels such as "Beta 1.39".
- * Each dot-separated segment is compared numerically, so 1.10 is newer than 1.9.
+ * Compares the numeric part of version labels as floating point numbers.
+ * This ensures that 1.071 is considered older than 1.09.
  */
 function compareVersions(first, second) {
-    const getParts = (value) => {
-        const match = String(value || '').match(/[0-9]+(?:\.[0-9]+)*/);
-        return match ? match[0].split('.').map(Number) : [0];
+    const getFloat = (value) => {
+        const match = String(value || '').match(/[0-9]+(?:\.[0-9]+)?/);
+        return match ? parseFloat(match[0]) : 0;
     };
-    const firstParts = getParts(first);
-    const secondParts = getParts(second);
-    const length = Math.max(firstParts.length, secondParts.length);
-
-    for (let index = 0; index < length; index++) {
-        const difference = (firstParts[index] || 0) - (secondParts[index] || 0);
-        if (difference !== 0) return difference;
-    }
-    return 0;
+    return getFloat(first) - getFloat(second);
 }
 
 class KBMatcher {

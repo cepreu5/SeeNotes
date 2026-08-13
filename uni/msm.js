@@ -259,7 +259,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     container.className = 'guide-container';
     container.style.position = 'fixed'; // По-надеждно за дебъг и позициониране
     container.style.opacity = '0'; // Hide initially
-    container.style.zIndex = '10000';
+    container.style.zIndex = '10500';
     container.style.pointerEvents = 'none'; // Pass clicks through
     container.style.transition = 'none';
     document.body.appendChild(container);

@@ -101,8 +101,8 @@
             <div id="lang-switcher-main" class="lang-switcher-container" style="margin-bottom: 15px;"></div>
             <div
                 style="text-align: center; max-width: 500px; color: white; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; font-size: 14.5px; line-height: 1.5; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
-                <span data-key="betaVersionText">Това е тестова (Beta) версия на приложението.</span><br>
-                <span data-key="betaAccessText">Ако желаете да получите достъп, моля, пишете на</span> <strong
+                <span data-key="betaVersionText">This is a test (Beta) version of the application.</span><br>
+                <span data-key="betaAccessText">If you wish to get access, please write to</span> <strong
                     style="color: #ffcc00; font-weight: bold; letter-spacing: 0.5px;">multinotes.web@gmail.com</strong>
             </div>
         </div>
@@ -124,102 +124,78 @@
         </div>
 
         <section style="max-width: 800px; margin: 0 auto;">
-            <p data-key="intro1"><strong>CX Notes</strong> е приложение, работещо в браузъра ви, чрез което
-                може да
-                имате достъп до информацията в бележките, създадени с приложението <strong>Multinotes</strong> за
-                Андроид, от
-                вашия компютър, таблет, iPhone и др. независимо дали работите с Windows, Android, macOS, iOS или Linux.
-            </p>
-            <p data-key="intro1a">Необходимо условие за работа на приложението е да сте включили синхронизация с
-                <strong>Google Drive</strong> в настройките на <strong>Multinotes</strong>.
-            </p>
-            <p data-key="intro2"><strong>CX Notes</strong> осигурява бърз достъп до вашите бележки, без
-                нужда от инсталация и дори при необходимост дава възможност за работа без връзка с интернет.
-                Основният режим на работа използва локална база данни в браузъра, която се обновява с новите и
-                редактирани
-                бележки от приложението и по този начин осигурява оптимална производителност.</p>
-            <h3 data-key="modeDbTitle">Ето как работи:</h3>
+            <p data-key="intro1"><strong>CX Notes</strong> is a simple, browser‑based tool that lets you open your <a
+                    href="https://play.google.com/store/apps/details?id=monitor.kmv.multinotes"
+                    target="_blank"><strong>Multinotes</strong></a> Android notes on any device — your computer, tablet,
+                iPhone, or anything else you use, no matter if you’re on Windows, Android, macOS, iOS, or Linux.</p>
+            <p data-key="intro1a">This feature is currently available exclusively to users of the <b>MultiNotes</b>
+                Android version downloaded from <b>Google Play</b>, with <b>Google Drive</b> sync enabled. Support for
+                the <b>Huawei</b> version is coming soon, so stay tuned for updates.</p>
+            <p data-key="intro2">With <strong>CX Notes</strong>, you can get to your notes quickly, without installing
+                anything — and it even works offline when you need it. Your browser keeps a local copy of your notes and
+                updates it automatically whenever something new is added or changed, so everything stays fast and
+                smooth.</p>
+            <h3 data-key="modeDbTitle">Here is how it works:</h3>
             <!--p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
             ефективност и независимост от интернет връзка.</p-->
             <ul>
-                <li data-key="modeDbPoint1">При първо стартиране приложението изтегля всички бележки от <strong>Google
-                        Drive</strong> и ги записва в локалната база данни на браузъра.</li>
-                <li data-key="modeDbPoint2">Всяко следващо зареждане става директно от тази база, като се прави проверка
-                    и
-                    се изтеглят само новите и променените бележки след последното стартиране, което съществено ускорява
-                    процеса.
+                <li data-key="modeDbPoint1">On the first launch, the viewer downloads all your notes from <strong>Google
+                        Drive</strong> and stores them in a local database (cache) inside your browser.</li>
+                <li data-key="modeDbPoint2">After that, everything loads directly from this local copy. The app only
+                    checks for new or updated notes since your last visit, which makes things much faster.</li>
+                <li data-key="modeDbPoint3">If you turn off <strong>Google Drive</strong> in <strong>Settings</strong>
+                    after the initial load, the viewer will use only the local database. This speeds things up even more
+                    and even lets you work offline. Just keep in mind that no updates will be checked in this mode, so
+                    it’s a good idea to click the <strong>Mode</strong> button from time to time to refresh your notes.
                 </li>
-                <li data-key="modeDbPoint3">Ако, след първоначално зареждане, махнете отметката на <strong>Google
-                        Drive</strong> в <strong>Настройки</strong>, бележките ще се зареждат само от базата данни,
-                    което
-                    съществено
-                    ще ускори процеса и дори ще може да работите без връзка с интернет. В този случай няма да се прави
-                    проверка
-                    за нови и променени бележки, затова ще е полезно периодично да връщате отметката, за да
-                    актуализирате
-                    данните си.</li>
             </ul>
-            <h3 data-key="modeNoDbTitle">Режим без база данни</h3>
+            <h3 data-key="modeNoDbTitle">Mode without Database</h3>
             <ul>
-                <li data-key="modeNoDbPoint1">Ако, след първоначално зареждане, махнете отметката от <strong>База
-                        данни</strong> в <strong>Настройки</strong>, бележките се зареждат директно от <strong>Google
-                        Drive</strong> при всяко следващо стартиране.</li>
-                <li data-key="modeNoDbPoint2">Винаги се показват най-актуалните данни.</li>
-                <li data-key="modeNoDbPoint3">По-бавно зареждане, изисква интернет връзка.</li>
+                <li data-key="modeNoDbPoint1">If you turn off the <strong>Database</strong> option in
+                    <strong>Settings</strong> after the initial load, the viewer will pull your notes directly from
+                    <strong>Google Drive</strong> every time you open it.</li>
+                <li data-key="modeNoDbPoint2">This way, you’ll always see the most up‑to‑date version of your data.</li>
+                <li data-key="modeNoDbPoint3">Just keep in mind that loading will be slower and you’ll need an internet
+                    connection for it to work.</li>
             </ul>
             <span hidden>
-                <h2 data-key="advancedModesTitle">Допълнителни режими (Разширени настройки)</h2>
-                <p data-key="advancedModesDesc">Чрез менюто <em><strong>Разширени настройки</strong></em> може да
-                    активирате
-                    алтернативни режими на работа, подходящи за специфични случаи. Тези режими могат да работят с или
-                    без
-                    изполване на локална база данни, в зависимост от вашите предпочитания.</p>
-                <h3 data-key="modeLocalTitle">Режим: Локална папка</h3>
+                <h2 data-key="advancedModesTitle">Additional Modes (Advanced Settings)</h2>
+                <p data-key="advancedModesDesc">Through the <em><strong>Advanced Settings</strong></em> menu, you can
+                    activate alternative modes of operation suitable for specific cases. These modes can work with or
+                    without using a local database, depending on your preferences.</p>
+                <h3 data-key="modeLocalTitle">Mode: Local Folder</h3>
                 <ul>
-                    <li data-key="modeLocalPoint1">Режим, подходящ за потребители, които предпочитат да имат локално
-                        копие
-                        на бележките си и искат по-бърз достъп до тях.</li>
-                    <li data-key="modeLocalPoint2">Данните се четат от папка на вашия компютър. Трябва да настроите
-                        приложението <strong>Google Drive for Desktop</strong> да синхронизира
-                        <strong>multinotes_data</strong> от <strong>Google Drive</strong> на компютъра ви (може да
-                        зададете
-                        наличност на данните и в офлайн режим) и да посочите синхронизираната папка в
-                        <strong>Настройки</strong> -> <strong>Разширени настройки</strong> -> <strong>Локална
-                            папка</strong>.
-                    </li>
-                    <li data-key="modeLocalPoint3">Ако изберете този режим и поставите отметка в <strong>База
-                            данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-                    <li data-key="modeLocalPoint4">Когато се използва този режим заедно с <strong>База данни</strong>,
-                        при
-                        всяко стартиране ще се прави проверка и новите и редактирани бележки ще допълват записаните в
-                        базата
-                        данни.</li>
-                    <li data-key="modeLocalPoint5">Ако, след първоначално зареждане, махнете отметката на
-                        <strong>Локална
-                            папка</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще може
-                        да
-                        зареждате бележките си без забавяне, но няма да се прави проверка за нови и променени бележки. В
-                        този случай е полезно периодично да връщате отметката, за да актуализирате данните си.
-                    </li>
+                    <li data-key="modeLocalPoint1">A mode suitable for users who prefer to have a local copy of their
+                        notes and want faster access to them.</li>
+                    <li data-key="modeLocalPoint2">Data is read from a folder on your computer. You need to set up the
+                        <strong>Google Drive for Desktop</strong> application to synchronize
+                        <strong>multinotes_data</strong> from <strong>Google Drive</strong> to your computer (you can
+                        also make the data available offline) and specify the synchronized folder in
+                        <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Local
+                            Folder</strong>.</li>
+                    <li data-key="modeLocalPoint3">If you select this mode and check <strong>Database</strong>, all
+                        notes will be saved to a local database on the first launch.</li>
+                    <li data-key="modeLocalPoint4">When this mode is used with <strong>Database</strong>, a check will
+                        be performed on each launch, and new and edited notes will be added to the database.</li>
+                    <li data-key="modeLocalPoint5">If, after the initial load, you uncheck <strong>Local Folder</strong>
+                        in <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load
+                        your notes without delay, but no check for new and changed notes will be performed. In this
+                        case, it is useful to periodically re-check the box to update your data.</li>
                 </ul>
-                <h3 data-key="modeArchiveTitle">Режим: Архив</h3>
+                <h3 data-key="modeArchiveTitle">Mode: Archive</h3>
                 <ul>
-                    <li data-key="modeArchivePoint1">Подходящ за офлайн достъп до стари версии на бележките, показват се
-                        само бележките от архива.</li>
-                    <li data-key="modeArchivePoint2">Този режим се използва, когато прехвърлите zip-архив с бележки,
-                        създаден от приложението <strong>Multinotes</strong> с опцията <strong>Съхранение на
-                            данни</strong>
-                        -> <strong>Резервно запазване на данни</strong>. Разархивирайте го в папка на вашия компютър и я
-                        посочете в <strong>Настройки</strong> -> <strong>Разширени настройки</strong> ->
-                        <strong>Архив</strong>.
+                    <li data-key="modeArchivePoint1">Suitable for offline access to old versions of notes; only notes
+                        from the archive are displayed.</li>
+                    <li data-key="modeArchivePoint2">This mode is used when you transfer a zip archive of notes created
+                        by the <strong>Multinotes</strong> application with the <strong>Data Storage</strong> ->
+                        <strong>Backup Data</strong> option. Unzip it into a folder on your computer and specify it in
+                        <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Archive</strong>.
                     </li>
-                    <li data-key="modeArchivePoint3">Ако изберете този режим и поставите отметка в <strong>База
-                            данни</strong>, при първо стартиране всички бележки ще се запишат в локална база данни.</li>
-                    <li data-key="modeArchivePoint4">Ако, след първоначално зареждане, махнете отметката на
-                        <strong>Архив</strong> в <strong>Настройки</strong> -> <strong>Разширени настройки</strong>, ще
-                        може
-                        да зареждате бележките си без забавяне.
-                    </li>
+                    <li data-key="modeArchivePoint3">If you select this mode and check <strong>Database</strong>, all
+                        notes will be saved to a local database on the first launch.</li>
+                    <li data-key="modeArchivePoint4">If, after the initial load, you uncheck <strong>Archive</strong> in
+                        <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your
+                        notes without delay.</li>
                 </ul>
             </span>
         </section>
@@ -326,7 +302,7 @@
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                     <h2 data-key="addBoardTitle"
                         style="margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
-                        Нов борд</h2>
+                        Board</h2>
 
                     <button id="board-individual-order-btn" class="zoom-btn"
                         style="width: fit-content; padding: 0 10px; height: 36px; background: darkorange; color: white; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-top: 5px;">
@@ -350,30 +326,29 @@
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
                 <label data-key="boardSelectLabel"
-                    style="flex: 0 0 80px; font-weight: 600; color: white;">Редактиране:</label>
+                    style="flex: 0 0 80px; font-weight: 600; color: white;">Select:</label>
                 <select id="board-edit-select"
                     style="flex: 1; height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 5px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
-                    <option value="" data-key="newBoardOption" style="background:#2c2c2c;">[Нов борд]</option>
+                    <option value="" data-key="newBoardOption" style="background:#2c2c2c;">New board</option>
                 </select>
                 <button id="board-del-btn" class="zoom-btn"
                     style="padding: 0 10px; height: 36px; background: #607D8B; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 5px;">
-                    <span data-key="delBoard">Изтрий</span>
+                    <span data-key="delBoard">Delete</span>
                 </button>
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
-                <label data-key="boardTitleLabel"
-                    style="flex: 0 0 80px; font-weight: 600; color: white;">Заглавие:</label>
+                <label data-key="boardTitleLabel" style="flex: 0 0 80px; font-weight: 600; color: white;">Title:</label>
                 <input type="text" id="new-board-title"
                     style="flex: 1; width: 40%;height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); padding: 0 10px; box-sizing: border-box; font-size: 15px; outline: none; background: rgba(255,255,255,0.15); color: white;">
                 <button id="board-reorder-btn" class="zoom-btn"
                     style="padding: 0 10px; height: 36px; background: darkorange; color: white; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 5px;">
-                    <span data-key="reorderBoards">Подреди</span>
+                    <span data-key="reorderBoards">Reorder</span>
                 </button>
             </div>
             <div style="margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px;">
                 <div style="flex: 0 0 80px; display: flex; flex-direction: column; gap: 4px;">
                     <label data-key="boardColorLabel"
-                        style="font-weight: 600; color: white; margin-top: 4px;">Цвят:</label>
+                        style="font-weight: 600; color: white; margin-top: 4px;">Color:</label>
                     <input type="text" id="new-board-custom-color" placeholder="#HEX"
                         style="width: 70px; height: 22px; font-size: 11px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #aaa; padding: 0 5px; outline: none;">
                 </div>
@@ -385,7 +360,7 @@
             <div style="margin-bottom: 15px; display: flex; align-items: flex-start; gap: 10px;">
                 <div style="flex: 0 0 80px; display: flex; flex-direction: column; gap: 4px;">
                     <label data-key="boardFontColorLabel"
-                        style="font-weight: 600; color: white; margin-top: 4px;">Шрифт:</label>
+                        style="font-weight: 600; color: white; margin-top: 4px;">Font:</label>
                     <input type="text" id="new-board-custom-font-color" placeholder="#HEX"
                         style="width: 70px; height: 22px; font-size: 11px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #aaa; padding: 0 5px; outline: none;">
                 </div>
@@ -396,7 +371,7 @@
             </div>
             <div style="margin-bottom: 20px; display: flex; align-items: flex-start; gap: 10px;">
                 <label data-key="boardBackgroundLabel"
-                    style="flex: 0 0 80px; font-weight: 600; color: white; margin-top: 8px;">Фон:</label>
+                    style="flex: 0 0 80px; font-weight: 600; color: white; margin-top: 8px;">Background:</label>
                 <div id="new-board-backgrounds"
                     style="flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px;">
                     <!-- Фонове ще бъдат добавени динамично -->
@@ -405,7 +380,7 @@
             <input type="file" id="custom-board-bg-input" accept="image/*" style="display:none">
 
             <button id="save-new-board-btn" data-key="submitButton"
-                style="width: 100%; height: 45px; background: darkorange; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s, box-shadow 0.1s;">Потвърди</button>
+                style="width: 100%; height: 45px; background: darkorange; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s, box-shadow 0.1s;">Confirm</button>
         </div>
     </div>
 
@@ -436,7 +411,7 @@
 
     <div id="settings-modal" class="modal-overlay">
         <div class="modal-content-box set-modal" style="position: relative;">
-            <h2 data-key="settingsTitle" style="margin-top: 5px; margin-bottom: 0;">Настройки</h2>
+            <h2 data-key="settingsTitle" style="margin-top: 5px; margin-bottom: 0;">Settings</h2>
             <h3 class="modal-version">CX Notes ver. </h3>
             <div style="text-align: center; margin-bottom: 3px;">
                 <a href="mailto:cx.sites.online@gmail.com"
@@ -446,7 +421,7 @@
                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                         <polyline points="22,6 12,13 2,6"></polyline>
                     </svg>
-                    <span data-key="feedbackButtonTooltip">Обратна връзка</span>
+                    <span data-key="feedbackButtonTooltip">Feedback: multinotes.web@gmail.com</span>
                 </a>
             </div>
             <button id="settings-close-x"
@@ -459,7 +434,7 @@
             <div id="settings-modal-body">
                 <div class="settings-mobile-row zoom-control-wrapper" id="scale-wrapper">
                     <label for="scaleSlider" style="margin-right: 0px; white-space: nowrap;"
-                        data-key="zoomLabel">Мащаб:</label>
+                        data-key="zoomLabel">Zoom:</label>
                     <div class="slider-container">
                         <input type="range" id="scaleSlider" min="25" max="175" value="100">
                         <input type="number" id="scaleInput" step="1" min="25" max="175" class="zoom-input-number">
@@ -470,12 +445,12 @@
                     </div>
                 </div>
                 <div style="text-align: center; margin-top: 1px; margin-bottom: 10px;">
-                    <button id="applyZoomBtn" class="zoom-btn" data-key="submitButton">Потвърди</button>
+                    <button id="applyZoomBtn" class="zoom-btn" data-key="submitButton">Confirm</button>
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="start-board-wrapper" style="margin-top: 0px;">
                     <label for="start-board-select" style="margin-right: 10px; white-space: nowrap;"
-                        data-key="startBoardLabel">Стартов борд:</label>
+                        data-key="startBoardLabel">Start Board:</label>
                     <select id="start-board-select" class="start-board-select">
                         <!-- Options will be populated by JS -->
                     </select>
@@ -485,7 +460,7 @@
                     style="margin-top: 10px;">
                     <label for="settings-lang-select"
                         style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="languageLabel">Език:</label>
+                        data-key="languageLabel">Language:</label>
                     <select id="settings-lang-select" class="zoom-input-select"
                         style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;">
                         <!-- Options will be populated by JS -->
@@ -495,8 +470,7 @@
                 <div class="settings-mobile-row zoom-control-wrapper" id="note-font-size" style="margin-top: 10px;">
                     <label for="note-font-size-input"
                         style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="noteFontSizeLabel">
-                        Размер шрифт (бележка):</label>
+                        data-key="noteFontSizeLabel">Note Font Size (board):</label>
                     <select id="note-font-size-input" class="zoom-input-select"
                         style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
                 </div>
@@ -504,8 +478,7 @@
                 <div class="settings-mobile-row zoom-control-wrapper" id="modal-font-size" style="margin-top: 10px;">
                     <label for="modal-font-size-input"
                         style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="modalFontSizeLabel">
-                        Размер шрифт (преглед):</label>
+                        data-key="modalFontSizeLabel">Note Font Size (preview):</label>
                     <select id="modal-font-size-input" class="zoom-input-select"
                         style="width: 80px; margin: 0 2px 0 10px; flex-shrink: 0;"></select>
                 </div>
@@ -513,55 +486,48 @@
                 <div class="settings-mobile-row zoom-control-wrapper" id="max-searches" style="margin-top: 10px;">
                     <label for="max-searches-input"
                         style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
-                        data-key="maxSearchesLabel">
-                        Запазени търсения:</label>
+                        data-key="maxSearchesLabel">Saved Searches:</label>
                     <input type="number" id="max-searches-input" class="zoom-input-number" min="0" max="20">
                 </div>
                 <div class="settings-mobile-row zoom-control-wrapper" id="trash-search" style="margin-top: 10px;">
                     <label for="trash-search-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="trashSearchLabel">
-                        Търсене в кошчето:</label>
+                        data-key="trashSearchLabel">Search in trash:</label>
                     <input type="checkbox" id="trash-search-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="hide-assistant" style="margin-top: 10px;">
                     <label for="hide-assistant-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="hideAssistantLabel">
-                        Скриване на асистента</label>
+                        data-key="hideAssistantLabel">Hide Assistant:</label>
                     <input type="checkbox" id="hide-assistant-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="hide-toast" style="margin-top: 10px;">
                     <label for="hide-toast-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="hideToastLabel">
-                        Скриване на инфо съобщения</label>
+                        data-key="hideToastLabel">Hide info messages:</label>
                     <input type="checkbox" id="hide-toast-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="note-count" style="margin-top: 10px;">
                     <label for="show-board-note-count-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showBoardNoteCountLabel">
-                        Брой бележки в борда:</label>
+                        data-key="showBoardNoteCountLabel">Notes count in board:</label>
                     <input type="checkbox" id="show-board-note-count-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="weekly-calendar" style="margin-top: 10px;">
                     <label for="weekly-calendar-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showWeeklyCalendar">
-                        Седмичен календар:</label>
+                        data-key="showWeeklyCalendar">Weekly calendar:</label>
                     <input type="checkbox" id="weekly-calendar-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="show-date" style="margin-top: 10px;">
                     <label for="show-datemod-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="showDatemodLabel">
-                        Дата</label>
+                        data-key="showDatemodLabel">Show modification/calendar date:</label>
                     <input type="checkbox" id="show-datemod-checkbox" class="settings-checkbox">
                 </div>
 
@@ -576,55 +542,48 @@
                 <div class="settings-mobile-row zoom-control-wrapper" id="one-tap-link" style="margin-top: 10px;">
                     <label for="one-tap-link-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="oneTapLinkLabel">
-                        Линкове с един клик</label>
+                        data-key="oneTapLinkLabel">One-click links:</label>
                     <input type="checkbox" id="one-tap-link-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="click-to-edit" style="margin-top: 10px;">
                     <label for="click-to-edit-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="clickToEditLabel">
-                        Редактиране с клик</label>
+                        data-key="clickToEditLabel">Click to edit:</label>
                     <input type="checkbox" id="click-to-edit-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="close-after-save" style="margin-top: 10px;">
                     <label for="close-after-save-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="closeAfterSaveLabel">
-                        Затваряне след запис:</label>
+                        data-key="closeAfterSaveLabel">Close after save:</label>
                     <input type="checkbox" id="close-after-save-checkbox" class="settings-checkbox">
                 </div>
                 <div class="settings-mobile-row zoom-control-wrapper" id="automated-timer" style="margin-top: 10px;">
                     <label for="automated-timer-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="automatedTimerLabel">
-                        Автоматично напомняне:</label>
+                        data-key="automatedTimerLabel">Auto Reminder:</label>
                     <input type="checkbox" id="automated-timer-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="notes-bgrd" style="margin-top: 10px;">
                     <label for="notes-bgrd-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="notesBgrdLabel">
-                        Графичен фон (бележки)</label>
+                        data-key="notesBgrdLabel">Graphical background (board notes):</label>
                     <input type="checkbox" id="notes-bgrd-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="img-bgrd" style="margin-top: 10px;">
                     <label for="img-bgrd-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="imgBgrdLabel">
-                        Графичен фон (единична бележка)</label>
+                        data-key="imgBgrdLabel">Graphical background (note):</label>
                     <input type="checkbox" id="img-bgrd-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="additional-boards-header"
                     style="margin-top: 10px;">
                     <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="additionalBoardsLabel">
-                        Допълнителни бордове:</label>
+                        data-key="additionalBoardsLabel">Show additional boards:</label>
                     <span id="boards-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
@@ -638,16 +597,14 @@
                             style="margin-top: 0px;">
                             <label for="remind-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showBoardRemind">
-                                Борд Напомняния:</label>
+                                data-key="showBoardRemind"><strong><i>Reminders</i></strong>:</label>
                             <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
                         </div>
 
                         <div class="settings-mobile-row zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
                             <label for="all-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showBoardAll">
-                                Борд Всички:</label>
+                                data-key="showBoardAll"><strong><i>All</i></strong>:</label>
                             <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -655,8 +612,7 @@
                             style="margin-top: 10px;">
                             <label for="show-photos-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showPhotosBoardLabel">
-                                Борд съобщения със снимки:</label>
+                                data-key="showPhotosBoardLabel"><strong><i>With Photos</i></strong>:</label>
                             <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -664,8 +620,7 @@
                             style="margin-top: 10px;">
                             <label for="show-videos-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showVideosBoardLabel">
-                                Борд С видео:</label>
+                                data-key="showVideosBoardLabel"><strong><i>With Video</i></strong>:</label>
                             <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -673,8 +628,7 @@
                             style="margin-top: 10px;">
                             <label for="show-sounds-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showSoundsBoardLabel">
-                                Борд Със звук:</label>
+                                data-key="showSoundsBoardLabel"><strong><i>With Sounds</i></strong>:</label>
                             <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -682,8 +636,7 @@
                             style="margin-top: 10px;">
                             <label for="show-other-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showOtherBoardLabel">
-                                Борд Други приложения:</label>
+                                data-key="showOtherBoardLabel"><strong><i>Other Attachments</i></strong>:</label>
                             <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -691,8 +644,7 @@
                             style="margin-top: 10px; padding-bottom: 5px; border-bottom: 1px solid #000000;">
                             <label for="show-new-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showNewBoardLabel">
-                                Борд Нови</label>
+                                data-key="showNewBoardLabel"><strong><i>New</i></strong>:</label>
                             <input type="checkbox" id="show-new-board-checkbox" class="settings-checkbox">
                         </div>
                     </div>
@@ -700,8 +652,8 @@
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="order-notes" style="margin-top: 5px;">
-                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">
-                        Подреждане на бележките:</label>
+                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0;" data-key="orderLabel">Order
+                        notes:</label>
                     <span id="sorting-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
@@ -713,33 +665,29 @@
                     <div class="sort-options-container">
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="numord"
                                 id="sort-criteria-numord" class="settings-checkbox" checked> <span
-                                data-key="sortByNumber">по номер</span></label>
+                                data-key="sortByNumber">by number</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="color"
-                                id="sort-criteria-color" class="settings-checkbox"> <span data-key="sortByColor">по
-                                цвят</span></label>
+                                id="sort-criteria-color" class="settings-checkbox"> <span data-key="sortByColor">by
+                                color</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="date"
                                 id="sort-criteria-date" class="settings-checkbox"> <span
-                                data-key="sortByCreationDate">по дата на
-                                създаване</span></label>
+                                data-key="sortByCreationDate">by creation date</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="datemod"
                                 id="sort-criteria-datemod" class="settings-checkbox"> <span
-                                data-key="sortByModificationDate">по дата на
-                                редактиране</span></label>
+                                data-key="sortByModificationDate">by modification date</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="calendarDate"
                                 id="sort-criteria-calendarDate" class="settings-checkbox"> <span
-                                data-key="sortByCalendarDate">по дата в
-                                календара</span></label>
+                                data-key="sortByCalendarDate">by calendar date</span></label>
                         <label class="sort-option-label"><input type="radio" name="sort-criteria" value="alpha"
                                 id="sort-criteria-alpha" class="settings-checkbox"> <span
-                                data-key="sortByAlphabetical">по азбучен
-                                ред</span></label>
+                                data-key="sortByAlphabetical">alphabetically</span></label>
                         <!-- Преместваме и чекбоксовете тук, за да имат същия стил -->
                         <label class="sort-option-label sort-option-separator"><input type="checkbox"
-                                id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">в
-                                обратен ред</span></label>
+                                id="sort-reverse-checkbox" class="settings-checkbox"> <span data-key="sortInReverse">in
+                                reverse order</span></label>
                         <label class="sort-option-label"><input type="checkbox" id="sort-reminders-top-checkbox"
-                                class="settings-checkbox"> <span data-key="sortRemindersTop">напомняния
-                                най-отгоре</span></label>
+                                class="settings-checkbox"> <span data-key="sortRemindersTop">reminders on
+                                top</span></label>
                     </div>
                     <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 10px;">
                         <label for="system-board-sort-select"
@@ -755,7 +703,7 @@
 
                 <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 10px;"
-                        data-key="dataManagementTitle">Четене на данни</label>
+                        data-key="dataManagementTitle">Data Loading</label>
                     <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 0px;"
                         id="google-db-wrapper">
                         <img src="Snail.png" alt="Snail" style="width:20px; height:20px; margin-right: 2px;">
@@ -781,7 +729,7 @@
                                 <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
                                 <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
                             </svg>
-                            База данни:
+                            Database:
                         </label>
                         <input type="checkbox" id="use-indexeddb-checkbox" class="settings-checkbox">
                     </div>
@@ -791,9 +739,7 @@
                             id="local-db-wrapper">
                             <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
                             <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel"
-                                id="use-local-db-label" style="flex-basis: 122px; flex-shrink: 0;">
-                                Локална папка:
-                            </label>
+                                id="use-local-db-label" style="flex-basis: 122px; flex-shrink: 0;">Local folder:</label>
                             <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox"
                                 style="flex-shrink: 0;" />
                             <span id="local-sync-folder-name"
@@ -805,8 +751,7 @@
                             <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
                             <label for="update-local-folder-checkbox"
                                 style="margin-right: 10px; flex-basis: 122px; flex-shrink: 0; text-align: left;"
-                                data-key="updateLocalFolderLabel">
-                                Актуализирай:</label>
+                                data-key="updateLocalFolderLabel">Update:</label>
                             <input type="checkbox" id="update-local-folder-checkbox" class="settings-checkbox">
                         </div>
 
@@ -814,9 +759,7 @@
                             style="margin-top: 10px; padding-bottom: 10px;" id="arh-db-wrapper">
                             <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
                             <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel"
-                                id="use-arh-db-label" style="flex-basis: 122px; flex-shrink: 0;">
-                                Архив:
-                            </label>
+                                id="use-arh-db-label" style="flex-basis: 122px; flex-shrink: 0;">Archive:</label>
                             <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox"
                                 style="flex-shrink: 0;" />
                             <span id="arh-folder-name"
@@ -828,36 +771,33 @@
                             <div style="display: flex; justify-content: center; gap: 10px;">
                                 <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
                                     <button id="select-folder-btn" class="zoom-btn"
-                                        data-key="localSyncFolderLabel">Избери
-                                        локална папка</button>
+                                        data-key="localSyncFolderLabel">Select local folder</button>
                                 </div>
                                 <div class="zoom-control-wrapper" id="arh-wrapper"
                                     style="margin-top: 0; margin-bottom: 0;">
-                                    <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Избери
-                                        архивна папка</button>
+                                    <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Select
+                                        archive folder</button>
                                 </div>
                             </div>
                         </div>
 
                     </div>
                     <label style="font-weight: bold; display: block; margin-bottom: 10px; margin-top: 10px;"
-                        data-key="dbManagementTitle">
-                        Управление на базата данни
-                    </label>
+                        data-key="dbManagementTitle">Database Management</label>
                     <div
                         style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; margin-bottom: 10px;">
                         <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
-                            <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Създай</button>
+                            <button id="create-db-btn" class="zoom-btn" data-key="createDbButton">Create</button>
                         </div>
                         <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
-                            <button id="delete-db-btn" class="zoom-btn" data-key="deleteDbButton">Изтрий</button>
+                            <button id="delete-db-btn" class="zoom-btn" data-key="deleteDbButton">Delete</button>
                         </div>
                     </div>
                 </div>
                 <div class="settings-mobile-row zoom-control-wrapper" id="device-name-wrapper"
                     style="border-top: 1px solid #404040; padding-top: 10px; margin-bottom: 10px;">
                     <label for="device-name-select" style="margin-right: 10px; white-space: nowrap;"
-                        data-key="deviceNameLabel">Име на устройство:</label>
+                        data-key="deviceNameLabel">Profile:</label>
                     <div style="display: flex; gap: 5px; flex: 1; align-items: center;">
                         <select id="device-name-select" class="zoom-input-select"
                             style="flex: 1; height: 32px;"></select>
@@ -866,18 +806,16 @@
                             title="Добави нов профил">+</button>
                         <button id="delete-device-btn" class="zoom-btn"
                             style="width: 32px; height: 32px; padding: 0; background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center;">
-                            <span data-key="deleteButton">Изтрий</span>
+                            <span data-key="deleteButton">-</span>
                         </button>
                     </div>
                 </div>
                 <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px;">
                     <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
-                        <button id="load-settings-btn" class="zoom-btn" data-key="loadSettingsLabel">Зареждане на
-                            настройките</button>
+                        <button id="load-settings-btn" class="zoom-btn" data-key="loadSettingsLabel">Load</button>
                     </div>
                     <div class="zoom-control-wrapper" style="margin-top:0; margin-bottom:0;">
-                        <button id="save-settings-btn" class="zoom-btn" data-key="saveSettingsLabel">Запис на
-                            настройките</button>
+                        <button id="save-settings-btn" class="zoom-btn" data-key="saveSettingsLabel">Save</button>
                     </div>
                 </div>
 
@@ -885,7 +823,7 @@
                     <!-- Accordion  -->
                     <div class="accordion" style="margin-top: 15px;">
                         <div class="accordion-header" style="display: flex; align-items: center; margin-bottom: 10px;">
-                            <span data-key="advancedSettings">Разширени настройки</span>
+                            <span data-key="advancedSettings">Advanced Settings</span>
                             <span class="accordion-arrow" style="margin-left: 10px;">▼</span>
                             <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
                         </div>
@@ -893,7 +831,7 @@
                             <div class="settings-mobile-row zoom-control-wrapper" id="active-folder-wrapper"
                                 style="margin-top: 0px;">
                                 <label for="active-folder-select" style="margin-right: 10px; white-space: nowrap;"
-                                    data-key="activeFolderLabel">Активна папка:</label>
+                                    data-key="activeFolderLabel">Active folder:</label>
                                 <select id="active-folder-select" class="active-folder-select">
                                     <!-- Options will be populated by JS -->
                                 </select>
@@ -901,11 +839,11 @@
                             <div class="settings-mobile-row zoom-control-wrapper" id="delete-folder-wrapper"
                                 style="margin-top: 10px;">
                                 <label for="delete-folder-btn" style="margin-right: 10px; white-space: nowrap;"
-                                    data-key="deleteFolderLabel">Изтриване:</label>
+                                    data-key="deleteFolderLabel">Delete folder:</label>
                                 <button id="delete-folder-btn" class="zoom-btn"
                                     style="margin-left: 10px; padding: 0 12px; display: flex; align-items: center; gap: 5px; height: 38px;">
                                     <img src="Folder.png" alt="Folder" style="width:24px; height:24px;">
-                                    <span data-key="deleteFolderBtn">Изтрий</span>
+                                    <span data-key="deleteFolderBtn">Delete</span>
                                 </button>
                             </div>
 
@@ -913,23 +851,21 @@
                                 style="margin-top: 10px;">
                                 <label for="force-gdrive-read-checkbox"
                                     style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                    data-key="forceGDriveReadLabel">
-                                    Четене от GD преди редакция:</label>
+                                    data-key="forceGDriveReadLabel">Read from GD before edit:</label>
                                 <input type="checkbox" id="force-gdrive-read-checkbox" class="settings-checkbox">
                             </div>
                             <div class="settings-mobile-row zoom-control-wrapper" id="check-empty-boards"
                                 style="margin-top: 10px;">
                                 <label for="check-empty-boards-checkbox"
                                     style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                    data-key="checkEmptyBoardsLabel">
-                                    Проверка за празни бордове:</label>
+                                    data-key="checkEmptyBoardsLabel">Check for empty boards:</label>
                                 <input type="checkbox" id="check-empty-boards-checkbox" class="settings-checkbox">
                             </div>
 
                             <div class="zoom-control-wrapper"
                                 style="margin-top: 15px; flex-direction: column; align-items: stretch; gap: 5px;">
                                 <label style="font-weight: bold; font-size: 1.0em; text-align: center; color: #1f3b52;"
-                                    data-key="mdSettingsTitle">Markdown символи:</label>
+                                    data-key="mdSettingsTitle">Markdown Symbols:</label>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                                     <div
                                         style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
@@ -983,33 +919,33 @@
                                 <div style="display: flex; justify-content: center; gap: 10px; width: 100%;">
                                     <div class="zoom-control-wrapper" id="save-wrapper"
                                         style="margin-top: 0; margin-bottom: 0;">
-                                        <button id="save-btn" class="zoom-btn" data-key="saveLabel">Запис на
-                                            архив</button>
+                                        <button id="save-btn" class="zoom-btn" data-key="saveLabel">Save
+                                            Archive</button>
                                     </div>
                                     <div class="zoom-control-wrapper" id="save-individual-wrapper"
                                         style="margin-top: 0; margin-bottom: 0;">
                                         <button id="save-individual-btn" class="zoom-btn"
-                                            data-key="saveIndividualLabel">Запис в локална папка</button>
+                                            data-key="saveIndividualLabel">Save Local folder</button>
                                     </div>
                                 </div>
                                 <div style="display: flex; justify-content: center; width: 100%; margin-top: 5px;">
                                     <div class="zoom-control-wrapper" id="sync-dirty-wrapper"
                                         style="margin-top: 0; margin-bottom: 0;">
                                         <button id="sync-dirty-btn" class="zoom-btn" style="min-width: 250px;"
-                                            data-key="syncDirtyLabel">Синхронизирай промените</button>
+                                            data-key="syncDirtyLabel">Sync unsynced changes</button>
                                     </div>
                                 </div>
                                 <div style="display: flex; justify-content: center; width: 100%; margin-top: 5px;">
                                     <div class="zoom-control-wrapper" style="margin-top: 0; margin-bottom: 0;">
                                         <button id="save-db-folder-btn" class="zoom-btn"
                                             style="min-width: 250px; background-color: #607d8b;"
-                                            data-key="saveDbToFolderLabel">Запис на DB в папката</button>
+                                            data-key="saveDbToFolderLabel">Save DB to folder</button>
                                     </div>
                                 </div>
                                 <div class="zoom-control-wrapper"
                                     style="margin-top:0; margin-bottom:0; display:flex; justify-content:center;">
-                                    <button id="show-settings-btn" class="zoom-btn"
-                                        data-key="showSettingsLabel">Системни данни</button>
+                                    <button id="show-settings-btn" class="zoom-btn" data-key="showSettingsLabel">System
+                                        Data</button>
                                 </div>
                                 <hr style="width: 95%;" color="#000" size="1">
                             </div>
@@ -1019,7 +955,7 @@
             </div>
             <div class="settings-close-btn-wrapper">
                 <button id="settings-close-btn" class="zoom-btn settings-close-btn"
-                    data-key="closeButton">Затвори</button>
+                    data-key="closeButton">Close</button>
             </div>
 
         </div>
@@ -1077,7 +1013,7 @@
     <link rel="stylesheet" href="msmstyle.css">
     <link rel="stylesheet" href="kb-assistant.css">
     <script src="kb-assistant.js"></script>
-    <script src="msmrt.js"></script>
+    <script src="msm.js"></script>
     <script src="main.js"></script>
     <script src="fs.js"></script>
     <script>
