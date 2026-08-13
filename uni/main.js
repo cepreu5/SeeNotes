@@ -948,26 +948,24 @@ async function decryptLicenseToken() {
         let cacheIsValid = false;
         if (cachedDataStr && cachedTimeStr && !isOffline) {
             const cachedTime = parseInt(cachedTimeStr, 10);
-            if (Date.now() - cachedTime < 24 * 60 * 60 * 1000) {
-                try {
-                    whitelistData = JSON.parse(cachedDataStr);
-                    cacheIsValid = true;
-                    console.log("[License] Using cached whitelist data (age: " + Math.round((Date.now() - cachedTime) / 60000) + " minutes).");
-                    if (Date.now() - cachedTime > 12 * 60 * 60 * 1000) {
-                        setTimeout(() => {
-                            checkWhitelist(false).then(freshData => {
-                                if (freshData) {
-                                    localStorage.setItem('cached_whitelist_data', JSON.stringify(freshData));
-                                    localStorage.setItem('cached_whitelist_time', Date.now().toString());
-                                    localStorage.setItem('cached_whitelist_email', currentEmail || '');
-                                    console.log("[License] Background whitelist update successful.");
-                                }
-                            }).catch(e => console.warn("Background whitelist update failed:", e));
-                        }, 5000);
-                    }
-                } catch (e) {
-                    console.warn("Error parsing cached whitelist data:", e);
+            try {
+                whitelistData = JSON.parse(cachedDataStr);
+                cacheIsValid = true;
+                console.log("[License] Using cached whitelist data (age: " + Math.round((Date.now() - cachedTime) / 60000) + " minutes).");
+                if (Date.now() - cachedTime > 12 * 60 * 60 * 1000) {
+                    setTimeout(() => {
+                        checkWhitelist(false).then(freshData => {
+                            if (freshData) {
+                                localStorage.setItem('cached_whitelist_data', JSON.stringify(freshData));
+                                localStorage.setItem('cached_whitelist_time', Date.now().toString());
+                                localStorage.setItem('cached_whitelist_email', currentEmail || '');
+                                console.log("[License] Background whitelist update successful.");
+                            }
+                        }).catch(e => console.warn("Background whitelist update failed:", e));
+                    }, 5000);
                 }
+            } catch (e) {
+                console.warn("Error parsing cached whitelist data:", e);
             }
         }
         if (!cacheIsValid && !isOffline) {
@@ -4899,47 +4897,55 @@ function initApp() {
         const advancedSettingsSpan = document.getElementById('advanced-settings-span');
         const accordionHeader = document.querySelector('.accordion-header');
 
-        // Check if we need to show advanced settings (Ctrl click or stored in localStorage)
-        if (e.ctrlKey || localStorage.getItem('showAdvancedSettings') === 'true') {
-            if (advancedSettingsSpan) {
-                const isHidden = advancedSettingsSpan.hasAttribute('hidden');
-                if (isHidden) {
-                    advancedSettingsSpan.removeAttribute('hidden');
-                }
-                localStorage.setItem('showAdvancedSettings', 'true');
-                // Попълваме dropdown-а ПРАВИЛНО чрез централизираната функция
-                populateFoldersDropdown();
-                // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
-                loadGlobalFoldersJson().then(changed => {
-                    if (changed) {
-                        // Обновяваме dropdown-а, тъй като folders.json може да е заредил нови имена
-                        populateFoldersDropdown();
-                    }
-                });
-                // Expand accordion if not already expanded (check for active class if you used it, or just click if content is hidden)
-                // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
-                // Assuming accordion logic toggles display. Using the user's setTimeout approach to ensure modal opens first.
-                setTimeout(() => {
-                    // Check state via class on accordion wrapper
-                    const accordionHeader = document.querySelector('.accordion-header');
-                    if (accordionHeader) {
-                        const accordion = accordionHeader.parentElement;
-                        const isActive = accordion.classList.contains('active');
+        const isAdvanced = localStorage.getItem('showAdvancedSettings') === 'true';
 
-                        if (!isActive) {
-                            // Closed -> Open it (this triggers scroll in listener)
-                            accordionHeader.click();
+        if (e.ctrlKey) {
+            if (isAdvanced) {
+                // Изключваме разширените настройки и НЕ отваряме модала
+                localStorage.setItem('showAdvancedSettings', 'false');
+                if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
+                return; // Прекратяваме изпълнението, за да не се отвори модалът
+            } else {
+                // Включваме разширените настройки (модалът ще се отвори по-долу)
+                localStorage.setItem('showAdvancedSettings', 'true');
+            }
+        }
+
+        // Проверяваме актуалното състояние (може да е било току-що включено)
+        if (localStorage.getItem('showAdvancedSettings') === 'true') {
+            if (advancedSettingsSpan) advancedSettingsSpan.removeAttribute('hidden');
+            
+            // Попълваме dropdown-а ПРАВИЛНО чрез централизираната функция
+            populateFoldersDropdown();
+            // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
+            loadGlobalFoldersJson().then(changed => {
+                if (changed) {
+                    populateFoldersDropdown();
+                }
+            });
+            
+            setTimeout(() => {
+                if (accordionHeader) {
+                    const accordion = accordionHeader.parentElement;
+                    if (!accordion.classList.contains('active')) {
+                        accordionHeader.click();
+                    } else {
+                        const settingsModalBody = document.getElementById('settings-modal-body');
+                        if (settingsModalBody) {
+                            settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
                         } else {
-                            // Already Open -> Just scroll to it/bottom
-                            const settingsModalBody = document.getElementById('settings-modal-body');
-                            if (settingsModalBody) {
-                                settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
-                            } else {
-                                accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
+                            accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }
                     }
-                }, 100);
+                }
+            }, 100);
+        } else {
+            if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
+            if (accordionHeader) {
+                const accordion = accordionHeader.parentElement;
+                if (accordion.classList.contains('active')) {
+                    accordionHeader.click();
+                }
             }
         }
 
@@ -10856,13 +10862,17 @@ function syncFolderDataAsync() {
 }
 
 async function loadGlobalFoldersJson() {
+    console.log('[DEBUG] loadGlobalFoldersJson() called. isOffline:', isOffline);
     if (isOffline) return false;
     try {
         const folderId = await getAppSettingsFolderId();
+        console.log('[DEBUG] loadGlobalFoldersJson(): getAppSettingsFolderId returned:', folderId);
         if (!folderId) return false;
         const existingFiles = await findGDFileByName(folderId, 'folders.json');
+        console.log('[DEBUG] loadGlobalFoldersJson(): findGDFileByName returned existingFiles length:', existingFiles ? existingFiles.length : 0);
         if (!existingFiles || existingFiles.length === 0) return false;
         const content = await fetchGDriveFileContent(existingFiles[0].id);
+        console.log('[DEBUG] loadGlobalFoldersJson(): fetchGDriveFileContent returned content length:', content ? content.length : 0);
         if (!content) return false;
         sessionStorage.setItem('full_folders_json', content); // Уверяваме се, че set.html също ще ги види
         const parsed = JSON.parse(content);
@@ -11231,17 +11241,26 @@ async function createSettingsUI(boardsData, boardParseError) {
     const addDeviceBtn = document.getElementById('add-device-btn');
     const deleteDeviceBtn = document.getElementById('delete-device-btn');
     async function loadDeviceProfiles(forceRefresh = false) {
-        if (!deviceNameSelect) return;
+        console.log('[DEBUG] loadDeviceProfiles() called, forceRefresh:', forceRefresh);
+        if (!deviceNameSelect) {
+            console.log('[DEBUG] loadDeviceProfiles(): deviceNameSelect not found!');
+            return;
+        }
         let devices = ['Default'];
         let cachedProfiles = localStorage.getItem('deviceProfilesList');
+        console.log('[DEBUG] loadDeviceProfiles(): cachedProfiles from localStorage:', cachedProfiles);
 
-        if (cachedProfiles && !forceRefresh) {
+        if (cachedProfiles) {
             try {
                 devices = JSON.parse(cachedProfiles);
-            } catch (e) { }
-        } else {
-            let content = null;
-            if (!isOffline) {
+                console.log('[DEBUG] loadDeviceProfiles(): parsed devices from cache:', devices);
+            } catch (e) { console.warn('[DEBUG] parse error on cachedProfiles:', e); }
+        }
+        
+        // Always fetch from GDrive in background if not offline to discover new profiles
+        if (!isOffline && (!cachedProfiles || forceRefresh || true)) {
+            (async () => {
+                let content = null;
                 try {
                     const folderId = await getAppSettingsFolderId();
                     if (folderId) {
@@ -11249,20 +11268,46 @@ async function createSettingsUI(boardsData, boardParseError) {
                         if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
                     }
                 } catch (err) { console.error("Error loading profiles:", err); }
-            }
-            if (!content) content = localStorage.getItem('settings_multinotes_data');
 
-            if (content) {
-                try {
-                    const parsed = JSON.parse(content);
-                    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                        const topLevelKeys = Object.keys(parsed);
-                        const isNewFormat = !topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
-                        if (isNewFormat) devices = topLevelKeys;
-                    }
-                } catch (e) { }
-            }
-            localStorage.setItem('deviceProfilesList', JSON.stringify(devices));
+                if (!content) content = localStorage.getItem('settings_multinotes_data');
+
+                if (content) {
+                    try {
+                        const parsed = JSON.parse(content);
+                        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                            const topLevelKeys = Object.keys(parsed);
+                            const isNewFormat = !topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
+                            if (isNewFormat) {
+                                let remoteDevices = topLevelKeys;
+                                const currentDevice = localStorage.getItem('deviceName') || 'Default';
+                                if (!remoteDevices.includes(currentDevice)) remoteDevices.push(currentDevice);
+                                if (!remoteDevices.includes('Default')) remoteDevices.push('Default');
+                                
+                                // Check if we found new devices compared to cache
+                                const newDevicesStr = JSON.stringify(remoteDevices);
+                                if (newDevicesStr !== cachedProfiles) {
+                                    localStorage.setItem('deviceProfilesList', newDevicesStr);
+                                    // Re-render the dropdown with new devices
+                                    devices = remoteDevices;
+                                    deviceNameSelect.innerHTML = '';
+                                    devices.sort((a, b) => {
+                                        if (a === 'Default') return -1;
+                                        if (b === 'Default') return 1;
+                                        return a.localeCompare(b);
+                                    }).forEach(dev => {
+                                        const opt = document.createElement('option');
+                                        opt.value = dev;
+                                        opt.textContent = dev;
+                                        if (dev === currentDevice) opt.selected = true;
+                                        deviceNameSelect.appendChild(opt);
+                                    });
+                                    console.log('[DEBUG] loadDeviceProfiles(): Background fetch discovered new profiles and updated UI:', devices);
+                                }
+                            }
+                        }
+                    } catch (e) { }
+                }
+            })();
         }
 
         const currentDevice = localStorage.getItem('deviceName') || 'Default';
@@ -11272,6 +11317,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
 
         deviceNameSelect.innerHTML = '';
+        console.log('[DEBUG] loadDeviceProfiles(): about to populate with devices:', devices);
         devices.sort((a, b) => {
             if (a === 'Default') return -1;
             if (b === 'Default') return 1;
@@ -11283,6 +11329,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             if (dev === currentDevice) opt.selected = true;
             deviceNameSelect.appendChild(opt);
         });
+        console.log('[DEBUG] loadDeviceProfiles(): Finished populating.');
     }
     if (deviceNameSelect) {
         loadDeviceProfiles();
@@ -17858,8 +17905,12 @@ function removeFolderFromList(folderName) {
  * Попълва падащото меню за папки в настройките.
  */
 function populateFoldersDropdown() {
+    console.log('[DEBUG] populateFoldersDropdown() called');
     const activeFolderSelect = document.getElementById('active-folder-select');
-    if (!activeFolderSelect) return;
+    if (!activeFolderSelect) {
+        console.log('[DEBUG] populateFoldersDropdown(): activeFolderSelect DOM element NOT FOUND!');
+        return;
+    }
     if (!activeFolderSelect.querySelector('option[value="select_folder"]')) {
         const selectOption = document.createElement('option');
         selectOption.value = 'select_folder';
@@ -17874,6 +17925,7 @@ function populateFoldersDropdown() {
     }
     let folderNamesStr = localStorage.getItem('gdrive_folder_names');
     let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
+    console.log(`[DEBUG] populateFoldersDropdown(): Retrieved gdrive_folder_names from localStorage:`, folderNamesStr, 'Parsed length:', folderNames.length);
     if (typeof activeFolderName !== 'undefined' && activeFolderName && !folderNames.includes(activeFolderName)) folderNames.push(activeFolderName);
     Array.from(activeFolderSelect.options).forEach(opt => {
         if (opt.value !== 'select_folder' && opt.value !== 'new_folder') {
