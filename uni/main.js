@@ -12711,61 +12711,50 @@ function getPreviewBodyAfterTitle(fullText, titleText) {
     const lines = normalizedText.split('\n');
     const titleLineIndex = lines.findIndex(line => line.trim());
     if (titleLineIndex === -1) return normalizedText;
-
     const originalLine = lines[titleLineIndex];
     const leadingWhitespaceLength = originalLine.length - originalLine.trimStart().length;
     const trimmedLine = originalLine.trim();
     const usedLength = Math.min(String(titleText).trim().length, trimmedLine.length);
     if (usedLength <= 0) return normalizedText;
-
     let remainder = trimmedLine.slice(usedLength);
     if (remainder && /\S/.test(remainder)) {
-        const titleEndsInWord = /\S$/.test(trimmedLine.slice(0, usedLength));
-        const remainderStartsInWord = /^\S/.test(remainder);
-        if (titleEndsInWord && remainderStartsInWord) {
-            const wordStartMatch = trimmedLine.slice(0, usedLength).match(/\S+$/);
-            if (wordStartMatch) {
-                remainder = '...' + wordStartMatch[0] + remainder;
-            }
-        } else {
-            remainder = remainder.trimStart();
-        }
-        lines[titleLineIndex] = ' '.repeat(leadingWhitespaceLength) + remainder;
+        // Заглавието вече винаги се срязва на граница на дума, затова просто trimваме началните интервали
+        lines[titleLineIndex] = ' '.repeat(leadingWhitespaceLength) + remainder.trimStart();
     } else {
         lines.splice(titleLineIndex, 1);
     }
-
     return lines.join('\n').replace(/^\s*\n/, '');
 }
 
 function getVisibleTitleTextForElement(titleEl, sourceText) {
     if (!titleEl || !sourceText) return sourceText || '';
     const fullText = String(sourceText);
-    const maxLength = Math.min(fullText.length, (titleEl.textContent || '').length || fullText.length);
     const availableWidth = titleEl.clientWidth || titleEl.getBoundingClientRect().width;
-    if (!availableWidth || titleEl.scrollWidth <= availableWidth) {
-        return fullText.slice(0, maxLength);
-    }
-
+    if (!availableWidth) return fullText;
     const style = getComputedStyle(titleEl);
     const canvas = getVisibleTitleTextForElement._canvas || (getVisibleTitleTextForElement._canvas = document.createElement('canvas'));
     const ctx = canvas.getContext('2d');
     ctx.font = `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    // Ако целият текст се побира, не съкращаваме
+    if (ctx.measureText(fullText).width <= availableWidth) return fullText;
+    // Вземаме до 30 символа от първия ред
+    const S = fullText.slice(0, 30);
+    const words = S.split(' ');
     const ellipsis = '...';
-    let low = 0;
-    let high = maxLength;
-    let best = 0;
-    while (low <= high) {
-        const mid = Math.floor((low + high) / 2);
-        const measured = ctx.measureText(fullText.slice(0, mid) + ellipsis).width;
-        if (measured <= availableWidth) {
-            best = mid;
-            low = mid + 1;
+    let current = '';
+    let lastFitting = '';
+    for (const word of words) {
+        if (!word) continue;
+        const candidate = current ? current + ' ' + word : word;
+        if (ctx.measureText(candidate + ellipsis).width <= availableWidth) {
+            lastFitting = candidate;
+            current = candidate;
         } else {
-            high = mid - 1;
+            // Тази дума вече не се събира → спираме
+            break;
         }
     }
-    return fullText.slice(0, Math.max(0, best));
+    return lastFitting;
 }
 
 /**
@@ -13965,6 +13954,8 @@ async function createNoteElement(noteContent) {
                     observer.disconnect();
                     const visibleTitleText = getVisibleTitleTextForElement(titleEl, previewTitleSourceText);
                     if (!visibleTitleText) return;
+                    // Обновяваме текста на заглавието, за да не се съкращава CSS в средата на дума
+                    titleEl.textContent = visibleTitleText;
                     const adjustedContent = getPreviewBodyAfterTitle(fileContent, visibleTitleText);
                     if (adjustedContent !== displayContent) {
                         displayContent = adjustedContent;
