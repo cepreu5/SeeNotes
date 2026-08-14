@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.42';
+const CACHE_NAME = 'cx-notes-b1.43';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -163,7 +163,7 @@ self.addEventListener('fetch', (event) => {
           const title = formData.get('shared_title') || '';
           const text = formData.get('shared_text') || '';
           const sharedUrl = formData.get('shared_url') || '';
-          const imageFile = formData.get('shared_image');
+          const imageFiles = formData.getAll('shared_image');
 
           // Build redirect URL for fallback
           const redirectUrl = new URL(url.pathname, self.location.origin);
@@ -171,16 +171,23 @@ self.addEventListener('fetch', (event) => {
           if (text) redirectUrl.searchParams.set('shared_text', text);
           if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
 
-          // Store image if present
-          if (imageFile && imageFile.size > 0) {
-            swLog('[SW] Processing shared image...', imageFile.name, imageFile.size);
+          // Store all shared files in cache with indexed keys
+          const validFiles = imageFiles.filter(f => f && f.size > 0);
+          if (validFiles.length > 0) {
+            swLog('[SW] Processing shared files...', validFiles.length);
             const cache = await caches.open('share-target-image');
-            const headers = new Headers({
-              'Content-Type': imageFile.type || 'image/jpeg',
-              'X-Filename': imageFile.name || `shared_${Date.now()}.jpg`
-            });
-            await cache.put('shared-image', new Response(imageFile, { headers }));
-            redirectUrl.searchParams.set('shared_image', '1');
+            // Изчистваме стари файлове от предишен share
+            const existingKeys = await cache.keys();
+            await Promise.all(existingKeys.map(k => cache.delete(k)));
+            for (let i = 0; i < validFiles.length; i++) {
+              const f = validFiles[i];
+              const headers = new Headers({
+                'Content-Type': f.type || 'image/jpeg',
+                'X-Filename': f.name || `shared_${Date.now()}_${i}.jpg`
+              });
+              await cache.put(`shared-image-${i}`, new Response(f, { headers }));
+            }
+            redirectUrl.searchParams.set('shared_image', String(validFiles.length));
           }
 
           const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -211,7 +218,7 @@ self.addEventListener('fetch', (event) => {
                 shared_title: title,
                 shared_text: text,
                 shared_url: sharedUrl,
-                shared_image: (imageFile && imageFile.size > 0) ? '1' : '0'
+                shared_image: validFiles.length > 0 ? String(validFiles.length) : '0'
               }
             };
             existingClient.postMessage(shareData);

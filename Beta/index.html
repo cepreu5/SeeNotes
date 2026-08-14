@@ -153,7 +153,8 @@
             <ul>
                 <li data-key="modeNoDbPoint1">If you turn off the <strong>Database</strong> option in
                     <strong>Settings</strong> after the initial load, the viewer will pull your notes directly from
-                    <strong>Google Drive</strong> every time you open it.</li>
+                    <strong>Google Drive</strong> every time you open it.
+                </li>
                 <li data-key="modeNoDbPoint2">This way, you’ll always see the most up‑to‑date version of your data.</li>
                 <li data-key="modeNoDbPoint3">Just keep in mind that loading will be slower and you’ll need an internet
                     connection for it to work.</li>
@@ -172,7 +173,8 @@
                         <strong>multinotes_data</strong> from <strong>Google Drive</strong> to your computer (you can
                         also make the data available offline) and specify the synchronized folder in
                         <strong>Settings</strong> -> <strong>Advanced Settings</strong> -> <strong>Local
-                            Folder</strong>.</li>
+                            Folder</strong>.
+                    </li>
                     <li data-key="modeLocalPoint3">If you select this mode and check <strong>Database</strong>, all
                         notes will be saved to a local database on the first launch.</li>
                     <li data-key="modeLocalPoint4">When this mode is used with <strong>Database</strong>, a check will
@@ -195,7 +197,8 @@
                         notes will be saved to a local database on the first launch.</li>
                     <li data-key="modeArchivePoint4">If, after the initial load, you uncheck <strong>Archive</strong> in
                         <strong>Settings</strong> -> <strong>Advanced Settings</strong>, you will be able to load your
-                        notes without delay.</li>
+                        notes without delay.
+                    </li>
                 </ul>
             </span>
         </section>
@@ -1114,6 +1117,8 @@
             if (installBtn) installBtn.style.display = 'none';
         });
     </script>
+    <input type="file" id="modal-attach-image-input" accept="image/*,video/*,audio/*" multiple style="display: none;"
+        title="Attach file">
 </body>
 
 </html>

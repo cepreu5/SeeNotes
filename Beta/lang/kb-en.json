@@ -682,6 +682,22 @@
                 }
             }
         },
+        "Beta 1.43": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.43"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.43<br><br><span align='left'>- Applying shared images.<br><br>- Applying images/videos/audio files.<br><br>- Instant preview of formatting before saving.</span>"
+                }
+            }
+        },
         "offline-mode": {
             "keywords": [
                 "offline",

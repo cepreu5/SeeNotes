@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.42'; // App version
+const version = 'Beta 1.43'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -213,6 +213,7 @@ const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
 `;
 const emptyTrashIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 100%; height: 100%;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="14" y2="17"></line><line x1="14" y1="11" x2="10" y2="17"></line></svg>`;
 const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+const paperclipIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5" /></svg>`;
 
 let SUPPORTED_LANGUAGES = [
     { id: 'en', label: 'EN' },
@@ -3822,7 +3823,8 @@ async function handleShareTarget(externalData = null) {
     const sharedTitle = externalData ? externalData.shared_title : url.searchParams.get('shared_title');
     const sharedText = externalData ? externalData.shared_text : url.searchParams.get('shared_text');
     const sharedUrl = externalData ? externalData.shared_url : url.searchParams.get('shared_url');
-    const hasSharedImage = externalData ? (externalData.shared_image === '1') : (url.searchParams.get('shared_image') === '1');
+    const _rawSharedImage = externalData ? externalData.shared_image : url.searchParams.get('shared_image');
+    const hasSharedImage = (_rawSharedImage && parseInt(_rawSharedImage, 10) > 0) ? _rawSharedImage : null;
     if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
@@ -3913,22 +3915,24 @@ async function handleShareTarget(externalData = null) {
         const mainBoard = boardsData.find(b => b.title === 'Main' || b.gdid === 'Main');
         boardId = mainBoard ? mainBoard.gdid : (boardsData.length > 0 ? boardsData[0].gdid : 'Main');
     }
-    // --- Обработка на споделено изображение ---
-    let sharedImageBlob = null;
-    let sharedImageFilename = `shared_${now}.jpg`;
-    let sharedImageMimeType = 'image/jpeg';
-    if (hasSharedImage) {
+    // --- Обработка на споделени файлове (може да са повече от един) ---
+    const fileCount = hasSharedImage ? parseInt(hasSharedImage, 10) : 0;
+    const sharedFiles = []; // { blob, filename, mimeType }
+    if (fileCount > 0) {
         try {
             const cache = await caches.open('share-target-image');
-            const response = await cache.match('shared-image');
-            if (response) {
-                sharedImageBlob = await response.blob();
-                sharedImageFilename = response.headers.get('X-Filename') || sharedImageFilename;
-                sharedImageMimeType = response.headers.get('Content-Type') || sharedImageMimeType;
-                await cache.delete('shared-image');
+            for (let i = 0; i < fileCount; i++) {
+                const response = await cache.match(`shared-image-${i}`);
+                if (response) {
+                    const blob = await response.blob();
+                    const filename = response.headers.get('X-Filename') || `shared_${now}_${i}.jpg`;
+                    const mimeType = response.headers.get('Content-Type') || 'image/jpeg';
+                    sharedFiles.push({ blob, filename, mimeType });
+                    await cache.delete(`shared-image-${i}`);
+                }
             }
         } catch (e) {
-            console.error('Error retrieving shared image from cache:', e);
+            console.error('Error retrieving shared files from cache:', e);
         }
     }
     // Показваме модала със споделеното съдържание
@@ -3949,86 +3953,86 @@ async function handleShareTarget(externalData = null) {
             }, 150);
         }
         showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
-        // --- Ако има споделено изображение, качваме го в GDrive ---
-        if (sharedImageBlob && !isOffline) {
-            try {
-                showToast(_('uploadingSharedImage') || '📤 Uploading image...', 5000);
-                const folderId = await getFolderID();
-                if (!folderId) throw new Error('Folder ID not available');
-                // 1. Осигуряваме Images папка
-                let imagesFolderId = folderIds['Images'] || localStorage.getItem('gdrive_folder_id_Images');
-                if (!imagesFolderId) {
-                    imagesFolderId = await createNewGDriveFolder('Images', folderId);
-                    if (imagesFolderId) {
-                        folderIds['Images'] = imagesFolderId;
-                        localStorage.setItem('gdrive_folder_id_Images', imagesFolderId);
-                    }
-                }
-                if (!imagesFolderId) throw new Error('Could not get/create Images folder');
-                // 2. Качваме изображението в Images папка
-                const imageGdid = await uploadBlobToGDrive(imagesFolderId, sharedImageFilename, sharedImageBlob, sharedImageMimeType);
-                if (!imageGdid) throw new Error('Image upload failed');
-                // 3. Намираме gdid на бележката (след запис)
-                // Търсим бележката по id - тя може вече да е записана с gdid
-                const waitForNoteGdid = () => {
-                    return new Promise(resolve => {
-                        const check = (attempts = 0) => {
-                            // Търсим в allNotesData по локалното id
-                            const noteInData = allNotesData.find(n => String(n.id) === String(noteId));
-                            // Важно: gdid трябва да е низ (string) от Google Drive
-                            if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                                resolve(noteInData.gdid);
-                            } else if (attempts < 80) { // До 40 секунди
-                                setTimeout(() => check(attempts + 1), 500);
-                            } else {
-                                resolve(null);
+        // --- Качваме всички споделени файлове асинхронно (не блокираме UI) ---
+        if (sharedFiles.length > 0 && !isOffline) {
+            const targetNoteId = noteId; // Capture the local ID for closures
+            // Стартираме качването на заден план - не await-ваме
+            (async () => {
+                try {
+                    showToast(_('uploadingSharedImage') || '📤 Uploading files...', 5000);
+                    const folderId = await getFolderID();
+                    if (!folderId) throw new Error('Folder ID not available');
+                    for (let i = 0; i < sharedFiles.length; i++) {
+                        const { blob, filename, mimeType } = sharedFiles[i];
+                        try {
+                            const fileType = mimeType.startsWith('video') ? 'Video' : (mimeType.startsWith('audio') ? 'Sound' : 'Images');
+                            let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
+                            if (!targetFolderId) {
+                                targetFolderId = await createNewGDriveFolder(fileType, folderId);
+                                if (targetFolderId) {
+                                    folderIds[fileType] = targetFolderId;
+                                    localStorage.setItem(`gdrive_folder_id_${fileType}`, targetFolderId);
+                                }
                             }
-                        };
-                        check();
-                    });
-                };
-                const noteGdid = await waitForNoteGdid();
-                if (!noteGdid) {
-                    console.warn('[ShareTarget] Note gdid not available after timeout. Media entry NOT created.');
-                    showToast('⚠️ Image uploaded, but link failed (note not saved to GDrive in time).', 7000);
-                    return;
-                }
-                // 4. Създаваме media.txt запис в GDrive (използваме само истински GDID)
-                const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
-                const mediaEntry = {
-                    datemod: now,
-                    description: '',
-                    gdid: '',
-                    id: maxMediaId + 1,
-                    noteid: noteGdid, // STRING GDID
-                    path: sharedImageFilename, // Само името на файла (логика от Multinotes)
-                    pathGD: imageGdid,
-                    type: 1
-                };
-                const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-                if (mediaFileGdid) {
-                    mediaEntry.gdid = mediaFileGdid;
-                    await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                    // 5. Обновяваме локалните данни и UI
-                    mediaData.push(mediaEntry);
-                    if (useIndexedDb) {
-                        await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                            if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
+                            const fileGdid = await uploadBlobToGDrive(targetFolderId, filename, blob, mimeType);
+                            if (!fileGdid) throw new Error(`Upload failed: ${filename}`);
+                            // Изчакваме бележката да получи gdid (до 30 мин)
+                            const noteGdid = await new Promise(resolve => {
+                                const check = (attempts = 0) => {
+                                    const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
+                                    if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
+                                        resolve(noteInData.gdid);
+                                    } else if (attempts < 3600) {
+                                        setTimeout(() => check(attempts + 1), 500);
+                                    } else {
+                                        resolve(null);
+                                    }
+                                };
+                                check();
+                            });
+                            if (!noteGdid) {
+                                console.warn(`[ShareTarget] Note gdid timeout for ${filename}`);
+                                showToast((_('attachLinkFailedMsg') || '⚠️ {name} uploaded, but link to note failed.').replace('{name}', filename), 7000);
+                                continue;
+                            }
+                            const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
+                            const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
+                            const mediaEntry = {
+                                datemod: now,
+                                description: '',
+                                gdid: '',
+                                id: maxMediaId + 1,
+                                noteid: noteGdid,
+                                path: filename,
+                                pathGD: fileGdid,
+                                type: mediaTypeNum
+                            };
+                            const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
+                            if (mediaFileGdid) {
+                                mediaEntry.gdid = mediaFileGdid;
+                                await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
+                                mediaData.push(mediaEntry);
+                                if (useIndexedDb) {
+                                    await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                                }
+                                showToast((_('attachSuccessMsg') || '✅ Attached: {name}').replace('{name}', filename), 3000);
+                                if (typeof refreshNoteUI === 'function') {
+                                    await refreshNoteUI(noteGdid);
+                                } else {
+                                    renderNotes();
+                                }
+                            }
+                        } catch (fileErr) {
+                            console.error(`[ShareTarget] Error processing file ${filename}:`, fileErr);
+                            showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', fileErr.message), 5000);
+                        }
                     }
-                    console.log('[ShareTarget] Media entry added to mediaData:', mediaEntry);
-                    showToast(_('sharedImageSaved') || '✅ Image attached to note', 3000);
-
-                    // Хирургично обновяваме само тази бележка, вместо цялото табло
-                    if (typeof refreshNoteUI === 'function') {
-                        console.log('[ShareTarget] Refreshing single note UI...');
-                        await refreshNoteUI(noteGdid);
-                    } else {
-                        renderNotes();
-                    }
+                } catch (e) {
+                    console.error('[ShareTarget] Error in upload loop:', e);
+                    showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message), 5000);
                 }
-            } catch (e) {
-                console.error('[ShareTarget] Error processing shared image:', e);
-                showToast('❌ Error uploading shared image: ' + e.message, 5000);
-            }
+            })();
         }
     }, 500);
 }
@@ -7914,11 +7918,12 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
     if (parentPos === 'static') {
         noteElement.style.position = 'relative';
     }
+    const parentBorderRadius = getComputedStyle(noteElement).borderRadius || '2px';
     Object.assign(overlay.style, {
         position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
         backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: '1000', borderRadius: '8px', padding: '5px', boxSizing: 'border-box',
-        flexDirection: 'column'
+        zIndex: '1000', borderRadius: parentBorderRadius, padding: '5px', boxSizing: 'border-box',
+        flexDirection: 'column', overflow: 'hidden'
     });
     // Prevent bubbling
     // Close on overlay click
@@ -7976,12 +7981,25 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
         if (overlay.mediaUrlToRevoke) {
             URL.revokeObjectURL(overlay.mediaUrlToRevoke);
         }
+        // Възстановяваме toolbar-ите на модала
+        const modalHeader = document.querySelector('#content-modal .modal-header-toolbar');
+        const modalFooter = document.querySelector('#content-modal .modal-footer-toolbar');
+        if (modalHeader) modalHeader.style.visibility = '';
+        if (modalFooter) modalFooter.style.visibility = '';
     };
     closeButton.addEventListener('click', (ev) => {
         ev.stopPropagation();
         cleanup();
     });
     overlay.appendChild(closeButton);
+    // Скриваме toolbar-ите на модала, ако overlay-ят е вътре в него
+    const isInModal = noteElement.closest('#content-modal') !== null || noteElement.id === 'content-modal' || noteElement.classList.contains('modal-content-box');
+    if (isInModal) {
+        const modalHeader = document.querySelector('#content-modal .modal-header-toolbar');
+        const modalFooter = document.querySelector('#content-modal .modal-footer-toolbar');
+        if (modalHeader) modalHeader.style.visibility = 'hidden';
+        if (modalFooter) modalFooter.style.visibility = 'hidden';
+    }
     noteElement.appendChild(overlay);
     // --- Load Media Function ---
     async function loadMedia(index) {
@@ -8143,7 +8161,8 @@ function addInNotePreviewListener(element, attachments, indexOrSource, sourceMod
     element.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        const noteElement = e.currentTarget.closest('.note') || e.currentTarget.closest('#modal-body') || document.getElementById('modal-body');
+        const modalContentBox = e.currentTarget.closest('#content-modal')?.querySelector('.modal-content-box');
+        const noteElement = e.currentTarget.closest('.note') || modalContentBox || document.getElementById('modal-body');
         // Handle both signatures:
         // 1. (element, attachmentsArray, startIndex, sourceMode, isVideo)
         // 2. (element, fileIdString, sourceMode, isVideo)
@@ -13267,7 +13286,8 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
             if (fileId) {
                 // For media (Images, Sound, Video), use internal authenticated viewer
                 if (attachment.type === 1 || attachment.type === 2 || attachment.type === 4) {
-                    let targetEl = linkElement.closest('.note') || document.getElementById('modal-body') || document.body;
+                    const modalContentBox = linkElement.closest('#content-modal')?.querySelector('.modal-content-box');
+                    let targetEl = linkElement.closest('.note') || modalContentBox || document.getElementById('modal-body') || document.body;
                     const noteGdid = attachment.noteid || (isForModal && typeof isForModal === 'object' ? isForModal.gdid : null);
                     if (!noteGdid) {
                         // Fallback: just preview this single one if we can't find others
@@ -15386,13 +15406,25 @@ function initNoteEditUI() {
     const modalBodyEl = document.getElementById('modal-body');
     const modalContentBox = contentModal?.querySelector('.modal-content-box');
     const footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
-    // Add save button if not exists
-    if (!document.getElementById('note-save-btn')) {
+    // Add attach button if not exists
+    if (!document.getElementById('note-attach-btn')) {
+        const attachBtn = document.createElement('div');
+        attachBtn.id = 'note-attach-btn';
+        attachBtn.className = 'modal-footer-btn';
+        attachBtn.innerHTML = paperclipIconSvg;
+        attachBtn.title = (typeof _ === 'function') ? _('attachFileTooltip') || "Attach file" : "Attach file";
+        attachBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const attachInput = document.getElementById('modal-attach-image-input');
+            if (attachInput) attachInput.click();
+        });
+
+        // Add save button if not exists
         const saveBtn = document.createElement('div');
         saveBtn.id = 'note-save-btn';
         saveBtn.className = 'modal-footer-btn';
         saveBtn.innerHTML = diskIconSvg;
-        saveBtn.title = _('saveTooltip') || "Save changes";
+        saveBtn.title = (typeof _ === 'function') ? _('saveTooltip') || "Save changes" : "Save changes";
         saveBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (typeof saveEditedNote === 'function') saveEditedNote();
@@ -15404,34 +15436,147 @@ function initNoteEditUI() {
         previewBtn.className = 'modal-footer-btn';
         previewBtn.innerHTML = eyeIconSvg;
         previewBtn.style.backgroundColor = '#4a90e2';
-        previewBtn.title = _('previewTooltip') || "Preview changes";
+        previewBtn.title = (typeof _ === 'function') ? _('previewTooltip') || "Preview changes" : "Preview changes";
         previewBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (typeof previewEditedNote === 'function') previewEditedNote();
         });
 
         if (footerToolbar) {
-            // We append them in order: Preview, Search (already exists, will move), Save
+            // We append them in order: Attach, Preview, Search (already exists, will move), Save
             const existingSearchBtn = document.getElementById('note-search-btn');
+            footerToolbar.appendChild(attachBtn);
             footerToolbar.appendChild(previewBtn);
             if (existingSearchBtn) footerToolbar.appendChild(existingSearchBtn);
             footerToolbar.appendChild(saveBtn);
         } else if (modalContentBox) {
             const existingSearchBtn = document.getElementById('note-search-btn');
+            modalContentBox.appendChild(attachBtn);
             modalContentBox.appendChild(previewBtn);
             if (existingSearchBtn) modalContentBox.appendChild(existingSearchBtn);
             modalContentBox.appendChild(saveBtn);
         }
     } else {
-        // If buttons already exist, re-append them to ensure order: Preview, Search, Save
+        // If buttons already exist, re-append them to ensure order: Attach, Preview, Search, Save
+        const aBtn = document.getElementById('note-attach-btn');
         const sBtn = document.getElementById('note-save-btn');
         const pBtn = document.getElementById('note-preview-btn');
         const searchBtn = document.getElementById('note-search-btn');
         if (footerToolbar) {
+            if (aBtn) footerToolbar.appendChild(aBtn);
             if (pBtn) footerToolbar.appendChild(pBtn);
             if (searchBtn) footerToolbar.appendChild(searchBtn);
             if (sBtn) footerToolbar.appendChild(sBtn);
         }
+    }
+
+    // Bind hidden attach input listener if not already bound
+    const attachInput = document.getElementById('modal-attach-image-input');
+    if (attachInput && !attachInput.hasAttribute('data-bound')) {
+        attachInput.setAttribute('data-bound', 'true');
+        attachInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+
+            const mBodyEl = document.getElementById('modal-body');
+            if (!mBodyEl) return;
+            let mId = parseInt(mBodyEl.dataset.id, 10);
+            if (!mId || isNaN(mId)) {
+                // For new notes, ensure they have an ID
+                noteId++;
+                mId = noteId;
+                noteNumord++;
+                mBodyEl.dataset.id = mId;
+            }
+            const targetNoteId = mId;
+
+            if (typeof showToast === 'function') {
+                showToast((typeof _ === 'function' ? _('uploadingSharedImage') || '📤 Uploading files...' : '📤 Uploading files...'), 5000);
+            }
+
+            const folderId = await getFolderID();
+            if (!folderId) {
+                if (typeof showToast === 'function') showToast((typeof _ === 'function' ? _('noGDriveFolderError') || '❌ No Google Drive folder found.' : '❌ No Google Drive folder found.'), 3000);
+                return;
+            }
+
+            // Process files sequentially in the background
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                try {
+                    const fileType = file.type.startsWith('video') ? 'Video' : (file.type.startsWith('audio') ? 'Sound' : 'Images');
+                    let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
+                    if (!targetFolderId) {
+                        targetFolderId = await createNewGDriveFolder(fileType, folderId);
+                        if (targetFolderId) {
+                            folderIds[fileType] = targetFolderId;
+                            localStorage.setItem(`gdrive_folder_id_${fileType}`, targetFolderId);
+                        }
+                    }
+                    if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
+
+                    const imageGdid = await uploadBlobToGDrive(targetFolderId, file.name, file, file.type);
+                    if (!imageGdid) throw new Error(`File upload failed: ${file.name}`);
+
+                    const waitForNoteGdid = () => {
+                        return new Promise(resolve => {
+                            const check = (attempts = 0) => {
+                                const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
+                                if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
+                                    resolve(noteInData.gdid);
+                                } else if (attempts < 3600) { // Up to 30 mins
+                                    setTimeout(() => check(attempts + 1), 500);
+                                } else {
+                                    resolve(null);
+                                }
+                            };
+                            check();
+                        });
+                    };
+                    const noteGdid = await waitForNoteGdid();
+                    if (!noteGdid) {
+                        console.warn(`[Attachment] Note gdid not available after timeout for ${file.name}. Media entry NOT created.`);
+                        if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachLinkFailedMsg') || '⚠️ Uploaded {name}, but link failed.').replace('{name}', file.name) : `⚠️ Uploaded ${file.name}, but link failed.`), 7000);
+                        continue;
+                    }
+
+                    const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
+                    const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
+                    const now = Date.now();
+                    const mediaEntry = {
+                        datemod: now,
+                        description: '',
+                        gdid: '',
+                        id: maxMediaId + 1,
+                        noteid: noteGdid,
+                        path: file.name,
+                        pathGD: imageGdid,
+                        type: mediaTypeNum
+                    };
+
+                    const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
+                    if (mediaFileGdid) {
+                        mediaEntry.gdid = mediaFileGdid;
+                        await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
+                        mediaData.push(mediaEntry);
+                        if (useIndexedDb) {
+                            await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                        }
+                        if (typeof refreshNoteUI === 'function') {
+                            await refreshNoteUI(noteGdid);
+                        } else {
+                            renderNotes();
+                        }
+                        if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', file.name) : `✅ Attached ${file.name}`), 3000);
+                    }
+                } catch (e) {
+                    console.error(`[Attachment] Error processing file ${file.name}:`, e);
+                    if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message) : `❌ Error: ${e.message}`), 5000);
+                }
+            }
+
+            attachInput.value = ''; // Reset input
+        });
     }
 
     // Ensure state-specific visibility
@@ -15442,6 +15587,8 @@ function initNoteEditUI() {
 
     if (saveBtn) { saveBtn.style.display = 'flex'; }
     if (previewBtn) { previewBtn.style.display = 'flex'; }
+    const attachBtnForDisplay = document.getElementById('note-attach-btn');
+    if (attachBtnForDisplay) { attachBtnForDisplay.style.display = 'flex'; }
     if (editBtn) editBtn.style.display = 'none';
     const isNewNote = modalBodyEl && modalBodyEl.dataset.isNewNote === 'true';
     if (moveBtn) moveBtn.style.display = isNewNote ? 'flex' : 'none';
@@ -15948,6 +16095,32 @@ function saveEditedNote() {
             finalFormat = stringifyFormatsArray(res.formats);
         }
 
+        // Показваме форматирания текст ВЕДНАГА - не чакаме края на GDrive записа
+        if (!closeAfterSave && typeof showModal === 'function') {
+            const boardId = modalBodyElem.dataset.boardId || (modalNoteObj && modalNoteObj.boardid) || currentBoardFilter;
+            const colorVal = modalBodyElem.dataset.colorIndex !== undefined ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (modalNoteObj ? modalNoteObj.color : 0);
+            const noteColorStr = (typeof colorVal === 'number' && colorVal >= 0 && colorVal < noteColorMap.length) ? noteColorMap[colorVal] : (typeof colorVal === 'string' ? colorVal : noteColorMap[0]);
+            const currentModalBodyElem = document.getElementById('modal-body');
+            const previewDatasets = currentModalBodyElem ? { ...currentModalBodyElem.dataset } : {};
+            showModal({
+                raw: processedText,
+                format: finalFormat,
+                titleFormat: finalTitleFormat,
+                color: noteColorStr,
+                boardId: boardId,
+                id: modalId,
+                gdid: modalGdid,
+                maskedLinks: maskedLinks,
+                datemod: modalNoteObj ? modalNoteObj.datemod : undefined
+            }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
+            // Запазваме dataset-а за saveEditedNote (може да е нужен след preview)
+            const newMbe = document.getElementById('modal-body');
+            if (newMbe) {
+                Object.keys(previewDatasets).forEach(k => { newMbe.dataset[k] = previewDatasets[k]; });
+            }
+        }
+
+
         if (isNewNote) {
             // --- Handle Creation of New Note ---
             const boardId = modalBodyElem.dataset.boardId || currentBoardFilter;
@@ -16438,6 +16611,8 @@ function previewEditedNote() {
         if (editBtn) { editBtn.style.display = 'flex'; }
         if (previewBtn) { previewBtn.style.display = 'none'; }
         if (moveBtn) { moveBtn.style.display = 'flex'; }
+        const attachBtnPreview = document.getElementById('note-attach-btn');
+        if (attachBtnPreview) attachBtnPreview.style.display = 'none';
         const dupBtn = document.getElementById('note-duplicate-btn');
         if (dupBtn) dupBtn.style.display = 'none';
     }
@@ -16455,6 +16630,8 @@ function disableNoteEditing(modalBodyElem) {
     if (saveBtn) saveBtn.style.display = 'none';
     const previewBtn = document.getElementById('note-preview-btn');
     if (previewBtn) previewBtn.style.display = 'none';
+    const attachBtnForDisplay = document.getElementById('note-attach-btn');
+    if (attachBtnForDisplay) attachBtnForDisplay.style.display = 'none';
 
     // 2. Show Edit Button (if it exists)
     const editBtn = document.getElementById('note-edit-btn');
