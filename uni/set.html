@@ -316,7 +316,7 @@
                     folders.json</button>
                 <button id="del-all-appdata-btn" class="save-btn"
                     style="background-color: #000; color: #ff0000; border: 2px solid #ff0000; box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);">!!!
-                    ИЗТРИЙ ВСИЧКО В APPDATAFOLDER !!!</button>
+                    ИЗТРИЙ ВСИЧКО ЗА ЧИСТО СТАРТИРАНЕ !!!</button>
             </div>
         </div>
 
@@ -565,56 +565,81 @@
         }
 
         async function deleteAllAppData() {
-            if (!confirm("ВНИМАНИЕ! Това ще изтрие ВСИЧКИ файлове (бордове, настройки, папки) от системното пространство AppDataFolder. Действието е НЕОБРАТИМО. Желаете ли да продължите?")) return;
-            if (!confirm("ПОСЛЕДНО ПОТВЪРЖДЕНИЕ: Наистина ли искате да заличите всичко в AppDataFolder?")) return;
-
+            if (!confirm("ВНИМАНИЕ! Това ще изтрие ВСИЧКИ системни файлове и настройки от облака, както и локалната база данни (IndexedDB), LocalStorage и сесията за напълно чисто стартиране. Действието е НЕОБРАТИМО. Желаете ли да продължите?")) return;
+            if (!confirm("ПОСЛЕДНО ПОТВЪРЖДЕНИЕ: Наистина ли искате да заличите всичко за чисто стартиране?")) return;
             const btn = document.getElementById('del-all-appdata-btn');
             const originalText = btn.innerText;
-
             try {
                 btn.classList.add('saving');
                 btn.innerText = "Изтриване...";
-
-                const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                let stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
                 if (!stored) throw new Error("Липсва оторизация.");
-                const t = JSON.parse(stored).access_token;
-
-                let deletedCount = 0;
+                let t = JSON.parse(stored).access_token;
+                let allItems = [];
                 let nextPageToken = null;
-
                 do {
                     const q = encodeURIComponent("trashed = false");
-                    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=nextPageToken,files(id,name)&pageToken=${nextPageToken || ''}`;
-                    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${t}` } });
-                    const data = await res.json();
-
-                    if (data.files && data.files.length > 0) {
-                        const CHUNK_SIZE = 10; // Пакетно триене на 10 файла едновременно
-                        for (let i = 0; i < data.files.length; i += CHUNK_SIZE) {
-                            const chunk = data.files.slice(i, i + CHUNK_SIZE);
-                            await Promise.all(chunk.map(async (file) => {
-                                try {
-                                    const delRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
-                                        method: 'DELETE',
-                                        headers: { 'Authorization': `Bearer ${t}` }
-                                    });
-                                    if (delRes.ok) {
-                                        console.log('Deleted AppData file:', file.name);
-                                        deletedCount++;
-                                    }
-                                } catch (err) {
-                                    console.warn('Failed to delete AppData file:', file.name, err);
-                                }
-                            }));
+                    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=nextPageToken,files(id,name,mimeType)&pageToken=${nextPageToken || ''}`;
+                    let res = await fetch(url, { headers: { 'Authorization': `Bearer ${t}` } });
+                    if ((res.status === 401 || res.status === 403) && window.opener && typeof window.opener.refreshAuthToken === 'function') {
+                        const refreshed = await window.opener.refreshAuthToken(false);
+                        if (refreshed && refreshed.pass && refreshed.tokenData) {
+                            t = refreshed.tokenData.access_token;
+                            res = await fetch(url, { headers: { 'Authorization': `Bearer ${t}` } });
                         }
+                    }
+                    const data = await res.json();
+                    if (data.files && data.files.length > 0) {
+                        allItems = allItems.concat(data.files);
                     }
                     nextPageToken = data.nextPageToken;
                 } while (nextPageToken);
-
-                alert(`Операцията завърши. Изтрити обекти от облака: ${deletedCount}. Локалното хранилище и сесията също са нулирани за напълно чисто начало.`);
+                let deletedCount = 0;
+                const files = allItems.filter(f => f.mimeType !== 'application/vnd.google-apps.folder');
+                const folders = allItems.filter(f => f.mimeType === 'application/vnd.google-apps.folder');
+                const deleteItems = async (items, chunkSize) => {
+                    for (let i = 0; i < items.length; i += chunkSize) {
+                        const chunk = items.slice(i, i + chunkSize);
+                        await Promise.all(chunk.map(async (item) => {
+                            try {
+                                let delRes = await fetch(`https://www.googleapis.com/drive/v3/files/${item.id}`, {
+                                    method: 'DELETE',
+                                    headers: { 'Authorization': `Bearer ${t}` }
+                                });
+                                if ((delRes.status === 401 || delRes.status === 403) && window.opener && typeof window.opener.refreshAuthToken === 'function') {
+                                    const refreshed = await window.opener.refreshAuthToken(false);
+                                    if (refreshed && refreshed.pass && refreshed.tokenData) {
+                                        t = refreshed.tokenData.access_token;
+                                        delRes = await fetch(`https://www.googleapis.com/drive/v3/files/${item.id}`, {
+                                            method: 'DELETE',
+                                            headers: { 'Authorization': `Bearer ${t}` }
+                                        });
+                                    }
+                                }
+                                if (delRes.ok || delRes.status === 404) {
+                                    console.log('Deleted AppData item:', item.name);
+                                    deletedCount++;
+                                }
+                            } catch (err) {
+                                console.warn('Failed to delete AppData item:', item.name, err);
+                            }
+                        }));
+                    }
+                };
+                await deleteItems(files, 10);
+                await deleteItems(folders, 5);
+                try {
+                    indexedDB.deleteDatabase('NotesDB');
+                    if (window.opener && window.opener.indexedDB) window.opener.indexedDB.deleteDatabase('NotesDB');
+                    if (window.opener && window.opener.localStorage) window.opener.localStorage.clear();
+                    if (window.opener && window.opener.sessionStorage) window.opener.sessionStorage.clear();
+                } catch (dbErr) {
+                    console.warn('Error clearing local data:', dbErr);
+                }
                 localStorage.clear();
                 sessionStorage.clear();
-                location.reload();
+                alert(`Операцията завърши. Изтрити системни обекти от облака: ${deletedCount}. Локалното хранилище (LocalStorage), сесията (SessionStorage) и базата данни (IndexedDB) са напълно изтрити.`);
+                window.close();
             } catch (e) {
                 btn.classList.remove('saving');
                 btn.innerText = originalText;

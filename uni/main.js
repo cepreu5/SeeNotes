@@ -128,7 +128,7 @@ let authToken = null;
 let token;
 let ts; // Време на първо стартиране на приложението
 let tokenRemainingDays = null; // Остават дни валидност на токена
-let activeFolderName = localStorage.getItem('active_folder_name') || 'AppDataFolder'; // Текуща папка в Google Drive
+let activeFolderName = (localStorage.getItem('active_folder_name') === 'AppDataFolder' ? 'CX-Notes' : (localStorage.getItem('active_folder_name') || 'CX-Notes')); // Текуща папка в Google Drive
 let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
@@ -458,22 +458,22 @@ async function parseFileResults(results, filenameForError) {
             }
 
             for (let item of items) {
-                // ВИНАГИ използвайте реалното ID на файла от Google Drive като gdid (само за бележки)
                 if (id && filenameForError === 'note.txt') {
                     if (item.gdid && item.gdid !== id) {
                         console.warn(`[Sync-ID-Fix] Corrected mismatched ID for note "${item.id}": Internal was "${item.gdid}", actual GDrive ID is "${id}"`);
-                        item.type = -1; // Mark as dirty to allow bulk fixing via Sync button
+                        item.type = -1;
                     }
-
                     item.gdid = id;
                 }
-                const key = (item.gdid && item.gdid !== '') ? item.gdid : item.id;
+                let key = (item.gdid && item.gdid !== '') ? item.gdid : item.id;
+                if (filenameForError === 'board.txt' && item.title) {
+                    key = `board_${item.title.trim().toLowerCase()}`;
+                }
                 if (typeof key !== 'undefined' && key !== null) {
                     const existing = tempMap.get(key);
                     if (!existing) {
                         tempMap.set(key, item);
                     } else if (filenameForError === 'note.txt') {
-                        // Проверяваме дали съдържанието е различно
                         const isDiff = (item.notetxt !== existing.notetxt ||
                             item.color !== existing.color ||
                             item.title !== existing.title ||
@@ -760,9 +760,13 @@ async function runGoogleDriveSync() {
                         });
                     } else if (filename === 'board.txt') {
                         for (let n of data) {
-                            const i = boardsData.findIndex(b => b.gdid === n.gdid);
+                            const i = boardsData.findIndex(b =>
+                                (n.gdid && b.gdid && b.gdid === n.gdid) ||
+                                (n.id !== undefined && b.id !== undefined && String(b.id) === String(n.id)) ||
+                                (n.title && b.title && b.title.trim().toLowerCase() === n.title.trim().toLowerCase())
+                            );
                             if (i !== -1) {
-                                boardsData[i] = n;
+                                boardsData[i] = { ...boardsData[i], ...n };
                             } else {
                                 boardsData.push(n);
                             }
@@ -1858,8 +1862,6 @@ async function migrateDataToNewFolder(targetFolderId) {
     let reloadBtn = document.getElementById('reload_button');
     let counterElem = document.getElementById('note-counter');
     const originalReloadHtml = reloadBtn ? reloadBtn.innerHTML : null;
-
-    // Ако липсва counter-elem в DOM, опитваме да го намерим по друг начин
     if (!counterElem) counterElem = document.querySelector('.note-counter') || document.getElementById('footer-note-count');
     const originalCounterHtml = counterElem ? counterElem.innerHTML : null;
     const CONCURRENCY_LIMIT = 10;
@@ -1871,6 +1873,9 @@ async function migrateDataToNewFolder(targetFolderId) {
         }
         if (typeof showToast === 'function') showToast(_('migratingData') + " (Parallel)");
         console.time("Migration_Parallel");
+        if (useIndexedDb) {
+            try { await clearIndexedDB(); } catch (e) { console.warn('[Migration] Error clearing IndexedDB:', e); }
+        }
         const subfolderNames = ["Other", "Sound", "Video", "Images"];
         const newSubfolderIds = {};
         for (const name of subfolderNames) {
@@ -1899,9 +1904,7 @@ async function migrateDataToNewFolder(targetFolderId) {
             const promise = createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardToSave)).then(async res => {
                 if (res) {
                     boardToSave.gdid = res;
-                    // Обновяваме файла в облака, за да съдържа новото ID
                     await updateGDriveFile(res, JSON.stringify(boardToSave));
-
                     board.gdid = res;
                     if (oldGdid) boardGdidMap[oldGdid] = res;
                     if (oldId) boardGdidMap[oldId] = res;
@@ -1915,9 +1918,19 @@ async function migrateDataToNewFolder(targetFolderId) {
             pool.add(promise);
             boardResults.push(promise);
         }
-
         await Promise.all(boardResults);
-        const notesToMigrate = (allNotesData || []);
+        boardsData = boardsToMigrate;
+        const rawNotes = (allNotesData || []);
+        const notesToMigrate = [];
+        const seenNoteKeys = new Set();
+        for (const n of rawNotes) {
+            const key = n.gdid || n.id;
+            if (key && !seenNoteKeys.has(key)) {
+                seenNoteKeys.add(key);
+                notesToMigrate.push(n);
+            }
+        }
+        allNotesData = notesToMigrate;
         const totalNotes = notesToMigrate.length;
         const mediaToMigrate = (mediaData || []);
         const mediaNotesMap = {};
@@ -1929,12 +1942,11 @@ async function migrateDataToNewFolder(targetFolderId) {
         let completedNotes = 0;
         for (let i = 0; i < totalNotes; i++) {
             if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-            const note = { ...notesToMigrate[i] }; // Клонираме, за да не повредим оригинала в паметта
+            const note = { ...notesToMigrate[i] };
             const oldGdid = note.gdid;
             delete note.gdid;
             const promise = (async () => {
                 try {
-                    // Update boardid mapping for the note using the mapping table
                     if (note.boardid && boardGdidMap[note.boardid]) {
                         note.boardid = boardGdidMap[note.boardid];
                     }
@@ -1992,12 +2004,12 @@ async function migrateDataToNewFolder(targetFolderId) {
                 for (let m of newMediaData) await bulkPutDB(MEDIA_STORE_NAME, [m], true);
             }
         }
-
-        // Update sync timestamp and last folder for consistency
         const now = Date.now();
         localStorage.setItem('lastSyncTimestamp', now);
         lastSyncTimestamp = now;
-
+        if (useIndexedDb) {
+            await finalizeDbCreation();
+        }
         if (typeof showToast === 'function') showToast(_('migrationSuccess'));
         console.timeEnd("Migration_Parallel");
         return true;
@@ -4905,29 +4917,32 @@ function initApp() {
 
         if (e.ctrlKey) {
             if (isAdvanced) {
-                // Изключваме разширените настройки и НЕ отваряме модала
                 localStorage.setItem('showAdvancedSettings', 'false');
                 if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
-                return; // Прекратяваме изпълнението, за да не се отвори модалът
+                const dataFoldersDiv = document.getElementById('data-folders');
+                if (dataFoldersDiv) {
+                    dataFoldersDiv.style.maxHeight = null;
+                    dataFoldersDiv.style.display = 'none';
+                }
+                if (accordionHeader) {
+                    const accordion = accordionHeader.parentElement;
+                    if (accordion) accordion.classList.remove('active');
+                    const content = accordion ? accordion.querySelector('.accordion-content') : null;
+                    if (content) content.style.maxHeight = null;
+                }
+                return;
             } else {
-                // Включваме разширените настройки (модалът ще се отвори по-долу)
                 localStorage.setItem('showAdvancedSettings', 'true');
             }
         }
-
-        // Проверяваме актуалното състояние (може да е било току-що включено)
         if (localStorage.getItem('showAdvancedSettings') === 'true') {
             if (advancedSettingsSpan) advancedSettingsSpan.removeAttribute('hidden');
-
-            // Попълваме dropdown-а ПРАВИЛНО чрез централизираната функция
             populateFoldersDropdown();
-            // Зареждаме folders.json от GDrive само при отваряне на Разширени настройки
             loadGlobalFoldersJson().then(changed => {
                 if (changed) {
                     populateFoldersDropdown();
                 }
             });
-
             setTimeout(() => {
                 if (accordionHeader) {
                     const accordion = accordionHeader.parentElement;
@@ -4945,9 +4960,14 @@ function initApp() {
             }, 100);
         } else {
             if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
+            const dataFoldersDiv = document.getElementById('data-folders');
+            if (dataFoldersDiv) {
+                dataFoldersDiv.style.maxHeight = null;
+                dataFoldersDiv.style.display = 'none';
+            }
             if (accordionHeader) {
                 const accordion = accordionHeader.parentElement;
-                if (accordion.classList.contains('active')) {
+                if (accordion && accordion.classList.contains('active')) {
                     accordionHeader.click();
                 }
             }
@@ -6436,6 +6456,9 @@ async function createDatabaseFromMemory({ suppressEmptyDataToast = false } = {})
  * @returns {Promise<string>} 'direct' | 'copy' | 'fresh'
  */
 function showMultiNotesChoiceModal() {
+    window.isMultiNotesChoiceModalOpen = true;
+    if (window.kbAssistant && typeof window.kbAssistant.terminateGuide === 'function') window.kbAssistant.terminateGuide();
+    if (typeof window.removeGuide === 'function') window.removeGuide();
     return new Promise(resolve => {
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
@@ -6451,8 +6474,8 @@ function showMultiNotesChoiceModal() {
         modal.appendChild(warn);
         const options = [
             { value: 'direct', titleKey: 'multiNotesOptDirectTitle', descKey: 'multiNotesOptDirectDesc', titleFb: '1. Work directly with multinotes_data', descFb: 'Uses the existing folder. Changes are saved there.' },
-            { value: 'copy', titleKey: 'multiNotesOptCopyTitle', descKey: 'multiNotesOptCopyDesc', titleFb: '2. Copy data to AppDataFolder (Recommended)', descFb: 'Copies all data to AppDataFolder. Original data remains untouched.' },
-            { value: 'fresh', titleKey: 'multiNotesOptFreshTitle', descKey: 'multiNotesOptFreshDesc', titleFb: '3. Start fresh in AppDataFolder', descFb: 'Starts with an empty folder and a new Main board.' }
+            { value: 'copy', titleKey: 'multiNotesOptCopyTitle', descKey: 'multiNotesOptCopyDesc', titleFb: '2. Copy data to CX-Notes (Recommended)', descFb: 'Copies all data to CX-Notes. Original data remains untouched.' },
+            { value: 'fresh', titleKey: 'multiNotesOptFreshTitle', descKey: 'multiNotesOptFreshDesc', titleFb: '3. Start fresh in CX-Notes', descFb: 'Starts with an empty folder and a new Main board.' }
         ];
         let selected = 'copy';
         const radioGroup = document.createElement('div');
@@ -6492,6 +6515,7 @@ function showMultiNotesChoiceModal() {
         confirmBtn.style.cssText = 'padding:10px 32px;border:none;border-radius:8px;background:#4CAF50;color:#fff;font-size:15px;cursor:pointer;font-weight:600;';
         confirmBtn.textContent = _('confirmCreateDbYes') || 'Confirm';
         confirmBtn.addEventListener('click', () => {
+            window.isMultiNotesChoiceModalOpen = false;
             overlay.remove();
             resolve(selected);
         });
@@ -6503,9 +6527,9 @@ function showMultiNotesChoiceModal() {
 }
 /**
  * Проверява дали е първото стартиране и настройва приложението.
- * 1. Създава борд Main в AppDataFolder и го задава като стартов борд
+ * 1. Създава борд Main в CX-Notes и го задава като стартов борд
  * 2. Създава folders.json
- * 3. Задава активна папка (AppDataFolder или multinotes_data)
+ * 3. Задава активна папка (CX-Notes или multinotes_data)
  * 4. Създава folders.json и settings.json с профил Default
  * @returns {boolean} true ако е извършена първоначална настройка, false ако не е необходима
  */
@@ -6533,26 +6557,20 @@ async function handleFirstRunSetup() {
                 } catch (e) {
                     console.warn('[FirstRun] Invalid saved folder list:', e);
                 }
-
                 // При чиста локална инсталация нямаме надежден локален
                 // признак дали папката съществува. Проверяваме Drive точно
                 // веднъж, за да не пропуснем налична multinotes_data.
                 const multinotesId = await getFolderIDByName('multinotes_data');
                 if (!multinotesId) {
-                    activeFolderName = 'AppDataFolder';
+                    activeFolderName = 'CX-Notes';
                     localStorage.setItem('active_folder_name', activeFolderName);
                     localStorage.removeItem('gdrive_multinotes_data_id');
                     cachedMainFolderId = null;
-
-                    // При чист старт списъкът е празен и записваме само
-                    // AppDataFolder. Премахваме multinotes_data единствено
-                    // като защита за стар синхронизиран списък.
                     const normalizedFolderNames = folderNames.includes('multinotes_data')
                         ? folderNames.filter(name => name !== 'multinotes_data')
                         : folderNames;
-                    if (!normalizedFolderNames.includes('AppDataFolder')) normalizedFolderNames.push('AppDataFolder');
+                    if (!normalizedFolderNames.includes('CX-Notes')) normalizedFolderNames.push('CX-Notes');
                     localStorage.setItem('gdrive_folder_names', JSON.stringify(normalizedFolderNames));
-
                     const loaderFolderInfo = document.getElementById('loader-folder-info');
                     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
                     if (typeof showToast === 'function') showToast(_('firstRunAppDataFolderSelected'), 7000);
@@ -6569,7 +6587,7 @@ async function handleFirstRunSetup() {
     }
     console.log('[FirstRun] First-time setup detected. Starting initial configuration...');
     if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunSetup');
-    let chosenFolder = 'AppDataFolder';
+    let chosenFolder = 'CX-Notes';
     let multinotesFound = false;
     let multinotesId = null;
     let userChoice = 'fresh';
@@ -6593,20 +6611,24 @@ async function handleFirstRunSetup() {
     const loaderFolderInfo = document.getElementById('loader-folder-info');
     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
     console.log('[FirstRun] Active folder selected:', chosenFolder);
-    const folderNames = ['AppDataFolder'];
+    const folderNames = ['CX-Notes'];
     if (multinotesFound) folderNames.push('multinotes_data');
     localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
     if (userChoice === 'copy' && multinotesId) {
         try {
-            console.log('[FirstRun] Copying data from multinotes_data to AppDataFolder...');
+            console.log('[FirstRun] Copying data from multinotes_data to CX-Notes...');
             if (typeof loaderText !== 'undefined') loaderText.textContent = _('migratingData') || 'Copying data...';
+            let targetFolderId = await getFolderIDByName('CX-Notes');
+            if (!targetFolderId) {
+                targetFolderId = await createNewGDriveFolder('CX-Notes');
+            }
             const result = await fetchAllData(multinotesId, false);
-            if (result && !result.error) {
-                // Изчистваме съществуващите бордове в AppDataFolder, за да избегнем дубликати
+            if (result && !result.error && targetFolderId) {
+                // Изчистваме съществуващите бордове в CX-Notes, за да избегнем дубликати
                 try {
-                    const existingBoards = await findGDFileByName('appDataFolder', 'board.txt');
+                    const existingBoards = await findGDFileByName(targetFolderId, 'board.txt');
                     if (existingBoards && existingBoards.length > 0) {
-                        console.log(`[FirstRun] Deleting ${existingBoards.length} existing board(s) in AppDataFolder before copy...`);
+                        console.log(`[FirstRun] Deleting ${existingBoards.length} existing board(s) in CX-Notes before copy...`);
                         for (const b of existingBoards) {
                             await deleteGDriveFile(b.id);
                         }
@@ -6614,9 +6636,11 @@ async function handleFirstRunSetup() {
                 } catch (e) {
                     console.warn('[FirstRun] Error cleaning existing boards:', e);
                 }
-                const migrationSuccess = await migrateDataToNewFolder('appDataFolder');
+                const migrationSuccess = await migrateDataToNewFolder(targetFolderId);
                 if (migrationSuccess) {
-                    console.log('[FirstRun] Data copied successfully to AppDataFolder.');
+                    cachedMainFolderId = targetFolderId;
+                    localStorage.setItem('gdrive_multinotes_data_id', targetFolderId);
+                    console.log('[FirstRun] Data copied successfully to CX-Notes.');
                     if (typeof showToast === 'function') showToast(_('migrationSuccess'), 5000);
                 } else {
                     console.error('[FirstRun] Migration failed, falling back to fresh start.');
@@ -6631,37 +6655,45 @@ async function handleFirstRunSetup() {
             userChoice = 'fresh';
         }
     }
-    if (chosenFolder === 'AppDataFolder' && userChoice !== 'copy') {
+    if (chosenFolder === 'CX-Notes' && userChoice !== 'copy') {
         try {
-            console.log('[FirstRun] Creating Main board in AppDataFolder...');
-            const existingMainBoards = await findGDFileByName('appDataFolder', 'board.txt');
-            if (existingMainBoards && existingMainBoards.length > 0) {
-                console.log('[FirstRun] Main board already exists in AppDataFolder');
-                localStorage.setItem('startBoard_AppDataFolder', existingMainBoards[0].id);
-            } else {
-                const now = Date.now();
-                boardIdCounter = 1;
-                localStorage.setItem('boardIdCounter', '1');
-                const boardToSave = {
-                    "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
-                    "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
-                    "numord": 1, "status": 0, "title": "Main"
-                };
-                const gdid = await createGDriveFile('appDataFolder', 'board.txt', JSON.stringify(boardToSave));
-                if (gdid) {
-                    boardToSave.gdid = gdid;
-                    await updateGDriveFile(gdid, JSON.stringify(boardToSave));
-                    console.log('[FirstRun] Main board created in AppDataFolder');
-                    localStorage.setItem('startBoard_AppDataFolder', gdid);
+            console.log('[FirstRun] Creating Main board in CX-Notes...');
+            let targetFolderId = await getFolderIDByName('CX-Notes');
+            if (!targetFolderId) {
+                targetFolderId = await createNewGDriveFolder('CX-Notes');
+            }
+            if (targetFolderId) {
+                cachedMainFolderId = targetFolderId;
+                localStorage.setItem('gdrive_multinotes_data_id', targetFolderId);
+                const existingMainBoards = await findGDFileByName(targetFolderId, 'board.txt');
+                if (existingMainBoards && existingMainBoards.length > 0) {
+                    console.log('[FirstRun] Main board already exists in CX-Notes');
+                    localStorage.setItem('startBoard_CX-Notes', existingMainBoards[0].id);
+                } else {
+                    const now = Date.now();
+                    boardIdCounter = 1;
+                    localStorage.setItem('boardIdCounter', '1');
+                    const boardToSave = {
+                        "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+                        "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
+                        "numord": 1, "status": 0, "title": "Main"
+                    };
+                    const gdid = await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardToSave));
+                    if (gdid) {
+                        boardToSave.gdid = gdid;
+                        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+                        console.log('[FirstRun] Main board created in CX-Notes');
+                        localStorage.setItem('startBoard_CX-Notes', gdid);
+                    }
                 }
             }
         } catch (e) {
-            console.error('[FirstRun] Error creating Main board in AppDataFolder:', e);
+            console.error('[FirstRun] Error creating Main board in CX-Notes:', e);
         }
     }
     try {
         if (typeof boardsData !== 'undefined' && boardsData.length === 0) {
-            const startBoardId = localStorage.getItem('startBoard_AppDataFolder');
+            const startBoardId = localStorage.getItem('startBoard_' + chosenFolder) || localStorage.getItem('startBoard_CX-Notes') || localStorage.getItem('startBoard_AppDataFolder');
             if (startBoardId) {
                 boardsData = [{ id: 1, title: 'Main', gdid: startBoardId, numord: 1 }];
             }
@@ -7425,6 +7457,21 @@ async function mainLogic() {
             }
             if (window.showInstallButton) window.showInstallButton();
             if (!isOffline) loadSettingsFromGDrive(true);
+            if (guide && localStorage.getItem('initial_setup_complete') === 'true') {
+                const startAssistantGuide = () => {
+                    if (window.kbAssistant && window.kbAssistant.isInitialized) {
+                        const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
+                        if (entry && entry.guide) {
+                            window.kbAssistant.showGuide(entry.guide);
+                            localStorage.setItem('guide', 'false');
+                            guide = false;
+                        }
+                    } else {
+                        setTimeout(startAssistantGuide, 100);
+                    }
+                };
+                setTimeout(startAssistantGuide, 1500);
+            }
         }
     } finally {
         // Изчистваме осиротели файлове след зареждане на всичко
@@ -10470,16 +10517,20 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         addBoardButtonEvents(reminderLink, 'reminder');
         allButtonLinks.push(reminderLink);
     }
+    const renderedBoardKeys = new Set();
     boardsData.forEach(board => {
         const boardId = board.gdid || board.id;
         if (!board.title || boardId === undefined || boardId === null) return;
+        const dedupeKey = board.title.trim().toLowerCase();
+        if (renderedBoardKeys.has(dedupeKey) || renderedBoardKeys.has(String(boardId))) return;
+        renderedBoardKeys.add(dedupeKey);
+        renderedBoardKeys.add(String(boardId));
         const count = boardCounts.get(String(boardId)) || 0;
         const showCount = localStorage.getItem('showBoardNoteCount') === 'true';
         const link = document.createElement('span');
         link.textContent = (showCount && count > 0) ? `${board.title} (${count})` : board.title;
         link.classList.add('board-filter-link');
         link.dataset.boardid = boardId;
-        // Обработка на цвят на фона
         let bColor = board.color;
         if (bColor !== undefined && bColor !== null && bColor !== "") {
             const num = Number(bColor);
@@ -10493,9 +10544,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
                 link.style.backgroundColor = bColor;
             }
         }
-
-        // Обработка на цвят на шрифта
-        link.style.color = 'black'; // Default
+        link.style.color = 'black';
         if (board.status === 1) {
             link.style.color = 'red';
         } else {
@@ -10797,7 +10846,7 @@ async function syncGlobalFoldersJson() {
     try {
         const folderNamesStr = localStorage.getItem('gdrive_folder_names');
         if (!folderNamesStr) return;
-        const folderNames = JSON.parse(folderNamesStr);
+        const folderNames = JSON.parse(folderNamesStr).filter(n => n && n !== 'AppDataFolder');
         if (!Array.isArray(folderNames)) return;
         const currentEmail = sessionStorage.getItem('google_auth_email_hint') || '';
         const activeFolderCurrent = localStorage.getItem('active_folder_name') || '';
@@ -14367,24 +14416,6 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             filterNotesByBoard(currentBoardFilter);
         }, 50);
     }
-    // Start Assistant Guide if needed
-    if (guide) {
-        const startAssistantGuide = () => {
-            if (window.kbAssistant && window.kbAssistant.isInitialized) {
-                const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
-                if (entry && entry.guide) {
-                    window.kbAssistant.showGuide(entry.guide);
-                    localStorage.setItem('guide', 'false');
-                    guide = false;
-                }
-            } else {
-                setTimeout(startAssistantGuide, 100);
-            }
-        };
-        // Delay slightly to ensure UI is ready
-        setTimeout(startAssistantGuide, 1500);
-    }
-    // След първото зареждане, флагът става false.
     isInitialLoad = false;
 
     // ПРИЛОЖЕНИЕ: Сега, когато зареждането е приключило, извикваме applyFilters отново, 
@@ -18082,19 +18113,21 @@ function populateFoldersDropdown() {
     if (!activeFolderSelect.querySelector('option[value="select_folder"]')) {
         const selectOption = document.createElement('option');
         selectOption.value = 'select_folder';
-        selectOption.textContent = _('selectFolderOption') || 'Избор на папка...';
+        selectOption.textContent = _('selectFolderOption') || 'Select folder...';
         activeFolderSelect.appendChild(selectOption);
     }
     if (!activeFolderSelect.querySelector('option[value="new_folder"]')) {
         const newOption = document.createElement('option');
         newOption.value = 'new_folder';
-        newOption.textContent = _('newFolderOption');
+        newOption.textContent = _('newFolderOption') || 'New folder...';
         activeFolderSelect.appendChild(newOption);
     }
     let folderNamesStr = localStorage.getItem('gdrive_folder_names');
     let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
-    console.log(`[DEBUG] populateFoldersDropdown(): Retrieved gdrive_folder_names from localStorage:`, folderNamesStr, 'Parsed length:', folderNames.length);
-    if (typeof activeFolderName !== 'undefined' && activeFolderName && !folderNames.includes(activeFolderName)) folderNames.push(activeFolderName);
+    folderNames = folderNames.filter(n => n && n !== 'AppDataFolder');
+    if (typeof activeFolderName !== 'undefined' && activeFolderName && activeFolderName !== 'AppDataFolder' && !folderNames.includes(activeFolderName)) {
+        folderNames.push(activeFolderName);
+    }
     Array.from(activeFolderSelect.options).forEach(opt => {
         if (opt.value !== 'select_folder' && opt.value !== 'new_folder') {
             opt.remove();
@@ -18102,19 +18135,15 @@ function populateFoldersDropdown() {
     });
     const insertBeforeNode = activeFolderSelect.querySelector('option[value="select_folder"]') || activeFolderSelect.firstChild;
     folderNames.forEach(name => {
-        if (name === 'AppDataFolder') return;
         const option = document.createElement('option');
         option.value = name;
         option.textContent = name;
         if (typeof activeFolderName !== 'undefined' && name === activeFolderName) option.selected = true;
         activeFolderSelect.insertBefore(option, insertBeforeNode);
     });
-    const appDataOption = document.createElement('option');
-    appDataOption.value = 'AppDataFolder';
-    appDataOption.textContent = (typeof _ === 'function') ? _('appDataFolderLabel') : 'AppDataFolder (Hidden)';
-    if (typeof activeFolderName !== 'undefined' && activeFolderName === 'AppDataFolder') appDataOption.selected = true;
-    activeFolderSelect.insertBefore(appDataOption, insertBeforeNode);
-    if (typeof activeFolderName !== 'undefined' && activeFolderName) activeFolderSelect.value = activeFolderName;
+    if (typeof activeFolderName !== 'undefined' && activeFolderName && activeFolderName !== 'AppDataFolder') {
+        activeFolderSelect.value = activeFolderName;
+    }
 }
 
 function updateReloadButtonState() {

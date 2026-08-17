@@ -418,7 +418,7 @@
     "emptyFolderBtn": "Изпразни",
     "firstRunSetup": "Настройка при първо стартиране...",
     "firstRunMultinotesFound": "В Google Drive е намерена папката на MultiNotes (multinotes_data). Желаете ли да работите с нея?",
-    "firstRunAppDataFolderSelected": "Папката multinotes_data не е намерена. За работна папка е избрана папката на web приложението.",
+    "firstRunAppDataFolderSelected": "Папката multinotes_data не е намерена. За работна папка е избрана CX-Notes.",
     "firstRunCreatingBoard": "Създаване на начален борд...",
     "firstRunComplete": "Първоначалната настройка е завършена!",
     "syncPromptNote": "Синхронизиране на бележка:",
@@ -440,10 +440,10 @@
     "multiNotesSyncWarn": "⚠️ Забележка: Ако използвате multinotes_data за папка на CX Notes (web приложението), редакциите и новите бележки от него няма да се отразят автоматично в Android приложението MultiNotes без пълна синхронизация, което може да е бавно.",
     "multiNotesOptDirectTitle": "1. Директна работа с папката на MultiNotes (multinotes_data)",
     "multiNotesOptDirectDesc": "Използва съществуващата папка на MultiNotes (multinotes_data) за работна. Промените се записват там.",
-    "multiNotesOptCopyTitle": "2. Копиране на данните от папката на MultiNotes (multinotes_data) в работната папка на web приложението (Препоръчително)",
-    "multiNotesOptCopyDesc": "Копира всички бордове, бележки и прикачени медийни файлове в папката на web приложението. Оригиналните данни в multinotes_data остават непроменени.",
-    "multiNotesOptFreshTitle": "3. Започване на чисто в папката на web приложението",
-    "multiNotesOptFreshDesc": "Започва с празна папка на web приложението и създава нов начален борд Main.",
+    "multiNotesOptCopyTitle": "2. Копиране на данните в CX-Notes (Препоръчително)",
+    "multiNotesOptCopyDesc": "Копира всички данни в CX-Notes. Оригиналните данни остават непроменени.",
+    "multiNotesOptFreshTitle": "3. Започване на чисто в CX-Notes",
+    "multiNotesOptFreshDesc": "Започва с празна папка и нов начален борд Main.",
     "errorDuplicateBoardTitle": "Вече съществува борд с това име.",
     "multiNotesSettingsWarn": "⚠️ Внимание: Промените в на MultiNotes (multinotes_data) няма да се отразят автоматично в Android приложението MultiNotes без пълна синхронизация. Сигурни ли сте, че искате да превключите към тази папка?"
 }
