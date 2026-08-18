@@ -1123,7 +1123,6 @@ async function refreshAuthToken(forcePopup = false) {
                 scope: SCOPES,
                 callback: async (tokenResponse) => {
                     clearTimeout(requestTimeout); // Спираме таймера при отговор
-                    document.body.classList.remove('silent-token-refresh');
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
 
@@ -1184,7 +1183,7 @@ async function refreshAuthToken(forcePopup = false) {
                             }
                             // Small delay to let the user see the toast before redirect
                             setTimeout(() => {
-                                if (typeof initLoginPage === 'function') initLoginPage();
+                                if (!isSyncSuspended && typeof initLoginPage === 'function') initLoginPage();
                             }, 1500);
                         }
                         resolve({ pass: false, error: tokenResponse });
@@ -1199,24 +1198,14 @@ async function refreshAuthToken(forcePopup = false) {
 
             // Request the token
             const tokenOptions = {
-                prompt: forcePopup ? 'select_account consent' : 'none'
+                prompt: forcePopup ? 'select_account' : 'none'
             };
             if (loginHint) tokenOptions.hint = loginHint;
 
             // Таймер за безопасност: ако Google не отговори
             const isSilent = !forcePopup && tokenOptions.prompt === 'none';
             const timeoutDuration = isSilent ? 5000 : 30000; // 5s за тих опит, 30s за попъп
-            if (isSilent) {
-                if (!document.getElementById('silent-refresh-style')) {
-                    const style = document.createElement('style');
-                    style.id = 'silent-refresh-style';
-                    style.textContent = 'body.silent-token-refresh iframe[src*="accounts.google.com"]{position:fixed!important;left:-9999px!important;top:-9999px!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;}';
-                    document.head.appendChild(style);
-                }
-                document.body.classList.add('silent-token-refresh');
-            }
             const requestTimeout = setTimeout(async () => {
-                document.body.classList.remove('silent-token-refresh');
                 const errMsg = isSilent ? "Silent token refresh failed/blocked." : "Token refresh request timed out after 30s.";
                 console.warn(errMsg);
                 if (isSilent) {
@@ -6166,6 +6155,10 @@ async function checkAuth(isExplicitLogin = false) {
         return { pass: false };
     }
     const tokenData = JSON.parse(storedTokenString);
+    if (isSyncSuspended) {
+        console.log("Sync suspended: staying in local mode, skipping token refresh attempts.");
+        return { pass: true, syncSuspended: true, tokenData: tokenData };
+    }
     if (window.gapi && window.gapi.client && tokenData.access_token) window.gapi.client.setToken(tokenData);
     tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
     const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
@@ -6185,7 +6178,29 @@ async function checkAuth(isExplicitLogin = false) {
             console.warn("Interactive auth popup failed or was closed:", popupErr);
         }
 
-        // Ако и попъпът се провали или потребителят го затвори, почистваме изтеклия токен и показваме логин формата
+        // Ако и попъпът се провали: ако има локални данни в IndexedDB, продължаваме в локален режим
+        if (useIndexedDb) {
+            try {
+                if (dbExists === null || typeof dbExists === 'undefined') {
+                    dbExists = await checkDbExists(NOTES_DB_NAME);
+                }
+                if (dbExists) {
+                    const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                    if (boardsInDb && boardsInDb.length > 0) {
+                        isSyncSuspended = true;
+                        console.warn("Session expired, but local data exists. Entering local mode with suspended sync.");
+                        if (typeof showToast === 'function') {
+                            showToast(_('syncSuspendedTooltip') || "Синхронизацията е спряна. Кликнете върху бутона за режим, за да влезете отново.", 6000);
+                        }
+                        updateModeButton();
+                        return { pass: true, syncSuspended: true, tokenData: tokenData };
+                    }
+                }
+            } catch (dbErr) {
+                console.warn("Could not inspect IndexedDB for optimistic start:", dbErr);
+            }
+        }
+        // Няма локални данни — почистваме изтеклия токен и показваме логин формата
         sessionStorage.removeItem('google_auth_token');
         localStorage.removeItem('google_auth_token');
         initLoginPage();
@@ -7366,7 +7381,7 @@ async function mainLogic() {
 
                     // Background Sync Task - стартираме го веднага след първото рендиране
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
-                    if (updateFromSource && !isOffline) {
+                    if (updateFromSource && !isOffline && !isSyncSuspended) {
                         (async () => {
                             try {
                                 if (hasLocalData) {
