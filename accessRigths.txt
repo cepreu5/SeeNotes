@@ -1,0 +1,679 @@
+Аз съм AI асистент, работещ чрез Copilot CLI runtime в VS Code.
+
+Кратко резюме на изискванията (от вас):
+- Основна папка "CX-Notes" — приложението трябва да може да чете и записва с пълни права.
+- AppDataFolder — също пълни права за четене/запис.
+- По заявка — да може да поиска права за четене към друга папка (само когато потребителят разреши).
+
+По-долу са възможностите, препоръки и конкретни стъпки/замествания — без промени в кода (вие ще имплементирате по-късно).
+
+1) Принципни избори на scope-ове (най-важно)
+- drive.appdata: https://www.googleapis.com/auth/drive.appdata
+  - Дава достъп само до AppDataFolder (скрито място за приложение). Безопасно, няма да се показва в Drive UI.
+- drive.file: https://www.googleapis.com/auth/drive.file
+  - „Least privilege“ опция: приложението има достъп само до файловете/папките, които самото приложение е създало или които потребителят е открил/открил чрез Picker/„Open with“.
+  - НЕ дава общ достъп до всички файлове в потребителския Drive — това премахва страха от „пълен достъп“ в OAuth диалога.
+- drive.readonly: https://www.googleapis.com/auth/drive.readonly
+  - Ако някога трябва да предлагате само read-only за доп. папка.
+- drive: https://www.googleapis.com/auth/drive
+  - Пълен достъп — избягвайте, ще показва „пълен достъп до всички файлове на Drive“ и е най-стряскащ.
+
+Препоръка: започнете с минимални scopes:
+- ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata']
+
+2) Как да осигурите „пълен“ контрол върху CX-Notes без global drive scope
+Вариант A — най-предпочитан (UX + сигурност)
+- При първоначална настройка на приложението:
+  - Създайте (или помогнете на потребителя да създаде) папката CX-Notes от името на приложението чрез Drive API. Тъй като приложението е създало папката, с drive.file ще има пълен достъп (read/write) до съдържанието, което то създава в тази папка.
+  - Запишете folderId на CX-Notes в настройките/сървъра.
+- Ако потребителят вече има папка CX-Notes:
+  - Предложете два UX потока:
+    1. Препоръчано: потребителят създава нова CX-Notes, прехвърля (или копира) старите записи в новата папка (или вие предоставяте импорт).
+    2. Алтернативно: използвайте Google Picker, за да позволите на потребителя да избере/отворите съществуващата папка — това дава на приложението право да създава файлове там и да достъпва файлове, които то е отворило/създало. (Ограничение: няма автоматичен достъп до вече съществуващи файлове в папката, които приложението не е създало.)
+- Причина: така се избягва искане на https://www.googleapis.com/auth/drive и потребителите не виждат „пълен достъп“.
+
+Вариант B — когато CX-Notes вече съдържа множество съществуващи файлове, които приложението трябва да манипулира без допълнителни ръчни действия
+- Използване на Service Account:
+  - Създавате service account в GCP и давате на потребителя инструкция да сподели папката CX-Notes с email-а на service account (напр. [service-account@project.iam.gserviceaccount.com](mailto:service-account@project.iam.gserviceaccount.com)).
+  - Приложението използва service account ключа за достъп до онази папка с пълни права.
+  - Предимство: няма нужда от глобален OAuth scope; контролът е чрез споделяне на папката.
+  - Недостатък: изисква от потребителя/администратор да сподели папката с service account; има административни/правни последици (и service account key management).
+- Alternative: помолете потребителя да временно даде „Open with“/Picker или да сподели папката с Google акаунт, който приложението контролира — по-рядко практично.
+
+3) Достъп до AppDataFolder
+- За AppDataFolder използвайте scope-a:
+  - https://www.googleapis.com/auth/drive.appdata
+- AppDataFolder е скрит и е идеален за настройки, метаданни и данни, които не са видими в UI. Ако искате да съхранявате потребителски бележки там — внимавайте за quota/назначение (обикновено за конфигурационни данни е оптимално).
+
+4) Достъп до друга папка „по заявка“ (on-demand)
+- Подход: incremental authorization + Google Picker
+  - Основна сесия е с drive.file + drive.appdata.
+  - Когато потребителят поиска да свърже друга папка за четене, отваряте Google Picker (folders view). Потребителят избира папка.
+  - Picker връща folderId. С drive.file приложението може да създава файлове в избраната папка и да отваря файлове, които потребителят е избрал чрез Picker. За да прочетете съществуващи файлове в избраната папка, потребителят може да избере файла/файловете в Picker (или вие можете да помолите да сподели папката с app/service account).
+- Ако трябва само четене на съдържанието на произволна папка (без да искате да принуждавате потребителя да променя структурата), може:
+  - Да поискате временен допълнителен scope drive.readonly само при потребителско действие (incremental auth). Тогава OAuth диалогът ще покаже, че искате read-only достъп.
+  - Това е компромис: по-широк от drive.file, но по-малко страшен от full drive (и по-приемлив ако е само read-only).
+
+5) Поведение на Google Picker и drive.file — важно за UX/правилата
+- Picker с viewId = FOLDERS дава folderId.
+- С drive.file:
+  - Приложението ще има пълен достъп (ч/з API) до файловете, които е създало, и към файлове, които потребителят е избрал/отворил чрез Picker/Open-with.
+  - Picker не автоматично „дава“ приложението право да чете всички съществуващи файлове във вече-попълнена папка — потребителят трябва да ги избере или да ги сподели.
+- Ако искате безусловен пълен контрол над вече-налични съдържания — единственият безопасен начин без глобален drive scope е service-account + споделяне.
+
+6) Конкретни стъпки за имплементация (поредност)
+- 1) OAuth scopes: задайте само ['https://www.googleapis.com/auth/drive.file','https://www.googleapis.com/auth/drive.appdata'] при първоначална авторизация.
+- 2) При първо стартиране:
+  - Проверете дали в настройките имате записан folderId за CX-Notes.
+  - Ако няма — предложете на потребителя:
+    - „Създай нова CX-Notes папка“ (препоръчано) — приложението създава папка чрез Drive API; запазете folderId.
+    - или „Избери съществуваща папка“ — отворете Google Picker; ако потребителят избере съществуваща, запишете folderId и предупредете че приложението ще има пълен достъп само за файловете, които то създава/които потребителят избере.
+- 3) В AppDataFolder — използвайте drive.appdata scope за потребителски настройки/локални кешове/бисквитки.
+- 4) За on-demand read на друга папка:
+  - Отворете Picker и помолете потребителя да избере папката или конкретните файлове, които приложението да чете.
+  - Ако трябва да прочетете всички съществуващи файлове в папката без да ги избира поотделно — предложете на потребителя инструкция да сподели папката с service-account email (ако използвате service account вариант) или временно да разреши tambahan scope drive.readonly (incremental consent).
+
+7) Примери за съобщения/UX при OAuth диалога (за да намалите тревожността)
+- Първичен OAuth заявка (само drive.file + appdata):
+  - Текст в UI преди препращане към Google: „SeeNotes ще поиска достъп само до файловете, които вие изберете, плюс скрито място за настройки (AppData). Няма да получаваме пълен достъп до вашия Drive.“
+- Ако поискате допълнителен read-only scope по-късно:
+  - Покажете съобщение: „За да импортираме бележките от избрана папка, трябва временен read-only достъп. Той ще даде само право за четене и можете да го оттеглите по всяко време.“
+
+8) Миграция / технически детайли, които да имате предвид
+- Някои съществуващи потребители може вече да са дали full drive scope — предвидете процес за „намаляване“ на правата: предложете да създадат нова CX-Notes папка и да преместят данните, след което да оттеглят стария credential (revocation).
+- Съхранявайте folderId и тип на достъпа в настройките на потребителя.
+- Документирайте инструкциите за споделяне при service account варианта.
+
+9) Кратко сравнение на вариантите (за решение)
+- Best balance (препоръчано): drive.file + drive.appdata + Google Picker + създаване на CX-Notes от приложението.
+  - Предимство: най-малко тревожно OAuth съобщение; добро сигурност/UX.
+  - Ограничение: ако трябва да модифицирате съществуващи външни файлове, ще са нужни допълнителни стъпки от потребителя.
+- Ако няма възможност за преместване/копиране и приложението трябва да манипулира множество вече-направени файлове: service account + споделяне на папката (ако приемливо от администраторска гледна точка).
+- Избягвайте глобалния drive scope, освен ако действително няма друг начин.
+
+Ако искате, мога после да:
+- Подготвя конкретни кодови примери (JavaScript/Node/браузър) за:
+  - OAuth конфигурация със scopes ['drive.file','drive.appdata'] и начин за записване на folderId.
+  - Google Picker конфигурация за избор на папка и получаване на folderId.
+  - Примерен поток за „създай CX-Notes“ и как да импортирате стари файлове.
+- Подготвя текст за UX диалога/инструкции за потребителя (за показване преди OAuth).
+
+Отлично — ето набор от готови, практични JavaScript примери (browser-side) за безопасна OAuth конфигурация + Google Picker + работа с AppDataFolder и създаване/запазване на CX-Notes folderId. Кодът използва минималните препоръчани scope-ове:
+- https://www.googleapis.com/auth/drive.file
+- https://www.googleapis.com/auth/drive.appdata
+
+Преди да ползвате:
+- Активирайте Google Drive API и Google Picker API в Google Cloud Console.
+- Създайте OAuth 2.0 Client ID (тип: Web application) и вземете CLIENT_ID.
+- Вземете API_KEY (Developer key) за Picker.
+- Добавете origin (напр. https://localhost:3000) в authorized origins на OAuth клиента.
+
+1) Скриптове за вграждане (index.html)
+В HTML страницата включете:
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
+
+2) Общ поток и помощни функции (app.js)
+// Поставете стойностите си:
+const CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
+const API_KEY = 'YOUR_API_KEY';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
+
+let tokenClient;      // GIS token client
+let oauthToken = null; // текущ access token (string)
+let pickerApiLoaded = false;
+let gapiLoaded = false;
+
+function initGoogleClients() {
+  // Инициализира Google Identity Services token client за първична авторизация
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) {
+        console.error('Token error', resp);
+        return;
+      }
+      oauthToken = resp.access_token;
+      // Зареди gapi client (Drive) ако още не е зареден
+      if (!gapiLoaded) {
+        gapi.load('client', async () => {
+          await gapi.client.init({ apiKey: API_KEY });
+          gapiLoaded = true;
+        });
+      }
+    },
+  });
+
+  // Зареждане на Picker API
+  gapi.load('picker', {'callback': () => { pickerApiLoaded = true; }});
+}
+
+// Извиква се за да задейства OAuth диалога (потребителско действие)
+function signIn() {
+  // prompt: 'consent' гарантира refresh token при първо даване (ако е нужна)
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+// Създаване на папка CX-Notes от името на приложението (app ще може да я ползва с drive.file)
+async function createCXNotesFolder() {
+  if (!oauthToken) throw new Error('Не сте автентикирани');
+
+  const metadata = {
+    name: 'CX-Notes',
+    mimeType: 'application/vnd.google-apps.folder'
+  };
+
+  const res = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + oauthToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(metadata)
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Create folder failed: ' + err);
+  }
+  const data = await res.json();
+  // data.id е folderId - запишете в settings/backend
+  await saveFolderIdToServer(data.id);
+  return data.id;
+}
+
+// Пример: запис на folderId в бекенд (endpoint -> стойностите ваш проект)
+async function saveFolderIdToServer(folderId) {
+  // Примерен POST - адаптирайте endpoint-а
+  await fetch('/api/saveFolderId', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ folderId })
+  });
+}
+
+// Отваряне на Google Picker за избор на папка (това ще върне folderId)
+function openFolderPicker() {
+  if (!pickerApiLoaded || !oauthToken) {
+    alert('Picker или OAuth не са готови. Първо се логнете.');
+    return;
+  }
+
+  const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+    .setSelectFolderEnabled(true)
+    .setMode(google.picker.DocsViewMode.LIST);
+
+  const picker = new google.picker.PickerBuilder()
+    .addView(view)
+    .setOAuthToken(oauthToken)
+    .setDeveloperKey(API_KEY)
+    .setCallback(pickerCallback)
+    .setTitle('Изберете папка за CX-Notes')
+    .build();
+
+  picker.setVisible(true);
+}
+
+function pickerCallback(data) {
+  if (data.action === google.picker.Action.PICKED) {
+    const doc = data.docs[0]; // избрана папка
+    const folderId = doc.id;
+    console.log('Selected folderId:', folderId);
+    // Запазете folderId в бекенд/локално
+    saveFolderIdToServer(folderId).then(() => {
+      alert('Папката е свързана успешно.');
+    }).catch(console.error);
+  } else if (data.action === google.picker.Action.CANCEL) {
+    console.log('Picker cancelled');
+  }
+}
+
+// Upload/създаване на файл в AppDataFolder
+async function uploadToAppData(fileName, fileContent) {
+  if (!oauthToken) throw new Error('Не сте автентикирани');
+
+  // multipart upload: metadata + content
+  const metadata = {
+    name: fileName,
+    parents: ['appDataFolder']
+  };
+
+  const boundary = '-------314159265358979323846';
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelim = `\r\n--${boundary}--`;
+
+  const multipartRequestBody =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    `\r\n--${boundary}\r\n` +
+    'Content-Type: text/plain\r\n\r\n' +
+    fileContent +
+    closeDelim;
+
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + oauthToken,
+      'Content-Type': 'multipart/related; boundary=' + boundary
+    },
+    body: multipartRequestBody
+  });
+
+  if (!res.ok) {
+    throw new Error('Upload failed: ' + await res.text());
+  }
+  return res.json();
+}
+
+// Incremental auth: да се поиска drive.readonly само при нужда (пример)
+function requestReadonlyScope() {
+  const readonlyScope = 'https://www.googleapis.com/auth/drive.readonly';
+  // Създайте нов token client за допълнителен scope
+  const readonlyTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: readonlyScope,
+    callback: (resp) => {
+      if (resp.error) {
+        console.error('Readonly token error', resp);
+        return;
+      }
+      // токен с drive.readonly
+      const readonlyToken = resp.access_token;
+      // с него може да правите calls само за read-only цели
+      // напр. да изброите файлове в дадена папка
+      listFilesInFolder('SOME_FOLDER_ID', readonlyToken).then(console.log).catch(console.error);
+    }
+  });
+  readonlyTokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+// Примерна функция за четене на файлове в папка (read-only token)
+async function listFilesInFolder(folderId, token) {
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)`;
+  const res = await fetch(url, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initGoogleClients();
+  // Свържете signIn(), openFolderPicker(), createCXNotesFolder(), uploadToAppData() към бутони в UI
+});
+
+3) Подробни бележки и обяснения (важно)
+- drive.file поведение:
+  - Приложението с този scope може да създава/четe/писe файлове, които то е създало, и файлове/папки, които потребителят явнo е дал на приложението — напр. чрез Picker или "Open with".
+  - Ако приложението създаде CX-Notes папка, то има пълен контрол върху съдържанието, което създава в тази папка — без да поискате глобалния drive scope.
+- AppDataFolder:
+  - Специален „скрит“ родител – използвайте parents: ['appDataFolder'] при създаване/upload.
+  - Данните в appDataFolder не се виждат в стандартния Drive UI — добър избор за настройки/metadata.
+- Google Picker:
+  - Picker изисква и API_KEY и OAuth token. Picker връща folderId при избор на папка (с setSelectFolderEnabled(true)).
+  - С drive.file давате на приложението достъп до файловете, които потребителят избере в Picker, и към файловете, които приложението е създало в папката.
+- Incremental auth:
+  - Ако потребителят иска импортиране/показване на всички файлове от външна папка, може да поискате временно drive.readonly (по-малко страшно от пълен drive), чрез отделен token client.
+  - Показвайте разяснителен диалог преди да отпратите потребителя към допълнителния consent screen.
+- Service account вариант (ако предпочетете):
+  - Ако миграция от стари налични файлове е невъзможна и трябва да имате пълен programmatic достъп до съществуващо съдържание — да използвате service account и да помолите потребителя да сподели папката с [service-account@project.iam.gserviceaccount.com](mailto:service-account@project.iam.gserviceaccount.com).
+  - Това изисква backend, ъплоуд/ключ (или Workload Identity без ключ) и администраторски инструкции.
+
+4) Примери за UX text преди OAuth (препоръка)
+- При стартиране/първо логване: „SeeNotes ще поиска достъп само до файловете, които вие създадете или изберете (този достъп НЕ включва всички ваши Drive файлове). Допълнително използваме скритото приложено хранилище (AppData) за настройки. Можете по всяко време да видите или оттеглите разрешенията в Google акаунта си.“
+- При search/import: „За да импортираме бележки от избрана папка, ще поискаме временно read-only достъп до вашия Drive. Той позволява само четене и може да бъде оттеглен.“
+
+5) Как да запазите folderId (важно)
+- Записвайте folderId в конфигурацията на потребителя в бекенд/настройки.
+- При последващи сесии използвайте записания folderId, за да създавате/търсите файлове (като create file с parent = folderId).
+- Ако потребител премести/изтрие папката — handle error 404/403 и предложете повторно свързване (Picker).
+
+6) Security & production checklist
+- Не съхранявайте access token на client-side за дълъг период; използвайте refresh token на backend (ако ползвате Authorization Code flow).
+- Ограничете redirect URIs и authorized origins в GCP.
+- Ако използвате service-account ключове, пазете ги сигурно на сървър, не в клиентския код.
+- Въведете съобщение в UI, обясняващо защо искате тези scope-ове (намалява тревожността).
+
+Ако искате, следваща стъпка:
+- Готови съм да адаптирам примерите за вашия конкретен стек (Electron, React, plain server+client, или вече използван в uni/main.js) — кажете кой environment използвате и ще направя специфичен patch/пример.
+
+Аз съм AI асистент, работещ чрез Copilot CLI runtime в VS Code.
+
+По-долу е подробен, практически сценарий за вашия комплексен workflow (първо стартиране, откриване/миграция от multinotes_data, управление на множество папки, AppDataFolder), с конкретни действия, OAuth/Picker/Drive поведение и точни места в кода (файла `main.js`) където да вмъкнете логиката по-късно. Не правя промени в кода сега — само описвам как да го имплементирате.
+
+Ключови принципи и scopes
+- Начален минимален scope: 
+  - https://www.googleapis.com/auth/drive.appdata (AppDataFolder)
+  - https://www.googleapis.com/auth/drive.file (осигурява право върху файлове/папки, които приложението е създало или потребителят е избрал чрез Picker)
+- On-demand допълнителни scope-ове:
+  - https://www.googleapis.com/auth/drive.readonly (само четене на съществуващи файлове/папки; използвайте само при нужда, чрез incremental auth)
+  - https://www.googleapis.com/auth/drive (пълен read/write — избягвайте, освен ако потребителят ясно съгласни или използвате service account)
+- Алтернатива за write-достъп до вече съществуваща папка: service account + потребител споделя папката с service-account email (ако приемливо).
+
+Общи структурни компоненти в main.js (къде се вгражда логиката)
+- Инициализация на OAuth/Picker: място за token client и picker init (върху стартовия bootstrap, load event). (в `main.js` търсете частите, които инициализират Google API / OAuth и UI за логин)
+- Конфигурация/съхранение: централен конфиг/съхранение за потребителя, съдържащо:
+  - linkedDataFolders: [{ id, name, type: 'cx-notes'|'multinotes'|'custom', lastSyncedAt, accessMode: 'app'|'readonly'|'full' }]
+  - activeFolderId
+  - OAuth token metadata (refresh token backend-side, ако имате backend)
+- UI: onboarding flow с диалог/модал за избор между опции (create CX-Notes / use multinotes_data / import & create CX-Notes)
+- Миграционни/копиращи задачи: batch list + download + upload, с прогрес бар и conflict handling.
+
+Подробен сценарий (по точки 1–5) и как да го имплементирате
+
+1) Първо стартиране — multinotes_data НЕ съществува
+- Поведение:
+  - Зарежда се минималната авторизация (drive.appdata + drive.file). Това гарантира, че AppDataFolder е достъпен през API, и имате право да създавате файлове/папки, които приложението създаде.
+  - Проверкa: при първоначално стартиране търсите в конфиг/бекап записан folderId за CX-Notes. Ако няма — показвате onboarding modal с две бутони: [Създай нова CX-Notes] и [Импортирай от друга папка] (ако user иска).
+- UX & API стъпки за „Създай CX-Notes“:
+  - Извикване: POST https://www.googleapis.com/drive/v3/files с metadata {name: 'CX-Notes', mimeType: 'application/vnd.google-apps.folder'} и Authorization: Bearer <token>.
+  - Запишете returned file.id като folderId в local settings / backend (linkedDataFolders add).
+  - След това всички read/write операции за основни потребителски данни използват parent = CX-Notes folderId.
+- AppData:
+  - Съхранявате потребителски настройки, cache, индекси в AppDataFolder (parents: ['appDataFolder']). На първо стартиране създайте нужните app-specific файлове там.
+
+2) multinotes_data СЪЩЕСТВУВА — два варианта (а и б)
+Задължителна предварителна операция: откриване дали folder с name 'multinotes_data' съществува в Drive на потребителя
+- Как да търсите (пример query):
+  - GET https://www.googleapis.com/drive/v3/files?q=name='multinotes_data' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)
+  - Забележка: при drive.file обикновено приложението няма право да търси arbitrary folders — търсенето ще работи само ако приложението има подходящи права или ако потребителят е дал consent чрез Picker/drive.readonly. Затова откриването може да е направено чрез:
+    - a) предварително selectedFolderId, записан от друго приложение (ако имате взаимодействие), или
+    - b) показване на Picker на потребителя да избере папката multinotes_data (по-безопасно UX) — Picker връща folderId.
+- След като folderId е известен, покажете модал с опциите:
+  а) „Работя директно в multinotes_data (пълен достъп)“
+    - Изисквания за пълен write достъп:
+      - Вариант 1: поискайте допълнителен scope drive (https://www.googleapis.com/auth/drive) чрез incremental consent — Google ще покаже по-тревожно съобщение (непрепоръчително ако може да се избегне).
+      - Вариант 2 (препоръчано, по-сигурно): помолете потребителя да сподели папката с app-specific account (service account) или с акаунта, който приложението използва. Ако service account е използван, приложението вече има write-достъп и може да продължи.
+      - Ако приемате drive.readonly само за четене — потребителят няма пълен write; ако потребителят иска да пише, тогава трябва drive scope или споделяне.
+    - Ако сте решили да поискате drive scope: направете incremental auth request със scope https://www.googleapis.com/auth/drive (ясно предупредете потребителя). Ако токен е получен, маркирайте linkedDataFolders entry като accessMode: 'full' и activeFolderId = multinotes_data id.
+  б) „Създай нова CX-Notes и копирай данните (read-only до multinotes_data)“ (препоръчано UX)
+    - Поведение:
+      - Search/Picker за multinotes_data (ако още не е избрано).
+      - За да прочетете съществуващите файлове за копиране използвайте drive.readonly (incremental auth) или помолете потребителя да избере файловете/папката с Picker. Предпочитам incremental drive.readonly с явна UX нотификация „само четене за миграция“.
+      - Създайте CX-Notes (както в стъпка 1) при drive.file scope — приложението ще има write към тази новосъздадена папка.
+      - Копиране:
+        - list files in multinotes_data (pages) -> за всеки файл:
+          - GET files.get?id=<id>&alt=media (с readonly token) за download
+          - POST upload (multipart или resumable) към Drive с parents: [cxNotesFolderId] и същото mimeType/name. За да запазите modifiedTime, може да зададете поля: modifiedTime в metadata и да използвате supportsAllDrives=true ако е нужно.
+        - Ако има подпапки — рекурсивно пресъздайте структурата (създаване на подпапки в CX-Notes и копиране на файловете).
+      - Маркирайте linkedDataFolders + activeFolderId = cxNotesFolderId и accessMode: 'app' (app-created folder).
+      - За multinotes_data запазете metadata в linkedDataFolders с accessMode: 'readonly' (ако сте получили readonly token) — за справки/временно ползване.
+    - Предимство: избягвате да искате full drive scope; потребителите остават спокойни и приложението работи с папка, която е създало само то (пълен control).
+- Важни UX текстове:
+  - При търсене/копиране: „За да мигрираме бележките ви от multinotes_data, приложението ще поиска само временен read-only достъп. След успешното копиране ще работим от новата папка CX-Notes и няма да искаме повече достъп до оригиналната папка.“
+
+3) Следващи стартирания — нормална работа с CX-Notes и AppDataFolder
+- Поведение:
+  - При стартиране: прочитате от local settings / backend saved activeFolderId (CX-Notes). Ако наличен — зареждате приложения поток (list, read, write) с parent = activeFolderId. С drive.file достъпът е гарантиран, защото приложението е създало папката.
+  - AppDataFolder: продължава да се ползва за настройки/локални кеширания с drive.appdata scope.
+- Error handling:
+  - Ако CX-Notes е преместена/изтрита/споделена/отказан достъп -> 404/403 след operation. Покажете modal: „Не може да достъпите текущата папка CX-Notes — свържете наново или изберете друга папка.“ -> предложете Picker или recreate.
+
+4) Допълнителна опция: създаване на нова папка и копиране/импорт (по желание)
+- UI: „Добави друга папка“ -> опции: Create new CX-Notes (ново име) or Import from multinotes_data (select source)
+- Поведение:
+  - Създаване: POST files (folder) -> добавете към linkedDataFolders като custom type.
+  - Копиране: точно както в 2б — ако source е multinotes_data и имате readonly токен, използвайте него; ако не, помолете потребителя да избере файловете чрез Picker.
+  - След създаването/копирането приложението може да превключи activeFolderId към новата папка.
+- Разрешения:
+  - Ако потребителят иска write в съществуваща външна папка (не-създадена от app), покажете ясно, че ще е необходимо допълнително permission (drive/full scope или споделяне).
+
+5) Множество папки — превключване между тях
+- Данни model:
+  - linkedDataFolders[] съхранява всички свързани папки с полета: id, name, type, accessMode, isActive.
+- UI:
+  - Settings -> Data folders -> списък с папки + бутон „Set active“ + „Import/Sync now“ + „Disconnect“
+  - При превключване на activeFolder, валидирайте достъпа (прост файлов list call) и обновете activeFolderId.
+- Синхронизация:
+  - Ако поддържате sync между няколко папки, реализирайте clear conflict policy (last-writer-wins, or prompt per-file). За пърчеще време, предпочитам single active folder и ръчна миграция — по-проста и безопасна.
+
+Точни API/flow примери (без да променяме кода сега — ползвайте тези call-ове в `main.js` когато вмъквате логиката)
+- Create folder (CX-Notes):
+  - POST https://www.googleapis.com/drive/v3/files
+  - Headers: Authorization: Bearer <token>, Content-Type: application/json
+  - Body: { name: 'CX-Notes', mimeType: 'application/vnd.google-apps.folder' }
+- List files in folder:
+  - GET https://www.googleapis.com/drive/v3/files?q='FOLDER_ID'+in+parents+and+trashed=false&fields=nextPageToken,files(id,name,mimeType,modifiedTime)
+- Download file content:
+  - GET https://www.googleapis.com/drive/v3/files/FILE_ID?alt=media
+- Upload file to CX-Notes:
+  - POST https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable (recommended for big files) or uploadType=multipart for small files.
+  - Metadata includes parents: [CX_NOTES_FOLDER_ID]
+- Incremental auth pattern (browser GIS token client):
+  - Initial tokenClient with scopes: drive.file + drive.appdata
+  - When need readonly: tokenClient.requestAccessToken({scope: 'https://www.googleapis.com/auth/drive.readonly', prompt: 'consent'})
+  - When need full: request drive scope — warn user heavily.
+
+Edge cases, performance, and reliability
+- Rate limits & batching:
+  - При копиране използвайте paged listing (pageSize up to 1000) и batch/resumable uploads, кеширайте ETags/modifiedTime за resume.
+- Large datasets:
+  - Ако multinotes_data съдържа много/големи файлове — предлагайте частичен import (избор на папки/дати) и показвайте прогрес + cancel.
+- Atomicity:
+  - Копиране на много файлове: имайте checkpointing (lastCopiedId) за възстановяване при прекъсване.
+- Conflicts:
+  - При копиране запазвайте оригиналното modifiedTime (set modifiedTime via files.update with ?supportsAllDrives if needed) и запазете метаданни за traceability (e.g., original_source_folder and original_file_id stored in file description or app metadata).
+- Security:
+  - Никога не съхранявайте long-lived client-side access tokens. Ако имате backend, използвайте Authorization Code flow и съхранявайте refresh token на сигурно място. Ако използвате service account — пазете ключовете само на сървъра.
+- Permissions UI:
+  - Преди да поискате допълнителен scope (особено drive.full), покажете модален текст: защо се иска, колко време ще се ползва, и опция „Instead: create CX-Notes and import (recommended)“.
+
+Къде в `main.js` да вмъкнете логиката (конкретни места/hooks)
+- Инициализация (app start): добавете hook за checkSavedFolders() — ако няма activeFolder, влезте в onboarding flow.
+- Onboarding modal/flow: компонент/функция onboardingFlow() с логика:
+  - if (foundMultinotesCandidate) show option modal else show create CX-Notes modal.
+- Picker интеграция: функция openFolderPicker() -> връща folderId -> handleSelectedSource(folderId).
+- Migration task: migrateFolderToCXNotes(sourceFolderId, options) — async job with progress events.
+- Folder management API: addFolderEntry(folderMeta), setActiveFolder(folderId), testFolderAccess(folderId) — извършва малък файлов list за валидиране.
+- AppData usage: функции readAppDataFile(name) / writeAppDataFile(name, content) — използват parents: ['appDataFolder'].
+
+Препоръка за избор между варианти за multi-notes handling
+- Ако целта е минимален friction и най-добър privacy-UX:
+  - Предложете default: create CX-Notes + optional import from multinotes_data (read-only via drive.readonly). Това избягва искането на full drive scope и е лесно за поддръжка.
+- Ако имате много съществуващи потребители, които очакват приложението да продължи да работи в техния multinotes_data без никакво действие:
+  - Предложете service account + инструкция за споделяне на папката с service-account email; това дава programmatic full access, но изисква администратор/потребителско действие и ясни security инструкции.
+
+Тестове и валидация (преди пуск)
+- Тествайте следните сценарии:
+  1. Чисто нов акаунт — създаване на CX-Notes, запис в AppDataFolder, read/write операции.
+  2. multinotes_data налична — опция create+import: цялостно копиране + последващ read/write в CX-Notes.
+  3. multinotes_data налична — опция work-in-place: request drive.readonly (copy preview) и след това request drive (или service-account sharing) за write; валидация на permission errors.
+  4. Failure cases: network interruption mid-copy (resume), missing token (refresh), folder moved/deleted.
+- Напишете unit/integration тест за миграцията с mock-Drive responses (list, get, upload).
+
+Кратко резюме / препоръчана имплементация (най-добър компромис)
+- Default scopes: drive.appdata + drive.file.
+- Onboarding: detect multinotes_data via Picker (по-ясно) или via query (ако можете); покажете опции: work-in-place (requires full write permission via drive scope or service account) или create CX-Notes + import (recommended).
+- Use incremental auth за drive.readonly при миграция; avoid drive full scope unless absolutely necessary.
+- Always store folderId и accessMode в настройките; support switching and reconnect flow.
+
+Ако искате, мога да:
+- Подготвя конкретен patch/PR за `main.js` с точни функции: initAuth, onboardingFlow, openFolderPicker, createCXNotesFolder, migrateFolder, setActiveFolder и малък UI modal (бутони/flows). (Ще направя стъпкови, минимални промени и ще пусна targeted tests/validation). Кажете ако искате да продължа с това и в кой стил на UI (plain HTML, Electron dialog, React modal).
+
+Аз съм AI асистент, работещ чрез Copilot CLI runtime в VS Code.
+
+По-долу е подробно обяснение какво означава потребителят да „сподели папката с app‑specific account (service account)“ или да я сподели „с акаунта, който приложението използва“, какво се променя за сигурността и за имплементацията, и конкретни стъпки за потребителя и за разработчика (включително примерен Node.js код).
+
+Кратко сравнение — концептуално
+- Service account (препоръчано за backend/сървърна програма): специален не‑човешки акаунт в GCP, който служи за програмни достъпи. Потребителят споделя своята папка с email-а на този service account (напр. [my-sa@project.iam.gserviceaccount.com](mailto:my-sa@project.iam.gserviceaccount.com)). След споделяне service account-ът (чрез вашия сървърен код) може да чете/писа/изтрива файлове в папката при разрешенията, които му дадат (Editor / Viewer). Не е нужно да искате глобален drive scope от потребителя.
+- „Акаунтът, който приложението използва“ (app-owned Google account): това е обикновен Google потребителски акаунт (или „бот“ акаунт), контролиращ се от вас. Потребителят споделя папката с този акаунт. Подобно на service account, след споделяне вашето приложение (работещо като този акаунт) има достъп. По-малко предпочитано, тъй като свързано с човешки акаунт и управление на пароли/2FA, но функционално еквивалентно за простия сценарий.
+
+Какво се случва технически, когато потребителят „сподели папката“?
+- Това е стандартната операция „Share“ в Google Drive: потребителят добавя email (service-account или друго) в списъка за споделяне и дава роля (Viewer, Commenter, Editor, Owner).
+- След споделяне, Drive приема service-account-а като „потребител“ с дадените права — API повиквания, направени с идентичността на service account (със съответните credentials), ще могат да достъпват споделената папка според ролевите права.
+- Няма нужда от OAuth consent screen към крайния потребител за да позволите достъп на service account — потребителят сам предоставя правото чрез Share UI.
+
+Стъпки за разработчик — създаване на service account и конфигуриране
+1) В Google Cloud Console:
+  - Създайте проект (или използвайте съществуващ).
+  - Enable APIs: Google Drive API.
+  - Придвижете се до IAM & Admin → Service accounts → Create service account.
+  - Дайте име/описание. Не е нужно да давате роли на проекта на самия service account за целите на Drive (освен ако ще ползвате GCP ресурси).
+  - (Опционално) Създайте JSON ключ (Credentials → Create key → JSON). Това ви дава файл с private_key, client_email и други.
+  - Вземете полето client_email — това е имейл адресът, който потребителите ще трябва да добавят при share (напр. [my-sa@project.iam.gserviceaccount.com](mailto:my-sa@project.iam.gserviceaccount.com)).
+
+2) Създаване/проверка на бекенд среда:
+  - Винаги пазете JSON ключа на сървър (не в клиентски/Electron renderer, не в публичен repo).
+  - Ако хоствате в GCP (Cloud Run, GKE, App Engine) — предпочетете Workload Identity / IAM service binding (без JSON ключ), или ограничете къде ключът може да се използва.
+
+3) Достъп до споделената папка от приложението:
+  - След като потребителят сподели папката с service-account имейла (Editor), сървърният код използва service account credentials, за да извършва Drive API операции върху файловете в тази папка.
+  - Scope, които ще поискате от service account: при server-to-server auth вие създавате OAuth token с желаните scopes (напр. https://www.googleapis.com/auth/drive). Този токен не е свързан към потребителски consent screen — service account действа като отделна „програма“.
+
+Примерен Node.js (googleapis) — list файлове в споделена папка
+// Предполага се, че JSON ключът е в process.env.SA_KEY_JSON или в файл на сървъра.
+const {google} = require('googleapis');
+
+async function listFilesInSharedFolder(serviceAccountKey, folderId) {
+  const jwtClient = new google.auth.JWT({
+    email: serviceAccountKey.client_email,
+    key: serviceAccountKey.private_key,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  });
+
+  await jwtClient.authorize();
+
+  const drive = google.drive({version: 'v3', auth: jwtClient});
+  const q = `'${folderId}' in parents and trashed = false`;
+  const res = await drive.files.list({ q, fields: 'files(id,name,mimeType,modifiedTime)', pageSize: 1000 });
+  return res.data.files;
+}
+
+// Използване:
+// const saKey = require('/path/to/sa-key.json');
+// const files = await listFilesInSharedFolder(saKey, 'FOLDER_ID');
+
+Бележки към примера:
+- serviceAccountKey.client_email е email-а, показван в UI при sharing.
+- scopes: с drive scope имате пълен контрол (четене/запис). Ако искате да ограничите, може да използвате drive.file, но service account + drive.file все пак ще работи само за файлове, собственост на service account или споделени с него — за споделена папка това е подходящо само ако самото приложение създава файловете. За манипулация на вече‑налични файлове в shared папката често използвате full drive scope (или writer rights чрез API при вече споделен ресурс).
+
+Как потребителят да сподели папката — инструкции за потребителя (стъпка по стъпка)
+1) Отворете Google Drive.
+2) Намерете папката (multinotes_data).
+3) Кликнете с десен бутон → Share (Споделяне).
+4) В полето „Add people and groups“ поставете service account email-а (напр. [my-sa@project.iam.gserviceaccount.com](mailto:my-sa@project.iam.gserviceaccount.com)).
+5) От падащото меню до email-а изберете „Editor“ (Редактор) — дава право да четете/пишете/изтривате в папката.
+6) Натиснете Send/Share (можете да изключите уведомяване — няма нужда да пращате имейл).
+7) Готово — вашият сървър, използващ service account ключ, вече може да работи с тази папка чрез Drive API.
+
+Алтернативата: споделяне с „app account“ (човешки акаунт или bot account)
+- Ако имате централен Google акаунт, който приложението използва (напр. [app@example.com](mailto:app@example.com)), потребителят може да сподели папката с него по същия начин.
+- Разлики:
+  - Този подход е по-прост, но носи управленски проблеми (трябва да се пази паролата/2FA за този акаунт или да се използва OAuth refresh token, което носи рискове).
+  - Service account е по‑сигурен и по‑контролируем (прави лесно ротация и аудит).
+
+Роля на „Owner“ vs „Editor/Writer“
+- Editor/Writer обикновено е достатъчен (позволява create/update/delete).
+- Transfer на собственост (make owner) може да има ограничения — за consumer акаунти обикновено може, но в domain (G Suite/Workspace) може да са наложени политики. Не е необходимо да давате Ownership на service account; Editor е достатъчен.
+
+Как да автоматизирате споделянето от приложението (ако искате)
+- Теоретично вашият бекенд може да създаде permission за даден файл/folder чрез Drive API permissions.create:
+  POST https://www.googleapis.com/drive/v3/files/{fileId}/permissions
+  Body: { "role": "writer", "type": "user", "emailAddress": "[my-sa@project.iam.gserviceaccount.com](mailto:my-sa@project.iam.gserviceaccount.com)" }
+- Това изисква токен, имащ право да променя permissions (т.е. потребителят/собственикът да е в сесията, или да извършите операцията след като собственикът е дал consent). За простота и прозрачност — препоръчвам потребителят да сподели ръчно чрез UI.
+
+Сигурност, операции и административни практики
+- Никога не поставяйте JSON ключа в клиентски код или публичен репо.
+- Ограничете достъпа до ключа в инфраструктурата (KMS, secret manager).
+- Ротирайте ключовете периодично; оттеглете стари ключове.
+- Записвайте и следете достъпа в логове (audit log) — кой сървър/клиент е правил операции и кога.
+- Ако използвате GCP hosting — предпочетете Workload Identity (без JSON ключ), където възлагане се прави чрез IAM binding.
+
+Плюсове и минуси на service account + споделяне
+- Плюсове:
+  - Не е нужно да искате страшния OAuth prompt „full Drive access“ към потребителя.
+  - По-добър контрол през вашия сървър; лесно администриране и audit.
+  - Лесно да оттеглите достъпа — потребителят просто премахва споделеното право.
+- Минуси:
+  - Изисква от потребителя еднократно ръчно действие (копирай/пейст на имейл в Share диалога).
+  - Управление на service account ключове/сигурност на сървъра.
+
+Примерен кратък текст за потребителя (за UI/имейл), който обяснява защо да сподели:
+„За да позволите на SeeNotes да чете и/или прехвърли данните ви от папката multinotes_data, моля споделете тази папка с адрес [my-sa@project.iam.gserviceaccount.com](mailto:my-sa@project.iam.gserviceaccount.com) като ‘Editor’. Това ни дава само достъп до тази конкретна папка — няма да получим пълен достъп до целия ви Drive. Можете да премахнете този достъп по всяко време от настройките за споделяне в Google Drive.“
+
+Препоръка за вашия сценарий
+- Ако искате да поддържате „работи директно в multinotes_data“ без да искате потребители да виждат страшни OAuth съобщения — използвайте service account и инструкции за споделяне (Editor). Това е ясен, сигурен и добре контролируем подход.
+- Пазете service account ключа само на сървъра; използвайте drive scope и имплементирайте проверка/логика в сървъра за операции (copy/migrate/list).
+- Предложете в UI ясни инструкции + копируемо поле с service-account email и еднократен бутон „Показване на инструкции за споделяне“ (с screenshot).
+
+Ако желаете, следваща стъпка:
+- Мога да подготвя exact snippet/patch за [main.js] (или за вашия бекенд) показващ:
+  - Как да използвате service account JSON за list/download/upload на файлове в споделена папка.
+  - Как да изнесете в UI service account email и инструкции за споделяне (готов HTML/React modal).
+Изберете: „Node.js server snippet + UI modal“ или „само backend snippet“ — и ще подготвя кода.
+
+Кратък отговор на въпроса „трябва ли потребителят да сподели папката със себе си?“: не — споделянето има смисъл само когато искате да дадете достъп на различна Google идентичност (service account или друг Google акаунт). При serverless browser-приложение, което работи в контекста на текущия потребителски акаунт, няма „друг“ акаунт, с който да споделите, така че споделянето с „самия себе си“ е излишно и не решава проблема за права. Вместо това опции и реалистични потоци за вашия case (serverless, browser-only):
+
+1) Накратко — правилният набор за serverless app
+- Базови scopes (препоръчани): 
+  - https://www.googleapis.com/auth/drive.file — дава приложението право да чете/пише файлове и папки, които самото приложение е създало или които потребителят е явно предоставил чрез Picker/Open‑with.
+  - https://www.googleapis.com/auth/drive.appdata — AppDataFolder за настройки/метаданни.
+- Поведение при тези scopes:
+  - Ако приложението създаде CX-Notes, то с drive.file има пълен контрол над файловете, които то създаде в тази папка — без да иска „пълен достъп до Drive“.
+  - Ако multinotes_data вече съществува и потребителят иска да работи IN‑PLACE (четене+писане върху съществуващите файлове), drive.file сам по себе си НЕ е достатъчен, освен ако потребителят явнo не избере всеки файл/папка чрез Picker или не сподели папката с някакъв друг акаунт, с който приложението оперира (но в serverless това не важи).
+
+2) Варианти за работа с вече съществуваща multinotes_data (serverless)
+А. Препоръчаният UX (без искане на страшния full-drive scope)
+- Потребителят избира multinotes_data чрез Google Picker или вие предлагате „Намери/Избери папка“ — Picker връща folderId.
+- Предложете две опции:
+  1) „Импортирай (препоръчано)“ — приложението ще поиска временен read-only token (incremental auth за scope https://www.googleapis.com/auth/drive.readonly) или потребителят ще избере файловете/папката чрез Picker. С drive.readonly/Picker приложението може да прочете всички съществуващи файлове и да ги копира в нова CX-Notes, която приложението създава (с drive.file). След успешно копиране работата продължава от CX-Notes (app има пълен контрол над това, което е създало).
+     - Плюс: потребителят не вижда „пълен достъп“ диалог, безопасен UX.
+     - Минус: еднократно действие за миграция; след копирането original остава непроменен.
+  2) „Работи директно в multinotes_data“ — това изисква write-достъп до вече-съществуващи файлове. За browser-only app има два начина:
+     - Помолете потребителя да даде глобален full-drive scope (https://www.googleapis.com/auth/drive) чрез incremental auth. Това означава по-тревожно consent screen („SeeNotes ще има достъп до всички ваши Drive файлове“). Технически възможно, но UX + privacy tradeoff.
+     - Или помолете потребителя да премести/копира файловете в нова CX-Notes, която вие създавате (тогава drive.file е достатъчен). Това е предпочитано, защото запазва security/UX.
+
+Б. Защо service account / споделяне не помага при serverless
+- Service account работи само при сървърен backend, който може да използва service account ключа за API calls. Serverless browser app няма сигурно място да държи такива ключове. Ако потребителят (по някаква причина) сподели папката с външен account (например с app-owner акаунт), това би имало смисъл само ако приложението може да аутентифицира като този account — което не е възможно/сигурно в pure-browser режим. Следователно:
+  - Не искайте потребителя да „сподели с service account“ при отсъствие на backend, защото app не може да използва service-account credentials в браузъра безопасно.
+  - Споделянето е опция само когато имате сървър/сървърless backend с облачно място за ключа (но в този сценарий вие нямате такъв).
+
+3) Практически UX/flow за вашия описан сценарий (serverless)
+- Първо стартиране (multinotes_data липсва): use drive.file + drive.appdata; create CX-Notes (app създава папка) и запиши folderId в AppDataFolder / localStorage / в app-specific file в appDataFolder (така е persistентно).
+- multinotes_data съществува: при детекция/Picker покажете modal:
+  - Опция A (recommended): Import → request incremental drive.readonly (или позволете потребителя да избере файловете с Picker) → copy files to new CX-Notes (app-created) → set CX-Notes as active (app has full control).
+  - Опция B: Work in place → явна предупреждение, поискайте incremental auth за full-drive scope (https://www.googleapis.com/auth/drive). Пояснете риска и помолете за потвърждение. Ако даде consent, app може директно list/read/write файловете в папката.
+- Винаги: AppDataFolder scope трябва да бъде искан в началото за settings/cache.
+
+4) Технически бележки и ограничения (важни при browser-only)
+- Google Identity Services token client (GIS) / tokenClient:
+  - За краткотрайни access tokens GIS е добър (tokenClient.requestAccessToken({scope, prompt})). Няма backend refresh token по подразбиране.
+  - Ако искате background persistence (offline long-lived refresh tokens), browser-only approach е по-сложен — трябва Authorization Code flow с PKCE; Google може да издаде refresh tokens за някои клиент типове, но това добавя сложност и е по-малко безопасно без бекенд.
+  - Практически: разработете flow така, че access token се взема/подновява в началото на сесията; не разчитайте на refresh токени в client-only архитектура (или планирайте периодично reconsent).
+- Picker поведение и drive.file:
+  - Ако потребителят избере папка в Picker, drive.file позволява да създавате файлове в нея, но НЕ ви дава правото да list/прочетете всички съществуващи файлове в нея (ограничение). Ако трябва да прочетете всички файлове, трябва drive.readonly или drive scope, или потребителят да избере конкретните файлове чрез Picker (ако файловете са малко).
+- Съхраняване на folderId:
+  - Можете да пазите folderId в AppDataFolder (файл под приложението), или в localStorage/IndexedDB. Предпочитано: AppDataFolder + local copy of id — тогава при смяна на устройство потребителят запазва връзката.
+
+5) Конкретни препоръчани стъпки за имплементация (code hints)
+- Начални scopes: drive.file + drive.appdata.
+- Onboarding:
+  - Покажи бутон „Провери за multinotes_data“ → open Folder Picker (ViewId.FOLDERS) или search (ако имате право).
+  - Ако намери папка: покажи modal с двете опции (Import / Work in place).
+- За Import (примерни calls):
+  - request readonly token: tokenClient.requestAccessToken({ scope: 'https://www.googleapis.com/auth/drive.readonly', prompt: 'consent' })
+  - list files: GET drive/v3/files?q='FOLDER_ID' in parents
+  - download each: GET files/{id}?alt=media (с readonly token)
+  - upload to CX-Notes: POST upload/drive/v3/files?uploadType=multipart (с текущия app token — app-created folder под drive.file)
+- За Work in place:
+  - request full token: tokenClient.requestAccessToken({ scope: 'https://www.googleapis.com/auth/drive', prompt: 'consent' })
+  - направете list/read/write calls (но внимателно с UX: покажете предупредително съобщение защо и какво ще бъде достъпно).
+- За селекция на конкретни файлове (ако потребителят не иска да ви дава повечко права):
+  - Покажете Picker с файлове и позволете на потребителя да избере кои файлове да импортирате; това дава вам access до точно избраните файлове (и избегва drive.readonly).
+
+6) Примерни UI съобщения (за да намалите тревогата)
+- Преди да поискате drive.readonly: „Това разрешение позволява на SeeNotes само да прочете файловете в избраната папка за еднократно импортиране. Няма да променяме оригиналните файлове.“
+- Преди да поискате full drive: „За да работите директно във вашата папка multinotes_data (четене и запис), SeeNotes трябва временен достъп до файловете в Drive. Това ще позволи промени в избраната папка — използвайте само ако сте сигурни. Препоръчваме вместо това да импортирате в нова CX‑Notes (по‑безопасно).“
+
+7) Заключение и препоръка
+- За pure browser/serverless приложението: НЕ използвайте споделяне с service account (няма бекенд да държи credentials). Вместо това:
+  - Използвайте drive.file + drive.appdata за нормална експлоатация (CX-Notes създадена от app).
+  - За миграция/импорт използвайте drive.readonly (incremental auth) или Picker за потребителски избор на файлове.
+  - Ако потребител иска да работи IN-PLACE и не иска да мигрира, последна възможност е да поискате full-drive scope (ясно да обясните риска).
+- Това осигурява добър баланс между privacy/UX и функционалност при serverless архитектура.
+
+Ако искате, следваща стъпка (без промяна на main.js още): мога да ви дам два кратки code-snippet-а (browser JS) — 1) как да поискате drive.readonly incrementally, да листнете/прочетете файлове и да ги копирате в CX-Notes; 2) как да поискате full-drive (с UX modal текст) и да провалидирате access. Кажете кой snippet предпочитате първо и ще го предоставя.
+
