@@ -540,7 +540,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
                     const oldFolder = activeFolderName;
                     activeFolderName = 'multinotes_data';
                     localStorage.setItem('active_folder_name', activeFolderName);
-                    localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
+                    setCachedMainFolderId('multinotes_data', multinotesId);
                     cachedMainFolderId = multinotesId;
 
                     let folderNames = [];
@@ -574,7 +574,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
             console.warn('[FirstRun] Active folder was not found. Switching to AppDataFolder.');
             activeFolderName = 'AppDataFolder';
             localStorage.setItem('active_folder_name', activeFolderName);
-            localStorage.removeItem('gdrive_multinotes_data_id');
+            clearCachedMainFolderId();
             ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
             cachedMainFolderId = null;
             folderIds = {};
@@ -607,7 +607,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
                 try {
                     const newId = await createNewGDriveFolder(activeFolderName);
                     if (newId) {
-                        localStorage.setItem('gdrive_multinotes_data_id', newId);
+                        setCachedMainFolderId(activeFolderName, newId);
                         cachedMainFolderId = newId;
                         if (typeof showToast === 'function') showToast((_('folderCreated') || `Folder "${activeFolderName}" created.`).replace('{folder}', activeFolderName), 5000);
                         return fetchAllData(newId, modifiedSince);
@@ -621,7 +621,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
             console.warn('[fetchAllData] Falling back to AppDataFolder.');
             activeFolderName = 'AppDataFolder';
             localStorage.setItem('active_folder_name', activeFolderName);
-            localStorage.removeItem('gdrive_multinotes_data_id');
+            clearCachedMainFolderId();
             ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
             cachedMainFolderId = null;
             folderIds = {};
@@ -1144,7 +1144,7 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                                 if (previousEmail && userInfo.email && previousEmail !== userInfo.email) {
                                     console.warn(`[refreshAuthToken] User account changed: ${previousEmail} → ${userInfo.email}. Resetting folder settings.`);
                                     localStorage.removeItem('active_folder_name');
-                                    localStorage.removeItem('gdrive_multinotes_data_id');
+                                    clearCachedMainFolderId();
                                     localStorage.removeItem('initial_setup_complete');
                                     localStorage.removeItem('settings_multinotes_data');
                                     localStorage.removeItem('gdrive_folder_names');
@@ -2309,11 +2309,21 @@ async function getFolderID() {
     }
 }
 
+function setCachedMainFolderId(folderName, folderId) {
+    localStorage.setItem('gdrive_multinotes_data_id', folderId);
+    localStorage.setItem('gdrive_multinotes_data_id_folder', folderName);
+}
+function clearCachedMainFolderId() {
+    localStorage.removeItem('gdrive_multinotes_data_id');
+    localStorage.removeItem('gdrive_multinotes_data_id_folder');
+}
+
 async function getMultinotesDataFolderID() {
     if (isOffline) return null;
     if (typeof activeFolderName !== 'undefined' && activeFolderName === 'AppDataFolder') return 'appDataFolder';
     const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
-    if (cachedId) return cachedId;
+    const cachedForFolder = localStorage.getItem('gdrive_multinotes_data_id_folder');
+    if (cachedId && cachedForFolder === activeFolderName) return cachedId;
 
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`name='${activeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
@@ -2361,7 +2371,7 @@ async function getMultinotesDataFolderID() {
                 const id = result.files?.[0]?.id || null;
                 if (id) {
                     if (attempt > 0) console.log(`[getMultinotesDataFolderID] Found folder on attempt ${attempt + 1}.`);
-                    localStorage.setItem('gdrive_multinotes_data_id', id);
+                    setCachedMainFolderId(activeFolderName, id);
                     return id;
                 }
                 console.warn(`[getMultinotesDataFolderID] Attempt ${attempt + 1}: Folder '${activeFolderName}' not found in GDrive response.`);
@@ -6299,7 +6309,7 @@ function handleSignoutClick() {
     sessionStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_email_hint');
     localStorage.removeItem('google_login_hint');
-    localStorage.removeItem('gdrive_multinotes_data_id');
+    clearCachedMainFolderId();
     localStorage.removeItem('gdrive_folder_id_Other');
     localStorage.removeItem('gdrive_folder_id_Sound');
     localStorage.removeItem('gdrive_folder_id_Video');
@@ -6314,7 +6324,7 @@ function handleSignoutClick() {
 async function handleAccountSwitchReset(previousEmail, newEmail) {
     console.warn(`[AccountSwitch] Account changed from ${previousEmail} to ${newEmail}. Resetting state and deleting old local database.`);
     localStorage.removeItem('active_folder_name');
-    localStorage.removeItem('gdrive_multinotes_data_id');
+    clearCachedMainFolderId();
     localStorage.removeItem('initial_setup_complete');
     localStorage.removeItem('settings_multinotes_data');
     localStorage.removeItem('gdrive_folder_names');
@@ -6628,7 +6638,7 @@ async function handleFirstRunSetup() {
                 if (!multinotesId) {
                     activeFolderName = 'CX-Notes';
                     localStorage.setItem('active_folder_name', activeFolderName);
-                    localStorage.removeItem('gdrive_multinotes_data_id');
+                    clearCachedMainFolderId();
                     cachedMainFolderId = null;
                     const normalizedFolderNames = folderNames.includes('multinotes_data')
                         ? folderNames.filter(name => name !== 'multinotes_data')
@@ -6639,7 +6649,7 @@ async function handleFirstRunSetup() {
                     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
                     if (typeof showToast === 'function') showToast(_('firstRunAppDataFolderSelected'), 7000);
                 } else {
-                    localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
+                    setCachedMainFolderId('multinotes_data', multinotesId);
                 }
             }
             localStorage.setItem('initial_setup_complete', 'true');
@@ -6659,7 +6669,7 @@ async function handleFirstRunSetup() {
         multinotesId = await getFolderIDByName('multinotes_data');
         if (multinotesId) {
             multinotesFound = true;
-            localStorage.setItem('gdrive_multinotes_data_id', multinotesId);
+            setCachedMainFolderId('multinotes_data', multinotesId);
             userChoice = await showMultiNotesChoiceModal();
             console.log('[FirstRun] User choice:', userChoice);
             if (userChoice === 'direct') {
@@ -6703,7 +6713,7 @@ async function handleFirstRunSetup() {
                 const migrationSuccess = await migrateDataToNewFolder(targetFolderId);
                 if (migrationSuccess) {
                     cachedMainFolderId = targetFolderId;
-                    localStorage.setItem('gdrive_multinotes_data_id', targetFolderId);
+                    setCachedMainFolderId('CX-Notes', targetFolderId);
                     console.log('[FirstRun] Data copied successfully to CX-Notes.');
                     if (typeof showToast === 'function') showToast(_('migrationSuccess'), 5000);
                 } else {
@@ -6728,7 +6738,7 @@ async function handleFirstRunSetup() {
             }
             if (targetFolderId) {
                 cachedMainFolderId = targetFolderId;
-                localStorage.setItem('gdrive_multinotes_data_id', targetFolderId);
+                setCachedMainFolderId('CX-Notes', targetFolderId);
                 const existingMainBoards = await findGDFileByName(targetFolderId, 'board.txt');
                 if (existingMainBoards && existingMainBoards.length > 0) {
                     console.log('[FirstRun] Main board already exists in CX-Notes');
@@ -11071,6 +11081,11 @@ async function loadGlobalFoldersJson() {
         if (remoteActiveFolder && !localStorage.getItem('active_folder_name')) {
             localStorage.setItem('active_folder_name', remoteActiveFolder);
             activeFolderName = remoteActiveFolder;
+            // Ако кешът на ID не съответства на новата активна папка, го изчистваме,
+            // за да се преизчисли по име при следващото зареждане на данни.
+            if (localStorage.getItem('gdrive_multinotes_data_id_folder') !== remoteActiveFolder) {
+                clearCachedMainFolderId();
+            }
             const loaderFolderInfo = document.getElementById('loader-folder-info');
             if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
             changed = true;
@@ -11626,7 +11641,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                         localStorage.setItem('active_folder_name', targetFolderName);
                         const loaderFolderInfo = document.getElementById('loader-folder-info');
                         if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-                        localStorage.setItem('gdrive_multinotes_data_id', targetFolderId);
+                        setCachedMainFolderId(targetFolderName, targetFolderId);
                         // Apply per-folder start board if available
                         const folderStartBoard = localStorage.getItem('startBoard_' + targetFolderName);
                         if (folderStartBoard) {
@@ -11683,7 +11698,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                         }
 
                         if (typeof showToast === 'function') showToast(_('settingSaved') + ' Синхронизиране...');
-                        syncGlobalFoldersJson();
+                        await syncGlobalFoldersJson();
                         setTimeout(() => location.reload(), 1500);
                     } else {
                         activeFolderSelect.value = activeFolderName;

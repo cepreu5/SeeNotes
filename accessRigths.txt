@@ -677,3 +677,145 @@ async function listFilesInSharedFolder(serviceAccountKey, folderId) {
 
 Ако искате, следваща стъпка (без промяна на main.js още): мога да ви дам два кратки code-snippet-а (browser JS) — 1) как да поискате drive.readonly incrementally, да листнете/прочетете файлове и да ги копирате в CX-Notes; 2) как да поискате full-drive (с UX modal текст) и да провалидирате access. Кажете кой snippet предпочитате първо и ще го предоставя.
 
+Да — това е реално “ омагьосан кръг ” и той е нормален за Google Drive.
+
+Причината е проста:
+- За да провериш “съществува ли папка multinotes_data”, трябва да имаш право да видиш Drive структурата.
+- Но точно това право е това, което искаш да решиш според резултата от проверката.
+- Тоест: няма как да “позная” дали папката съществува, преди да съм получил поне някакъв достъп до Drive.
+
+Това не е кодова грешка; това е архитектурно ограничение на Drive OAuth.
+
+Правилният подход е не “проверка преди права”, а “постепенно разрешаване според състоянието”.
+
+За вашия случай най-добрият модел е:
+
+1) Първо — минимални права за стартиране
+- drive.appdata
+- drive.file
+
+Това позволява:
+- да съхраняваме настройки в AppDataFolder
+- да създаваме собствена папка като CX-Notes
+- да работим със съдържание, което приложението е създало само за себе си
+- да използваме Google Picker за избор на папка
+
+2) Не проверяваме „дали multinotes_data съществува“ глобално
+- Вместо това:
+  - Ако има записано предишно състояние/activeFolderId -> работим с него
+  - Ако няма -> питаме потребителя:
+    - “Създай нова CX-Notes”
+    - “Избери съществуваща папка”
+    - “Провери дали имам стара data папка”
+  - Това е “choose/create first”, а не “detect first”
+
+3) Само след като потребителят избере или създаде папка, решаваме какви права да искаме
+- Ако създаде нова CX-Notes -> drive.file е достатъчно
+- Ако избере съществуваща multinotes_data -> тогава:
+  - ако иска “work in place” -> трябва да поиска допълнителен scope (drive.readonly или drive, според нужда)
+  - ако иска “migrate to new CX-Notes” -> request read-only за конкретната папка, копиране, след което работи в новата папка
+
+Именно този подход прекъсва цикъла.
+
+Какво е приемливото “първи flow” в браузър app
+
+Flow A: най-чистият и безопасен
+- Стартиране
+- Ако няма saved config:
+  - OAuth with drive.file + drive.appdata
+  - Покажи modal:
+    - “Create new CX-Notes”
+    - “Choose existing folder”
+    - “Check if existing old folder is available”
+- Ако потребителят избере “Choose existing folder”:
+  - отваряш Google Picker
+  - той избира folderId
+  - вече знаеш точно коя папка е избрана
+  - сега можеш да решиш:
+    - това е CX-Notes -> работи
+    - това е multinotes_data -> ask for additional rights only for this folder
+- Ако потребителят избере “Create new CX-Notes”
+  - създаваш папката
+  - вече няма нужда от query за multinotes_data
+
+Това е “loop breaker”:
+- не търсиш по име преди OAuth
+- търсиш само след избран folder или след създаване
+
+Flow B: ако действително искаш да “срещнеш” old folder по име
+Тогава е допустимо само след минимална authorization:
+- При първи login:
+  - получаваш drive.file + drive.appdata
+- След това правиш “optional import search”:
+  - query за папка name='multinotes_data' и mimeType='application/vnd.google-apps.folder'
+- Но този query е валиден само ако приложението вече има достъп до Drive/Folder listing. За drive.file това НЕ винаги е достатъчно за arbitrary folder search.
+- Така че в повечето случаи това се прави:
+  - или чрез Picker
+  - или чрез incremental auth за drive.readonly
+  - или чрез ново “lookup consent” точно за тази папка
+
+Тоест: проверка по име е възможна, но не “без права”.
+
+Защо това е най-добре за вашия сценарий:
+- Вие не искате да питате за “пълен Drive access” веднага
+- Вие искате да работите с една основна папка CX-Notes
+- Вие искате да поддържате compat с multinotes_data
+- Това се прави най-добре чрез:
+  - “minimal auth first”
+  - “let user choose or create folder”
+  - “only then ask for more permissions for that exact folder”
+
+Ясна логика на решение-то:
+- Ако няма saved active folder:
+  - не търсим произволно в Drive
+  - просто започваме с minimal auth
+  - потребителят избира или създава папка
+  - според избора решаваме дали да искаме read-only или full access
+
+Как трябва да мислим като архитектура
+- Не “is multinotes_data present?” като предварителна валидност
+- А “what folder does user want to use?” като първа стъпка
+- След това “what permissions are required for that folder?” като втора стъпка
+
+Това е ключовият принцип.
+
+Минимална state machine
+- no saved folder
+  -> auth with drive.file + drive.appdata
+  -> choose existing folder OR create new
+  -> if choose existing:
+      -> if it is multinotes_data and need write:
+          -> request additional rights
+      -> else if it is old folder and want import:
+          -> request readonly
+      -> else:
+          -> proceed
+  -> if create new:
+      -> create CX-Notes
+      -> save folder id
+      -> done
+
+Тоест няма “пропадане” в цикъл.
+
+Много важна бележка:
+- При browser-only app не е приемливо да “изискваш на всичкото отгоре service account share” — защото service account е backend concept. В браузър среда няма безопасно място, където да държиш private key.
+- Т.е. най-реалният подход е:
+  - app-created CX-Notes
+  - User pick existing folder
+  - incremental auth конкретно за тази папка
+  - import / migrate as needed
+  - ако user insists to edit existing folder in-place -> ask for more rights on that folder only
+
+Най-кратката формула:
+- “Не проверявай глобално преди права; избери папката първо, после реши правата.”
+
+Ако искате, следващата стъпка мога да ви дам точно:
+- state diagram/flowchart за този сценарий
+- или конкретен pseudo-code за onboarding flow в JavaScript, който:
+  - проверява saved state
+  - OAuth minimal
+  - open Picker
+  - decides whether to request readonly/full rights
+  - saves active folder id and access mode.
+
+
