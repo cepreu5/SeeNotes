@@ -2,5 +2,15 @@
     "liveServer.settings.port": 5500,
     "autoHidePlus.autoHidePanel": true,
     "autoHidePlus.autoHideRightSideBar": true,
-    "autoHidePlus.autoHideLeftSideBar": false
+    "autoHidePlus.autoHideLeftSideBar": false,
+    "chat.tools.terminal.autoApprove": {
+        "/^cd 'C:\\\\dev\\\\Projects\\\\SeeNotes\\\\uni'; node -e \"\nconst fs = require\\('fs'\\);\nconst lines = fs\\.readFileSync\\('main\\.js', 'utf8'\\)\\.split\\('\\\\n'\\);\nconst functions = \\[\n  'function needsInitialFolderSetup',\n  'function showInitialDataFolderModal',\n  'function getRequiredScopes',\n  'function completeInitialFolderSetup',\n  'function importDataFromExternalFolder',\n  'function listFilesInFolder',\n  'async function authCallback'\n\\];\nfunctions\\.forEach\\(fn => \\{\n  const idx = lines\\.findIndex\\(l => l\\.includes\\(fn\\)\\);\n  console\\.log\\(\\\\`\\\\\\$\\{fn\\}: line \\\\\\$\\{idx \\+ 1\\}\\\\`\\);\n\\}\\);\n\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd 'C:\\\\dev\\\\Projects\\\\SeeNotes\\\\uni'; node -c main\\.js 2>&1; Write-Host \"`n=== Syntax validation complete ===\" $/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
 }

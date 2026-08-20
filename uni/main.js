@@ -108,8 +108,16 @@ const DEMO_NOTE_LIMIT = 5;
 // --- Конфигурация и версия ---
 // const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
 const CLIENT_ID = '365177022923-59fegvrs9tjimpmclr8nbrvk6ik8qfg6.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
+// Динамични scopes - ще се определят според потребителския избор
+const SCOPES_BASE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
+const SCOPES_READONLY = 'https://www.googleapis.com/auth/drive.readonly';
+const SCOPES_FULL = 'https://www.googleapis.com/auth/drive';
+let SCOPES = SCOPES_BASE; // По подразбиране - минимални scopes
 const TRIAL_URL = "http://index.html?token=bEis1x9_geJ3w1aM4SWnR3KjEXbz6l9SK91w9Zk5Clqd6TBnMQgUbMTYErrb_js5wP4I699wO-NflxzGy2yn"; // days token
+
+// --- Глобални флагове за инициализация на папката ---
+let folderSetupMode = null; // 'import_migrate' | 'create_empty' | 'advanced_existing' | null
+let isInitialFolderSetupDone = false;
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -2394,7 +2402,264 @@ async function getMultinotesDataFolderID() {
 }
 
 // =================================================================================
+// INITIAL FOLDER SETUP FUNCTIONS (for new users)
+// =================================================================================
 
+/**
+ * Проверява дали е необходимо първоначално съзнаване на папка
+ */
+function needsInitialFolderSetup() {
+    const activeFolderId = localStorage.getItem('activeFolderId');
+    const hasSetupDone = localStorage.getItem('folderSetupDone') === 'true';
+    return !activeFolderId || !hasSetupDone;
+}
+
+/**
+ * Определя необходимите scopes на основата на избора на потребителя
+ */
+function getRequiredScopes(mode) {
+    if (mode === 'import_migrate') {
+        // За импортиране нужни са read-only права до source папка + app data
+        return SCOPES_BASE + ' ' + SCOPES_READONLY;
+    } else if (mode === 'create_empty') {
+        // За създаване на нова папка достатъчни са само базовите scopes
+        return SCOPES_BASE;
+    } else if (mode === 'advanced_existing') {
+        // За работа с외съществуваща папка (не-създадена от app) нужни са пълни права
+        return SCOPES_BASE + ' ' + SCOPES_FULL;
+    }
+    return SCOPES_BASE;
+}
+
+/**
+ * Показва модал за избор на първоначална папка (ПРЕДИ OAuth)
+ */
+async function showInitialDataFolderModal() {
+    return new Promise((resolve) => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        if (!popup) {
+            console.error('folderIdPromptPopup not found');
+            resolve(null);
+            return;
+        }
+
+        const popupContent = popup.querySelector('.popup-content');
+        const messagePara = popup.querySelector('p');
+        const okButton = document.getElementById('submitFolderIdBtn');
+        const folderIdInput = document.getElementById('folderIdInput');
+
+        // Скриваме input полето
+        folderIdInput.style.display = 'none';
+
+        // Създаваме или преиспользваме бутоните за опциите
+        let option1Btn = document.getElementById('initial-option-1-btn');
+        let option2Btn = document.getElementById('initial-option-2-btn');
+        
+        if (!option1Btn) {
+            option1Btn = document.createElement('button');
+            option1Btn.id = 'initial-option-1-btn';
+            option1Btn.className = 'zoom-btn settings-close-btn';
+            option1Btn.style.marginRight = '10px';
+            okButton.parentNode.appendChild(option1Btn);
+        }
+        
+        if (!option2Btn) {
+            option2Btn = document.createElement('button');
+            option2Btn.id = 'initial-option-2-btn';
+            option2Btn.className = 'zoom-btn settings-close-btn';
+            okButton.parentNode.appendChild(option2Btn);
+        }
+
+        // Текстове
+        const titleText = _('dataFolderSelectionTitle') || 'Choose your data folder';
+        const descText = _('dataFolderSelectionDescription') || 'CX Notes requires a Google Drive folder...';
+        const option1Text = _('dataFolderOption1') || 'Migrate to CX-Notes (Recommended)';
+        const option1Desc = _('dataFolderOption1Description') || 'Import notes from existing folder...';
+        const option2Text = _('dataFolderOption2') || 'Create Empty CX-Notes';
+        const option2Desc = _('dataFolderOption2Description') || 'Create a fresh CX-Notes folder...';
+        const warningText = _('dataFolderMigrationWarning') || '';
+
+        // Обновяваме UI
+        messagePara.innerHTML = `
+            <div style="text-align: left; margin: 20px 0;">
+                <h2 style="margin-top: 0; font-size: 1.3em;">${titleText}</h2>
+                <p style="margin: 10px 0; font-size: 0.95em; color: #666;">${descText}</p>
+                
+                <div style="border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; cursor: pointer; background-color: #f9f9f9;" id="initial-modal-option-1">
+                    <strong style="font-size: 1.05em; display: block; margin-bottom: 5px;">✓ ${option1Text}</strong>
+                    <p style="margin: 5px 0; font-size: 0.9em; color: #666;">${option1Desc}</p>
+                </div>
+                
+                <div style="border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; cursor: pointer; background-color: #f9f9f9;" id="initial-modal-option-2">
+                    <strong style="font-size: 1.05em; display: block; margin-bottom: 5px;">⊞ ${option2Text}</strong>
+                    <p style="margin: 5px 0; font-size: 0.9em; color: #666;">${option2Desc}</p>
+                </div>
+                
+                ${warningText ? `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 15px 0; border-radius: 5px; font-size: 0.9em;">
+                    <strong>⚠️ ${_('dataFolderMigrationWarningTitle') || 'Note'}:</strong> ${warningText}
+                </div>` : ''}
+            </div>
+        `;
+
+        // Скриваме основните бутони
+        okButton.style.display = 'none';
+        option1Btn.style.display = 'inline-block';
+        option2Btn.style.display = 'inline-block';
+
+        option1Btn.textContent = option1Text + ' ✓';
+        option2Btn.textContent = option2Text + ' ⊞';
+
+        // Listeners
+        const cleanup = () => {
+            popup.classList.remove('show');
+            okButton.style.display = 'inline-block';
+            option1Btn.style.display = 'none';
+            option2Btn.style.display = 'none';
+            option1Btn.removeEventListener('click', onOption1);
+            option2Btn.removeEventListener('click', onOption2);
+            document.getElementById('initial-modal-option-1')?.removeEventListener('click', onOption1);
+            document.getElementById('initial-modal-option-2')?.removeEventListener('click', onOption2);
+        };
+
+        const onOption1 = () => {
+            cleanup();
+            localStorage.setItem('folderSetupMode', 'import_migrate');
+            folderSetupMode = 'import_migrate';
+            resolve('option_1');
+        };
+
+        const onOption2 = () => {
+            cleanup();
+            localStorage.setItem('folderSetupMode', 'create_empty');
+            folderSetupMode = 'create_empty';
+            resolve('option_2');
+        };
+
+        option1Btn.addEventListener('click', onOption1);
+        option2Btn.addEventListener('click', onOption2);
+        document.getElementById('initial-modal-option-1')?.addEventListener('click', onOption1);
+        document.getElementById('initial-modal-option-2')?.addEventListener('click', onOption2);
+
+        popup.classList.add('show');
+    });
+}
+
+/**
+ * Импортира данни от външна папка (напр. multinotes_data)
+ */
+async function importDataFromExternalFolder(sourceFolderId) {
+    if (!sourceFolderId) {
+        showToast(_('errorFolderIdMissing') || 'No folder selected', 5000);
+        return null;
+    }
+
+    try {
+        // 1. Създаваме нова CX-Notes папка
+        showToast(_('creatingFolder') || 'Creating CX-Notes folder...', 3000);
+        const newFolderId = await createNewGDriveFolder('CX-Notes');
+        if (!newFolderId) {
+            throw new Error(_('dataFolderCreationError') || 'Failed to create folder');
+        }
+
+        // 2. Листваме файловете от source папка
+        showToast(_('importingData') || 'Importing data...', 3000);
+        const sourceFiles = await listFilesInFolder(sourceFolderId);
+        if (!sourceFiles || sourceFiles.length === 0) {
+            // Няма файлове за копиране, но папката е създадена
+            localStorage.setItem('activeFolderId', newFolderId);
+            localStorage.setItem('folderSetupDone', 'true');
+            return newFolderId;
+        }
+
+        // 3. Копираме файловете (с прогрес)
+        const totalFiles = sourceFiles.length;
+        let copiedCount = 0;
+        
+        for (const file of sourceFiles) {
+            try {
+                await copyGDriveFile(file.id, newFolderId, file.name);
+                copiedCount++;
+                const progress = Math.round((copiedCount / totalFiles) * 100);
+                showToast(`${_('importingData') || 'Importing'}: ${progress}%`, 2000);
+            } catch (e) {
+                console.warn(`Failed to copy file ${file.id}:`, e);
+            }
+        }
+
+        // 4. Запазваме новия folderId
+        localStorage.setItem('activeFolderId', newFolderId);
+        localStorage.setItem('folderSetupDone', 'true');
+        
+        showToast(_('importComplete') || 'Import complete', 3000);
+        return newFolderId;
+    } catch (e) {
+        console.error('Error importing data:', e);
+        showToast(_('dataFolderCreationError') || 'Import failed', 5000);
+        return null;
+    }
+}
+
+/**
+ * Листва файловете в папка
+ */
+async function listFilesInFolder(folderId) {
+    if (!folderId) return [];
+    
+    const sendRequest = async (token) => {
+        const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&pageSize=100&fields=files(id,name,mimeType)`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
+
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return [];
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+        
+        if (resp.status === 401) {
+            let refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                resp = await sendRequest(refresh.tokenData.access_token);
+            }
+        }
+        
+        if (!resp.ok) return [];
+        const result = await resp.json();
+        return result.files || [];
+    } catch (e) {
+        console.error('listFilesInFolder error:', e);
+        return [];
+    }
+}
+
+/**
+ * Завършва първоначалното съзнаване на папката
+ */
+async function completeInitialFolderSetup() {
+    const mode = folderSetupMode || localStorage.getItem('folderSetupMode');
+    
+    if (mode === 'import_migrate') {
+        // За опция 1 (import) - открива Picker за избор на source папка
+        // Това ще се прави след като потребителят даде OAuth токен
+        // За сега само отбелязваме че е выбрана тази опция
+        localStorage.setItem('pendingImportSetup', 'true');
+        return;
+    } else if (mode === 'create_empty') {
+        // За опция 2 (create empty) - създаваме незабавно нова папка
+        showToast(_('creatingFolder') || 'Creating CX-Notes folder...', 3000);
+        const newFolderId = await createNewGDriveFolder('CX-Notes');
+        if (newFolderId) {
+            localStorage.setItem('activeFolderId', newFolderId);
+            localStorage.setItem('folderSetupDone', 'true');
+        }
+        return;
+    }
+}
+
+// =================================================================================
 async function authCallback(tokenResponse) {
     if (tokenResponse && tokenResponse.access_token) {
         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
@@ -2438,6 +2703,10 @@ async function gisLoaded() {
     await setLanguage(currentLang);
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
+    
+    // Проверяваме дали е необходимо първоначално съзнаване на папка
+    const needsSetup = needsInitialFolderSetup();
+    
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
@@ -2458,13 +2727,21 @@ async function gisLoaded() {
         const authBtn = document.getElementById('authorize_button');
         if (authBtn) authBtn.disabled = false;
     } else {
-        // Keep login box hidden during background auth attempt to prevent flashing buttons
-        if (loginBox && hasToken) loginBox.style.visibility = 'hidden';
-        await startApp();
-        if (!hasToken && loginBox) {
-            loginBox.style.visibility = 'visible';
+        // Ако няма токен и е необходимо първоначално съзнаване, показваме модал ПО-РАНО
+        if (!hasToken && needsSetup) {
+            if (loginBox) loginBox.style.visibility = 'visible';
             const authBtn = document.getElementById('authorize_button');
             if (authBtn) authBtn.disabled = false;
+            // Модалът ще се покаже при клик на бутона (в handleAuthClick)
+        } else {
+            // Keep login box hidden during background auth attempt to prevent flashing buttons
+            if (loginBox && hasToken) loginBox.style.visibility = 'hidden';
+            await startApp();
+            if (!hasToken && loginBox) {
+                loginBox.style.visibility = 'visible';
+                const authBtn = document.getElementById('authorize_button');
+                if (authBtn) authBtn.disabled = false;
+            }
         }
     }
 }
@@ -6098,10 +6375,32 @@ async function handleAuthClick() {
         startApp(true);
         return;
     }
+    
+    // === НОВО: Проверяваме за първоначално съзнаване на папка ===
+    if (needsInitialFolderSetup()) {
+        // Показваме модал за избор на опция ПРЕДИ OAuth
+        const selectedOption = await showInitialDataFolderModal();
+        
+        if (!selectedOption) {
+            // Потребителят е затворил модала без избор
+            return;
+        }
+        
+        // Определяме необходимите scopes според избора
+        const mode = localStorage.getItem('folderSetupMode') || selectedOption.replace('option_', '');
+        const requiredScopes = getRequiredScopes(mode);
+        SCOPES = requiredScopes;
+        
+        console.log(`[Initial Setup] Selected mode: ${mode}, required scopes: ${requiredScopes}`);
+        
+        // Отбелязваме че е в процес на initial setup
+        isInitialFolderSetupDone = false;
+    }
+    
     if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
-            scope: SCOPES,
+            scope: SCOPES,  // Сега използваме динамичния SCOPES
             callback: async (resp) => {
                 if (resp.error) {
                     throw (resp);
@@ -6113,7 +6412,10 @@ async function handleAuthClick() {
     if (tokenClient) {
         const rememberMe = localStorage.getItem('rememberMe') !== 'false';
         const loginHint = localStorage.getItem('google_login_hint');
-        if (rememberMe && loginHint) {
+        if (rememberMe && loginHint && !isInitialFolderSetupDone) {
+            // За първоначално съзнаване използваме select_account за сигурност
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        } else if (rememberMe && loginHint) {
             tokenClient.requestAccessToken({ hint: loginHint });
         } else {
             tokenClient.requestAccessToken({ prompt: 'select_account' });
