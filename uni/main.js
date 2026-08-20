@@ -2646,6 +2646,7 @@ async function completeInitialFolderSetup() {
         // Това ще се прави след като потребителят даде OAuth токен
         // За сега само отбелязваме че е выбрана тази опция
         localStorage.setItem('pendingImportSetup', 'true');
+        // ОЩЕ НЕ ЗАПИСВАМЕ folderSetupDone - чакаме импортирането да завърши
         return;
     } else if (mode === 'create_empty') {
         // За опция 2 (create empty) - създаваме незабавно нова папка
@@ -2654,6 +2655,10 @@ async function completeInitialFolderSetup() {
         if (newFolderId) {
             localStorage.setItem('activeFolderId', newFolderId);
             localStorage.setItem('folderSetupDone', 'true');
+            console.log(`[Initial Setup] Successfully created CX-Notes folder: ${newFolderId}`);
+        } else {
+            console.error('[Initial Setup] Failed to create CX-Notes folder');
+            // В случай на грешка, НЕ записваме folderSetupDone за да се опита отново
         }
         return;
     }
@@ -2687,6 +2692,21 @@ async function authCallback(tokenResponse) {
         } catch (error) {
             console.log('Failed to fetch user info:', error);
         }
+        
+        // Проверяваме за незавършена първоначална настройка
+        const pendingImport = localStorage.getItem('pendingImportSetup') === 'true';
+        const mode = localStorage.getItem('folderSetupMode');
+        
+        if (pendingImport && mode === 'import_migrate') {
+            console.log('[authCallback] Pending import detected, will show Picker to select source folder');
+            // TODO: Show Google Picker for folder selection (after Picker integration)
+            // For now, we mark this for completion after startApp()
+            localStorage.setItem('showPickerAfterApp', 'true');
+        } else if (mode) {
+            // Завършваме първоначалната настройка за outros режими
+            await completeInitialFolderSetup();
+        }
+        
         sessionStorage.removeItem('logout_flag');
         isSyncSuspended = false;
         scheduleProactiveTokenRefresh();
@@ -2706,6 +2726,22 @@ async function gisLoaded() {
     
     // Проверяваме дали е необходимо първоначално съзнаване на папка
     const needsSetup = needsInitialFolderSetup();
+    
+    // КРИТИЧНО: При следващи стартирания, определяме scopes от съхранения folderSetupMode
+    // За да имаме ТЕ ЖЕ права, които първоначално сме искали, НЕ пълни
+    if (!needsSetup) {
+        const storedMode = localStorage.getItem('folderSetupMode');
+        if (storedMode) {
+            const requiredScopes = getRequiredScopes(storedMode);
+            console.log(`[gisLoaded] Using stored setup mode "${storedMode}", scopes: ${requiredScopes}`);
+            // Преиспользваме SCOPES променлива за tokenClient инициализация
+            Object.defineProperty(window, 'SCOPES', {
+                value: requiredScopes,
+                writable: false,
+                configurable: true
+            });
+        }
+    }
     
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
@@ -6378,20 +6414,33 @@ async function handleAuthClick() {
     
     // === НОВО: Проверяваме за първоначално съзнаване на папка ===
     if (needsInitialFolderSetup()) {
-        // Показваме модал за избор на опция ПРЕДИ OAuth
-        const selectedOption = await showInitialDataFolderModal();
+        const mode = localStorage.getItem('folderSetupMode');
         
-        if (!selectedOption) {
-            // Потребителят е затворил модала без избор
-            return;
+        // Ако потребителят вече е избрал опция 1 но браузърът се е затворил
+        if (mode === 'import_migrate' && localStorage.getItem('pendingImportSetup') === 'true') {
+            // Продължаваме с същата опция, без да показваме модала отново
+            console.log('[Initial Setup] Resuming pending import setup...');
+        } else {
+            // Ново първоначално съзнаване - показваме модал
+            const selectedOption = await showInitialDataFolderModal();
+            
+            if (!selectedOption) {
+                // Потребителят е затворил модала без избор
+                return;
+            }
         }
         
         // Определяме необходимите scopes според избора
-        const mode = localStorage.getItem('folderSetupMode') || selectedOption.replace('option_', '');
-        const requiredScopes = getRequiredScopes(mode);
-        SCOPES = requiredScopes;
+        const currentMode = localStorage.getItem('folderSetupMode') || mode;
+        const requiredScopes = getRequiredScopes(currentMode);
+        // Преиспользваме SCOPES глобалната променлива
+        Object.defineProperty(window, 'SCOPES', {
+            value: requiredScopes,
+            writable: false,
+            configurable: true
+        });
         
-        console.log(`[Initial Setup] Selected mode: ${mode}, required scopes: ${requiredScopes}`);
+        console.log(`[Initial Setup] Setup mode: ${currentMode}, required scopes: ${requiredScopes}`);
         
         // Отбелязваме че е в процес на initial setup
         isInitialFolderSetupDone = false;
@@ -6400,7 +6449,7 @@ async function handleAuthClick() {
     if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
-            scope: SCOPES,  // Сега използваме динамичния SCOPES
+            scope: SCOPES,
             callback: async (resp) => {
                 if (resp.error) {
                     throw (resp);
@@ -18948,3 +18997,4 @@ async function cleanupOrphanedImages() {
 
 // Задаваме периодична проверка за осиротели изображения
 // setInterval(cleanupOrphanedImages, 10 * 60 * 1000); // На всеки 10 минути
+
