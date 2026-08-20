@@ -2405,13 +2405,140 @@ async function getMultinotesDataFolderID() {
 // INITIAL FOLDER SETUP FUNCTIONS (for new users)
 // =================================================================================
 
+// =================================================================================
+// FOLDER CONFIG MANAGEMENT - AppDataFolder as source of truth
+// =================================================================================
+
+/**
+ * Прочита конфигурацията от AppDataFolder (source of truth)
+ * Връща {activeFolderId, folderSetupMode, folderSetupDone}
+ */
+async function readFolderConfigFromAppData() {
+    try {
+        const tokenData = getStoredTokenData();
+        if (!tokenData || !tokenData.access_token) {
+            console.log('[readFolderConfig] No token available yet');
+            return null;
+        }
+
+        const query = `name='app-config.json' and mimeType='application/json' and trashed=false`;
+        const response = await fetch(
+            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=id,name`,
+            {
+                headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+            }
+        );
+
+        if (!response.ok) return null;
+        
+        const result = await response.json();
+        if (!result.files || result.files.length === 0) {
+            console.log('[readFolderConfig] No app-config.json found in AppDataFolder');
+            return null;
+        }
+
+        const fileId = result.files[0].id;
+        const fileResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+            {
+                headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+            }
+        );
+
+        if (!fileResponse.ok) return null;
+        
+        const config = await fileResponse.json();
+        console.log('[readFolderConfig] Config loaded from AppDataFolder:', config);
+        
+        // Кешираме в localStorage за производителност
+        localStorage.setItem('activeFolderId', config.activeFolderId);
+        localStorage.setItem('folderSetupMode', config.folderSetupMode);
+        localStorage.setItem('folderSetupDone', config.folderSetupDone ? 'true' : 'false');
+        
+        return config;
+    } catch (e) {
+        console.error('[readFolderConfig] Error reading config:', e);
+        return null;
+    }
+}
+
+/**
+ * Записва конфигурацията в AppDataFolder (source of truth)
+ */
+async function writeFolderConfigToAppData(config) {
+    try {
+        const tokenData = getStoredTokenData();
+        if (!tokenData || !tokenData.access_token) {
+            console.log('[writeFolderConfig] No token available');
+            return false;
+        }
+
+        const configContent = JSON.stringify({
+            activeFolderId: config.activeFolderId,
+            folderSetupMode: config.folderSetupMode,
+            folderSetupDone: config.folderSetupDone,
+            timestamp: Date.now()
+        });
+
+        const query = `name='app-config.json' and mimeType='application/json' and spaces='appDataFolder' and trashed=false`;
+        const searchResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=id`,
+            {
+                headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+            }
+        );
+
+        const searchResult = await searchResponse.json();
+        const existingFileId = searchResult.files?.[0]?.id;
+
+        if (existingFileId) {
+            // Обновяваме съществуващия файл
+            const updateResponse = await fetch(
+                `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=media`,
+                {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+                    body: configContent
+                }
+            );
+            console.log('[writeFolderConfig] Config updated in AppDataFolder');
+            return updateResponse.ok;
+        } else {
+            // Създаваме нов файл в AppDataFolder
+            const metadata = {
+                name: 'app-config.json',
+                mimeType: 'application/json',
+                parents: ['appDataFolder']
+            };
+
+            const createResponse = await fetch(
+                'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+                {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+                    body: `--boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--boundary\r\nContent-Type: application/json\r\n\r\n${configContent}\r\n--boundary--`
+                }
+            );
+            
+            console.log('[writeFolderConfig] Config created in AppDataFolder');
+            return createResponse.ok;
+        }
+    } catch (e) {
+        console.error('[writeFolderConfig] Error writing config:', e);
+        return false;
+    }
+}
+
 /**
  * Проверява дали е необходимо първоначално съзнаване на папка
+ * Проверява ПЪРВО AppDataFolder (source of truth), ПОСЛЕ localStorage (кеш)
  */
 function needsInitialFolderSetup() {
-    const activeFolderId = localStorage.getItem('activeFolderId');
-    const hasSetupDone = localStorage.getItem('folderSetupDone') === 'true';
-    return !activeFolderId || !hasSetupDone;
+    // Първо проверяваме localStorage (кеш)
+    const cachedActiveFolderId = localStorage.getItem('activeFolderId');
+    const cachedSetupDone = localStorage.getItem('folderSetupDone') === 'true';
+    
+    return !cachedActiveFolderId || !cachedSetupDone;
 }
 
 /**
@@ -2566,8 +2693,20 @@ async function importDataFromExternalFolder(sourceFolderId) {
         const sourceFiles = await listFilesInFolder(sourceFolderId);
         if (!sourceFiles || sourceFiles.length === 0) {
             // Няма файлове за копиране, но папката е създадена
+            const config = {
+                activeFolderId: newFolderId,
+                folderSetupMode: 'import_migrate',
+                folderSetupDone: true
+            };
+            
+            // Кеш в localStorage
             localStorage.setItem('activeFolderId', newFolderId);
             localStorage.setItem('folderSetupDone', 'true');
+            localStorage.setItem('folderSetupMode', 'import_migrate');
+            
+            // Source of truth в AppDataFolder
+            await writeFolderConfigToAppData(config);
+            
             return newFolderId;
         }
 
@@ -2586,9 +2725,20 @@ async function importDataFromExternalFolder(sourceFolderId) {
             }
         }
 
-        // 4. Запазваме новия folderId
+        // 4. Запазваме новия folderId И в localStorage И в AppDataFolder
+        const config = {
+            activeFolderId: newFolderId,
+            folderSetupMode: 'import_migrate',
+            folderSetupDone: true
+        };
+        
+        // Кеш в localStorage
         localStorage.setItem('activeFolderId', newFolderId);
         localStorage.setItem('folderSetupDone', 'true');
+        localStorage.setItem('folderSetupMode', 'import_migrate');
+        
+        // Source of truth в AppDataFolder
+        await writeFolderConfigToAppData(config);
         
         showToast(_('importComplete') || 'Import complete', 3000);
         return newFolderId;
@@ -2653,8 +2803,21 @@ async function completeInitialFolderSetup() {
         showToast(_('creatingFolder') || 'Creating CX-Notes folder...', 3000);
         const newFolderId = await createNewGDriveFolder('CX-Notes');
         if (newFolderId) {
+            // Записваме конфигурацията и в localStorage (кеш) И в AppDataFolder (source of truth)
+            const config = {
+                activeFolderId: newFolderId,
+                folderSetupMode: mode,
+                folderSetupDone: true
+            };
+            
+            // Кеш в localStorage за производителност
             localStorage.setItem('activeFolderId', newFolderId);
             localStorage.setItem('folderSetupDone', 'true');
+            localStorage.setItem('folderSetupMode', mode);
+            
+            // Source of truth в AppDataFolder
+            await writeFolderConfigToAppData(config);
+            
             console.log(`[Initial Setup] Successfully created CX-Notes folder: ${newFolderId}`);
         } else {
             console.error('[Initial Setup] Failed to create CX-Notes folder');
@@ -2725,7 +2888,18 @@ async function gisLoaded() {
     const localToken = localStorage.getItem('google_auth_token');
     
     // Проверяваме дали е необходимо първоначално съзнаване на папка
-    const needsSetup = needsInitialFolderSetup();
+    let needsSetup = needsInitialFolderSetup();
+    
+    // Ако токен съществува, опитваме да прочетем конфигурацията от AppDataFolder (source of truth)
+    // Това е за случай, когато потребителят е изтрил localStorage но AppDataFolder все още има конфига
+    if ((sessionToken || localToken) && needsSetup) {
+        console.log('[gisLoaded] Attempting to read config from AppDataFolder...');
+        const configFromAppData = await readFolderConfigFromAppData();
+        if (configFromAppData && configFromAppData.activeFolderId && configFromAppData.folderSetupDone) {
+            console.log('[gisLoaded] Config restored from AppDataFolder');
+            needsSetup = false; // Намерихме конфигурацията, не е нужен setup
+        }
+    }
     
     // КРИТИЧНО: При следващи стартирания, определяме scopes от съхранения folderSetupMode
     // За да имаме ТЕ ЖЕ права, които първоначално сме искали, НЕ пълни
