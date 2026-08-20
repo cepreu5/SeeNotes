@@ -9137,8 +9137,13 @@ function showModal(options, noteElement = null) {
             const noteCopy = JSON.parse(JSON.stringify(currentNoteObj));
 
             // Assign new unique IDs using global variables
-            // Ensure globals exist and use them
-            noteId++;
+            // Ensure the new ID does not collide with any existing note
+            let maxExistingId = noteId;
+            for (const n of allNotesData) {
+                const nid = parseInt(n.id, 10);
+                if (!isNaN(nid) && nid > maxExistingId) maxExistingId = nid;
+            }
+            noteId = maxExistingId + 1;
             noteNumord++;
             syncFolderDataAsync();
             const newId = noteId;
@@ -11102,12 +11107,18 @@ async function loadGlobalFoldersJson() {
                 }
             }
             if (activeFolderData.lastNoteId !== null && typeof activeFolderData.lastNoteId !== 'undefined') {
-                noteId = activeFolderData.lastNoteId;
-                changed = true;
+                const remoteNoteId = parseInt(activeFolderData.lastNoteId, 10);
+                if (!isNaN(remoteNoteId) && remoteNoteId > noteId) {
+                    noteId = remoteNoteId;
+                    changed = true;
+                }
             }
             if (activeFolderData.lastNoteNumord !== null && typeof activeFolderData.lastNoteNumord !== 'undefined') {
-                noteNumord = activeFolderData.lastNoteNumord;
-                changed = true;
+                const remoteNoteNumord = parseInt(activeFolderData.lastNoteNumord, 10);
+                if (!isNaN(remoteNoteNumord) && remoteNoteNumord > noteNumord) {
+                    noteNumord = remoteNoteNumord;
+                    changed = true;
+                }
             }
             if (activeFolderData.lastBoardId !== null && typeof activeFolderData.lastBoardId !== 'undefined') {
                 boardIdCounter = activeFolderData.lastBoardId;
