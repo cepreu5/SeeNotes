@@ -2430,7 +2430,7 @@ async function readFolderConfigFromAppData() {
         );
 
         if (!response.ok) return null;
-        
+
         const result = await response.json();
         if (!result.files || result.files.length === 0) {
             console.log('[readFolderConfig] No app-config.json found in AppDataFolder');
@@ -2446,15 +2446,15 @@ async function readFolderConfigFromAppData() {
         );
 
         if (!fileResponse.ok) return null;
-        
+
         const config = await fileResponse.json();
         console.log('[readFolderConfig] Config loaded from AppDataFolder:', config);
-        
+
         // Кешираме в localStorage за производителност
         localStorage.setItem('activeFolderId', config.activeFolderId);
         localStorage.setItem('folderSetupMode', config.folderSetupMode);
         localStorage.setItem('folderSetupDone', config.folderSetupDone ? 'true' : 'false');
-        
+
         return config;
     } catch (e) {
         console.error('[readFolderConfig] Error reading config:', e);
@@ -2519,7 +2519,7 @@ async function writeFolderConfigToAppData(config) {
                     body: `--boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--boundary\r\nContent-Type: application/json\r\n\r\n${configContent}\r\n--boundary--`
                 }
             );
-            
+
             console.log('[writeFolderConfig] Config created in AppDataFolder');
             return createResponse.ok;
         }
@@ -2537,7 +2537,7 @@ function needsInitialFolderSetup() {
     // Първо проверяваме localStorage (кеш)
     const cachedActiveFolderId = localStorage.getItem('activeFolderId');
     const cachedSetupDone = localStorage.getItem('folderSetupDone') === 'true';
-    
+
     return !cachedActiveFolderId || !cachedSetupDone;
 }
 
@@ -2569,35 +2569,34 @@ async function showInitialDataFolderModal() {
             resolve(null);
             return;
         }
-
         const popupContent = popup.querySelector('.popup-content');
         const messagePara = popup.querySelector('p');
         const okButton = document.getElementById('submitFolderIdBtn');
         const folderIdInput = document.getElementById('folderIdInput');
-
-        // Скриваме input полето
         folderIdInput.style.display = 'none';
-
-        // Създаваме или преиспользваме бутоните за опциите
+        let btnContainer = document.getElementById('initial-modal-btn-container');
+        if (!btnContainer) {
+            btnContainer = document.createElement('div');
+            btnContainer.id = 'initial-modal-btn-container';
+            btnContainer.style.cssText = 'display: flex; gap: 12px; justify-content: center; align-items: stretch; margin-top: 15px; width: 100%; box-sizing: border-box;';
+            okButton.parentNode.appendChild(btnContainer);
+        }
         let option1Btn = document.getElementById('initial-option-1-btn');
         let option2Btn = document.getElementById('initial-option-2-btn');
-        
         if (!option1Btn) {
             option1Btn = document.createElement('button');
             option1Btn.id = 'initial-option-1-btn';
             option1Btn.className = 'zoom-btn settings-close-btn';
-            option1Btn.style.marginRight = '10px';
-            okButton.parentNode.appendChild(option1Btn);
+            btnContainer.appendChild(option1Btn);
         }
-        
         if (!option2Btn) {
             option2Btn = document.createElement('button');
             option2Btn.id = 'initial-option-2-btn';
             option2Btn.className = 'zoom-btn settings-close-btn';
-            okButton.parentNode.appendChild(option2Btn);
+            btnContainer.appendChild(option2Btn);
         }
-
-        // Текстове
+        option1Btn.style.cssText = 'flex: 1 1 0; min-width: 0; padding: 10px 8px; display: flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; margin: 0; cursor: pointer;';
+        option2Btn.style.cssText = 'flex: 1 1 0; min-width: 0; padding: 10px 8px; display: flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; margin: 0; cursor: pointer;';
         const titleText = _('dataFolderSelectionTitle') || 'Choose your data folder';
         const descText = _('dataFolderSelectionDescription') || 'CX Notes requires a Google Drive folder...';
         const option1Text = _('dataFolderOption1') || 'Migrate to CX-Notes (Recommended)';
@@ -2605,68 +2604,54 @@ async function showInitialDataFolderModal() {
         const option2Text = _('dataFolderOption2') || 'Create Empty CX-Notes';
         const option2Desc = _('dataFolderOption2Description') || 'Create a fresh CX-Notes folder...';
         const warningText = _('dataFolderMigrationWarning') || '';
-
-        // Обновяваме UI
         messagePara.innerHTML = `
             <div style="text-align: left; margin: 20px 0;">
                 <h2 style="margin-top: 0; font-size: 1.3em;">${titleText}</h2>
                 <p style="margin: 10px 0; font-size: 0.95em; color: #666;">${descText}</p>
-                
-                <div style="border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; cursor: pointer; background-color: #f9f9f9;" id="initial-modal-option-1">
+                ${warningText ? `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 15px 0; border-radius: 5px; font-size: 0.9em; box-sizing: border-box; width: 100%;">
+                    <strong>⚠️ ${_('dataFolderMigrationWarningTitle') || 'Note'}:</strong> ${warningText}
+                </div>` : ''}
+                <div style="border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; cursor: pointer; background-color: #f9f9f9; box-sizing: border-box; width: 100%;" id="initial-modal-option-1">
                     <strong style="font-size: 1.05em; display: block; margin-bottom: 5px;">✓ ${option1Text}</strong>
                     <p style="margin: 5px 0; font-size: 0.9em; color: #666;">${option1Desc}</p>
                 </div>
-                
-                <div style="border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; cursor: pointer; background-color: #f9f9f9;" id="initial-modal-option-2">
+                <div style="border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; cursor: pointer; background-color: #f9f9f9; box-sizing: border-box; width: 100%;" id="initial-modal-option-2">
                     <strong style="font-size: 1.05em; display: block; margin-bottom: 5px;">⊞ ${option2Text}</strong>
                     <p style="margin: 5px 0; font-size: 0.9em; color: #666;">${option2Desc}</p>
                 </div>
-                
-                ${warningText ? `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 15px 0; border-radius: 5px; font-size: 0.9em;">
-                    <strong>⚠️ ${_('dataFolderMigrationWarningTitle') || 'Note'}:</strong> ${warningText}
-                </div>` : ''}
             </div>
         `;
-
-        // Скриваме основните бутони
         okButton.style.display = 'none';
-        option1Btn.style.display = 'inline-block';
-        option2Btn.style.display = 'inline-block';
-
+        btnContainer.style.display = 'flex';
+        option1Btn.style.display = 'flex';
+        option2Btn.style.display = 'flex';
         option1Btn.textContent = option1Text + ' ✓';
         option2Btn.textContent = option2Text + ' ⊞';
-
-        // Listeners
         const cleanup = () => {
             popup.classList.remove('show');
             okButton.style.display = 'inline-block';
-            option1Btn.style.display = 'none';
-            option2Btn.style.display = 'none';
+            if (btnContainer) btnContainer.style.display = 'none';
             option1Btn.removeEventListener('click', onOption1);
             option2Btn.removeEventListener('click', onOption2);
             document.getElementById('initial-modal-option-1')?.removeEventListener('click', onOption1);
             document.getElementById('initial-modal-option-2')?.removeEventListener('click', onOption2);
         };
-
         const onOption1 = () => {
             cleanup();
             localStorage.setItem('folderSetupMode', 'import_migrate');
             folderSetupMode = 'import_migrate';
             resolve('option_1');
         };
-
         const onOption2 = () => {
             cleanup();
             localStorage.setItem('folderSetupMode', 'create_empty');
             folderSetupMode = 'create_empty';
             resolve('option_2');
         };
-
         option1Btn.addEventListener('click', onOption1);
         option2Btn.addEventListener('click', onOption2);
         document.getElementById('initial-modal-option-1')?.addEventListener('click', onOption1);
         document.getElementById('initial-modal-option-2')?.addEventListener('click', onOption2);
-
         popup.classList.add('show');
     });
 }
@@ -2698,22 +2683,22 @@ async function importDataFromExternalFolder(sourceFolderId) {
                 folderSetupMode: 'import_migrate',
                 folderSetupDone: true
             };
-            
+
             // Кеш в localStorage
             localStorage.setItem('activeFolderId', newFolderId);
             localStorage.setItem('folderSetupDone', 'true');
             localStorage.setItem('folderSetupMode', 'import_migrate');
-            
+
             // Source of truth в AppDataFolder
             await writeFolderConfigToAppData(config);
-            
+
             return newFolderId;
         }
 
         // 3. Копираме файловете (с прогрес)
         const totalFiles = sourceFiles.length;
         let copiedCount = 0;
-        
+
         for (const file of sourceFiles) {
             try {
                 await copyGDriveFile(file.id, newFolderId, file.name);
@@ -2731,15 +2716,15 @@ async function importDataFromExternalFolder(sourceFolderId) {
             folderSetupMode: 'import_migrate',
             folderSetupDone: true
         };
-        
+
         // Кеш в localStorage
         localStorage.setItem('activeFolderId', newFolderId);
         localStorage.setItem('folderSetupDone', 'true');
         localStorage.setItem('folderSetupMode', 'import_migrate');
-        
+
         // Source of truth в AppDataFolder
         await writeFolderConfigToAppData(config);
-        
+
         showToast(_('importComplete') || 'Import complete', 3000);
         return newFolderId;
     } catch (e) {
@@ -2754,7 +2739,7 @@ async function importDataFromExternalFolder(sourceFolderId) {
  */
 async function listFilesInFolder(folderId) {
     if (!folderId) return [];
-    
+
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
         return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&pageSize=100&fields=files(id,name,mimeType)`, {
@@ -2768,14 +2753,14 @@ async function listFilesInFolder(folderId) {
         if (!storedTokenString) return [];
         let tokenData = JSON.parse(storedTokenString);
         let resp = await sendRequest(tokenData.access_token);
-        
+
         if (resp.status === 401) {
             let refresh = await refreshAuthToken(false);
             if (refresh && refresh.pass) {
                 resp = await sendRequest(refresh.tokenData.access_token);
             }
         }
-        
+
         if (!resp.ok) return [];
         const result = await resp.json();
         return result.files || [];
@@ -2790,7 +2775,7 @@ async function listFilesInFolder(folderId) {
  */
 async function completeInitialFolderSetup() {
     const mode = folderSetupMode || localStorage.getItem('folderSetupMode');
-    
+
     if (mode === 'import_migrate') {
         // За опция 1 (import) - открива Picker за избор на source папка
         // Това ще се прави след като потребителят даде OAuth токен
@@ -2809,15 +2794,15 @@ async function completeInitialFolderSetup() {
                 folderSetupMode: mode,
                 folderSetupDone: true
             };
-            
+
             // Кеш в localStorage за производителност
             localStorage.setItem('activeFolderId', newFolderId);
             localStorage.setItem('folderSetupDone', 'true');
             localStorage.setItem('folderSetupMode', mode);
-            
+
             // Source of truth в AppDataFolder
             await writeFolderConfigToAppData(config);
-            
+
             console.log(`[Initial Setup] Successfully created CX-Notes folder: ${newFolderId}`);
         } else {
             console.error('[Initial Setup] Failed to create CX-Notes folder');
@@ -2855,11 +2840,11 @@ async function authCallback(tokenResponse) {
         } catch (error) {
             console.log('Failed to fetch user info:', error);
         }
-        
+
         // Проверяваме за незавършена първоначална настройка
         const pendingImport = localStorage.getItem('pendingImportSetup') === 'true';
         const mode = localStorage.getItem('folderSetupMode');
-        
+
         if (pendingImport && mode === 'import_migrate') {
             console.log('[authCallback] Pending import detected, will show Picker to select source folder');
             // TODO: Show Google Picker for folder selection (after Picker integration)
@@ -2869,7 +2854,7 @@ async function authCallback(tokenResponse) {
             // Завършваме първоначалната настройка за outros режими
             await completeInitialFolderSetup();
         }
-        
+
         sessionStorage.removeItem('logout_flag');
         isSyncSuspended = false;
         scheduleProactiveTokenRefresh();
@@ -2886,29 +2871,24 @@ async function gisLoaded() {
     await setLanguage(currentLang);
     const sessionToken = sessionStorage.getItem('google_auth_token');
     const localToken = localStorage.getItem('google_auth_token');
-    
-    // Проверяваме дали е необходимо първоначално съзнаване на папка
+
+    // =========================================================================
+    // STAGE 1: Determine initial state from localStorage ONLY (no token needed)
+    // =========================================================================
+    // This is the FIRST determination - no AppDataFolder read yet
+    // localStorage is the working cache layer
     let needsSetup = needsInitialFolderSetup();
-    
-    // Ако токен съществува, опитваме да прочетем конфигурацията от AppDataFolder (source of truth)
-    // Това е за случай, когато потребителят е изтрил localStorage но AppDataFolder все още има конфига
-    if ((sessionToken || localToken) && needsSetup) {
-        console.log('[gisLoaded] Attempting to read config from AppDataFolder...');
-        const configFromAppData = await readFolderConfigFromAppData();
-        if (configFromAppData && configFromAppData.activeFolderId && configFromAppData.folderSetupDone) {
-            console.log('[gisLoaded] Config restored from AppDataFolder');
-            needsSetup = false; // Намерихме конфигурацията, не е нужен setup
-        }
-    }
-    
-    // КРИТИЧНО: При следващи стартирания, определяме scopes от съхранения folderSetupMode
-    // За да имаме ТЕ ЖЕ права, които първоначално сме искали, НЕ пълни
+
+    console.log(`[gisLoaded] Stage 1 - localStorage check: needsSetup=${needsSetup}, hasToken=${!!sessionToken || !!localToken}`);
+
+    // =========================================================================
+    // STAGE 2: Load stored config if not needing setup
+    // =========================================================================
     if (!needsSetup) {
         const storedMode = localStorage.getItem('folderSetupMode');
         if (storedMode) {
             const requiredScopes = getRequiredScopes(storedMode);
-            console.log(`[gisLoaded] Using stored setup mode "${storedMode}", scopes: ${requiredScopes}`);
-            // Преиспользваме SCOPES променлива за tokenClient инициализация
+            console.log(`[gisLoaded] Stage 2 - Using stored mode "${storedMode}", scopes: ${requiredScopes}`);
             Object.defineProperty(window, 'SCOPES', {
                 value: requiredScopes,
                 writable: false,
@@ -2916,7 +2896,7 @@ async function gisLoaded() {
             });
         }
     }
-    
+
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
@@ -6585,11 +6565,11 @@ async function handleAuthClick() {
         startApp(true);
         return;
     }
-    
+
     // === НОВО: Проверяваме за първоначално съзнаване на папка ===
     if (needsInitialFolderSetup()) {
         const mode = localStorage.getItem('folderSetupMode');
-        
+
         // Ако потребителят вече е избрал опция 1 но браузърът се е затворил
         if (mode === 'import_migrate' && localStorage.getItem('pendingImportSetup') === 'true') {
             // Продължаваме с същата опция, без да показваме модала отново
@@ -6597,13 +6577,13 @@ async function handleAuthClick() {
         } else {
             // Ново първоначално съзнаване - показваме модал
             const selectedOption = await showInitialDataFolderModal();
-            
+
             if (!selectedOption) {
                 // Потребителят е затворил модала без избор
                 return;
             }
         }
-        
+
         // Определяме необходимите scopes според избора
         const currentMode = localStorage.getItem('folderSetupMode') || mode;
         const requiredScopes = getRequiredScopes(currentMode);
@@ -6613,13 +6593,13 @@ async function handleAuthClick() {
             writable: false,
             configurable: true
         });
-        
+
         console.log(`[Initial Setup] Setup mode: ${currentMode}, required scopes: ${requiredScopes}`);
-        
+
         // Отбелязваме че е в процес на initial setup
         isInitialFolderSetupDone = false;
     }
-    
+
     if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
