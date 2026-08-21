@@ -638,9 +638,9 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
         showMessagePopup(_('errorFolderNotFound'));
         throw new Error("Main folder ID not found.");
     }
-    loaderText.textContent = _('loadingFile') + " ...";
+    if (loaderText) loaderText.textContent = _('loadingFile') + " ...";
     const onNoteProgress = (loaded, total) => {
-        loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
+        if (loaderText) loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
     };
     console.time("fetchAllData_TotalLoad");
     const tStart = Date.now();
@@ -2534,10 +2534,8 @@ async function writeFolderConfigToAppData(config) {
  * Проверява ПЪРВО AppDataFolder (source of truth), ПОСЛЕ localStorage (кеш)
  */
 function needsInitialFolderSetup() {
-    // Първо проверяваме localStorage (кеш)
     const cachedActiveFolderId = localStorage.getItem('activeFolderId');
     const cachedSetupDone = localStorage.getItem('folderSetupDone') === 'true';
-
     return !cachedActiveFolderId || !cachedSetupDone;
 }
 
@@ -2574,65 +2572,34 @@ async function showInitialDataFolderModal() {
         const okButton = document.getElementById('submitFolderIdBtn');
         const folderIdInput = document.getElementById('folderIdInput');
         folderIdInput.style.display = 'none';
-        let btnContainer = document.getElementById('initial-modal-btn-container');
-        if (!btnContainer) {
-            btnContainer = document.createElement('div');
-            btnContainer.id = 'initial-modal-btn-container';
-            btnContainer.style.cssText = 'display: flex; gap: 12px; justify-content: center; align-items: stretch; margin-top: 15px; width: 100%; box-sizing: border-box;';
-            okButton.parentNode.appendChild(btnContainer);
-        }
-        let option1Btn = document.getElementById('initial-option-1-btn');
-        let option2Btn = document.getElementById('initial-option-2-btn');
-        if (!option1Btn) {
-            option1Btn = document.createElement('button');
-            option1Btn.id = 'initial-option-1-btn';
-            option1Btn.className = 'zoom-btn settings-close-btn';
-            btnContainer.appendChild(option1Btn);
-        }
-        if (!option2Btn) {
-            option2Btn = document.createElement('button');
-            option2Btn.id = 'initial-option-2-btn';
-            option2Btn.className = 'zoom-btn settings-close-btn';
-            btnContainer.appendChild(option2Btn);
-        }
-        option1Btn.style.cssText = 'flex: 1 1 0; min-width: 0; padding: 10px 8px; display: flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; margin: 0; cursor: pointer;';
-        option2Btn.style.cssText = 'flex: 1 1 0; min-width: 0; padding: 10px 8px; display: flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; margin: 0; cursor: pointer;';
+        okButton.style.display = 'none';
         const titleText = _('dataFolderSelectionTitle') || 'Choose your data folder';
-        const descText = _('dataFolderSelectionDescription') || 'CX Notes requires a Google Drive folder...';
+        const descText = _('dataFolderSelectionDescription') || 'CX Notes requires a Google Drive folder to store your notes and settings. Please choose an option:';
         const option1Text = _('dataFolderOption1') || 'Migrate to CX-Notes (Recommended)';
-        const option1Desc = _('dataFolderOption1Description') || 'Import notes from existing folder...';
+        const option1Desc = _('dataFolderOption1Description') || 'Import and migrate your notes from existing multinotes_data folder to CX-Notes.';
         const option2Text = _('dataFolderOption2') || 'Create Empty CX-Notes';
-        const option2Desc = _('dataFolderOption2Description') || 'Create a fresh CX-Notes folder...';
+        const option2Desc = _('dataFolderOption2Description') || 'Start fresh with a new CX-Notes folder and a default Main board.';
         const warningText = _('dataFolderMigrationWarning') || '';
         messagePara.innerHTML = `
-            <div style="text-align: left; margin: 20px 0;">
-                <h2 style="margin-top: 0; font-size: 1.3em;">${titleText}</h2>
-                <p style="margin: 10px 0; font-size: 0.95em; color: #666;">${descText}</p>
-                ${warningText ? `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 15px 0; border-radius: 5px; font-size: 0.9em; box-sizing: border-box; width: 100%;">
+            <div style="text-align: left; margin: 15px 0;">
+                <h2 style="margin-top: 0; font-size: 1.3em; color: #222;">${titleText}</h2>
+                <p style="margin: 8px 0 16px 0; font-size: 0.95em; color: #555;">${descText}</p>
+                <div style="border: 1px solid #ddd; padding: 14px 16px; margin: 12px 0; border-radius: 8px; cursor: pointer; background-color: #f9f9f9; box-sizing: border-box; width: 100%; transition: all 0.2s ease;" id="initial-modal-option-2" onmouseenter="this.style.backgroundColor='orange'; this.style.borderColor='black'; this.style.transform='translateY(-1px)';" onmouseleave="this.style.backgroundColor='#f9f9f9'; this.style.borderColor='#ddd'; this.style.transform='none';">
+                    <strong style="font-size: 1.05em; display: block; margin-bottom: 4px; color: #1a73e8;">⊞ ${option2Text}</strong>
+                    <p style="margin: 0; font-size: 0.9em; color: #555; line-height: 1.4;">${option2Desc}</p>
+                </div>
+                ${warningText ? `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 12px 0; border-radius: 6px; font-size: 0.9em; box-sizing: border-box; width: 100%;">
                     <strong>⚠️ ${_('dataFolderMigrationWarningTitle') || 'Note'}:</strong> ${warningText}
                 </div>` : ''}
-                <div style="border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; cursor: pointer; background-color: #f9f9f9; box-sizing: border-box; width: 100%;" id="initial-modal-option-1">
-                    <strong style="font-size: 1.05em; display: block; margin-bottom: 5px;">✓ ${option1Text}</strong>
-                    <p style="margin: 5px 0; font-size: 0.9em; color: #666;">${option1Desc}</p>
-                </div>
-                <div style="border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; cursor: pointer; background-color: #f9f9f9; box-sizing: border-box; width: 100%;" id="initial-modal-option-2">
-                    <strong style="font-size: 1.05em; display: block; margin-bottom: 5px;">⊞ ${option2Text}</strong>
-                    <p style="margin: 5px 0; font-size: 0.9em; color: #666;">${option2Desc}</p>
+                <div style="border: 1px solid #ddd; padding: 14px 16px; margin: 12px 0; border-radius: 8px; cursor: pointer; background-color: #f9f9f9; box-sizing: border-box; width: 100%; transition: all 0.2s ease;" id="initial-modal-option-1" onmouseenter="this.style.backgroundColor='orange'; this.style.borderColor='black'; this.style.transform='translateY(-1px)';" onmouseleave="this.style.backgroundColor='#f9f9f9'; this.style.borderColor='#ddd'; this.style.transform='none';">
+                    <strong style="font-size: 1.05em; display: block; margin-bottom: 4px; color: #1a73e8;">✓ ${option1Text}</strong>
+                    <p style="margin: 0; font-size: 0.9em; color: #555; line-height: 1.4;">${option1Desc}</p>
                 </div>
             </div>
         `;
-        okButton.style.display = 'none';
-        btnContainer.style.display = 'flex';
-        option1Btn.style.display = 'flex';
-        option2Btn.style.display = 'flex';
-        option1Btn.textContent = option1Text + ' ✓';
-        option2Btn.textContent = option2Text + ' ⊞';
         const cleanup = () => {
             popup.classList.remove('show');
             okButton.style.display = 'inline-block';
-            if (btnContainer) btnContainer.style.display = 'none';
-            option1Btn.removeEventListener('click', onOption1);
-            option2Btn.removeEventListener('click', onOption2);
             document.getElementById('initial-modal-option-1')?.removeEventListener('click', onOption1);
             document.getElementById('initial-modal-option-2')?.removeEventListener('click', onOption2);
         };
@@ -2648,165 +2615,200 @@ async function showInitialDataFolderModal() {
             folderSetupMode = 'create_empty';
             resolve('option_2');
         };
-        option1Btn.addEventListener('click', onOption1);
-        option2Btn.addEventListener('click', onOption2);
         document.getElementById('initial-modal-option-1')?.addEventListener('click', onOption1);
         document.getElementById('initial-modal-option-2')?.addEventListener('click', onOption2);
         popup.classList.add('show');
     });
 }
 
-/**
- * Импортира данни от външна папка (напр. multinotes_data)
- */
-async function importDataFromExternalFolder(sourceFolderId) {
-    if (!sourceFolderId) {
-        showToast(_('errorFolderIdMissing') || 'No folder selected', 5000);
-        return null;
-    }
-
-    try {
-        // 1. Създаваме нова CX-Notes папка
-        showToast(_('creatingFolder') || 'Creating CX-Notes folder...', 3000);
-        const newFolderId = await createNewGDriveFolder('CX-Notes');
-        if (!newFolderId) {
-            throw new Error(_('dataFolderCreationError') || 'Failed to create folder');
-        }
-
-        // 2. Листваме файловете от source папка
-        showToast(_('importingData') || 'Importing data...', 3000);
-        const sourceFiles = await listFilesInFolder(sourceFolderId);
-        if (!sourceFiles || sourceFiles.length === 0) {
-            // Няма файлове за копиране, но папката е създадена
-            const config = {
-                activeFolderId: newFolderId,
-                folderSetupMode: 'import_migrate',
-                folderSetupDone: true
-            };
-
-            // Кеш в localStorage
-            localStorage.setItem('activeFolderId', newFolderId);
-            localStorage.setItem('folderSetupDone', 'true');
-            localStorage.setItem('folderSetupMode', 'import_migrate');
-
-            // Source of truth в AppDataFolder
-            await writeFolderConfigToAppData(config);
-
-            return newFolderId;
-        }
-
-        // 3. Копираме файловете (с прогрес)
-        const totalFiles = sourceFiles.length;
-        let copiedCount = 0;
-
-        for (const file of sourceFiles) {
-            try {
-                await copyGDriveFile(file.id, newFolderId, file.name);
-                copiedCount++;
-                const progress = Math.round((copiedCount / totalFiles) * 100);
-                showToast(`${_('importingData') || 'Importing'}: ${progress}%`, 2000);
-            } catch (e) {
-                console.warn(`Failed to copy file ${file.id}:`, e);
-            }
-        }
-
-        // 4. Запазваме новия folderId И в localStorage И в AppDataFolder
-        const config = {
-            activeFolderId: newFolderId,
-            folderSetupMode: 'import_migrate',
-            folderSetupDone: true
-        };
-
-        // Кеш в localStorage
-        localStorage.setItem('activeFolderId', newFolderId);
-        localStorage.setItem('folderSetupDone', 'true');
-        localStorage.setItem('folderSetupMode', 'import_migrate');
-
-        // Source of truth в AppDataFolder
-        await writeFolderConfigToAppData(config);
-
-        showToast(_('importComplete') || 'Import complete', 3000);
-        return newFolderId;
-    } catch (e) {
-        console.error('Error importing data:', e);
-        showToast(_('dataFolderCreationError') || 'Import failed', 5000);
-        return null;
-    }
-}
-
-/**
- * Листва файловете в папка
- */
-async function listFilesInFolder(folderId) {
-    if (!folderId) return [];
-
-    const sendRequest = async (token) => {
-        const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&pageSize=100&fields=files(id,name,mimeType)`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) return [];
-        let tokenData = JSON.parse(storedTokenString);
-        let resp = await sendRequest(tokenData.access_token);
-
-        if (resp.status === 401) {
-            let refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                resp = await sendRequest(refresh.tokenData.access_token);
-            }
-        }
-
-        if (!resp.ok) return [];
-        const result = await resp.json();
-        return result.files || [];
-    } catch (e) {
-        console.error('listFilesInFolder error:', e);
-        return [];
-    }
-}
 
 /**
  * Завършва първоначалното съзнаване на папката
  */
 async function completeInitialFolderSetup() {
-    const mode = folderSetupMode || localStorage.getItem('folderSetupMode');
-
-    if (mode === 'import_migrate') {
-        // За опция 1 (import) - открива Picker за избор на source папка
-        // Това ще се прави след като потребителят даде OAuth токен
-        // За сега само отбелязваме че е выбрана тази опция
-        localStorage.setItem('pendingImportSetup', 'true');
-        // ОЩЕ НЕ ЗАПИСВАМЕ folderSetupDone - чакаме импортирането да завърши
+    let appConfig = null;
+    try {
+        appConfig = await readFolderConfigFromAppData();
+    } catch (e) {
+        console.warn('[Initial Setup] Error reading AppDataFolder config:', e);
+    }
+    if (appConfig && appConfig.activeFolderId && appConfig.folderSetupDone) {
+        console.log('[Initial Setup] Found existing config in AppDataFolder, restoring...');
+        cachedMainFolderId = appConfig.activeFolderId;
+        setCachedMainFolderId('CX-Notes', appConfig.activeFolderId);
+        activeFolderName = 'CX-Notes';
+        localStorage.setItem('active_folder_name', 'CX-Notes');
+        localStorage.setItem('activeFolderId', appConfig.activeFolderId);
+        localStorage.setItem('folderSetupDone', 'true');
+        localStorage.setItem('folderSetupMode', appConfig.folderSetupMode || 'create_empty');
+        localStorage.setItem('initial_setup_complete', 'true');
         return;
-    } else if (mode === 'create_empty') {
-        // За опция 2 (create empty) - създаваме незабавно нова папка
-        showToast(_('creatingFolder') || 'Creating CX-Notes folder...', 3000);
-        const newFolderId = await createNewGDriveFolder('CX-Notes');
+    }
+    let existingCxNotesId = null;
+    try {
+        existingCxNotesId = await getFolderIDByName('CX-Notes');
+    } catch (e) {
+        console.warn('[Initial Setup] Error checking for existing CX-Notes folder:', e);
+    }
+    if (existingCxNotesId) {
+        console.log('[Initial Setup] Found existing CX-Notes folder:', existingCxNotesId);
+        cachedMainFolderId = existingCxNotesId;
+        setCachedMainFolderId('CX-Notes', existingCxNotesId);
+        activeFolderName = 'CX-Notes';
+        localStorage.setItem('active_folder_name', 'CX-Notes');
+        localStorage.setItem('activeFolderId', existingCxNotesId);
+        localStorage.setItem('folderSetupDone', 'true');
+        localStorage.setItem('folderSetupMode', 'create_empty');
+        localStorage.setItem('initial_setup_complete', 'true');
+        const folderNames = ['CX-Notes'];
+        localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+        const config = { activeFolderId: existingCxNotesId, folderSetupMode: 'create_empty', folderSetupDone: true };
+        await writeFolderConfigToAppData(config);
+        return;
+    }
+    const choice = await showInitialDataFolderModal();
+    const mode = choice === 'option_1' ? 'import_migrate' : 'create_empty';
+    if (mode === 'import_migrate') {
+        if (typeof tokenClient !== 'undefined') {
+            await new Promise((resolve) => {
+                tokenClient.callback = async (resp) => {
+                    if (resp && resp.access_token) {
+                        const tokenWithTimestamp = { ...resp, issued_at: Date.now() };
+                        const rememberMe = document.getElementById('rememberMe')?.checked;
+                        const storage = rememberMe ? localStorage : sessionStorage;
+                        storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                        authToken = tokenWithTimestamp;
+                        resolve(tokenWithTimestamp);
+                    } else {
+                        resolve(null);
+                    }
+                };
+                tokenClient.requestAccessToken({ prompt: 'consent', scope: SCOPES_BASE + ' ' + SCOPES_READONLY });
+            });
+        }
+        if (loaderText) loaderText.textContent = _('migratingData') || 'Copying data from multinotes_data to CX-Notes...';
+        let multinotesId = null;
+        try {
+            multinotesId = await getFolderIDByName('multinotes_data');
+        } catch (e) {
+            console.warn('[Initial Setup] Error searching for multinotes_data:', e);
+        }
+        let targetFolderId = await getFolderIDByName('CX-Notes');
+        if (!targetFolderId) {
+            targetFolderId = await createNewGDriveFolder('CX-Notes');
+        }
+        let migrationDone = false;
+        if (multinotesId && targetFolderId) {
+            try {
+                const fetchResult = await fetchAllData(multinotesId, false);
+                if (fetchResult && !fetchResult.error) {
+                    const migrationSuccess = await migrateDataToNewFolder(targetFolderId);
+                    if (migrationSuccess) {
+                        migrationDone = true;
+                        console.log('[Initial Setup] Data successfully migrated from multinotes_data to CX-Notes');
+                        if (typeof showToast === 'function') showToast(_('migrationSuccess') || 'Data copied successfully to CX-Notes', 5000);
+                    }
+                }
+            } catch (e) {
+                console.error('[Initial Setup] Error during data migration:', e);
+            }
+        }
+        if (!migrationDone && targetFolderId) {
+            try {
+                const existingMainBoards = await findGDFileByName(targetFolderId, 'board.txt');
+                if (!existingMainBoards || existingMainBoards.length === 0) {
+                    const now = Date.now();
+                    boardIdCounter = 1;
+                    localStorage.setItem('boardIdCounter', '1');
+                    const boardToSave = { "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50", "colorfont": "#000", "datemod": now, "gdid": "", "id": 1, "numord": 1, "status": 0, "title": "Main" };
+                    const gdid = await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardToSave));
+                    if (gdid) {
+                        boardToSave.gdid = gdid;
+                        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+                        localStorage.setItem('startBoard_CX-Notes', gdid);
+                    }
+                }
+            } catch (e) {
+                console.warn('[Initial Setup] Error creating fallback Main board:', e);
+            }
+        }
+        if (targetFolderId) {
+            cachedMainFolderId = targetFolderId;
+            setCachedMainFolderId('CX-Notes', targetFolderId);
+            if (multinotesId) setCachedMainFolderId('multinotes_data', multinotesId);
+            activeFolderName = 'CX-Notes';
+            localStorage.setItem('active_folder_name', 'CX-Notes');
+            const folderNames = ['CX-Notes'];
+            if (multinotesId) folderNames.push('multinotes_data');
+            localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+            const config = {
+                activeFolderId: targetFolderId,
+                folderSetupMode: mode,
+                folderSetupDone: true
+            };
+            localStorage.setItem('activeFolderId', targetFolderId);
+            localStorage.setItem('folderSetupDone', 'true');
+            localStorage.setItem('folderSetupMode', mode);
+            localStorage.setItem('initial_setup_complete', 'true');
+            localStorage.removeItem('pendingImportSetup');
+            await writeFolderConfigToAppData(config);
+            try {
+                await syncGlobalFoldersJson();
+                await saveSettingsToGDrive(true);
+            } catch (e) {
+                console.warn('[Initial Setup] Error saving settings/folders:', e);
+            }
+        }
+        return;
+    } else {
+        if (loaderText) loaderText.textContent = _('creatingFolder') || 'Creating CX-Notes folder...';
+        let newFolderId = await getFolderIDByName('CX-Notes');
+        if (!newFolderId) {
+            newFolderId = await createNewGDriveFolder('CX-Notes');
+        }
         if (newFolderId) {
-            // Записваме конфигурацията и в localStorage (кеш) И в AppDataFolder (source of truth)
+            cachedMainFolderId = newFolderId;
+            setCachedMainFolderId('CX-Notes', newFolderId);
+            activeFolderName = 'CX-Notes';
+            localStorage.setItem('active_folder_name', 'CX-Notes');
+            try {
+                const existingMainBoards = await findGDFileByName(newFolderId, 'board.txt');
+                if (!existingMainBoards || existingMainBoards.length === 0) {
+                    const now = Date.now();
+                    boardIdCounter = 1;
+                    localStorage.setItem('boardIdCounter', '1');
+                    const boardToSave = { "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50", "colorfont": "#000", "datemod": now, "gdid": "", "id": 1, "numord": 1, "status": 0, "title": "Main" };
+                    const gdid = await createGDriveFile(newFolderId, 'board.txt', JSON.stringify(boardToSave));
+                    if (gdid) {
+                        boardToSave.gdid = gdid;
+                        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+                        localStorage.setItem('startBoard_CX-Notes', gdid);
+                    }
+                }
+            } catch (e) {
+                console.warn('[Initial Setup] Error creating Main board:', e);
+            }
+            const folderNames = ['CX-Notes'];
+            localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
             const config = {
                 activeFolderId: newFolderId,
                 folderSetupMode: mode,
                 folderSetupDone: true
             };
-
-            // Кеш в localStorage за производителност
             localStorage.setItem('activeFolderId', newFolderId);
             localStorage.setItem('folderSetupDone', 'true');
             localStorage.setItem('folderSetupMode', mode);
-
-            // Source of truth в AppDataFolder
+            localStorage.setItem('initial_setup_complete', 'true');
             await writeFolderConfigToAppData(config);
-
-            console.log(`[Initial Setup] Successfully created CX-Notes folder: ${newFolderId}`);
+            try {
+                await syncGlobalFoldersJson();
+                await saveSettingsToGDrive(true);
+            } catch (e) {
+                console.warn('[Initial Setup] Error saving settings/folders:', e);
+            }
+            console.log(`[Initial Setup] Successfully configured CX-Notes folder: ${newFolderId}`);
         } else {
             console.error('[Initial Setup] Failed to create CX-Notes folder');
-            // В случай на грешка, НЕ записваме folderSetupDone за да се опита отново
         }
         return;
     }
@@ -2840,21 +2842,6 @@ async function authCallback(tokenResponse) {
         } catch (error) {
             console.log('Failed to fetch user info:', error);
         }
-
-        // Проверяваме за незавършена първоначална настройка
-        const pendingImport = localStorage.getItem('pendingImportSetup') === 'true';
-        const mode = localStorage.getItem('folderSetupMode');
-
-        if (pendingImport && mode === 'import_migrate') {
-            console.log('[authCallback] Pending import detected, will show Picker to select source folder');
-            // TODO: Show Google Picker for folder selection (after Picker integration)
-            // For now, we mark this for completion after startApp()
-            localStorage.setItem('showPickerAfterApp', 'true');
-        } else if (mode) {
-            // Завършваме първоначалната настройка за outros режими
-            await completeInitialFolderSetup();
-        }
-
         sessionStorage.removeItem('logout_flag');
         isSyncSuspended = false;
         scheduleProactiveTokenRefresh();
@@ -6565,63 +6552,27 @@ async function handleAuthClick() {
         startApp(true);
         return;
     }
-
-    // === НОВО: Проверяваме за първоначално съзнаване на папка ===
-    if (needsInitialFolderSetup()) {
-        const mode = localStorage.getItem('folderSetupMode');
-
-        // Ако потребителят вече е избрал опция 1 но браузърът се е затворил
-        if (mode === 'import_migrate' && localStorage.getItem('pendingImportSetup') === 'true') {
-            // Продължаваме с същата опция, без да показваме модала отново
-            console.log('[Initial Setup] Resuming pending import setup...');
-        } else {
-            // Ново първоначално съзнаване - показваме модал
-            const selectedOption = await showInitialDataFolderModal();
-
-            if (!selectedOption) {
-                // Потребителят е затворил модала без избор
-                return;
-            }
-        }
-
-        // Определяме необходимите scopes според избора
-        const currentMode = localStorage.getItem('folderSetupMode') || mode;
-        const requiredScopes = getRequiredScopes(currentMode);
-        // Преиспользваме SCOPES глобалната променлива
-        Object.defineProperty(window, 'SCOPES', {
-            value: requiredScopes,
-            writable: false,
-            configurable: true
-        });
-
-        console.log(`[Initial Setup] Setup mode: ${currentMode}, required scopes: ${requiredScopes}`);
-
-        // Отбелязваме че е в процес на initial setup
-        isInitialFolderSetupDone = false;
-    }
-
-    if (!tokenClient && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
-            scope: SCOPES,
+            scope: SCOPES_BASE,
             callback: async (resp) => {
-                if (resp.error) {
-                    throw (resp);
-                }
+                if (resp.error) throw (resp);
                 await authCallback(resp);
             },
+            error_callback: (error) => {
+                console.log("GSI Error:", error);
+                alert(_('authFailed') + `\n\nError: ${error.type}`);
+            }
         });
     }
     if (tokenClient) {
         const rememberMe = localStorage.getItem('rememberMe') !== 'false';
         const loginHint = localStorage.getItem('google_login_hint');
-        if (rememberMe && loginHint && !isInitialFolderSetupDone) {
-            // За първоначално съзнаване използваме select_account за сигурност
-            tokenClient.requestAccessToken({ prompt: 'consent' });
-        } else if (rememberMe && loginHint) {
-            tokenClient.requestAccessToken({ hint: loginHint });
+        if (rememberMe && loginHint) {
+            tokenClient.requestAccessToken({ hint: loginHint, scope: SCOPES_BASE });
         } else {
-            tokenClient.requestAccessToken({ prompt: 'select_account' });
+            tokenClient.requestAccessToken({ prompt: 'select_account', scope: SCOPES_BASE });
         }
     } else {
         console.warn("Google Identity Services not loaded. Checking for offline capability...");
@@ -7031,80 +6982,6 @@ async function createDatabaseFromMemory({ suppressEmptyDataToast = false } = {})
     }
 }
 /**
- * Показва модален прозорец с 3 опции за избор при откриване на multinotes_data.
- * @returns {Promise<string>} 'direct' | 'copy' | 'fresh'
- */
-function showMultiNotesChoiceModal() {
-    window.isMultiNotesChoiceModalOpen = true;
-    if (window.kbAssistant && typeof window.kbAssistant.terminateGuide === 'function') window.kbAssistant.terminateGuide();
-    if (typeof window.removeGuide === 'function') window.removeGuide();
-    return new Promise(resolve => {
-        const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
-        const modal = document.createElement('div');
-        modal.style.cssText = 'background:#2a2a2a;color:#eee;border-radius:12px;padding:24px;max-width:520px;width:90vw;max-height:85vh;overflow-y:auto;font-family:sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
-        const title = document.createElement('h3');
-        title.style.cssText = 'margin:0 0 12px 0;font-size:17px;color:#fff;';
-        title.textContent = _('multiNotesFoundTitle') || 'A multinotes_data folder was found in your Google Drive!';
-        modal.appendChild(title);
-        const warn = document.createElement('p');
-        warn.style.cssText = 'margin:0 0 16px 0;font-size:13px;color:#ffb74d;line-height:1.5;';
-        warn.textContent = _('multiNotesSyncWarn') || 'Edits from this web app will not automatically reflect in the Android MultiNotes app without a full sync.';
-        modal.appendChild(warn);
-        const options = [
-            { value: 'direct', titleKey: 'multiNotesOptDirectTitle', descKey: 'multiNotesOptDirectDesc', titleFb: '1. Work directly with multinotes_data', descFb: 'Uses the existing folder. Changes are saved there.' },
-            { value: 'copy', titleKey: 'multiNotesOptCopyTitle', descKey: 'multiNotesOptCopyDesc', titleFb: '2. Copy data to CX-Notes (Recommended)', descFb: 'Copies all data to CX-Notes. Original data remains untouched.' },
-            { value: 'fresh', titleKey: 'multiNotesOptFreshTitle', descKey: 'multiNotesOptFreshDesc', titleFb: '3. Start fresh in CX-Notes', descFb: 'Starts with an empty folder and a new Main board.' }
-        ];
-        let selected = 'copy';
-        const radioGroup = document.createElement('div');
-        radioGroup.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-bottom:20px;';
-        options.forEach(opt => {
-            const label = document.createElement('label');
-            label.style.cssText = 'display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:10px;border:1px solid #444;border-radius:8px;transition:background 0.2s;';
-            if (opt.value === selected) label.style.background = '#3a3a3a';
-            const radio = document.createElement('input');
-            radio.type = 'radio';
-            radio.name = 'multinotes-choice';
-            radio.value = opt.value;
-            radio.checked = opt.value === selected;
-            radio.style.cssText = 'margin-top:3px;flex-shrink:0;';
-            radio.addEventListener('change', () => {
-                selected = opt.value;
-                radioGroup.querySelectorAll('label').forEach(l => l.style.background = '');
-                label.style.background = '#3a3a3a';
-            });
-            const textDiv = document.createElement('div');
-            const titleSpan = document.createElement('div');
-            titleSpan.style.cssText = 'font-weight:600;font-size:14px;margin-bottom:4px;';
-            titleSpan.textContent = _(opt.titleKey) || opt.titleFb;
-            textDiv.appendChild(titleSpan);
-            const descSpan = document.createElement('div');
-            descSpan.style.cssText = 'font-size:12px;color:#aaa;line-height:1.4;';
-            descSpan.textContent = _(opt.descKey) || opt.descFb;
-            textDiv.appendChild(descSpan);
-            label.appendChild(radio);
-            label.appendChild(textDiv);
-            radioGroup.appendChild(label);
-        });
-        modal.appendChild(radioGroup);
-        const btnWrap = document.createElement('div');
-        btnWrap.style.cssText = 'text-align:center;';
-        const confirmBtn = document.createElement('button');
-        confirmBtn.style.cssText = 'padding:10px 32px;border:none;border-radius:8px;background:#4CAF50;color:#fff;font-size:15px;cursor:pointer;font-weight:600;';
-        confirmBtn.textContent = _('confirmCreateDbYes') || 'Confirm';
-        confirmBtn.addEventListener('click', () => {
-            window.isMultiNotesChoiceModalOpen = false;
-            overlay.remove();
-            resolve(selected);
-        });
-        btnWrap.appendChild(confirmBtn);
-        modal.appendChild(btnWrap);
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-    });
-}
-/**
  * Проверява дали е първото стартиране и настройва приложението.
  * 1. Създава борд Main в CX-Notes и го задава като стартов борд
  * 2. Създава folders.json
@@ -7125,9 +7002,6 @@ async function handleFirstRunSetup() {
         const settingsFiles = await findGDFileByName(appSettingsFolderId, 'settings.json');
         const foldersFiles = await findGDFileByName(appSettingsFolderId, 'folders.json');
         if ((settingsFiles && settingsFiles.length > 0) || (foldersFiles && foldersFiles.length > 0)) {
-            // При чиста локална инсталация може да има AppSettings от предишно
-            // използване на същия Drive акаунт. Потвърждаваме наличието на
-            // multinotes_data, вместо да я оставим като остарял запис.
             if (isFreshLocalSetup) {
                 let folderNames = [];
                 try {
@@ -7136,9 +7010,6 @@ async function handleFirstRunSetup() {
                 } catch (e) {
                     console.warn('[FirstRun] Invalid saved folder list:', e);
                 }
-                // При чиста локална инсталация нямаме надежден локален
-                // признак дали папката съществува. Проверяваме Drive точно
-                // веднъж, за да не пропуснем налична multinotes_data.
                 const multinotesId = await getFolderIDByName('multinotes_data');
                 if (!multinotesId) {
                     activeFolderName = 'CX-Notes';
@@ -7175,11 +7046,6 @@ async function handleFirstRunSetup() {
         if (multinotesId) {
             multinotesFound = true;
             setCachedMainFolderId('multinotes_data', multinotesId);
-            userChoice = await showMultiNotesChoiceModal();
-            console.log('[FirstRun] User choice:', userChoice);
-            if (userChoice === 'direct') {
-                chosenFolder = 'multinotes_data';
-            }
         }
     } catch (e) {
         console.warn('[FirstRun] Error checking for multinotes_data:', e);
@@ -7717,6 +7583,9 @@ async function mainLogic() {
                     return;
                 }
                 authToken = authResult.tokenData;
+            }
+            if (!isOffline && needsInitialFolderSetup()) {
+                await completeInitialFolderSetup();
             }
             if (!isOffline) await loadGlobalFoldersJson();
             if (!isOffline) {
