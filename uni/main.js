@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.45'; // App version
+const version = 'Beta 1.46'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -1175,8 +1175,7 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                         if (sessionStorage.getItem('google_auth_token')) {
                             sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         }
-                        const rememberMe = localStorage.getItem('google_auth_token') !== null ||
-                            localStorage.getItem('rememberMe') !== 'false';
+                        const rememberMe = localStorage.getItem('google_auth_token') !== null || localStorage.getItem('rememberMe') === 'true';
                         if (rememberMe) {
                             localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         } else if (!sessionStorage.getItem('google_auth_token')) {
@@ -2927,30 +2926,25 @@ async function gisLoaded() {
 document.addEventListener('DOMContentLoaded', async () => {
     const rememberMeCheckbox = document.getElementById('rememberMe');
     if (rememberMeCheckbox) {
-        rememberMeCheckbox.checked = localStorage.getItem('rememberMe') !== 'false';
+        rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
     }
-
-    // Apply Hide Assistant setting on load
     if (localStorage.getItem('hideAssistant') === 'true') {
         const fabButton = document.getElementById('kb-fab');
         if (fabButton) {
             fabButton.style.display = 'none';
         }
     }
-
     const emptyTrashFab = document.getElementById('empty-trash-fab');
     if (emptyTrashFab) {
         emptyTrashFab.innerHTML = emptyTrashIconSvg;
         emptyTrashFab.addEventListener('click', emptyTrash);
     }
-
     initHeaderFullscreen();
 });
 
 // Добави този код в началото или края на main.js
 // Динамично зареждане на Google Identity Services скрипта с retry логика
 function loadGoogleIdentityServices(retries = 3) {
-    // Check if script already exists to avoid duplicates
     if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
         return;
     }
@@ -2958,14 +2952,10 @@ function loadGoogleIdentityServices(retries = 3) {
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
-    script.onload = () => { gisLoaded(); }; // Извикваме функцията след зареждане
+    script.onload = () => { gisLoaded(); };
     script.onerror = () => {
-        // console.log('Failed to load Google Identity Services');
         if (retries > 0) {
-            // console.log(`Retrying to load GIS... (${retries} attempts left)`);
             setTimeout(() => loadGoogleIdentityServices(retries - 1), 2000);
-        } else {
-            // console.log('Giving up on loading Google Identity Services.');
         }
     };
     document.head.appendChild(script);
@@ -2973,23 +2963,18 @@ function loadGoogleIdentityServices(retries = 3) {
 
 // Стартирай зареждането в зависимост от състоянието
 (async () => {
-    // 1. ПЪРВО зареждаме преводите, за да са готови за всеки UI компонент (като initLoginPage)
     await setLanguage(currentLang);
-
     dbExists = await checkDbExists(NOTES_DB_NAME);
-    // Проверяваме за кеширана сесия (PWA/Offline)
     const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
     await goOffline();
-
     if (isOffline) {
         startApp();
     } else if (hasToken) {
-        // Имаме токен и сме онлайн - пускаме Google API и стартираме
         loadGoogleIdentityServices();
+        startApp();
     } else {
-        // Нямаме токен - показваме login страницата (вече преведена)
         initLoginPage();
-        loadGoogleIdentityServices(); // За да сме готови за входящ логин
+        loadGoogleIdentityServices();
     }
 })();
 
@@ -7805,14 +7790,14 @@ async function mainLogic() {
                 } else {
                     // DB exists and has data, load from DB FIRST then sync in background
                     console.log("[mainLogic] DB exists. Fast loading local data first.");
-                    loaderText.textContent = _('fetchingFromDb');
+                    if (loaderText) loaderText.textContent = _('fetchingFromDb') || 'Loading from local database...';
                     if (isLoadCancelled) return;
                     await fetchAllDataLocal();
-
-                    // --- ПЪРВОНАЧАЛНО РЕНДИРАНЕ (ОТ БАЗАТА) ---
                     await renderUI({ boardParseError: false });
-
-                    // Background Sync Task - стартираме го веднага след първото рендиране
+                    loaderContainer.style.display = 'none';
+                    document.getElementById('login-page').style.display = 'none';
+                    document.getElementById('login-page').hidden = true;
+                    showAppUI();
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
                     if (updateFromSource && !isOffline && !isSyncSuspended) {
                         (async () => {

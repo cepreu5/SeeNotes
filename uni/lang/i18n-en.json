@@ -233,6 +233,7 @@
     "loginPrompt": "Please sign in with the Google account you used to sync <i>MultiNotes</i>.",
     "authorizeButton": "Authorize with Google",
     "rememberMeLabel": "Remember me",
+    "rememberMeHint": "When checked, you will not be asked to sign in next time you open the app. Do not check this or choose Sign Out after finishing if this is not your personal device.",
     "trialButton": "Start 30-day trial period",
     "authFailed": "Authentication failed. Please try again.",
     "gapiNotReady": "Google authentication library is not ready. Please wait a moment and try again.",
