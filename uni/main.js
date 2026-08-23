@@ -775,6 +775,10 @@ async function runGoogleDriveSync() {
                                 (n.title && b.title && b.title.trim().toLowerCase() === n.title.trim().toLowerCase())
                             );
                             if (i !== -1) {
+                                const oldGdid = boardsData[i].gdid;
+                                if (oldGdid && n.gdid && oldGdid !== n.gdid && useIndexedDb) {
+                                    await deleteFromDB(BOARD_STORE_NAME, oldGdid);
+                                }
                                 boardsData[i] = { ...boardsData[i], ...n };
                             } else {
                                 boardsData.push(n);
@@ -879,7 +883,7 @@ async function runGoogleDriveSync() {
         try {
             console.time("runGoogleDriveSync_Parallel");
             await Promise.all([
-                syncFileWorker('board.txt', BOARD_STORE_NAME, false),
+                syncFileWorker('board.txt', BOARD_STORE_NAME, false, true),
                 syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
                 syncFileWorker('note.txt', NOTE_STORE_NAME, true)
             ]);
@@ -2532,6 +2536,11 @@ async function writeFolderConfigToAppData(config) {
  * Проверява ПЪРВО AppDataFolder (source of truth), ПОСЛЕ localStorage (кеш)
  */
 function needsInitialFolderSetup() {
+    if (localStorage.getItem('initial_setup_complete') === 'true') return false;
+    if (localStorage.getItem('folderSetupDone') === 'true') return false;
+    if (localStorage.getItem('active_folder_name')) return false;
+    const gdriveFolderNames = localStorage.getItem('gdrive_folder_names');
+    if (gdriveFolderNames && gdriveFolderNames !== '[]') return false;
     const cachedActiveFolderId = localStorage.getItem('activeFolderId');
     const cachedSetupDone = localStorage.getItem('folderSetupDone') === 'true';
     return !cachedActiveFolderId || !cachedSetupDone;
@@ -6847,11 +6856,16 @@ async function userCheck() {
     }
     const storedUserEmail = await getConfig('userEmail');
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint');
-    if (storedUserEmail && currentUserEmail && storedUserEmail !== currentUserEmail) {
+    if (storedUserEmail && currentUserEmail && storedUserEmail.toLowerCase() !== currentUserEmail.toLowerCase()) {
         await handleAccountSwitchReset(storedUserEmail, currentUserEmail);
         isDbOwner = true;
     } else {
         isDbOwner = true;
+        const dbFolderName = await getConfig('dbCreatedFolderName');
+        if (dbFolderName && !localStorage.getItem('active_folder_name')) {
+            localStorage.setItem('active_folder_name', dbFolderName);
+            activeFolderName = dbFolderName;
+        }
     }
 }
 
@@ -7019,6 +7033,10 @@ async function createDatabaseFromMemory({ suppressEmptyDataToast = false } = {})
 async function handleFirstRunSetup() {
     if (isOffline) return false;
     if (localStorage.getItem('initial_setup_complete') === 'true' || sessionStorage.getItem('first_run_lock')) return false;
+    if (localStorage.getItem('gdrive_folder_names') || localStorage.getItem('active_folder_name')) {
+        localStorage.setItem('initial_setup_complete', 'true');
+        return false;
+    }
     const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
     if (hasLocalSettings) return false;
     const isFreshLocalSetup = localStorage.getItem('initial_setup_complete') !== 'true';
@@ -7595,9 +7613,14 @@ async function mainLogic() {
         if (useIndexedDb) {
             dbExists = await checkDbExists(NOTES_DB_NAME);
             if (dbExists) {
-                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (boardsInDb && boardsInDb.length > 0) {
-                    hasLocalData = true;
+                const dbFolderName = await getConfig('dbCreatedFolderName');
+                if (dbFolderName && activeFolderName && dbFolderName !== activeFolderName) {
+                    console.warn(`[mainLogic] IndexedDB was created for folder "${dbFolderName}", but active folder is "${activeFolderName}". Bypassing local DB cache.`);
+                } else {
+                    const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                    if (boardsInDb && boardsInDb.length > 0) {
+                        hasLocalData = true;
+                    }
                 }
             }
         }
@@ -7611,10 +7634,10 @@ async function mainLogic() {
                 }
                 authToken = authResult.tokenData;
             }
+            if (!isOffline) await loadGlobalFoldersJson();
             if (!isOffline && needsInitialFolderSetup()) {
                 await completeInitialFolderSetup();
             }
-            if (!isOffline) await loadGlobalFoldersJson();
             if (!isOffline) {
                 const wasFirstRun = await handleFirstRunSetup();
                 if (wasFirstRun) {
@@ -7856,11 +7879,6 @@ async function mainLogic() {
                                             gapi.client.setToken({ access_token: authToken.access_token });
                                         }
                                         await loadGlobalFoldersJson();
-                                        const wasFirstRun = await handleFirstRunSetup();
-                                        if (wasFirstRun) {
-                                            location.reload();
-                                            return;
-                                        }
                                         await userCheck();
                                         updateGlobalStateFlags();
                                     } else {
@@ -9075,6 +9093,12 @@ function showModal(options, noteElement = null) {
     }
     modalBody.dataset.format = formatString || '';
     modalBody.dataset.titleFormat = titleFormatString || '';
+    delete modalBody.dataset.initialEditText;
+    delete modalBody.dataset.initialEditTitleText;
+    delete modalBody.dataset.initialFormat;
+    delete modalBody.dataset.initialTitleFormat;
+    delete modalBody.dataset.draftText;
+    delete modalBody.dataset.draftTitle;
     modalBody.dataset.boardId = (options && options.boardId) ? options.boardId : '';
     modalBody.dataset.isNewNote = options.isNewNote ? 'true' : 'false';
     modalBody.dataset.color = noteColor || '';
@@ -15518,14 +15542,16 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
 
     const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) !== -1 : bodyText.includes('|');
-    if ((isHiddenNote || hasPipe) && !modalBodyElem.querySelector('textarea')) {
+    if (modalBodyElem.dataset.draftText !== undefined) {
+        bodyText = modalBodyElem.dataset.draftText;
+        titleText = modalBodyElem.dataset.draftTitle || "";
+    } else if ((isHiddenNote || hasPipe) && !modalBodyElem.querySelector('textarea')) {
         let splitParts = [];
         if (hasPipe) {
             const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) : bodyText.indexOf('|');
             titleText = bodyText.substring(0, pipeIdx);
             bodyText = bodyText.substring(pipeIdx + 1);
         }
-
         let titleCharIdx = -1;
         let bodyCharIdx = -1;
         if (charIndex > -1) {
@@ -15535,19 +15561,14 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
                 bodyCharIdx = charIndex - (titleText.length + 1);
             }
         }
-
         const titleResult = preEdit(titleText, currentTitleFormats, titleCharIdx);
         const bodyResult = preEdit(bodyText, currentBodyFormats, bodyCharIdx);
-
         titleText = titleResult.text;
         bodyText = bodyResult.text;
         correctedTitleIndex = titleResult.correctedIndex;
         correctedBodyIndex = bodyResult.correctedIndex;
-
-        // Store BOTH masked links lists
         const allMasked = [...(titleResult.maskedLinks || []), ...(bodyResult.maskedLinks || [])];
         modalBodyElem.dataset.maskedLinks = JSON.stringify(allMasked);
-
         modalBodyElem.dataset.titleFormat = stringifyFormatsArray(titleResult.formats);
         modalBodyElem.dataset.format = stringifyFormatsArray(bodyResult.formats);
     } else {
@@ -15557,7 +15578,12 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         modalBodyElem.dataset.maskedLinks = JSON.stringify(result.maskedLinks || []);
         modalBodyElem.dataset.format = stringifyFormatsArray(result.formats);
     }
-
+    if (modalBodyElem.dataset.initialEditText === undefined) {
+        modalBodyElem.dataset.initialEditText = bodyText;
+        modalBodyElem.dataset.initialEditTitleText = titleText;
+        modalBodyElem.dataset.initialFormat = modalBodyElem.dataset.format || '';
+        modalBodyElem.dataset.initialTitleFormat = modalBodyElem.dataset.titleFormat || '';
+    }
     modalBodyElem.innerHTML = '';
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'position:relative; width:100%; height:100%; display: flex; flex-direction: column;';
@@ -16501,69 +16527,74 @@ async function resolveLoadedConflicts(duplicates) {
 
 async function checkUnsavedChanges(isClosingModal = true) {
     const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return true;
     const textarea = document.getElementById('note-edit-textarea');
     const titleTextarea = document.getElementById('note-edit-title-textarea');
     const saveBtn = document.getElementById('note-save-btn');
     const isEditingOrPreviewing = (textarea || titleTextarea) || (saveBtn && saveBtn.style.display !== 'none');
     if (!isEditingOrPreviewing) return true;
-    // Check for actual changes
-    const initialContent = currentModalContent || "";
-    // Get the current content from the textareas (which might have masked links)
+    const isNewNote = modalBodyElem.dataset.isNewNote === 'true';
     const newBodyTextRaw = textarea ? textarea.value : (modalBodyElem.dataset.draftText || "");
     const newTitleTextRaw = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
-    // Combine raw title and body
-    let currentFullTextRaw = titleTextarea ? `${newTitleTextRaw}|${newBodyTextRaw}` : newBodyTextRaw;
-    // --- FIX: Unmask links before comparing ---
-    // When editing, links are replaced with placeholders like {#L0#}.
-    // We need to restore them to prevent false positive change detection.
-    const maskedLinksStr = modalBodyElem.dataset.maskedLinks;
-    if (maskedLinksStr) {
-        try {
-            const maskedLinks = JSON.parse(maskedLinksStr);
-            if (Array.isArray(maskedLinks) && maskedLinks.length > 0) {
-                maskedLinks.forEach((link, idx) => {
-                    const placeholder = `{#L${idx}#}`;
-                    currentFullTextRaw = currentFullTextRaw.split(placeholder).join(link); // Replace all instances
-                });
-            }
-        } catch (e) {
-            console.warn("Could not parse/unmask links in checkUnsavedChanges", e);
+    if (isNewNote) {
+        const isNewNoteWithContent = (newBodyTextRaw.trim() !== "" || newTitleTextRaw.trim() !== "");
+        if (!isNewNoteWithContent) return true;
+    } else {
+        const noteGdid = modalBodyElem.dataset.gdid;
+        const noteId = modalBodyElem.dataset.id;
+        const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+        if (!noteObj) return true;
+        const formatStr = modalBodyElem.dataset.format || "";
+        const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
+        const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
+        const isHiddenNote = noteObj.pass === true;
+        let processedText = newBodyTextRaw;
+        let finalFormat = formatStr;
+        let finalTitleFormat = titleFormatStr;
+        if ((isHiddenNote || (titleTextarea && newTitleTextRaw !== "") || (modalBodyElem.dataset.draftTitle && modalBodyElem.dataset.draftTitle !== "")) && (titleTextarea || modalBodyElem.dataset.draftTitle)) {
+            const titleRes = postEdit(newTitleTextRaw, parseFormatsString(titleFormatStr), maskedLinks);
+            finalTitleFormat = stringifyFormatsArray(titleRes.formats);
+            const bodyRes = postEdit(newBodyTextRaw, parseFormatsString(formatStr), maskedLinks);
+            finalFormat = stringifyFormatsArray(bodyRes.formats);
+            processedText = titleRes.text + '|' + bodyRes.text;
+        } else {
+            const res = postEdit(newBodyTextRaw, parseFormatsString(formatStr), maskedLinks);
+            processedText = res.text;
+            finalFormat = stringifyFormatsArray(res.formats);
         }
+        const originalContent = noteObj.notetxt || "";
+        const originalFormat = noteObj.text_span || "";
+        const originalTitleFormat = noteObj.title_span || "";
+        const initialColor = (noteObj.color !== undefined) ? noteObj.color : 0;
+        let currentColor = initialColor;
+        if (modalBodyElem.dataset.colorIndex !== undefined) {
+            currentColor = parseInt(modalBodyElem.dataset.colorIndex, 10);
+        } else if (modalBodyElem.dataset.color !== undefined && modalBodyElem.dataset.color !== '') {
+            currentColor = modalBodyElem.dataset.color;
+        }
+        const hasTextChanged = processedText !== originalContent;
+        const hasFormatChanged = finalFormat !== originalFormat || finalTitleFormat !== originalTitleFormat;
+        const hasColorChanged = currentColor !== initialColor;
+        if (!hasTextChanged && !hasFormatChanged && !hasColorChanged) return true;
     }
-    const initialColorIndex = modalBodyElem.dataset.initialColorIndex ? parseInt(modalBodyElem.dataset.initialColorIndex, 10) : 0;
-    const newColorIndex = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : initialColorIndex;
-    // Normalize line endings for consistent comparison
-    const normalizedInitialContent = initialContent.replace(/\r\n/g, '\n');
-    const normalizedCurrentFullText = currentFullTextRaw.replace(/\r\n/g, '\n');
-    const hasTextChanged = normalizedCurrentFullText !== normalizedInitialContent;
-    const hasColorChanged = newColorIndex !== initialColorIndex;
-    const isNewNote = modalBodyElem.dataset.isNewNote === 'true';
-    const isNewNoteWithContent = isNewNote && (newBodyTextRaw.trim() !== "" || newTitleTextRaw.trim() !== "");
-    if (!hasTextChanged && !hasColorChanged && !isNewNoteWithContent) {
-        return true;
-    }
-    // If there are changes, ask to save
     const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
     if (confirmed) {
-        await saveEditedNote();
-        return false; // Prevent the default close action, as saveEditedNote handles it
+        await saveEditedNote(true);
+        return false;
     } else {
-        // User clicked "No", so we allow the modal to close without saving.
         return true;
     }
 }
 
 // Unified Save Logic
-function saveEditedNote() {
+function saveEditedNote(forceClose = false) {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem) return;
-
-    const closeAfterSave = localStorage.getItem('closeAfterSave') === 'true';
+    const closeAfterSave = forceClose || (localStorage.getItem('closeAfterSave') === 'true');
     if (closeAfterSave) {
         const contentModal = document.getElementById('content-modal');
         if (contentModal) contentModal.classList.remove('visible');
     }
-    // Show a toast message to indicate saving is in progress
     showToast(_('savingChanges') || 'Saving changes...', 2000);
     // --- The rest of the function now runs in the background ---
     (async () => {
@@ -17104,6 +17135,11 @@ function previewEditedNote() {
         if (newModalBodyElem) {
             newModalBodyElem.dataset.draftText = newText;
             newModalBodyElem.dataset.draftTitle = titleText;
+            if (modalBodyElem.dataset.initialEditText !== undefined) newModalBodyElem.dataset.initialEditText = modalBodyElem.dataset.initialEditText;
+            if (modalBodyElem.dataset.initialEditTitleText !== undefined) newModalBodyElem.dataset.initialEditTitleText = modalBodyElem.dataset.initialEditTitleText;
+            if (modalBodyElem.dataset.initialFormat !== undefined) newModalBodyElem.dataset.initialFormat = modalBodyElem.dataset.initialFormat;
+            if (modalBodyElem.dataset.initialTitleFormat !== undefined) newModalBodyElem.dataset.initialTitleFormat = modalBodyElem.dataset.initialTitleFormat;
+            if (modalBodyElem.dataset.initialColorIndex !== undefined) newModalBodyElem.dataset.initialColorIndex = modalBodyElem.dataset.initialColorIndex;
             if (modalBodyElem.dataset.gdid) newModalBodyElem.dataset.gdid = modalBodyElem.dataset.gdid;
             if (modalBodyElem.dataset.id) newModalBodyElem.dataset.id = modalBodyElem.dataset.id;
             if (modalBodyElem.dataset.numord) newModalBodyElem.dataset.numord = modalBodyElem.dataset.numord;
