@@ -571,8 +571,10 @@ main {
 
 .note-content {
     flex-grow: 1;
-    overflow-y: hidden;
+    overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     word-wrap: break-word;
     /* Font size is now inherited from .note */
     white-space: pre-wrap;
@@ -588,6 +590,20 @@ code {
     /* Match the surrounding text size */
     -webkit-user-select: text;
     user-select: contain;
+}
+
+.note .note-content,
+.note .note-content * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+
+.note .note-content::-webkit-scrollbar,
+.note .note-content *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
 }
 
 .md-table-wrapper {
@@ -719,22 +735,10 @@ code {
 }
 
 .note-content::-webkit-scrollbar {
-    width: 8px;
-}
-
-.note-content::-webkit-scrollbar-track {
-    background: #e9c7a6;
-}
-
-.note-content::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 4px;
-}
-
-@media (hover: hover) {
-    .note-content::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    }
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
 }
 
 .note-content a,

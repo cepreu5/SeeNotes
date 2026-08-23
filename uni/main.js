@@ -733,14 +733,13 @@ async function runGoogleDriveSync() {
         }
         console.log("[Sync-Run] Folder identity found:", folderId);
 
-        let updatedFilesCount = 0;
-        let skippedNotesCount = 0;
+        let actualBoardUpdates = 0;
+        let actualMediaUpdates = 0;
         const gdidMap = new Map(); // Track duplicates during GDrive sync
         const syncFileWorker = async (filename, storeName, isNote = false, forceFull = false) => {
             const since = forceFull ? null : modifiedSince;
             const files = await fetchFiles(filename, folderId, null, since);
             if (files.length > 0) {
-                updatedFilesCount += files.length;
                 const { data, duplicates } = await parseFileResults(files, filename);
                 if (duplicates && duplicates.length > 0 && isNote) {
                     duplicates.forEach(pair => notesForConflictCheck.push(pair));
@@ -763,10 +762,14 @@ async function runGoogleDriveSync() {
                         }
                     });
                     if (filename === 'media.txt') {
-                        data.forEach(n => {
+                        for (let n of data) {
                             const i = mediaData.findIndex(m => m.gdid === n.gdid);
+                            const localMedia = await getFromDB(MEDIA_STORE_NAME, n.gdid || n.id);
+                            if (!localMedia || (parseInt(n.datemod, 10) > (parseInt(localMedia.datemod, 10) || 0))) {
+                                actualMediaUpdates++;
+                            }
                             if (i !== -1) mediaData[i] = n; else mediaData.push(n);
-                        });
+                        }
                     } else if (filename === 'board.txt') {
                         for (let n of data) {
                             const i = boardsData.findIndex(b =>
@@ -774,6 +777,18 @@ async function runGoogleDriveSync() {
                                 (n.id !== undefined && b.id !== undefined && String(b.id) === String(n.id)) ||
                                 (n.title && b.title && b.title.trim().toLowerCase() === n.title.trim().toLowerCase())
                             );
+                            const localBoard = await getFromDB(BOARD_STORE_NAME, n.gdid || n.id);
+                            const isBoardChanged = !localBoard ||
+                                localBoard.title !== n.title ||
+                                localBoard.color !== n.color ||
+                                localBoard.colorfont !== n.colorfont ||
+                                localBoard.status !== n.status ||
+                                localBoard.backnum !== n.backnum ||
+                                localBoard.backpath !== n.backpath ||
+                                localBoard.gdid !== n.gdid;
+                            if (isBoardChanged) {
+                                actualBoardUpdates++;
+                            }
                             if (i !== -1) {
                                 const oldGdid = boardsData[i].gdid;
                                 if (oldGdid && n.gdid && oldGdid !== n.gdid && useIndexedDb) {
@@ -855,8 +870,6 @@ async function runGoogleDriveSync() {
                                 const localNote = await getFromDB(NOTE_STORE_NAME, note.gdid);
                                 if (!localNote || (parseInt(note.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
                                     updatedNoteGdims.push(note.gdid);
-                                } else {
-                                    skippedNotesCount++;
                                 }
                             }
                         }
@@ -883,14 +896,15 @@ async function runGoogleDriveSync() {
         try {
             console.time("runGoogleDriveSync_Parallel");
             await Promise.all([
-                syncFileWorker('board.txt', BOARD_STORE_NAME, false, true),
+                syncFileWorker('board.txt', BOARD_STORE_NAME, false, false),
                 syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
                 syncFileWorker('note.txt', NOTE_STORE_NAME, true)
             ]);
         } finally {
             try { console.timeEnd("runGoogleDriveSync_Parallel"); } catch (e) { }
         }
-        console.log("[Sync-Run] Parallel sync workers finished. Updated count:", updatedFilesCount);
+        const totalActualUpdates = updatedNoteGdims.length + actualBoardUpdates + actualMediaUpdates;
+        console.log("[Sync-Run] Parallel sync workers finished. Actual updates:", totalActualUpdates);
 
         await saveConfig('lastGDTimestamp', syncStartTime);
 
@@ -925,7 +939,7 @@ async function runGoogleDriveSync() {
             }
         }
         loaderText.textContent = _('syncFinishedLoadingData');
-        return Math.max(0, updatedFilesCount - skippedNotesCount);
+        return totalActualUpdates;
     } finally {
         isSyncing = false;
     }
@@ -7610,16 +7624,23 @@ async function mainLogic() {
         }
         initializeLoad(); // Resets state and shows the loader screen
         let hasLocalData = false;
-        if (useIndexedDb) {
+        let boardsInDb = [];
+        if (useIndexedDb || localStorage.getItem('useIndexedDb') !== 'false') {
             dbExists = await checkDbExists(NOTES_DB_NAME);
             if (dbExists) {
-                const dbFolderName = await getConfig('dbCreatedFolderName');
-                if (dbFolderName && activeFolderName && dbFolderName !== activeFolderName) {
-                    console.warn(`[mainLogic] IndexedDB was created for folder "${dbFolderName}", but active folder is "${activeFolderName}". Bypassing local DB cache.`);
-                } else {
-                    const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                    if (boardsInDb && boardsInDb.length > 0) {
+                boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
+                if (boardsInDb && boardsInDb.length > 0) {
+                    useIndexedDb = true;
+                    localStorage.setItem('useIndexedDb', 'true');
+                    const dbFolderName = await getConfig('dbCreatedFolderName');
+                    if (dbFolderName && (!localStorage.getItem('active_folder_name') || activeFolderName === 'AppDataFolder')) {
+                        localStorage.setItem('active_folder_name', dbFolderName);
+                        activeFolderName = dbFolderName;
+                    }
+                    if (!dbFolderName || !activeFolderName || dbFolderName === activeFolderName) {
                         hasLocalData = true;
+                    } else {
+                        console.warn(`[mainLogic] IndexedDB was created for folder "${dbFolderName}", but active folder is "${activeFolderName}". Bypassing local DB cache.`);
                     }
                 }
             }
@@ -7649,36 +7670,22 @@ async function mainLogic() {
         }
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
         updateModeButton(); // Актуализираме иконата за режим веднага
-        // Проверяваме за базата данни и нейното съдържание ВИНАГИ, когато useIndexedDb е true
-        let boardsInDb = [];
-        if (useIndexedDb) {
-            dbExists = await checkDbExists(NOTES_DB_NAME);
-            if (dbExists) {
-                boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (isLoadCancelled) return;
-            }
-            // ПРОВЕРКА ЗА НЕСЪОТВЕТСТВИЕ НА БАЗАТА И ИЗТОЧНИКА
-            // Тази проверка се прави тук, за да обхване всички режими, които използват база данни.
-            if (dbExists && boardsInDb.length > 0) {
-                // Извличаме конфигурацията на базата САМО ВЕДНЪЖ тук
-                // Взимаме стойностите от базата само ако не са зададени вече от активен източник (GD, Local, Arh).
-                // Това е важно за режим "само база данни".
-                const dbSource = await getConfig('dbSource');
-                const dbNoteIdType = await getConfig('dbNoteIdType');
-                dbSourceGlobal = dbSource;
-                dbNoteIdTypeGlobal = dbNoteIdType;
-                console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
-                if (dbNoteIdType) { // Проверяваме само ако типът е записан
-                    // Проверяваме за несъответствие, САМО ако е избран и друг източник на данни
-                    const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
-                    if (isAnySourceActive) {
-                        if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
-                            console.warn(`[mainLogic] Data source mismatch! DB expects ${dbNoteIdType}, but current mode is different.`);
-                            showToast(_('errorDbSourceMismatch'), 15000);
-                        }
+        if (useIndexedDb && dbExists && boardsInDb.length > 0) {
+            const dbSource = await getConfig('dbSource');
+            const dbNoteIdType = await getConfig('dbNoteIdType');
+            dbSourceGlobal = dbSource;
+            dbNoteIdTypeGlobal = dbNoteIdType;
+            console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
+            if (dbNoteIdType) {
+                const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
+                if (isAnySourceActive) {
+                    if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
+                        console.warn(`[mainLogic] Data source mismatch! DB expects ${dbNoteIdType}, but current mode is different.`);
+                        showToast(_('errorDbSourceMismatch'), 15000);
                     }
                 }
             }
+        }
             // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
             // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
             // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
@@ -7697,7 +7704,6 @@ async function mainLogic() {
                     }
                 }
             }
-        }
         await userCheck();
         if (isLoadCancelled) return;
         updateGlobalStateFlags();
@@ -14783,7 +14789,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // 1. Show spinner immediately
     if (!rerenderOnlyMenu && loaderContainer) {
         loaderContainer.style.display = 'block';
-        if (loaderText) loaderText.textContent = _('loadingFile');
+        if (loaderText) loaderText.textContent = _('fetchingFromDb') || 'Loading...';
     }
     // Method 1: Clear immediately to save memory
     if (!rerenderOnlyMenu) {
