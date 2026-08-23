@@ -497,13 +497,11 @@ async function parseFileResults(results, filenameForError) {
         } catch (e) {
             parseError = true;
             console.log(`Error parsing content from a '${filenameForError}' file:`, e);
-
             if (updateGDrive && id && filenameForError === 'note.txt') {
                 const snippet = res.body.substring(0, 50) + (res.body.length > 50 ? '...' : '');
                 const confirmMsg = _('confirmDeleteCorruptedNote')
                     .replace('{error}', e.message)
                     .replace('{content}', snippet);
-
                 const confirmed = await showConfirmation(confirmMsg);
                 if (confirmed) {
                     try {
@@ -520,26 +518,26 @@ async function parseFileResults(results, filenameForError) {
     }
     const finalData = Array.from(tempMap.values());
     if (filenameForError === 'note.txt' || filenameForError === 'board.txt') {
-        const rawItemCount = results.length; // Approximate if 1 item per file
         console.log(`[parseFileResults] ${filenameForError}: Found ${finalData.length} unique items from ${results.length} files.`);
     }
     return { data: finalData, parseError, duplicates };
 }
-
 async function loadAndParseFile(filename, folderId, modifiedSince = null, onProgress = null) {
     const results = await fetchFiles(filename, folderId, onProgress, modifiedSince);
     return await parseFileResults(results, filename);
 }
-
 async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     let folderId = folderIdFromPrompt || await getFolderID();
+    if (!folderId && activeFolderName && activeFolderName !== 'CX-Notes' && activeFolderName !== 'AppDataFolder') {
+        const granted = await requestAdditionalScopes(SCOPES_FULL);
+        if (granted) {
+            folderId = await getFolderID();
+        }
+    }
     if (!folderId) {
-        // Премахваме несъществуващата папка от списъка с папки
         if (activeFolderName && activeFolderName !== 'AppDataFolder') {
             removeFolderFromList(activeFolderName);
         }
-
-        // 1. Първо проверяваме дали "multinotes_data" съществува в Google Drive за текущия акаунт
         if (activeFolderName !== 'multinotes_data') {
             try {
                 const multinotesId = await getFolderIDByName('multinotes_data');
@@ -550,7 +548,6 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
                     localStorage.setItem('active_folder_name', activeFolderName);
                     setCachedMainFolderId('multinotes_data', multinotesId);
                     cachedMainFolderId = multinotesId;
-
                     let folderNames = [];
                     try { folderNames = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]'); } catch (e) { }
                     if (!folderNames.includes('multinotes_data')) {
@@ -681,16 +678,18 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     checkIntegrity(boardsData, 'board.txt');
     checkIntegrity(mediaData, 'media.txt');
     checkIntegrity(allNotesData, 'note.txt');
-    if (boardsData.length === 0) {
-        showToast(_('errorNoBoardFilesFound'), 10000);
-        showInitialBoardModalAfterGuide();
-        // Не връщаме грешка, за да позволим създаването на празна база данни и рендиране на UI
-    }
-    if (allNotesData.length === 0) {
-        // Показваме съобщението само ако вече не сме показали за липсващи бордове, за да не се трупат
-        if (boardsData.length > 0) {
-            showToast(_('errorNoNoteFilesFound'), 10000);
+    if (boardsData.length === 0 && allNotesData.length === 0) {
+        if (activeFolderName && activeFolderName !== 'AppDataFolder' && localStorage.getItem('initial_setup_complete') === 'true') {
+            showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with MultiNotes data.', 10000);
+        } else {
+            showToast(_('errorNoBoardFilesFound') || 'No boards found in the selected folder. Please create a board first.', 10000);
+            showInitialBoardModalAfterGuide();
         }
+    } else if (boardsData.length === 0) {
+        showToast(_('errorNoBoardFilesFound') || 'No boards found in the selected folder. Please create a board first.', 10000);
+        showInitialBoardModalAfterGuide();
+    } else if (allNotesData.length === 0) {
+        showToast(_('errorNoNoteFilesFound') || 'No note files found in the selected folder. Please check your data source.', 10000);
     }
     return { boardParseError: boardRes.parseError, duplicates: noteRes.duplicates };
 }
@@ -2543,16 +2542,57 @@ function needsInitialFolderSetup() {
  */
 function getRequiredScopes(mode) {
     if (mode === 'import_migrate') {
-        // За импортиране нужни са read-only права до source папка + app data
         return SCOPES_BASE + ' ' + SCOPES_READONLY;
     } else if (mode === 'create_empty') {
-        // За създаване на нова папка достатъчни са само базовите scopes
         return SCOPES_BASE;
     } else if (mode === 'advanced_existing') {
-        // За работа с외съществуваща папка (не-създадена от app) нужни са пълни права
         return SCOPES_BASE + ' ' + SCOPES_FULL;
     }
     return SCOPES_BASE;
+}
+
+function getActiveRequiredScopes() {
+    const activeFolder = localStorage.getItem('active_folder_name') || (typeof activeFolderName !== 'undefined' ? activeFolderName : '');
+    if (activeFolder && activeFolder !== 'CX-Notes' && activeFolder !== 'AppDataFolder') {
+        return SCOPES_BASE + ' ' + SCOPES_FULL;
+    }
+    return SCOPES_BASE;
+}
+
+async function requestAdditionalScopes(additionalScopes) {
+    if (typeof tokenClient === 'undefined' || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+        return false;
+    }
+    const currentScopeString = SCOPES || SCOPES_BASE;
+    const combinedScopes = Array.from(new Set((currentScopeString + ' ' + additionalScopes).split(' '))).filter(Boolean).join(' ');
+    if (authToken && authToken.scope) {
+        const currentScopes = authToken.scope.split(' ');
+        const allPresent = additionalScopes.split(' ').every(s => currentScopes.includes(s));
+        if (allPresent) return true;
+    }
+    return new Promise((resolve) => {
+        tokenClient.callback = async (resp) => {
+            if (resp && resp.access_token) {
+                const tokenWithTimestamp = { ...resp, issued_at: Date.now() };
+                const rememberMe = localStorage.getItem('rememberMe') === 'true';
+                const storage = rememberMe ? localStorage : sessionStorage;
+                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                authToken = tokenWithTimestamp;
+                SCOPES = combinedScopes;
+                if (typeof gapi !== 'undefined' && gapi.client) {
+                    gapi.client.setToken({ access_token: authToken.access_token });
+                }
+                resolve(true);
+            } else {
+                resolve(false);
+            }
+        };
+        tokenClient.error_callback = (err) => {
+            console.warn('[requestAdditionalScopes] Error or cancelled:', err);
+            resolve(false);
+        };
+        tokenClient.requestAccessToken({ prompt: 'consent', scope: combinedScopes });
+    });
 }
 
 /**
@@ -6537,10 +6577,12 @@ async function handleAuthClick() {
         startApp(true);
         return;
     }
+    const requiredScopes = getActiveRequiredScopes();
+    SCOPES = requiredScopes;
     if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
-            scope: SCOPES_BASE,
+            scope: SCOPES,
             callback: async (resp) => {
                 if (resp.error) throw (resp);
                 await authCallback(resp);
@@ -6552,12 +6594,12 @@ async function handleAuthClick() {
         });
     }
     if (tokenClient) {
-        const rememberMe = localStorage.getItem('rememberMe') !== 'false';
+        const rememberMe = localStorage.getItem('rememberMe') === 'true';
         const loginHint = localStorage.getItem('google_login_hint');
         if (rememberMe && loginHint) {
-            tokenClient.requestAccessToken({ hint: loginHint, scope: SCOPES_BASE });
+            tokenClient.requestAccessToken({ hint: loginHint, scope: SCOPES });
         } else {
-            tokenClient.requestAccessToken({ prompt: 'select_account', scope: SCOPES_BASE });
+            tokenClient.requestAccessToken({ prompt: 'select_account', scope: SCOPES });
         }
     } else {
         console.warn("Google Identity Services not loaded. Checking for offline capability...");
@@ -11918,30 +11960,44 @@ async function createSettingsUI(boardsData, boardParseError) {
                 let targetFolderId = null;
                 const folderNamesStr = localStorage.getItem('gdrive_folder_names');
                 const folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
-
                 if (selectedValue === 'new_folder' || selectedValue === 'select_folder') {
                     const isNew = selectedValue === 'new_folder';
-                    const promptMsg = isNew ? _('newFolderPrompt') : (_('selectFolderPrompt') || 'Въведете име на съществуваща папка:');
-
-                    // Използваме нашия нов асинхронен prompt
+                    const promptMsg = isNew ? _('newFolderPrompt') : (_('selectFolderPrompt') || 'Enter existing folder name:');
                     const folderNameInput = await showPrompt(promptMsg);
-
                     if (folderNameInput && folderNameInput.trim()) {
                         targetFolderName = folderNameInput.trim();
                         try {
                             if (isNew) {
-                                if (typeof showToast === 'function') showToast(_('creatingFolder'));
+                                if (typeof showToast === 'function') showToast(_('creatingFolder') || 'Creating folder...');
                                 targetFolderId = await createNewGDriveFolder(targetFolderName);
+                                if (targetFolderId) {
+                                    const confirmed = await showConfirmation(_('confirmMigration') || 'Do you want to copy the data from the current folder into the new folder?');
+                                    if (confirmed) {
+                                        await migrateDataToNewFolder(targetFolderId);
+                                        const currentBmo = localStorage.getItem('boardMenuOrder');
+                                        if (currentBmo) localStorage.setItem('boardMenuOrder_' + targetFolderName, currentBmo);
+                                        localStorage.setItem('lastNoteId_' + targetFolderName, noteId.toString());
+                                        localStorage.setItem('lastNoteNumord_' + targetFolderName, noteNumord.toString());
+                                        const currentBic = localStorage.getItem('boardIdCounter');
+                                        if (currentBic) localStorage.setItem('lastBoardId_' + targetFolderName, currentBic);
+                                    }
+                                }
                             } else {
                                 targetFolderId = await getFolderIDByName(targetFolderName);
                                 if (!targetFolderId) {
-                                    if (typeof showToast === 'function') showToast(_('errorFolderNotFoundDrive') || 'Папката не е намерена.');
+                                    const granted = await requestAdditionalScopes(SCOPES_FULL);
+                                    if (granted) {
+                                        targetFolderId = await getFolderIDByName(targetFolderName);
+                                    }
+                                }
+                                if (!targetFolderId) {
+                                    if (typeof showToast === 'function') showToast(_('errorFolderNotFoundDrive') || 'Folder not found.');
                                     activeFolderSelect.value = activeFolderName;
                                     return;
                                 }
                             }
                         } catch (e) {
-                            if (typeof showToast === 'function') showToast(isNew ? _('errorCreateFolder') : (_('errorFolderNotFoundDrive') || 'Папката не е намерена.'));
+                            if (typeof showToast === 'function') showToast(isNew ? (_('errorCreateFolder') || 'Error creating folder.') : (_('errorFolderNotFoundDrive') || 'Folder not found.'));
                             activeFolderSelect.value = activeFolderName;
                             return;
                         }
@@ -11952,9 +12008,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 } else {
                     targetFolderName = selectedValue;
                 }
-
                 if (targetFolderName === activeFolderName) return;
-                // Предупреждение при превключване към multinotes_data
                 if (targetFolderName === 'multinotes_data') {
                     const confirmed = await showConfirmation(_('multiNotesSettingsWarn') || 'Warning: Changes in the multinotes_data folder will not automatically reflect in the Android MultiNotes app without a full sync. Are you sure you want to switch to this folder?');
                     if (!confirmed) {
@@ -11962,42 +12016,49 @@ async function createSettingsUI(boardsData, boardParseError) {
                         return;
                     }
                 }
+                const settingsModal = document.getElementById('settings-modal');
+                const settings2Modal = document.getElementById('settings2-modal');
+                if (settingsModal) settingsModal.classList.remove('visible');
+                if (settings2Modal) settings2Modal.classList.remove('visible');
+                if (typeof showToast === 'function') showToast((_('settingSaved') || 'Settings saved.') + ' ' + (_('synchronizing') || 'Syncing...'));
                 try {
                     if (!targetFolderId) {
                         targetFolderId = await getFolderIDByName(targetFolderName);
                     }
-
                     if (!targetFolderId && targetFolderName !== 'AppDataFolder') {
-                        // Папката не съществува в Google Drive — премахваме я от списъка с папки
+                        const granted = await requestAdditionalScopes(SCOPES_FULL);
+                        if (granted) {
+                            targetFolderId = await getFolderIDByName(targetFolderName);
+                        } else {
+                            if (typeof showToast === 'function') showToast(_('permissionDenied') || 'Permission was not granted.', 5000);
+                            activeFolderSelect.value = activeFolderName;
+                            return;
+                        }
+                    }
+                    if (!targetFolderId && targetFolderName !== 'AppDataFolder') {
                         removeFolderFromList(targetFolderName);
-                        const msg = (_('folderNotFoundRemovedFromList') || `Папката "${targetFolderName}" не съществува в Google Drive и бе премахната от списъка.`)
+                        const msg = (_('folderNotFoundRemovedFromList') || `Folder "${targetFolderName}" does not exist in Google Drive and was removed from the list.`)
                             .replace('{folder}', targetFolderName);
                         if (typeof showToast === 'function') showToast(msg, 5000);
                         activeFolderSelect.value = activeFolderName;
                         return;
                     }
-
                     if (targetFolderId) {
-                        const oldActiveFolderName = activeFolderName;
-                        console.log(`[Folder-Switch] Changing folder to: "${targetFolderName}" (ID: ${targetFolderId})`);
-                        const isEmpty = await isGDriveFolderEmpty(targetFolderId);
-                        if (isEmpty) {
-                            // Използваме нашето асинхронно потвърждение
-                            const confirmed = await showConfirmation(_('confirmMigration'));
-                            if (confirmed) {
-                                await migrateDataToNewFolder(targetFolderId);
-
-                                // Копираме метаданните в новата папка в локалната памет
-                                const currentBmo = localStorage.getItem('boardMenuOrder');
-                                if (currentBmo) localStorage.setItem('boardMenuOrder_' + targetFolderName, currentBmo);
-                                localStorage.setItem('lastNoteId_' + targetFolderName, noteId.toString());
-                                localStorage.setItem('lastNoteNumord_' + targetFolderName, noteNumord.toString());
-                                const currentBic = localStorage.getItem('boardIdCounter');
-                                if (currentBic) localStorage.setItem('lastBoardId_' + targetFolderName, currentBic);
+                        if (selectedValue !== 'new_folder' && targetFolderName !== 'AppDataFolder') {
+                            const [boardFiles, noteFiles] = await Promise.all([
+                                findGDFileByName(targetFolderId, 'board.txt'),
+                                findGDFileByName(targetFolderId, 'note.txt')
+                            ]);
+                            if (!boardFiles && !noteFiles) {
+                                if (typeof showToast === 'function') {
+                                    showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with MultiNotes data.', 7000);
+                                }
+                                activeFolderSelect.value = activeFolderName;
+                                return;
                             }
                         }
-
-                        // Запазваме per-folder данните на папката, от която излизаме
+                        const oldActiveFolderName = activeFolderName;
+                        console.log(`[Folder-Switch] Changing folder to: "${targetFolderName}" (ID: ${targetFolderId})`);
                         if (oldActiveFolderName) {
                             const currentBmo = localStorage.getItem('boardMenuOrder');
                             if (currentBmo) localStorage.setItem('boardMenuOrder_' + oldActiveFolderName, currentBmo);
@@ -12006,22 +12067,17 @@ async function createSettingsUI(boardsData, boardParseError) {
                             const currentBic = localStorage.getItem('boardIdCounter');
                             if (currentBic) localStorage.setItem('lastBoardId_' + oldActiveFolderName, currentBic);
                         }
-
                         activeFolderName = targetFolderName;
                         localStorage.setItem('active_folder_name', targetFolderName);
                         const loaderFolderInfo = document.getElementById('loader-folder-info');
                         if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
                         setCachedMainFolderId(targetFolderName, targetFolderId);
-                        // Apply per-folder start board if available
                         const folderStartBoard = localStorage.getItem('startBoard_' + targetFolderName);
                         if (folderStartBoard) {
                             localStorage.setItem('startBoard', folderStartBoard);
                         } else {
-                            localStorage.removeItem('startBoard'); // Clear it so it doesn't carry over from the previous folder
+                            localStorage.removeItem('startBoard');
                         }
-                        // Refresh folders.json before restoring per-folder data
-                        if (!isOffline) await loadGlobalFoldersJson();
-                        // Възстановяваме per-folder данните на новата папка
                         const newBmo = localStorage.getItem('boardMenuOrder_' + targetFolderName);
                         if (newBmo) {
                             localStorage.setItem('boardMenuOrder', newBmo);
@@ -12042,34 +12098,22 @@ async function createSettingsUI(boardsData, boardParseError) {
                             boardIdCounter = (targetFolderName === 'multinotes_data') ? 1000000 : 0;
                             localStorage.setItem('boardIdCounter', boardIdCounter.toString());
                         }
-
                         if (!folderNames.includes(targetFolderName)) {
                             folderNames.push(targetFolderName);
                             localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
                         }
-
-                        // Force Google Drive mode when folder is switched
                         localStorage.setItem('useGoogleDb', 'true');
-                        localStorage.setItem('useIndexedDb', 'false');
+                        localStorage.setItem('useIndexedDb', 'true');
                         localStorage.setItem('useLocalDb', 'false');
                         localStorage.setItem('useArhDb', 'false');
-
-                        // Clear cached subfolder IDs
                         ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
-
-                        // Изчистване на локалната база от старата папка (по желание)
-                        const confirmDbDel = await showConfirmation((typeof _ === 'function') ? _('confirmDbDeleteOnFolderChange') : 'Желаете ли да изтриете текущата база данни при смяната на папката?');
-                        if (confirmDbDel) {
-                            if (typeof NOTES_DB_NAME !== 'undefined') {
-                                indexedDB.deleteDatabase(NOTES_DB_NAME);
-                            } else {
-                                indexedDB.deleteDatabase('multinotes_db');
-                            }
+                        if (typeof NOTES_DB_NAME !== 'undefined') {
+                            indexedDB.deleteDatabase(NOTES_DB_NAME);
+                        } else {
+                            indexedDB.deleteDatabase('multinotes_db');
                         }
-
-                        if (typeof showToast === 'function') showToast(_('settingSaved') + ' Синхронизиране...');
                         await syncGlobalFoldersJson();
-                        setTimeout(() => location.reload(), 1500);
+                        location.reload();
                     } else {
                         activeFolderSelect.value = activeFolderName;
                     }
@@ -14978,14 +15022,19 @@ async function readArh(dirHandle) {
 async function loadTranslations(lang) {
     if (appTranslations[lang]) return;
     try {
-        const response = await fetch(`lang/i18n-${lang}.json`, { credentials: 'omit' });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-        const data = await response.json();
+        let data = null;
+        if (window.initialTranslationsPromise && lang === (localStorage.getItem('language') || (navigator.language && navigator.language.startsWith('bg') ? 'bg' : 'en'))) {
+            data = await window.initialTranslationsPromise;
+            window.initialTranslationsPromise = null;
+        }
+        if (!data) {
+            const response = await fetch(`lang/i18n-${lang}.json`, { credentials: 'omit' });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            data = await response.json();
+        }
         appTranslations[lang] = data;
     } catch (e) {
         console.error("Failed to load translations:", e);
-        // Fallback: Populate with critical keys if fetch fails (e.g. offline with old SW)
         if (!appTranslations[lang]) {
             appTranslations[lang] = {};
             if (lang === 'bg') {
@@ -14993,17 +15042,16 @@ async function loadTranslations(lang) {
                 appTranslations[lang]['authorizeButton'] = 'Вход с Google';
                 appTranslations[lang]['trialButton'] = 'Старт 30-дневен пробен период';
                 appTranslations[lang]['sessionExpired'] = 'Сесията изтече. Моля, влезте отново.';
+                appTranslations[lang]['initialDataLoad'] = 'Зареждане на данни...';
             } else {
                 appTranslations[lang]['offlineStartButton'] = 'Start Offline';
                 appTranslations[lang]['authorizeButton'] = 'Authorize with Google';
                 appTranslations[lang]['trialButton'] = 'Start 30-day trial period';
                 appTranslations[lang]['sessionExpired'] = 'Session expired. Please login again.';
+                appTranslations[lang]['initialDataLoad'] = 'Data loading...';
             }
-            // Добавяме и loginPrompt към фълбека
             if (!appTranslations[lang]['loginPrompt']) {
-                appTranslations[lang]['loginPrompt'] = lang === 'bg' ?
-                    'Моля, влезте с Google акаунта, с който сте синхронизирали бележките си в MultiNotes.' :
-                    'Please sign in with Google account you used to sync MultiNotes.';
+                appTranslations[lang]['loginPrompt'] = lang === 'bg' ? 'Моля, влезте с Google акаунта, с който сте синхронизирали бележките си в MultiNotes.' : 'Please sign in with Google account you used to sync MultiNotes.';
             }
         }
     }

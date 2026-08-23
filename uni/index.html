@@ -12,9 +12,12 @@
 
     <meta http-equiv="Content-Security-Policy"
         content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
-    <!--script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5695216104083645"
-        crossorigin="anonymous">
-    </script-->
+    <script>
+        (function() {
+            var lang = localStorage.getItem('language') || (navigator.language && navigator.language.startsWith('bg') ? 'bg' : 'en');
+            window.initialTranslationsPromise = fetch('lang/i18n-' + lang + '.json').then(function(r) { return r.json(); }).catch(function() { return null; });
+        })();
+    </script>
 </head>
 
 <body style="background-image: url('Board.png');">
@@ -207,7 +210,7 @@
 
 
     <main>
-        <div id="loader-container">
+        <div id="loader-container" style="display: none;">
             <div class="loader"></div>
             <div id="loader-text"></div>
         </div>
