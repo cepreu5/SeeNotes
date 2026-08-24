@@ -84,15 +84,18 @@
 
     <div id="login-page" class="login-div" hidden>
         <div class="login-box" style="margin-bottom: 10px; max-width: 350px; display: none;">
-            <p data-key="loginPrompt">Please sign in with Google account you used to sync <i>MultiNotes</i>.</p>
-            <p id="app-title2" data-key="appTitle2" style="margin-top: 10px;"></p>
-            <button id="authorize_button" data-key="authorizeButton" style="display:none" disabled>Authorize with
+            <p data-key="loginPrompt" style="margin: 0 0 10px 0;">Please sign in with Google account you used to sync <i>MultiNotes</i>.</p>
+            <p id="app-title2" style="margin: 0;">
+                <span data-key="appTitle2">Това е тестова (Beta) версия на приложението. Ако желаете да получите достъп:</span>
+                <button id="request-access-btn" type="button" class="zoom-btn" style="margin: 10px auto 0 auto; width: 100%; max-width: 260px; display: block; cursor: pointer; box-sizing: border-box;" data-key="requestAccessBtn">Заяви достъп</button>
+            </p>
+            <button id="authorize_button" data-key="authorizeButton" style="display:none; width: 100%; max-width: 260px; margin: 10px auto 0 auto; box-sizing: border-box;" disabled>Authorize with
                 Google</button>
-            <button id="trialBtn" data-key="trialButton" style="display:none">Start 30-day trial period</button>
-            <div style="margin-top: 15px;">
-                <label for="rememberMe" style="margin-right: 0px;" data-key="rememberMeLabel">
+            <button id="trialBtn" data-key="trialButton" style="display:none; width: 100%; max-width: 260px; margin: 10px auto 0 auto; box-sizing: border-box;">Start 30-day trial period</button>
+            <div style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <label for="rememberMe" style="margin: 0; cursor: pointer;" data-key="rememberMeLabel">
                     Remember me</label>
-                <input type="checkbox" id="rememberMe" class="settings-checkbox">
+                <input type="checkbox" id="rememberMe" class="settings-checkbox" style="margin: 0; cursor: pointer;">
             </div>
         </div>
         <script>
@@ -740,7 +743,181 @@
     <script src="kb-assistantt.js"></script>
     <script src="msmrtt.js"></script>
 
+    <!-- Request Access Modal -->
+    <div id="request-access-modal" class="modal-overlay">
+        <div class="modal-content-box set-modal" style="max-width: 480px; width: 95%; height: auto; max-height: 90vh; overflow-y: auto; padding: 20px; box-sizing: border-box;">
+            <button class="modal-close modal-header-btn" id="request-access-close-x">&times;</button>
+            <h2 style="margin-top: 0; margin-bottom: 15px; text-align: center; color: #333; font-size: 1.3em;" data-key="requestAccessTitle">Заявка за достъп</h2>
+            
+            <form id="request-access-form" onsubmit="return false;" style="display: flex; flex-direction: column; gap: 12px; font-size: 14px; color: #333; text-align: left;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="req-sync-enabled" class="settings-checkbox" style="margin: 0; cursor: pointer; flex-shrink: 0;">
+                    <label for="req-sync-enabled" style="cursor: pointer; line-height: 1.3;" data-key="reqSyncEnabledLabel">Синхронизацията с Google Drive е включена в MultiNotes</label>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="req-folder-exists" class="settings-checkbox" style="margin: 0; cursor: pointer; flex-shrink: 0;">
+                    <label for="req-folder-exists" style="cursor: pointer; line-height: 1.3;" data-key="reqFolderExistsLabel">Проверих че папка multinotes_data съществува в Google Drive</label>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label for="req-email" style="font-weight: 500;" data-key="reqEmailLabel">За синхронизация се използва следния имейл:</label>
+                    <input type="email" id="req-email" data-key-placeholder="reqEmailPlaceholder" placeholder="example@gmail.com" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label for="req-name" style="font-weight: 500;" data-key="reqNameLabel">Име:</label>
+                    <input type="text" id="req-name" data-key-placeholder="reqNamePlaceholder" placeholder="Вашето име" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label for="req-country" style="font-weight: 500;" data-key="reqCountryLabel">Държава:</label>
+                    <input type="text" id="req-country" data-key-placeholder="reqCountryPlaceholder" placeholder="Държава" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
+                </div>
+
+                <div style="margin-top: 5px; text-align: center;">
+                    <button id="req-submit-btn" type="button" class="zoom-btn" disabled style="padding: 8px 24px; font-size: 14px; cursor: not-allowed; font-weight: bold; opacity: 0.5;" data-key="reqSubmitBtn">Заяви</button>
+                </div>
+            </form>
+
+            <div id="req-result-container" style="display: none; margin-top: 15px; text-align: left;">
+                <label style="display: block; font-weight: 500; font-size: 13px; color: #222; margin-bottom: 6px;" data-key="reqCopyInstructions">
+                    Копирайте този текст и го изпратете на multinotes.web@gmail.com
+                </label>
+                <div style="position: relative;">
+                    <textarea id="req-result-text" readonly rows="7" style="width: 100%; box-sizing: border-box; padding: 10px 65px 10px 10px; font-family: monospace; font-size: 13px; border: 1px solid #aaa; border-radius: 4px; background: #fff; resize: vertical; line-height: 1.4;"></textarea>
+                    <button id="req-copy-btn" type="button" data-key-title="copyTooltip" title="Копирай" style="position: absolute; top: 6px; right: 6px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                            <rect x="8" y="8" width="12" height="12" rx="2" />
+                            <path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" />
+                        </svg>
+                        <span id="req-copy-label" data-key="reqCopyBtn">Copy</span>
+                    </button>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 20px; gap: 10px;">
+                <button id="req-cancel-btn" type="button" class="zoom-btn" style="flex: 1; padding: 8px 16px; cursor: pointer;" data-key="cancelButton">Отказ</button>
+                <button id="req-close-btn" type="button" class="zoom-btn" style="flex: 1; padding: 8px 16px; cursor: pointer;" data-key="closeButton">Затвори</button>
+            </div>
+        </div>
+    </div>
+
     <script src="mainn.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('request-access-modal');
+            const openBtn = document.getElementById('request-access-btn');
+            const closeX = document.getElementById('request-access-close-x');
+            const closeBtn = document.getElementById('req-close-btn');
+            const cancelBtn = document.getElementById('req-cancel-btn');
+            const submitBtn = document.getElementById('req-submit-btn');
+            const copyBtn = document.getElementById('req-copy-btn');
+            const copyLabel = document.getElementById('req-copy-label');
+            const resultContainer = document.getElementById('req-result-container');
+            const resultText = document.getElementById('req-result-text');
+            const form = document.getElementById('request-access-form');
+            const syncCheckbox = document.getElementById('req-sync-enabled');
+            const folderCheckbox = document.getElementById('req-folder-exists');
+            const emailInput = document.getElementById('req-email');
+            const nameInput = document.getElementById('req-name');
+            const countryInput = document.getElementById('req-country');
+            const getTranslation = (key, fallback) => {
+                if (typeof _ === 'function') return _(key) || fallback;
+                if (typeof Ue === 'function') return Ue(key) || fallback;
+                return fallback;
+            };
+            const validateForm = () => {
+                const isValid = Boolean(
+                    syncCheckbox && syncCheckbox.checked &&
+                    folderCheckbox && folderCheckbox.checked &&
+                    emailInput && emailInput.value.trim().length > 0 &&
+                    nameInput && nameInput.value.trim().length > 0 &&
+                    countryInput && countryInput.value.trim().length > 0
+                );
+                if (submitBtn) {
+                    submitBtn.disabled = !isValid;
+                    submitBtn.style.opacity = isValid ? '1' : '0.5';
+                    submitBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
+                }
+            };
+            const openModal = () => {
+                validateForm();
+                if (modal) modal.classList.add('visible');
+            };
+            const closeModal = () => {
+                if (modal) modal.classList.remove('visible');
+            };
+            const resetForm = () => {
+                if (form) form.reset();
+                if (resultContainer) resultContainer.style.display = 'none';
+                if (resultText) resultText.value = '';
+                validateForm();
+                closeModal();
+            };
+            const generateText = () => {
+                if (submitBtn && submitBtn.disabled) return;
+                const headerVal = getTranslation('reqHeader', 'Request for access to CX MultiNotes Viewer:');
+                const syncLabel = getTranslation('reqSyncEnabledLabel', 'Google Drive sync is enabled in MultiNotes');
+                const folderLabel = getTranslation('reqFolderExistsLabel', 'I verified that the folder multinotes_data exists in Google Drive');
+                const emailLabel = getTranslation('reqEmailLabel', 'The following email is used for sync:');
+                const nameLabel = getTranslation('reqNameLabel', 'Name:');
+                const countryLabel = getTranslation('reqCountryLabel', 'Country:');
+                const yesVal = getTranslation('reqYes', 'Yes');
+                const noVal = getTranslation('reqNo', 'No');
+                const syncVal = syncCheckbox?.checked ? yesVal : noVal;
+                const folderVal = folderCheckbox?.checked ? yesVal : noVal;
+                const emailVal = emailInput?.value.trim() || '';
+                const nameVal = nameInput?.value.trim() || '';
+                const countryVal = countryInput?.value.trim() || '';
+                const text = `${headerVal}\n- ${syncLabel}: ${syncVal}\n- ${folderLabel}: ${folderVal}\n- ${emailLabel} ${emailVal}\n- ${nameLabel} ${nameVal}\n- ${countryLabel} ${countryVal}`;
+                if (resultText) resultText.value = text;
+                if (resultContainer) {
+                    resultContainer.style.display = 'block';
+                    resultContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            };
+            const copyGeneratedText = () => {
+                if (!resultText || !resultText.value) return;
+                const copiedFeedback = getTranslation('reqCopied', 'Copied!');
+                const defaultLabel = getTranslation('reqCopyBtn', 'Copy');
+                const setFeedback = () => {
+                    if (copyLabel) {
+                        copyLabel.textContent = copiedFeedback;
+                        setTimeout(() => { copyLabel.textContent = defaultLabel; }, 2500);
+                    }
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(resultText.value).then(setFeedback).catch(() => {
+                        resultText.select();
+                        document.execCommand('copy');
+                        setFeedback();
+                    });
+                } else {
+                    resultText.select();
+                    document.execCommand('copy');
+                    setFeedback();
+                }
+            };
+            if (form) {
+                form.addEventListener('input', validateForm);
+                form.addEventListener('change', validateForm);
+            }
+            if (openBtn) openBtn.addEventListener('click', openModal);
+            if (closeX) closeX.addEventListener('click', closeModal);
+            if (closeBtn) closeBtn.addEventListener('click', closeModal);
+            if (cancelBtn) cancelBtn.addEventListener('click', resetForm);
+            if (submitBtn) submitBtn.addEventListener('click', generateText);
+            if (copyBtn) copyBtn.addEventListener('click', copyGeneratedText);
+            if (modal) {
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) closeModal();
+                });
+            }
+            validateForm();
+        });
+    </script>
 </body>
 
 </html>
