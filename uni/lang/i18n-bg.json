@@ -17,6 +17,7 @@
     "reqYes": "Да",
     "reqNo": "Не",
     "reqHeader": "Заявка за достъп до CX MultiNotes Viewer:",
+    "dbRebuilt": "Локалната база данни е преизградена успешно.",
     "searchPlaceholder": "Въведете текст",
     "reloadButtonTooltip": "Презареди",
     "signoutButtonTooltip": "Изход",

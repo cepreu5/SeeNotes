@@ -17,6 +17,7 @@
     "reqYes": "Yes",
     "reqNo": "No",
     "reqHeader": "Request for access to CX MultiNotes Viewer:",
+    "dbRebuilt": "Local database rebuilt successfully.",
     "searchPlaceholder": "Type text",
     "reloadButtonTooltip": "Reload",
     "signoutButtonTooltip": "Sign Out",

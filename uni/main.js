@@ -695,14 +695,14 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
 }
 
 let isSyncing = false;
-async function runGoogleDriveSync() {
+async function runGoogleDriveSync(forceFullSync = false) {
     if (isSyncing) {
         console.log("[Sync-Run] Already syncing, skipping call.");
         return 0;
     }
     isSyncing = true;
     try {
-        console.log("[Sync-Run] runGoogleDriveSync started");
+        console.log("[Sync-Run] runGoogleDriveSync started, forceFullSync:", forceFullSync);
         const loaderTitle = document.getElementById('loader-title');
         const loaderFolderInfo = document.getElementById('loader-folder-info');
         if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
@@ -711,20 +711,17 @@ async function runGoogleDriveSync() {
             console.log("[Sync-Run] Exiting: useIndexedDb is false");
             return 0;
         }
-
         const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
-        const lastSyncTimestampOrig = (updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
+        const lastSyncTimestampOrig = (!forceFullSync && updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
         let lastSyncTimestamp = lastSyncTimestampOrig;
         if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
-
-        const modifiedSince = lastSyncTimestamp ? new Date(lastSyncTimestamp).toISOString() : null;
+        const modifiedSince = (forceFullSync || !lastSyncTimestamp) ? null : new Date(lastSyncTimestamp).toISOString();
         let notesForConflictCheck = [];
         if (loaderTitle) {
-            loaderTitle.innerText = modifiedSince ?
+            loaderTitle.innerText = (modifiedSince && !forceFullSync) ?
                 _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang)) :
                 _('initialGDriveSync');
         }
-
         const syncStartTime = Date.now();
         const folderId = await getFolderID();
         if (!folderId) {
@@ -732,12 +729,18 @@ async function runGoogleDriveSync() {
             return 0;
         }
         console.log("[Sync-Run] Folder identity found:", folderId);
-
+        if (forceFullSync && useIndexedDb) {
+            console.log("[Sync-Run] forceFullSync active: clearing DB stores for full rebuild...");
+            await clearDbStores();
+            boardsData = [];
+            mediaData = [];
+            allNotesData = [];
+        }
         let actualBoardUpdates = 0;
         let actualMediaUpdates = 0;
         const gdidMap = new Map(); // Track duplicates during GDrive sync
         const syncFileWorker = async (filename, storeName, isNote = false, forceFull = false) => {
-            const since = forceFull ? null : modifiedSince;
+            const since = (forceFull || forceFullSync) ? null : modifiedSince;
             const files = await fetchFiles(filename, folderId, null, since);
             if (files.length > 0) {
                 const { data, duplicates } = await parseFileResults(files, filename);
@@ -5420,16 +5423,35 @@ function initApp() {
         });
 
     }
-    reloadButton.addEventListener('click', () => {
+    let reloadLongPressTimer;
+    reloadButton.addEventListener('touchstart', (e) => {
+        reloadLongPressTimer = setTimeout(() => {
+            reloadButton.dispatchEvent(new MouseEvent('click', {
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true
+            }));
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 600);
+    }, { passive: true });
+    reloadButton.addEventListener('touchend', () => clearTimeout(reloadLongPressTimer));
+    reloadButton.addEventListener('touchmove', () => clearTimeout(reloadLongPressTimer));
+    reloadButton.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    });
+    reloadButton.addEventListener('click', (e) => {
+        const isForceSync = Boolean(e && (e.ctrlKey || e.shiftKey));
         const hasDirtyNotes = allNotesData && allNotesData.some(n => n.type === -1);
-        if (hasDirtyNotes) {
+        if (hasDirtyNotes && !isForceSync) {
             if (isOffline) {
                 showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
             } else {
                 syncDirtyNotes();
             }
         } else {
-            mainLogic();
+            mainLogic(isForceSync);
         }
     });
 
@@ -6159,16 +6181,14 @@ function initApp() {
         }
     });
 
-    async function triggerSync() {
+    async function triggerSync(forceFullSync = false) {
         updatedNoteGdims = []; // Clear previous updates
         loaderContainer.style.display = 'block'; // Показваме статус панела
         const dbSource = await getConfig('dbSource');
         let updatedCount = 0;
-        // Показваме лоудъра
         loaderContainer.style.display = 'block';
         const loaderTitle = document.getElementById('loader-title');
         if (dbSource === 1) { // Базата е създадена от Google Drive
-            // --- КОРЕКЦИЯ: Зареждаме Google API, тъй като тази функция го пропуска ---
             try {
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
                     await loadGoogleApis();
@@ -6179,21 +6199,20 @@ function initApp() {
             } catch (error) {
                 throw new Error(_('errorGoogleLibs'));
             }
-            console.log("Triggering Google Drive sync...");
+            console.log("Triggering Google Drive sync, forceFullSync:", forceFullSync);
             console.trace("[Sync-Trace] triggerSync called");
             if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
             try {
-                updatedCount = await runGoogleDriveSync();
+                updatedCount = await runGoogleDriveSync(forceFullSync);
             } catch (err) {
                 console.warn("GD Sync failed, attempting token refresh...", err);
                 const refreshResult = await refreshAuthToken();
                 if (refreshResult && refreshResult.pass) {
                     authToken = refreshResult.tokenData;
-                    // Update gapi client with new token
                     if (typeof gapi !== 'undefined' && gapi.client) {
                         gapi.client.setToken({ access_token: authToken.access_token });
                     }
-                    updatedCount = await runGoogleDriveSync();
+                    updatedCount = await runGoogleDriveSync(forceFullSync);
                 } else {
                     showToast(_('errorSessionExpired'));
                     loaderContainer.style.display = 'none';
@@ -6202,13 +6221,13 @@ function initApp() {
             }
             showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 5000);
         } else if (dbSource === 2) { // Базата е създадена от Локална папка
-            console.log("Triggering Local Folder sync...");
+            console.log("Triggering Local Folder sync, forceFullSync:", forceFullSync);
             if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
-            updatedCount = await runLocalSync();
+            updatedCount = await runLocalSync(forceFullSync);
             showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 5000);
         } else {
             loaderContainer.style.display = 'none';
-            return; // Не правим нищо, ако базата е от архив
+            return;
         }
         // --- НОВА, ПО-ЕФИКАСНА ЛОГИКА ЗА ОБНОВЯВАНЕ ---
         if (updatedCount > 0) {
@@ -7519,7 +7538,7 @@ function filterNotesForDemo() {
 }
 
 
-async function mainLogic() {
+async function mainLogic(forceFullSync = false) {
     const loaderFolderInfo = document.getElementById('loader-folder-info');
     if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
     const settingsOverride = localStorage.getItem('settings_json_full_override'); //@@ прилагане на промени, направени в set.html
@@ -7902,12 +7921,22 @@ async function mainLogic() {
                                             await renderUI({ boardParseError: result.boardParseError });
                                         }
                                     } else {
-                                        updatedCount = await runGoogleDriveSync();
+                                        updatedCount = await runGoogleDriveSync(forceFullSync);
                                     }
                                 } else if (useLocalFolder) {
-                                    updatedCount = await runLocalSync();
+                                    updatedCount = await runLocalSync(forceFullSync);
                                 }
-                                if (updatedCount > 0) {
+                                if (forceFullSync) {
+                                    console.log("[mainLogic] Force full sync finished, refreshing UI...");
+                                    if (useIndexedDb) {
+                                        await fetchAllDataLocal();
+                                        await renderUI({ boardParseError: false });
+                                        showToast(_('dbRebuilt') || 'Local database rebuilt successfully.', 5000);
+                                    } else {
+                                        await renderUI({ boardParseError: false });
+                                        showToast(_('syncSuccess') || 'Successfully synced', 3000);
+                                    }
+                                } else if (updatedCount > 0) {
                                     console.log(`[mainLogic] Background sync finished: ${updatedCount} updates found.`);
                                     await fetchAllDataLocal();
                                     if (updatedNoteGdims.length > 0 && !document.getElementById('modal-body')) {
@@ -8124,13 +8153,20 @@ async function fetchAllDataLocal() {
 /**
  * Управлява процеса на локална синхронизация с файловата система.
  */
-async function runLocalSync() {
+async function runLocalSync(forceFullSync = false) {
     const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
     if (!useIndexedDb) {
         console.log("Skipping local sync because IndexedDB is disabled for this mode.");
         return 0;
     }
-    const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
+    if (forceFullSync) {
+        console.log("[runLocalSync] forceFullSync active: clearing DB stores for full rebuild...");
+        await clearDbStores();
+        boardsData = [];
+        mediaData = [];
+        allNotesData = [];
+    }
+    const lastLocalTimestamp = forceFullSync ? null : await getConfig('lastLocalTimestamp');
     const updateDate = lastLocalTimestamp ? new Date(lastLocalTimestamp) : null;
     let updatedCount = 0;
     const handle = await getDirectoryHandle();
