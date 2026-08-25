@@ -1,0 +1,688 @@
+/**
+ * KB Assistant - Стилове
+ * Цветова гама с CSS променливи за лесна персонализация
+ */
+
+/* ========================================
+   CSS Променливи за цветове
+   ======================================== */
+
+:root {
+    /* Основни цветове на асистента
+    --kb-primary-color: #48b7a2;
+    --kb-primary-dark: #3a9688; */
+    --kb-primary-color: #f59e0b;
+    --kb-primary-dark: #d97706;
+    --kb-primary-light: #5cc9b3;
+
+    /* Акцентни цветове */
+    --kb-accent-color: #48b7a2;
+    --kb-accent-hover: #3a9688;
+
+    /* Фонови цветове */
+    --kb-bg-light: #2d3748;
+    --kb-bg-white: #1a202c;
+    --kb-bg-gray: #2d3748;
+
+    /* Текстови цветове */
+    --kb-text-primary: #2d3748;
+    --kb-text-secondary: #cbd5e0;
+    --kb-text-light: #a0aec0;
+
+    /* Граници */
+    --kb-border-color: #4a5568;
+    --kb-border-light: #edf2f7;
+
+    /* Сенки */
+    --kb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --kb-shadow-md: 0 4px 12px rgba(72, 183, 162, 0.3);
+    --kb-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+
+    /* Scrollbar */
+    --kb-scrollbar-thumb: #cbd5e0;
+    --kb-scrollbar-thumb-hover: #a0aec0;
+}
+
+/* ========================================
+   FAB Button (Floating Action Button)
+   ======================================== */
+
+.kb-fab {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
+    color: white;
+    font-size: 28px;
+    border: none;
+    cursor: pointer;
+    box-shadow: var(--kb-shadow-md);
+    z-index: 9998;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kb-fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(72, 183, 162, 0.6);
+}
+
+.kb-fab:active {
+    transform: scale(0.95);
+}
+
+.kb-fab-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0);
+}
+
+/* ========================================
+   Chat Container
+   ======================================== */
+.kb-assistant-container {
+    position: fixed;
+    bottom: 15px;
+    right: 15px;
+    width: 380px;
+    max-width: calc(100vw - 48px);
+    height: 600px;
+    max-height: calc(100vh - 100px);
+    background: var(--kb-bg-white);
+    border-radius: 16px;
+    border: 5px solid var(--kb-primary-color);
+    box-shadow: var(--kb-shadow-lg);
+    z-index: 10100;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: bottom right;
+}
+
+.kb-assistant-container.kb-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.8) translateY(20px);
+}
+
+/* ========================================
+   Header
+   ======================================== */
+
+.kb-header {
+    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    border-bottom: 1px solid black;
+}
+
+.kb-header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.kb-icon {
+    font-size: 24px;
+}
+
+.kb-close-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    line-height: 1;
+}
+
+.kb-close-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.kb-reload-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    line-height: 1;
+}
+
+.kb-reload-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.kb-spin {
+    animation: kbSpin 1s linear infinite;
+}
+
+@keyframes kbSpin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ========================================
+   Chat Messages
+   ======================================== */
+
+.kb-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--kb-bg-light);
+    overscroll-behavior: contain;
+}
+
+.kb-chat-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+.kb-chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.kb-chat-messages::-webkit-scrollbar-thumb {
+    background: var(--kb-scrollbar-thumb);
+    border-radius: 3px;
+}
+
+.kb-chat-messages::-webkit-scrollbar-thumb:hover {
+    background: var(--kb-scrollbar-thumb-hover);
+}
+
+/* ========================================
+   Messages
+   ======================================== */
+
+.kb-message {
+    display: flex;
+    gap: 10px;
+    animation: messageSlideIn 0.3s ease-out;
+}
+
+@keyframes messageSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.kb-message-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--kb-bg-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.kb-message-content {
+    flex: 1;
+    background: var(--kb-border-color);
+    padding: 12px 16px;
+    border-radius: 12px;
+    box-shadow: var(--kb-shadow-sm);
+    line-height: 1.5;
+    font-size: 14px;
+    color: #e2e8f0;
+}
+
+.kb-message-user .kb-message-content {
+    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
+    color: #e2e8f0;
+}
+
+.kb-message-user {
+    flex-direction: row-reverse;
+}
+
+/* ========================================
+   Answer Components
+   ======================================== */
+
+.kb-answer {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.kb-answer-text {
+    line-height: 1.6;
+}
+
+.kb-answer-location {
+    font-size: 12px;
+    color: var(--kb-text-secondary);
+    padding: 6px 10px;
+    background: var(--kb-bg-gray);
+    border-radius: 6px;
+    border-left: 3px solid var(--kb-accent-color);
+}
+
+.kb-show-me-btn {
+    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    align-self: flex-start;
+}
+
+.kb-show-me-btn:hover {
+    transform: translateX(4px);
+    box-shadow: var(--kb-shadow-md);
+}
+
+/* ========================================
+   Related Topics
+   ======================================== */
+
+.kb-related {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--kb-border-color);
+}
+
+.kb-related-title {
+    font-size: 12px;
+    color: var(--kb-text-secondary);
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.kb-related-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.kb-related-item {
+    font-size: 11px;
+    padding: 4px 10px;
+    background: var(--kb-bg-light);
+    border-radius: 12px;
+    color: var(--kb-text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.kb-related-item:hover {
+    background: var(--kb-border-color);
+    color: var(--kb-text-primary);
+}
+
+/* ========================================
+   Additional Results
+   ======================================== */
+
+.kb-additional-results {
+    margin-top: 0px;
+}
+
+.kb-additional-title {
+    font-size: 11px;
+    color: var(--kb-primary-color);
+    margin-bottom: 3px;
+    font-weight: 500;
+}
+
+.kb-additional-item {
+    font-size: 12px;
+    padding: 2px 4px;
+    background: var(--kb-bg-gray);
+    border-radius: 6px;
+    margin-bottom: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 2px solid transparent;
+    line-height: 1.2;
+    color: #e2e8f0;
+}
+
+.kb-additional-item:hover {
+    background: var(--kb-border-color) !important;
+    border-left-color: var(--kb-primary-dark) !important;
+    color: white !important;
+}
+
+/* ========================================
+   Loading Animation
+   ======================================== */
+
+.kb-loading-dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.kb-loading-dots span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--kb-scrollbar-thumb);
+    animation: loadingBounce 1.4s infinite ease-in-out both;
+}
+
+.kb-loading-dots span:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.kb-loading-dots span:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+@keyframes loadingBounce {
+
+    0%,
+    80%,
+    100% {
+        transform: scale(0);
+        opacity: 0.5;
+    }
+
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* ========================================
+   Suggestions
+   ======================================== */
+
+.kb-suggestions {
+    padding: 6px 12px 8px 12px;
+    background: #1a202c;
+    border-top: 1px solid var(--kb-border-color);
+    flex-shrink: 0;
+    max-height: 250px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.kb-suggestions-title {
+    font-size: 11px;
+    color: var(--kb-primary-color);
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.kb-suggestions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.kb-suggestion-item {
+    font-size: 12px;
+    padding: 6px 10px;
+    background: var(--kb-bg-gray);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 2px solid transparent;
+    line-height: 1.3;
+    color: #e2e8f0;
+}
+
+.kb-suggestion-item:hover {
+    background: var(--kb-border-color);
+    border-left-color: var(--kb-accent-color);
+    transform: translateX(3px);
+}
+
+/* ========================================
+   Input Container
+   ======================================== */
+
+.kb-input-container {
+    display: flex;
+    gap: 8px;
+    padding: 16px;
+    background: #1a202c;
+    border-top: 1px solid var(--kb-border-color);
+    flex-shrink: 0;
+}
+
+.kb-input {
+    flex: 1;
+    min-width: 0;
+    /* Allows flex item to shrink below content size */
+    background: var(--kb-bg-light);
+    color: #e2e8f0;
+    padding: 10px 14px;
+    border: 2px solid var(--kb-border-color);
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.kb-input::placeholder {
+    color: #718096;
+}
+
+
+.kb-input:focus {
+    border-color: var(--kb-accent-color);
+    box-shadow: 0 0 0 3px rgba(72, 183, 162, 0.1);
+}
+
+.kb-send-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
+    color: white;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.kb-send-btn:hover {
+    transform: scale(1.05);
+    box-shadow: var(--kb-shadow-md);
+}
+
+.kb-send-btn:active {
+    transform: scale(0.95);
+}
+
+/* ========================================
+   Highlight Effect
+   ======================================== */
+
+.kb-highlight {
+    animation: kbPulse 1s ease-in-out 3;
+    outline: 3px solid var(--kb-accent-color) !important;
+    outline-offset: 4px;
+    border-radius: 4px;
+}
+
+@keyframes kbPulse {
+
+    0%,
+    100% {
+        outline-color: var(--kb-accent-color);
+        outline-width: 3px;
+    }
+
+    50% {
+        outline-color: var(--kb-accent-hover);
+        outline-width: 5px;
+    }
+}
+
+/* Компактен padding за допълнителни резултати */
+.kb-compact-padding {
+    padding: 6px 10px !important;
+}
+
+/* ========================================
+   Responsive Design
+   ======================================== */
+
+@media (max-width: 480px) {
+    .kb-assistant-container {
+        width: calc(100vw - 32px);
+        height: calc(100vh - 80px);
+        bottom: 16px;
+        right: 16px;
+    }
+
+    .kb-fab {
+        bottom: 10px;
+        right: 10px;
+        width: 60px;
+        height: 60px;
+        font-size: 20px;
+    }
+}
+
+.kb-history-item:hover {
+    background: var(--kb-primary-color) !important;
+    border-left-color: var(--kb-primary-dark) !important;
+    color: white !important;
+}
+
+/* ========================================
+   Pointer Image
+   ======================================== */
+
+.kb-pointer-image {
+    position: fixed;
+    z-index: 10000;
+    width: 100px;
+    max-width: none;
+    transform-origin: top right;
+    height: auto;
+    pointer-events: auto;
+    cursor: pointer;
+    transition: opacity 0.3s ease;
+    filter: drop-shadow(0 0 2px black) drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.5));
+    animation: kbPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes kbPopIn {
+    from {
+        opacity: 0;
+        transform: translateX(-100%) scale(0.5) translateX(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-100%) scale(1) translateX(0);
+    }
+}
+
+/* Clear Button */
+.kb-clear-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--kb-bg-gray);
+    color: var(--kb-text-secondary);
+    border: 1px solid var(--kb-border-color);
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.kb-clear-btn:hover {
+    background: #e53e3e; /* soft red for delete */
+    color: white;
+    border-color: #c53030;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(229, 62, 62, 0.3);
+}
+
+.kb-clear-btn:active {
+    transform: scale(0.95);
+}
+
+/* History Items Styling */
+.kb-history-item {
+    font-size: 12px;
+    padding: 2px 4px !important;
+    background: var(--kb-bg-gray) !important;
+    border-radius: 6px;
+    margin-bottom: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 2px solid transparent;
+    line-height: 1.2;
+    color: var(--kb-text-primary) !important;
+    border: none;
+    width: 100%;
+    text-align: left;
+    display: block;
+    font-family: inherit;
+}
+
+/* Full screen suggestions mode */
+.kb-assistant-container.kb-full-mode .kb-chat-messages {
+    display: none;
+}
+
+.kb-assistant-container.kb-full-mode .kb-suggestions {
+    flex: 1;
+    max-height: none;
+    overflow-y: auto;
+    border-top: none;
+}

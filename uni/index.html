@@ -12,15 +12,72 @@
 
     <meta http-equiv="Content-Security-Policy"
         content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://pagead2.googlesyndication.com https://ep2.adtrafficquality.google https://cdnjs.buymeacoffee.com https://storage.ko-fi.com https://js.stripe.com; connect-src 'self' https://*.google.com https://script.google.com https://*.googleapis.com https://*.googleusercontent.com https://*.adtrafficquality.google https://*.googlesyndication.com;">
+    <style>
+        body {
+            margin: 0;
+            background-color: #5c3a21;
+            background-image: url('Board.png');
+            font-family: sans-serif;
+        }
+
+        body:not(.app-ready) header,
+        body:not(.app-ready) #add-note-fab,
+        body:not(.app-ready) #scrollTopBtn,
+        body:not(.app-ready) #kb-fab {
+            display: none !important;
+        }
+
+        main {
+            text-align: center;
+        }
+
+        #loader-container {
+            text-align: center;
+            margin: 50px auto;
+            background-color: #fbcb39;
+            padding: 2em;
+            border-radius: 10px;
+            box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+            display: inline-block;
+            width: 300px;
+            box-sizing: border-box;
+        }
+
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1.5s linear infinite;
+            margin: 0 auto;
+        }
+
+        #loader-text {
+            margin-top: 10px;
+            font-size: 1.1em;
+            color: #0a0a0a;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
     <script>
-        (function() {
+        (function () {
             var lang = localStorage.getItem('language') || (navigator.language && navigator.language.startsWith('bg') ? 'bg' : 'en');
-            window.initialTranslationsPromise = fetch('lang/i18n-' + lang + '.json').then(function(r) { return r.json(); }).catch(function() { return null; });
+            window.initialTranslationsPromise = fetch('lang/i18n-' + lang + '.json').then(function (r) { return r.json(); }).catch(function () { return null; });
         })();
     </script>
 </head>
 
-<body style="background-image: url('Board.png');">
+<body style="background-image: url('Board.png'); background-color: #5c3a21;">
     <!-- Вертикална реклама 120х728>
     <ins class="adsbygoogle" style="display:block; width:120px; height:728px; position:fixed; top:80px; right:10px;"
         data-ad-client="ca-pub-5695216104083645" data-ad-slot="3998280324">
@@ -106,47 +163,56 @@
                 style="text-align: center; max-width: 350px; width: 100%; box-sizing: border-box; color: white; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; font-size: 14.5px; line-height: 1.5; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
                 <span data-key="betaVersionText">This is a test (Beta) version of the application.</span><br>
                 <span data-key="betaAccessText">If you wish to get access:</span>
-                <button id="request-access-btn" type="button" class="zoom-btn" style="margin: 8px auto 0 auto; width: 100%; max-width: 260px; display: block; cursor: pointer; box-sizing: border-box;" data-key="requestAccessBtn">Заяви достъп</button>
+                <button id="request-access-btn" type="button" class="zoom-btn"
+                    style="margin: 8px auto 0 auto; width: 100%; max-width: 260px; display: block; cursor: pointer; box-sizing: border-box;"
+                    data-key="requestAccessBtn">Заяви достъп</button>
             </div>
         </div>
 
-        <div class="login-box" style="margin-bottom: 10px; max-width: 350px; width: 100%; box-sizing: border-box; display: none;">
-            <p data-key="loginPrompt" style="margin: 0 0 10px 0;">Please sign in with Google account you used to sync <i>MultiNotes</i>.</p>
-            <button id="authorize_button" data-key="authorizeButton" style="display:none; width: 100%; max-width: 260px; margin: 10px auto 0 auto; box-sizing: border-box;" disabled>Authorize with
+        <div class="login-box"
+            style="margin-bottom: 10px; max-width: 350px; width: 100%; box-sizing: border-box; display: none;">
+            <p data-key="loginPrompt" style="margin: 0 0 10px 0;">Please sign in with Google account you used to sync
+                <i>MultiNotes</i>.
+            </p>
+            <button id="authorize_button" data-key="authorizeButton"
+                style="display:none; width: 100%; max-width: 260px; margin: 10px auto 0 auto; box-sizing: border-box;"
+                disabled>Authorize with
                 Google</button>
-            <button id="trialBtn" data-key="trialButton" style="display:none; width: 100%; max-width: 260px; margin: 10px auto 0 auto; box-sizing: border-box;">Start 30-day trial period</button>
-            <div id="remember-me-container" style="margin-top: 10px; background: #ffffff; padding: 10px 12px; border-radius: 6px; border: 1px solid #e57373; width: 100%; box-sizing: border-box;">
+            <button id="trialBtn" data-key="trialButton"
+                style="display:none; width: 100%; max-width: 260px; margin: 10px auto 0 auto; box-sizing: border-box;">Start
+                30-day trial period</button>
+            <div id="remember-me-container"
+                style="margin-top: 10px; background: #ffffff; padding: 10px 12px; border-radius: 6px; border: 1px solid #e57373; width: 100%; box-sizing: border-box;">
                 <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 6px;">
-                    <label for="rememberMe" style="margin: 0; cursor: pointer; color: #222; font-weight: 500;" data-key="rememberMeLabel">
+                    <label for="rememberMe" style="margin: 0; cursor: pointer; color: #222; font-weight: 500;"
+                        data-key="rememberMeLabel">
                         Remember me</label>
-                    <input type="checkbox" id="rememberMe" class="settings-checkbox" style="margin: 0; cursor: pointer;">
+                    <input type="checkbox" id="rememberMe" class="settings-checkbox"
+                        style="margin: 0; cursor: pointer;">
                 </div>
-                <div id="rememberMeHint" data-key="rememberMeHint" style="font-size: 0.85em; color: #d32f2f; font-weight: bold; line-height: 1.4; text-align: left;">When checked, you will not be asked to sign in next time you open the app. Do not check this or choose Sign Out after finishing if this is not your personal device.</div>
+                <div id="rememberMeHint" data-key="rememberMeHint"
+                    style="font-size: 0.85em; color: #d32f2f; font-weight: bold; line-height: 1.4; text-align: left;">
+                    When checked, you will not be asked to sign in next time you open the app. Do not check this or
+                    choose Sign Out after finishing if this is not your personal device.</div>
             </div>
         </div>
 
         <section style="max-width: 800px; margin: 0 auto;">
-            <p data-key="intro1"><strong>CX Notes</strong> is a simple, browser‑based tool that lets you open your <a
-                    href="https://play.google.com/store/apps/details?id=monitor.kmv.multinotes"
-                    target="_blank"><strong>Multinotes</strong></a> Android notes on any device — your computer, tablet,
+            <p data-key="intro1"><strong>CX Notes</strong> is a simple, browser‑based tool that lets you open your notes
+                on any device — your computer, tablet,
                 iPhone, or anything else you use, no matter if you’re on Windows, Android, macOS, iOS, or Linux.</p>
-            <p data-key="intro1a">This feature is currently available exclusively to users of the <b>MultiNotes</b>
-                Android version downloaded from <b>Google Play</b>, with <b>Google Drive</b> sync enabled. Support for
-                the <b>Huawei</b> version is coming soon, so stay tuned for updates.</p>
             <p data-key="intro2">With <strong>CX Notes</strong>, you can get to your notes quickly, without installing
                 anything — and it even works offline when you need it. Your browser keeps a local copy of your notes and
                 updates it automatically whenever something new is added or changed, so everything stays fast and
                 smooth.</p>
             <h3 data-key="modeDbTitle">Here is how it works:</h3>
-            <!--p data-key="modeDbDesc">Този режим е активен по подразбиране и предлага най-добро съчетание между бързина,
-            ефективност и независимост от интернет връзка.</p-->
             <ul>
-                <li data-key="modeDbPoint1">On the first launch, the viewer downloads all your notes from <strong>Google
+                <li data-key="modeDbPoint1">On the first launch, the app downloads all your notes from <strong>Google
                         Drive</strong> and stores them in a local database (cache) inside your browser.</li>
                 <li data-key="modeDbPoint2">After that, everything loads directly from this local copy. The app only
                     checks for new or updated notes since your last visit, which makes things much faster.</li>
                 <li data-key="modeDbPoint3">If you turn off <strong>Google Drive</strong> in <strong>Settings</strong>
-                    after the initial load, the viewer will use only the local database. This speeds things up even more
+                    after the initial load, the app will use only the local database. This speeds things up even more
                     and even lets you work offline. Just keep in mind that no updates will be checked in this mode, so
                     it’s a good idea to click the <strong>Mode</strong> button from time to time to refresh your notes.
                 </li>
@@ -154,7 +220,7 @@
             <h3 data-key="modeNoDbTitle">Mode without Database</h3>
             <ul>
                 <li data-key="modeNoDbPoint1">If you turn off the <strong>Database</strong> option in
-                    <strong>Settings</strong> after the initial load, the viewer will pull your notes directly from
+                    <strong>Settings</strong> after the initial load, the app will pull your notes directly from
                     <strong>Google Drive</strong> every time you open it.
                 </li>
                 <li data-key="modeNoDbPoint2">This way, you’ll always see the most up‑to‑date version of your data.</li>
@@ -207,10 +273,30 @@
     </div>
 
 
-    <main>
-        <div id="loader-container" style="display: none;">
+    <main style="text-align: center;">
+        <div id="loader-container">
+            <h3 id="loader-title" style="margin-top: 0; margin-bottom: 5px;" data-key="dataFolderSelectionTitle">Welcome
+                to <b><big>CX Notes</big></b>!</h3>
+            <div id="loader-folder-info" style="font-size: 0.9em; opacity: 0.8; margin-bottom: 15px;"></div>
             <div class="loader"></div>
             <div id="loader-text"></div>
+            <script>
+                (function () {
+                    try {
+                        var lang = localStorage.getItem('language') || (navigator.language && navigator.language.startsWith('bg') ? 'bg' : 'en');
+                        var isBg = lang.startsWith('bg');
+                        var isSetupDone = localStorage.getItem('initial_setup_complete') === 'true' || localStorage.getItem('folderSetupDone') === 'true' || localStorage.getItem('active_folder_name');
+                        var lt = document.getElementById('loader-title');
+                        if (lt) {
+                            if (isSetupDone) {
+                                lt.textContent = isBg ? 'Зареждане на данни...' : 'Data loading...';
+                            } else {
+                                lt.innerHTML = isBg ? 'Добре дошли в <b><big>CX Notes</big></b>!' : 'Welcome to <b><big>CX Notes</big></b>!';
+                            }
+                        }
+                    } catch (e) { }
+                })();
+            </script>
         </div>
         <div id="notes-container"></div>
         <div id="calendar-container" style="display: none;"></div>
@@ -1017,7 +1103,7 @@
     <link rel="stylesheet" href="msmstyle.css">
     <link rel="stylesheet" href="kb-assistant.css">
     <script src="kb-assistant.js"></script>
-    <script src="msm.js"></script>
+    <script src="msmrt.js"></script>
     <script src="main.js"></script>
     <script src="fs.js"></script>
     <script>
@@ -1123,49 +1209,62 @@
 
     <!-- Request Access Modal -->
     <div id="request-access-modal" class="modal-overlay">
-        <div class="modal-content-box set-modal" style="max-width: 480px; width: 95%; height: auto; max-height: 90vh; overflow-y: auto; padding: 20px; box-sizing: border-box;">
-            <h2 style="margin-top: 0; margin-bottom: 15px; text-align: center; color: #333; font-size: 1.3em;" data-key="requestAccessTitle">Request Access</h2>
-            
-            <form id="request-access-form" onsubmit="return false;" style="display: flex; flex-direction: column; gap: 12px; font-size: 14px; color: #333; text-align: left;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="req-sync-enabled" class="settings-checkbox" style="margin: 0; cursor: pointer; flex-shrink: 0;">
-                    <label for="req-sync-enabled" style="cursor: pointer; line-height: 1.3;" data-key="reqSyncEnabledLabel">Google Drive sync is enabled in MultiNotes</label>
-                </div>
+        <div class="modal-content-box set-modal"
+            style="max-width: 480px; width: 95%; height: auto; max-height: 90vh; overflow-y: auto; padding: 20px; box-sizing: border-box;">
+            <h2 style="margin-top: 0; margin-bottom: 15px; text-align: center; color: #333; font-size: 1.3em;"
+                data-key="requestAccessTitle">Request Access</h2>
 
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="req-folder-exists" class="settings-checkbox" style="margin: 0; cursor: pointer; flex-shrink: 0;">
-                    <label for="req-folder-exists" style="cursor: pointer; line-height: 1.3;" data-key="reqFolderExistsLabel">I verified that the folder multinotes_data exists in Google Drive</label>
-                </div>
-
+            <form id="request-access-form" onsubmit="return false;"
+                style="display: flex; flex-direction: column; gap: 12px; font-size: 14px; color: #333; text-align: left;">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <label for="req-email" style="font-weight: 500;" data-key="reqEmailLabel">The following email is used for sync:</label>
-                    <input type="email" id="req-email" data-key-placeholder="reqEmailPlaceholder" placeholder="example@gmail.com" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
+                    <label for="req-email" style="font-weight: 500;" data-key="reqEmailLabel">The following email is
+                        used for sync:</label>
+                    <input type="email" id="req-email" data-key-placeholder="reqEmailPlaceholder"
+                        placeholder="example@gmail.com"
+                        style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="req-folder-exists" class="settings-checkbox"
+                        style="margin: 0; cursor: pointer; flex-shrink: 0;">
+                    <label for="req-folder-exists" style="cursor: pointer; line-height: 1.3;"
+                        data-key="reqFolderExistsLabel">I've confirmed that this email address has access to Google Drive.</label>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <label for="req-name" style="font-weight: 500;" data-key="reqNameLabel">Name:</label>
-                    <input type="text" id="req-name" data-key-placeholder="reqNamePlaceholder" placeholder="Your name" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
+                    <input type="text" id="req-name" data-key-placeholder="reqNamePlaceholder" placeholder="Your name"
+                        style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <label for="req-country" style="font-weight: 500;" data-key="reqCountryLabel">Country:</label>
-                    <input type="text" id="req-country" data-key-placeholder="reqCountryPlaceholder" placeholder="Country" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
+                    <input type="text" id="req-country" data-key-placeholder="reqCountryPlaceholder"
+                        placeholder="Country"
+                        style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%;">
                 </div>
 
                 <div style="margin-top: 5px; text-align: center;">
-                    <button id="req-submit-btn" type="button" class="zoom-btn" disabled style="padding: 8px 24px; font-size: 14px; cursor: not-allowed; font-weight: bold; opacity: 0.5;" data-key="reqSubmitBtn">Submit</button>
+                    <button id="req-submit-btn" type="button" class="zoom-btn" disabled
+                        style="padding: 8px 24px; font-size: 14px; cursor: not-allowed; font-weight: bold; opacity: 0.5;"
+                        data-key="reqSubmitBtn">Submit</button>
                 </div>
             </form>
 
             <div id="req-result-container" style="display: none; margin-top: 15px; text-align: left;">
-                <label style="display: block; font-weight: 500; font-size: 13px; color: #222; margin-bottom: 6px;" data-key="reqCopyInstructions">
+                <label style="display: block; font-weight: 500; font-size: 13px; color: #222; margin-bottom: 6px;"
+                    data-key="reqCopyInstructions">
                     Copy this text and send it to multinotes.web@gmail.com
                 </label>
                 <div style="position: relative;">
-                    <textarea id="req-result-text" readonly rows="7" style="width: 100%; box-sizing: border-box; padding: 10px 65px 10px 10px; font-family: monospace; font-size: 13px; border: 1px solid #aaa; border-radius: 4px; background: #fff; resize: vertical; line-height: 1.4;"></textarea>
-                    <button id="req-copy-btn" type="button" data-key-title="copyTooltip" title="Copy" style="position: absolute; top: 6px; right: 6px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <textarea id="req-result-text" readonly rows="7"
+                        style="width: 100%; box-sizing: border-box; padding: 10px 65px 10px 10px; font-family: monospace; font-size: 13px; border: 1px solid #aaa; border-radius: 4px; background: #fff; resize: vertical; line-height: 1.4;"></textarea>
+                    <button id="req-copy-btn" type="button" data-key-title="copyTooltip" title="Copy"
+                        style="position: absolute; top: 6px; right: 6px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                            stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
                             <rect x="8" y="8" width="12" height="12" rx="2" />
                             <path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" />
                         </svg>
@@ -1175,8 +1274,10 @@
             </div>
 
             <div style="display: flex; justify-content: space-between; margin-top: 20px; gap: 10px;">
-                <button id="req-cancel-btn" type="button" class="zoom-btn" style="flex: 1; padding: 8px 16px; cursor: pointer;" data-key="cancelButton">Cancel</button>
-                <button id="req-close-btn" type="button" class="zoom-btn" style="flex: 1; padding: 8px 16px; cursor: pointer;" data-key="closeButton">Close</button>
+                <button id="req-cancel-btn" type="button" class="zoom-btn"
+                    style="flex: 1; padding: 8px 16px; cursor: pointer;" data-key="cancelButton">Cancel</button>
+                <button id="req-close-btn" type="button" class="zoom-btn"
+                    style="flex: 1; padding: 8px 16px; cursor: pointer;" data-key="closeButton">Close</button>
             </div>
         </div>
     </div>
@@ -1193,7 +1294,6 @@
             const resultContainer = document.getElementById('req-result-container');
             const resultText = document.getElementById('req-result-text');
             const form = document.getElementById('request-access-form');
-            const syncCheckbox = document.getElementById('req-sync-enabled');
             const folderCheckbox = document.getElementById('req-folder-exists');
             const emailInput = document.getElementById('req-email');
             const nameInput = document.getElementById('req-name');
@@ -1231,7 +1331,7 @@
                     if (window._langCache[lang] && window._langCache[lang][key]) {
                         return window._langCache[lang][key];
                     }
-                } catch (e) {}
+                } catch (e) { }
                 return fallback;
             };
             const updateModalLanguage = () => {
@@ -1254,7 +1354,6 @@
             };
             const validateForm = () => {
                 const isValid = Boolean(
-                    syncCheckbox && syncCheckbox.checked &&
                     folderCheckbox && folderCheckbox.checked &&
                     emailInput && emailInput.value.trim().length > 0 &&
                     nameInput && nameInput.value.trim().length > 0 &&
@@ -1284,19 +1383,16 @@
             const generateText = () => {
                 if (submitBtn && submitBtn.disabled) return;
                 const headerVal = getTranslation('reqHeader', 'Request for access to CX MultiNotes Viewer:');
-                const syncLabel = getTranslation('reqSyncEnabledLabel', 'Google Drive sync is enabled in MultiNotes');
-                const folderLabel = getTranslation('reqFolderExistsLabel', 'I verified that the folder multinotes_data exists in Google Drive');
+                const folderLabel = getTranslation('reqFolderExistsLabel', "I've confirmed that this email address has access to Google Drive.");
                 const emailLabel = getTranslation('reqEmailLabel', 'The following email is used for sync:');
                 const nameLabel = getTranslation('reqNameLabel', 'Name:');
                 const countryLabel = getTranslation('reqCountryLabel', 'Country:');
                 const yesVal = getTranslation('reqYes', 'Yes');
-                const noVal = getTranslation('reqNo', 'No');
-                const syncVal = syncCheckbox?.checked ? yesVal : noVal;
-                const folderVal = folderCheckbox?.checked ? yesVal : noVal;
+                const folderVal = folderCheckbox?.checked ? yesVal : getTranslation('reqNo', 'No');
                 const emailVal = emailInput?.value.trim() || '';
                 const nameVal = nameInput?.value.trim() || '';
                 const countryVal = countryInput?.value.trim() || '';
-                const text = `${headerVal}\n- ${syncLabel}: ${syncVal}\n- ${folderLabel}: ${folderVal}\n- ${emailLabel} ${emailVal}\n- ${nameLabel} ${nameVal}\n- ${countryLabel} ${countryVal}`;
+                const text = `${headerVal}\n- ${emailLabel} ${emailVal}\n- ${folderLabel}: ${folderVal}\n- ${nameLabel} ${nameVal}\n- ${countryLabel} ${countryVal}`;
                 if (resultText) resultText.value = text;
                 if (resultContainer) {
                     resultContainer.style.display = 'block';

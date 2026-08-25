@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.46'; // App version
+const version = 'Beta 1.47'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -575,24 +575,19 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
         // продължаваме с работната папка на web приложението, вместо да
         // прекъсваме началното зареждане с грешка.
         const isFirstRun = !folderIdFromPrompt && localStorage.getItem('initial_setup_complete') !== 'true';
-        if (isFirstRun && activeFolderName !== 'AppDataFolder') {
-            console.warn('[FirstRun] Active folder was not found. Switching to AppDataFolder.');
-            activeFolderName = 'AppDataFolder';
+        if (isFirstRun && activeFolderName !== 'CX-Notes') {
+            console.warn('[FirstRun] Active folder was not found. Switching to CX-Notes.');
+            activeFolderName = 'CX-Notes';
             localStorage.setItem('active_folder_name', activeFolderName);
             clearCachedMainFolderId();
             ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
             cachedMainFolderId = null;
             folderIds = {};
-
-            // Няма открита папка на MultiNotes, затова не запазваме стари или
-            // подразбиращи се записи за multinotes_data в списъка с папки.
-            localStorage.setItem('gdrive_folder_names', JSON.stringify(['AppDataFolder']));
-
+            localStorage.setItem('gdrive_folder_names', JSON.stringify(['CX-Notes']));
             const loaderFolderInfo = document.getElementById('loader-folder-info');
             if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-            if (typeof showToast === 'function') showToast(_('firstRunAppDataFolderSelected'), 7000);
-
-            return fetchAllData('appDataFolder', modifiedSince);
+            const cxNotesId = await getFolderIDByName('CX-Notes');
+            return fetchAllData(cxNotesId || null, modifiedSince);
         }
         if (useIndexedDb && useGoogleDb) {
             try {
@@ -603,7 +598,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
                 }
             } catch (e) { }
         }
-        // 3. Папката не е намерена и multinotes_data също я няма — предлагаме да я създадем или да превключим към AppDataFolder
+        // 3. Папката не е намерена и multinotes_data също я няма — предлагаме да я създадем или да превключим към CX-Notes
         if (activeFolderName !== 'AppDataFolder') {
             const confirmMsg = (_('folderNotFoundCreate') || `Folder "${activeFolderName}" was not found in Google Drive. Create it now?`)
                 .replace('{folder}', activeFolderName);
@@ -622,15 +617,22 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
                     if (typeof showToast === 'function') showToast(_('errorCreateFolder') || 'Failed to create folder.', 5000);
                 }
             }
-            // Потребителят отказа или създаването се провали — превключваме към AppDataFolder
-            console.warn('[fetchAllData] Falling back to AppDataFolder.');
-            activeFolderName = 'AppDataFolder';
+            // Потребителят отказа или създаването се провали — превключваме към CX-Notes
+            console.warn('[fetchAllData] Falling back to CX-Notes.');
+            activeFolderName = 'CX-Notes';
             localStorage.setItem('active_folder_name', activeFolderName);
             clearCachedMainFolderId();
             ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
             cachedMainFolderId = null;
             folderIds = {};
-            return fetchAllData('appDataFolder', modifiedSince);
+            const cxFallbackId = await getFolderIDByName('CX-Notes');
+            if (cxFallbackId) {
+                setCachedMainFolderId('CX-Notes', cxFallbackId);
+                cachedMainFolderId = cxFallbackId;
+                return fetchAllData(cxFallbackId, modifiedSince);
+            }
+            showMessagePopup(_('errorFolderNotFound'));
+            throw new Error('Main folder ID not found.');
         }
         showMessagePopup(_('errorFolderNotFound'));
         throw new Error("Main folder ID not found.");
@@ -1178,7 +1180,7 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                                     localStorage.removeItem('gdrive_folder_names');
                                     sessionStorage.removeItem('first_run_lock');
                                     ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
-                                    activeFolderName = 'AppDataFolder';
+                                    activeFolderName = 'CX-Notes';
                                     cachedMainFolderId = null;
                                     folderIds = {};
                                 }
@@ -2424,9 +2426,16 @@ async function getMultinotesDataFolderID() {
 // INITIAL FOLDER SETUP FUNCTIONS (for new users)
 // =================================================================================
 
-// =================================================================================
-// FOLDER CONFIG MANAGEMENT - AppDataFolder as source of truth
-// =================================================================================
+function getStoredTokenData() {
+    if (typeof authToken !== 'undefined' && authToken && authToken.access_token) return authToken;
+    try {
+        const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+        console.warn('[getStoredTokenData] Error parsing token:', e);
+        return null;
+    }
+}
 
 /**
  * Прочита конфигурацията от AppDataFolder (source of truth)
@@ -2440,7 +2449,7 @@ async function readFolderConfigFromAppData() {
             return null;
         }
 
-        const query = `name='app-config.json' and mimeType='application/json' and trashed=false`;
+        const query = `name='app-config.json' and mimeType='application/json'`;
         const response = await fetch(
             `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=id,name`,
             {
@@ -2499,7 +2508,7 @@ async function writeFolderConfigToAppData(config) {
             timestamp: Date.now()
         });
 
-        const query = `name='app-config.json' and mimeType='application/json' and spaces='appDataFolder' and trashed=false`;
+        const query = `name='app-config.json' and mimeType='application/json'`;
         const searchResponse = await fetch(
             `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=id`,
             {
@@ -2682,10 +2691,74 @@ async function showInitialDataFolderModal() {
         };
         document.getElementById('initial-modal-option-1')?.addEventListener('click', onOption1);
         document.getElementById('initial-modal-option-2')?.addEventListener('click', onOption2);
+        if (loaderContainer) loaderContainer.style.display = 'none';
         popup.classList.add('show');
     });
 }
 
+
+// =====================================================================
+// MIGRATION BLOCK: AppDataFolder → CX-Notes  (еднократна, може да се
+// премахне/коментира след като всички потребители са мигрирали)
+// =====================================================================
+async function migrateAppDataFolderToCXNotes() {
+    const MIGRATION_KEY = 'appdata_to_cxnotes_migration_done';
+    if (localStorage.getItem(MIGRATION_KEY) === 'true') return false;
+    if (localStorage.getItem('active_folder_name') !== 'AppDataFolder') return false;
+    console.log('[Migration] Detected legacy AppDataFolder user. Starting migration to CX-Notes...');
+    const loaderTitle = document.getElementById('loader-title');
+    const loaderTextEl = typeof loaderText !== 'undefined' ? loaderText : document.getElementById('loader-text');
+    if (loaderTitle) loaderTitle.textContent = _('migratingData') || 'Migrating data...';
+    if (loaderTextEl) loaderTextEl.textContent = 'AppDataFolder → CX-Notes';
+    try {
+        // 1. Зареждаме данните от AppDataFolder в паметта (без запис в DB)
+        const result = await fetchAllData('appDataFolder', null);
+        if (!result || result.error) {
+            console.error('[Migration] Failed to load data from AppDataFolder.');
+            localStorage.setItem(MIGRATION_KEY, 'true'); // Пропускаме при следващо зареждане
+            return false;
+        }
+        // 2. Намираме или създаваме CX-Notes папка
+        let cxNotesId = await getFolderIDByName('CX-Notes');
+        if (!cxNotesId) cxNotesId = await createNewGDriveFolder('CX-Notes');
+        if (!cxNotesId) {
+            console.error('[Migration] Cannot find or create CX-Notes folder.');
+            return false;
+        }
+        // 3. Копираме данните в CX-Notes чрез съществуващата функция
+        const migrationSuccess = await migrateDataToNewFolder(cxNotesId);
+        if (!migrationSuccess) {
+            console.error('[Migration] migrateDataToNewFolder failed.');
+            return false;
+        }
+        // 4. Обновяваме localStorage и паметта
+        localStorage.setItem('active_folder_name', 'CX-Notes');
+        activeFolderName = 'CX-Notes';
+        setCachedMainFolderId('CX-Notes', cxNotesId);
+        cachedMainFolderId = cxNotesId;
+        localStorage.setItem('activeFolderId', cxNotesId);
+        localStorage.setItem('folderSetupDone', 'true');
+        localStorage.setItem('folderSetupMode', 'create_empty');
+        localStorage.setItem('initial_setup_complete', 'true');
+        const folderNames = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]')
+            .filter(n => n && n !== 'AppDataFolder');
+        if (!folderNames.includes('CX-Notes')) folderNames.push('CX-Notes');
+        localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
+        // 5. Записваме конфигурацията в AppDataFolder (source of truth)
+        await writeFolderConfigToAppData({ activeFolderId: cxNotesId, folderSetupMode: 'create_empty', folderSetupDone: true });
+        // 6. Маркираме миграцията като завършена
+        localStorage.setItem(MIGRATION_KEY, 'true');
+        console.log('[Migration] Done. CX-Notes ID: ' + cxNotesId + '. AppDataFolder kept as backup.');
+        if (typeof showToast === 'function') showToast(_('migrationSuccess') || 'Data migrated to CX-Notes.', 6000);
+        return true; // → caller прави location.reload()
+    } catch (e) {
+        console.error('[Migration] Unexpected error:', e);
+        return false;
+    }
+}
+// =====================================================================
+// END MIGRATION BLOCK
+// =====================================================================
 
 /**
  * Завършва първоначалното съзнаване на папката
@@ -2698,16 +2771,36 @@ async function completeInitialFolderSetup() {
         console.warn('[Initial Setup] Error reading AppDataFolder config:', e);
     }
     if (appConfig && appConfig.activeFolderId && appConfig.folderSetupDone) {
-        console.log('[Initial Setup] Found existing config in AppDataFolder, restoring...');
-        cachedMainFolderId = appConfig.activeFolderId;
-        setCachedMainFolderId('CX-Notes', appConfig.activeFolderId);
-        activeFolderName = 'CX-Notes';
-        localStorage.setItem('active_folder_name', 'CX-Notes');
-        localStorage.setItem('activeFolderId', appConfig.activeFolderId);
-        localStorage.setItem('folderSetupDone', 'true');
-        localStorage.setItem('folderSetupMode', appConfig.folderSetupMode || 'create_empty');
-        localStorage.setItem('initial_setup_complete', 'true');
-        return;
+        console.log('[Initial Setup] Found existing config in AppDataFolder, verifying folder exists...');
+        let folderIsValid = false;
+        try {
+            const tokenData = getStoredTokenData();
+            if (tokenData && tokenData.access_token) {
+                const verifyResp = await fetch(
+                    `https://www.googleapis.com/drive/v3/files/${appConfig.activeFolderId}?fields=id,trashed`,
+                    { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } }
+                );
+                if (verifyResp.ok) {
+                    const verifyData = await verifyResp.json();
+                    folderIsValid = !verifyData.trashed;
+                }
+            }
+        } catch (e) {
+            console.warn('[Initial Setup] Error verifying folder ID from AppDataFolder config:', e);
+        }
+        if (folderIsValid) {
+            console.log('[Initial Setup] Folder verified. Restoring config...');
+            cachedMainFolderId = appConfig.activeFolderId;
+            setCachedMainFolderId('CX-Notes', appConfig.activeFolderId);
+            activeFolderName = 'CX-Notes';
+            localStorage.setItem('active_folder_name', 'CX-Notes');
+            localStorage.setItem('activeFolderId', appConfig.activeFolderId);
+            localStorage.setItem('folderSetupDone', 'true');
+            localStorage.setItem('folderSetupMode', appConfig.folderSetupMode || 'create_empty');
+            localStorage.setItem('initial_setup_complete', 'true');
+            return;
+        }
+        console.warn('[Initial Setup] Folder from AppDataFolder config not found in Drive (deleted?). Falling through to name search...');
     }
     let existingCxNotesId = null;
     try {
@@ -2733,6 +2826,9 @@ async function completeInitialFolderSetup() {
     }
     const choice = await showInitialDataFolderModal();
     const mode = choice === 'option_1' ? 'import_migrate' : 'create_empty';
+    if (loaderContainer) loaderContainer.style.display = 'block';
+    const loaderFolderInfoEl = document.getElementById('loader-folder-info');
+    if (loaderFolderInfoEl) loaderFolderInfoEl.textContent = '(CX-Notes)';
     if (mode === 'import_migrate') {
         if (typeof tokenClient !== 'undefined') {
             await new Promise((resolve) => {
@@ -4694,9 +4790,15 @@ async function startApp(isExplicitLogin = false) {
         // Преводите вече са заредени от IIFE — не дублираме setLanguage()
         initApp(); // Инициализира UI елементите и event listeners
 
-        // Актуализираме текста на лоудъра след зареждане на преводите
         const lt = document.getElementById('loader-title');
-        if (lt) lt.textContent = typeof _ === 'function' ? _('initialDataLoad') : 'Initial Data Load';
+        if (lt) {
+            const isInitialSetup = !isOffline && (typeof needsInitialFolderSetup === 'function' && needsInitialFolderSetup());
+            if (isInitialSetup) {
+                lt.innerHTML = _('dataFolderSelectionTitle') || 'Welcome to <b><big>CX Notes</big></b>!';
+            } else {
+                lt.textContent = _('initialDataLoad') || 'Initial Data Load';
+            }
+        }
 
         // --- КОРЕКЦИЯ: Осигуряваме наличност на имейла при безшумен старт ---
         // Използваме САМО записания от логина hint (ако е избрано 'Запомни ме'),
@@ -4852,11 +4954,13 @@ function showAppUI() {
 }
 
 function _(key) {
-    if (!appTranslations[currentLang]) {
-        // Fallback: This should rarely happen if loadTranslations was awaited
-        return key;
+    if (appTranslations && appTranslations[currentLang] && appTranslations[currentLang][key] !== undefined) {
+        return appTranslations[currentLang][key];
     }
-    return appTranslations[currentLang][key] || key;
+    if (window._langCache && window._langCache[currentLang] && window._langCache[currentLang][key] !== undefined) {
+        return window._langCache[currentLang][key];
+    }
+    return '';
 }
 
 function hideToast() {
@@ -5367,7 +5471,10 @@ function initApp() {
         loaderFolderInfo.style.marginBottom = '15px';
         loaderTitle.after(loaderFolderInfo);
     }
-    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+    if (loaderFolderInfo) {
+        const isInitialSetup = !isOffline && (typeof needsInitialFolderSetup === 'function' && needsInitialFolderSetup());
+        loaderFolderInfo.textContent = isInitialSetup ? '' : `(${activeFolderName})`;
+    }
     // --- Add Cancel Button to Loader (Idempotent) ---
     let cancelButton = document.getElementById('cancel-load-btn');
     if (!cancelButton) {
@@ -6835,6 +6942,9 @@ function handleSignoutClick() {
     sessionStorage.removeItem('google_auth_email_hint');
     localStorage.removeItem('google_login_hint');
     clearCachedMainFolderId();
+    localStorage.removeItem('activeFolderId');
+    localStorage.removeItem('folderSetupDone');
+    localStorage.removeItem('folderSetupMode');
     localStorage.removeItem('gdrive_folder_id_Other');
     localStorage.removeItem('gdrive_folder_id_Sound');
     localStorage.removeItem('gdrive_folder_id_Video');
@@ -6850,12 +6960,15 @@ async function handleAccountSwitchReset(previousEmail, newEmail) {
     console.warn(`[AccountSwitch] Account changed from ${previousEmail} to ${newEmail}. Resetting state and deleting old local database.`);
     localStorage.removeItem('active_folder_name');
     clearCachedMainFolderId();
+    localStorage.removeItem('activeFolderId');
+    localStorage.removeItem('folderSetupDone');
+    localStorage.removeItem('folderSetupMode');
     localStorage.removeItem('initial_setup_complete');
     localStorage.removeItem('settings_multinotes_data');
     localStorage.removeItem('gdrive_folder_names');
     sessionStorage.removeItem('first_run_lock');
     ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
-    activeFolderName = 'AppDataFolder';
+    activeFolderName = 'CX-Notes';
     cachedMainFolderId = null;
     folderIds = {};
     allNotesData = [];
@@ -6885,13 +6998,14 @@ async function handleAccountSwitchReset(previousEmail, newEmail) {
 async function userCheck() {
     if (!dbExists) {
         isDbOwner = true;
-        return;
+        return false;
     }
     const storedUserEmail = await getConfig('userEmail');
     const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint');
     if (storedUserEmail && currentUserEmail && storedUserEmail.toLowerCase() !== currentUserEmail.toLowerCase()) {
         await handleAccountSwitchReset(storedUserEmail, currentUserEmail);
         isDbOwner = true;
+        return true; // сигнализира смяна на акаунт
     } else {
         isDbOwner = true;
         const dbFolderName = await getConfig('dbCreatedFolderName');
@@ -6899,6 +7013,7 @@ async function userCheck() {
             localStorage.setItem('active_folder_name', dbFolderName);
             activeFolderName = dbFolderName;
         }
+        return false;
     }
 }
 
@@ -7539,8 +7654,12 @@ function filterNotesForDemo() {
 
 
 async function mainLogic(forceFullSync = false) {
+    if (!appTranslations[currentLang]) {
+        await loadTranslations(currentLang);
+    }
+    const isInitialSetupNeeded = !isOffline && (typeof needsInitialFolderSetup === 'function' && needsInitialFolderSetup());
     const loaderFolderInfo = document.getElementById('loader-folder-info');
-    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+    if (loaderFolderInfo) loaderFolderInfo.textContent = isInitialSetupNeeded ? '' : `(${activeFolderName})`;
     const settingsOverride = localStorage.getItem('settings_json_full_override'); //@@ прилагане на промени, направени в set.html
     if (settingsOverride) {
         localStorage.removeItem('settings_json_full_override');
@@ -7641,7 +7760,12 @@ async function mainLogic(forceFullSync = false) {
             dbSourceGlobal = 1; // 1: Google Drive
             dbNoteIdTypeGlobal = 'gdid';
         }
-        initializeLoad(); // Resets state and shows the loader screen
+        initializeLoad(true); // Resets state and shows the loader screen
+        if (isInitialSetupNeeded) {
+            const loaderTitleEl = document.getElementById('loader-title');
+            if (loaderTitleEl) loaderTitleEl.innerHTML = _('dataFolderSelectionTitle') || 'Welcome to <b><big>CX Notes</big></b>!';
+            if (loaderFolderInfo) loaderFolderInfo.textContent = '';
+        }
         let hasLocalData = false;
         let boardsInDb = [];
         if (useIndexedDb || localStorage.getItem('useIndexedDb') !== 'false') {
@@ -7674,8 +7798,18 @@ async function mainLogic(forceFullSync = false) {
                 }
                 authToken = authResult.tokenData;
             }
+            // --- MIGRATION BLOCK CALL (премахни заедно с migrateAppDataFolderToCXNotes) ---
+            if (!isOffline) {
+                const migrated = await migrateAppDataFolderToCXNotes();
+                if (migrated) {
+                    console.log('[mainLogic] AppDataFolder→CX-Notes migration completed. Reloading...');
+                    location.reload();
+                    return;
+                }
+            }
+            // --- END MIGRATION BLOCK CALL ---
             if (!isOffline) await loadGlobalFoldersJson();
-            if (!isOffline && needsInitialFolderSetup()) {
+            if (!isOffline && (needsInitialFolderSetup() || !localStorage.getItem('activeFolderId'))) {
                 await completeInitialFolderSetup();
             }
             if (!isOffline) {
@@ -7687,6 +7821,8 @@ async function mainLogic(forceFullSync = false) {
                 }
             }
         }
+        if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
+        if (loaderContainer) loaderContainer.style.display = 'block';
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
         updateModeButton(); // Актуализираме иконата за режим веднага
         if (useIndexedDb && dbExists && boardsInDb.length > 0) {
@@ -7705,26 +7841,33 @@ async function mainLogic(forceFullSync = false) {
                 }
             }
         }
-            // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
-            // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
-            // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
-            if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
-                const dbSource = await getConfig('dbSource');
-                let handleKey = null;
-                if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
-                else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
-                if (handleKey) {
-                    const handle = await getConfig(handleKey);
-                    const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                    if (verifiedHandle) {
-                        dirHandle = verifiedHandle; // Задаваме глобалния handle
-                    } else {
-                        showToast(_('noUpdateMode'), 10000);
-                    }
+        // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
+        // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
+        // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
+        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
+            const dbSource = await getConfig('dbSource');
+            let handleKey = null;
+            if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
+            else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
+            if (handleKey) {
+                const handle = await getConfig(handleKey);
+                const verifiedHandle = handle ? await verifyPermission(handle) : null;
+                if (verifiedHandle) {
+                    dirHandle = verifiedHandle; // Задаваме глобалния handle
+                } else {
+                    showToast(_('noUpdateMode'), 10000);
                 }
             }
-        await userCheck();
+        }
+        const accountSwitched = await userCheck();
         if (isLoadCancelled) return;
+        // Ако userCheck е открил смяна на акаунт и е изтрил DB,
+        // рестартираме приложението чисто за новия потребител.
+        if (accountSwitched) {
+            console.warn('[mainLogic] Account switch detected during mainLogic. Reloading for new user...');
+            location.reload();
+            return;
+        }
         updateGlobalStateFlags();
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
         if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
@@ -10832,12 +10975,13 @@ function applyFilters() {
 /**
  * Initializes the loading process by resetting state and showing the loader.
  */
-function initializeLoad() {
+function initializeLoad(showLoader = true) {
     boardsData = [];
     allNotesData = [];
     notesContainer.innerHTML = ''; // Продължаваме да изчистваме бележките
-    loaderContainer.style.display = 'block'; // Показваме лоудъра веднага
-    // Задаваме първоначален текст, за да избегнем "премигване" на празен панел
+    if (loaderContainer) {
+        loaderContainer.style.display = showLoader ? 'block' : 'none';
+    }
     const loaderTitle = document.getElementById('loader-title');
     if (loaderTitle) loaderTitle.textContent = '';
     currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
@@ -10848,7 +10992,6 @@ function initializeLoad() {
     document.querySelectorAll('.board-filter-link').forEach(link => {
         link.classList.remove('selected-board');
     });
-    // Fix: Remove the old boards note from the header to prevent duplication on reload
     const oldBoardsNote = document.querySelector('header .boards-note');
     if (oldBoardsNote) {
         oldBoardsNote.remove();

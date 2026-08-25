@@ -1,0 +1,712 @@
+{
+    "ui_texts": {
+        "greeting": "Hello! 👋 I'm your assistant. How can I help?",
+        "noResults": "Sorry, I couldn't find an answer to that question. 😔",
+        "suggestions": "You might ask:",
+        "showMe": "Show me",
+        "relatedTopics": "Related topics:",
+        "alsoInterested": "You might also be interested in:",
+        "recentQuestions": "Last questions I answered:",
+        "noRecentQuestions": "No recent questions.",
+        "loading": "Loading...",
+        "error": "An error occurred while loading the knowledge base.",
+        "inputPlaceholder": "Ask a question, ? for history...",
+        "assistantName": "Noto",
+        "assistantTitle": "Assistant",
+        "allQuestionsTitle": "All Questions"
+    },
+    "settings": {
+        "one-tap-link-checkbox": {
+            "label": "One-click links:",
+            "keywords": [
+                "link",
+                "links",
+                "url",
+                "hyperlink",
+                "one click",
+                "single click",
+                "open"
+            ],
+            "question": "How does the <b><i>One-click links</i></b> setting work?",
+            "answer": "When enabled, links are shown in the board view of notes. When disabled, links are available only when opening the note. Find this setting in <b><i>Settings</i></b>."
+        },
+        "remind-board-checkbox": {
+            "label": "Show board Reminders:",
+            "keywords": [
+                "reminders",
+                "board",
+                "show",
+                "display"
+            ],
+            "question": "What is the <b><i>Reminders</i></b> board?",
+            "answer": "The <b><i>Reminders</i></b> board shows all notes that have reminders set. It is shown by default, but you can hide it from <b><i>Settings</i></b>."
+        },
+        "all-board-checkbox": {
+            "label": "Show board All:",
+            "keywords": [
+                "all",
+                "board",
+                "show",
+                "display"
+            ],
+            "question": "What is the <b><i>All</i></b> board?",
+            "answer": "The <b><i>All</i></b> board shows notes from all boards in one place. It is useful for a quick overview. It is disabled by default, but you can show it from <b><i>Settings</i></b>."
+        },
+        "show-photos-board-checkbox": {
+            "label": "Board With Photos:",
+            "keywords": [
+                "photos",
+                "pictures",
+                "images",
+                "board"
+            ],
+            "question": "What is the <b><i>With Photos</i></b> board?",
+            "answer": "The <b><i>With Photos</i></b> board shows only notes that have attached photos. Useful for quick access to notes with images. It is disabled by default, but you can show it from <b><i>Settings</i></b>."
+        },
+        "show-videos-board-checkbox": {
+            "label": "Board With Video:",
+            "keywords": [
+                "video",
+                "videos",
+                "board",
+                "clips"
+            ],
+            "question": "What is the <b><i>With Video</i></b> board?",
+            "answer": "The <b><i>With Video</i></b> board shows only notes that contain attached video files. Useful for quick access to notes with videos. It is disabled by default, but you can show it from <b><i>Settings</i></b>."
+        },
+        "show-sounds-board-checkbox": {
+            "label": "Board With Sounds:",
+            "keywords": [
+                "sounds",
+                "audio",
+                "board",
+                "recordings"
+            ],
+            "question": "What is the <b><i>With Sounds</i></b> board?",
+            "answer": "The <b><i>With Sounds</i></b> board shows only notes that contain attached audio files. Useful for quick access to notes with audio recordings. It is disabled by default, but you can show it from <b><i>Settings</i></b>."
+        },
+        "show-other-board-checkbox": {
+            "label": "Board Other Attachments:",
+            "keywords": [
+                "other",
+                "attachments",
+                "files",
+                "board"
+            ],
+            "question": "What is the <b><i>Other Attachments</i></b> board?",
+            "answer": "The <b><i>Other Attachments</i></b> board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.). You should keep in mind that photos not taken from a note in <b><i>Multinotes</i></b> but are attached as documents will appear in <b><i>With photos</i></b> board."
+        },
+        "weekly-calendar-checkbox": {
+            "label": "Weekly calendar view:",
+            "keywords": [
+                "weekly",
+                "week",
+                "calendar",
+                "view"
+            ],
+            "question": "How to use the weekly calendar?",
+            "answer": "This is the default calendar view. If you prefer the monthly view, uncheck <b><i>Weekly calendar view</i></b> in <b><i>Settings</i></b>. You can switch between monthly and weekly view for a more detailed view of the notes. The calendar can be set as the start board, so that when opening the application you get a view of your tasks for the week/month"
+        },
+        "show-datemod-checkbox": {
+            "label": "Show modification/calendar date:",
+            "keywords": [
+                "date",
+                "time",
+                "modification",
+                "change",
+                "edit",
+                "creation",
+                "show",
+                "display",
+                "see"
+            ],
+            "question": "How to show the modification date of notes?",
+            "answer": "Go to <b><i>Settings</i></b> and check <b><i>Show modification/calendar date</i></b>. This will show the creation/last modification date. For notes placed in the calendar, the calendar date will be shown. For notes that have reminders, the set reminder time will be shown on the right."
+        },
+        "show-time-checkbox": {
+            "label": "Show modification/calendar date:",
+            "keywords": [
+                "time",
+                "reminder",
+                "hour",
+                "show",
+                "display",
+                "see"
+            ],
+            "question": "How to show the reminder time?",
+            "answer": "Go to <b><i>Settings</i></b> and check <b><i>Show modification/calendar date</i></b>. For notes that have reminders, the set reminder time will be shown on the right."
+        },
+        "img-bgrd-checkbox": {
+            "label": "Graphical background:",
+            "keywords": [
+                "background",
+                "graphical",
+                "image",
+                "picture",
+                "visual",
+                "note"
+            ],
+            "question": "What does the <b><i>Graphical background</i></b> setting do?",
+            "answer": "This setting is enabled by default. When a note is opened, its content is shown on a graphical background. This makes notes visually more appealing. If you prefer a simpler view, you can uncheck it and a plain color background will be used."
+        },
+        "show-board-note-count-checkbox": {
+            "label": "Notes count in board:",
+            "keywords": [
+                "count",
+                "number",
+                "notes",
+                "board",
+                "show",
+                "display"
+            ],
+            "question": "How to see how many notes are in each board?",
+            "answer": "Go to <b><i>Settings</i></b> and check <b><i>Notes count in board</i></b>. This will show the number of notes in brackets next to the name of each board. Exceptions are aggregate boards like <b><i>All</i></b>, <b><i>With Photos</i></b> etc. By default this setting is disabled then the number of notes in the active board can be seen in the counter in the header."
+        },
+        "note-font-size-input": {
+            "label": "Note Font Size:",
+            "keywords": [
+                "font",
+                "size",
+                "note",
+                "text"
+            ],
+            "question": "How to change the font size in notes?",
+            "answer": "Go to <b><i>Settings</i></b> and select a size from <b><i>Note Font Size</i></b>. This changes the text size in the notes themselves."
+        },
+        "modal-font-size-input": {
+            "label": "Modal Font Size:",
+            "keywords": [
+                "font",
+                "size",
+                "modal",
+                "preview",
+                "view"
+            ],
+            "question": "How to change the font size when viewing a note?",
+            "answer": "Go to <b><i>Settings</i></b> and select a size from <b><i>Modal Font Size</i></b>. This changes the text size when you open a note for full view."
+        },
+        "scaleSlider": {
+            "label": "Zoom:",
+            "keywords": [
+                "zoom",
+                "scale",
+                "size",
+                "magnify",
+                "enlarge",
+                "reduce"
+            ],
+            "question": "How to change the zoom level of the application?",
+            "answer": "Go to <b><i>Settings</i></b> and use the <b><i>Zoom</i></b> slider (25%-175%). The Settings window becomes semi-transparent so you can monitor the result. If the currently active board has many notes, this may cause a delay in the process, so it is preferable to choose a board with fewer notes when making the setting. You can also enter an exact value for fine tuning, then press <b><i>Confirm</i></b> to apply the change."
+        },
+        "order-checkbox": {
+            "label": "Order notes:",
+            "keywords": [
+                "order",
+                "sort",
+                "arrange",
+                "sorting"
+            ],
+            "question": "How to order notes?",
+            "answer": "Check <b><i>Order notes</i></b> in <b><i>Settings</i></b> and choose criteria - by number, color, creation/modification date, calendar date, or alphabetically. You can also set reverse order - for example, if sorting by date, you will see the newest notes at the beginning."
+        },
+        "sort-criteria-numord": {
+            "label": "by number",
+            "keywords": [
+                "number",
+                "sort",
+                "order"
+            ],
+            "question": "How to sort notes by number?",
+            "answer": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by number</i></b>. Notes will be sorted in the order they were created."
+        },
+        "sort-criteria-color": {
+            "label": "by color",
+            "keywords": [
+                "color",
+                "sort",
+                "order"
+            ],
+            "question": "How to sort notes by color?",
+            "answer": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by color</i></b>. Notes will be grouped by color."
+        },
+        "sort-criteria-date": {
+            "label": "by creation date",
+            "keywords": [
+                "date",
+                "creation",
+                "sort",
+                "order"
+            ],
+            "question": "How to sort notes by creation date?",
+            "answer": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by creation date</i></b>. Notes will be sorted from oldest to newest. If you prefer the newest at the beginning, check <b><i>reverse order</i></b> as well."
+        },
+        "sort-criteria-datemod": {
+            "label": "by modification date",
+            "keywords": [
+                "date",
+                "modification",
+                "edit",
+                "sort"
+            ],
+            "question": "How to sort notes by modification date?",
+            "answer": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by modification date</i></b>. Notes will be sorted depending on the last date of their modification. If you prefer the last changed at the beginning, check <b><i>reverse order</i></b> as well."
+        },
+        "sort-criteria-calendarDate": {
+            "label": "by calendar date",
+            "keywords": [
+                "calendar",
+                "date",
+                "sort",
+                "order"
+            ],
+            "question": "How to sort notes by calendar date?",
+            "answer": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>by calendar date</i></b>. Notes will be sorted by the date they are included in the calendar."
+        },
+        "sort-criteria-alpha": {
+            "label": "alphabetically",
+            "keywords": [
+                "alphabetical",
+                "alphabetically",
+                "sort",
+                "order"
+            ],
+            "question": "How to sort notes alphabetically?",
+            "answer": "Go to <b><i>Settings</i></b>, check <b><i>Order notes</i></b> and select <b><i>alphabetically</i></b>. Notes will be sorted alphabetically, depending on their title from A to Z and from A to Я."
+        },
+        "start-board-select": {
+            "label": "Start Board:",
+            "keywords": [
+                "start",
+                "startup",
+                "initial",
+                "first",
+                "board"
+            ],
+            "question": "How to choose which board to show on startup?",
+            "answer": "Go to <b><i>Settings</i></b> and select a board from <b><i>Start Board</i></b>. This board will be shown automatically every time you open the application."
+        },
+        "use-google-db-checkbox": {
+            "label": "<b><i>Google Drive</i></b>:",
+            "keywords": [
+                "google drive",
+                "cloud",
+                "sync",
+                "synchronization",
+                "data",
+                "loading"
+            ],
+            "question": "What does the <b><i>Google Drive</i></b> setting do?",
+            "answer": "By default, this setting is enabled, together with <b><i>Database</i></b> and on first open the application loads notes from <b><i>Google Drive</i></b> and creates a local database for faster access. Every subsequent time you open the program, it only checks for new and changed notes. If you want all notes to always be read from <b><i>Google Drive</i></b> uncheck <b><i>Database</i></b>."
+        },
+        "use-indexeddb-checkbox": {
+            "label": "Database:",
+            "keywords": [
+                "database",
+                "local",
+                "storage",
+                "fast",
+                "cache",
+                "offline"
+            ],
+            "question": "What does the <b><i>Database</i></b> setting do?",
+            "answer": "By default, this setting is enabled and after initial loading notes are stored in the browser's local database for fast access. This allows shortening the loading time and working without internet if necessary. If you use only <b><i>Database</i></b> for loading, click the <b><i>Mode</i></b> button and the new and changed notes will be loaded from <b><i>Google Drive</i></b>."
+        }
+    },
+    "general": {
+        "guide-1": {
+            "keywords": [
+                "basic functions",
+                "help",
+                "how to",
+                "how to use",
+                "functions",
+                "how it works"
+            ],
+            "question": "What do you see on the main screen and why is it important?",
+            "answer": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place. On a mobile device, you can switch to the next or previous board by swiping right or left. Tap the button for more information:",
+            "guide": {
+                "1": {
+                    "text": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> → <b><i>Zoom</i></b>."
+                },
+                "2": {
+                    "text": "Once changed, the size is saved and applied to all notes. Close the note by clicking the X button or anywhere outside it. Clicking on the note opens it. The size of the opened note can be changed by dragging the bottom right angle."
+                },
+                "3": {
+                    "text": "By default, the note is opened for preview with a graphic background resembling old paper. If you want to see the color of the note, you can disable the background."
+                },
+                "4": {
+                    "text": "For searching information, the search field is used. To learn more about the search options, open the chat window and type <b><i>search</i></b>."
+                },
+                "5": {
+                    "text": "At the bottom of the screen, status messages appear. If you click the message, it will disappear immediately."
+                }
+            }
+        },
+        "assistant-1": {
+            "keywords": [
+                "assistant",
+                "AI",
+                "AI assistant",
+                "Noto"
+            ],
+            "guide": {
+                "1": {
+                    "text": "Hello!<br>👋 I'm your assistant, always ready to help."
+                },
+                "2": {
+                    "text": "A few quick tips before we start."
+                },
+                "3": {
+                    "text": "Click on me, or press <b>Enter</b> or <b>Space</b>, and I’ll hop to the next step. Use <b>Ctrl‑click</b> to stop the explanation."
+                },
+                "4": {
+                    "text": "Click the speech bubble to give yourself time to read it. When you're ready, continue using the button in the top corner."
+                },
+                "5": {
+                    "text": "This icon floats, and you can move it wherever you like. Use <b>Ctrl‑click</b> to make it semi‑transparent."
+                },
+                "6": {
+                    "text": "I don’t have Instagram yet, so I’ll drop in some of my photos from time to time. If you click the <b>X</b> on a photo without opening it, you won’t see my photos on this board anymore. In <b>Settings</b>, you can hide me completely — and that hides all my photos too."
+                },
+                "7": {
+                    "text": "Click the title and I’ll replay my introduction."
+                }
+            }
+        },
+        "assistant-2": {
+            "keywords": [
+                "assistant",
+                "AI",
+                "AI assistant",
+                "chat",
+                "window",
+                "help",
+                "how to"
+            ],
+            "question": "What’s good to know while using the chat window?",
+            "answer": "The chat window lets you search for information with the help of the assistant. It can answer your questions, help with tasks, and explain interface elements. Always check the exact question the assistant is responding to (shown at the beginning of its answer), because it’s generated from what you wrote but often doesn’t match your wording exactly. If the answer doesn’t contain what you need, try rephrasing your question.<br>Alongside the standard features, the chat window also includes some handy extras for your convenience. To explore them, press the button:",
+            "guide": {
+                "1": {
+                    "text": "No need to write long questions — I understand even a single word. Try typing just <i>search</i>."
+                },
+                "2": {
+                    "text": "History — the last questions I answered can also be shown by sending a space instead of ?."
+                },
+                "3": {
+                    "text": "If you press this button without typing anything, the chat window will close."
+                },
+                "4": {
+                    "text": "If you click the text of your last question, it will be placed in the editing field."
+                },
+                "5": {
+                    "text": "From here you can open all the questions I can answer. You can also quickly search through the list by typing something in the field below."
+                }
+            }
+        },
+        "temp-note-example": {
+            "keywords": [
+                "note",
+                "preview",
+                "open",
+                "click",
+                "press"
+            ],
+            "question": "What’s good to know when previewing a note?",
+            "answer": "You can open a note for preview by clicking on it. Let’s take a closer look:",
+            "guide": {
+                "1": {
+                    "text": "Notes can have a graphic background that looks like old paper, or a simple background matching their color. You can set this in <b>Settings</b> → <b>Graphic background (note)</b>."
+                },
+                "2": {
+                    "text": "This button copies the entire content of the note without needing to select anything. If some text is selected, it copies only that part."
+                },
+                "3": {
+                    "text": "The calculator is used for quick calculations, depending on what’s inside the note. We’ll go through a few typical examples of how it works."
+                },
+                "4": {
+                    "text": "Press the <b>Copy</b> button ..."
+                },
+                "5": {
+                    "text": "... and then <b>Calculator</b> button"
+                },
+                "6": {
+                    "text": "Below the text, you’ll see the result of the calculated total of the prices in the list."
+                },
+                "7": {
+                    "text": "But if you press and hold <b>Ctrl</b> and then press <b>Calculator</b>, the calculation will include only the checked items."
+                },
+                "8": {
+                    "text": "The calculator can also evaluate math expressions like this one. Select it and press <b>Calculator</b> to see the result."
+                },
+                "9": {
+                    "text": "Keep in mind that the calculation results are informational only and aren’t added to the note — they disappear when you close it."
+                },
+                "10": {
+                    "text": "Grab this corner and drag it to resize the note. Once changed, the new size is saved and used for all notes."
+                }
+            }
+        },
+        "temp-note-calc": {
+            "keywords": [
+                "calculator",
+                "calculation",
+                "calc",
+                "sum"
+            ],
+            "question": "How to calculate a sum in the note?",
+            "answer": "You can perform various calculations in the note. Let's look at a few typical cases:",
+            "guide": {
+                "1": {
+                    "text": "The calculator is used for quick calculations, depending on what’s inside the note. We’ll go through a few typical examples of how it works."
+                },
+                "2": {
+                    "text": "Press the <b>Copy</b> button ..."
+                },
+                "3": {
+                    "text": "... and then <b>Calculator</b> button"
+                },
+                "4": {
+                    "text": "Below the text, you’ll see the result of the calculated total of the prices in the list."
+                },
+                "5": {
+                    "text": "But if you press and hold <b>Ctrl</b> and then press <b>Calculator</b>, the calculation will include only the checked items."
+                },
+                "6": {
+                    "text": "The calculator can also evaluate math expressions like this one. Select it and press <b>Calculator</b> to see the result."
+                },
+                "7": {
+                    "text": "Keep in mind that the calculation results are informational only and aren’t added to the note — they disappear when you close it."
+                }
+            }
+        },
+        "note": {
+            "keywords": [
+                "note",
+                "notes",
+                "screenshot",
+                "video",
+                "video",
+                "attached",
+                "attachment",
+                "attachments"
+            ],
+            "question": "What additional functions do notes have on the board?",
+            "answer": "If the note contains an image or video as an attachment, you can open it for preview by clicking the icon at the bottom of the note.<br><img src='msm/attach.png' ID='attach' alt='Attachment'><br>The image can stay open, and with a <b>Ctrl‑click</b> on the board name you can open or close all images in that board.",
+            "guide": {
+                "1": {
+                    "text": "There are two special boards — <b><i>With photos</i></b> and <b><i>With video</i></b>, which display all notes containing an image or video in one place. You can enable them from <b><i>Settings</i></b>."
+                }
+            }
+        },
+        "modes": {
+            "keywords": [
+                "mode",
+                "load",
+                "read",
+                "notes",
+                "data",
+                "database",
+                "google drive"
+            ],
+            "question": "What modes of operation are available?",
+            "answer": "Press <b>Show me</b> to have them explained. You can change them in <b><i>Settings</i></b> > <b><i>Data loading</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "<span align='left'>Here you will see where your notes are loaded from. The following options are available:<br><br><span align='left'><img src='msm/gddb.png'> <i>Database and Google Drive</i></span><br><span align='left'><img src='GDrive.png' width='30px'> <i>Google Drive</i> only</span><br><span align='left'><img src='Database.png' width='30px'> <i>Database</i> only</span>"
+                },
+                "2": {
+                    "text": "<span align='left'><img src='msm/gddb.png'>The main mode of operation uses a local database in the browser, which is <b>updated</b> with new and edited notes from <i>Google Drive</i>. This approach ensures optimal performance.</span>"
+                },
+                "3": {
+                    "text": "On first launch, all notes are downloaded from <i>Google Drive</i> and stored in a local browser database (cache)."
+                },
+                "4": {
+                    "text": "Every subsequent load is done directly from this database, with a check to download only the new and modified notes. This greatly speeds up the process."
+                },
+                "5": {
+                    "text": "<span align='left'> <img src='Database.png' width='30px'> The fastest way is to use <i>Database</i>-only mode. Notes load instantly, and clicking the icon allows you to check for new or updated notes in <i>Google Drive</i> whenever needed. </span>"
+                },
+                "6": {
+                    "text": "<b>IMPORTANT!</b><br>Deleting a note or even the entire database doesn’t affect anything in <b>Google Drive</b>. The database and all notes can always be restored from what’s stored there."
+                }
+            }
+        },
+        "search-notes": {
+            "keywords": [
+                "search",
+                "find",
+                "lookup"
+            ],
+            "question": "How do I search within the notes?",
+            "answer": "Use the search field at the top of the page:<br><img src='msm/search.png' ID='sbox' alt='Search box'>",
+            "guide": {
+                "1": {
+                    "text": "Searches can be saved for quick access (the number of saved searches — from 1 to 20 — is set in the settings)."
+                },
+                "2": {
+                    "text": "The first line shows the text of your most recent search — it updates with every new search."
+                },
+                "3": {
+                    "text": "The next lines show the saved searches — they remain unchanged."
+                },
+                "4": {
+                    "text": "The search is performed in all notes or only in the notes of the active board. You can switch between searching in <i>all notes</i> and <i>notes from the active board</i> by clicking the magnifying glass."
+                }
+            }
+        },
+        "organize-notes": {
+            "keywords": [
+                "organize",
+                "arrangement",
+                "notes",
+                "boards"
+            ],
+            "question": "How can I organize my notes?",
+            "answer": "You can use <b><i>Settings</i></b> > <b><i>Order notes</i></b> to arrange them by date, color, alphabetical order, and other criteria."
+        },
+        "calendar-view": {
+            "keywords": [
+                "calendar",
+                "dates",
+                "schedule"
+            ],
+            "question": "How do I use the calendar?",
+            "answer": "Click the <b><i>Calendar</i></b> button in the board names menu. The calendar displays all notes for which you have set a date. You can switch between monthly and weekly view. If you click a date in the monthly view, the weekly calendar will open, showing the week that contains the selected date."
+        },
+        "Beta 1.06": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "1.06"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.06<br><br><br><br><span align='left'>Improved note deletion<br>Hide Copy button during editing<br><b>Noto</b> announces changes in new versions</span>"
+                }
+            }
+        },
+        "Beta 1.07": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "1.07"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.07<br><br><span align='left'>Set the order in which boards are displayed in the menu.<br></span>"
+                }
+            }
+        },
+        "Beta 1.071": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "1.071"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.071<br><br><span align='left'>- Calendar is visible when editing<br>- updateGDrive default value true<br>- Move button when editing a copy of a note<br>- Save/Load settings from local memory<br>- bullet and numbered lists</span>"
+                }
+            }
+        },
+        "Beta 1.09": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.09"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.09<br><br><span align='left'>- Profiles<br><br>- Changes in <b>Settings</b><br><br>- Show complete versions info</span>"
+                }
+            }
+        },
+        "Beta 1.11": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.11"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.11<br><br><span align='left'>- New colors<br><br>- Calendar refresh<br><br>- Bullet symbol in <b>Settings</b></span>"
+                }
+            }
+        },
+        "Beta 1.39": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.39"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.39<br>(click Assistant to close this window)<br><br><span align='left'>- Here will be displayed the added functions in the new version.</span>"
+                }
+            }
+        },
+        "Beta 1.42": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.42"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.42<br>(click Assistant to close this window)<br><br><span align='left'>- Speeding up loading.</span>"
+                }
+            }
+        },
+        "Beta 1.43": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.43"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.43<br><br><span align='left'>- Applying shared images.<br><br>- Applying images/videos/audio files.<br><br>- Instant preview of formatting before saving.</span>"
+                }
+            }
+        },
+        "offline-mode": {
+            "keywords": [
+                "offline",
+                "no internet",
+                "local",
+                "without connection"
+            ],
+            "question": "Can I work offline?",
+            "answer": "Yes! After the initial loading, you can disable <b><i>Google Drive</i></b> in <b><i>Settings</i></b> and work solely with the local database. This gives you full offline access to your notes. To refresh the data, click the <b><i>Mode</i></b> button."
+        }
+    }
+}
