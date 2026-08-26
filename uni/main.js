@@ -2419,6 +2419,21 @@ async function getMultinotesDataFolderID() {
         }
     }
     console.warn(`[getMultinotesDataFolderID] All ${maxAttempts} attempts exhausted. Folder not found.`);
+    // Папката е изтрита или недостъпна
+    // sessionStorage флагът предпазва от безкраен цикъл —
+    // само един reload на сесия е позволен
+    if (!isOffline && !sessionStorage.getItem('_folder_not_found_reload')) {
+        console.warn('[getMultinotesDataFolderID] Clearing stale folder cache and reloading for re-setup...');
+        sessionStorage.setItem('_folder_not_found_reload', '1');
+        clearCachedMainFolderId();
+        localStorage.removeItem('initial_setup_complete');
+        localStorage.removeItem('folderSetupDone');
+        localStorage.removeItem('activeFolderId');
+        localStorage.removeItem('active_folder_name');
+        localStorage.removeItem('gdrive_folder_names');
+        ['Other', 'Sound', 'Video', 'Images'].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
+        location.reload();
+    }
     return null;
 }
 
@@ -2449,15 +2464,31 @@ async function readFolderConfigFromAppData() {
             return null;
         }
 
+        // Drive API returns 400 (not 401) for expired tokens on appDataFolder scope —
+        // so proactively refresh if token is older than 55 minutes.
+        const tokenAge = tokenData.issued_at ? (Date.now() - tokenData.issued_at) / 60000 : 0;
+        let activeToken = tokenData.access_token;
+        if (tokenAge > 55) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) activeToken = refresh.tokenData.access_token;
+        }
         const query = `name='app-config.json' and mimeType='application/json'`;
-        const response = await fetch(
-            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=id,name`,
-            {
-                headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
-            }
+        const doFetch = (token) => fetch(
+            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=files(id,name)`,
+            { headers: { 'Authorization': `Bearer ${token}` } }
         );
-
-        if (!response.ok) return null;
+        let response = await doFetch(activeToken);
+        if (response.status === 401) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                response = await doFetch(refresh.tokenData.access_token);
+            }
+        }
+        if (!response.ok) {
+            const errBody = await response.text().catch(() => '');
+            console.warn(`[readFolderConfig] appDataFolder request failed ${response.status}:`, errBody);
+            return null;
+        }
 
         const result = await response.json();
         if (!result.files || result.files.length === 0) {
@@ -2509,13 +2540,19 @@ async function writeFolderConfigToAppData(config) {
         });
 
         const query = `name='app-config.json' and mimeType='application/json'`;
-        const searchResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=id`,
-            {
-                headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
-            }
+        const doSearch = (token) => fetch(
+            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=files(id)`,
+            { headers: { 'Authorization': `Bearer ${token}` } }
         );
-
+        let searchResponse = await doSearch(tokenData.access_token);
+        if (searchResponse.status === 401) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                searchResponse = await doSearch(tokenData.access_token);
+            }
+        }
+        if (!searchResponse.ok) return false;
         const searchResult = await searchResponse.json();
         const existingFileId = searchResult.files?.[0]?.id;
 
@@ -2790,6 +2827,7 @@ async function completeInitialFolderSetup() {
         }
         if (folderIsValid) {
             console.log('[Initial Setup] Folder verified. Restoring config...');
+            sessionStorage.removeItem('_folder_not_found_reload');
             cachedMainFolderId = appConfig.activeFolderId;
             setCachedMainFolderId('CX-Notes', appConfig.activeFolderId);
             activeFolderName = 'CX-Notes';
@@ -2810,6 +2848,7 @@ async function completeInitialFolderSetup() {
     }
     if (existingCxNotesId) {
         console.log('[Initial Setup] Found existing CX-Notes folder:', existingCxNotesId);
+        sessionStorage.removeItem('_folder_not_found_reload');
         cachedMainFolderId = existingCxNotesId;
         setCachedMainFolderId('CX-Notes', existingCxNotesId);
         activeFolderName = 'CX-Notes';
@@ -7776,12 +7815,21 @@ async function mainLogic(forceFullSync = false) {
                     useIndexedDb = true;
                     localStorage.setItem('useIndexedDb', 'true');
                     const dbFolderName = await getConfig('dbCreatedFolderName');
-                    if (dbFolderName && (!localStorage.getItem('active_folder_name') || activeFolderName === 'AppDataFolder')) {
+                    if (dbFolderName && !localStorage.getItem('active_folder_name')) {
                         localStorage.setItem('active_folder_name', dbFolderName);
                         activeFolderName = dbFolderName;
                     }
                     if (!dbFolderName || !activeFolderName || dbFolderName === activeFolderName) {
                         hasLocalData = true;
+                        // Ако папката е изтрита от GDrive (flag от предишния reload),
+                        // имаме данни в DB, но трябва да покажем setup модала за нова папка
+                        if (sessionStorage.getItem('_folder_not_found_reload')) {
+                            hasLocalData = false;
+                            localStorage.removeItem('active_folder_name');
+                            localStorage.removeItem('activeFolderId');
+                            localStorage.removeItem('initial_setup_complete');
+                            localStorage.removeItem('folderSetupDone');
+                        }
                     } else {
                         console.warn(`[mainLogic] IndexedDB was created for folder "${dbFolderName}", but active folder is "${activeFolderName}". Bypassing local DB cache.`);
                     }
@@ -8062,6 +8110,14 @@ async function mainLogic(forceFullSync = false) {
                                         if (result && !result.error) {
                                             filterNotesForDemo();
                                             await renderUI({ boardParseError: result.boardParseError });
+                                        }
+                                    } else if (activeFolderName === 'AppDataFolder') {
+                                        // AppDataFolder потребители → мигрираме към CX-Notes
+                                        const migrated = await migrateAppDataFolderToCXNotes();
+                                        if (migrated) {
+                                            console.log('[mainLogic] AppDataFolder→CX-Notes migration completed. Reloading...');
+                                            location.reload();
+                                            return;
                                         }
                                     } else {
                                         updatedCount = await runGoogleDriveSync(forceFullSync);
@@ -11503,8 +11559,9 @@ async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`'${folderId}' in parents and name = '${fileName}' and trashed = false`);
-        // ВАЖНО: Винаги включваме и двете пространства, за да намерим файловете навсякъде (особено в подпапки на AppData)
-        const spacesParam = '&spaces=drive,appDataFolder';
+        const isAppDataChild = folderId === 'appDataFolder' ||
+            (cachedFolderIdsByName['appDataFolder:AppSettings'] && folderId === cachedFolderIdsByName['appDataFolder:AppSettings']);
+        const spacesParam = isAppDataChild ? '&spaces=appDataFolder' : '&spaces=drive';
         return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc${spacesParam}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
