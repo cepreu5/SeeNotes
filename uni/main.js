@@ -12161,18 +12161,16 @@ async function createSettingsUI(boardsData, boardParseError) {
         loadDeviceProfiles();
         deviceNameSelect.addEventListener('change', async () => {
             localStorage.setItem('deviceName', deviceNameSelect.value);
-            showToast(_('settingSaved'), 2000);
-            // Тихо зареждаме настройките за новия профил
-            await loadSettingsFromGDrive(true);
+            await loadSettingsFromGDrive(false);
         });
     }
     if (addDeviceBtn) {
-        addDeviceBtn.addEventListener('click', () => {
+        addDeviceBtn.addEventListener('click', async () => {
             const newName = prompt("Въведете име за новото устройство / профил:");
             if (newName && newName.trim()) {
                 localStorage.setItem('deviceName', newName.trim());
-                loadDeviceProfiles();
-                showToast(_('settingSaved'), 2000);
+                await loadDeviceProfiles();
+                await saveSettingsToGDrive(false);
             }
         });
     }
@@ -13483,8 +13481,7 @@ function parseMarkdownTable(text) {
 function renderMarkdownTableAsPseudoGraphic(text) {
     const table = parseMarkdownTable(text);
     if (!table) return null;
-    const renderCells = (row, tag) => row.map(cell => `<${tag}>${escapeHtml(String(cell || ''))}</${tag}>`).join('');
-
+    const renderCells = (row, tag) => row.map(cell => `<${tag}>${processNoteContent(String(cell || ''), true)}</${tag}>`).join('');
     let tableHtml = '';
     if (table.borderless) {
         const bodyRows = table.rows.slice(1);
@@ -13501,16 +13498,13 @@ function renderMarkdownTableAsPseudoGraphic(text) {
         }
     }
     if (!tableHtml) return null;
-
     const originalLines = text.replace(/\r\n/g, '\n').split('\n');
     const beforeTable = originalLines.slice(0, table.startIndex).join('\n');
     const afterTable = originalLines.slice(table.endIndex + 1).join('\n');
-
     let finalHtml = '';
     if (beforeTable.trim()) finalHtml += processNoteContent(beforeTable, true) + '<br>';
     finalHtml += tableHtml;
     if (afterTable.trim()) finalHtml += '<br>' + processNoteContent(afterTable, true);
-
     return finalHtml;
 }
 
@@ -17456,9 +17450,15 @@ function disableNoteEditing(modalBodyElem) {
  */
 function postEdit(text, formats, maskedLinks = []) {
     if (parseMarkdownTable(text)) {
-        return { text, formats: [] };
+        let currentText = text;
+        if (Array.isArray(maskedLinks)) {
+            maskedLinks.forEach((link, idx) => {
+                const placeholder = `{#L${idx}#}`;
+                currentText = currentText.replaceAll(placeholder, link);
+            });
+        }
+        return { text: currentText, formats: [] };
     }
-
     let currentText = text;
     let currentFormats = [...formats];
 
