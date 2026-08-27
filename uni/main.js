@@ -365,6 +365,26 @@ function hexToColorInt(hex) {
     if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
     return (parseInt('FF' + hex, 16) | 0);
 }
+
+function getNoteColorCss(color, fallback = noteColorMap[0]) {
+    if (typeof color === 'number') {
+        return color >= 0 && color < noteColorMap.length
+            ? noteColorMap[color]
+            : (color < 0 ? colorIntToHex(color) : fallback);
+    }
+    return typeof color === 'string' ? color : fallback;
+}
+
+function getModalColorValue(modalBodyElem, fallback = 0) {
+    const colorIndex = Number.parseInt(modalBodyElem?.dataset.colorIndex, 10);
+    const color = modalBodyElem?.dataset.color;
+    if (Number.isInteger(colorIndex) && colorIndex >= 0 && colorIndex < 10) return colorIndex;
+    if (Number.isInteger(colorIndex) && colorIndex >= 10 && colorIndex < noteColorMap.length) {
+        return hexToColorInt(color || noteColorMap[colorIndex]);
+    }
+    if (colorIndex === -1 && color && color.startsWith('#')) return hexToColorInt(color);
+    return fallback;
+}
 const noteBgCache = new Map();
 const customBgCache = new Map();
 
@@ -3519,7 +3539,7 @@ function renderCalendarView() {
                     const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteToAssignDate.gdid)) || (n.id && String(n.id) === String(noteToAssignDate.id)));
                     noteToAssignDate = null;
                     if (noteObj) {
-                        const noteColorStr = (typeof noteObj.color === 'number' && noteObj.color >= 0 && noteObj.color < noteColorMap.length) ? noteColorMap[noteObj.color] : (typeof noteObj.color === 'string' ? noteObj.color : noteColorMap[0]);
+                        const noteColorStr = getNoteColorCss(noteObj.color);
                         showModal({
                             raw: noteObj.notetxt,
                             format: noteObj.text_span,
@@ -9463,7 +9483,7 @@ function showModal(options, noteElement = null) {
     delete modalBody.dataset.draftTitle;
     modalBody.dataset.boardId = (options && options.boardId) ? options.boardId : '';
     modalBody.dataset.isNewNote = options.isNewNote ? 'true' : 'false';
-    modalBody.dataset.color = noteColor || '';
+    modalBody.dataset.color = typeof noteColor === 'string' ? noteColor.toUpperCase() : (noteColor || '');
     if (options.maskedLinks) {
         modalBody.dataset.maskedLinks = JSON.stringify(options.maskedLinks);
     } else {
@@ -9483,8 +9503,8 @@ function showModal(options, noteElement = null) {
             else colorIndex = noteColor; // Keep as negative int if not in map
         }
     } else if (typeof noteColor === 'string') {
-        const foundIndex = noteColorMap.indexOf(noteColor);
-        if (foundIndex !== -1) colorIndex = foundIndex;
+        const foundIndex = noteColorMap.indexOf(noteColor.toUpperCase());
+        colorIndex = foundIndex !== -1 ? foundIndex : -1;
     } else if (noteObjForCalendar && noteObjForCalendar.color !== undefined) {
         const c = noteObjForCalendar.color;
         if (typeof c === 'number' && c < 0) {
@@ -9535,6 +9555,7 @@ function showModal(options, noteElement = null) {
         let bgColor = '#eef603';
         if (typeof colorIndex === 'number') {
             if (colorIndex >= 0 && colorIndex < noteColorMap.length) bgColor = noteColorMap[colorIndex];
+            else if (colorIndex === -1 && typeof noteColor === 'string' && noteColor.startsWith('#')) bgColor = noteColor;
             else if (colorIndex < 0) bgColor = colorIntToHex(colorIndex);
         } else if (typeof colorIndex === 'string') {
             bgColor = colorIndex;
@@ -9979,7 +10000,7 @@ function showModal(options, noteElement = null) {
                     raw: noteCopy.notetxt || noteCopy.text || "",
                     format: noteCopy.text_span,
                     titleFormat: noteCopy.title_span,
-                    color: (typeof noteCopy.color === 'number' && noteCopy.color >= 0 && noteCopy.color < noteColorMap.length) ? noteColorMap[noteCopy.color] : (typeof noteCopy.color === 'string' ? noteCopy.color : noteColorMap[0]),
+                    color: getNoteColorCss(noteCopy.color),
                     boardId: noteCopy.boardid,
                     id: noteCopy.id,
                     isNewNote: true,
@@ -14856,7 +14877,7 @@ async function createNoteElement(noteContent) {
             }
             // --- END FORCE GDRIVE READ LOGIC ---
 
-            const noteBgColor = (typeof noteColor === 'number' && noteColor >= 0 && noteColor < noteColorMap.length) ? noteColorMap[noteColor] : (typeof noteColor === 'string' ? noteColor : noteColorMap[0]);
+            const noteBgColor = getNoteColorCss(noteColor);
             showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: currentGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
 
             // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
@@ -15917,6 +15938,19 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     const isHiddenNote = noteObj && noteObj.pass === true;
 
+    // При редактиране custom color-ът идва директно от записа на бележката.
+    // Не разчитаме на colorIndex, защото той е само UI индекс и не описва произволен цвят.
+    const isCustomColor = noteObj && (
+        (typeof noteObj.color === 'number' && (noteObj.color < 0 || noteObj.color >= noteColorMap.length)) ||
+        (typeof noteObj.color === 'string' && !noteColorMap.includes(noteObj.color.toUpperCase()))
+    );
+    if (isCustomColor && modalContentBox) {
+        const customColor = getNoteColorCss(noteObj.color);
+        modalContentBox.style.backgroundColor = customColor;
+        modalBodyElem.dataset.color = customColor;
+        modalBodyElem.dataset.colorIndex = '-1';
+    }
+
     let correctedTitleIndex = -1;
     let correctedBodyIndex = -1;
 
@@ -16960,12 +16994,7 @@ async function checkUnsavedChanges(isClosingModal = true) {
         const originalFormat = noteObj.text_span || "";
         const originalTitleFormat = noteObj.title_span || "";
         const initialColor = (noteObj.color !== undefined) ? noteObj.color : 0;
-        let currentColor = initialColor;
-        if (modalBodyElem.dataset.colorIndex !== undefined) {
-            currentColor = parseInt(modalBodyElem.dataset.colorIndex, 10);
-        } else if (modalBodyElem.dataset.color !== undefined && modalBodyElem.dataset.color !== '') {
-            currentColor = modalBodyElem.dataset.color;
-        }
+        const currentColor = getModalColorValue(modalBodyElem, initialColor);
         const hasTextChanged = processedText !== originalContent;
         const hasFormatChanged = finalFormat !== originalFormat || finalTitleFormat !== originalTitleFormat;
         const hasColorChanged = currentColor !== initialColor;
@@ -17044,8 +17073,8 @@ function saveEditedNote(forceClose = false) {
         // Показваме форматирания текст ВЕДНАГА - не чакаме края на GDrive записа
         if (!closeAfterSave && typeof showModal === 'function') {
             const boardId = modalBodyElem.dataset.boardId || (modalNoteObj && modalNoteObj.boardid) || currentBoardFilter;
-            const colorVal = modalBodyElem.dataset.colorIndex !== undefined ? parseInt(modalBodyElem.dataset.colorIndex, 10) : (modalNoteObj ? modalNoteObj.color : 0);
-            const noteColorStr = (typeof colorVal === 'number' && colorVal >= 0 && colorVal < noteColorMap.length) ? noteColorMap[colorVal] : (typeof colorVal === 'string' ? colorVal : noteColorMap[0]);
+            const colorVal = getModalColorValue(modalBodyElem, modalNoteObj ? modalNoteObj.color : 0);
+            const noteColorStr = getNoteColorCss(colorVal);
             const currentModalBodyElem = document.getElementById('modal-body');
             const previewDatasets = currentModalBodyElem ? { ...currentModalBodyElem.dataset } : {};
             showModal({
@@ -17084,7 +17113,7 @@ function saveEditedNote(forceClose = false) {
                 "alarm_type": -1,
                 "boardid": boardId,
                 "calendarDate": 0,
-                "color": modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : 0,
+                "color": getModalColorValue(modalBodyElem),
                 "date": dateMod,
                 "datemod": dateMod,
                 "eventId": 0,
@@ -17145,22 +17174,7 @@ function saveEditedNote(forceClose = false) {
         }
         const originalContent = noteObj ? (noteObj.notetxt || "") : "";
         let newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj ? (noteObj.calendarDate || 0) : 0);
-        let newColorIdx = modalBodyElem.dataset.colorIndex ? parseInt(modalBodyElem.dataset.colorIndex, 10) : -1;
-        let newColor;
-        if (newColorIdx >= 0 && newColorIdx <= 9) {
-            newColor = newColorIdx;
-        } else if (newColorIdx >= 10 && newColorIdx <= 15) {
-            // Записваме като десетично число за индекси 10-15
-            newColor = hexToColorInt(modalBodyElem.dataset.color || noteColorMap[newColorIdx]);
-        } else {
-            // Fallback за потребителски цветове или запазване на текущия
-            const colorVal = modalBodyElem.dataset.color;
-            if (colorVal && typeof colorVal === 'string' && colorVal.startsWith('#')) {
-                newColor = hexToColorInt(colorVal);
-            } else {
-                newColor = noteObj ? (noteObj.color || 0) : 0;
-            }
-        }
+        const newColor = getModalColorValue(modalBodyElem, noteObj ? (noteObj.color || 0) : 0);
 
         // --- Conflict Resolution Logic ---
         if (updateGDriveNow && modalGdid && noteObj) {
@@ -17343,9 +17357,7 @@ function saveEditedNote(forceClose = false) {
         // If modal was not closed, refresh its content to show the saved state
         if (!closeAfterSave) {
             if (typeof showModal === 'function' && noteObj) {
-                const noteColorStr = (typeof noteObj.color === 'number')
-                    ? (noteObj.color >= 0 && noteObj.color < noteColorMap.length ? noteColorMap[noteObj.color] : (noteObj.color < 0 ? colorIntToHex(noteObj.color) : noteColorMap[0]))
-                    : (typeof noteObj.color === 'string' ? noteObj.color : noteColorMap[0]);
+                const noteColorStr = getNoteColorCss(noteObj.color);
                 showModal({
                     raw: noteObj.notetxt,
                     format: noteObj.text_span,
@@ -17521,8 +17533,8 @@ function previewEditedNote() {
 
     if (typeof showModal === 'function') {
         const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
-        const color = (modalNoteObj && modalNoteObj.color !== undefined) ? modalNoteObj.color : (modalBodyElem.dataset.color || 0);
-        const noteColorStr = (typeof color === 'number' && color >= 0 && color < noteColorMap.length) ? noteColorMap[color] : (typeof color === 'string' ? color : noteColorMap[0]);
+        // Preview използва текущия цвят на редактора, включително custom color.
+        const noteColorStr = modalBodyElem.dataset.color || getNoteColorCss(modalNoteObj?.color);
 
         showModal({
             raw: processedText,
@@ -17534,6 +17546,16 @@ function previewEditedNote() {
             gdid: noteGdid,
             maskedLinks: maskedLinks
         }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
+
+        // Preview трябва да използва точно текущия цвят от редактора.
+        const previewModalBox = document.querySelector('#content-modal .modal-content-box');
+        if (previewModalBox && noteColorStr) {
+            previewModalBox.style.backgroundColor = noteColorStr;
+            if (localStorage.getItem('imgBgrd') === 'false') {
+                previewModalBox.style.backgroundImage = 'none';
+                previewModalBox.classList.add('no-bg-image');
+            }
+        }
 
         // Preserve editing dataset state on the new modalBodyElem for saveEditedNote to work after preview
         const newModalBodyElem = document.getElementById('modal-body');
@@ -17549,6 +17571,7 @@ function previewEditedNote() {
             if (modalBodyElem.dataset.id) newModalBodyElem.dataset.id = modalBodyElem.dataset.id;
             if (modalBodyElem.dataset.numord) newModalBodyElem.dataset.numord = modalBodyElem.dataset.numord;
             if (modalBodyElem.dataset.boardId) newModalBodyElem.dataset.boardId = modalBodyElem.dataset.boardId;
+            if (modalBodyElem.dataset.color) newModalBodyElem.dataset.color = modalBodyElem.dataset.color;
             if (modalBodyElem.dataset.colorIndex) newModalBodyElem.dataset.colorIndex = modalBodyElem.dataset.colorIndex;
             if (modalBodyElem.dataset.baseDatemod) newModalBodyElem.dataset.baseDatemod = modalBodyElem.dataset.baseDatemod;
             if (modalBodyElem.dataset.baseNote) newModalBodyElem.dataset.baseNote = modalBodyElem.dataset.baseNote;
