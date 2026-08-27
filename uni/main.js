@@ -4304,6 +4304,24 @@ async function getAllFromDB(storeName) {
     });
 }
 
+async function countFromDB(storeName) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        try {
+            const transaction = db.transaction([storeName], 'readonly');
+            const store = transaction.objectStore(storeName);
+            const request = store.count();
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => reject(`Error in countFromDB (${storeName}): ` + event.target.error);
+            transaction.oncomplete = () => db.close();
+            transaction.onerror = () => db.close();
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
+    });
+}
+
 /**
  * Извлича единичен запис от даден store по ключ.
  * @param {string} storeName - Името на object store.
@@ -7019,7 +7037,7 @@ async function handleAccountSwitchReset(previousEmail, newEmail) {
     try {
         await deleteNotesDB();
         dbExists = false;
-        boardsInDb = [];
+        boardsCountInDb = 0;
         notesInDb = [];
     } catch (e) {
         console.warn('Error deleting old NotesDB on account switch:', e);
@@ -7806,12 +7824,12 @@ async function mainLogic(forceFullSync = false) {
             if (loaderFolderInfo) loaderFolderInfo.textContent = '';
         }
         let hasLocalData = false;
-        let boardsInDb = [];
+        let boardsCountInDb = 0;
         if (useIndexedDb || localStorage.getItem('useIndexedDb') !== 'false') {
             dbExists = await checkDbExists(NOTES_DB_NAME);
             if (dbExists) {
-                boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (boardsInDb && boardsInDb.length > 0) {
+                boardsCountInDb = await countFromDB(BOARD_STORE_NAME);
+                if (boardsCountInDb > 0) {
                     useIndexedDb = true;
                     localStorage.setItem('useIndexedDb', 'true');
                     const dbFolderName = await getConfig('dbCreatedFolderName');
@@ -7873,7 +7891,7 @@ async function mainLogic(forceFullSync = false) {
         if (loaderContainer) loaderContainer.style.display = 'block';
         const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
         updateModeButton(); // Актуализираме иконата за режим веднага
-        if (useIndexedDb && dbExists && boardsInDb.length > 0) {
+        if (useIndexedDb && dbExists && boardsCountInDb > 0) {
             const dbSource = await getConfig('dbSource');
             const dbNoteIdType = await getConfig('dbNoteIdType');
             dbSourceGlobal = dbSource;
@@ -7892,7 +7910,7 @@ async function mainLogic(forceFullSync = false) {
         // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
         // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
         // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
-        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length > 0) {
+        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsCountInDb > 0) {
             const dbSource = await getConfig('dbSource');
             let handleKey = null;
             if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
@@ -7918,7 +7936,7 @@ async function mainLogic(forceFullSync = false) {
         }
         updateGlobalStateFlags();
         // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
-        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsInDb.length === 0) {
+        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsCountInDb === 0) {
             showToast(_('errorDbOnlyAndEmpty'), 15000);
             if (isLoadCancelled) return;
             document.getElementById('settings-modal').classList.add('visible');
@@ -7960,7 +7978,7 @@ async function mainLogic(forceFullSync = false) {
                 if (useIndexedDb) {
                     // Archive + IndexedDB mode
                     console.log("Mode: Archive + IndexedDB");
-                    if (!dbExists || boardsInDb.length === 0) {
+                    if (!dbExists || boardsCountInDb === 0) {
                         // DB is empty or does not exist, prompt for creation from archive
                         const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
                         if (confirmed) {
@@ -8038,7 +8056,7 @@ async function mainLogic(forceFullSync = false) {
             } else {
                 // --- РЕЖИМ 2: С IndexedDB
                 console.log("Mode: Using IndexedDB");
-                if (!dbExists || boardsInDb.length === 0) {
+                if (!dbExists || boardsCountInDb === 0) {
                     // Първоначално създаване на базата данни
                     console.log("DB is empty or does not exist. Performing initial data load.");
                     if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
@@ -8314,37 +8332,20 @@ async function fetchAllDataFromLocalFolder() {
  */
 async function fetchAllDataLocal() {
     console.log("Fetching all data from local IndexedDB...");
-    boardsData = await getAllFromDB(BOARD_STORE_NAME);
-    /*
-    // --- TEMPORARY CLEANUP FOR customBgGdid ---
-    let needsCleanup = false;
-    for (let board of boardsData) {
-        if (board.customBgGdid !== undefined) {
-            if (!board.backpath && typeof board.customBgGdid === 'string' && board.customBgGdid.trim() !== '') {
-                board.backpath = board.customBgGdid;
-            }
-            delete board.customBgGdid;
-            needsCleanup = true;
-            if (useIndexedDb) {
-                bulkPutDB(BOARD_STORE_NAME, board, true).catch(e => console.error(e));
-            }
-            if (useGoogleDb && !isOffline && board.gdid) {
-                updateGDriveFile(board.gdid, JSON.stringify(board)).catch(e => console.error(e));
-            }
-        }
-    }
-    if (needsCleanup) console.log("Cleaned up customBgGdid from boards.");
-    // ----------------------------------------
-    */
-
+    const [bData, mData, nData, dbSource, dbNoteIdType] = await Promise.all([
+        getAllFromDB(BOARD_STORE_NAME),
+        getAllFromDB(MEDIA_STORE_NAME),
+        getAllFromDB(NOTE_STORE_NAME),
+        getConfig('dbSource'),
+        getConfig('dbNoteIdType')
+    ]);
+    boardsData = bData || [];
     trackMaxBoardIds(boardsData);
-    mediaData = await getAllFromDB(MEDIA_STORE_NAME);
-    const notesFromDB = await getAllFromDB(NOTE_STORE_NAME);
-    allNotesData = notesFromDB;
+    mediaData = mData || [];
+    allNotesData = nData || [];
     trackMaxIds(allNotesData);
-    // --- REFRESH GLOBAL FLAGS FROM DB CONFIG ---
-    dbSourceGlobal = await getConfig('dbSource');
-    dbNoteIdTypeGlobal = await getConfig('dbNoteIdType');
+    dbSourceGlobal = dbSource;
+    dbNoteIdTypeGlobal = dbNoteIdType;
     console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
     console.log(`[fetchAllDataLocal] dbSourceGlobal: ${dbSourceGlobal}, dbNoteIdTypeGlobal: ${dbNoteIdTypeGlobal}`);
 }
