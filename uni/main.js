@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.48'; // App version
+const version = 'Beta 1.49'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -2241,7 +2241,6 @@ async function createNewNote() {
         "notetxt": "",
         "numord": noteNumord,
         "pass": false,
-        "pinnedAt": 0,
         "sellist": 0,
         "status": 0,
         "text_span": "",
@@ -6212,7 +6211,7 @@ function initApp() {
     // --- Modal Resizing Logic ---
     const modalContentBox = contentModal.querySelector('.modal-content-box');
     const resizeHandle = contentModal.querySelector('.modal-resize-handle');
-    let startX, startY, startWidth, startHeight;
+    let startX, startY, startWidth, startHeight, isIndividualResize = false;
     function doDrag(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -6233,14 +6232,27 @@ function initApp() {
         document.documentElement.removeEventListener('mouseup', stopDrag, false);
         document.documentElement.removeEventListener('touchmove', doDrag, false);
         document.documentElement.removeEventListener('touchend', stopDrag, false);
-        localStorage.setItem('modalWidth', modalContentBox.style.width);
-        localStorage.setItem('modalHeight', modalContentBox.style.height);
+        if (isIndividualResize) {
+            const modalBodyElem = document.getElementById('modal-body');
+            if (modalBodyElem) {
+                modalBodyElem.dataset.editorSize = JSON.stringify({
+                    width: Math.round(modalContentBox.getBoundingClientRect().width),
+                    height: Math.round(modalContentBox.getBoundingClientRect().height)
+                });
+                updateModalUiStateSaveUI();
+            }
+        } else {
+            localStorage.setItem('modalWidth', modalContentBox.style.width);
+            localStorage.setItem('modalHeight', modalContentBox.style.height);
+        }
+        isIndividualResize = false;
     }
     function startDrag(e) {
         e.preventDefault();
         e.stopPropagation();
         startX = e.touches ? e.touches[0].clientX : e.clientX;
         startY = e.touches ? e.touches[0].clientY : e.clientY;
+        isIndividualResize = !!e.ctrlKey;
         startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
         startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
         // Attach listeners for both mouse and touch
@@ -8966,6 +8978,18 @@ function addInNotePreviewListener(element, attachments, indexOrSource, sourceMod
  * @param {HTMLElement} element - The element to make draggable.
  * @param {string} storageKey - The localStorage key to save the position.
  */
+let floatingPositionSettingsSaveTimer = null;
+
+function scheduleFloatingPositionSettingsSave() {
+    clearTimeout(floatingPositionSettingsSaveTimer);
+    floatingPositionSettingsSaveTimer = setTimeout(() => {
+        if (isOffline || typeof saveSettingsToGDrive !== 'function') return;
+        saveSettingsToGDrive(true).catch(error => {
+            console.warn('Failed to sync floating-button position to Google Drive:', error);
+        });
+    }, 600);
+}
+
 function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPress = null) {
     if (!element) return;
 
@@ -9128,6 +9152,7 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
         element.classList.remove('dragging');
         if (hasMoved) {
             localStorage.setItem(storageKey, JSON.stringify({ top: element.style.top, right: element.style.right }));
+            scheduleFloatingPositionSettingsSave();
         }
     };
     element.addEventListener('mousedown', onDragStart);
@@ -9174,6 +9199,85 @@ function restoreAllFloatingPositions() {
     });
 }
 
+function getNoteUiState(uiState) {
+    return uiState && typeof uiState === 'object' && !Array.isArray(uiState) ? uiState : {};
+}
+
+function getValidEditorSize(uiState) {
+    const size = getNoteUiState(uiState).editorSize;
+    if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) return null;
+    return { width: Math.round(size.width), height: Math.round(size.height) };
+}
+
+function applyExpandedModalSize(modalContentBox, isExpanded) {
+    if (isExpanded) {
+        modalContentBox.style.width = 'calc(100vw - 20px)';
+        modalContentBox.style.height = 'calc(100vh - 20px)';
+        modalContentBox.style.maxWidth = 'calc(100vw - 20px)';
+        modalContentBox.style.maxHeight = 'calc(100vh - 20px)';
+        return;
+    }
+    modalContentBox.style.maxWidth = '100vw';
+    modalContentBox.style.maxHeight = 'none';
+}
+
+function updateModalExpandButton(isExpanded) {
+    const expandBtn = document.getElementById('modal-expand-btn');
+    if (!expandBtn) return;
+    expandBtn.innerHTML = isExpanded ? '&#9660;' : '&#9650;';
+    expandBtn.title = isExpanded ? 'Върни нормалния размер' : 'Разпъни бележката';
+    expandBtn.setAttribute('aria-label', expandBtn.title);
+}
+
+function getModalEditorSize() {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem || !modalBodyElem.dataset.editorSize) return null;
+    try {
+        return getValidEditorSize({ editorSize: JSON.parse(modalBodyElem.dataset.editorSize) });
+    } catch (e) {
+        return null;
+    }
+}
+
+function hasModalUiStateChanges() {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return false;
+    const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(modalBodyElem.dataset.gdid)) || (n.id && String(n.id) === String(modalBodyElem.dataset.id)));
+    if (!noteObj) return false;
+    const savedUiState = getNoteUiState(noteObj.uiState);
+    const isExpandedChanged = (modalBodyElem.dataset.isExpanded === 'true') !== (savedUiState.isExpanded === true);
+    const savedEditorSize = getValidEditorSize(savedUiState);
+    const editorSize = getModalEditorSize();
+    const editorSizeChanged = JSON.stringify(editorSize) !== JSON.stringify(savedEditorSize);
+    return isExpandedChanged || editorSizeChanged;
+}
+
+function updateModalUiStateSaveUI() {
+    const modalBodyElem = document.getElementById('modal-body');
+    const modalContentBox = document.querySelector('#content-modal .modal-content-box');
+    const footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
+    const existingBtn = document.getElementById('note-ui-state-save-btn');
+    const isEditing = !!modalBodyElem?.querySelector('textarea');
+    const shouldShow = !isEditing && hasModalUiStateChanges() && footerToolbar;
+    if (!shouldShow) {
+        if (existingBtn) existingBtn.remove();
+        return;
+    }
+    if (existingBtn) return;
+
+    const saveBtn = document.createElement('div');
+    saveBtn.id = 'note-ui-state-save-btn';
+    saveBtn.className = 'modal-footer-btn';
+    saveBtn.innerHTML = diskIconSvg;
+    saveBtn.title = (typeof _ === 'function') ? (_('saveTooltip') || 'Save changes') : 'Save changes';
+    saveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        enableNoteEditing(modalBodyElem);
+        saveEditedNote();
+    });
+    footerToolbar.appendChild(saveBtn);
+}
+
 function showModal(options, noteElement = null) {
     let rawContent, formatString, titleFormatString, displayContent, noteColor, noteId, noteGdid;
     const updateGDrive = useGoogleDb && !isOffline;
@@ -9195,27 +9299,39 @@ function showModal(options, noteElement = null) {
     // --- Board Name Display in Modal ---
     const modalContentBox = contentModal.querySelector('.modal-content-box');
 
-    // Check for explicit dimensions in options (e.g. from guide temp note)
-    if (options && options.width && options.height) {
+    const noteForUiState = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+    const uiState = getNoteUiState(options.uiState || (noteForUiState && noteForUiState.uiState));
+    const isExpanded = uiState.isExpanded === true;
+
+    // Разпънатият изглед винаги използва наличната площ, а не глобалния размер.
+    if (isExpanded) {
+        applyExpandedModalSize(modalContentBox, true);
+        // Check for explicit dimensions in options (e.g. from guide temp note)
+    } else if (options && options.width && options.height) {
         modalContentBox.style.width = typeof options.width === 'number' ? options.width + 'px' : options.width;
         modalContentBox.style.height = typeof options.height === 'number' ? options.height + 'px' : options.height;
-        modalContentBox.style.maxWidth = '100vw';
-        modalContentBox.style.maxHeight = 'none';
+        applyExpandedModalSize(modalContentBox, false);
     } else {
-        // Прилагаме запазените размери, ако съществуват
-        const savedWidth = localStorage.getItem('modalWidth');
-        const savedHeight = localStorage.getItem('modalHeight');
-        if (savedWidth && savedHeight) {
-            modalContentBox.style.width = savedWidth;
-            modalContentBox.style.height = savedHeight;
-            modalContentBox.style.maxWidth = '100vw';
-            modalContentBox.style.maxHeight = 'none';
+        const editorSize = getValidEditorSize(uiState);
+        // Индивидуалният нормален размер има предимство пред глобалния.
+        if (editorSize) {
+            modalContentBox.style.width = editorSize.width + 'px';
+            modalContentBox.style.height = editorSize.height + 'px';
+            applyExpandedModalSize(modalContentBox, false);
         } else {
-            // Задаваме размер по подразбиране 400x300px, ако няма запазен размер
-            modalContentBox.style.width = '400px';
-            modalContentBox.style.height = '300px';
-            modalContentBox.style.maxWidth = '100vw';
-            modalContentBox.style.maxHeight = 'none';
+            // Прилагаме запазените глобални размери, ако съществуват
+            const savedWidth = localStorage.getItem('modalWidth');
+            const savedHeight = localStorage.getItem('modalHeight');
+            if (savedWidth && savedHeight) {
+                modalContentBox.style.width = savedWidth;
+                modalContentBox.style.height = savedHeight;
+                applyExpandedModalSize(modalContentBox, false);
+            } else {
+                // Задаваме размер по подразбиране 400x300px, ако няма запазен размер
+                modalContentBox.style.width = '400px';
+                modalContentBox.style.height = '300px';
+                applyExpandedModalSize(modalContentBox, false);
+            }
         }
     }
     // Размер на шрифта: от options (демо бележка) или от потребителските настройки
@@ -9325,6 +9441,10 @@ function showModal(options, noteElement = null) {
     // Store metadata for editing and rendering identification
     modalBody.dataset.id = noteId || '';
     modalBody.dataset.gdid = noteGdid || '';
+    modalBody.dataset.isExpanded = isExpanded ? 'true' : 'false';
+    const initialEditorSize = getValidEditorSize(uiState);
+    if (initialEditorSize) modalBody.dataset.editorSize = JSON.stringify(initialEditorSize);
+    else delete modalBody.dataset.editorSize;
     modalBody.dataset.numord = options.numord || '';
     modalBody.dataset.baseDatemod = options.datemod || '0';
 
@@ -9377,6 +9497,32 @@ function showModal(options, noteElement = null) {
     }
     modalBody.dataset.initialColorIndex = colorIndex; // Запазваме оригиналния цвят
     modalBody.dataset.colorIndex = colorIndex;
+
+    const expandBtn = document.getElementById('modal-expand-btn');
+    if (expandBtn) {
+        updateModalExpandButton(isExpanded);
+        expandBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const nextIsExpanded = modalBody.dataset.isExpanded !== 'true';
+            modalBody.dataset.isExpanded = nextIsExpanded ? 'true' : 'false';
+            if (nextIsExpanded) {
+                applyExpandedModalSize(modalContentBox, true);
+            } else {
+                const editorSize = getValidEditorSize(uiState);
+                if (editorSize) {
+                    modalContentBox.style.width = editorSize.width + 'px';
+                    modalContentBox.style.height = editorSize.height + 'px';
+                } else {
+                    modalContentBox.style.width = localStorage.getItem('modalWidth') || '400px';
+                    modalContentBox.style.height = localStorage.getItem('modalHeight') || '300px';
+                }
+                applyExpandedModalSize(modalContentBox, false);
+            }
+            updateModalExpandButton(nextIsExpanded);
+            updateModalUiStateSaveUI();
+        };
+    }
 
     // Set modal background color
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
@@ -14869,7 +15015,8 @@ async function toggleNotePinned(noteGdid, noteId) {
     const wasPinned = Number(noteToUpdate.pinnedAt || 0) > 0;
     if (noteToUpdate.version) noteToUpdate.version = parseInt(noteToUpdate.version, 10) + 1;
     else noteToUpdate.version = 1;
-    noteToUpdate.pinnedAt = wasPinned ? 0 : Date.now();
+    if (wasPinned) delete noteToUpdate.pinnedAt;
+    else noteToUpdate.pinnedAt = Date.now();
     noteToUpdate.datemod = Date.now();
 
     const updateGDriveNow = useGoogleDb && !isOffline;
@@ -16769,7 +16916,17 @@ async function checkUnsavedChanges(isClosingModal = true) {
     const titleTextarea = document.getElementById('note-edit-title-textarea');
     const saveBtn = document.getElementById('note-save-btn');
     const isEditingOrPreviewing = (textarea || titleTextarea) || (saveBtn && saveBtn.style.display !== 'none');
-    if (!isEditingOrPreviewing) return true;
+    const hasUiStateChanged = hasModalUiStateChanges();
+    if (!isEditingOrPreviewing && !hasUiStateChanged) return true;
+    if (!isEditingOrPreviewing && hasUiStateChanged) {
+        const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
+        if (confirmed) {
+            enableNoteEditing(modalBodyElem);
+            await saveEditedNote(true);
+            return false;
+        }
+        return true;
+    }
     const isNewNote = modalBodyElem.dataset.isNewNote === 'true';
     const newBodyTextRaw = textarea ? textarea.value : (modalBodyElem.dataset.draftText || "");
     const newTitleTextRaw = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
@@ -16812,7 +16969,7 @@ async function checkUnsavedChanges(isClosingModal = true) {
         const hasTextChanged = processedText !== originalContent;
         const hasFormatChanged = finalFormat !== originalFormat || finalTitleFormat !== originalTitleFormat;
         const hasColorChanged = currentColor !== initialColor;
-        if (!hasTextChanged && !hasFormatChanged && !hasColorChanged) return true;
+        if (!hasTextChanged && !hasFormatChanged && !hasColorChanged && !hasUiStateChanged) return true;
     }
     const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
     if (confirmed) {
@@ -16863,6 +17020,8 @@ function saveEditedNote(forceClose = false) {
 
         const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
         const isNewNote = !modalNoteObj && !modalGdid;
+        const isExpanded = modalBodyElem.dataset.isExpanded === 'true';
+        const editorSize = getModalEditorSize();
 
         // Retrieve masked links from dataset if they exist
         const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
@@ -16934,7 +17093,6 @@ function saveEditedNote(forceClose = false) {
                 "notetxt": processedText,
                 "numord": (!isNaN(noteNumordValue) ? noteNumordValue : noteNumord),
                 "pass": isHiddenNote, // Use the state from modalNoteObj if available, or false
-                "pinnedAt": 0,
                 "sellist": 0,
                 "status": 0,
                 "text_span": finalFormat,
@@ -16945,6 +17103,7 @@ function saveEditedNote(forceClose = false) {
                 "type": 0,
                 "version": 243
             };
+            if (isExpanded || editorSize) newNote.uiState = { isExpanded, ...(editorSize ? { editorSize } : {}) };
 
             // Add to Global Data (with duplicate check)
             const existingIdx = allNotesData.findIndex(n => (n.id && String(n.id) === String(newNote.id)));
@@ -17047,7 +17206,10 @@ function saveEditedNote(forceClose = false) {
 
         // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
         const hasDrafts = !!modalBodyElem.dataset.draftText;
-        const hasChanges = isNewNote || hasDrafts || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color);
+        const previousIsExpanded = getNoteUiState(noteObj?.uiState).isExpanded === true;
+        const previousEditorSize = getValidEditorSize(noteObj?.uiState);
+        const hasEditorSizeChanged = JSON.stringify(editorSize) !== JSON.stringify(previousEditorSize);
+        const hasChanges = isNewNote || hasDrafts || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color || isExpanded !== previousIsExpanded || hasEditorSizeChanged);
 
         if (hasChanges) {
             // --- Apply Changes ---
@@ -17060,6 +17222,12 @@ function saveEditedNote(forceClose = false) {
             noteObj.title_span = finalTitleFormat;
             const oldCalendarDate = noteObj.calendarDate || 0;
             noteObj.calendarDate = newCalendarDate;
+            const hasExistingUiState = noteObj.uiState && typeof noteObj.uiState === 'object' && !Array.isArray(noteObj.uiState);
+            if (hasExistingUiState || isExpanded || editorSize) {
+                const savedUiState = getNoteUiState(noteObj.uiState);
+                noteObj.uiState = { ...savedUiState, isExpanded };
+                if (editorSize) noteObj.uiState.editorSize = editorSize;
+            }
 
             // --- Sync with timer ---
             if (automatedTimer) {
@@ -18732,11 +18900,8 @@ function initFABDragging() {
     const fab = document.getElementById('add-note-fab');
     if (!fab) return;
 
-    // Use common logic with long press callback
-    makeElementDraggable(fab, 'addNoteFabPosition', false, () => {
-        if (typeof showNewBoardModal === 'function') showNewBoardModal();
-        if (navigator.vibrate) navigator.vibrate(50);
-    });
+    // Без long-press: той се припокрива с drag. Нов board се създава с Ctrl+клик.
+    makeElementDraggable(fab, 'addNoteFabPosition');
 
     fab.addEventListener('click', (e) => {
         // We don't need to check isDragging/isLongPress here because
