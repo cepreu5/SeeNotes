@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.49'; // App version
+const version = 'Beta 1.50'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -6080,6 +6080,8 @@ function initApp() {
     }
     // --- Край на корекцията ---
     copyBtn.innerHTML = copyIconSvg;
+    const pasteModalBtn = document.getElementById('paste-modal-btn');
+    if (pasteModalBtn) pasteModalBtn.style.display = 'none';
     copyBtn.addEventListener('click', () => {
         if (!navigator.clipboard) return;
         const selection = window.getSelection();
@@ -6103,6 +6105,25 @@ function initApp() {
             }).catch(err => {
                 showToast(_('errorCopyFailed'));
             });
+        }
+    });
+
+    pasteModalBtn?.addEventListener('click', async () => {
+        const textarea = getActiveModalEditor();
+        if (!textarea) return;
+
+        try {
+            if (!navigator.clipboard?.readText) throw new Error('Clipboard access is unavailable');
+            const clipboardText = await navigator.clipboard.readText();
+            const selectionStart = textarea.selectionStart;
+            const selectionEnd = textarea.selectionEnd;
+            textarea.setRangeText(clipboardText, selectionStart, selectionEnd, 'end');
+            textarea.focus();
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            scrollCaretIntoView(textarea);
+        } catch (error) {
+            console.warn('Failed to paste from clipboard:', error);
+            showToast((typeof _ === 'function' && _('errorClipboardRead')) || 'Неуспешно четене от клипборда.');
         }
     });
 
@@ -6231,10 +6252,15 @@ function initApp() {
     // --- Modal Resizing Logic ---
     const modalContentBox = contentModal.querySelector('.modal-content-box');
     const resizeHandle = contentModal.querySelector('.modal-resize-handle');
-    let startX, startY, startWidth, startHeight, isIndividualResize = false;
+    let startX, startY, startWidth, startHeight, isIndividualResize = false, individualResizeTimer = null;
     function doDrag(e) {
         e.preventDefault();
         e.stopPropagation();
+        // Обикновеното движение преди long-press запазва глобалния resize режим.
+        if (e.type === 'touchmove' && individualResizeTimer) {
+            clearTimeout(individualResizeTimer);
+            individualResizeTimer = null;
+        }
         const currentX = e.touches ? e.touches[0].clientX : e.clientX;
         const currentY = e.touches ? e.touches[0].clientY : e.clientY;
         const newWidth = Math.round(startWidth + currentX - startX);
@@ -6252,6 +6278,8 @@ function initApp() {
         document.documentElement.removeEventListener('mouseup', stopDrag, false);
         document.documentElement.removeEventListener('touchmove', doDrag, false);
         document.documentElement.removeEventListener('touchend', stopDrag, false);
+        clearTimeout(individualResizeTimer);
+        individualResizeTimer = null;
         if (isIndividualResize) {
             const modalBodyElem = document.getElementById('modal-body');
             if (modalBodyElem) {
@@ -6266,6 +6294,7 @@ function initApp() {
             localStorage.setItem('modalHeight', modalContentBox.style.height);
         }
         isIndividualResize = false;
+        resizeHandle.classList.remove('individual-resize-active');
     }
     function startDrag(e) {
         e.preventDefault();
@@ -6273,6 +6302,16 @@ function initApp() {
         startX = e.touches ? e.touches[0].clientX : e.clientX;
         startY = e.touches ? e.touches[0].clientY : e.clientY;
         isIndividualResize = !!e.ctrlKey;
+        clearTimeout(individualResizeTimer);
+        if (e.type === 'touchstart') {
+            // Задръж дръжката преди влачене, за да запишеш размера само за тази бележка.
+            individualResizeTimer = setTimeout(() => {
+                isIndividualResize = true;
+                resizeHandle.classList.add('individual-resize-active');
+                if (navigator.vibrate) navigator.vibrate(40);
+                if (typeof showToast === 'function') showToast('Индивидуален размер', 1200);
+            }, 450);
+        }
         startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
         startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
         // Attach listeners for both mouse and touch
@@ -6286,11 +6325,14 @@ function initApp() {
     resizeHandle.addEventListener('mousedown', startDrag);
     resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
     // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
-    resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
-            <path d="M12 2 L2 12" />
-            <path d="M12 7 L7 12" />
-            <!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
-            <path d="M10 4 L4 4 L4 10" />
+    resizeHandle.title = 'Влачи: глобален размер · Ctrl+влачи / задръж на мобилен: само за тази бележка';
+    resizeHandle.setAttribute('aria-label', resizeHandle.title);
+    resizeHandle.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 21h13V8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+            <path d="M12 21h9v-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+            <circle cx="8" cy="16" r="1.5" fill="currentColor" />
+            <circle cx="13" cy="16" r="1.5" fill="currentColor" />
+            <circle cx="8" cy="11" r="1.5" fill="currentColor" />
         </svg>`;
     // Load saved searches and settings from localStorage
     lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
@@ -9281,6 +9323,7 @@ function updateModalUiStateSaveUI() {
     const shouldShow = !isEditing && hasModalUiStateChanges() && footerToolbar;
     if (!shouldShow) {
         if (existingBtn) existingBtn.remove();
+        footerToolbar?._footerDateScheduleUpdate?.();
         return;
     }
     if (existingBtn) return;
@@ -9296,6 +9339,54 @@ function updateModalUiStateSaveUI() {
         saveEditedNote();
     });
     footerToolbar.appendChild(saveBtn);
+    footerToolbar._footerDateScheduleUpdate?.();
+}
+
+function updateModalFooterDateVisibility(footerToolbar) {
+    const footerDate = footerToolbar?.querySelector('.modal-note-footer');
+    if (!footerDate) return;
+
+    // The date is inserted before the action buttons. Keep its measured width so
+    // it can be evaluated even after it has been hidden once.
+    if (!footerDate.hidden) {
+        const measuredWidth = footerDate.getBoundingClientRect().width;
+        if (measuredWidth > 0) footerDate.dataset.measuredWidth = String(measuredWidth);
+    }
+
+    const dateWidth = Number(footerDate.dataset.measuredWidth);
+    if (!dateWidth) return;
+
+    const visibleButtons = Array.from(footerToolbar.children).filter((child) => {
+        return child !== footerDate && !child.hidden && getComputedStyle(child).display !== 'none';
+    });
+    const toolbarStyle = getComputedStyle(footerToolbar);
+    const gap = Number.parseFloat(toolbarStyle.columnGap) || 0;
+    const horizontalPadding = (Number.parseFloat(toolbarStyle.paddingLeft) || 0)
+        + (Number.parseFloat(toolbarStyle.paddingRight) || 0);
+    const buttonsWidth = visibleButtons.reduce((total, button) => total + button.getBoundingClientRect().width, 0);
+    const requiredWidth = dateWidth + buttonsWidth + gap * visibleButtons.length;
+    const availableWidth = Math.max(0, footerToolbar.clientWidth - horizontalPadding);
+
+    footerDate.hidden = requiredWidth > availableWidth;
+}
+
+function observeModalFooterDateVisibility(footerToolbar) {
+    if (!footerToolbar || footerToolbar._footerDateResizeObserver) return;
+
+    let frameId = null;
+    const scheduleUpdate = () => {
+        if (frameId !== null) cancelAnimationFrame(frameId);
+        frameId = requestAnimationFrame(() => {
+            frameId = null;
+            updateModalFooterDateVisibility(footerToolbar);
+        });
+    };
+
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    resizeObserver.observe(footerToolbar);
+    footerToolbar._footerDateResizeObserver = resizeObserver;
+    footerToolbar._footerDateScheduleUpdate = scheduleUpdate;
+    scheduleUpdate();
 }
 
 function showModal(options, noteElement = null) {
@@ -9583,6 +9674,7 @@ function showModal(options, noteElement = null) {
     if (!isPromo && !options.readonly) {
         const closeBtn = modalContentBox.querySelector('.modal-close');
         if (closeBtn) {
+            const expandBtn = document.getElementById('modal-expand-btn');
             const colorBtn = document.createElement('div');
             colorBtn.id = 'modal-color-btn';
             colorBtn.className = 'modal-header-btn';
@@ -9590,7 +9682,6 @@ function showModal(options, noteElement = null) {
             colorBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="gray" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>`;
             Object.assign(colorBtn.style, {
                 cursor: 'pointer',
-                right: '277px',
                 display: 'none',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -9598,7 +9689,8 @@ function showModal(options, noteElement = null) {
             });
             colorBtn.onmouseover = () => colorBtn.style.opacity = '1';
             colorBtn.onmouseout = () => colorBtn.style.opacity = '0.7';
-            closeBtn.parentNode.insertBefore(colorBtn, closeBtn);
+            // Keep it immediately to the left of the expand control in the first header row.
+            closeBtn.parentNode.insertBefore(colorBtn, expandBtn || closeBtn);
 
             // Palette
             const palette = document.createElement('div');
@@ -9743,8 +9835,15 @@ function showModal(options, noteElement = null) {
     // Remove old search bar and footer if they exist
     const oldFooter = modalContentBox.querySelector('.modal-note-footer');
     if (oldFooter) oldFooter.remove();
+    restoreModalHeaderListButtons();
+    modalContentBox.classList.remove('has-edit-toolbar');
+    const oldEditToolbar = modalContentBox.querySelector('.modal-edit-toolbar');
+    if (oldEditToolbar) oldEditToolbar.remove();
     const oldToolbar = modalContentBox.querySelector('.modal-footer-toolbar');
-    if (oldToolbar) oldToolbar.remove();
+    if (oldToolbar) {
+        oldToolbar._footerDateResizeObserver?.disconnect();
+        oldToolbar.remove();
+    }
     const oldSearchBar = modalContentBox.querySelector('.modal-search-bar');
     if (oldSearchBar) oldSearchBar.remove();
 
@@ -9824,6 +9923,8 @@ function showModal(options, noteElement = null) {
     }
 
     copyBtn.innerHTML = copyIconSvg;
+    const pasteModalBtn = document.getElementById('paste-modal-btn');
+    if (pasteModalBtn) pasteModalBtn.style.display = 'none';
     // --- Логика за навигация между бележките ---
     const prevBtn = document.getElementById('prev-note-btn');
     const nextBtn = document.getElementById('next-note-btn');
@@ -10072,6 +10173,8 @@ function showModal(options, noteElement = null) {
 
         footerToolbar.appendChild(editBtn);
     }
+
+    observeModalFooterDateVisibility(footerToolbar);
 }
 
 function toggleModalSearch(modalContentBox, modalBody) {
@@ -10431,6 +10534,8 @@ function formatTime(timestamp) {
 document.querySelectorAll('.modal-close').forEach(btn => {
     btn.addEventListener('click', () => {
         copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
+        const pasteModalBtn = document.getElementById('paste-modal-btn');
+        if (pasteModalBtn) pasteModalBtn.style.display = 'none';
         contentModal.classList.remove('popup-mode'); // Reset popup mode on close
         const modalBox = contentModal.querySelector('.modal-content-box');
         modalBox.style.top = '';
@@ -16123,6 +16228,8 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     if (nextBtn) nextBtn.style.display = 'none';
     if (bulletBtn) bulletBtn.style.display = 'flex';
     if (numberedBtn) numberedBtn.style.display = 'flex';
+    const pasteModalBtn = document.getElementById('paste-modal-btn');
+    if (pasteModalBtn) pasteModalBtn.style.display = 'flex';
 }
 function toggleListFormat(textarea, listType) {
     const start = textarea.selectionStart;
@@ -16364,6 +16471,97 @@ function handleEditInput(textarea, backdrop) {
     }
 }
 
+function getActiveModalEditor() {
+    const activeElement = document.activeElement;
+    if (activeElement?.id === 'note-edit-textarea' || activeElement?.id === 'note-edit-title-textarea') {
+        return activeElement;
+    }
+    return document.getElementById('note-edit-textarea') || document.getElementById('note-edit-title-textarea');
+}
+
+function moveCaretToLineEdge(textarea, moveToEnd) {
+    if (!textarea) return;
+    const caretPosition = textarea.selectionStart;
+    const lineStart = textarea.value.lastIndexOf('\n', Math.max(0, caretPosition - 1)) + 1;
+    const nextLineBreak = textarea.value.indexOf('\n', caretPosition);
+    const lineEnd = nextLineBreak === -1 ? textarea.value.length : nextLineBreak;
+    const nextPosition = moveToEnd ? lineEnd : lineStart;
+
+    textarea.focus();
+    textarea.setSelectionRange(nextPosition, nextPosition);
+    scrollCaretIntoView(textarea);
+}
+
+function restoreModalHeaderListButtons() {
+    const headerButtons = document.querySelector('#content-modal .modal-header-buttons');
+    ['bullet-list-btn', 'numbered-list-btn'].forEach((buttonId) => {
+        const button = document.getElementById(buttonId);
+        if (!button || !headerButtons) return;
+        button.style.display = 'none';
+        headerButtons.appendChild(button);
+    });
+}
+
+function createModalEditToolbar(modalContentBox) {
+    if (!modalContentBox) return;
+    restoreModalHeaderListButtons();
+    modalContentBox.querySelector('.modal-edit-toolbar')?.remove();
+
+    const headerToolbar = modalContentBox.querySelector('.modal-header-toolbar');
+    if (!headerToolbar) return;
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'modal-edit-toolbar';
+    toolbar.setAttribute('aria-label', 'Инструменти за форматиране');
+
+    const addButton = ({ label, title, className = '', action }) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `modal-edit-toolbar-btn modal-header-btn ${className}`.trim();
+        button.textContent = label;
+        button.title = title;
+        button.setAttribute('aria-label', title);
+        // Keep the textarea focused, so actions apply at its current selection.
+        button.addEventListener('mousedown', (event) => event.preventDefault());
+        button.addEventListener('click', action);
+        toolbar.appendChild(button);
+    };
+
+    const applyMarkdown = (type) => {
+        const textarea = getActiveModalEditor();
+        if (!textarea) return;
+        const backdropId = textarea.id === 'note-edit-textarea'
+            ? 'note-edit-textarea-backdrop'
+            : 'note-edit-title-textarea-backdrop';
+        formatKeyboardHotkeys(
+            textarea,
+            document.getElementById(backdropId),
+            type === 'bold',
+            type === 'italic',
+            type === 'underline',
+            type === 'strike'
+        );
+    };
+
+    addButton({ label: 'B', title: 'Удебелен текст', className: 'is-bold', action: () => applyMarkdown('bold') });
+    addButton({ label: 'I', title: 'Курсив', className: 'is-italic', action: () => applyMarkdown('italic') });
+    addButton({ label: 'U', title: 'Подчертан текст', className: 'is-underline', action: () => applyMarkdown('underline') });
+    addButton({ label: 'S', title: 'Зачертан текст', className: 'is-strike', action: () => applyMarkdown('strike') });
+
+    ['bullet-list-btn', 'numbered-list-btn'].forEach((buttonId) => {
+        const button = document.getElementById(buttonId);
+        if (!button) return;
+        button.style.display = 'flex';
+        toolbar.appendChild(button);
+    });
+
+    addButton({ label: '⇤', title: 'Начало на реда', className: 'is-caret', action: () => moveCaretToLineEdge(getActiveModalEditor(), false) });
+    addButton({ label: '⇥', title: 'Край на реда', className: 'is-caret', action: () => moveCaretToLineEdge(getActiveModalEditor(), true) });
+
+    headerToolbar.appendChild(toolbar);
+    modalContentBox.classList.add('has-edit-toolbar');
+}
+
 function initNoteEditUI() {
     const contentModal = document.getElementById('content-modal');
     const modalBodyEl = document.getElementById('modal-body');
@@ -16431,6 +16629,11 @@ function initNoteEditUI() {
             if (searchBtn) footerToolbar.appendChild(searchBtn);
             if (sBtn) footerToolbar.appendChild(sBtn);
         }
+    }
+
+    footerToolbar?._footerDateScheduleUpdate?.();
+    if (modalBodyEl?.querySelector('textarea')) {
+        createModalEditToolbar(modalContentBox);
     }
 
     // Bind hidden attach input listener if not already bound
@@ -17174,7 +17377,7 @@ function saveEditedNote(forceClose = false) {
         }
         const originalContent = noteObj ? (noteObj.notetxt || "") : "";
         let newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj ? (noteObj.calendarDate || 0) : 0);
-        const newColor = getModalColorValue(modalBodyElem, noteObj ? (noteObj.color || 0) : 0);
+        let newColor = getModalColorValue(modalBodyElem, noteObj ? (noteObj.color || 0) : 0);
 
         // --- Conflict Resolution Logic ---
         if (updateGDriveNow && modalGdid && noteObj) {
@@ -17594,6 +17797,10 @@ function previewEditedNote() {
         if (editBtn) { editBtn.style.display = 'flex'; }
         if (previewBtn) { previewBtn.style.display = 'none'; }
         if (moveBtn) { moveBtn.style.display = 'flex'; }
+        const colorBtnPreview = document.getElementById('modal-color-btn');
+        if (colorBtnPreview) colorBtnPreview.style.display = 'none';
+        const pasteBtnPreview = document.getElementById('paste-modal-btn');
+        if (pasteBtnPreview) pasteBtnPreview.style.display = 'none';
         const attachBtnPreview = document.getElementById('note-attach-btn');
         if (attachBtnPreview) attachBtnPreview.style.display = 'none';
         const dupBtn = document.getElementById('note-duplicate-btn');
@@ -17603,6 +17810,11 @@ function previewEditedNote() {
 
 function disableNoteEditing(modalBodyElem) {
     if (!modalBodyElem) return;
+
+    const modalBox = modalBodyElem.closest('.modal-content-box');
+    restoreModalHeaderListButtons();
+    modalBox?.querySelector('.modal-edit-toolbar')?.remove();
+    modalBox?.classList.remove('has-edit-toolbar');
 
     // Clear editing drafts
     delete modalBodyElem.dataset.draftText;
@@ -17622,6 +17834,8 @@ function disableNoteEditing(modalBodyElem) {
     // 3. Hide Color Button
     const colorBtn = document.getElementById('modal-color-btn');
     if (colorBtn) colorBtn.style.display = 'none';
+    const pasteModalBtn = document.getElementById('paste-modal-btn');
+    if (pasteModalBtn) pasteModalBtn.style.display = 'none';
     // 4. Restore graphical background if setting allows
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false';
     const modalContentBox = document.querySelector('#content-modal .modal-content-box');

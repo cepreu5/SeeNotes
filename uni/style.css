@@ -1112,11 +1112,24 @@ code {
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 20px;
-    height: 20px;
+    width: 32px;
+    height: 32px;
     cursor: se-resize;
     z-index: 2;
     /* Трябва да е над съдържанието */
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 3px;
+    box-sizing: border-box;
+    color: rgba(0, 0, 0, 0.65);
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.modal-resize-handle.individual-resize-active {
+    color: #1976d2;
+    filter: drop-shadow(0 0 3px rgba(25, 118, 210, 0.8));
 }
 
 .popup-mode {
@@ -3094,6 +3107,10 @@ body.selection-locked .note.active-selection-note .note-content {
     /* Limit width */
 }
 
+.modal-note-footer[hidden] {
+    display: none;
+}
+
 
 
 .modal-note-footer .header-icon svg {
@@ -3203,6 +3220,8 @@ body.selection-locked .note.active-selection-note .note-content {
     padding: 10px 15px;
     background-color: transparent;
     min-height: 40px;
+    flex-wrap: wrap;
+    align-content: flex-start;
 }
 
 .modal-header-buttons {
@@ -3281,6 +3300,54 @@ body.selection-locked .note.active-selection-note .note-content {
     height: 32px;
     box-shadow: none;
     margin-bottom: 0px;
+}
+
+/* Secondary header row shown only while a note is being edited. */
+.modal-edit-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    flex-basis: 100%;
+    margin-top: 8px;
+    pointer-events: auto;
+}
+
+.modal-edit-toolbar-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #aaa;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.modal-edit-toolbar-btn:hover,
+.modal-edit-toolbar-btn:focus-visible {
+    background: rgba(255, 255, 255, 0.35);
+    border-color: #555;
+    outline: none;
+}
+
+.modal-edit-toolbar-btn.is-bold { font-weight: 700; }
+.modal-edit-toolbar-btn.is-italic { font-style: italic; }
+.modal-edit-toolbar-btn.is-underline { text-decoration: underline; }
+.modal-edit-toolbar-btn.is-strike { text-decoration: line-through; }
+.modal-edit-toolbar-btn.is-list { font-size: 18px; }
+.modal-edit-toolbar-btn.is-caret { font-size: 21px; }
+
+.modal-content-box.has-edit-toolbar {
+    padding-top: 100px;
 }
 
 /* Adjustments for #modal-board-name when in toolbar */
