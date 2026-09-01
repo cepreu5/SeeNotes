@@ -41,6 +41,16 @@ body:not(.app-ready) #kb-fab {
     display: none !important;
 }
 
+/* A note modal blocks creating another note; hide the global add button. */
+body:has(#content-modal.visible) #add-note-fab {
+    display: none !important;
+}
+
+/* Keep the Assistant clear of an expanded note's bottom toolbar. */
+body.modal-note-expanded #kb-fab {
+    translate: 0 -60px;
+}
+
 header {
     padding: 5px 1em 0px 5px;
     border-bottom: 3px solid #6c6c6c;
@@ -3311,6 +3321,8 @@ body.selection-locked .note.active-selection-note .note-content {
     gap: 8px;
     flex-basis: 100%;
     margin-top: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.18);
     pointer-events: auto;
 }
 

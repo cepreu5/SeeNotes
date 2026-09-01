@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.50'; // App version
+const version = 'Beta 1.51'; // App version
 const debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -5519,6 +5519,11 @@ function initApp() {
     });
     contentModal = document.getElementById('content-modal');
     modalBody = document.getElementById('modal-body');
+    new MutationObserver(() => {
+        if (!contentModal.classList.contains('visible')) {
+            setExpandedModalFloatingControls(false);
+        }
+    }).observe(contentModal, { attributes: true, attributeFilter: ['class'] });
 
     copyBtn = document.getElementById('copy-modal-btn');
     scrollTopBtn = document.getElementById("scrollTopBtn");
@@ -9283,6 +9288,10 @@ function applyExpandedModalSize(modalContentBox, isExpanded) {
     modalContentBox.style.maxHeight = 'none';
 }
 
+function setExpandedModalFloatingControls(isExpanded) {
+    document.body.classList.toggle('modal-note-expanded', isExpanded);
+}
+
 function updateModalExpandButton(isExpanded) {
     const expandBtn = document.getElementById('modal-expand-btn');
     if (!expandBtn) return;
@@ -9319,9 +9328,17 @@ function updateModalUiStateSaveUI() {
     const modalContentBox = document.querySelector('#content-modal .modal-content-box');
     const footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
     const existingBtn = document.getElementById('note-ui-state-save-btn');
+    const draftSaveBtn = document.getElementById('note-save-btn');
     const isEditing = !!modalBodyElem?.querySelector('textarea');
     const shouldShow = !isEditing && hasModalUiStateChanges() && footerToolbar;
     if (!shouldShow) {
+        if (existingBtn) existingBtn.remove();
+        footerToolbar?._footerDateScheduleUpdate?.();
+        return;
+    }
+    // Preview already exposes the regular Save button, which persists both the
+    // draft and the changed uiState. Do not add a duplicate disk button.
+    if (draftSaveBtn && getComputedStyle(draftSaveBtn).display !== 'none') {
         if (existingBtn) existingBtn.remove();
         footerToolbar?._footerDateScheduleUpdate?.();
         return;
@@ -9445,6 +9462,7 @@ function showModal(options, noteElement = null) {
             }
         }
     }
+    setExpandedModalFloatingControls(isExpanded);
     // Размер на шрифта: от options (демо бележка) или от потребителските настройки
     if (options && options.fontSize) {
         modalBody.style.fontSize = (typeof options.fontSize === 'number' ? options.fontSize + 'px' : options.fontSize);
@@ -9539,10 +9557,16 @@ function showModal(options, noteElement = null) {
 
         // Calculate character index from click position
         let charIndex = -1;
-        const selection = window.getSelection();
-        if (selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            charIndex = getPreciseCharIndex(modalBody, range);
+        const tableCell = e.target.closest('.md-table-render th, .md-table-render td');
+        if (tableCell) {
+            charIndex = getMarkdownTableCellCharIndex(currentModalContent, tableCell);
+        }
+        if (charIndex === -1) {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                charIndex = getPreciseCharIndex(modalBody, range);
+            }
         }
 
         enableNoteEditing(modalBody, charIndex);
@@ -9631,6 +9655,7 @@ function showModal(options, noteElement = null) {
                 applyExpandedModalSize(modalContentBox, false);
             }
             updateModalExpandButton(nextIsExpanded);
+            setExpandedModalFloatingControls(nextIsExpanded);
             updateModalUiStateSaveUI();
         };
     }
@@ -16065,6 +16090,19 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     let currentTitleFormats = parseFormatsString(modalBodyElem.dataset.titleFormat);
 
     const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) !== -1 : bodyText.includes('|');
+    const isPreviewTransition = modalBodyElem.dataset.isPreview === 'true';
+    if (isPreviewTransition) {
+        // Preview renders postEdit output. Re-enter editing through the normal
+        // preEdit path so its Markdown markers and formatting ranges match a
+        // newly opened editor.
+        delete modalBodyElem.dataset.draftText;
+        delete modalBodyElem.dataset.draftTitle;
+        delete modalBodyElem.dataset.isPreview;
+        delete modalBodyElem.dataset.previewDraftFormat;
+        delete modalBodyElem.dataset.previewDraftTitleFormat;
+        delete modalBodyElem.dataset.previewDraftMaskedLinks;
+        delete modalBodyElem.dataset.previewHasTitle;
+    }
     if (modalBodyElem.dataset.draftText !== undefined) {
         bodyText = modalBodyElem.dataset.draftText;
         titleText = modalBodyElem.dataset.draftTitle || "";
@@ -16291,6 +16329,51 @@ function getPreciseCharIndex(container, range) {
         }
     }
     return charCount;
+}
+
+function getMarkdownTableCellCharIndex(text, cellElement) {
+    const table = parseMarkdownTable(text);
+    const renderedTable = cellElement?.closest('table.md-table-render');
+    const renderedRow = cellElement?.closest('tr');
+    if (!table || !renderedTable || !renderedRow) return -1;
+
+    const columnIndex = Array.from(renderedRow.children).indexOf(cellElement);
+    if (columnIndex < 0) return -1;
+
+    let rowIndex;
+    if (!table.borderless && cellElement.tagName === 'TH') {
+        rowIndex = 0;
+    } else {
+        const bodyRows = Array.from(renderedTable.querySelectorAll('tbody tr'));
+        const bodyRowIndex = bodyRows.indexOf(renderedRow);
+        if (bodyRowIndex < 0) return -1;
+        rowIndex = bodyRowIndex + 1;
+    }
+
+    // Markdown has a separator row after the header; rendered rows do not.
+    const sourceLineIndex = rowIndex === 0 ? table.startIndex : table.startIndex + rowIndex + 1;
+    const sourceLines = String(text).split(/\r\n|\n|\r/);
+    const sourceLine = sourceLines[sourceLineIndex];
+    if (sourceLine === undefined) return -1;
+
+    const lineBreaks = [...String(text).matchAll(/\r\n|\n|\r/g)];
+    const lineStart = sourceLineIndex === 0
+        ? 0
+        : lineBreaks[sourceLineIndex - 1]?.index + lineBreaks[sourceLineIndex - 1]?.[0].length;
+    if (!Number.isFinite(lineStart)) return -1;
+
+    let cellStart = sourceLine.trimStart().startsWith('|')
+        ? sourceLine.indexOf('|') + 1
+        : 0;
+    for (let index = 0; index < columnIndex; index++) {
+        const separatorIndex = sourceLine.indexOf('|', cellStart);
+        if (separatorIndex === -1) return -1;
+        cellStart = separatorIndex + 1;
+    }
+
+    const cellEnd = sourceLine.indexOf('|', cellStart);
+    const rawCell = sourceLine.slice(cellStart, cellEnd === -1 ? sourceLine.length : cellEnd);
+    return lineStart + cellStart + (rawCell.length - rawCell.trimStart().length);
 }
 
 /**
@@ -17175,14 +17258,17 @@ async function checkUnsavedChanges(isClosingModal = true) {
         const noteId = modalBodyElem.dataset.id;
         const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
         if (!noteObj) return true;
-        const formatStr = modalBodyElem.dataset.format || "";
-        const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
-        const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
+        const isPreview = modalBodyElem.dataset.isPreview === 'true';
+        const formatStr = isPreview ? (modalBodyElem.dataset.previewDraftFormat || "") : (modalBodyElem.dataset.format || "");
+        const titleFormatStr = isPreview ? (modalBodyElem.dataset.previewDraftTitleFormat || "") : (modalBodyElem.dataset.titleFormat || "");
+        const maskedSource = isPreview ? modalBodyElem.dataset.previewDraftMaskedLinks : modalBodyElem.dataset.maskedLinks;
+        const maskedLinks = maskedSource ? JSON.parse(maskedSource) : [];
         const isHiddenNote = noteObj.pass === true;
         let processedText = newBodyTextRaw;
         let finalFormat = formatStr;
         let finalTitleFormat = titleFormatStr;
-        if ((isHiddenNote || (titleTextarea && newTitleTextRaw !== "") || (modalBodyElem.dataset.draftTitle && modalBodyElem.dataset.draftTitle !== "")) && (titleTextarea || modalBodyElem.dataset.draftTitle)) {
+        const hasPreviewTitle = isPreview && modalBodyElem.dataset.previewHasTitle === 'true';
+        if ((isHiddenNote || (titleTextarea && newTitleTextRaw !== "") || (modalBodyElem.dataset.draftTitle && modalBodyElem.dataset.draftTitle !== "")) && (titleTextarea || hasPreviewTitle)) {
             const titleRes = postEdit(newTitleTextRaw, parseFormatsString(titleFormatStr), maskedLinks);
             finalTitleFormat = stringifyFormatsArray(titleRes.formats);
             const bodyRes = postEdit(newBodyTextRaw, parseFormatsString(formatStr), maskedLinks);
@@ -17241,8 +17327,9 @@ function saveEditedNote(forceClose = false) {
         // 1. Get content and format
         const newText = textarea ? textarea.value : modalBodyElem.dataset.draftText;
         const titleText = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
-        const formatStr = modalBodyElem.dataset.format || "";
-        const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
+        const isPreview = modalBodyElem.dataset.isPreview === 'true';
+        const formatStr = isPreview ? (modalBodyElem.dataset.previewDraftFormat || "") : (modalBodyElem.dataset.format || "");
+        const titleFormatStr = isPreview ? (modalBodyElem.dataset.previewDraftTitleFormat || "") : (modalBodyElem.dataset.titleFormat || "");
 
         if (!closeAfterSave) {
             disableNoteEditing(modalBodyElem);
@@ -17256,10 +17343,12 @@ function saveEditedNote(forceClose = false) {
         const editorSize = getModalEditorSize();
 
         // Retrieve masked links from dataset if they exist
-        const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
+        const maskedSource = isPreview ? modalBodyElem.dataset.previewDraftMaskedLinks : modalBodyElem.dataset.maskedLinks;
+        const maskedLinks = maskedSource ? JSON.parse(maskedSource) : [];
 
         let processedText, finalFormat, finalTitleFormat;
-        if ((isHiddenNote || (titleTextarea && titleText !== "")) && titleTextarea) {
+        const hasPreviewTitle = isPreview && modalBodyElem.dataset.previewHasTitle === 'true';
+        if ((isHiddenNote || ((titleTextarea || hasPreviewTitle) && titleText !== "")) && (titleTextarea || hasPreviewTitle)) {
             // Handle hidden note OR normal note with split content
             const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
             finalTitleFormat = stringifyFormatsArray(titleRes.formats);
@@ -17765,6 +17854,11 @@ function previewEditedNote() {
         if (newModalBodyElem) {
             newModalBodyElem.dataset.draftText = newText;
             newModalBodyElem.dataset.draftTitle = titleText;
+            newModalBodyElem.dataset.isPreview = 'true';
+            newModalBodyElem.dataset.previewDraftFormat = formatStr;
+            newModalBodyElem.dataset.previewDraftTitleFormat = titleFormatStr;
+            newModalBodyElem.dataset.previewDraftMaskedLinks = JSON.stringify(maskedLinks);
+            if (titleTextarea) newModalBodyElem.dataset.previewHasTitle = 'true';
             if (modalBodyElem.dataset.initialEditText !== undefined) newModalBodyElem.dataset.initialEditText = modalBodyElem.dataset.initialEditText;
             if (modalBodyElem.dataset.initialEditTitleText !== undefined) newModalBodyElem.dataset.initialEditTitleText = modalBodyElem.dataset.initialEditTitleText;
             if (modalBodyElem.dataset.initialFormat !== undefined) newModalBodyElem.dataset.initialFormat = modalBodyElem.dataset.initialFormat;
@@ -17778,9 +17872,8 @@ function previewEditedNote() {
             if (modalBodyElem.dataset.colorIndex) newModalBodyElem.dataset.colorIndex = modalBodyElem.dataset.colorIndex;
             if (modalBodyElem.dataset.baseDatemod) newModalBodyElem.dataset.baseDatemod = modalBodyElem.dataset.baseDatemod;
             if (modalBodyElem.dataset.baseNote) newModalBodyElem.dataset.baseNote = modalBodyElem.dataset.baseNote;
-            if (modalBodyElem.dataset.maskedLinks) newModalBodyElem.dataset.maskedLinks = modalBodyElem.dataset.maskedLinks;
-            if (modalBodyElem.dataset.format) newModalBodyElem.dataset.format = modalBodyElem.dataset.format;
-            if (modalBodyElem.dataset.titleFormat) newModalBodyElem.dataset.titleFormat = modalBodyElem.dataset.titleFormat;
+            // Keep showModal's postEdit values in format/titleFormat. The raw
+            // draft equivalents are kept separately for direct Save from Preview.
         }
 
         // --- Custom preview state: Show Save, Preview AND Edit buttons ---
@@ -17819,6 +17912,11 @@ function disableNoteEditing(modalBodyElem) {
     // Clear editing drafts
     delete modalBodyElem.dataset.draftText;
     delete modalBodyElem.dataset.draftTitle;
+    delete modalBodyElem.dataset.isPreview;
+    delete modalBodyElem.dataset.previewDraftFormat;
+    delete modalBodyElem.dataset.previewDraftTitleFormat;
+    delete modalBodyElem.dataset.previewDraftMaskedLinks;
+    delete modalBodyElem.dataset.previewHasTitle;
 
     // 1. Hide Save and Preview Buttons
     const saveBtn = document.getElementById('note-save-btn');
