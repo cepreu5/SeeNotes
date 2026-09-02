@@ -8265,6 +8265,11 @@ async function mainLogic(forceFullSync = false) {
             loaderText.textContent = ''; // Изчистваме текста за прогреса
             updateSearchPlaceholder();
             document.body.style.backgroundImage = `url('Board.png')`; // Reset background
+            // renderUI() uses two frames before revealing the prepared note cards.
+            // Keep the loader over the board until that reveal has happened.
+            await new Promise(resolve => requestAnimationFrame(() => {
+                requestAnimationFrame(resolve);
+            }));
             // Скриваме лоудъра и логин страницата
             loaderContainer.style.display = 'none';
             document.getElementById('login-page').style.display = 'none';
@@ -8272,7 +8277,8 @@ async function mainLogic(forceFullSync = false) {
             // Показваме основните елементи, след като всичко е заредено
             document.querySelector('header').style.visibility = 'visible';
             document.querySelector('#search-wrapper').style.display = 'flex';
-            notesContainer.style.visibility = 'visible';
+            // renderUI() показва бележките едва след като фоновете им са готови.
+            // Не отменяме това тук, за да не се види текстът преди изображенията.
             isMainLogicRunning = false;
 
             if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {

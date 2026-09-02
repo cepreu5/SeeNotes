@@ -3222,16 +3222,15 @@ body.selection-locked .note.active-selection-note .note-content {
     top: 0;
     left: 0;
     right: 0;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-template-rows: auto auto;
     align-items: center;
     z-index: 10001;
     pointer-events: none;
     padding: 10px 15px;
     background-color: transparent;
     min-height: 40px;
-    flex-wrap: wrap;
-    align-content: flex-start;
 }
 
 .modal-header-buttons {
@@ -3239,9 +3238,13 @@ body.selection-locked .note.active-selection-note .note-content {
     gap: 8px;
     align-items: center;
     pointer-events: auto;
-    flex-wrap: wrap;
-    /* Allow wrapping in header */
+    flex-wrap: nowrap;
+    width: max-content;
     justify-content: flex-end;
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+    flex-shrink: 0;
 }
 
 .modal-footer-toolbar {
@@ -3319,7 +3322,8 @@ body.selection-locked .note.active-selection-note .note-content {
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    flex-basis: 100%;
+    grid-column: 1 / -1;
+    grid-row: 2;
     margin-top: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.18);
@@ -3365,7 +3369,11 @@ body.selection-locked .note.active-selection-note .note-content {
 /* Adjustments for #modal-board-name when in toolbar */
 .modal-header-toolbar #modal-board-name {
     position: static !important;
-    max-width: 60%;
+    grid-column: 1;
+    grid-row: 1;
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 auto;
     pointer-events: auto;
     font-size: 1.1em;
     overflow: hidden;
