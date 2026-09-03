@@ -41,6 +41,16 @@ body:not(.app-ready) #kb-fab {
     display: none !important;
 }
 
+/* A note modal blocks creating another note; hide the global add button. */
+body:has(#content-modal.visible) #add-note-fab {
+    display: none !important;
+}
+
+/* Keep the Assistant clear of an expanded note's bottom toolbar. */
+body.modal-note-expanded #kb-fab {
+    translate: 0 -60px;
+}
+
 header {
     padding: 5px 1em 0px 5px;
     border-bottom: 3px solid #6c6c6c;
@@ -906,6 +916,170 @@ code {
     /* Re-enable clicks on date/time elements */
     gap: 5px;
     /* Space between icon and text */
+}
+
+.note-header-date {
+    cursor: pointer;
+}
+
+.note-week-calendar {
+    position: absolute;
+    inset: 5px 10px 10px 5px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    padding: 7px;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.88) url('Board1.png') center / cover;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+.note-week-calendar-header {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 24px 18px 24px;
+    align-items: center;
+    gap: 3px;
+    min-height: 27px;
+    padding-bottom: 2px;
+    border-radius: 4px;
+    background: rgba(185, 221, 246, 0.92);
+    cursor: pointer;
+}
+
+.note-week-nav {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.68);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.note-week-nav:hover,
+.note-week-nav:focus-visible {
+    background: rgba(0, 0, 0, 0.1);
+    outline: none;
+}
+
+.note-week-today {
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.68);
+    cursor: pointer;
+}
+
+.note-week-today svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+.note-week-today:hover,
+.note-week-today:focus-visible {
+    background: rgba(0, 0, 0, 0.1);
+    outline: none;
+}
+
+.note-week-close-hint {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 0, 0, 0.55);
+    border-radius: 50%;
+    color: rgba(0, 0, 0, 0.7);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.note-week-title {
+    overflow: hidden;
+    color: rgba(0, 0, 0, 0.68);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.note-week-days {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: 3px;
+}
+
+.note-week-day {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 1px 4px;
+    border: 1px solid rgba(0, 0, 0, 0.24);
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+.note-week-day.is-today {
+    background: #bfc523;
+}
+
+.note-week-date-label {
+    width: 34px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.note-week-markers {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-content: center;
+    gap: 2px;
+    min-height: 16px;
+}
+
+.note-week-marker {
+    display: block;
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    border-radius: 2px;
+    box-sizing: border-box;
+    appearance: none;
+    opacity: 1;
+    visibility: visible;
+    cursor: pointer;
+}
+
+.note-week-marker:hover,
+.note-week-marker:focus-visible {
+    outline: 2px solid rgba(0, 0, 0, 0.65);
+    outline-offset: 1px;
+    transform: scale(1.25);
 }
 
 .note-header-time {
@@ -3212,16 +3386,15 @@ body.selection-locked .note.active-selection-note .note-content {
     top: 0;
     left: 0;
     right: 0;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-template-rows: auto auto;
     align-items: center;
     z-index: 10001;
     pointer-events: none;
     padding: 10px 15px;
     background-color: transparent;
     min-height: 40px;
-    flex-wrap: wrap;
-    align-content: flex-start;
 }
 
 .modal-header-buttons {
@@ -3229,9 +3402,13 @@ body.selection-locked .note.active-selection-note .note-content {
     gap: 8px;
     align-items: center;
     pointer-events: auto;
-    flex-wrap: wrap;
-    /* Allow wrapping in header */
+    flex-wrap: nowrap;
+    width: max-content;
     justify-content: flex-end;
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+    flex-shrink: 0;
 }
 
 .modal-footer-toolbar {
@@ -3309,8 +3486,11 @@ body.selection-locked .note.active-selection-note .note-content {
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    flex-basis: 100%;
+    grid-column: 1 / -1;
+    grid-row: 2;
     margin-top: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.18);
     pointer-events: auto;
 }
 
@@ -3353,7 +3533,11 @@ body.selection-locked .note.active-selection-note .note-content {
 /* Adjustments for #modal-board-name when in toolbar */
 .modal-header-toolbar #modal-board-name {
     position: static !important;
-    max-width: 60%;
+    grid-column: 1;
+    grid-row: 1;
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 auto;
     pointer-events: auto;
     font-size: 1.1em;
     overflow: hidden;
