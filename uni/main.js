@@ -8,7 +8,7 @@
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 const version = 'Beta 1.51'; // App version
-const debug = true; // Глобален флаг за дебъг режим
+const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
 let guide = true;
@@ -373,6 +373,168 @@ function getNoteColorCss(color, fallback = noteColorMap[0]) {
             : (color < 0 ? colorIntToHex(color) : fallback);
     }
     return typeof color === 'string' ? color : fallback;
+}
+
+function getNoteHeaderDateTimestamp(noteData) {
+    const timer = Number(noteData?.timer || 0);
+    const timerDate = timer ? new Date(timer) : null;
+    const isAutoCalendarTimer = timerDate && timerDate.getHours() === 0 && timerDate.getMinutes() === 0 && timerDate.getSeconds() === 33;
+
+    if (timer && !isAutoCalendarTimer) return timer;
+    if (Number(noteData?.calendarDate) > 0) return Number(noteData.calendarDate);
+    if (Number(noteData?.datemod) > 0) return Number(noteData.datemod);
+    return Number(noteData?.date) || 0;
+}
+
+function showNoteWeekCalendar(noteElement, anchorDateTimestamp) {
+    if (!noteElement || !anchorDateTimestamp) return;
+
+    const existingCalendar = noteElement.querySelector('.note-week-calendar');
+    if (existingCalendar) {
+        existingCalendar.remove();
+        return;
+    }
+    document.querySelectorAll('.note-week-calendar').forEach(calendar => calendar.remove());
+
+    const anchorDate = new Date(anchorDateTimestamp);
+    if (Number.isNaN(anchorDate.getTime())) return;
+    anchorDate.setHours(0, 0, 0, 0);
+    const weekStart = new Date(anchorDate);
+    weekStart.setDate(anchorDate.getDate() - ((anchorDate.getDay() + 6) % 7)); // Monday
+
+    const notesByDay = new Map();
+    allNotesData.forEach(noteData => {
+        if (!noteData.calendarDate || noteData.status === 1) return;
+        const noteDate = new Date(noteData.calendarDate);
+        if (Number.isNaN(noteDate.getTime())) return;
+        noteDate.setHours(0, 0, 0, 0);
+        const key = noteDate.getTime();
+        if (!notesByDay.has(key)) notesByDay.set(key, []);
+        notesByDay.get(key).push(noteData);
+    });
+
+    const calendar = document.createElement('div');
+    calendar.className = 'note-week-calendar';
+    calendar.setAttribute('role', 'dialog');
+    calendar.setAttribute('aria-label', _('weeklyCalendar') || 'Weekly calendar');
+    calendar.addEventListener('click', event => event.stopPropagation());
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const renderWeek = (startDate) => {
+        calendar.replaceChildren();
+        const header = document.createElement('div');
+        header.className = 'note-week-calendar-header';
+
+        const previousWeek = document.createElement('button');
+        previousWeek.type = 'button';
+        previousWeek.className = 'note-week-nav';
+        previousWeek.textContent = '‹';
+        previousWeek.title = _('previousWeek') || 'Previous week';
+        previousWeek.addEventListener('click', event => {
+            event.stopPropagation();
+            const previousStart = new Date(startDate);
+            previousStart.setDate(startDate.getDate() - 7);
+            renderWeek(previousStart);
+        });
+
+        const weekTitle = document.createElement('div');
+        weekTitle.className = 'note-week-title';
+        const weekEnd = new Date(startDate);
+        weekEnd.setDate(startDate.getDate() + 6);
+        weekTitle.textContent = `${formatDate(startDate)} – ${formatDate(weekEnd)}`;
+
+        const nextWeek = document.createElement('button');
+        nextWeek.type = 'button';
+        nextWeek.className = 'note-week-nav';
+        nextWeek.textContent = '›';
+        nextWeek.title = _('nextWeek') || 'Next week';
+        nextWeek.addEventListener('click', event => {
+            event.stopPropagation();
+            const nextStart = new Date(startDate);
+            nextStart.setDate(startDate.getDate() + 7);
+            renderWeek(nextStart);
+        });
+
+        const currentWeek = document.createElement('button');
+        currentWeek.type = 'button';
+        currentWeek.className = 'note-week-today';
+        currentWeek.innerHTML = calendarIconSvg;
+        currentWeek.title = _('today') || 'Today';
+        currentWeek.setAttribute('aria-label', currentWeek.title);
+        currentWeek.addEventListener('click', event => {
+            event.stopPropagation();
+            const currentWeekStart = new Date(today);
+            currentWeekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+            renderWeek(currentWeekStart);
+        });
+
+        const closeHint = document.createElement('span');
+        closeHint.className = 'note-week-close-hint';
+        closeHint.textContent = '×';
+        closeHint.title = _('close') || 'Close';
+        closeHint.setAttribute('aria-hidden', 'true');
+
+        header.append(previousWeek, weekTitle, currentWeek, closeHint, nextWeek);
+        header.addEventListener('click', event => {
+            if (!event.target.closest('.note-week-nav, .note-week-today')) {
+                event.stopPropagation();
+                calendar.remove();
+            }
+        });
+        calendar.appendChild(header);
+
+        const days = document.createElement('div');
+        days.className = 'note-week-days';
+        for (let index = 0; index < 7; index++) {
+            const day = new Date(startDate);
+            day.setDate(startDate.getDate() + index);
+            const dayCell = document.createElement('div');
+            dayCell.className = 'note-week-day';
+            if (day.getTime() === anchorDate.getTime()) dayCell.classList.add('is-selected');
+            if (day.getTime() === today.getTime()) dayCell.classList.add('is-today');
+
+            const weekdayInitial = day.toLocaleDateString(currentLang, { weekday: 'short' }).trim().charAt(0).toLocaleUpperCase(currentLang);
+            const label = document.createElement('div');
+            label.className = 'note-week-date-label';
+            label.textContent = `${String(day.getDate()).padStart(2, '0')}.${weekdayInitial}`;
+            dayCell.appendChild(label);
+
+            const noteMarkers = document.createElement('div');
+            noteMarkers.className = 'note-week-markers';
+            (notesByDay.get(day.getTime()) || []).forEach(noteData => {
+                const marker = document.createElement('button');
+                marker.type = 'button';
+                marker.className = 'note-week-marker';
+                marker.style.backgroundColor = getNoteColorCss(noteData.color);
+                marker.title = (noteData.notetxt || '').split('\n').find(line => line.trim())?.trim() || _('note') || 'Note';
+                marker.setAttribute('aria-label', marker.title);
+                marker.addEventListener('click', event => {
+                    event.stopPropagation();
+                    showModal({
+                        raw: noteData.notetxt || '',
+                        format: noteData.text_span || '',
+                        titleFormat: noteData.title_span || '',
+                        color: getNoteColorCss(noteData.color),
+                        boardId: noteData.boardid,
+                        id: noteData.id,
+                        gdid: noteData.gdid,
+                        datemod: noteData.datemod,
+                        originalNote: noteData
+                    });
+                });
+                noteMarkers.appendChild(marker);
+            });
+            dayCell.appendChild(noteMarkers);
+            days.appendChild(dayCell);
+        }
+        calendar.appendChild(days);
+    };
+
+    const currentWeekStart = new Date(today);
+    currentWeekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    renderWeek(currentWeekStart);
+    noteElement.appendChild(calendar);
 }
 
 function getModalColorValue(modalBodyElem, fallback = 0) {
@@ -3229,7 +3391,7 @@ function renderCalendarView() {
     calendarHeader.innerHTML = `
             <div class="calendar-nav-controls">
                 <button id="prev-month-btn" title="${_('prevMonthTooltip')}">&laquo;</button>
-                <button id="today-month-btn">${calendarTodaySvg}</button>
+                <button id="today-month-btn" title="${_('today')}">${calendarTodaySvg}</button>
                 <button id="next-month-btn" title="${_('nextMonthTooltip')}">&raquo;</button><button id="weekly-view-btn" title="${_('weeklyViewTooltip')}">${calendarIconSvg}</button>
                 <button id="close-month-calendar-btn" class="close-calendar-btn">
                     <span class="close-symbol">&times;</span>
@@ -3612,7 +3774,7 @@ function renderWeeklyCalendarView(dateForWeek) {
     header.innerHTML = `
         <div class="calendar-nav-controls">
         <button id="prev-week-btn">&laquo;</button>
-        <button id="today-week-btn">${calendarTodaySvg}</button>
+        <button id="today-week-btn" title="${_('today')}">${calendarTodaySvg}</button>
         <button id="next-week-btn">&raquo;</button>
         <button id="month-view-btn" title="${_('monthlyViewTooltip')}" style="display: flex; align-items: center; justify-content: center;">${calendarIconSvg}</button>
         <button id="close-week-calendar-btn" class="close-calendar-btn"><span class="close-symbol">&times;</span>
@@ -14637,16 +14799,18 @@ async function createNoteElement(noteContent) {
     headerDate.className = 'note-header-date';
     const headerTime = document.createElement('span');
     headerTime.className = 'note-header-time';
-    // Add click listener to the date to show full note data
+    // In debug mode the date shows raw data; otherwise it opens the compact week calendar.
     headerDate.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (debug) {
-            e.stopPropagation();
             let debugText = JSON.stringify(fullNoteContent, null, 2);
             if (fullNoteContent.gdid && localFileMap.has(fullNoteContent.gdid)) {
                 debugText = `File: ${localFileMap.get(fullNoteContent.gdid)}\n\n` + debugText;
             }
             showModal({ raw: debugText, color: 'white' });
+            return;
         }
+        showNoteWeekCalendar(note, getNoteHeaderDateTimestamp(extraData));
     });
     let isAutoTimer = false;
     if (extraData.timer) {

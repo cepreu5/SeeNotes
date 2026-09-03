@@ -918,6 +918,170 @@ code {
     /* Space between icon and text */
 }
 
+.note-header-date {
+    cursor: pointer;
+}
+
+.note-week-calendar {
+    position: absolute;
+    inset: 5px 10px 10px 5px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    padding: 7px;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.88) url('Board1.png') center / cover;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+.note-week-calendar-header {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 24px 18px 24px;
+    align-items: center;
+    gap: 3px;
+    min-height: 27px;
+    padding-bottom: 2px;
+    border-radius: 4px;
+    background: rgba(185, 221, 246, 0.92);
+    cursor: pointer;
+}
+
+.note-week-nav {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.68);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.note-week-nav:hover,
+.note-week-nav:focus-visible {
+    background: rgba(0, 0, 0, 0.1);
+    outline: none;
+}
+
+.note-week-today {
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.68);
+    cursor: pointer;
+}
+
+.note-week-today svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+.note-week-today:hover,
+.note-week-today:focus-visible {
+    background: rgba(0, 0, 0, 0.1);
+    outline: none;
+}
+
+.note-week-close-hint {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 0, 0, 0.55);
+    border-radius: 50%;
+    color: rgba(0, 0, 0, 0.7);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.note-week-title {
+    overflow: hidden;
+    color: rgba(0, 0, 0, 0.68);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.note-week-days {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: 3px;
+}
+
+.note-week-day {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 1px 4px;
+    border: 1px solid rgba(0, 0, 0, 0.24);
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+.note-week-day.is-today {
+    background: #bfc523;
+}
+
+.note-week-date-label {
+    width: 34px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.note-week-markers {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-content: center;
+    gap: 2px;
+    min-height: 16px;
+}
+
+.note-week-marker {
+    display: block;
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    border-radius: 2px;
+    box-sizing: border-box;
+    appearance: none;
+    opacity: 1;
+    visibility: visible;
+    cursor: pointer;
+}
+
+.note-week-marker:hover,
+.note-week-marker:focus-visible {
+    outline: 2px solid rgba(0, 0, 0, 0.65);
+    outline-offset: 1px;
+    transform: scale(1.25);
+}
+
 .note-header-time {
     margin-left: auto;
 }

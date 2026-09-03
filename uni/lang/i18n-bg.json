@@ -225,6 +225,7 @@
     "deleteNoteTooltip": "Изтрий бележката",
     "monthlyViewTooltip": "Месечен изглед",
     "weeklyViewTooltip": "Седмичен изглед",
+    "today": "Днес",
     "prevMonthTooltip": "Предишен месец",
     "nextMonthTooltip": "Следващ месец",
     "showBoardAll": "<strong><i>Всички</i></strong>:",

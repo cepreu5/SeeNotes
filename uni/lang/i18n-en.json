@@ -224,6 +224,7 @@
     "deleteNoteTooltip": "Delete note",
     "monthlyViewTooltip": "Monthly View",
     "weeklyViewTooltip": "Weekly View",
+    "today": "Today",
     "prevMonthTooltip": "Previous Month",
     "nextMonthTooltip": "Next Month",
     "showBoardAll": "<strong><i>All</i></strong>:",
