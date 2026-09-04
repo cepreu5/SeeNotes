@@ -2919,7 +2919,7 @@ async function showInitialDataFolderModal() {
 // MIGRATION BLOCK: AppDataFolder → CX-Notes  (еднократна, може да се
 // премахне/коментира след като всички потребители са мигрирали)
 // =====================================================================
-async function migrateAppDataFolderToCXNotes() {
+/*async function migrateAppDataFolderToCXNotes() {
     const MIGRATION_KEY = 'appdata_to_cxnotes_migration_done';
     if (localStorage.getItem(MIGRATION_KEY) === 'true') return false;
     if (localStorage.getItem('active_folder_name') !== 'AppDataFolder') return false;
@@ -2973,7 +2973,7 @@ async function migrateAppDataFolderToCXNotes() {
         console.error('[Migration] Unexpected error:', e);
         return false;
     }
-}
+}*/
 // =====================================================================
 // END MIGRATION BLOCK
 // =====================================================================
@@ -8106,14 +8106,14 @@ async function mainLogic(forceFullSync = false) {
                 authToken = authResult.tokenData;
             }
             // --- MIGRATION BLOCK CALL (премахни заедно с migrateAppDataFolderToCXNotes) ---
-            if (!isOffline) {
+            /*if (!isOffline) {
                 const migrated = await migrateAppDataFolderToCXNotes();
                 if (migrated) {
                     console.log('[mainLogic] AppDataFolder→CX-Notes migration completed. Reloading...');
                     location.reload();
                     return;
                 }
-            }
+            }*/
             // --- END MIGRATION BLOCK CALL ---
             if (!isOffline) await loadGlobalFoldersJson();
             if (!isOffline && (needsInitialFolderSetup() || !localStorage.getItem('activeFolderId'))) {
@@ -8370,14 +8370,14 @@ async function mainLogic(forceFullSync = false) {
                                             filterNotesForDemo();
                                             await renderUI({ boardParseError: result.boardParseError });
                                         }
-                                    } else if (activeFolderName === 'AppDataFolder') {
-                                        // AppDataFolder потребители → мигрираме към CX-Notes
-                                        const migrated = await migrateAppDataFolderToCXNotes();
-                                        if (migrated) {
-                                            console.log('[mainLogic] AppDataFolder→CX-Notes migration completed. Reloading...');
-                                            location.reload();
-                                            return;
-                                        }
+                                        /*} else if (activeFolderName === 'AppDataFolder') {
+                                            // AppDataFolder потребители → мигрираме към CX-Notes
+                                            const migrated = await migrateAppDataFolderToCXNotes();
+                                            if (migrated) {
+                                                console.log('[mainLogic] AppDataFolder→CX-Notes migration completed. Reloading...');
+                                                location.reload();
+                                                return;
+                                            }*/
                                     } else {
                                         updatedCount = await runGoogleDriveSync(forceFullSync);
                                     }
