@@ -76,7 +76,7 @@ header.header-fullscreen {
     justify-content: center;
 }
 
-header.header-fullscreen > *:not(#search-wrapper) {
+header.header-fullscreen>*:not(#search-wrapper) {
     display: none !important;
 }
 
@@ -203,11 +203,13 @@ header h1 {
     z-index: 2;
     cursor: pointer;
 }
+
 .search-icon-static svg {
     width: 24px;
     height: 24px;
     opacity: 0.6;
 }
+
 .search-mode-dot {
     transition: fill 0.3s ease;
 }
@@ -1611,13 +1613,13 @@ code {
     /* Премахваме правилата, които скриват скролбара */
     scrollbar-color: #aaa #555;
     /* thumb track - за Firefox */
-    scrollbar-width: thin;
-    /* за Firefox */
+    scrollbar-width: auto;
+    /* thin - за Firefox */
 }
 
 /* Стилизиране на скролбара за Webkit-базирани браузъри (Chrome, Edge, Safari) */
 .board-menu-container::-webkit-scrollbar {
-    height: 8px;
+    height: 16px;
     /* Височина на скролбара */
 }
 
@@ -3519,12 +3521,29 @@ body.selection-locked .note.active-selection-note .note-content {
     outline: none;
 }
 
-.modal-edit-toolbar-btn.is-bold { font-weight: 700; }
-.modal-edit-toolbar-btn.is-italic { font-style: italic; }
-.modal-edit-toolbar-btn.is-underline { text-decoration: underline; }
-.modal-edit-toolbar-btn.is-strike { text-decoration: line-through; }
-.modal-edit-toolbar-btn.is-list { font-size: 18px; }
-.modal-edit-toolbar-btn.is-caret { font-size: 21px; }
+.modal-edit-toolbar-btn.is-bold {
+    font-weight: 700;
+}
+
+.modal-edit-toolbar-btn.is-italic {
+    font-style: italic;
+}
+
+.modal-edit-toolbar-btn.is-underline {
+    text-decoration: underline;
+}
+
+.modal-edit-toolbar-btn.is-strike {
+    text-decoration: line-through;
+}
+
+.modal-edit-toolbar-btn.is-list {
+    font-size: 18px;
+}
+
+.modal-edit-toolbar-btn.is-caret {
+    font-size: 21px;
+}
 
 .modal-content-box.has-edit-toolbar {
     padding-top: 100px;
