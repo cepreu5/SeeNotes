@@ -467,5 +467,22 @@
     "importingData": "Importing data",
     "importComplete": "Import complete",
     "requestingAdditionalPermissions": "Requesting additional permissions",
-    "dataFolderCreationError": "Failed to create data folder. Please try again."
+    "dataFolderCreationError": "Failed to create data folder. Please try again.",
+    "prevNoteTooltip": "Previous note",
+    "nextNoteTooltip": "Next note",
+    "bulletListTooltip": "Bulleted list",
+    "numberedListTooltip": "Numbered list",
+    "pasteFromClipboardTooltip": "Paste from clipboard",
+    "modalExpandTooltip": "Expand note",
+    "modalCollapseTooltip": "Restore normal size",
+    "addProfileTooltip": "Add new profile",
+    "deleteProfileTooltip": "Delete current profile",
+    "boldTooltip": "Bold text",
+    "italicTooltip": "Italic text",
+    "underlineTooltip": "Underline text",
+    "strikeTooltip": "Strikethrough text",
+    "lineStartTooltip": "Line start · Ctrl/hold: paragraph start",
+    "lineEndTooltip": "Line end · Ctrl/hold: paragraph end",
+    "resizeHandleTooltip": "Drag: global size · Ctrl+drag/hold+drag: this note only",
+    "syncSuspendedTooltip": "Sync suspended. Click to connect."
 }

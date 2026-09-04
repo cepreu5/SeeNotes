@@ -469,5 +469,22 @@
     "importingData": "Импортиране на данни",
     "importComplete": "Импортирането е завършено",
     "requestingAdditionalPermissions": "Изискване на допълнителни разрешения",
-    "dataFolderCreationError": "Неуспешно създаване на папка за данни. Опитайте отново."
+    "dataFolderCreationError": "Неуспешно създаване на папка за данни. Опитайте отново.",
+    "prevNoteTooltip": "Предишна бележка",
+    "nextNoteTooltip": "Следваща бележка",
+    "bulletListTooltip": "Списък с маркери",
+    "numberedListTooltip": "Номериран списък",
+    "pasteFromClipboardTooltip": "Постави",
+    "modalExpandTooltip": "Максимизиране на бележката",
+    "modalCollapseTooltip": "Връщане нормален размер",
+    "addProfileTooltip": "Добави нов профил",
+    "deleteProfileTooltip": "Изтрий текущия профил",
+    "boldTooltip": "Удебелен текст",
+    "italicTooltip": "Курсив",
+    "underlineTooltip": "Подчертан текст",
+    "strikeTooltip": "Зачертан текст",
+    "lineStartTooltip": "Начало на реда · с Ctrl/задържане: начало на параграфа",
+    "lineEndTooltip": "Край на реда · с Ctrl/задържане: край на параграфа",
+    "resizeHandleTooltip": "Промяна на размера · с Ctrl/задържане: само за тази бележка",
+    "syncSuspendedTooltip": "Синхронизацията е спряна. Кликнете за свързване."
 }

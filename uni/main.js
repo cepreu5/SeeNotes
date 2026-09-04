@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.51cal'; // App version
+const version = 'Beta 1.52'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -6492,7 +6492,7 @@ function initApp() {
     resizeHandle.addEventListener('mousedown', startDrag);
     resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
     // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
-    resizeHandle.title = 'Влачи: глобален размер · Ctrl+влачи / задръж на мобилен: само за тази бележка';
+    resizeHandle.title = _('resizeHandleTooltip') || 'Drag: global size · Ctrl+drag / hold on mobile: this note only';
     resizeHandle.setAttribute('aria-label', resizeHandle.title);
     resizeHandle.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M8 21h13V8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
@@ -7787,7 +7787,7 @@ function updateModeButton() {
         iconWrapper.appendChild(overlay);
     }
     if (isSyncSuspended) {
-        title = (_('syncSuspendedTooltip') || 'Синхронизацията е спряна. Кликнете за свързване.');
+        title = (_('syncSuspendedTooltip') || 'Sync suspended. Click to connect.');
         iconWrapper.style.position = 'relative';
         const warnBadge = document.createElement('span');
         warnBadge.textContent = '⚠️';
@@ -9464,7 +9464,7 @@ function updateModalExpandButton(isExpanded) {
     const expandBtn = document.getElementById('modal-expand-btn');
     if (!expandBtn) return;
     expandBtn.innerHTML = isExpanded ? '&#9660;' : '&#9650;';
-    expandBtn.title = isExpanded ? 'Върни нормалния размер' : 'Разпъни бележката';
+    expandBtn.title = isExpanded ? (_('modalCollapseTooltip') || 'Restore normal size') : (_('modalExpandTooltip') || 'Expand modal');
     expandBtn.setAttribute('aria-label', expandBtn.title);
 }
 
@@ -9938,7 +9938,7 @@ function showModal(options, noteElement = null) {
                     background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
                 });
-                customSwatch.title = _('customColor') || 'Потребителски цвят';
+                customSwatch.title = _('customColor') || 'Custom color';
 
                 const colorInput = document.createElement('input');
                 colorInput.type = 'color';
@@ -10344,7 +10344,7 @@ function showModal(options, noteElement = null) {
                 editSvg.style.height = '22px';
                 editSvg.setAttribute('stroke', 'black');
             }
-            editBtn.title = _('restoreNoteTooltip') || "Възстанови бележката";
+            editBtn.title = _('restoreNoteTooltip') || "Restore note";
             editBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 // Move note back to its original board
@@ -10572,7 +10572,7 @@ function updateHeaderFullscreenUI() {
     const isHidden = header && header.classList.contains('header-fullscreen');
     document.querySelectorAll('.fullscreen-toggle-btn').forEach(btn => {
         btn.innerHTML = isHidden ? fullscreenCompressIconSvg : fullscreenExpandIconSvg;
-        btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Покажи хедъра') : (_('toggleFullscreenTooltip') || 'Цял екран (Скрий хедъра)');
+        btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Show header') : (_('toggleFullscreenTooltip') || 'Toggle fullscreen (Hide/Show header)');
     });
 }
 
@@ -11838,7 +11838,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     reorderLink.style.display = 'flex';
     reorderLink.style.alignItems = 'center';
     reorderLink.style.justifyContent = 'center';
-    reorderLink.title = _('reorderBoards') || 'Редактиране на бордове';
+    reorderLink.title = _('reorderBoards') || 'Reorder boards';
     reorderLink.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -16732,14 +16732,88 @@ function getActiveModalEditor() {
     return document.getElementById('note-edit-textarea') || document.getElementById('note-edit-title-textarea');
 }
 
-function moveCaretToLineEdge(textarea, moveToEnd) {
-    if (!textarea) return;
-    const caretPosition = textarea.selectionStart;
-    const lineStart = textarea.value.lastIndexOf('\n', Math.max(0, caretPosition - 1)) + 1;
-    const nextLineBreak = textarea.value.indexOf('\n', caretPosition);
-    const lineEnd = nextLineBreak === -1 ? textarea.value.length : nextLineBreak;
-    const nextPosition = moveToEnd ? lineEnd : lineStart;
+function getVisualLineEdge(textarea, pos, paraStart, paraEnd, moveToEnd) {
+    if (!textarea || paraStart >= paraEnd) return paraStart;
+    const text = textarea.value;
+    if (!text) return 0;
+    const styles = getComputedStyle(textarea);
+    const mirror = document.createElement('div');
+    const stylesToCopy = [
+        'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
+        'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'boxSizing', 'wordWrap', 'wordBreak', 'tabSize'
+    ];
+    stylesToCopy.forEach(prop => { mirror.style[prop] = styles[prop]; });
+    mirror.style.position = 'absolute';
+    mirror.style.visibility = 'hidden';
+    mirror.style.left = '-9999px';
+    mirror.style.top = '0';
+    mirror.style.height = 'auto';
+    mirror.style.overflow = 'hidden';
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.wordWrap = 'break-word';
+    mirror.style.overflowWrap = 'break-word';
+    mirror.style.width = textarea.clientWidth + 'px';
+    mirror.style.boxSizing = 'border-box';
+    mirror.style.border = 'none';
+    const textNode = document.createTextNode(text);
+    mirror.appendChild(textNode);
+    document.body.appendChild(mirror);
+    const range = document.createRange();
+    const getCharTop = (idx) => {
+        const clampedIdx = Math.max(0, Math.min(idx, text.length - 1));
+        range.setStart(textNode, clampedIdx);
+        range.setEnd(textNode, clampedIdx + 1);
+        const rects = range.getClientRects();
+        const r = rects.length > 0 ? rects[0] : range.getBoundingClientRect();
+        return Math.round(r.top);
+    };
+    const charIdx = (pos < paraEnd) ? pos : Math.max(paraStart, paraEnd - 1);
+    const targetTop = getCharTop(charIdx);
+    let result = pos;
+    if (!moveToEnd) {
+        let low = paraStart;
+        let high = charIdx;
+        result = charIdx;
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            if (Math.abs(getCharTop(mid) - targetTop) < 4) {
+                result = mid;
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        }
+    } else {
+        let low = charIdx;
+        let high = paraEnd - 1;
+        let vEndChar = charIdx;
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            if (Math.abs(getCharTop(mid) - targetTop) < 4) {
+                vEndChar = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        result = vEndChar + 1;
+        if (result < paraEnd && text[result - 1] === ' ') {
+            result--;
+        }
+    }
+    document.body.removeChild(mirror);
+    return result;
+}
 
+function moveCaretToLineEdge(textarea, moveToEnd, isParagraph = false) {
+    if (!textarea) return;
+    const text = textarea.value;
+    const caretPosition = textarea.selectionStart;
+    const lineStart = text.lastIndexOf('\n', Math.max(0, caretPosition - 1)) + 1;
+    const nextLineBreak = text.indexOf('\n', caretPosition);
+    const lineEnd = nextLineBreak === -1 ? text.length : nextLineBreak;
+    const nextPosition = isParagraph ? (moveToEnd ? lineEnd : lineStart) : getVisualLineEdge(textarea, caretPosition, lineStart, lineEnd, moveToEnd);
     textarea.focus();
     textarea.setSelectionRange(nextPosition, nextPosition);
     scrollCaretIntoView(textarea);
@@ -16759,27 +16833,55 @@ function createModalEditToolbar(modalContentBox) {
     if (!modalContentBox) return;
     restoreModalHeaderListButtons();
     modalContentBox.querySelector('.modal-edit-toolbar')?.remove();
-
     const headerToolbar = modalContentBox.querySelector('.modal-header-toolbar');
     if (!headerToolbar) return;
-
     const toolbar = document.createElement('div');
     toolbar.className = 'modal-edit-toolbar';
     toolbar.setAttribute('aria-label', 'Инструменти за форматиране');
-
-    const addButton = ({ label, title, className = '', action }) => {
+    const addButton = ({ label, title, className = '', action, onLongPress }) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `modal-edit-toolbar-btn modal-header-btn ${className}`.trim();
         button.textContent = label;
         button.title = title;
         button.setAttribute('aria-label', title);
-        // Keep the textarea focused, so actions apply at its current selection.
         button.addEventListener('mousedown', (event) => event.preventDefault());
-        button.addEventListener('click', action);
+        if (typeof onLongPress === 'function') {
+            let pressTimer = null;
+            let longPressTriggered = false;
+            button.addEventListener('touchstart', () => {
+                longPressTriggered = false;
+                pressTimer = setTimeout(() => {
+                    longPressTriggered = true;
+                    if (navigator.vibrate) navigator.vibrate(40);
+                    onLongPress();
+                }, 500);
+            }, { passive: true });
+            button.addEventListener('touchend', (e) => {
+                if (pressTimer) clearTimeout(pressTimer);
+                if (longPressTriggered) {
+                    if (e.cancelable) e.preventDefault();
+                    longPressTriggered = false;
+                }
+            });
+            button.addEventListener('touchmove', () => {
+                if (pressTimer) clearTimeout(pressTimer);
+            }, { passive: true });
+            button.addEventListener('touchcancel', () => {
+                if (pressTimer) clearTimeout(pressTimer);
+            });
+            button.addEventListener('click', (e) => {
+                if (longPressTriggered) {
+                    longPressTriggered = false;
+                    return;
+                }
+                action(e);
+            });
+        } else {
+            button.addEventListener('click', action);
+        }
         toolbar.appendChild(button);
     };
-
     const applyMarkdown = (type) => {
         const textarea = getActiveModalEditor();
         if (!textarea) return;
@@ -16795,22 +16897,30 @@ function createModalEditToolbar(modalContentBox) {
             type === 'strike'
         );
     };
-
-    addButton({ label: 'B', title: 'Удебелен текст', className: 'is-bold', action: () => applyMarkdown('bold') });
-    addButton({ label: 'I', title: 'Курсив', className: 'is-italic', action: () => applyMarkdown('italic') });
-    addButton({ label: 'U', title: 'Подчертан текст', className: 'is-underline', action: () => applyMarkdown('underline') });
-    addButton({ label: 'S', title: 'Зачертан текст', className: 'is-strike', action: () => applyMarkdown('strike') });
-
+    addButton({ label: 'B', title: _('boldTooltip') || 'Bold text', className: 'is-bold', action: () => applyMarkdown('bold') });
+    addButton({ label: 'I', title: _('italicTooltip') || 'Italic text', className: 'is-italic', action: () => applyMarkdown('italic') });
+    addButton({ label: 'U', title: _('underlineTooltip') || 'Underline text', className: 'is-underline', action: () => applyMarkdown('underline') });
+    addButton({ label: 'S', title: _('strikeTooltip') || 'Strikethrough text', className: 'is-strike', action: () => applyMarkdown('strike') });
     ['bullet-list-btn', 'numbered-list-btn'].forEach((buttonId) => {
         const button = document.getElementById(buttonId);
         if (!button) return;
         button.style.display = 'flex';
         toolbar.appendChild(button);
     });
-
-    addButton({ label: '⇤', title: 'Начало на реда', className: 'is-caret', action: () => moveCaretToLineEdge(getActiveModalEditor(), false) });
-    addButton({ label: '⇥', title: 'Край на реда', className: 'is-caret', action: () => moveCaretToLineEdge(getActiveModalEditor(), true) });
-
+    addButton({
+        label: '⇤',
+        title: _('lineStartTooltip') || 'Line start · Ctrl / hold: paragraph start',
+        className: 'is-caret',
+        action: (e) => moveCaretToLineEdge(getActiveModalEditor(), false, !!(e && e.ctrlKey)),
+        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), false, true)
+    });
+    addButton({
+        label: '⇥',
+        title: _('lineEndTooltip') || 'Line end · Ctrl / hold: paragraph end',
+        className: 'is-caret',
+        action: (e) => moveCaretToLineEdge(getActiveModalEditor(), true, !!(e && e.ctrlKey)),
+        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, true)
+    });
     headerToolbar.appendChild(toolbar);
     modalContentBox.classList.add('has-edit-toolbar');
 }

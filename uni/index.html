@@ -96,7 +96,7 @@
         </div>
         <div id="header-buttons">
             <div id="note-counter" class="note-counter">0</div>
-            <button id="mode_button" class="header-btn" title="Режим" data-key-title="modeButtonTooltip">
+            <button id="mode_button" class="header-btn" title="Mode" data-key-title="modeButtonTooltip">
                 <!-- Иконата се вмъква от JS -->
                 <div class="mode-icon-wrapper">
                     <img id="mode-main-icon" src="NoteFav.png" alt="" style="width:24px; height:24px;">
@@ -105,10 +105,10 @@
                     </div>
                 </div>
             </button>
-            <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Презареди">
+            <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Reload">
                 <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
             </button>
-            <button id="calendar_button" class="header-btn" data-key-title="calendarButtonTooltip" title="Календар">
+            <button id="calendar_button" class="header-btn" data-key-title="calendarButtonTooltip" title="Calendar">
                 <svg width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                     stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -119,7 +119,7 @@
 
                 </svg>
             </button>
-            <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Настройки">
+            <button id="settings_button" class="header-btn" data-key-title="settingsTitle" title="Settings">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
                     fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -130,18 +130,18 @@
             </button>
             <!-- FEEDBACK BUTTON 
             <a id="feedback_button" href="mailto:multinotes.web@gmail.com" class="header-btn"
-                data-key-title="feedbackButtonTooltip" title="Обратна връзка">
+                data-key-title="feedbackButtonTooltip" title="Feedback">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                     <polyline points="22,6 12,13 2,6"></polyline>
                 </svg>
             </a> -->
-            <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Изход">
+            <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Sign out">
                 <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
             </button>
             <button id="install_button" class="header-btn" data-key-title="installAppTooltip"
-                title="Инсталирайте приложението" style="display: none;">
+                title="Install app" style="display: none;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="7" height="7"></rect>
@@ -315,9 +315,9 @@
             <div class="modal-header-toolbar">
                 <div id="modal-board-name"></div>
                 <div class="modal-header-buttons">
-                    <button id="prev-note-btn" class="modal-nav-btn" title="Предишна бележка">&lt;</button>
-                    <button id="next-note-btn" class="modal-nav-btn" title="Следваща бележка">&gt;</button>
-                    <button id="bullet-list-btn" class="modal-nav-btn" title="Списък с точки" style="display: none;">
+                    <button id="prev-note-btn" class="modal-nav-btn" data-key-title="prevNoteTooltip" title="Previous note">&lt;</button>
+                    <button id="next-note-btn" class="modal-nav-btn" data-key-title="nextNoteTooltip" title="Next note">&gt;</button>
+                    <button id="bullet-list-btn" class="modal-nav-btn" data-key-title="bulletListTooltip" title="Bulleted list" style="display: none;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -328,7 +328,7 @@
                             <line x1="3" y1="18" x2="3.01" y2="18"></line>
                         </svg>
                     </button>
-                    <button id="numbered-list-btn" class="modal-nav-btn" title="Номериран списък"
+                    <button id="numbered-list-btn" class="modal-nav-btn" data-key-title="numberedListTooltip" title="Numbered list"
                         style="display: none;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -340,7 +340,7 @@
                             <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path>
                         </svg>
                     </button>
-                    <button id="calculate-modal-btn" data-key-title="calculateTooltip" title="Изчисли израз">
+                    <button id="calculate-modal-btn" data-key-title="calculateTooltip" title="Calculate expression">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                             stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -354,8 +354,8 @@
                             <line x1="16" y1="17" x2="16" y2="17.01" />
                         </svg>
                     </button>
-                    <button id="copy-modal-btn" data-key-title="copyTooltip" title="Копирай съдържанието"></button>
-                    <button id="paste-modal-btn" title="Постави от клипборда" style="display: none;">
+                    <button id="copy-modal-btn" data-key-title="copyTooltip" title="Copy content"></button>
+                    <button id="paste-modal-btn" data-key-title="pasteFromClipboardTooltip" title="Paste from clipboard" style="display: none;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="8" y="3" width="8" height="4" rx="1"></rect>
@@ -364,7 +364,7 @@
                             <path d="m18 9 4 4-4 4"></path>
                         </svg>
                     </button>
-                    <button id="delete-modal-btn" data-key-title="deleteNoteTooltip" title="Изтрий бележката">
+                    <button id="delete-modal-btn" data-key-title="deleteNoteTooltip" title="Delete note">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                             stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -375,8 +375,8 @@
                             <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
                         </svg>
                     </button>
-                    <button id="modal-expand-btn" class="modal-header-btn" title="Разпъни бележката">&#9650;</button>
-                    <button class="modal-close">&times;</button>
+                    <button id="modal-expand-btn" class="modal-header-btn" data-key-title="modalExpandTooltip" title="Expand modal">&#9650;</button>
+                    <button class="modal-close" data-key-title="closeButton" title="Close">&times;</button>
                 </div>
             </div>
             <div id="modal-body"></div>
@@ -387,7 +387,7 @@
     <!-- Нов, отделен модал за менюто с бордове -->
     <div id="boards-menu-modal" class="modal-overlay">
         <div class="modal-content-box">
-            <button class="modal-close modal-header-btn">&times;</button>
+            <button class="modal-close modal-header-btn" data-key-title="closeButton" title="Close">&times;</button>
             <div id="boards-menu-modal-body"></div>
         </div>
     </div>
@@ -396,7 +396,7 @@
     <div id="new-board-modal" class="modal-overlay">
         <div class="modal-content-box"
             style="width: 100%; max-width: 380px; max-height: 98vh; overflow-y: auto; padding: 20px; border-radius: 15px; background: url('Frame.jpg') center/cover no-repeat; box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); box-sizing: border-box; position: relative;">
-            <button class="modal-close"
+            <button class="modal-close" data-key-title="closeButton" title="Close"
                 style="position: absolute; top: 10px; right: 10px; font-size: 28px; background: none; border: none; cursor: pointer; color: white; z-index: 2;">&times;</button>
             <div
                 style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; padding-right: 25px;">
@@ -489,7 +489,7 @@
     <div id="board-order-modal" class="modal-overlay" style="z-index: 10001;">
         <div class="modal-content-box"
             style="width: 100%; max-width: 320px; padding: 20px; border-radius: 15px; background: #333; box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); position: relative;">
-            <button class="modal-close" id="board-order-close"
+            <button class="modal-close" id="board-order-close" data-key-title="closeButton" title="Close"
                 style="position: absolute; top: 10px; right: 10px; font-size: 28px; background: none; border: none; cursor: pointer; color: white; z-index: 2;">&times;</button>
             <h3 style="color: white; margin-top: 0; margin-bottom: 15px;" data-key="orderNotesBtn">Order Notes</h3>
             <div id="board-sort-options-container" class="sort-options-container"
@@ -506,7 +506,7 @@
         </div>
     </div>
 
-    <button id="scrollTopBtn" data-key-title="topTooltip" title="Към началото"></button>
+    <button id="scrollTopBtn" data-key-title="topTooltip" title="To top"></button>
 
     <div id="toastNotification" class="toast-notification"></div>
 
@@ -525,7 +525,7 @@
                     <span data-key="feedbackButtonTooltip">Feedback: multinotes.web@gmail.com</span>
                 </a>
             </div>
-            <button id="settings-close-x"
+            <button id="settings-close-x" data-key-title="closeButton"
                 style="position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 24px; cursor: pointer; color: #555; z-index: 10; line-height: 1; padding: 4px 8px;"
                 title="Close">&times;</button>
             <div class="corner-dot top-left"></div>
@@ -903,9 +903,10 @@
                             style="flex: 1; height: 32px;"></select>
                         <button id="add-device-btn" class="zoom-btn"
                             style="width: 32px; height: 32px; padding: 0; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; font-weight: bold; font-size: 18px;"
-                            title="Добави нов профил">+</button>
+                            data-key-title="addProfileTooltip" title="Add new profile">+</button>
                         <button id="delete-device-btn" class="zoom-btn"
-                            style="width: 32px; height: 32px; padding: 0; background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center;">
+                            style="width: 32px; height: 32px; padding: 0; background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center;"
+                            data-key-title="deleteProfileTooltip" title="Delete current profile">
                             <span data-key="deleteButton">-</span>
                         </button>
                     </div>
@@ -1061,7 +1062,7 @@
         </div>
     </div>
     <div id="guide-root"></div>
-    <button id="empty-trash-fab" title="Изпразни кошчето" data-key-title="emptyTrashTooltip" style="
+    <button id="empty-trash-fab" title="Empty trash" data-key-title="emptyTrashTooltip" style="
         position: fixed;
         bottom: 10px;
         right: 140px;
@@ -1082,7 +1083,7 @@
     " onmouseover="this.style.transform='scale(1.1)'; this.style.opacity='1'"
         onmouseout="this.style.transform='scale(1)'; this.style.opacity='0.8'">
     </button>
-    <button id="add-note-fab" title="Нова бележка" data-key-title="addNoteTooltip" style="
+    <button id="add-note-fab" title="New note" data-key-title="addNoteTooltip" style="
         position: fixed;
         bottom: 10px;
         right: 80px;
