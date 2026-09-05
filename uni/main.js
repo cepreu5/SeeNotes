@@ -6981,62 +6981,6 @@ function updateSignoutTooltip() {
 // =================================================================================
 // III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
 // =================================================================================
-
-
-
-async function silentLoginWithIframe(loginHint) {
-    const REDIRECT_URI = window.location.origin + window.location.pathname;
-    return new Promise((resolve, reject) => {
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${SCOPES}&redirect_uri=${REDIRECT_URI}&prompt=none&login_hint=${loginHint}`;
-        // Слушаме за съобщения от iframe
-        const messageListener = (event) => {
-            // Приемаме съобщения от нашия собствен origin (след redirect)
-            if (event.origin !== window.location.origin) {
-                return;
-            }
-            const hash = event.data;
-            if (hash && hash.includes('access_token')) {
-                const params = new URLSearchParams(hash.substring(1)); // Премахваме #
-                const accessToken = params.get('access_token');
-                const expiresIn = params.get('expires_in');
-                const tokenWithTimestamp = {
-                    access_token: accessToken,
-                    expires_in: expiresIn,
-                    issued_at: Date.now()
-                };
-                // Обновяваме storage според rememberMe
-                const rememberMe = localStorage.getItem('rememberMe') === 'true';
-                const storage = rememberMe ? localStorage : sessionStorage;
-                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                window.removeEventListener('message', messageListener);
-                if (document.body.contains(iframe)) {
-                    document.body.removeChild(iframe);
-                }
-                resolve(tokenWithTimestamp);
-            } else {
-                window.removeEventListener('message', messageListener);
-                if (document.body.contains(iframe)) {
-                    document.body.removeChild(iframe);
-                }
-                resolve(null);
-            }
-        };
-        window.addEventListener('message', messageListener);
-        document.body.appendChild(iframe);
-        // Таймаут за безопасност
-        setTimeout(() => {
-            window.removeEventListener('message', messageListener);
-            if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
-            }
-            resolve(null); // Връщаме null вместо reject
-        }, 5000); // 5 секунди
-    });
-
-}
-
 async function handleAuthClick() {
     if (isOffline) {
         document.getElementById('login-page').hidden = true;
