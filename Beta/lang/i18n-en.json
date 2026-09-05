@@ -484,5 +484,7 @@
     "lineStartTooltip": "Line start · Ctrl/hold: paragraph start",
     "lineEndTooltip": "Line end · Ctrl/hold: paragraph end",
     "resizeHandleTooltip": "Drag: global size · Ctrl+drag/hold+drag: this note only",
-    "syncSuspendedTooltip": "Sync suspended. Click to connect."
+    "syncSuspendedTooltip": "Sync suspended. Click to connect.",
+    "advancedSettingsEnabled": "Advanced settings enabled",
+    "advancedSettingsDisabled": "Advanced settings hidden"
 }

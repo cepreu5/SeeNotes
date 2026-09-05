@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.52'; // App version
+const version = 'Beta 1.53'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -5805,58 +5805,62 @@ function initApp() {
         }
     });
 
-    // --- Long Press Logic for Settings Button (Mobile) ---
-    let settingsLongPressTimer;
-    settingsButton.addEventListener('touchstart', (e) => {
-        settingsLongPressTimer = setTimeout(() => {
-            // Simulate Ctrl+Click behavior
-            settingsButton.dispatchEvent(new MouseEvent('click', {
-                ctrlKey: true,
-                bubbles: true,
-                cancelable: true
-            }));
-            // Provide feedback (haptic) if available
-            if (navigator.vibrate) navigator.vibrate(50);
-        }, 600); // 600ms threshold for long press
-    }, { passive: true });
-
-    settingsButton.addEventListener('touchend', () => clearTimeout(settingsLongPressTimer));
-    settingsButton.addEventListener('touchmove', () => clearTimeout(settingsLongPressTimer));
-    settingsButton.addEventListener('contextmenu', (e) => {
-        // On mobile, long press usually triggers context menu. prevent it here to depend only on our custom logic
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-    });
-
-    settingsButton.addEventListener('click', (e) => {
-        // Toggle Advanced Settings based on Ctrl Key or if force-opened
-        // Logic adapted for Accordion + hidden span structure
+    function toggleAdvancedSettings(forceState = null) {
         const advancedSettingsSpan = document.getElementById('advanced-settings-span');
         const accordionHeader = document.querySelector('.accordion-header');
-
         const isAdvanced = localStorage.getItem('showAdvancedSettings') === 'true';
-
-        if (e.ctrlKey) {
-            if (isAdvanced) {
-                localStorage.setItem('showAdvancedSettings', 'false');
-                if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
-                const dataFoldersDiv = document.getElementById('data-folders');
-                if (dataFoldersDiv) {
-                    dataFoldersDiv.style.maxHeight = null;
-                    dataFoldersDiv.style.display = 'none';
-                }
+        const nextState = forceState !== null ? forceState : !isAdvanced;
+        if (!nextState) {
+            localStorage.setItem('showAdvancedSettings', 'false');
+            if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
+            const dataFoldersDiv = document.getElementById('data-folders');
+            if (dataFoldersDiv) {
+                dataFoldersDiv.style.maxHeight = null;
+                dataFoldersDiv.style.display = 'none';
+            }
+            if (accordionHeader) {
+                const accordion = accordionHeader.parentElement;
+                if (accordion) accordion.classList.remove('active');
+                const content = accordion ? accordion.querySelector('.accordion-content') : null;
+                if (content) content.style.maxHeight = null;
+            }
+            if (typeof showToast === 'function') {
+                showToast((typeof _ === 'function' && _('advancedSettingsDisabled')) || 'Advanced settings hidden');
+            }
+        } else {
+            localStorage.setItem('showAdvancedSettings', 'true');
+            if (advancedSettingsSpan) advancedSettingsSpan.removeAttribute('hidden');
+            populateFoldersDropdown();
+            if (!isOffline) {
+                loadGlobalFoldersJson().then(changed => {
+                    if (changed) populateFoldersDropdown();
+                });
+            }
+            if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
+            setTimeout(() => {
                 if (accordionHeader) {
                     const accordion = accordionHeader.parentElement;
-                    if (accordion) accordion.classList.remove('active');
-                    const content = accordion ? accordion.querySelector('.accordion-content') : null;
-                    if (content) content.style.maxHeight = null;
+                    if (!accordion.classList.contains('active')) {
+                        accordionHeader.click();
+                    } else {
+                        const settingsModalBody = document.getElementById('settings-modal-body');
+                        if (settingsModalBody) {
+                            settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
+                        } else {
+                            accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }
                 }
-                return;
-            } else {
-                localStorage.setItem('showAdvancedSettings', 'true');
+            }, 100);
+            if (typeof showToast === 'function') {
+                showToast((typeof _ === 'function' && _('advancedSettingsEnabled')) || 'Advanced settings enabled');
             }
         }
+    }
+
+    settingsButton.addEventListener('click', () => {
+        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
+        const accordionHeader = document.querySelector('.accordion-header');
         if (localStorage.getItem('showAdvancedSettings') === 'true') {
             if (advancedSettingsSpan) advancedSettingsSpan.removeAttribute('hidden');
             populateFoldersDropdown();
@@ -6322,27 +6326,7 @@ function initApp() {
     });
     // Specific listener for the settings close button (not class 'modal-close')
     const settingsCloseBtnPrimary = document.getElementById('settings-close-btn');
-
-    // Add same long-press touch simulation as settings_button
-    let closeBtnLongPressTimer;
-    settingsCloseBtnPrimary.addEventListener('touchstart', (e) => {
-        closeBtnLongPressTimer = setTimeout(() => {
-            settingsCloseBtnPrimary.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true, cancelable: true }));
-            if (navigator.vibrate) navigator.vibrate(50);
-        }, 600);
-    }, { passive: true });
-    settingsCloseBtnPrimary.addEventListener('touchend', () => clearTimeout(closeBtnLongPressTimer));
-    settingsCloseBtnPrimary.addEventListener('touchmove', () => clearTimeout(closeBtnLongPressTimer));
-    settingsCloseBtnPrimary.addEventListener('contextmenu', (e) => {
-        e.preventDefault(); e.stopPropagation(); return false;
-    });
-
     settingsCloseBtnPrimary.addEventListener('click', (e) => {
-        if (e && e.ctrlKey) {
-            const sb = document.getElementById('settings_button');
-            if (sb) sb.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true }));
-            return;
-        }
         document.getElementById('settings-modal').classList.remove('visible');
         if (window.kbAssistant) window.kbAssistant.terminateGuide();
         if (notesBgrdChanged || oneTapLinkChanged) {
@@ -6506,10 +6490,46 @@ function initApp() {
     savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
     maxSavedSearches = parseInt(localStorage.getItem('maxSavedSearches') || '20', 10);
     setLanguage(currentLang);
-    // Add app version to the settings modal title
+    // Add app version to the settings modal title and hold gesture for Advanced Settings
     const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
     if (settingsTitle) {
         settingsTitle.textContent += `${version}`;
+        let versionPressTimer = null;
+        let versionLongPressTriggered = false;
+        const startVersionPress = () => {
+            versionLongPressTriggered = false;
+            versionPressTimer = setTimeout(() => {
+                versionLongPressTriggered = true;
+                if (navigator.vibrate) navigator.vibrate([60, 50, 60]);
+                toggleAdvancedSettings();
+            }, 3000);
+        };
+        const cancelVersionPress = () => {
+            if (versionPressTimer) clearTimeout(versionPressTimer);
+        };
+        settingsTitle.addEventListener('touchstart', startVersionPress, { passive: true });
+        settingsTitle.addEventListener('touchend', cancelVersionPress);
+        settingsTitle.addEventListener('touchmove', cancelVersionPress);
+        settingsTitle.addEventListener('touchcancel', cancelVersionPress);
+        settingsTitle.addEventListener('mousedown', (e) => {
+            if (e.button === 0) startVersionPress();
+        });
+        settingsTitle.addEventListener('mouseup', cancelVersionPress);
+        settingsTitle.addEventListener('mouseleave', cancelVersionPress);
+        settingsTitle.addEventListener('click', (e) => {
+            if (versionLongPressTriggered) {
+                versionLongPressTriggered = false;
+                e.preventDefault();
+                e.stopPropagation();
+            } else if (e.ctrlKey) {
+                toggleAdvancedSettings();
+            }
+        });
+        settingsTitle.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        });
     }
     // Set initial placeholder text correctly
     updateSearchPlaceholder();
@@ -16218,8 +16238,8 @@ function scrollCaretIntoView(textarea) {
 
 function enableNoteEditing(modalBodyElem, charIndex = -1) {
     if (!modalBodyElem) return;
-
-    // Show board name when editing starts
+    const maxModalScroll = modalBodyElem.scrollHeight - modalBodyElem.clientHeight;
+    const modalScrollRatio = (charIndex === -1 && maxModalScroll > 0) ? (modalBodyElem.scrollTop / maxModalScroll) : -1;
     const modalBoardNameEl = document.getElementById('modal-board-name');
     if (modalBoardNameEl) modalBoardNameEl.style.display = 'block';
 
@@ -16408,7 +16428,6 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     initNoteEditUI();
 
     const focusEl = (charIndex !== -1 && bodyTextarea) ? bodyTextarea : (titleTextarea || bodyTextarea);
-
     if (focusEl) {
         focusEl.focus();
         if (correctedTitleIndex > -1 && titleTextarea) {
@@ -16418,13 +16437,24 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         } else {
             placeCaretAtEnd(focusEl);
         }
-        // --- SCROLL TO CARET LOGIC ---
-        setTimeout(() => {
-            const textarea = document.activeElement;
-            if (textarea && (textarea.id === 'note-edit-textarea' || textarea.id === 'note-edit-title-textarea')) {
-                scrollCaretIntoView(textarea);
-            }
-        }, 150);
+        if (modalScrollRatio >= 0 && bodyTextarea) {
+            const applyEditScroll = () => {
+                const maxEditScroll = bodyTextarea.scrollHeight - bodyTextarea.clientHeight;
+                if (maxEditScroll > 0) {
+                    bodyTextarea.scrollTop = Math.round(modalScrollRatio * maxEditScroll);
+                }
+            };
+            applyEditScroll();
+            requestAnimationFrame(applyEditScroll);
+            setTimeout(applyEditScroll, 160);
+        } else {
+            setTimeout(() => {
+                const textarea = document.activeElement;
+                if (textarea && (textarea.id === 'note-edit-textarea' || textarea.id === 'note-edit-title-textarea')) {
+                    scrollCaretIntoView(textarea);
+                }
+            }, 150);
+        }
     }
 
     // if (typeof showToast === 'function') showToast("Editing enabled.", 2000);
@@ -18069,28 +18099,22 @@ function previewEditedNote() {
     const textarea = document.getElementById('note-edit-textarea');
     const titleTextarea = document.getElementById('note-edit-title-textarea');
     if (!modalBodyElem || !textarea) return;
-
+    const maxTextareaScroll = textarea.scrollHeight - textarea.clientHeight;
+    const scrollRatio = maxTextareaScroll > 0 ? (textarea.scrollTop / maxTextareaScroll) : 0;
     const newText = textarea.value;
     const titleText = titleTextarea ? titleTextarea.value : "";
     const formatStr = modalBodyElem.dataset.format || "";
     const titleFormatStr = modalBodyElem.dataset.titleFormat || "";
-
     let noteGdid = modalBodyElem.dataset.gdid;
     let noteId = parseInt(modalBodyElem.dataset.id, 10);
     const modalNoteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
-
     let processedText = newText;
     let finalFormat = formatStr;
     let finalTitleFormat = titleFormatStr;
-
-    // Store drafts for saveEditedNote to work without textarea
     modalBodyElem.dataset.draftText = newText;
     modalBodyElem.dataset.draftTitle = titleText;
-
-    // Retrieve masked links
     const maskedLinks = modalBodyElem.dataset.maskedLinks ? JSON.parse(modalBodyElem.dataset.maskedLinks) : [];
-
     if ((isHiddenNote || (titleTextarea && titleText !== "")) && titleTextarea) {
         const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
         finalTitleFormat = stringifyFormatsArray(titleRes.formats);
@@ -18102,12 +18126,9 @@ function previewEditedNote() {
         processedText = res.text;
         finalFormat = stringifyFormatsArray(res.formats);
     }
-
     if (typeof showModal === 'function') {
         const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
-        // Preview използва текущия цвят на редактора, включително custom color.
         const noteColorStr = modalBodyElem.dataset.color || getNoteColorCss(modalNoteObj?.color);
-
         showModal({
             raw: processedText,
             format: finalFormat,
@@ -18118,8 +18139,6 @@ function previewEditedNote() {
             gdid: noteGdid,
             maskedLinks: maskedLinks
         }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
-
-        // Preview трябва да използва точно текущия цвят от редактора.
         const previewModalBox = document.querySelector('#content-modal .modal-content-box');
         if (previewModalBox && noteColorStr) {
             previewModalBox.style.backgroundColor = noteColorStr;
@@ -18128,8 +18147,6 @@ function previewEditedNote() {
                 previewModalBox.classList.add('no-bg-image');
             }
         }
-
-        // Preserve editing dataset state on the new modalBodyElem for saveEditedNote to work after preview
         const newModalBodyElem = document.getElementById('modal-body');
         if (newModalBodyElem) {
             newModalBodyElem.dataset.draftText = newText;
@@ -18152,20 +18169,23 @@ function previewEditedNote() {
             if (modalBodyElem.dataset.colorIndex) newModalBodyElem.dataset.colorIndex = modalBodyElem.dataset.colorIndex;
             if (modalBodyElem.dataset.baseDatemod) newModalBodyElem.dataset.baseDatemod = modalBodyElem.dataset.baseDatemod;
             if (modalBodyElem.dataset.baseNote) newModalBodyElem.dataset.baseNote = modalBodyElem.dataset.baseNote;
-            // Keep showModal's postEdit values in format/titleFormat. The raw
-            // draft equivalents are kept separately for direct Save from Preview.
+            if (scrollRatio > 0) {
+                const applyPreviewScroll = () => {
+                    const maxModalScroll = newModalBodyElem.scrollHeight - newModalBodyElem.clientHeight;
+                    if (maxModalScroll > 0) {
+                        newModalBodyElem.scrollTop = Math.round(scrollRatio * maxModalScroll);
+                    }
+                };
+                applyPreviewScroll();
+                requestAnimationFrame(applyPreviewScroll);
+                setTimeout(applyPreviewScroll, 60);
+            }
         }
-
-        // --- Custom preview state: Show Save, Preview AND Edit buttons ---
-        // 1. Re-initialize edit buttons (showModal cleaned them up)
         initNoteEditUI();
-
-        // 2. Adjust visibility and positions for the 4-button preview layout
         const saveBtn = document.getElementById('note-save-btn');
         const previewBtn = document.getElementById('note-preview-btn');
         const editBtn = document.getElementById('note-edit-btn');
         const moveBtn = document.getElementById('note-move-btn');
-
         if (saveBtn) { saveBtn.style.display = 'flex'; }
         if (editBtn) { editBtn.style.display = 'flex'; }
         if (previewBtn) { previewBtn.style.display = 'none'; }

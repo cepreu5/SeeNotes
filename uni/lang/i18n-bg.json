@@ -486,5 +486,7 @@
     "lineStartTooltip": "Начало на реда · с Ctrl/задържане: начало на параграфа",
     "lineEndTooltip": "Край на реда · с Ctrl/задържане: край на параграфа",
     "resizeHandleTooltip": "Промяна на размера · с Ctrl/задържане: само за тази бележка",
-    "syncSuspendedTooltip": "Синхронизацията е спряна. Кликнете за свързване."
+    "syncSuspendedTooltip": "Синхронизацията е спряна. Кликнете за свързване.",
+    "advancedSettingsEnabled": "Разширените настройки са активирани",
+    "advancedSettingsDisabled": "Разширените настройки са скрити"
 }
