@@ -323,13 +323,13 @@
                 "how it works"
             ],
             "question": "What do you see on the main screen and why is it important?",
-            "answer": "When the number of boards is large and they are not displayed on the screen, this button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. On the tablet or phone screen, the button is floating and can be placed in a convenient place. On a mobile device, you can switch to the next or previous board by swiping right or left. Tap the button for more information:",
+            "answer": "When the number of boards is large and they are not displayed on the screen, the button <img src='msm/menuBtn.png' alt='Menu' /> allows you to call the popup window with all the boards. Ctrl+click (desktop) or a long press (mobile device) on this floating button toggles full screen mode. The button is floating and can be placed in a convenient place. On a mobile device, you can switch to the next or previous board by swiping right or left. Tap the button for more information:",
             "guide": {
                 "1": {
                     "text": "The number and size of notes on the screen can be changed from <b><i>Settings</i></b> → <b><i>Zoom</i></b>."
                 },
                 "2": {
-                    "text": "Once changed, the size is saved and applied to all notes. Close the note by clicking the X button or anywhere outside it. Clicking on the note opens it. The size of the opened note can be changed by dragging the bottom right angle."
+                    "text": "Clicking on the note opens it. The size of the opened note can be changed, please see <i>What’s good to know when previewing a note?</i>. Close the note by clicking the X button or anywhere outside it."
                 },
                 "3": {
                     "text": "By default, the note is opened for preview with a graphic background resembling old paper. If you want to see the color of the note, you can disable the background."
@@ -339,6 +339,9 @@
                 },
                 "5": {
                     "text": "At the bottom of the screen, status messages appear. If you click the message, it will disappear immediately."
+                },
+                "6": {
+                    "text": "Ctrl‑click or long‑press the Noto button to make it semi‑transparent."
                 }
             }
         },
@@ -384,7 +387,7 @@
                 "how to"
             ],
             "question": "What’s good to know while using the chat window?",
-            "answer": "The chat window lets you search for information with the help of the assistant. It can answer your questions, help with tasks, and explain interface elements. Always check the exact question the assistant is responding to (shown at the beginning of its answer), because it’s generated from what you wrote but often doesn’t match your wording exactly. If the answer doesn’t contain what you need, try rephrasing your question.<br>Alongside the standard features, the chat window also includes some handy extras for your convenience. To explore them, press the button:",
+            "answer": "The chat window lets you search for information with the help of the assistant Noto. It can answer your questions, help with tasks, and explain interface elements. Always check the exact question the assistant is responding to (shown at the beginning of its answer), because it’s generated from what you wrote but often doesn’t match your wording exactly. If the answer doesn’t contain what you need, try rephrasing your question.<br>Alongside the standard features, the chat window also includes some handy extras for your convenience. To explore them, press the button:",
             "guide": {
                 "1": {
                     "text": "No need to write long questions — I understand even a single word. Try typing just <i>search</i>."
@@ -442,7 +445,7 @@
                     "text": "Keep in mind that the calculation results are informational only and aren’t added to the note — they disappear when you close it."
                 },
                 "10": {
-                    "text": "Grab this corner and drag it to resize the note. Once changed, the new size is saved and used for all notes."
+                    "text": "Grab this corner and drag it to resize the note. Once changed, the new size is saved and used for all notes. You can also set an individual size for a single note using ctrl‑drag (on desktop) or long‑press‑and‑drag (on mobile)."
                 }
             }
         },
@@ -707,6 +710,36 @@
             ],
             "question": "Can I work offline?",
             "answer": "Yes! After the initial loading, you can disable <b><i>Google Drive</i></b> in <b><i>Settings</i></b> and work solely with the local database. This gives you full offline access to your notes. To refresh the data, click the <b><i>Mode</i></b> button."
+        },
+        "device-profile": {
+            "keywords": [
+                "profile",
+                "profiles",
+                "device",
+                "devices",
+                "device name",
+                "different devices",
+                "settings profile"
+            ],
+            "question": "What is the Profile in Settings for?",
+            "answer": "The <b><i>Profile</i></b> keeps a separate set of settings for each device — computer, tablet or mobile. Profiles are stored in Google Drive, so selecting a profile applies its settings automatically.",
+            "guide": {
+                "1": {
+                    "text": "This is the <b><i>Profile</i></b> menu — a set of settings for a specific device (computer, tablet or mobile). Selecting a profile automatically applies its settings."
+                },
+                "2": {
+                    "text": "<b><i>Save</i></b> stores the app's current settings into the selected profile — capturing the way the app looks and behaves on this device."
+                },
+                "3": {
+                    "text": "<b><i>Load</i></b> applies the settings saved in the selected profile — handy when switching devices."
+                },
+                "4": {
+                    "text": "<b>(+)</b> adds a new profile. Type a name for the new device (for example <i>Tablet</i>) and and when you press (+)the current settings are saved into it."
+                },
+                "5": {
+                    "text": "<b>(-)</b> deletes the selected profile from the cloud after a confirmation. The default <b><i>Default</i></b> profile cannot be deleted."
+                }
+            }
         }
     }
 }

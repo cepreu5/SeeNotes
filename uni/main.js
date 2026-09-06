@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.53'; // App version
+const version = 'Beta 1.54'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -5813,15 +5813,9 @@ function initApp() {
         if (!nextState) {
             localStorage.setItem('showAdvancedSettings', 'false');
             if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
-            const dataFoldersDiv = document.getElementById('data-folders');
-            if (dataFoldersDiv) {
-                dataFoldersDiv.style.maxHeight = null;
-                dataFoldersDiv.style.display = 'none';
-            }
-            if (accordionHeader) {
-                const accordion = accordionHeader.parentElement;
-                if (accordion) accordion.classList.remove('active');
-                const content = accordion ? accordion.querySelector('.accordion-content') : null;
+            if (accordionHeader && accordionHeader.parentElement) {
+                accordionHeader.parentElement.classList.remove('active');
+                const content = accordionHeader.parentElement.querySelector('.accordion-content');
                 if (content) content.style.maxHeight = null;
             }
             if (typeof showToast === 'function') {
@@ -5837,21 +5831,18 @@ function initApp() {
                 });
             }
             if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
-            setTimeout(() => {
-                if (accordionHeader) {
-                    const accordion = accordionHeader.parentElement;
-                    if (!accordion.classList.contains('active')) {
-                        accordionHeader.click();
-                    } else {
-                        const settingsModalBody = document.getElementById('settings-modal-body');
-                        if (settingsModalBody) {
-                            settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
-                        } else {
-                            accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }
-                    }
+            if (accordionHeader && accordionHeader.parentElement) {
+                const accordion = accordionHeader.parentElement;
+                accordion.classList.add('active');
+                const content = accordion.querySelector('.accordion-content');
+                if (content) content.style.maxHeight = Math.max(content.scrollHeight, 1000) + 'px';
+                const settingsModalBody = document.getElementById('settings-modal-body');
+                if (settingsModalBody) {
+                    setTimeout(() => {
+                        settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
+                    }, 300);
                 }
-            }, 100);
+            }
             if (typeof showToast === 'function') {
                 showToast((typeof _ === 'function' && _('advancedSettingsEnabled')) || 'Advanced settings enabled');
             }
@@ -5864,53 +5855,31 @@ function initApp() {
         if (localStorage.getItem('showAdvancedSettings') === 'true') {
             if (advancedSettingsSpan) advancedSettingsSpan.removeAttribute('hidden');
             populateFoldersDropdown();
-            loadGlobalFoldersJson().then(changed => {
-                if (changed) {
-                    populateFoldersDropdown();
-                }
-            });
-            setTimeout(() => {
-                if (accordionHeader) {
-                    const accordion = accordionHeader.parentElement;
-                    if (!accordion.classList.contains('active')) {
-                        accordionHeader.click();
-                    } else {
-                        const settingsModalBody = document.getElementById('settings-modal-body');
-                        if (settingsModalBody) {
-                            settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
-                        } else {
-                            accordionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }
+            if (!isOffline) {
+                loadGlobalFoldersJson().then(changed => {
+                    if (changed) {
+                        populateFoldersDropdown();
                     }
-                }
-            }, 100);
+                });
+            }
         } else {
             if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
-            const dataFoldersDiv = document.getElementById('data-folders');
-            if (dataFoldersDiv) {
-                dataFoldersDiv.style.maxHeight = null;
-                dataFoldersDiv.style.display = 'none';
-            }
-            if (accordionHeader) {
-                const accordion = accordionHeader.parentElement;
-                if (accordion && accordion.classList.contains('active')) {
-                    accordionHeader.click();
-                }
+            if (accordionHeader && accordionHeader.parentElement) {
+                accordionHeader.parentElement.classList.remove('active');
+                const content = accordionHeader.parentElement.querySelector('.accordion-content');
+                if (content) content.style.maxHeight = null;
             }
         }
-
         // Запомняме началното състояние на чекбоксовете при отваряне на настройките
         // Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
         const useGDCheckbox = document.getElementById('use-google-db-checkbox');
         const useLocCheckbox = document.getElementById('use-local-db-checkbox');
         const useArhCheckbox = document.getElementById('use-arh-db-checkbox');
         const useIdbCheckbox = document.getElementById('use-indexeddb-checkbox');
-
         if (useGDCheckbox) useGDCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
         if (useLocCheckbox) useLocCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
         if (useArhCheckbox) useArhCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
         if (useIdbCheckbox) useIdbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-
         settingsInitialState = {
             useGoogleDb: useGDCheckbox ? useGDCheckbox.checked : true,
             useLocalDb: useLocCheckbox ? useLocCheckbox.checked : false,
@@ -6326,7 +6295,7 @@ function initApp() {
     });
     // Specific listener for the settings close button (not class 'modal-close')
     const settingsCloseBtnPrimary = document.getElementById('settings-close-btn');
-    settingsCloseBtnPrimary.addEventListener('click', (e) => {
+    settingsCloseBtnPrimary.addEventListener('click', () => {
         document.getElementById('settings-modal').classList.remove('visible');
         if (window.kbAssistant) window.kbAssistant.terminateGuide();
         if (notesBgrdChanged || oneTapLinkChanged) {
@@ -7790,14 +7759,11 @@ function validateDataSourceSelection() {
         }
         setTimeout(() => {
             const accordionHeader = document.querySelector('.accordion-header');
-            const advancedSettingsContent = document.getElementById('advanced-settings');
-            if (advancedSettingsContent && advancedSettingsContent.style.display === 'none' && accordionHeader) {
-                accordionHeader.click();
+            if (accordionHeader && accordionHeader.parentElement) {
+                accordionHeader.parentElement.classList.add('active');
             }
         }, 100);
-
         if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
-
         loaderContainer.style.display = 'none'; // Скриваме лоудъра
         // Изчистваме осиротели файлове при старт
         // cleanupOrphanedImages();
@@ -13442,46 +13408,16 @@ async function createSettingsUI(boardsData, boardParseError) {
     if (accordionHeader) {
         accordionHeader.addEventListener('click', () => {
             const accordion = accordionHeader.parentElement;
+            if (!accordion) return;
+            const willBeActive = !accordion.classList.contains('active');
             accordion.classList.toggle('active');
             const content = accordion.querySelector('.accordion-content');
-            const advancedSettingsDiv = document.getElementById('advanced-settings');
-            const dataFoldersDiv = document.getElementById('data-folders');
+            if (content) content.style.maxHeight = willBeActive ? (Math.max(content.scrollHeight, 1000) + 'px') : null;
             const settingsModalBody = document.getElementById('settings-modal-body');
-
-            if (content.style.maxHeight) {
-                content.style.maxHeight = null;
-                if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'none'; // Hide content when collapsed
-                if (dataFoldersDiv) {
-                    dataFoldersDiv.style.maxHeight = null;
-                    dataFoldersDiv.style.display = 'none';
-                }
-                if (settingsModalBody) {
-                    settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара, ако е бил скрит
-                }
-            } else {
-                if (advancedSettingsDiv) advancedSettingsDiv.style.display = 'block'; // Show content before calculating height
-                if (dataFoldersDiv) {
-                    dataFoldersDiv.style.display = 'block';
-                    dataFoldersDiv.style.maxHeight = dataFoldersDiv.scrollHeight + "px";
-                }
-                content.style.maxHeight = content.scrollHeight + "px";
-
-                // Скролираме модала надолу, за да видим отворената секция
-                if (settingsModalBody) {
-                    // Временно скриваме скролбара, докато се скролира
-                    settingsModalBody.style.overflowY = 'hidden';
-                    // Изчакваме анимацията на акордеона да завърши (300ms)
-                    setTimeout(() => {
-                        settingsModalBody.scrollTo({
-                            top: settingsModalBody.scrollHeight,
-                            behavior: 'smooth'
-                        });
-                        // Изчакваме и скролирането да приключи (още около 500ms)
-                        setTimeout(() => {
-                            settingsModalBody.style.overflowY = 'auto'; // Възстановяваме скролбара
-                        }, 500);
-                    }, 300);
-                }
+            if (willBeActive && settingsModalBody) {
+                setTimeout(() => {
+                    settingsModalBody.scrollTo({ top: settingsModalBody.scrollHeight, behavior: 'smooth' });
+                }, 300);
             }
         });
     }
@@ -16092,25 +16028,21 @@ if (settingsCloseX) {
 async function updateAdvancedSettingsVisibility() {
     const saveIndividualWrapper = document.getElementById('save-individual-wrapper');
     const advancedSettingsSpan = document.getElementById('advanced-settings-span');
-
     if (advancedSettingsSpan) {
         if (localStorage.getItem('showAdvancedSettings') === 'true') {
             advancedSettingsSpan.removeAttribute('hidden');
+        } else {
+            advancedSettingsSpan.setAttribute('hidden', '');
         }
     }
-
-    // Sync checkboxes
     const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
     const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
     const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
     const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-
     if (useArhDbCheckbox) useArhDbCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
     if (useLocalDbCheckbox) useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
     if (useGoogleDbCheckbox) useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
     if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') !== 'false';
-
-    // Individual save is always visible if supported by browser
     if (saveIndividualWrapper) {
         saveIndividualWrapper.style.display = (window.showDirectoryPicker) ? 'block' : 'none';
     }

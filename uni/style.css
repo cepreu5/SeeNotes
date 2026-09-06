@@ -2834,8 +2834,11 @@ code {
     background-color: rgba(0, 0, 0, 0.05);  
     border-radius: 4px;*/
     padding: 0 10px;
-    /* Horizontal padding when open */
     margin-top: 0px;
+}
+
+.accordion.active .accordion-content {
+    max-height: 2000px;
 }
 
 /* --- Стилове за Седмичен Календар --- */

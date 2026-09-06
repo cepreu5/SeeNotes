@@ -138,11 +138,21 @@ class KBMatcher {
         const keywords = getArr(item.keywords);
         const question = getVal(item.question);
         const label = getVal(item.label);
+        // Текст на отговора + текстове на стъпките от гида — за търсене по съдържание
+        let answerBlob = getVal(item.answer) || '';
+        if (item.guide && typeof item.guide === 'object') {
+            for (let i = 1; ; i++) {
+                const stepText = getVal(item.guide[i] && item.guide[i].text);
+                if (!stepText) break;
+                answerBlob += ' ' + stepText;
+            }
+        }
 
         // Нормализираме всички текстове
         const normalizedKeywords = keywords.map(k => this.normalizeText(k));
         const normalizedQuestion = this.normalizeText(question);
         const normalizedLabel = this.normalizeText(label);
+        const normalizedAnswer = this.normalizeText(answerBlob);
 
         // Проверяваме всяка дума от query-то
         queryWords.forEach(queryWord => {
@@ -161,6 +171,10 @@ class KBMatcher {
             // Съвпадение в label = +2 точки
             if (normalizedLabel.includes(queryWord)) {
                 score += 2;
+            }
+            // Съвпадение в текста на отговора = +1 точка
+            if (normalizedAnswer.includes(queryWord)) {
+                score += 1;
             }
             // Fuzzy match = +1 точка
             if (this.fuzzyMatch(queryWord, normalizedKeywords)) {
@@ -1392,6 +1406,17 @@ class KBUI {
     }
 
     /**
+     * Превключва прозрачността на FAB бутона (Ctrl+клик / long press)
+     */
+    toggleFabTransparency() {
+        if (this.fabButton.style.opacity === '0.5') {
+            this.fabButton.style.opacity = '1';
+        } else {
+            this.fabButton.style.opacity = '0.5';
+        }
+    }
+
+    /**
      * Прикачва event listeners
      */
     attachEventListeners() {
@@ -1399,15 +1424,32 @@ class KBUI {
         this.fabButton.addEventListener('click', (e) => {
             if (e.ctrlKey) {
                 // Превключване на прозрачността при Ctrl + Click
-                if (this.fabButton.style.opacity === '0.5') {
-                    this.fabButton.style.opacity = '1';
-                } else {
-                    this.fabButton.style.opacity = '0.5';
-                }
+                this.toggleFabTransparency();
             } else {
                 this.toggle();
             }
         });
+
+        // Long press (мобилно) превключва прозрачността
+        let longPressTimer = null;
+        let longPressTriggered = false;
+        this.fabButton.addEventListener('touchstart', () => {
+            longPressTriggered = false;
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                this.toggleFabTransparency();
+            }, 500);
+        }, { passive: true });
+        this.fabButton.addEventListener('touchend', (e) => {
+            clearTimeout(longPressTimer);
+            if (longPressTriggered) {
+                e.preventDefault();
+                longPressTriggered = false;
+            }
+        });
+        this.fabButton.addEventListener('touchmove', () => {
+            clearTimeout(longPressTimer);
+        }, { passive: true });
 
         // Close бутон
         document.getElementById('kb-close-btn').addEventListener('click', () => {

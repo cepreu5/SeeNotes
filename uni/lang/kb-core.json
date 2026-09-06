@@ -558,6 +558,17 @@
                     "bHeight": 65,
                     "target": "#kb-fab"
                 },
+                "6": {
+                    "image": "msm/r-down.png",
+                    "height": 80,
+                    "x": -55,
+                    "y": -78,
+                    "bx": -180,
+                    "by": -105,
+                    "bWidth": 250,
+                    "bHeight": 110,
+                    "target": "#kb-fab"
+                },
                 "stopAfter": false,
                 "action": "explain",
                 "context": ""
@@ -871,14 +882,14 @@
                     "noteWidth": 300,
                     "noteHeight": 300,
                     "noteFontSize": 16,
-                    "image": "msm/r-down.png",
+                    "image": "msm/r-down-w.png",
                     "height": 100,
                     "x": -67,
                     "y": -88,
                     "bx": -112,
-                    "by": -127,
-                    "bWidth": 230,
-                    "bHeight": 94,
+                    "by": -147,
+                    "bWidth": 240,
+                    "bHeight": 124,
                     "target": "div.modal-resize-handle"
                 },
                 "stopAfter": false,
@@ -1378,6 +1389,85 @@
         {
             "id": "offline-mode",
             "category": "data-management"
+        },
+        {
+            "id": "device-profile",
+            "category": "features",
+            "guide": {
+                "1": {
+                    "image": "msm/r-down.png",
+                    "height": 80,
+                    "x": -4,
+                    "y": -68,
+                    "bx": 44,
+                    "by": -132,
+                    "bWidth": 320,
+                    "bHeight": 110,
+                    "target": "#device-name-select",
+                    "stopAfter": false,
+                    "action": "highlight",
+                    "context": "settings"
+                },
+                "2": {
+                    "image": "msm/r-down.png",
+                    "height": 80,
+                    "x": 172,
+                    "y": 400,
+                    "bx": -47,
+                    "by": -135,
+                    "bWidth": 330,
+                    "bHeight": 110,
+                    "target": "#settings-modal-body",
+                    "stopAfter": false,
+                    "action": "highlight",
+                    "context": "settings"
+                },
+                "3": {
+                    "image": "msm/l-down.png",
+                    "height": 80,
+                    "x": 102,
+                    "y": 397,
+                    "bx": 24,
+                    "by": -130,
+                    "bWidth": 330,
+                    "bHeight": 110,
+                    "target": "#settings-modal-body",
+                    "stopAfter": false,
+                    "action": "highlight",
+                    "context": "settings"
+                },
+                "4": {
+                    "image": "msm/r-down.png",
+                    "height": 80,
+                    "x": 237,
+                    "y": -61,
+                    "bx": -120,
+                    "by": -129,
+                    "bWidth": 280,
+                    "bHeight": 110,
+                    "target": "#device-name-wrapper",
+                    "stopAfter": false,
+                    "action": "highlight",
+                    "context": "settings"
+                },
+                "5": {
+                    "image": "msm/r-down.png",
+                    "height": 80,
+                    "x": 273,
+                    "y": -61,
+                    "bx": -100,
+                    "by": -129,
+                    "bWidth": 280,
+                    "bHeight": 110,
+                    "target": "#device-name-wrapper",
+                    "stopAfter": false,
+                    "action": "highlight",
+                    "context": "settings"
+                },
+                "stopAfter": false,
+                "action": "explain",
+                "context": "settings"
+            }
         }
     ]
 }
