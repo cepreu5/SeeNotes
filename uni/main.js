@@ -6988,8 +6988,8 @@ async function checkWhitelist(delayed = false) {
     console.log('>>> Email for whitelist:', currentUserEmail);
     if (!currentUserEmail) return null;
 
-    // const url = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
-    const url = 'https://script.google.com/macros/s/AKfycbwvVxJAkMvrsoCAJiKTiRwXtH7K49WgNbXBT4ndOe0sB_40ikfnPV2_FF4uNfDy3vbD/exec';
+    const url = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
+    // const url = 'https://script.google.com/macros/s/AKfycbwvVxJAkMvrsoCAJiKTiRwXtH7K49WgNbXBT4ndOe0sB_40ikfnPV2_FF4uNfDy3vbD/exec';
     const maxAttempts = 2;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
