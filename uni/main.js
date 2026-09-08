@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.54'; // App version
+const version = 'Beta 1.55'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -113,7 +113,6 @@ const SCOPES_BASE = 'https://www.googleapis.com/auth/drive.file https://www.goog
 const SCOPES_READONLY = 'https://www.googleapis.com/auth/drive.readonly';
 const SCOPES_FULL = 'https://www.googleapis.com/auth/drive';
 let SCOPES = SCOPES_BASE; // По подразбиране - минимални scopes
-const TRIAL_URL = "http://index.html?token=bEis1x9_geJ3w1aM4SWnR3KjEXbz6l9SK91w9Zk5Clqd6TBnMQgUbMTYErrb_js5wP4I699wO-NflxzGy2yn"; // days token
 
 // --- Глобални флагове за инициализация на папката ---
 let folderSetupMode = null; // 'import_migrate' | 'create_empty' | 'advanced_existing' | null
@@ -1148,12 +1147,6 @@ async function decryptLicenseToken() {
         }
     }
     let urlToken = localStorage.getItem('urlToken');
-    if (!urlToken && typeof TRIAL_URL !== 'undefined') {
-        try {
-            urlToken = (new URL(TRIAL_URL)).searchParams.get("token");
-            console.log("Using hardcoded trial token.");
-        } catch (e) { }
-    }
     let whitelistData = null;
     if (currentEmail) {
         const cachedEmail = localStorage.getItem('cached_whitelist_email');
@@ -1240,8 +1233,21 @@ async function decryptLicenseToken() {
         console.warn("Whitelist check failed.");
     }
     if (!urlToken) {
+        let hasSInCache = false;
+        try {
+            const cache = await caches.open('app-cache');
+            const cachedResponse = await cache.match('s');
+            hasSInCache = !!cachedResponse;
+        } catch (e) {
+            console.warn("Error checking cache for 's':", e);
+        }
+        if (!hasSInCache) {
+            cachedLicenseData.pass = false;
+            cachedLicenseData.remainingDays = 30;
+            return cachedLicenseData;
+        }
         if (!ts) {
-            ts = await getFirstStartEncoded(true); // Persist if it's the very first start
+            ts = await getFirstStartEncoded(false);
         }
         const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
         const validityInDays = 30;
@@ -6812,17 +6818,11 @@ function saveSearchTerm(term) {
 async function initLoginPage() {
     document.getElementById('login-page').hidden = false;
     document.getElementById('login-page').style.display = 'block';
-
-    // Header и search се показват чрез класа app-ready
-    updateSearchPlaceholder(); // Обновяваме placeholder-а с преложения език
-
-    // --- Button Visibility Logic (Restored & Consolidated) ---
+    updateSearchPlaceholder();
     const loginBox = document.querySelector('.login-box');
     const authBtn = document.getElementById("authorize_button");
     const trialBtn = document.getElementById("trialBtn");
-
     if (loginBox) loginBox.style.display = 'block';
-
     let hasS = false;
     try {
         const cache = await caches.open('app-cache');
@@ -6831,12 +6831,9 @@ async function initLoginPage() {
     } catch (e) {
         console.warn("Error checking cache in initLoginPage:", e);
     }
-
     const licenseData = await decryptLicenseToken();
     const isLicenseExpired = hasS && !licenseData.pass;
-    window.isAppErrorState = isLicenseExpired; // Mark as error state to hide assistant if needed
-
-    // --- UI Messaging Logic ---
+    window.isAppErrorState = isLicenseExpired;
     const rememberMeCheck = document.getElementById('rememberMe');
     if (isLicenseExpired) {
         const loginPrompt = document.querySelector('[data-key="loginPrompt"]');
@@ -6857,31 +6854,20 @@ async function initLoginPage() {
             rememberMeCheck.parentElement.style.display = 'block';
         }
     }
-
-    if (isOffline) {
-        // Offline Mode: Show "Start Offline" only if we have data ('s') and license is still OK
+    if (hasS) {
+        if (trialBtn) trialBtn.style.display = 'none';
         if (authBtn) {
-            authBtn.textContent = (typeof _ === 'function') ? _('offlineStartButton') : "Start Offline";
-            authBtn.style.display = (hasS && !isLicenseExpired) ? 'inline-block' : 'none';
+            authBtn.style.display = !isLicenseExpired ? 'inline-block' : 'none';
             authBtn.disabled = false;
+            authBtn.textContent = isOffline ? ((typeof _ === 'function') ? _('offlineStartButton') : "Start Offline") : ((typeof _ === 'function') ? _('authorizeButton') : "Authorize with Google");
         }
-        if (trialBtn) trialBtn.style.display = 'none'; // No trial in offline mode
     } else {
-        // Online Mode
-        if (authBtn) {
-            authBtn.textContent = (typeof _ === 'function') ? _('authorizeButton') : "Authorize with Google";
-            // Show Auth if we have trial started and it's not expired
-            authBtn.style.display = (hasS && !isLicenseExpired) ? 'inline-block' : 'none';
-            authBtn.disabled = false;
-        }
+        if (authBtn) authBtn.style.display = 'none';
         if (trialBtn) {
-            // Show Trial button only if we haven't started one yet
-            trialBtn.style.display = !hasS ? 'inline-block' : 'none';
+            trialBtn.style.display = isOffline ? 'none' : 'inline-block';
             trialBtn.textContent = (typeof _ === 'function') ? _('trialButton') : "Start 30-day trial period";
         }
     }
-
-    // Language switcher event listeners
     const switchLanguage = async (lang) => {
         localStorage.setItem('language', lang);
         if (typeof saveSettingsToGDrive === 'function') {
@@ -6890,37 +6876,24 @@ async function initLoginPage() {
         location.reload();
     };
     if (typeof renderLanguageSwitchers === 'function') renderLanguageSwitchers(switchLanguage);
-    // Добавяне на действие при натискане на trial бутона
     if (trialBtn && trialBtn.parentNode) {
-        // Cloning to remove any previous event listeners (simple way to avoid dupes)
         const newTrialBtn = trialBtn.cloneNode(true);
         trialBtn.parentNode.replaceChild(newTrialBtn, trialBtn);
         newTrialBtn.addEventListener("click", async (e) => {
             console.log("Trial button clicked");
-            e.preventDefault(); // Предотвратяваме стандартното действие
-            // 1. Взимаме токена от TRIAL_URL
-            const url = new URL(TRIAL_URL);
-            const trialToken = url.searchParams.get("token");
-            // 2. Запазваме го в localStorage, за да е наличен след логване
-            if (trialToken) {
-                localStorage.setItem('urlToken', trialToken);
-                sessionStorage.setItem('isTrialStart', 'true'); // Маркираме, че е стартиран пробен период
-                // --- НОВО: Записваме 's' в кеша веднага, за да се знае, че е стартиран пробния период ---
-                await getFirstStartEncoded(true);
-            }
-            // 3. Директно извикваме функцията за авторизация (вместо клик върху скрития бутон)
+            e.preventDefault();
+            sessionStorage.setItem('isTrialStart', 'true');
+            await getFirstStartEncoded(true);
             console.log("Starting Google authorization...");
             handleAuthClick();
         });
     }
-    // Запазваме състоянието на "Запомни ме" при промяна
     const rememberMeCheckbox = document.getElementById('rememberMe');
     if (rememberMeCheckbox) {
         rememberMeCheckbox.addEventListener('change', () => {
             localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
         });
     }
-    // Event listener за authorize бутона
     const authorizeBtn = document.getElementById('authorize_button');
     if (authorizeBtn) {
         authorizeBtn.addEventListener('click', handleAuthClick);
@@ -7015,7 +6988,8 @@ async function checkWhitelist(delayed = false) {
     console.log('>>> Email for whitelist:', currentUserEmail);
     if (!currentUserEmail) return null;
 
-    const url = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
+    // const url = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
+    const url = 'https://script.google.com/macros/s/AKfycbwvVxJAkMvrsoCAJiKTiRwXtH7K49WgNbXBT4ndOe0sB_40ikfnPV2_FF4uNfDy3vbD/exec';
     const maxAttempts = 2;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -12470,14 +12444,12 @@ async function createSettingsUI(boardsData, boardParseError) {
         let devices = ['Default'];
         let cachedProfiles = localStorage.getItem('deviceProfilesList');
         console.log('[DEBUG] loadDeviceProfiles(): cachedProfiles from localStorage:', cachedProfiles);
-
         if (cachedProfiles) {
             try {
                 devices = JSON.parse(cachedProfiles);
                 console.log('[DEBUG] loadDeviceProfiles(): parsed devices from cache:', devices);
             } catch (e) { console.warn('[DEBUG] parse error on cachedProfiles:', e); }
         }
-
         // Always fetch from GDrive in background if not offline to discover new profiles
         if (!isOffline && (!cachedProfiles || forceRefresh || true)) {
             (async () => {
@@ -12489,9 +12461,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                         if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
                     }
                 } catch (err) { console.error("Error loading profiles:", err); }
-
                 if (!content) content = localStorage.getItem('settings_multinotes_data');
-
                 if (content) {
                     try {
                         const parsed = JSON.parse(content);
@@ -12499,23 +12469,23 @@ async function createSettingsUI(boardsData, boardParseError) {
                             const topLevelKeys = Object.keys(parsed);
                             const isNewFormat = !topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
                             if (isNewFormat) {
-                                let remoteDevices = topLevelKeys;
                                 const currentDevice = localStorage.getItem('deviceName') || 'Default';
-                                if (!remoteDevices.includes(currentDevice)) remoteDevices.push(currentDevice);
-                                if (!remoteDevices.includes('Default')) remoteDevices.push('Default');
-
-                                // Check if we found new devices compared to cache
-                                const newDevicesStr = JSON.stringify(remoteDevices);
+                                const mergedDevices = Array.from(new Set([
+                                    'Default',
+                                    currentDevice,
+                                    ...(Array.isArray(devices) ? devices : []),
+                                    ...topLevelKeys
+                                ])).sort((a, b) => {
+                                    if (a === 'Default') return -1;
+                                    if (b === 'Default') return 1;
+                                    return a.localeCompare(b);
+                                });
+                                const newDevicesStr = JSON.stringify(mergedDevices);
                                 if (newDevicesStr !== cachedProfiles) {
                                     localStorage.setItem('deviceProfilesList', newDevicesStr);
-                                    // Re-render the dropdown with new devices
-                                    devices = remoteDevices;
+                                    devices = mergedDevices;
                                     deviceNameSelect.innerHTML = '';
-                                    devices.sort((a, b) => {
-                                        if (a === 'Default') return -1;
-                                        if (b === 'Default') return 1;
-                                        return a.localeCompare(b);
-                                    }).forEach(dev => {
+                                    devices.forEach(dev => {
                                         const opt = document.createElement('option');
                                         opt.value = dev;
                                         opt.textContent = dev;
@@ -12530,13 +12500,11 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
             })();
         }
-
         const currentDevice = localStorage.getItem('deviceName') || 'Default';
         if (!devices.includes(currentDevice)) {
             devices.push(currentDevice);
             localStorage.setItem('deviceProfilesList', JSON.stringify(devices));
         }
-
         deviceNameSelect.innerHTML = '';
         console.log('[DEBUG] loadDeviceProfiles(): about to populate with devices:', devices);
         devices.sort((a, b) => {
