@@ -3798,3 +3798,57 @@ body.selection-locked .note.active-selection-note .note-content {
     top: 50%;
     transform: translateY(-50%);
 }
+
+/* Ripple ефект върху header бутони 
+.header-btn {
+    transition: transform .15s, box-shadow .15s;
+    overflow: hidden;
+}
+
+.header-btn:hover {
+    transform: scale(1.08);
+    filter: brightness(1.1);
+}
+
+.header-btn:active {
+    transform: scale(.92);
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-40px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+ 1. Hover: lift + rotate 
+.note {
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease;
+}
+
+.note:hover {
+    transform: translateY(-6px) scale(1.04) rotate(-1deg);
+    box-shadow: 6px 14px 24px rgba(0, 0, 0, .22);
+}
+
+ 2. Появяване на нова бележка 
+@keyframes noteAppear {
+    from {
+        opacity: 0;
+        transform: scale(.7) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.note-appear {
+    animation: noteAppear .35s cubic-bezier(.34, 1.56, .64, 1) both;
+} */

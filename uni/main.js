@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.55'; // App version
+const version = 'Beta 1.56'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -1307,23 +1307,16 @@ let refreshPromise = null;
 
 async function refreshAuthToken(forcePopup = false, quiet = false) {
     if (refreshPromise) return refreshPromise;
-
     refreshPromise = new Promise(async (resolve, reject) => {
-        console.log("Refreshing auth token (forcePopup: " + forcePopup + ", quiet: " + quiet + ")...");
+        console.log("Refreshing auth token (quiet: " + quiet + ")...");
         try {
-            if (forcePopup && authPopupAttempted) {
-                console.warn("Popup auth already attempted this session; skipping.");
-                resolve({ pass: false, error: { error: 'popup_already_attempted' } });
-                return;
-            }
-            // Wait for Google Identity Services to load (with timeout)
             const waitForGis = () => new Promise((res, rej) => {
                 if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
                     res(true);
                     return;
                 }
                 let attempts = 0;
-                const maxAttempts = 150; // 15 seconds total (150 * 100ms)
+                const maxAttempts = 100;
                 const checkInterval = setInterval(() => {
                     attempts++;
                     if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
@@ -1331,27 +1324,24 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                         res(true);
                     } else if (attempts >= maxAttempts) {
                         clearInterval(checkInterval);
-                        rej(new Error("Google Identity Services not loaded after 15 seconds."));
+                        rej(new Error("Google Identity Services not loaded."));
                     }
                 }, 100);
             });
-
             try {
                 await waitForGis();
             } catch (gisError) {
                 console.warn("GIS not available, cannot refresh token:", gisError.message);
-                reject(new Error("Google Identity Services not loaded. User interaction required."));
+                resolve({ pass: false, error: gisError });
                 return;
             }
             const client = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
                 callback: async (tokenResponse) => {
-                    clearTimeout(requestTimeout); // Спираме таймера при отговор
+                    clearTimeout(requestTimeout);
                     if (tokenResponse && tokenResponse.access_token) {
                         const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-
-                        // Проверяваме дали акаунтът не се е променил при опресняване на токена
                         try {
                             const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                                 headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
@@ -1380,8 +1370,6 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                         } catch (uErr) {
                             console.warn('[refreshAuthToken] Could not verify userinfo during token refresh:', uErr);
                         }
-
-                        // Determine storage based on existing token location or rememberMe
                         if (sessionStorage.getItem('google_auth_token')) {
                             sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         }
@@ -1392,22 +1380,18 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                             sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
                         }
                         console.log("Token refreshed successfully.");
-                        authPopupAttempted = false; // Сесията е подновена — разрешаваме попъп при следващо изтичане
-                        // Update global state immediately
                         authToken = tokenWithTimestamp;
                         if (typeof gapi !== 'undefined' && gapi.client) {
                             gapi.client.setToken({ access_token: authToken.access_token });
                         }
                         resolve({ pass: true, tokenData: tokenWithTimestamp });
                     } else {
-                        console.warn("Token refresh failed:", tokenResponse);
-                        // Handle cases where interaction is required (e.g. session expired after long idle)
+                        console.warn("Token refresh failed or closed:", tokenResponse);
                         if (tokenResponse && (tokenResponse.error === 'interaction_required' || tokenResponse.error === 'access_denied')) {
                             if (!quiet) {
                                 if (typeof showToast === 'function') {
                                     showToast(_('sessionExpired') || "Session expired. Please sign in again.", 5000);
                                 }
-                                // Small delay to let the user see the toast before redirect
                                 setTimeout(() => {
                                     if (!isSyncSuspended && typeof initLoginPage === 'function') initLoginPage();
                                 }, 1500);
@@ -1417,51 +1401,26 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                     }
                 },
             });
-
             const loginHint = sessionStorage.getItem('google_auth_email_hint') ||
                 localStorage.getItem('google_login_hint') ||
                 cachedLicenseEmailHint ||
                 (cachedLicenseData && cachedLicenseData.email_hint);
-
-            // Request the token
             const tokenOptions = {
-                prompt: forcePopup ? 'select_account' : 'none'
+                prompt: ''
             };
             if (loginHint) tokenOptions.hint = loginHint;
-
-            // Таймер за безопасност: ако Google не отговори
-            const isSilent = !forcePopup && tokenOptions.prompt === 'none';
-            const timeoutDuration = isSilent ? 15000 : 30000; // 15s за тих опит, 30s за попъп
-            const requestTimeout = setTimeout(async () => {
-                const errMsg = isSilent ? "Silent token refresh failed/blocked." : "Token refresh request timed out after 30s.";
-                console.warn(errMsg);
-                if (isSilent) {
-                    if (quiet) {
-                        resolve({ pass: false, error: { error: 'silent_timeout' } });
-                        return;
-                    }
-                    console.log("Attempting token refresh with interactive popup...");
-                    try {
-                        refreshPromise = null;
-                        const popupResult = await refreshAuthToken(true);
-                        resolve(popupResult);
-                    } catch (popupErr) {
-                        reject(popupErr);
-                    }
-                } else {
-                    reject(new Error(errMsg));
-                }
-            }, timeoutDuration);
-            if (!isSilent) authPopupAttempted = true;
+            const requestTimeout = setTimeout(() => {
+                console.warn("Token refresh timed out.");
+                resolve({ pass: false, error: { error: 'timeout' } });
+            }, 10000);
             client.requestAccessToken(tokenOptions);
         } catch (error) {
             console.error("Critical error in refreshAuthToken:", error);
-            reject(error);
+            resolve({ pass: false, error: error });
         }
     }).finally(() => {
         refreshPromise = null;
     });
-
     return refreshPromise;
 }
 
@@ -1479,10 +1438,13 @@ function notifyManualGoogleLoginRequired() {
  * налага интеракция по средата на работа. Изпълнява се тихо (quiet) — без popup,
  * без toast и без логин екран при неуспех.
  */
+let lastBackgroundRefreshFailedTime = 0;
+
 function scheduleProactiveTokenRefresh() {
     if (proactiveRefreshTimer) clearInterval(proactiveRefreshTimer);
-    proactiveRefreshTimer = setInterval(async () => {
-        if (isOffline || isSyncSuspended) return;
+    const checkAndRefreshToken = async () => {
+        if (isOffline || isSyncSuspended || document.hidden) return;
+        if (Date.now() - lastBackgroundRefreshFailedTime < 300000) return;
         const storedToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
         if (!storedToken) return;
         let tokenData;
@@ -1490,20 +1452,33 @@ function scheduleProactiveTokenRefresh() {
         if (!tokenData || !tokenData.issued_at || !tokenData.expires_in) return;
         const elapsedSeconds = (Date.now() - tokenData.issued_at) / 1000;
         const remainingSeconds = tokenData.expires_in - elapsedSeconds;
-        if (remainingSeconds < 300 && remainingSeconds > 0) {
-            console.log(`Proactive token refresh: token expires in ~${Math.round(remainingSeconds)}s.`);
+        if (remainingSeconds < 300) {
+            console.log(`Token refresh on visibility/timer: token expires/expired in ~${Math.round(remainingSeconds)}s.`);
             try {
                 const result = await refreshAuthToken(false, true);
                 if (result && result.pass) {
-                    console.log("Proactive token refresh succeeded.");
+                    console.log("Token refresh succeeded.");
+                    lastBackgroundRefreshFailedTime = 0;
                 } else {
-                    console.warn("Proactive token refresh did not succeed; will retry later if still within window.");
+                    console.warn("Token refresh did not succeed. Setting 5m cooldown.");
+                    lastBackgroundRefreshFailedTime = Date.now();
                 }
             } catch (e) {
-                console.warn("Proactive token refresh failed:", e);
+                console.warn("Token refresh failed. Setting 5m cooldown:", e);
+                lastBackgroundRefreshFailedTime = Date.now();
             }
         }
-    }, 60000);
+    };
+    proactiveRefreshTimer = setInterval(checkAndRefreshToken, 60000);
+    if (!window._visibilityAuthListenerAdded) {
+        window._visibilityAuthListenerAdded = true;
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) checkAndRefreshToken();
+        });
+        window.addEventListener('focus', () => {
+            if (!document.hidden) checkAndRefreshToken();
+        });
+    }
 }
 
 /**
@@ -6988,8 +6963,8 @@ async function checkWhitelist(delayed = false) {
     console.log('>>> Email for whitelist:', currentUserEmail);
     if (!currentUserEmail) return null;
 
-    const url = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
-    // const url = 'https://script.google.com/macros/s/AKfycbwvVxJAkMvrsoCAJiKTiRwXtH7K49WgNbXBT4ndOe0sB_40ikfnPV2_FF4uNfDy3vbD/exec';
+    // const url = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
+    const url = 'https://script.google.com/macros/s/AKfycbwvVxJAkMvrsoCAJiKTiRwXtH7K49WgNbXBT4ndOe0sB_40ikfnPV2_FF4uNfDy3vbD/exec';
     const maxAttempts = 2;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -7059,22 +7034,13 @@ async function checkAuth(isExplicitLogin = false) {
     tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
     const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
     if (isExpired) {
-        console.log("Token expired. Attempting silent refresh...");
+        console.log("Token expired. Refreshing auth token...");
         try {
             let refreshResult = await refreshAuthToken(false, true);
             if (refreshResult && refreshResult.pass) return refreshResult;
-        } catch (silentErr) {
-            console.warn("Silent refresh failed, opening interactive popup...", silentErr);
+        } catch (authErr) {
+            console.warn("Auth refresh failed or was closed:", authErr);
         }
-        // Ако тихият refresh не стане, ВЕДНАГА отваряме попъпа за автентикация
-        try {
-            let popupResult = await refreshAuthToken(true, true);
-            if (popupResult && popupResult.pass) return popupResult;
-        } catch (popupErr) {
-            console.warn("Interactive auth popup failed or was closed:", popupErr);
-        }
-
-        // Ако и попъпът се провали: ако има локални данни в IndexedDB, продължаваме в локален режим
         if (useIndexedDb) {
             try {
                 if (dbExists === null || typeof dbExists === 'undefined') {
@@ -7086,7 +7052,7 @@ async function checkAuth(isExplicitLogin = false) {
                         isSyncSuspended = true;
                         console.warn("Session expired, but local data exists. Entering local mode with suspended sync.");
                         if (typeof showToast === 'function') {
-                            showToast(_('syncSuspendedTooltip') || "Синхронизацията е спряна. Кликнете върху бутона за режим, за да влезете отново.", 6000);
+                            showToast(_('syncSuspendedTooltip') || "Sync suspended. Click the mode button to sign in again.", 6000);
                         }
                         updateModeButton();
                         return { pass: true, syncSuspended: true, tokenData: tokenData };
@@ -19976,4 +19942,3 @@ async function cleanupOrphanedImages() {
 
 // Задаваме периодична проверка за осиротели изображения
 // setInterval(cleanupOrphanedImages, 10 * 60 * 1000); // На всеки 10 минути
-
