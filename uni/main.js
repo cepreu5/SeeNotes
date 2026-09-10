@@ -9464,7 +9464,7 @@ function showModal(options, noteElement = null) {
     }
     // --- Board Name Display in Modal ---
     const modalContentBox = contentModal.querySelector('.modal-content-box');
-
+    modalContentBox.style.transition = 'none';
     const noteForUiState = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     const uiState = getNoteUiState(options.uiState || (noteForUiState && noteForUiState.uiState));
     const isExpanded = uiState.isExpanded === true;
@@ -9500,6 +9500,8 @@ function showModal(options, noteElement = null) {
             }
         }
     }
+    void modalContentBox.offsetHeight;
+    modalContentBox.style.transition = '';
     setExpandedModalFloatingControls(isExpanded);
     // Размер на шрифта: от options (демо бележка) или от потребителските настройки
     if (options && options.fontSize) {
