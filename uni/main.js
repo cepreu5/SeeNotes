@@ -18601,8 +18601,9 @@ async function showNewBoardModal() {
     let customBgDataURL = null;
     let customBgMimeType = null;
     let isBoardSaveInProgress = false;
-    // Populated dropdown with current boards
-    if (editSelect) {
+
+    function populateEditSelect(selectedVal = '') {
+        if (!editSelect) return;
         while (editSelect.options.length > 1) editSelect.remove(1);
         const normalEditEntries = [...boardsData]
             .filter(board => board.title)
@@ -18621,7 +18622,6 @@ async function showNewBoardModal() {
             ...getSystemBoardEditEntries(),
             ...normalEditEntries
         ]);
-
         orderedEditEntries.forEach(entry => {
             const opt = document.createElement('option');
             opt.value = entry.board ? (entry.board.gdid || entry.board.id).toString() : `system:${entry.boardId}`;
@@ -18629,7 +18629,9 @@ async function showNewBoardModal() {
             opt.style.background = '#2c2c2c';
             editSelect.appendChild(opt);
         });
+        if (selectedVal !== undefined && selectedVal !== null) editSelect.value = selectedVal.toString();
     }
+    populateEditSelect();
 
     const bgNames = ['Board.png', 'Board1.png', 'Board2.png', 'Board3.png'];
     const fontColors = ['#000000', '#FFFFFF', '#FF0000', '#0000FF'];
@@ -19124,9 +19126,9 @@ async function showNewBoardModal() {
                     }
 
                     modal.classList.remove('visible');
-                    // Опресняваме UI
-                    const boardsNote = document.querySelector('header .boards-note');
-                    if (boardsNote) boardsNote.remove();
+                    resetInputs(null);
+                    populateEditSelect('');
+                    document.querySelectorAll('header .boards-note').forEach(el => el.remove());
                     await renderUI({ boardParseError: false });
                     showToast(_('settingsSavedSuccess'));
                 } catch (error) {
@@ -19257,9 +19259,17 @@ async function showNewBoardModal() {
 
             const updateGDriveNow = useGoogleDb && !isOffline;
             if (updateGDriveNow) {
+                let updated = false;
                 if (currentEditingBoard && currentEditingBoard.gdid) {
-                    await updateGDriveFile(currentEditingBoard.gdid, JSON.stringify(boardToSave));
-                } else {
+                    try {
+                        await updateGDriveFile(currentEditingBoard.gdid, JSON.stringify(boardToSave));
+                        updated = true;
+                    } catch (e) {
+                        const is404 = e && (e.status === 404 || String(e.message || '').includes('404') || String(e).includes('404'));
+                        if (!is404) throw e;
+                    }
+                }
+                if (!updated) {
                     const folderId = await getFolderID();
                     if (folderId) {
                         const fileName = `board.txt`;
@@ -19310,8 +19320,7 @@ async function showNewBoardModal() {
 
             if (useIndexedDb) await bulkPutDB(BOARD_STORE_NAME, boardToSave, true);
 
-            const boardsNote = document.querySelector('header .boards-note');
-            if (boardsNote) boardsNote.remove();
+            document.querySelectorAll('header .boards-note').forEach(el => el.remove());
 
             modal.classList.remove('visible');
             await renderUI({ boardParseError: false });
