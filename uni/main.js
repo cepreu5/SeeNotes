@@ -3348,6 +3348,8 @@ function renderCalendarView() {
     scrollTopBtn.style.display = 'none';
     const addNoteFab = document.getElementById('add-note-fab');
     if (addNoteFab) addNoteFab.style.display = 'none';
+    const weeklyContainer = document.getElementById('weekly-calendar-container');
+    if (weeklyContainer) weeklyContainer.style.display = 'none';
     let calendarContainer = document.getElementById('calendar-container');
     if (!calendarContainer) {
         calendarContainer = document.createElement('div');
@@ -3709,6 +3711,8 @@ function renderWeeklyCalendarView(dateForWeek) {
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
     scrollTopBtn.style.display = 'none';
+    const calendarContainer = document.getElementById('calendar-container');
+    if (calendarContainer) calendarContainer.style.display = 'none';
     let startDate;
     if (!dateForWeek) {
         // Ако не е подадена дата, използваме днешната, за да намерим текущата седмица
@@ -10824,6 +10828,8 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     if (boardId !== 'calendar') {
         const calendarContainer = document.getElementById('calendar-container');
         if (calendarContainer) calendarContainer.style.display = 'none';
+        const weeklyCalendarContainer = document.getElementById('weekly-calendar-container');
+        if (weeklyCalendarContainer) weeklyCalendarContainer.style.display = 'none';
         // Възстановяваме видимостта на основните елементи
         document.querySelector('header').style.display = 'flex';
         notesContainer.style.display = 'flex';
