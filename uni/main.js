@@ -5079,8 +5079,8 @@ async function startApp(isExplicitLogin = false) {
         if (savedStartBoard && (isDbOwner || savedStartBoard === 'all')) {
             currentBoardFilter = savedStartBoard;
         }
-
         await createBoardsUI([], false);
+        initHeaderFullscreen();
         await createSettingsUI([], false); // Предварително създава UI на настройките
         // Проверката за потребител и основната логика се извикват директно.
         // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
@@ -10472,10 +10472,10 @@ function toggleHeaderFullscreen() {
     const isCurrentlyHidden = header.classList.contains('header-fullscreen');
     if (isCurrentlyHidden) {
         header.classList.remove('header-fullscreen');
-        localStorage.removeItem('isHeaderHidden');
+        localStorage.setItem('extendedMode', 'false');
     } else {
         header.classList.add('header-fullscreen');
-        localStorage.setItem('isHeaderHidden', 'true');
+        localStorage.setItem('extendedMode', 'true');
     }
     const boardsModal = document.getElementById('boards-menu-modal');
     if (boardsModal) boardsModal.classList.remove('visible');
@@ -10526,9 +10526,15 @@ function adjustFullscreenSearchLayout() {
 }
 
 function initHeaderFullscreen() {
-    const isHidden = localStorage.getItem('isHeaderHidden') === 'true';
+    const isExtended = localStorage.getItem('extendedMode') === 'true';
     const header = document.querySelector('header');
-    if (isHidden && header) header.classList.add('header-fullscreen');
+    if (header) {
+        if (isExtended) {
+            header.classList.add('header-fullscreen');
+        } else {
+            header.classList.remove('header-fullscreen');
+        }
+    }
     updateHeaderFullscreenUI();
     adjustFullscreenSearchLayout();
     if (header && !header._hasSearchLayoutObserver) {
@@ -12038,7 +12044,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         }
         contentEl.appendChild(link);
     });
-
+    updateHeaderFullscreenUI();
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
 
@@ -12113,7 +12119,8 @@ const appSettingsKeys = [
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'lastSearchTerm', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
     'gdrive_folder_names', 'deviceName',
-    'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
+    'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition',
+    'extendedMode'
 ];
 async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
@@ -12509,6 +12516,7 @@ async function loadSettingsFromGDrive(silent = false) {
                     }
                 }
             });
+            initHeaderFullscreen();
             if (silent) {
                 await renderUI({ rerenderOnlyMenu: true });
                 restoreAllFloatingPositions();
