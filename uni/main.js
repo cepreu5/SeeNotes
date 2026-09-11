@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.56'; // App version
+const version = 'Beta 1.57'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -3677,6 +3677,7 @@ function renderCalendarView() {
                     notesContainer.style.display = 'flex';
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
+                    adjustFullscreenSearchLayout();
                 }
 
                 // --- Re-open note modal if we were assigning a date ---
@@ -3810,6 +3811,7 @@ function renderWeeklyCalendarView(dateForWeek) {
                     notesContainer.style.display = 'flex';
                     scrollTopBtn.style.display = 'block';
                     window.dispatchEvent(new Event('scroll'));
+                    adjustFullscreenSearchLayout();
                 }
                 // Спираме анимацията (ако все още е видима, въпреки че click() ще преначертае UI)
                 if (closeSymbol && loadingIcon) {
@@ -5406,18 +5408,17 @@ function showPrompt(message, defaultValue = '') {
             noButton.style.marginLeft = '10px';
             okButton.parentNode.appendChild(noButton);
         }
-
         messagePara.textContent = message;
         folderIdInput.style.display = 'block';
         folderIdInput.value = defaultValue;
-        okButton.textContent = _('submitButton');
-        noButton.textContent = _('cancel') || 'Cancel';
+        okButton.textContent = (typeof _ === 'function' && _('submitButton')) || 'OK';
+        noButton.textContent = (typeof _ === 'function' && _('cancel')) || 'Cancel';
         noButton.style.display = 'inline-block';
-
         const cleanup = () => {
             popup.classList.remove('show');
             okButton.removeEventListener('click', onOk);
             noButton.removeEventListener('click', onCancel);
+            folderIdInput.removeEventListener('keydown', onKeyDown);
             noButton.style.display = 'none';
             okButton.addEventListener('click', handleSubmitFolderId);
         };
@@ -5430,10 +5431,19 @@ function showPrompt(message, defaultValue = '') {
             cleanup();
             resolve(null);
         };
-
+        const onKeyDown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                onOk();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                onCancel();
+            }
+        };
         okButton.removeEventListener('click', handleSubmitFolderId);
         okButton.addEventListener('click', onOk);
         noButton.addEventListener('click', onCancel);
+        folderIdInput.addEventListener('keydown', onKeyDown);
         popup.classList.add('show');
         folderIdInput.focus();
     });
@@ -6091,12 +6101,24 @@ function initApp() {
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         // Save button might wait for debounce, but usually safer to show immediately too
         saveSearchBtn.style.display = hasText ? 'flex' : 'none';
-
         // По-толерантна проверка за токен в реално време
         if (val.match(/^\??token=/)) {
             saveSearchBtn.title = (typeof _ === 'function') ? _('saveTokenTooltip') : "Update token";
         } else {
             saveSearchBtn.title = (typeof _ === 'function') ? _('searchSavedTip') : "Save search term";
+        }
+        if (val === '/?' || val === '/help') {
+            renderCommandsHelpPopup();
+            saveSearchBtn.style.display = 'none';
+            clearTimeout(searchDebounceTimeout);
+            return;
+        }
+        if (val.startsWith('/')) {
+            saveSearchBtn.style.display = 'none';
+            clearTimeout(searchDebounceTimeout);
+            const popup = document.getElementById('saved-searches-popup');
+            if (popup) popup.style.display = 'none';
+            return;
         }
         if (!event.isTrusted) return;
         clearTimeout(searchDebounceTimeout);
@@ -6106,10 +6128,24 @@ function initApp() {
     });
 
     // Handle Enter key
-    searchBox.addEventListener('keydown', (event) => {
+    searchBox.addEventListener('keydown', async (event) => {
         if (event.key === 'Enter') {
             event.preventDefault(); // Prevent form submission if any
             searchBox.blur(); // Hide keyboard on mobile
+            const val = searchBox.value.trim();
+            if (val.startsWith('/')) {
+                const handled = await handleSearchCommand(val);
+                if (handled) {
+                    if (val !== '/?' && val !== '/help') {
+                        searchBox.value = '';
+                        clearSearchBtn.style.display = 'none';
+                        saveSearchBtn.style.display = 'none';
+                        const popup = document.getElementById('saved-searches-popup');
+                        if (popup) popup.style.display = 'none';
+                    }
+                    return;
+                }
+            }
             triggerSearch(true); // Ensure search is applied
             document.getElementById('saved-searches-popup').style.display = 'none'; // Close popup
         }
@@ -6127,7 +6163,11 @@ function initApp() {
     });
 
     searchBox.addEventListener('focus', () => {
-        renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
+        if (searchBox.value.trim() === '/?' || searchBox.value.trim() === '/help') {
+            renderCommandsHelpPopup();
+        } else {
+            renderSavedSearchesPopup();
+        }
     });
     saveSearchBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -10459,25 +10499,200 @@ function adjustFullscreenSearchLayout() {
     const searchIcon = document.querySelector('.search-icon-static');
     const fsBoardLabel = document.getElementById('fullscreen-board-label');
     if (!searchBox || !searchIcon) return;
-    if (isFullscreen && fsBoardLabel && fsBoardLabel.textContent) {
-        const labelWidth = fsBoardLabel.offsetWidth;
-        const offset = labelWidth + 5;
-        searchIcon.style.left = (offset + 5) + 'px';
-        searchBox.style.paddingLeft = (offset + 34) + 'px';
-    } else {
-        searchIcon.style.left = '';
-        searchBox.style.paddingLeft = '';
+    if (isFullscreen && fsBoardLabel) {
+        if (!fsBoardLabel.textContent && typeof currentBoardFilter !== 'undefined') {
+            const bId = currentBoardFilter;
+            const board = (typeof boardsData !== 'undefined') ? boardsData.find(b => b.gdid == bId || b.id == bId) : null;
+            fsBoardLabel.textContent = board ? board.title : (bId === 'all' ? ((typeof _ === 'function' && _('allBoards')) || 'All') : (bId && bId !== 'calendar' ? bId : ''));
+        }
+        if (fsBoardLabel.textContent) {
+            let labelWidth = fsBoardLabel.offsetWidth;
+            if (labelWidth === 0) {
+                const tempSpan = document.createElement('span');
+                tempSpan.style.cssText = 'position:absolute;visibility:hidden;font-size:12px;font-weight:bold;padding:2px 8px;white-space:nowrap;';
+                tempSpan.textContent = fsBoardLabel.textContent;
+                document.body.appendChild(tempSpan);
+                labelWidth = Math.min(tempSpan.offsetWidth, 120);
+                tempSpan.remove();
+            }
+            const offset = labelWidth + 5;
+            searchIcon.style.left = (offset + 5) + 'px';
+            searchBox.style.paddingLeft = (offset + 34) + 'px';
+            return;
+        }
     }
+    searchIcon.style.left = '';
+    searchBox.style.paddingLeft = '';
 }
 
 function initHeaderFullscreen() {
     const isHidden = localStorage.getItem('isHeaderHidden') === 'true';
-    if (isHidden) {
-        const header = document.querySelector('header');
-        if (header) header.classList.add('header-fullscreen');
-    }
+    const header = document.querySelector('header');
+    if (isHidden && header) header.classList.add('header-fullscreen');
     updateHeaderFullscreenUI();
     adjustFullscreenSearchLayout();
+    if (header && !header._hasSearchLayoutObserver) {
+        header._hasSearchLayoutObserver = true;
+        new MutationObserver(() => {
+            adjustFullscreenSearchLayout();
+        }).observe(header, { attributes: true, attributeFilter: ['style', 'class'] });
+        window.addEventListener('resize', adjustFullscreenSearchLayout);
+    }
+}
+
+function renderCommandsHelpPopup() {
+    const popup = document.getElementById('saved-searches-popup');
+    if (!popup) return;
+    popup.style.display = 'block';
+    popup.innerHTML = '';
+    const closeBtn = document.createElement('div');
+    closeBtn.className = 'saved-search-close-btn';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.title = (typeof _ === 'function' && _('closeButton')) || 'Close';
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        popup.style.display = 'none';
+    });
+    popup.appendChild(closeBtn);
+    const contentContainer = document.createElement('div');
+    contentContainer.className = 'saved-searches-content';
+    popup.appendChild(contentContainer);
+    const headerRow = document.createElement('div');
+    headerRow.className = 'saved-search-item';
+    headerRow.style.fontWeight = 'bold';
+    headerRow.style.cursor = 'default';
+    headerRow.style.color = '#1f3b52';
+    headerRow.textContent = (typeof _ === 'function' && _('searchCommandsTitle')) || 'Commands:';
+    headerRow.addEventListener('click', (e) => e.stopPropagation());
+    contentContainer.appendChild(headerRow);
+    const defaultList = [
+        { cmd: '/1', text: '/1  or  /set — Settings' },
+        { cmd: '/2', text: '/2  or  /info — System information' },
+        { cmd: '/3', text: '/3  or  /cal — Calendar' },
+        { cmd: '/4', text: '/4  or  /rel — Reload' },
+        { cmd: '/5', text: '/5  or  /out — Sign out' },
+        { cmd: '/6', text: '/6  or  /norm — Exit expanded mode' },
+        { cmd: '/7', text: '/7  or  /ex — Enter expanded mode' },
+        { cmd: '/%', text: '/%number — Zoom (e.g. /%50)' },
+        { cmd: '/0', text: '/0  or  /wipe — Erase data and close tab' }
+    ];
+    const rawList = (typeof _ === 'function') ? _('searchCommandsList') : null;
+    const commandsList = (Array.isArray(rawList) && rawList.length > 0) ? rawList : defaultList;
+    commandsList.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'saved-search-item';
+        row.style.fontStyle = 'normal';
+        const text = typeof item === 'string' ? item : item.text;
+        let cmd = item.cmd || (typeof item === 'string' ? item.split(/\s+/)[0] : (item.text ? item.text.split(/\s+/)[0] : ''));
+        if (cmd.startsWith('/%')) cmd = '/%';
+        row.textContent = text;
+        row.addEventListener('click', () => {
+            popup.style.display = 'none';
+            const sBox = document.getElementById('search-box');
+            if (cmd === '/%') {
+                if (sBox) {
+                    sBox.value = '/%';
+                    sBox.focus();
+                }
+            } else {
+                if (sBox) sBox.value = '';
+                handleSearchCommand(cmd);
+            }
+        });
+        contentContainer.appendChild(row);
+    });
+}
+
+async function handleSearchCommand(commandText) {
+    if (!commandText || typeof commandText !== 'string') return false;
+    const trimmed = commandText.trim();
+    if (!trimmed.startsWith('/')) return false;
+    const cmd = trimmed.toLowerCase();
+    if (cmd === '/?' || cmd === '/help') {
+        renderCommandsHelpPopup();
+        return true;
+    }
+    if (cmd === '/set' || cmd === '/settings' || cmd === '/1') {
+        const btn = document.getElementById('settings_button');
+        if (btn) btn.click();
+        return true;
+    }
+    if (cmd === '/norm' || cmd === '/normal' || cmd === '/6') {
+        const header = document.querySelector('header');
+        if (header && header.classList.contains('header-fullscreen')) toggleHeaderFullscreen();
+        return true;
+    }
+    if (cmd === '/ex' || cmd === '/expand' || cmd === '/7') {
+        const header = document.querySelector('header');
+        if (header && !header.classList.contains('header-fullscreen')) toggleHeaderFullscreen();
+        return true;
+    }
+    if (cmd === '/rel' || cmd === '/reload' || cmd === '/4') {
+        const btn = document.getElementById('reload_button');
+        if (btn) btn.click();
+        return true;
+    }
+    if (cmd === '/cal' || cmd === '/calendar' || cmd === '/3') {
+        const btn = document.getElementById('calendar_button');
+        if (btn) btn.click();
+        else if (typeof filterNotesByBoard === 'function') filterNotesByBoard('calendar');
+        return true;
+    }
+    if (cmd === '/out' || cmd === '/5' || cmd === '/logout') {
+        const btn = document.getElementById('signout_button');
+        if (btn) btn.click();
+        else if (typeof handleSignoutClick === 'function') handleSignoutClick();
+        return true;
+    }
+    if (cmd === '/info' || cmd === '/2') {
+        const counter = document.getElementById('note-counter');
+        if (counter) counter.click();
+        return true;
+    }
+    const zoomMatch = cmd.match(/^\/%\s*(\d+)\%?$/);
+    if (zoomMatch) {
+        const scaleInput = document.getElementById('scaleInput');
+        const applyBtn = document.getElementById('applyZoomBtn');
+        if (scaleInput) scaleInput.value = zoomMatch[1];
+        if (applyBtn) applyBtn.click();
+        return true;
+    }
+    if (cmd === '/wipe' || cmd === '/0') {
+        const code = Math.floor(100 + Math.random() * 900);
+        const template = (typeof _ === 'function' && _('wipeConfirmationPrompt')) || 'Enter confirmation code {code} to wipe all data:';
+        const msg = template.replace('{code}', code);
+        const inputVal = await showPrompt(msg);
+        if (inputVal === null) return true;
+        if (inputVal.trim() !== String(code)) {
+            const wrongMsg = (typeof _ === 'function' && _('wipeWrongCode')) || 'Incorrect confirmation code. Operation cancelled.';
+            alert(wrongMsg);
+            return true;
+        }
+        try {
+            if (typeof NOTES_DB_NAME !== 'undefined') indexedDB.deleteDatabase(NOTES_DB_NAME);
+            if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
+                const dbs = await indexedDB.databases();
+                for (const d of dbs) {
+                    if (d.name) indexedDB.deleteDatabase(d.name);
+                }
+            }
+            if (typeof caches !== 'undefined') {
+                const keys = await caches.keys();
+                for (const k of keys) {
+                    if (k !== 'app-cache') await caches.delete(k);
+                }
+            }
+        } catch (e) { }
+        try {
+            localStorage.clear();
+            sessionStorage.clear();
+        } catch (e) { }
+        document.body.innerHTML = '';
+        window.close();
+        window.location.href = 'about:blank';
+        return true;
+    }
+    return false;
 }
 
 function showAllBoardsModal(onSelectCallback = null) {
@@ -10837,6 +11052,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         // scrollTopBtn.style.display = 'block';
         const addNoteFab = document.getElementById('add-note-fab');
         if (addNoteFab) addNoteFab.style.display = 'flex';
+        adjustFullscreenSearchLayout();
     }
     // Add or remove a class from the container to control child visibility
     // This part is no longer needed as calendar has its own view

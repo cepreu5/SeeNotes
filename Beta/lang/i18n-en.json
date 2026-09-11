@@ -486,5 +486,19 @@
     "resizeHandleTooltip": "Drag: global size · Ctrl+drag/hold+drag: this note only",
     "syncSuspendedTooltip": "Sync suspended. Click to connect.",
     "advancedSettingsEnabled": "Advanced settings enabled",
-    "advancedSettingsDisabled": "Advanced settings hidden"
+    "advancedSettingsDisabled": "Advanced settings hidden",
+    "searchCommandsTitle": "Commands:",
+    "searchCommandsList": [
+        { "cmd": "/1", "text": "/1  or  /set — Settings" },
+        { "cmd": "/2", "text": "/2  or  /info — System information" },
+        { "cmd": "/3", "text": "/3  or  /cal — Calendar" },
+        { "cmd": "/4", "text": "/4  or  /rel — Reload" },
+        { "cmd": "/5", "text": "/5  or  /out — Sign out" },
+        { "cmd": "/6", "text": "/6  or  /norm — Exit expanded mode" },
+        { "cmd": "/7", "text": "/7  or  /ex — Enter expanded mode" },
+        { "cmd": "/%", "text": "/%number — Zoom (e.g. /%50)" },
+        { "cmd": "/0", "text": "/0  or  /wipe — Erase data and close tab" }
+    ],
+    "wipeConfirmationPrompt": "Enter confirmation code {code} to wipe all data:",
+    "wipeWrongCode": "Incorrect confirmation code. Operation cancelled."
 }
