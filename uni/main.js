@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.57'; // App version
+const version = 'Beta 1.58'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -3208,7 +3208,7 @@ async function authCallback(tokenResponse) {
         isSyncSuspended = false;
         scheduleProactiveTokenRefresh();
         document.getElementById('login-page').hidden = true;
-        document.getElementById('login-page').style.display = 'none';
+        sessionStorage.setItem('isExplicitLogin', 'true');
         startApp(true);
     } else {
         console.log('Failed to get access token');
@@ -5018,8 +5018,11 @@ async function startApp(isExplicitLogin = false) {
         const lt = document.getElementById('loader-title');
         if (lt) {
             const isInitialSetup = !isOffline && (typeof needsInitialFolderSetup === 'function' && needsInitialFolderSetup());
-            if (isInitialSetup) {
-                lt.innerHTML = _('dataFolderSelectionTitle') || 'Welcome to <b><big>CX Notes</big></b>!';
+            const isExplicit = isExplicitLogin || sessionStorage.getItem('isExplicitLogin') === 'true';
+            sessionStorage.removeItem('isExplicitLogin');
+            const welcomePrefix = isExplicit || isInitialSetup ? ((typeof currentLang !== 'undefined' && currentLang.startsWith('bg')) ? 'Добре дошли в ' : 'Welcome to ') : '';
+            if (isExplicit || isInitialSetup) {
+                lt.innerHTML = welcomePrefix + (_('dataFolderSelectionTitle') || '<b><big>CX Notes</big></b>') + '!';
             } else {
                 lt.textContent = _('initialDataLoad') || 'Initial Data Load';
             }
@@ -6945,7 +6948,7 @@ function updateSignoutTooltip() {
 async function handleAuthClick() {
     if (isOffline) {
         document.getElementById('login-page').hidden = true;
-        document.getElementById('login-page').style.display = 'none';
+        sessionStorage.setItem('isExplicitLogin', 'true');
         startApp(true);
         return;
     }
@@ -7975,7 +7978,7 @@ async function mainLogic(forceFullSync = false) {
         initializeLoad(true); // Resets state and shows the loader screen
         if (isInitialSetupNeeded) {
             const loaderTitleEl = document.getElementById('loader-title');
-            if (loaderTitleEl) loaderTitleEl.innerHTML = _('dataFolderSelectionTitle') || 'Welcome to <b><big>CX Notes</big></b>!';
+            if (loaderTitleEl) loaderTitleEl.innerHTML = (_('dataFolderSelectionTitle') || '<b><big>CX Notes</big></b>');
             if (loaderFolderInfo) loaderFolderInfo.textContent = '';
         }
         let hasLocalData = false;
@@ -9426,7 +9429,6 @@ function updateModalUiStateSaveUI() {
         return;
     }
     if (existingBtn) return;
-
     const saveBtn = document.createElement('div');
     saveBtn.id = 'note-ui-state-save-btn';
     saveBtn.className = 'modal-footer-btn';
@@ -9444,34 +9446,30 @@ function updateModalUiStateSaveUI() {
 function updateModalFooterDateVisibility(footerToolbar) {
     const footerDate = footerToolbar?.querySelector('.modal-note-footer');
     if (!footerDate) return;
-
-    // The date is inserted before the action buttons. Keep its measured width so
-    // it can be evaluated even after it has been hidden once.
-    if (!footerDate.hidden) {
-        const measuredWidth = footerDate.getBoundingClientRect().width;
-        if (measuredWidth > 0) footerDate.dataset.measuredWidth = String(measuredWidth);
-    }
-
-    const dateWidth = Number(footerDate.dataset.measuredWidth);
-    if (!dateWidth) return;
-
     const visibleButtons = Array.from(footerToolbar.children).filter((child) => {
-        return child !== footerDate && !child.hidden && getComputedStyle(child).display !== 'none';
+        return child !== footerDate && !child.classList.contains('modal-search-bar') && !child.hidden && getComputedStyle(child).display !== 'none';
     });
     const toolbarStyle = getComputedStyle(footerToolbar);
-    const gap = Number.parseFloat(toolbarStyle.columnGap) || 0;
-    const horizontalPadding = (Number.parseFloat(toolbarStyle.paddingLeft) || 0)
-        + (Number.parseFloat(toolbarStyle.paddingRight) || 0);
-    const buttonsWidth = visibleButtons.reduce((total, button) => total + button.getBoundingClientRect().width, 0);
-    const requiredWidth = dateWidth + buttonsWidth + gap * visibleButtons.length;
+    const gap = Number.parseFloat(toolbarStyle.columnGap) || 10;
+    const horizontalPadding = (Number.parseFloat(toolbarStyle.paddingLeft) || 0) + (Number.parseFloat(toolbarStyle.paddingRight) || 0);
     const availableWidth = Math.max(0, footerToolbar.clientWidth - horizontalPadding);
-
+    const buttonsWidth = visibleButtons.reduce((total, button) => total + (button.offsetWidth || 40), 0);
+    if (!footerDate.hidden) {
+        const measured = Math.min(160, Math.max(footerDate.offsetWidth, footerDate.scrollWidth));
+        if (measured > 0) footerDate.dataset.measuredWidth = String(measured);
+    }
+    const dateWidth = Number(footerDate.dataset.measuredWidth) || 140;
+    const requiredWidth = dateWidth + buttonsWidth + (gap * visibleButtons.length);
     footerDate.hidden = requiredWidth > availableWidth;
 }
 
 function observeModalFooterDateVisibility(footerToolbar) {
-    if (!footerToolbar || footerToolbar._footerDateResizeObserver) return;
-
+    if (!footerToolbar) return;
+    if (footerToolbar._footerDateResizeObserver) {
+        updateModalFooterDateVisibility(footerToolbar);
+        footerToolbar._footerDateScheduleUpdate?.();
+        return;
+    }
     let frameId = null;
     const scheduleUpdate = () => {
         if (frameId !== null) cancelAnimationFrame(frameId);
@@ -9480,12 +9478,13 @@ function observeModalFooterDateVisibility(footerToolbar) {
             updateModalFooterDateVisibility(footerToolbar);
         });
     };
-
     const resizeObserver = new ResizeObserver(scheduleUpdate);
     resizeObserver.observe(footerToolbar);
     footerToolbar._footerDateResizeObserver = resizeObserver;
     footerToolbar._footerDateScheduleUpdate = scheduleUpdate;
+    updateModalFooterDateVisibility(footerToolbar);
     scheduleUpdate();
+    setTimeout(scheduleUpdate, 450);
 }
 
 function showModal(options, noteElement = null) {
@@ -9510,9 +9509,12 @@ function showModal(options, noteElement = null) {
     const modalContentBox = contentModal.querySelector('.modal-content-box');
     modalContentBox.style.transition = 'none';
     const noteForUiState = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-    const uiState = getNoteUiState(options.uiState || (noteForUiState && noteForUiState.uiState));
+    const existingModalBody = document.getElementById('modal-body');
+    const isMatchingNote = existingModalBody && ((noteGdid && existingModalBody.dataset.gdid === String(noteGdid)) || (noteId && existingModalBody.dataset.id === String(noteId)));
+    const existingEditorSize = isMatchingNote ? getModalEditorSize() : null;
+    const uiState = getNoteUiState(options.uiState || (noteForUiState && noteForUiState.uiState) || (existingEditorSize ? { editorSize: existingEditorSize } : null));
+    if (!uiState.editorSize && existingEditorSize) uiState.editorSize = existingEditorSize;
     const isExpanded = uiState.isExpanded === true;
-
     // Разпънатият изглед винаги използва наличната площ, а не глобалния размер.
     if (isExpanded) {
         applyExpandedModalSize(modalContentBox, true);
@@ -10308,15 +10310,15 @@ function toggleModalSearch(modalContentBox, modalBody) {
     if (searchBar) {
         searchBar.remove();
         restoreContent();
+        toolbar?._footerDateScheduleUpdate?.();
         return;
     }
-
     searchBar = document.createElement('div');
     searchBar.className = 'modal-search-bar';
-
     // We prepend it to the toolbar if possible
     if (toolbar) {
         toolbar.insertBefore(searchBar, toolbar.firstChild);
+        toolbar._footerDateScheduleUpdate?.();
     } else {
         modalContentBox.appendChild(searchBar);
     }
@@ -10454,12 +10456,13 @@ function toggleModalSearch(modalContentBox, modalBody) {
         if (e.key === 'Escape') {
             searchBar.remove();
             restoreContent();
+            toolbar?._footerDateScheduleUpdate?.();
         }
     });
-
     closeBtn.onclick = () => {
         searchBar.remove();
         restoreContent();
+        toolbar?._footerDateScheduleUpdate?.();
     };
 }
 
@@ -17065,8 +17068,11 @@ function initNoteEditUI() {
             if (sBtn) footerToolbar.appendChild(sBtn);
         }
     }
-
-    footerToolbar?._footerDateScheduleUpdate?.();
+    if (footerToolbar) {
+        observeModalFooterDateVisibility(footerToolbar);
+        updateModalFooterDateVisibility(footerToolbar);
+        footerToolbar._footerDateScheduleUpdate?.();
+    }
     if (modalBodyEl?.querySelector('textarea')) {
         createModalEditToolbar(modalContentBox);
     }
@@ -17693,11 +17699,16 @@ function saveEditedNote(forceClose = false) {
         const isNewNote = !modalNoteObj && !modalGdid;
         const isExpanded = modalBodyElem.dataset.isExpanded === 'true';
         const editorSize = getModalEditorSize();
-
+        const currentUiState = {
+            ...getNoteUiState(modalNoteObj?.uiState),
+            isExpanded,
+            ...(editorSize ? { editorSize } : {})
+        };
+        if (!editorSize && currentUiState.editorSize) delete currentUiState.editorSize;
+        if (modalNoteObj) modalNoteObj.uiState = currentUiState;
         // Retrieve masked links from dataset if they exist
         const maskedSource = isPreview ? modalBodyElem.dataset.previewDraftMaskedLinks : modalBodyElem.dataset.maskedLinks;
         const maskedLinks = maskedSource ? JSON.parse(maskedSource) : [];
-
         let processedText, finalFormat, finalTitleFormat;
         const hasPreviewTitle = isPreview && modalBodyElem.dataset.previewHasTitle === 'true';
         if ((isHiddenNote || ((titleTextarea || hasPreviewTitle) && titleText !== "")) && (titleTextarea || hasPreviewTitle)) {
@@ -17713,7 +17724,6 @@ function saveEditedNote(forceClose = false) {
             processedText = res.text;
             finalFormat = stringifyFormatsArray(res.formats);
         }
-
         // Показваме форматирания текст ВЕДНАГА - не чакаме края на GDrive записа
         if (!closeAfterSave && typeof showModal === 'function') {
             const boardId = modalBodyElem.dataset.boardId || (modalNoteObj && modalNoteObj.boardid) || currentBoardFilter;
@@ -17730,7 +17740,8 @@ function saveEditedNote(forceClose = false) {
                 id: modalId,
                 gdid: modalGdid,
                 maskedLinks: maskedLinks,
-                datemod: modalNoteObj ? modalNoteObj.datemod : undefined
+                datemod: modalNoteObj ? modalNoteObj.datemod : undefined,
+                uiState: currentUiState
             }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
             // Запазваме dataset-а за saveEditedNote (може да е нужен след preview)
             const newMbe = document.getElementById('modal-body');
@@ -18011,7 +18022,8 @@ function saveEditedNote(forceClose = false) {
                     id: noteObj.id,
                     gdid: noteObj.gdid,
                     datemod: noteObj.datemod,
-                    originalNote: noteObj
+                    originalNote: noteObj,
+                    uiState: noteObj.uiState
                 }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`));
             }
         }
@@ -18169,6 +18181,13 @@ function previewEditedNote() {
         finalFormat = stringifyFormatsArray(res.formats);
     }
     if (typeof showModal === 'function') {
+        const isExpanded = modalBodyElem.dataset.isExpanded === 'true';
+        const editorSize = getModalEditorSize();
+        const currentUiState = {
+            ...getNoteUiState(modalNoteObj?.uiState),
+            isExpanded,
+            ...(editorSize ? { editorSize } : {})
+        };
         const boardId = modalNoteObj ? modalNoteObj.boardid : (modalBodyElem.dataset.boardId || currentBoardFilter);
         const noteColorStr = modalBodyElem.dataset.color || getNoteColorCss(modalNoteObj?.color);
         showModal({
@@ -18179,7 +18198,8 @@ function previewEditedNote() {
             boardId: boardId,
             id: noteId,
             gdid: noteGdid,
-            maskedLinks: maskedLinks
+            maskedLinks: maskedLinks,
+            uiState: currentUiState
         }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
         const previewModalBox = document.querySelector('#content-modal .modal-content-box');
         if (previewModalBox && noteColorStr) {
@@ -18211,6 +18231,8 @@ function previewEditedNote() {
             if (modalBodyElem.dataset.colorIndex) newModalBodyElem.dataset.colorIndex = modalBodyElem.dataset.colorIndex;
             if (modalBodyElem.dataset.baseDatemod) newModalBodyElem.dataset.baseDatemod = modalBodyElem.dataset.baseDatemod;
             if (modalBodyElem.dataset.baseNote) newModalBodyElem.dataset.baseNote = modalBodyElem.dataset.baseNote;
+            if (modalBodyElem.dataset.isExpanded !== undefined) newModalBodyElem.dataset.isExpanded = modalBodyElem.dataset.isExpanded;
+            if (modalBodyElem.dataset.editorSize !== undefined) newModalBodyElem.dataset.editorSize = modalBodyElem.dataset.editorSize;
             if (scrollRatio > 0) {
                 const applyPreviewScroll = () => {
                     const maxModalScroll = newModalBodyElem.scrollHeight - newModalBodyElem.clientHeight;
@@ -18245,13 +18267,10 @@ function previewEditedNote() {
 
 function disableNoteEditing(modalBodyElem) {
     if (!modalBodyElem) return;
-
     const modalBox = modalBodyElem.closest('.modal-content-box');
     restoreModalHeaderListButtons();
     modalBox?.querySelector('.modal-edit-toolbar')?.remove();
     modalBox?.classList.remove('has-edit-toolbar');
-
-    // Clear editing drafts
     delete modalBodyElem.dataset.draftText;
     delete modalBodyElem.dataset.draftTitle;
     delete modalBodyElem.dataset.isPreview;
@@ -18259,24 +18278,18 @@ function disableNoteEditing(modalBodyElem) {
     delete modalBodyElem.dataset.previewDraftTitleFormat;
     delete modalBodyElem.dataset.previewDraftMaskedLinks;
     delete modalBodyElem.dataset.previewHasTitle;
-
-    // 1. Hide Save and Preview Buttons
     const saveBtn = document.getElementById('note-save-btn');
     if (saveBtn) saveBtn.style.display = 'none';
     const previewBtn = document.getElementById('note-preview-btn');
     if (previewBtn) previewBtn.style.display = 'none';
     const attachBtnForDisplay = document.getElementById('note-attach-btn');
     if (attachBtnForDisplay) attachBtnForDisplay.style.display = 'none';
-
-    // 2. Show Edit Button (if it exists)
     const editBtn = document.getElementById('note-edit-btn');
     if (editBtn) editBtn.style.display = 'flex';
-    // 3. Hide Color Button
     const colorBtn = document.getElementById('modal-color-btn');
     if (colorBtn) colorBtn.style.display = 'none';
     const pasteModalBtn = document.getElementById('paste-modal-btn');
     if (pasteModalBtn) pasteModalBtn.style.display = 'none';
-    // 4. Restore graphical background if setting allows
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false';
     const modalContentBox = document.querySelector('#content-modal .modal-content-box');
     if (modalContentBox) {
@@ -18286,9 +18299,11 @@ function disableNoteEditing(modalBodyElem) {
             modalBodyElem.classList.remove('no-bg-image');
         }
     }
-    // Note: The actual content replacement (removing textarea) is handled by showModal (called after)
-    // or by modal closing. We don't need to manually revert innerHTML here unless we cancel.
-
+    const footerToolbar = modalBox?.querySelector('.modal-footer-toolbar');
+    if (footerToolbar) {
+        updateModalFooterDateVisibility(footerToolbar);
+        footerToolbar._footerDateScheduleUpdate?.();
+    }
 }
 /**
  * Превръща MD символи във форматирани области и изчиства текста.

@@ -457,7 +457,7 @@
     "systemBoardSortLabel": "Системен борд:",
     "errorDuplicateBoardTitle": "Вече съществува борд с това име.",
     "multiNotesSettingsWarn": "⚠️ Внимание: Промените в на MultiNotes (multinotes_data) няма да се отразят автоматично в Android приложението MultiNotes без пълна синхронизация. Сигурни ли сте, че искате да превключите към тази папка?",
-    "dataFolderSelectionTitle": "Добре дошли в <b><big>CX Notes</big></b>!",
+    "dataFolderSelectionTitle": "<b><big>CX Notes</big></b>",
     "dataFolderSelectionDescription": "CX Notes изисква папка в Google Drive за съхранение на вашите бележки. Изберете как да продължите:",
     "dataFolderOption1": "Мигриране в CX-Notes (Препоръчено)",
     "dataFolderOption1Description": "Импортирайте бележки от съществуваща папка (напр. MultiNotes данни) в нова CX-Notes папка. По-малко разрешения, по-безопасно.",

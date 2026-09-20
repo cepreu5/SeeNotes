@@ -455,7 +455,7 @@
     "systemBoardSortLabel": "System board:",
     "errorDuplicateBoardTitle": "A board with this name already exists.",
     "multiNotesSettingsWarn": "⚠️ Warning: Changes in the MultiNotes folder (multinotes_data) will not automatically reflect in the Android MultiNotes app without a full sync. Are you sure you want to switch to this folder?",
-    "dataFolderSelectionTitle": "Welcome to <b><big>CX Notes</big></b>!",
+    "dataFolderSelectionTitle": "<b><big>CX Notes</big></b>",
     "dataFolderSelectionDescription": "<b><big>CX Notes</big></b> uses a Google Drive folder to store your notes. Choose how you’d like to continue:",
     "dataFolderOption1": "Copy MultiNotes data into <b>CX Notes</b>",
     "dataFolderOption1Description": "Import your notes from MultiNotes folder (multinotes_data) into a new <b>CX-Notes</b> folder.",

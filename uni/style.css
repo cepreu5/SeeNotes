@@ -3287,6 +3287,7 @@ body.selection-locked .note.active-selection-note .note-content {
     text-overflow: ellipsis;
     max-width: 160px;
     /* Limit width */
+    flex-shrink: 0;
 }
 
 .modal-note-footer[hidden] {
