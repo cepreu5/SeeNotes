@@ -1387,6 +1387,27 @@
             }
         },
         {
+            "id": "Beta 1.57",
+            "category": "workflow",
+            "guide": {
+                "1": {
+                    "image": "msm/r-up.png",
+                    "height": 100,
+                    "time": 50000,
+                    "x": -12,
+                    "y": 30,
+                    "bx": 102,
+                    "by": 90,
+                    "bWidth": 265,
+                    "bHeight": 180,
+                    "target": "#search-box"
+                },
+                "stopAfter": true,
+                "action": "explain",
+                "context": ""
+            }
+        },
+        {
             "id": "offline-mode",
             "category": "data-management"
         },
