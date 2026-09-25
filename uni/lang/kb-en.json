@@ -717,6 +717,22 @@
                 }
             }
         },
+        "Beta 1.59": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.59"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.59<br><br><span align='left'>- Improved Markdown parser with more accurate formatting of notes.</span>"
+                }
+            }
+        },
         "offline-mode": {
             "keywords": [
                 "offline",
