@@ -1,0 +1,1 @@
+{"alarm_type":-1,"calendarDate":0,"color":0,"eventId":0,"numord":1,"pass":false,"sellist":0,"status":0,"text_span":"","timer":0,"timer_type":-1,"timer_val":1,"title_span":"","type":0,"version":243,"gdid":"1NoteAlphaOnly","id":105,"boardid":"bRabota","notetxt":"Алфа тестове\nРегресионни тестове на мобилното приложение.","date":1781604000000,"datemod":1781604000000}

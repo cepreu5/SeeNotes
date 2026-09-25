@@ -1,0 +1,1 @@
+{"alarm_type":-1,"calendarDate":0,"color":0,"eventId":0,"numord":1,"pass":false,"sellist":0,"status":1,"text_span":"","timer":0,"timer_type":-1,"timer_val":1,"title_span":"","type":0,"version":243,"gdid":"1NoteTrashed","id":107,"boardid":"bRabota","notetxt":"Стар договора\nИзтрита бележка за договора от миналата година. Бюджет.","date":1761991200000,"datemod":1762077600000}

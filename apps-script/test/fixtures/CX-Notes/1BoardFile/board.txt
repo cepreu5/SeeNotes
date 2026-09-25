@@ -1,0 +1,41 @@
+[
+ {
+  "backcolor": 0,
+  "backnum": 0,
+  "backpath": "",
+  "color": "#4CAF50",
+  "colorfont": "#000",
+  "numord": 1,
+  "status": 0,
+  "id": 1,
+  "gdid": "bRabota",
+  "title": "Работа",
+  "datemod": 1767261600000
+ },
+ {
+  "backcolor": 0,
+  "backnum": 0,
+  "backpath": "",
+  "color": "#4CAF50",
+  "colorfont": "#000",
+  "numord": 2,
+  "status": 0,
+  "id": 2,
+  "gdid": "bLichni",
+  "title": "Лични",
+  "datemod": 1767261600000
+ },
+ {
+  "backcolor": 0,
+  "backnum": 0,
+  "backpath": "",
+  "color": "#4CAF50",
+  "colorfont": "#000",
+  "numord": 3,
+  "status": 0,
+  "id": 3,
+  "gdid": "bIdei",
+  "title": "Идеи",
+  "datemod": 1767261600000
+ }
+]

@@ -1,0 +1,1 @@
+{"alarm_type":-1,"calendarDate":0,"color":0,"eventId":0,"numord":1,"pass":true,"sellist":0,"status":0,"text_span":"","timer":0,"timer_type":-1,"timer_val":1,"title_span":"","type":0,"version":243,"gdid":"1NoteHiddenBank","id":106,"boardid":"bLichni","notetxt":"Банка ДСК|ПИН 4321, password: hunter2, token: sk-secret-xyz","date":1769940000000,"datemod":1769940000000}
