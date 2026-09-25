@@ -7,7 +7,7 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.58'; // App version
+const version = 'Beta 1.59'; // App version
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -550,30 +550,16 @@ const noteBgCache = new Map();
 const customBgCache = new Map();
 
 window.getPipeIndex = function (text) {
-    if (!text) return -1;
-    let tableInfo = null;
-    if (typeof parseMarkdownTable === 'function') {
-        tableInfo = parseMarkdownTable(text);
-    }
-
-    let inCode = false;
-    let inBacktickCode = false;
+    if (!text || !text.includes('|')) return -1;
+    const tables = (typeof parseAllMarkdownTables === 'function') ? parseAllMarkdownTables(text) : [];
+    let maskedText = text.replace(/\{\{([\s\S]*?)\}\}/g, m => m.replace(/[^\r\n]/g, ' '));
+    maskedText = maskedText.replace(/```([\s\S]*?)```/g, m => m.replace(/[^\r\n]/g, ' '));
+    maskedText = maskedText.replace(/`([^`\r\n]+)`/g, m => ' '.repeat(m.length));
     let currentLine = 0;
-
-    for (let i = 0; i < text.length; i++) {
-        if (text[i] === '\n') currentLine++;
-
-        if (text.substring(i, i + 2) === '{{') {
-            inCode = true;
-            i++;
-        } else if (text.substring(i, i + 2) === '}}') {
-            inCode = false;
-            i++;
-        } else if (text.substring(i, i + 3) === '```') {
-            inBacktickCode = !inBacktickCode;
-            i += 2;
-        } else if (text[i] === '|' && !inCode && !inBacktickCode) {
-            if (tableInfo && currentLine >= tableInfo.startIndex && currentLine <= tableInfo.endIndex) {
+    for (let i = 0; i < maskedText.length; i++) {
+        if (maskedText[i] === '\n') currentLine++;
+        if (maskedText[i] === '|') {
+            if (tables.some(t => currentLine >= t.startIndex && currentLine <= t.endIndex)) {
                 continue;
             }
             return i;
@@ -581,6 +567,7 @@ window.getPipeIndex = function (text) {
     }
     return -1;
 };
+
 
 // --- Optimization: Preload unique backgrounds to avoid 'checkered' loading and reduce memory ---
 async function preloadNoteBackgrounds(notesData) {
@@ -1133,7 +1120,17 @@ async function runGoogleDriveSync(forceFullSync = false) {
 let cachedLicenseData = null;
 let cachedLicenseEmailHint = null;
 async function decryptLicenseToken() {
-    const currentEmail = sessionStorage.getItem('google_auth_email_hint');
+    let currentEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint') || localStorage.getItem('cached_whitelist_email');
+    if (!currentEmail && typeof getConfig === 'function') {
+        try {
+            currentEmail = await getConfig('userEmail');
+        } catch (e) {
+            console.warn("Could not get userEmail from config:", e);
+        }
+    }
+    if (currentEmail && !sessionStorage.getItem('google_auth_email_hint')) {
+        sessionStorage.setItem('google_auth_email_hint', currentEmail);
+    }
     if (cachedLicenseData !== null && cachedLicenseEmailHint !== currentEmail) {
         cachedLicenseData = null;
     }
@@ -1162,19 +1159,29 @@ async function decryptLicenseToken() {
             const cachedTime = parseInt(cachedTimeStr, 10);
             try {
                 whitelistData = JSON.parse(cachedDataStr);
-                cacheIsValid = true;
-                console.log("[License] Using cached whitelist data (age: " + Math.round((Date.now() - cachedTime) / 60000) + " minutes).");
-                if (Date.now() - cachedTime > 12 * 60 * 60 * 1000) {
-                    setTimeout(() => {
-                        checkWhitelist(false).then(freshData => {
-                            if (freshData) {
-                                localStorage.setItem('cached_whitelist_data', JSON.stringify(freshData));
-                                localStorage.setItem('cached_whitelist_time', Date.now().toString());
-                                localStorage.setItem('cached_whitelist_email', currentEmail || '');
-                                console.log("[License] Background whitelist update successful.");
-                            }
-                        }).catch(e => console.warn("Background whitelist update failed:", e));
-                    }, 5000);
+                const term = whitelistData.term || whitelistData.newTerm || 30;
+                const daysPassed = whitelistData.daysPassed || 0;
+                const remaining = term - daysPassed;
+                const isTerminated = whitelistData.terminated === true || whitelistData.terminated === "YES";
+                const isStillValid = !isTerminated && (whitelistData.success === true && remaining > 0 || ((whitelistData.extended === true || whitelistData.extended === "YES") && whitelistData.newTerm > 0));
+                if (isStillValid) {
+                    cacheIsValid = true;
+                    console.log("[License] Using cached whitelist data (age: " + Math.round((Date.now() - cachedTime) / 60000) + " minutes).");
+                    if (Date.now() - cachedTime > 12 * 60 * 60 * 1000) {
+                        setTimeout(() => {
+                            checkWhitelist(false).then(freshData => {
+                                if (freshData) {
+                                    localStorage.setItem('cached_whitelist_data', JSON.stringify(freshData));
+                                    localStorage.setItem('cached_whitelist_time', Date.now().toString());
+                                    localStorage.setItem('cached_whitelist_email', currentEmail || '');
+                                    console.log("[License] Background whitelist update successful.");
+                                }
+                            }).catch(e => console.warn("Background whitelist update failed:", e));
+                        }, 5000);
+                    }
+                } else {
+                    console.log("[License] Cached whitelist indicates expired or invalid status. Checking online...");
+                    cacheIsValid = false;
                 }
             } catch (e) {
                 console.warn("Error parsing cached whitelist data:", e);
@@ -1211,20 +1218,26 @@ async function decryptLicenseToken() {
             cachedLicenseEmailHint = currentEmail;
             return cachedLicenseData;
         }
-        cachedLicenseData.pass = whitelistData.success === true;
         const term = whitelistData.term || whitelistData.newTerm || 30;
         const daysPassed = whitelistData.daysPassed || 0;
         if (whitelistData.success === true) {
             cachedLicenseData.remainingDays = Math.max(0, term - daysPassed);
+            cachedLicenseData.pass = cachedLicenseData.remainingDays > 0;
         } else if ((whitelistData.extended === true || whitelistData.extended === "YES") && whitelistData.newTerm > 0) {
             cachedLicenseData.pass = true;
             cachedLicenseData.remainingDays = whitelistData.newTerm;
         } else {
+            cachedLicenseData.pass = false;
             cachedLicenseData.remainingDays = 0;
         }
         cachedLicenseData.email = whitelistData.email;
         if (cachedLicenseData.pass) {
             localStorage.setItem('license_remaining_days', String(cachedLicenseData.remainingDays));
+            localStorage.setItem('license_remaining_timestamp', String(Date.now()));
+            cachedLicenseEmailHint = currentEmail;
+            return cachedLicenseData;
+        } else if (!urlToken) {
+            localStorage.setItem('license_remaining_days', '0');
             localStorage.setItem('license_remaining_timestamp', String(Date.now()));
             cachedLicenseEmailHint = currentEmail;
             return cachedLicenseData;
@@ -3198,6 +3211,8 @@ async function authCallback(tokenResponse) {
                 }
                 sessionStorage.setItem('google_auth_email_hint', userInfo.email);
                 localStorage.setItem('google_login_hint', userInfo.email);
+                localStorage.setItem('cached_whitelist_email', userInfo.email);
+                cachedLicenseData = null;
             } else {
                 console.warn('User info response not OK:', await userInfoResponse.text());
             }
@@ -6864,7 +6879,7 @@ async function initLoginPage() {
             loginPrompt.innerHTML = _('invalidCertificate');
         }
         if (rememberMeCheck && rememberMeCheck.parentElement) {
-            rememberMeCheck.parentElement.style.display = 'none';
+            rememberMeCheck.parentElement.style.display = (isOffline && isLicenseExpired) ? 'none' : 'block';
         }
     } else {
         const loginPrompt = document.querySelector('[data-key="loginPrompt"], [data-key="invalidCertificate"]');
@@ -6879,7 +6894,7 @@ async function initLoginPage() {
     if (hasS) {
         if (trialBtn) trialBtn.style.display = 'none';
         if (authBtn) {
-            authBtn.style.display = !isLicenseExpired ? 'inline-block' : 'none';
+            authBtn.style.display = (isOffline && isLicenseExpired) ? 'none' : 'inline-block';
             authBtn.disabled = false;
             authBtn.textContent = isOffline ? ((typeof _ === 'function') ? _('offlineStartButton') : "Start Offline") : ((typeof _ === 'function') ? _('authorizeButton') : "Authorize with Google");
         }
@@ -7005,15 +7020,20 @@ async function checkWhitelist(delayed = false) {
     }
     const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
     const action = isTrialStart ? 'log' : 'check';
-    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
+    let currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint') || localStorage.getItem('cached_whitelist_email');
+    if (!currentUserEmail && typeof getConfig === 'function') {
+        try {
+            currentUserEmail = await getConfig('userEmail');
+        } catch (e) { }
+    }
+    if (currentUserEmail && !sessionStorage.getItem('google_auth_email_hint')) {
+        sessionStorage.setItem('google_auth_email_hint', currentUserEmail);
+    }
     console.log('>>> Executing whitelist check (action: ' + action + ')...');
     console.log('>>> Email for whitelist:', currentUserEmail);
     if (!currentUserEmail) return null;
-
-    // const url = 'https://script.google.com/macros/s/AKfycbzYpXGxlfFyyOuPY7gmKanmEPF2mXTCsqefNAtvsfNvym4lJApiHEwGTJCoYAHGaz25Uw/exec';
     const url = 'https://script.google.com/macros/s/AKfycbwvVxJAkMvrsoCAJiKTiRwXtH7K49WgNbXBT4ndOe0sB_40ikfnPV2_FF4uNfDy3vbD/exec';
     const maxAttempts = 2;
-
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             const response = await fetch(url, {
@@ -13949,96 +13969,112 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
-function parseMarkdownTable(text) {
-    if (!text || !text.includes('|')) return null;
-
-    const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
-    const maskedText = text.replace(codeTagRegex, (match) => ' '.repeat(match.length));
-
+function parseAllMarkdownTables(text) {
+    if (!text || !text.includes('|')) return [];
+    let maskedText = text.replace(/\{\{([\s\S]*?)\}\}/g, m => m.replace(/[^\r\n]/g, ' '));
+    maskedText = maskedText.replace(/```([\s\S]*?)```/g, m => m.replace(/[^\r\n]/g, ' '));
+    maskedText = maskedText.replace(/`([^`\r\n]+)`/g, m => ' '.repeat(m.length));
     const originalLines = maskedText.replace(/\r\n/g, '\n').split('\n');
     const tableLinesInfo = originalLines.map((line, index) => ({ line: line.trim(), index }))
         .filter(item => item.line.includes('|'));
-
-    if (tableLinesInfo.length < 2) return null;
-
-    const separatorIdxInFiltered = tableLinesInfo.findIndex(item => {
-        const cells = item.line.split('|').map(cell => cell.trim()).filter(Boolean);
-        return cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell));
-    });
-    if (separatorIdxInFiltered < 1) return null;
-
-    if (tableLinesInfo[separatorIdxInFiltered - 1].index !== tableLinesInfo[separatorIdxInFiltered].index - 1) {
-        return null;
-    }
-
-    const startIndex = tableLinesInfo[separatorIdxInFiltered - 1].index;
-    let lastValidIdxInFiltered = separatorIdxInFiltered;
-    for (let i = separatorIdxInFiltered + 1; i < tableLinesInfo.length; i++) {
-        if (tableLinesInfo[i].index === tableLinesInfo[i - 1].index + 1) {
-            lastValidIdxInFiltered = i;
-        } else {
-            break;
-        }
-    }
-    const endIndex = tableLinesInfo[lastValidIdxInFiltered].index;
-
+    if (tableLinesInfo.length < 2) return [];
     const parseRow = (line) => {
         let normalized = line.trim();
         if (normalized.startsWith('|')) normalized = normalized.slice(1);
         if (normalized.endsWith('|')) normalized = normalized.slice(0, -1);
         return normalized.split('|').map(cell => cell.trim());
     };
+    const tables = [];
+    let i = 0;
+    while (i < tableLinesInfo.length) {
+        let sepIdx = -1;
+        for (let j = i; j < tableLinesInfo.length; j++) {
+            const cells = tableLinesInfo[j].line.split('|').map(cell => cell.trim()).filter(Boolean);
+            if (cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell))) {
+                sepIdx = j;
+                break;
+            }
+        }
+        if (sepIdx <= i || sepIdx < 1) break;
+        if (tableLinesInfo[sepIdx - 1].index !== tableLinesInfo[sepIdx].index - 1) {
+            i = sepIdx + 1;
+            continue;
+        }
+        const startIndex = tableLinesInfo[sepIdx - 1].index;
+        let lastValidIdx = sepIdx;
+        for (let j = sepIdx + 1; j < tableLinesInfo.length; j++) {
+            if (tableLinesInfo[j].index === tableLinesInfo[j - 1].index + 1) {
+                lastValidIdx = j;
+            } else {
+                break;
+            }
+        }
+        const endIndex = tableLinesInfo[lastValidIdx].index;
+        const rawLines = text.replace(/\r\n/g, '\n').split('\n');
+        const headerRow = parseRow(rawLines[tableLinesInfo[sepIdx - 1].index]);
+        const rows = [
+            headerRow,
+            ...tableLinesInfo.slice(sepIdx + 1, lastValidIdx + 1).map(item => parseRow(rawLines[item.index]))
+        ].filter(row => row.length > 0);
+        if (rows.length >= 2) {
+            const columnCount = Math.max(...rows.map(row => row.length));
+            const paddedRows = rows.map(row => {
+                const padded = [...row];
+                while (padded.length < columnCount) padded.push('');
+                return padded;
+            });
+            const isBorderless = headerRow[0] === '%%' || (headerRow[0] === '' && headerRow.length > 1);
+            tables.push({
+                borderless: isBorderless,
+                rows: paddedRows,
+                startIndex,
+                endIndex
+            });
+        }
+        i = lastValidIdx + 1;
+    }
+    return tables;
+}
 
-    const headerRow = parseRow(tableLinesInfo[separatorIdxInFiltered - 1].line);
-    const rows = [
-        headerRow,
-        ...tableLinesInfo.slice(separatorIdxInFiltered + 1, lastValidIdxInFiltered + 1).map(item => parseRow(item.line))
-    ].filter(row => row.length > 0);
-    if (rows.length < 2) return null;
-
-    const columnCount = Math.max(...rows.map(row => row.length));
-    const paddedRows = rows.map(row => {
-        const padded = [...row];
-        while (padded.length < columnCount) padded.push('');
-        return padded;
-    });
-
-    const isBorderless = headerRow[0] === '%%' || (headerRow[0] === '' && headerRow.length > 1);
-    return {
-        borderless: isBorderless,
-        rows: paddedRows,
-        startIndex,
-        endIndex
-    };
+function parseMarkdownTable(text) {
+    const tables = parseAllMarkdownTables(text);
+    return tables.length > 0 ? tables[0] : null;
 }
 
 function renderMarkdownTableAsPseudoGraphic(text) {
-    const table = parseMarkdownTable(text);
-    if (!table) return null;
-    const renderCells = (row, tag) => row.map(cell => `<${tag}>${processNoteContent(String(cell || ''), true)}</${tag}>`).join('');
-    let tableHtml = '';
-    if (table.borderless) {
-        const bodyRows = table.rows.slice(1);
-        if (bodyRows.length) {
+    const tables = (typeof parseAllMarkdownTables === 'function') ? parseAllMarkdownTables(text) : (parseMarkdownTable(text) ? [parseMarkdownTable(text)] : []);
+    if (!tables || tables.length === 0) return null;
+    const renderSingleTable = (table) => {
+        const renderCells = (row, tag) => row.map(cell => `<${tag}>${processNoteContent(String(cell || ''), true)}</${tag}>`).join('');
+        if (table.borderless) {
+            const bodyRows = table.rows.slice(1);
+            if (!bodyRows.length) return '';
             const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
-            tableHtml = `<div class="md-table-wrapper"><table class="md-table-render md-table-borderless"><tbody>${bodyHtml}</tbody></table></div>`;
-        }
-    } else {
-        const headerHtml = `<thead><tr>${renderCells(table.rows[0], 'th')}</tr></thead>`;
-        const bodyRows = table.rows.slice(1);
-        if (bodyRows.length) {
+            return `<div class="md-table-wrapper"><table class="md-table-render md-table-borderless"><tbody>${bodyHtml}</tbody></table></div>`;
+        } else {
+            const headerHtml = `<thead><tr>${renderCells(table.rows[0], 'th')}</tr></thead>`;
+            const bodyRows = table.rows.slice(1);
+            if (!bodyRows.length) return '';
             const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
-            tableHtml = `<div class="md-table-wrapper"><table class="md-table-render">${headerHtml}<tbody>${bodyHtml}</tbody></table></div>`;
+            return `<div class="md-table-wrapper"><table class="md-table-render">${headerHtml}<tbody>${bodyHtml}</tbody></table></div>`;
         }
-    }
-    if (!tableHtml) return null;
+    };
     const originalLines = text.replace(/\r\n/g, '\n').split('\n');
-    const beforeTable = originalLines.slice(0, table.startIndex).join('\n');
-    const afterTable = originalLines.slice(table.endIndex + 1).join('\n');
     let finalHtml = '';
-    if (beforeTable.trim()) finalHtml += processNoteContent(beforeTable, true) + '<br>';
-    finalHtml += tableHtml;
-    if (afterTable.trim()) finalHtml += '<br>' + processNoteContent(afterTable, true);
+    let lastIndex = 0;
+    tables.forEach(table => {
+        const beforeLines = originalLines.slice(lastIndex, table.startIndex).join('\n');
+        if (beforeLines.trim()) {
+            if (finalHtml && !finalHtml.endsWith('<br>')) finalHtml += '<br>';
+            finalHtml += processNoteContent(beforeLines, true) + '<br>';
+        }
+        finalHtml += renderSingleTable(table);
+        lastIndex = table.endIndex + 1;
+    });
+    const afterLines = originalLines.slice(lastIndex).join('\n');
+    if (afterLines.trim()) {
+        finalHtml += '<br>' + processNoteContent(afterLines, true);
+    }
     return finalHtml;
 }
 
@@ -14125,22 +14161,17 @@ function adjustFormatStringOffset(formatString, offset) {
  */
 function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString = null, isForModal = false) {
     if (!rawContent) return '';
-
-    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
-    if (fullTableHtml) return fullTableHtml;
-
     const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
     if (pipeIndex !== -1) {
         const titlePart = rawContent.substring(0, pipeIndex);
         const bodyPart = rawContent.substring(pipeIndex + 1);
-
         let formattedTitle = '';
         if (titleFormatString && titleFormatString.trim() !== '') {
             formattedTitle = formatText(titlePart, titleFormatString, isForModal);
         } else {
-            formattedTitle = processNoteContent(titlePart, isForModal);
+            const titleTableHtml = renderMarkdownTableAsPseudoGraphic(titlePart);
+            formattedTitle = titleTableHtml || processNoteContent(titlePart, isForModal);
         }
-
         let formattedBody = '';
         const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
         if (tableHtml) {
@@ -14152,51 +14183,65 @@ function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString
         }
         return formattedTitle + '<br>' + formattedBody;
     }
-
+    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
+    if (fullTableHtml) return fullTableHtml;
     if (formatString && formatString.trim() !== '') {
         return formatText(rawContent, formatString, isForModal);
     }
     return processNoteContent(rawContent, isForModal);
 }
 
-/**
- * Processes note content to handle links, code blocks, and newlines.
- * @param {string} text - The raw text content of the note.
- * @param {boolean} isForModal - Flag to indicate if the content is for the modal view.
- * @returns {string} The processed HTML content.
- */
-function processNoteContent(text, isForModal = false) { // isForModal is now used to decide about links
+function processNoteContent(text, isForModal = false) {
     if (!text) return '';
-    // 1. Handle code blocks first, just like in renderNoteContent
     const codeBlocks = [];
     const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
     const textWithoutCode = text.replace(codeTagRegex, (match, code1, code2) => {
         const code = code1 !== undefined ? code1 : code2;
-        codeBlocks.push(escapeHtml(code)); // escapeHtml is crucial here
+        codeBlocks.push(escapeHtml(code));
         return '%%CODE_BLOCK%%';
     });
-    // 2. Escape the rest of the text to prevent HTML injection
-    const escapedText = escapeHtml(textWithoutCode);
-    // 3. Decide whether to create links based on the setting and context (modal/card)
-    const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true'; // false by default
-    let html;
+    let escapedText = escapeHtml(textWithoutCode);
+    const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true';
+    const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
     if (isForModal || oneTapLinksEnabled) {
-        // В модала или ако е включено - показваме линковете като <a>
-        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-        html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        escapedText = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     } else {
-        // За запазване на символното отместване (offsets), запазваме текста на линка без <a> таг
-        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-        html = escapedText.replace(urlRegex, '$1');
+        escapedText = escapedText.replace(urlRegex, '$1');
     }
-    // 4. Re-insert code blocks
+    escapedText = escapedText.replace(/`([^`\n]+)`/g, '<code class="md-inline-code" style="background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; font-family: monospace;">$1</code>');
+    const symBold = (localStorage.getItem('mdBold') || '**').trim();
+    const symStrike = (localStorage.getItem('mdStrike') || '~~').trim();
+    const symItalic = (localStorage.getItem('mdItalic') || '*').trim();
+    const symUnderline = (localStorage.getItem('mdUnderline') || '_').trim();
+    const replacePair = (src, sym, tag) => {
+        if (!sym) return src;
+        const esc = sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return src.replace(new RegExp(`${esc}([^${esc}\\n]+)${esc}`, 'g'), `<${tag}>$1</${tag}>`);
+    };
+    escapedText = replacePair(escapedText, symBold, 'b');
+    if (symBold !== '**') escapedText = replacePair(escapedText, '**', 'b');
+    escapedText = replacePair(escapedText, symStrike, 's');
+    if (symStrike !== '~~') escapedText = replacePair(escapedText, '~~', 's');
+    escapedText = replacePair(escapedText, symUnderline, 'u');
+    escapedText = replacePair(escapedText, symItalic, 'i');
+    if (symItalic !== '*') escapedText = replacePair(escapedText, '*', 'i');
     codeBlocks.forEach(block => {
         const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
-        html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
+        escapedText = escapedText.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
     });
-    // 5. Finally, replace newlines with <br>
-    // This needs to be done on the final HTML string, not on the escaped text
-    return html.replace(/\n/g, '<br>');
+    const lines = escapedText.split('\n');
+    const processedLines = lines.map(line => {
+        const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+        if (headingMatch) {
+            const level = headingMatch[1].length;
+            const content = headingMatch[2];
+            const fontSizes = { 1: '1.6em', 2: '1.35em', 3: '1.18em', 4: '1.05em', 5: '0.95em', 6: '0.85em' };
+            const size = fontSizes[level] || '1.1em';
+            return `<div class="md-heading md-h${level}" style="font-size: ${size}; font-weight: bold; margin: 0.35em 0 0.15em 0; line-height: 1.25;">${content}</div>`;
+        }
+        return line;
+    });
+    return processedLines.join('<br>');
 }
 
 function renderNoteContent(text) {
@@ -14827,7 +14872,9 @@ async function createNoteElement(noteContent) {
             displayContent = fileContent.substring(pipeIndex + 1).trim();
         } else if (isType1Note) {
             previewTitleSourceText = (fileContent.split('\n').find(line => line.trim()) || '').trim();
-            noteTitle = previewTitleSourceText;
+            const symBold = (localStorage.getItem('mdBold') || '**').trim();
+            const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            noteTitle = previewTitleSourceText.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
             displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
             adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
         } else {
@@ -14836,7 +14883,9 @@ async function createNoteElement(noteContent) {
                 const trimmedLine = line.trim();
                 if (trimmedLine) {
                     previewTitleSourceText = trimmedLine;
-                    noteTitle = trimmedLine;
+                    const symBold = (localStorage.getItem('mdBold') || '**').trim();
+                    const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    noteTitle = trimmedLine.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
                     break;
                 }
             }
@@ -17696,7 +17745,7 @@ function saveEditedNote(forceClose = false) {
         if (newText === undefined) return;
 
         const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
-        const isNewNote = !modalNoteObj && !modalGdid;
+        const isNewNote = (!modalNoteObj && !modalGdid) || modalBodyElem.dataset.isNewNote === 'true';
         const isExpanded = modalBodyElem.dataset.isExpanded === 'true';
         const editorSize = getModalEditorSize();
         const currentUiState = {
@@ -18199,7 +18248,8 @@ function previewEditedNote() {
             id: noteId,
             gdid: noteGdid,
             maskedLinks: maskedLinks,
-            uiState: currentUiState
+            uiState: currentUiState,
+            isNewNote: modalBodyElem.dataset.isNewNote === 'true'
         }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
         const previewModalBox = document.querySelector('#content-modal .modal-content-box');
         if (previewModalBox && noteColorStr) {
@@ -18217,6 +18267,7 @@ function previewEditedNote() {
             newModalBodyElem.dataset.previewDraftFormat = formatStr;
             newModalBodyElem.dataset.previewDraftTitleFormat = titleFormatStr;
             newModalBodyElem.dataset.previewDraftMaskedLinks = JSON.stringify(maskedLinks);
+            if (modalBodyElem.dataset.isNewNote !== undefined) newModalBodyElem.dataset.isNewNote = modalBodyElem.dataset.isNewNote;
             if (titleTextarea) newModalBodyElem.dataset.previewHasTitle = 'true';
             if (modalBodyElem.dataset.initialEditText !== undefined) newModalBodyElem.dataset.initialEditText = modalBodyElem.dataset.initialEditText;
             if (modalBodyElem.dataset.initialEditTitleText !== undefined) newModalBodyElem.dataset.initialEditTitleText = modalBodyElem.dataset.initialEditTitleText;
