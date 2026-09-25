@@ -772,6 +772,15 @@
                     "text": "<b>(-)</b> deletes the selected profile from the cloud after a confirmation. The default <b><i>Default</i></b> profile cannot be deleted."
                 }
             }
+        },
+        "Ctrl-actions": {
+            "keywords": [
+                "Ctrl",
+                "additional",
+                "key"
+            ],
+            "question": "Additional commands",
+            "answer": "<span align='left'><b>Click:</b><br>- a note's date in a board - opens a mini weekly calendar in the note<br>- a note's time in a board - opens a clock in the note<br>- the ◎ button on a note in a board - pins the note to the top of the board<br><br><b>Ctrl+click:</b><br>- Reload button - forces a full sync/reload, even with local unsaved changes<br>- board button - opens the floating boards menu.<br>- Boards button with photos - shows all the photos<br>- the floating boards menu button - switches to full-screen mode.<br>- click on a note in a board - opens it in edit mode.<br>- on a note's pin in a board - deletes the note.<br>- on the + button - opens creating a new board.<br><br>- Ctrl+dragging the resize corner of an open note - saves the size as individual for that note.<br><br>- Ctrl+B - bold<br>- Ctrl+I - italic.</span>"
         }
     }
 }

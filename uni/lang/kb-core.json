@@ -1510,6 +1510,10 @@
                 "action": "explain",
                 "context": "settings"
             }
+        },
+        {
+            "id": "Ctrl-actions",
+            "category": "workflow"
         }
     ]
 }
