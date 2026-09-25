@@ -713,7 +713,7 @@
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.57<br><br><span align='left'>- Slash commands in the search field: /1 or /set (Settings), /2 or /info (System information), /3 or /cal (Calendar), /4 or /rel (Reload), /5 or /out (Sign out), /6 or /norm (exit expanded mode), /7 or /ex (enter expanded mode), /0 or /wipe (wipe data and close the tab).<br><br>- /%number - sets the browser zoom (e.g. /%50).<br><br>- /? - shows the list of commands and their numeric aliases in the search field drop-down.</span>"
+                    "text": "Beta 1.57<br><br><span align='left'>Slash commands in the search field:<br><br>/1 or /set (Settings)<br>/2 or /info (System information)<br>/3 or /cal (Calendar)<br>/4 or /rel (Reload)<br>/5 or /out (Sign out)<br>/6 or /norm (exit expanded mode)<br>/7 or /ex (enter expanded mode)<br>/%number - sets the browser zoom<br><br>/0 or /wipe (wipe data and close the tab)<br><br>/? - shows the list of commands</span>"
                 }
             }
         },
