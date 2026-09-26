@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.66';
+const CACHE_NAME = 'cx-notes-b1.67';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -148,6 +148,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  // main.js чете версията на приложението от CACHE_NAME (отговор през MessageChannel).
+  if (event.data && event.data.type === 'GET_VERSION' && event.ports && event.ports[0]) {
+    event.ports[0].postMessage({ type: 'VERSION', cacheName: CACHE_NAME });
   }
   // Изпраща се след първото успешно зареждане на асистента: допълва липсващите
   // му файлове (напр. другия езиков KB файл), за да работи и офлайн.

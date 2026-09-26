@@ -7,7 +7,86 @@
 
 // terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.59'; // App version
+// App version: идва от CACHE_NAME на service worker-а ('cx-notes-b1.67' -> 'Beta 1.67').
+// null, докато не се разбере; ако не се разбере изобщо, надписът се скрива.
+let version = null;
+
+function versionFromCacheName(cacheName) {
+    const match = /^cx-notes-b(\d.*)$/.exec(String(cacheName || '').trim());
+    return match ? `Beta ${match[1]}` : null;
+}
+
+function cacheNameFromSwSource(source) {
+    const match = /const\s+CACHE_NAME\s*=\s*(['"`])([^'"`]*)\1/.exec(String(source || ''));
+    return match ? match[2] : null;
+}
+
+// Пита service worker-а, който обслужва страницата (работи и офлайн).
+function askServiceWorkerCacheName(controller, timeoutMs = 1500) {
+    return new Promise((resolve) => {
+        const channel = new MessageChannel();
+        const timer = setTimeout(() => resolve(null), timeoutMs);
+        channel.port1.onmessage = (event) => {
+            clearTimeout(timer);
+            resolve(event.data && event.data.cacheName ? event.data.cacheName : null);
+        };
+        try {
+            controller.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+        } catch (e) {
+            clearTimeout(timer);
+            resolve(null);
+        }
+    });
+}
+
+async function resolveAppVersion() {
+    let resolved = null;
+    const controller = 'serviceWorker' in navigator ? navigator.serviceWorker.controller : null;
+    if (controller) {
+        resolved = versionFromCacheName(await askServiceWorkerCacheName(controller));
+    }
+    // Няма активен service worker (първо отваряне) или не отговаря - четем sw.js от мрежата
+    if (!resolved) {
+        try {
+            const response = await fetch('sw.js', { cache: 'no-store' });
+            if (response.ok) resolved = versionFromCacheName(cacheNameFromSwSource(await response.text()));
+        } catch (e) {
+            console.warn('[Version] Could not read sw.js:', e);
+        }
+    }
+    version = resolved;
+    renderVersionLabels();
+    return version;
+}
+
+// Надписите са в собствени елементи, за да не се дублират при повторно извикване.
+function renderVersionLabels() {
+    const appTitleEl = document.getElementById('app-title');
+    if (appTitleEl) {
+        let label = appTitleEl.querySelector('.app-version-label');
+        if (!label) {
+            label = document.createElement('span');
+            label.className = 'app-version-label';
+            label.style.cssText = 'font-size: 0.4em; opacity: 0.7; font-weight: normal; vertical-align: middle; margin-left: 8px;';
+            appTitleEl.appendChild(label);
+        }
+        label.textContent = version || '';
+        label.style.display = version ? '' : 'none';
+    }
+    const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
+    if (settingsTitle) {
+        let label = settingsTitle.querySelector('.app-version-label');
+        if (!label) {
+            label = document.createElement('span');
+            label.className = 'app-version-label';
+            settingsTitle.appendChild(label);
+        }
+        label.textContent = version || '';
+        settingsTitle.style.display = version ? '' : 'none';
+    }
+}
+
+const appVersionPromise = resolveAppVersion();
 const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -6508,7 +6587,7 @@ function initApp() {
     // Add app version to the settings modal title and hold gesture for Advanced Settings
     const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
     if (settingsTitle) {
-        settingsTitle.textContent += `${version}`;
+        renderVersionLabels();
         let versionPressTimer = null;
         let versionLongPressTriggered = false;
         const startVersionPress = () => {
@@ -15921,10 +16000,7 @@ async function setLanguage(lang) {
         const key = element.getAttribute('data-key');
         element.innerHTML = translations[key] || key;
     });
-    const appTitleEl = document.getElementById('app-title');
-    if (appTitleEl) {
-        appTitleEl.innerHTML += ` <span style="font-size: 0.4em; opacity: 0.7; font-weight: normal; vertical-align: middle; margin-left: 8px;">${version}</span>`;
-    }
+    renderVersionLabels();
     document.querySelectorAll('[data-key-placeholder]').forEach(element => {
 
         const key = element.getAttribute('data-key-placeholder');
@@ -16066,7 +16142,8 @@ if ('serviceWorker' in navigator) {
                 }
             }
             // Регистрираме версията с флаг, за да принудим браузъра да я презареди, версиите на sw и main трябва да съвпадат
-            const registration = await navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(version)}`);
+            const appVersion = await appVersionPromise;
+            const registration = await navigator.serviceWorker.register(appVersion ? `sw.js?v=${encodeURIComponent(appVersion)}` : 'sw.js');
             console.log(`[SW] Registration successful. Scope: ${registration.scope}. Active: ${!!registration.active}, Waiting: ${!!registration.waiting}, Installing: ${!!registration.installing}`);
 
             // Function to show update notification as a persistent floating bar

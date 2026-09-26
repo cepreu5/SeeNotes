@@ -18,6 +18,21 @@ function compareVersions(first, second) {
     return getFloat(first) - getFloat(second);
 }
 
+/**
+ * Избира новината за показване: най-новият запис (Beta/Version с guide), който е по-нов
+ * от последно видяната версия и не е по-нов от текущата. Без lastSeenVersion (чиста
+ * инсталация) - най-новият запис, който не е по-нов от текущата версия.
+ */
+function selectVersionNews(items, currentVersion, lastSeenVersion) {
+    const candidates = (items || []).filter(item =>
+        item && item.guide && /^(Beta|Version)/i.test(item.id) &&
+        compareVersions(item.id, currentVersion) <= 0 &&
+        (!lastSeenVersion || compareVersions(item.id, lastSeenVersion) > 0)
+    );
+    candidates.sort((a, b) => compareVersions(b.id, a.id));
+    return candidates[0] || null;
+}
+
 class KBMatcher {
     constructor(kbData) {
         this.kbData = kbData;
@@ -479,31 +494,14 @@ class KBAssistant {
         if (lastSeenVersion === currentVersion) return;
 
         const allItems = [...(this.kbData.general || []), ...(this.kbData.settings || [])];
-        // Fresh install: Show the latest update scenario (Beta/Version)
-        if (!lastSeenVersion) {
-            localStorage.setItem('app_version_seen', currentVersion);
-            const versionScenarios = allItems.filter(item =>
-                item.guide && /^(Beta|Version)/i.test(item.id)
-            );
-            if (versionScenarios.length > 0) {
-                versionScenarios.sort((a, b) => compareVersions(b.id, a.id));
-                const latest = versionScenarios[0];
-                // Show the latest available record if we have no lastSeenVersion (fresh/forced)
-                console.log(`[KB Assistant] Fresh install/Force. Showing news for: ${latest.id} (Current App: ${currentVersion})`);
-                (this.ui || this).showGuide({ ...latest.guide, id: latest.id });
-            }
-            return;
+        if (lastSeenVersion) {
+            console.log(`[KB Assistant] Version changed from ${lastSeenVersion} to ${currentVersion}. Checking for news since the last seen version...`);
         }
-
-        console.log(`[KB Assistant] Version changed from ${lastSeenVersion} to ${currentVersion}. Checking for current-version news...`);
-
-        const currentVersionScenario = allItems.find(item =>
-            item.id === currentVersion && item.guide
-        );
-
-        if (currentVersionScenario) {
-            console.log(`[KB Assistant] Showing news for: ${currentVersionScenario.id}`);
-            (this.ui || this).showGuide({ ...currentVersionScenario.guide, id: currentVersionScenario.id });
+        // Id-тата са по номера на release-а, затова запис може да липсва за текущата версия
+        const news = selectVersionNews(allItems, currentVersion, lastSeenVersion);
+        if (news) {
+            console.log(`[KB Assistant] Showing news for: ${news.id} (Current App: ${currentVersion})`);
+            (this.ui || this).showGuide({ ...news.guide, id: news.id });
         }
 
         // Update stored version
