@@ -1,0 +1,132 @@
+const fs = require('fs');
+const src = fs.readFileSync(__dirname + '/../../uni/main.js', 'utf8');
+const a = src.indexOf('// --- Markdown table alignment'), b = src.indexOf('// --- end markdown table alignment');
+const api = new Function(src.slice(a, b) + '; return { collectAlignableMarkdownTables, selectMarkdownTablesForAlignment, toggleMarkdownTablesAlignment, areAllMarkdownTablesAligned, findMarkdownTableAtOffset, planMarkdownTableAlignmentPress };')();
+let fails = 0, n = 0;
+const ok = (c, m) => { n++; if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
+const run = (text, caret, all) => api.toggleMarkdownTablesAlignment(text, api.selectMarkdownTablesForAlignment(text, caret, all)).text;
+const t1 = '| Field | Type |\n| - | - |\n| status | string |\n| id | number |';
+const t2 = '| Ключ | Стойност |\n| - | - |\n| a | 1 |';
+const note = 'intro\n' + t1 + '\nтекст между тях\n' + t2 + '\nend';
+const caret1 = note.indexOf('status') + 6;
+const r1 = run(note, caret1, false);
+ok(r1 !== note && r1.includes('| ------ | ------ |'), 'click in table 1 aligns table 1');
+ok(r1.endsWith('\nтекст между тях\n' + t2 + '\nend') && r1.startsWith('intro\n'), 'table 2 byte-identical after click in table 1');
+const caret2 = note.indexOf('Стойност');
+const r2 = run(note, caret2, false);
+ok(r2.startsWith('intro\n' + t1 + '\n') && r2 !== note, 'click in table 2 leaves table 1 identical');
+const rAll = run(note, caret1, true);
+ok(rAll.includes('| ------ | ------ |') && rAll.includes('| ---- | -------- |'), 'all path aligns both');
+console.log(rAll);
+ok(run(rAll, rAll.indexOf('status'), false) === 'intro\n' + t1 + '\nтекст между тях\n' + rAll.split('\nтекст между тях\n')[1], 'second click in aligned table 1 compacts only it');
+ok(run(rAll, 0, true) === note, 'all path on all-aligned compacts all');
+const one = t1;
+const aligned1 = run(one, 3, false);
+ok(aligned1 !== one && run(aligned1, 3, false) === one, 'aligned single table comes back compact');
+ok(run(one, one.length, false) === aligned1, 'caret at end of last row counts as inside');
+ok(run('x\n' + one, 0, false) === 'x\n' + aligned1, 'caret outside, one table -> aligns it');
+const outside = run(note, 0, false);
+ok(outside === rAll, 'caret outside, several tables -> aligns all');
+const braces = '{{\n| A | B |\n| - | - |\n| 1 | 2 |\n}}';
+ok(run(braces, 5, false) === braces && run(braces, 5, true) === braces, '{{...}} table untouched');
+const fence = '```\n| A | B |\n| - | - |\n| 1 | 2 |\n```';
+ok(run(fence, 6, false) === fence && run(fence, 6, true) === fence, 'fenced table untouched');
+const esc = '| A \\| x | B |\n| - | - |\n| 1 | 2 |';
+ok(run(esc, 2, false) === esc && run(esc, 2, true) === esc, 'escaped \\| text untouched');
+ok(run('no tables here', 3, false) === 'no tables here' && run('', 0, true) === '', 'no table -> nothing');
+// button state: under caret vs all
+ok(api.areAllMarkdownTablesAligned(r1, [api.findMarkdownTableAtOffset(api.collectAlignableMarkdownTables(r1), r1.indexOf('status'))]) === true, 'state: aligned table under caret -> active');
+ok(api.areAllMarkdownTablesAligned(r1) === false, 'state: not all aligned -> inactive for whole note');
+// --- tables without outer | (Variant 2: aligned form adds the missing |) ---
+const cs = '|Col1 header| Col 2|Col 3\n|-|-|-|\nText 1|Test|note 1\nnote 2|Text 2|Test';
+const mock = '| Col1 header | Col 2  | Col 3  |\n| ----------- | ------ | ------ |\n| Text 1      | Test   | note 1 |\n| note 2      | Text 2 | Test   |';
+const dense = '| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 |\n| note 2 | Text 2 | Test |';
+const csA = run(cs, 0, false);
+ok(csA === mock, 'Cepreu table: one press -> mockup');
+if (csA !== mock) console.log(csA);
+ok(run(csA, 0, false) === dense, 'Cepreu table: second press -> dense form');
+ok(api.areAllMarkdownTablesAligned(csA) && api.toggleMarkdownTablesAlignment(csA).aligned === false, 'Cepreu table: aligned -> no more aligned edits');
+ok(run(dense, 0, false) === mock, 'dense form aligns back to mockup');
+const trailOnly = '| A | B |\n| - | - |\nx | y |\n| long | z |';
+ok(run(trailOnly, 0, false) === '| A    | B |\n| ---- | - |\n| x    | y |\n| long | z |', 'row with only trailing |');
+const leadOnly = 'A | B\n- | -\n| x | yy';
+ok(run(leadOnly, 0, false) === '| A | B  |\n| - | -- |\n| x | yy |', 'no outer | at all + lead-only row');
+const mixed = 'pre\n| Name | Age |\n|---|---|\nAnn | 3\n| Bob | 40 |\nCy|5|\npost';
+const mixedA = run(mixed, 6, false);
+ok(mixedA === 'pre\n| Name | Age |\n| ---- | --- |\n| Ann  | 3   |\n| Bob  | 40  |\n| Cy   | 5   |\npost', 'mixed rows');
+ok(run(mixedA, 6, false) === 'pre\n| Name | Age |\n| - | - |\n| Ann | 3 |\n| Bob | 40 |\n| Cy | 5 |\npost', 'mixed rows: second press dense');
+const crlf = cs.replace(/\n/g, '\r\n');
+const crlfA = run(crlf, 0, false);
+ok(crlfA === mock.replace(/\n/g, '\r\n'), 'CRLF: aligned, \\r kept at line ends');
+ok(run(crlfA, 0, false) === dense.replace(/\n/g, '\r\n'), 'CRLF: second press dense');
+const bl = '%%|Key|Val\n-|-|-\n|a|1|\nbb|22';
+const blA = run(bl, 0, false);
+ok(blA === '| %% | Key | Val |\n| -- | --- | --- |\n| a  | 1   |     |\n| bb | 22  |     |'.replace('|     |\n| bb | 22  |     |', '|\n| bb | 22  |'), 'borderless %% without outer |');
+if (!blA.startsWith('| %% |')) console.log(blA);
+ok(run(blA, 0, false) === '|%%| Key | Val |\n| - | - | - |\n| a | 1 |\n| bb | 22 |', 'borderless: second press compact, marker tight');
+const multi = 'intro\n' + t1 + '\nмежду\n' + bl + '\nи\n' + cs + '\nend';
+const multiA = run(multi, 0, true);
+ok(multiA === 'intro\n' + aligned1 + '\nмежду\n' + blA + '\nи\n' + mock + '\nend', 'hold (all=true): three tables incl. borderless and open rows');
+ok(api.collectAlignableMarkdownTables(multiA).every(t => api.toggleMarkdownTablesAlignment(multiA, [t]).aligned === false) && api.areAllMarkdownTablesAligned(multiA), 'after hold: getMarkdownTableEdits aligned is empty everywhere');
+ok(run(multiA, 0, true) === 'intro\n' + t1 + '\nмежду\n' + run(blA, 0, false) + '\nи\n' + dense + '\nend', 'hold again: all compact');
+const openEsc = 'A \\| x | B\n- | -\n1 | 2';
+ok(run(openEsc, 0, true) === openEsc, 'open row with escaped \\| untouched');
+const openTick = '`a|b` | B\n- | -\n1 | 2';
+ok(run(openTick, 0, true) === openTick, 'open row with | inside backticks untouched');
+ok(run('a | b\nc | d', 0, true) === 'a | b\nc | d', 'no separator row -> nothing');
+// --- ▦ toggles the fixed font of the content field (Variant A) ---
+const press = (text, caret, all, fixed) => api.planMarkdownTableAlignmentPress(text, caret, all, fixed);
+let p1 = press(cs, 0, false, false);
+ok(p1.fixedFont === true && p1.text === mock, 'plan: first press -> fixed font + aligned');
+let p2 = press(p1.text, 0, false, true);
+ok(p2.fixedFont === false && p2.text === dense, 'plan: second press -> normal font + compact');
+p1 = press(mock, 0, false, false);
+ok(p1.fixedFont === true && p1.text === mock && p1.edits.length === 0, 'plan: already aligned table -> first press still aligned view + fixed font');
+p1 = press(multi, 0, true, false);
+ok(p1.text === multiA && p1.fixedFont && press(multiA, 0, true, true).text === run(multiA, 0, true), 'plan: all path identical to the old toggle both ways');
+const noTbl = press('no tables here', 3, false, false), noTblOn = press('no tables here', 3, false, true);
+ok(noTbl.tableCount === 0 && noTbl.fixedFont === false && noTbl.text === 'no tables here' && noTblOn.fixedFont === true, 'plan: no table -> nothing in either direction');
+ok(press(fence, 6, true, false).tableCount === 0 && press(braces, 5, false, false).tableCount === 0 && press(esc, 2, false, false).tableCount === 0, 'plan: fence / {{}} / escaped -> no font switch');
+
+// DOM-level: the real updateTableAlignButtonState / applyMarkdownTableAlignment / font setter with a fake document.
+const d0 = src.indexOf('// One press of ▦'), d1 = src.indexOf('function createModalEditToolbar');
+const mkEl = (id, value = '', font = 'Roboto, sans-serif') => ({ id, value, dataset: {}, style: { fontFamily: font }, selectionStart: 0, selectionEnd: 0, scrollTop: 0,
+  classList: { set: new Set(), toggle(c, on) { on ? this.set.add(c) : this.set.delete(c); }, contains(c) { return this.set.has(c); } },
+  attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, focus() {}, setSelectionRange(a, b) { this.selectionStart = a; this.selectionEnd = b; }, dispatchEvent() {} });
+const makeDom = (bodyText) => {
+  const els = { 'note-edit-textarea': mkEl('note-edit-textarea', bodyText), 'note-edit-textarea-backdrop': mkEl('note-edit-textarea-backdrop'),
+    'note-edit-title-textarea': mkEl('note-edit-title-textarea', 'Заглавие'), 'note-edit-title-textarea-backdrop': mkEl('note-edit-title-textarea-backdrop'),
+    'modal-body': mkEl('modal-body'), button: mkEl('btn') };
+  const document = { getElementById: (id) => els[id] || null, querySelector: () => els.button };
+  const dom = new Function('document', src.slice(a, b) + src.slice(d0, d1) + '; return { applyMarkdownTableAlignment, updateTableAlignButtonState, NOTE_EDIT_FIXED_FONT };')(document);
+  return { els, dom };
+};
+{
+  const { els, dom } = makeDom('Таблица\n' + cs);
+  const ta = els['note-edit-textarea'], title = els['note-edit-title-textarea'], bd = els['note-edit-textarea-backdrop'];
+  dom.updateTableAlignButtonState();
+  ok(!els.button.classList.contains('is-active') && ta.style.fontFamily === 'Roboto, sans-serif', 'dom: opened editor starts in normal font, button off');
+  ta.selectionStart = ta.selectionEnd = ta.value.indexOf('Test');
+  dom.applyMarkdownTableAlignment(false);
+  ok(ta.style.fontFamily === dom.NOTE_EDIT_FIXED_FONT && bd.style.fontFamily === dom.NOTE_EDIT_FIXED_FONT && ta.value === 'Таблица\n' + mock, 'dom: first press -> content + backdrop monospace AND aligned');
+  ok(els.button.classList.contains('is-active') && els.button.attrs['aria-pressed'] === 'true', 'dom: button pressed while fixed font is on');
+  ok(title.style.fontFamily === 'Roboto, sans-serif' && els['note-edit-title-textarea-backdrop'].style.fontFamily === 'Roboto, sans-serif' && title.value === 'Заглавие', 'dom: title field font and text untouched');
+  dom.applyMarkdownTableAlignment(false);
+  ok(ta.style.fontFamily === 'Roboto, sans-serif' && bd.style.fontFamily === 'Roboto, sans-serif' && ta.value === 'Таблица\n' + dense, 'dom: second press -> normal font AND compact');
+  ok(!els.button.classList.contains('is-active') && els.button.attrs['aria-pressed'] === 'false' && title.style.fontFamily === 'Roboto, sans-serif', 'dom: button off again, title still normal');
+}
+{
+  const { els, dom } = makeDom('Таблица\n' + mock);
+  const ta = els['note-edit-textarea'];
+  dom.applyMarkdownTableAlignment(false);
+  ok(ta.value === 'Таблица\n' + mock && ta.style.fontFamily === dom.NOTE_EDIT_FIXED_FONT, 'dom: font switch alone leaves the text byte-identical');
+  dom.applyMarkdownTableAlignment(false);
+  ok(ta.value === 'Таблица\n' + dense && ta.style.fontFamily === 'Roboto, sans-serif', 'dom: already-aligned note -> second press compact + normal');
+}
+for (const text of ['no tables here', fence, braces]) {
+  const { els, dom } = makeDom(text);
+  const ta = els['note-edit-textarea'];
+  dom.applyMarkdownTableAlignment(false); dom.applyMarkdownTableAlignment(true);
+  ok(ta.value === text && ta.style.fontFamily === 'Roboto, sans-serif' && !ta.dataset.fixedFont && !els.button.classList.contains('is-active'), 'dom: nothing alignable -> no font, no text change, button off: ' + JSON.stringify(text.slice(0, 12)));
+}
+console.log(`${n - fails}/${n} passed`); process.exit(fails ? 1 : 0);

@@ -17395,9 +17395,12 @@ function selectMarkdownTablesForAlignment(text, caret, all) {
 // Aligns the given tables (default: every table in the note), or returns them all to the compact
 // form when each of them is already aligned. 'Already aligned' is read from the text itself,
 // not from a saved copy.
-function toggleMarkdownTablesAlignment(text, tables = collectAlignableMarkdownTables(text)) {
+// forceMode ('aligned' / 'compact') skips that reading and brings the tables to the given form.
+function toggleMarkdownTablesAlignment(text, tables = collectAlignableMarkdownTables(text), forceMode) {
     if (!tables.length) return { text, edits: [], tableCount: 0, aligned: false };
-    const allAligned = tables.every(table => getMarkdownTableEdits(text, table, 'aligned').length === 0);
+    const allAligned = forceMode
+        ? forceMode === 'compact'
+        : tables.every(table => getMarkdownTableEdits(text, table, 'aligned').length === 0);
     const mode = allAligned ? 'compact' : 'aligned';
     const edits = tables.flatMap(table => getMarkdownTableEdits(text, table, mode)).sort((a, b) => b.start - a.start);
     let result = text;
@@ -17418,19 +17421,44 @@ function mapOffsetThroughEdits(pos, edits) {
     });
     return pos;
 }
+// One press of ▦ in the edit modal. The fixed (monospace) font of the content field is the toggle:
+// normal font -> align the tables and switch to the fixed font (even when they are already aligned);
+// fixed font -> compact the tables and switch back. No table to work on -> nothing at all.
+function planMarkdownTableAlignmentPress(text, caret, all, fixedFont) {
+    const tables = selectMarkdownTablesForAlignment(text, caret, all);
+    if (!tables.length) return { text, edits: [], tableCount: 0, fixedFont };
+    const result = toggleMarkdownTablesAlignment(text, tables, fixedFont ? 'compact' : 'aligned');
+    return { text: result.text, edits: result.edits, tableCount: tables.length, fixedFont: !fixedFont };
+}
 // --- end markdown table alignment ---
+
+// Fixed font for the note content field while ▦ is on. Presentation only: it lives on this textarea
+// (and its highlight backdrop, which must keep the same metrics), so a newly opened editor always
+// starts in the normal font and nothing reaches the note. The title field is never touched.
+const NOTE_EDIT_FIXED_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+function isNoteEditFixedFont(textarea) {
+    return !!textarea && textarea.dataset.fixedFont === '1';
+}
+function setNoteEditFixedFont(textarea, on) {
+    if (!textarea || textarea.id !== 'note-edit-textarea' || isNoteEditFixedFont(textarea) === on) return;
+    if (on) {
+        textarea.dataset.normalFont = textarea.style.fontFamily;
+        textarea.dataset.fixedFont = '1';
+    } else {
+        delete textarea.dataset.fixedFont;
+    }
+    const font = on ? NOTE_EDIT_FIXED_FONT : (textarea.dataset.normalFont || '');
+    textarea.style.fontFamily = font;
+    const backdrop = document.getElementById('note-edit-textarea-backdrop');
+    if (backdrop) backdrop.style.fontFamily = font;
+}
 
 function updateTableAlignButtonState() {
     const button = document.querySelector('#content-modal .modal-edit-toolbar-btn.is-table');
     const textarea = document.getElementById('note-edit-textarea');
     if (!button) return;
-    let active = false;
-    if (textarea) {
-        // The table under the caret when there is one, all tables in the note otherwise.
-        const tables = collectAlignableMarkdownTables(textarea.value);
-        const current = findMarkdownTableAtOffset(tables, textarea.selectionStart);
-        active = areAllMarkdownTablesAligned(textarea.value, current ? [current] : tables);
-    }
+    // Pressed = the content field is in the fixed font (the aligned view of ▦).
+    const active = isNoteEditFixedFont(textarea);
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
@@ -17439,9 +17467,14 @@ function updateTableAlignButtonState() {
 function applyMarkdownTableAlignment(all = false) {
     const textarea = document.getElementById('note-edit-textarea');
     if (!textarea) return;
-    const tables = selectMarkdownTablesForAlignment(textarea.value, textarea.selectionStart, all);
-    const result = toggleMarkdownTablesAlignment(textarea.value, tables);
+    const result = planMarkdownTableAlignmentPress(textarea.value, textarea.selectionStart, all, isNoteEditFixedFont(textarea));
+    if (!result.tableCount) {
+        updateTableAlignButtonState();
+        return;
+    }
+    setNoteEditFixedFont(textarea, result.fixedFont);
     if (!result.edits.length) {
+        textarea.focus({ preventScroll: true });
         updateTableAlignButtonState();
         return;
     }
@@ -17562,7 +17595,7 @@ function createModalEditToolbar(modalContentBox) {
     });
     addButton({
         label: '▦',
-        title: _('tableAlignTooltip') || 'Align the table under the caret · Ctrl/⌘+click or hold: all tables',
+        title: _('tableAlignTooltip') || 'Align the table under the caret and use a fixed font · press again: compact table and normal font · Ctrl/⌘+click or hold: all tables',
         className: 'is-table',
         action: (e) => applyMarkdownTableAlignment(!!(e && (e.ctrlKey || e.metaKey))),
         onLongPress: () => applyMarkdownTableAlignment(true)
