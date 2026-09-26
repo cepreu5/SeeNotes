@@ -31,7 +31,10 @@ const btn = page.locator('#content-modal .modal-edit-toolbar-btn.is-table');
 const openNote = (raw, caretAt) => page.evaluate(([raw, caretAt]) => {
   showModal({ raw, id: 'fields-' + raw.length });
   enableNoteEditing(document.getElementById('modal-body'));
-  const t = document.getElementById('note-edit-textarea'); t.focus();
+  const t = document.getElementById('note-edit-textarea');
+  // b1.74 opens with the tables aligned in fields; these checks start from the pre-b1.74 editor (text as written).
+  if (getNoteTableSplit(t)) { closeNoteTableSplit(t); t.value = t.dataset.lastVal = document.getElementById('modal-body').dataset.initialEditText; updateTableAlignButtonState(); }
+  t.focus();
   const i = t.value.indexOf(caretAt); t.setSelectionRange(i, i);
 }, [raw, caretAt]);
 const state = () => page.evaluate(() => {

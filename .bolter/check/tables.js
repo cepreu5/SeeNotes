@@ -143,4 +143,27 @@ for (const t of ['no tables here', fence, braces, esc, '']) {
   const c2 = api.planMarkdownTableFieldsClose(two, o.ranges);
   ok(c2.text === before + '\n' + dense + '\n' + after + '\n' + t2, 'edited field: table outside the field untouched');
 }
+// --- plan 9: the editor opens with every table aligned (planMarkdownTableFieldsOpen, all = true) ---
+{
+  const cells = t => t.split('\n').filter(l => !/^\|?[\s\-|:]+\|?$/.test(l)).map(l => l.split('|').map(c => c.trim()).filter(Boolean));
+  const before = 'Работна среща - бележки\nДнес минахме през трите неща: https://x.example {#L0#}';
+  const after = 'Останалото - утре. {{код}}';
+  const note = before + '\n' + cs + '\n' + after;
+  [0, note.length, note.indexOf('Test')].forEach(caret => {
+    const o = open(note, caret, true);
+    ok(o.tableCount === 1 && o.text === before + '\n' + mock + '\n' + after, 'open: Cepreu table (no outer |) aligned + repaired, caret ' + caret);
+  });
+  const o = open(note, note.length, true);
+  ok(JSON.stringify(cells(o.text.slice(o.ranges[0].start, o.ranges[0].end))) === JSON.stringify(cells('|' + cs.replace(/\n(?!\|)/g, '\n|'))), 'open: cell text word for word');
+  ok(o.edits.every(e => /^[ \-|]*$/.test(e.text) && /^[ \-|]*$/.test(note.slice(e.start, e.end))), 'open: edits only add spaces / dashes / outer |');
+  ok(api.planMarkdownTableFieldsClose(o.text, o.ranges).text === before + '\n' + dense + '\n' + after, 'open, then one press -> compact (Variant A)');
+  const short = '| A | B |\n|-|\n| 1 | 2 |';
+  const os = open('x\n' + short, 0, true);
+  ok(os.text === run('x\n' + short, 0, true), 'open: short separator row -> exactly what hold on ▦ gives', os.text);
+  const om = open(multi, multi.length, true);
+  ok(om.tableCount === 3 && om.text === multiA, 'open: several tables -> all aligned');
+  const oo = open(o.text, 0, true);
+  ok(oo.edits.length === 0 && oo.text === o.text, 'open: already aligned note -> text unchanged');
+  ok(open('само текст | с черта\nред', 3, true).tableCount === 0, 'open: no table -> no field');
+}
 console.log(`${n - fails}/${n} passed`); process.exit(fails ? 1 : 0);

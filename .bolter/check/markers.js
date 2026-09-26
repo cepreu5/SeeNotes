@@ -106,4 +106,25 @@ const noLeak = h => !h.includes('%%CODE_BLOCK%%') && !h.includes('%CODE_BLOCK%')
   ok(round.text === 'A https://u.example B' && round.removedLinkMarkers === 0, '(f) single-part preEdit/postEdit round trip', round);
   ok(api.formatText('**', '', false) !== undefined && api.getFormattedNoteHtml('', null) === '', '(f) empty input');
 }
+// (g) plan 9: open (preEdit) -> tables auto-aligned in the editor -> Save (postEdit): no markers, cells word for word
+{
+  const ta = src.indexOf('// --- Markdown table alignment'), tb = src.indexOf('// --- end markdown table alignment');
+  const tapi = new Function(src.slice(ta, tb) + '; return { planMarkdownTableFieldsOpen };')();
+  const table = '|Col1 header| Col 2|Col 3\n|-|-|-|\nText 1|Test|note 1\nnote 2|Text 2|Test';
+  const aligned = '| Col1 header | Col 2  | Col 3  |\n| ----------- | ------ | ------ |\n| Text 1      | Test   | note 1 |\n| note 2      | Text 2 | Test   |';
+  const raw = 'Днес https://a.example и https://b.example:\n' + table + '\nУтре {{код | с черта}} край';
+  const pre = api.preEdit(raw, []);
+  const links = (pre.maskedLinks || []);
+  const o = tapi.planMarkdownTableFieldsOpen(pre.text, pre.text.length, true);
+  ok(o.tableCount === 1 && o.text.includes(aligned), '(g) editor text holds the aligned table', o.text);
+  const saved = api.postEdit(o.text, [], links).text;
+  ok(saved === raw.replace(table, aligned), '(g) saved text = note with the aligned table, links back in order', saved);
+  ok(!/\{#L\d+#\}/.test(saved) && noLeak(saved), '(g) saved text has no {#L#} / CODE_BLOCK markers', saved);
+  const words = t => t.split(/[\s|\-]+/).filter(Boolean);
+  ok(JSON.stringify(words(saved)) === JSON.stringify(words(raw)), '(g) every word of the note kept, in order');
+  const clr = api.postEdit('a --b-- c\n| A    | B |\n| ---- | - |\n| x -- | y |', [], []).text;
+  ok(clr === 'a b c\n| A    | B |\n| ---- | - |\n| x -- | y |'.replace('| x -- | y |', '| x  | y |'), '(g) -- clear marker still works outside the separator row', clr);
+  const shown = api.formatText(aligned, fmt({ start: 0, end: 3, type: 1 }), false);
+  ok(shown.includes('| ----------- | ------ | ------ |'), '(g) display keeps the separator dashes', shown);
+}
 console.log(`${n - fails}/${n} passed`); process.exit(fails ? 1 : 0);

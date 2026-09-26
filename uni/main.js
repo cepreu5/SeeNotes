@@ -14449,6 +14449,21 @@ function renderNoteContent(text) {
     return html;
 }
 
+// Next mdClear marker (default --) at or after 'from', skipping the dashes of a Markdown table
+// separator row (| ----- | --- |): those are the table, not a marker. -1 when there is none.
+function indexOfMdClearMarker(text, marker, from) {
+    let idx = text.indexOf(marker, from);
+    while (idx !== -1) {
+        const lineStart = text.lastIndexOf('\n', idx - 1) + 1;
+        let lineEnd = text.indexOf('\n', idx);
+        if (lineEnd === -1) lineEnd = text.length;
+        const line = text.slice(lineStart, lineEnd);
+        if (!(line.includes('|') && /^[\s|:\-]*$/.test(line))) return idx;
+        idx = text.indexOf(marker, lineEnd);
+    }
+    return -1;
+}
+
 /**
  * Форматира текстов низ възоснова на JSON параметри.
  * @param {string} text - Текстовият низ за форматиране.
@@ -14484,9 +14499,9 @@ function formatText(text, formatString, isForModal = false) {
         };
 
         while (true) {
-            let start = localText.indexOf(mdClear, searchIdx);
+            let start = indexOfMdClearMarker(localText, mdClear, searchIdx);
             if (start === -1) break;
-            let end = localText.indexOf(mdClear, start + mdClear.length);
+            let end = indexOfMdClearMarker(localText, mdClear, start + mdClear.length);
             if (end === -1) break;
 
             const clearRangeStart = start;
@@ -16802,7 +16817,24 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     initNoteEditUI();
 
     const focusEl = (charIndex !== -1 && bodyTextarea) ? bodyTextarea : (titleTextarea || bodyTextarea);
-    if (focusEl) {
+    // Plan 9: the tables open already aligned, each in its field (as after hold on ▦).
+    const bodyCaret = (focusEl === bodyTextarea && correctedBodyIndex > -1) ? correctedBodyIndex : (bodyTextarea ? bodyTextarea.value.length : 0);
+    const tableSplit = openNoteTableFieldsOnEdit(bodyTextarea, bodyCaret, focusEl === bodyTextarea && correctedBodyIndex > -1);
+    if (tableSplit && focusEl === bodyTextarea) {
+        // The caret is already in its piece (openNoteTableFieldsOnEdit); the split is what scrolls.
+        if (modalScrollRatio >= 0) {
+            const applySplitScroll = () => {
+                const maxSplitScroll = tableSplit.scrollHeight - tableSplit.clientHeight;
+                if (maxSplitScroll > 0) tableSplit.scrollTop = Math.round(modalScrollRatio * maxSplitScroll);
+            };
+            applySplitScroll();
+            requestAnimationFrame(applySplitScroll);
+            setTimeout(applySplitScroll, 160);
+        } else {
+            revealNoteTableSplitCaret(tableSplit);
+            setTimeout(() => revealNoteTableSplitCaret(tableSplit), 150);
+        }
+    } else if (focusEl) {
         focusEl.focus();
         if (correctedTitleIndex > -1 && titleTextarea) {
             titleTextarea.setSelectionRange(correctedTitleIndex, correctedTitleIndex);
@@ -16812,10 +16844,11 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             placeCaretAtEnd(focusEl);
         }
         if (modalScrollRatio >= 0 && bodyTextarea) {
+            const scroller = tableSplit || bodyTextarea;
             const applyEditScroll = () => {
-                const maxEditScroll = bodyTextarea.scrollHeight - bodyTextarea.clientHeight;
+                const maxEditScroll = scroller.scrollHeight - scroller.clientHeight;
                 if (maxEditScroll > 0) {
-                    bodyTextarea.scrollTop = Math.round(modalScrollRatio * maxEditScroll);
+                    scroller.scrollTop = Math.round(modalScrollRatio * maxEditScroll);
                 }
             };
             applyEditScroll();
@@ -17789,6 +17822,53 @@ function applyMarkdownTableAlignment(all = false) {
     applyTableEditsToNoteTextarea(textarea, plan.edits, plan.text);
     openNoteTableSplit(textarea, plan.ranges);
     updateTableAlignButtonState();
+}
+
+// Opening the editor (plan 9): every alignable table in the note is aligned and shown in its
+// field, exactly as hold / Ctrl/⌘+click on ▦ does (broken tables get their missing | too). The
+// aligned text is what stands in the note textarea, so Save writes it. caret is where the caret
+// should be in the note; it follows the alignment edits. inTable (opened from search): a caret
+// inside a table stays there, in its field; otherwise the caret is kept in the text around the
+// tables. The textareas get their text by assignment, so the alignment is not in the undo
+// history. Returns the split, or null (no table).
+function openNoteTableFieldsOnEdit(textarea, caret, inTable = false) {
+    if (!textarea) return null;
+    const open = getNoteTableSplit(textarea);
+    if (open) return open;
+    textarea.setSelectionRange(caret, caret);
+    const plan = planMarkdownTableFieldsOpen(textarea.value, caret, true);
+    if (!plan.tableCount) {
+        updateTableAlignButtonState();
+        return null;
+    }
+    applyTableEditsToNoteTextarea(textarea, plan.edits, plan.text);
+    const split = openNoteTableSplit(textarea, plan.ranges);
+    const pos = textarea.selectionStart;
+    const piece = inTable && split?._pieces.find(p => {
+        if (p.kind !== 'table') return false;
+        const off = getNotePieceOffset(split._pieces, p);
+        return pos > off && pos < off + p.value.length;
+    });
+    if (piece) {
+        const off = getNotePieceOffset(split._pieces, piece);
+        piece.el.focus({ preventScroll: true });
+        piece.el.setSelectionRange(pos - off, pos - off);
+    }
+    updateTableAlignButtonState();
+    return split;
+}
+// Brings the caret of the focused piece into view inside the split (what scrollCaretIntoView does
+// for the plain textarea): a caret at the end of its piece shows the piece's last line.
+function revealNoteTableSplitCaret(split) {
+    const el = document.activeElement;
+    if (!split || !el || !split.contains(el)) return;
+    const top = el.offsetTop, bottom = top + el.offsetHeight;
+    if (el.selectionStart === el.value.length && !el.classList.contains('note-table-field')) {
+        if (bottom > split.scrollTop + split.clientHeight) split.scrollTop = bottom - split.clientHeight + 10;
+        else if (bottom < split.scrollTop) split.scrollTop = Math.max(0, top - 24);
+    } else if (top < split.scrollTop || top > split.scrollTop + split.clientHeight - 24) {
+        split.scrollTop = Math.max(0, top - 24);
+    }
 }
 
 function createModalEditToolbar(modalContentBox) {
@@ -19257,9 +19337,9 @@ function postEdit(text, formats, maskedLinks = []) {
         if (!mdClear) return;
         let sIdx = 0;
         while (true) {
-            let start = currentText.indexOf(mdClear, sIdx);
+            let start = indexOfMdClearMarker(currentText, mdClear, sIdx);
             if (start === -1) break;
-            let end = currentText.indexOf(mdClear, start + mdClear.length);
+            let end = indexOfMdClearMarker(currentText, mdClear, start + mdClear.length);
             if (end === -1) {
                 if (removeMarkers) {
                     currentText = currentText.substring(0, start) + currentText.substring(start + mdClear.length);
