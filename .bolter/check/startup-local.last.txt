@@ -1,0 +1,18 @@
+ok   (a) notes from the local DB on screen before the token refresh answered (1772 ms, refresh answers after 6000 ms)
+ok   (a) notes shown in under 6000 ms
+ok   (a) exactly one silent token request, running in the background
+ok   (a) no "Sync suspended" bubble at start
+ok   (a) after the refresh: sync no longer suspended, mode icon without ⚠
+ok   (a) background sync started right after the refresh, without reopening the app
+ok   (a) no login page
+ok   (b) notes on screen before the (failing) refresh answered (298 ms)
+ok   (b) refresh failed: local mode kept, mode icon shows it
+ok   (b) no bubble at all
+ok   (b) notes still on screen, no login page
+ok   (b) no sync attempted without a token
+ok   (b) network back ("online") -> one more silent refresh, it succeeds, local mode ends
+ok   (b) ... and the sync starts right away
+ok   (c) 1280: notes before the refresh answered (324 ms)
+ok   (d) no local data: refresh awaited, failure -> login page
+ok   no uncaught page errors (besides the stubbed-out Ko-fi widget)
+17/17 passed

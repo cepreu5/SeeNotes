@@ -1516,6 +1516,36 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
     return refreshPromise;
 }
 
+// Тихо опресняване на токена при старт с локални данни - стартът не го чака.
+// При успех синхронизацията тръгва веднага (pendingBackgroundSync), при провал - нищо не се показва.
+let backgroundTokenRefresh = null;
+let pendingBackgroundSync = null;
+
+function startBackgroundTokenRefresh() {
+    if (backgroundTokenRefresh) return backgroundTokenRefresh;
+    backgroundTokenRefresh = refreshAuthToken(false, true).catch(() => null).then(async (result) => {
+        backgroundTokenRefresh = null;
+        if (!result || !result.pass) {
+            console.warn("Background token refresh did not succeed. Staying in local mode.");
+            return false;
+        }
+        console.log("Background token refresh succeeded. Resuming sync.");
+        isSyncSuspended = false;
+        authToken = result.tokenData;
+        updateModeButton();
+        const run = pendingBackgroundSync;
+        pendingBackgroundSync = null;
+        if (run) {
+            if (useGoogleDb) {
+                await Promise.race([loadGoogleApis().catch(() => { }), new Promise(r => setTimeout(r, 10000))]);
+            }
+            run();
+        }
+        return true;
+    });
+    return backgroundTokenRefresh;
+}
+
 function notifyManualGoogleLoginRequired() {
     if (typeof showToast === 'function') {
         showToast(_('sessionExpired') || "Session expired. Please sign in again.", 5000);
@@ -5143,18 +5173,24 @@ async function startApp(isExplicitLogin = false) {
             localStorage.setItem('useGoogleDb', 'true');
             localStorage.setItem('useIndexedDb', 'true');
         }
-        // --- Изчакваме мрежовата проба, ако е стартирана ---
-        if (networkProbePromise) {
-            const probeResult = await networkProbePromise;
-            if (probeResult === null) {
-                console.log('Network probe failed — switching to offline mode.');
-                isOffline = true;
-                isExplicitLogin = true;
-            }
-        }
         // --- Проверяваме за базата данни (нужно за userCheck) ---
         if (dbExists === null || typeof dbExists === 'undefined') {
             dbExists = await checkDbExists(NOTES_DB_NAME);
+        }
+        const hasLocalBoards = !!dbExists && localStorage.getItem('useIndexedDb') !== 'false' && (await countFromDB(BOARD_STORE_NAME)) > 0;
+        // --- Мрежовата проба (кап 3 сек) се чака само ако няма локални данни ---
+        if (networkProbePromise) {
+            const cappedProbe = Promise.race([networkProbePromise, new Promise(r => setTimeout(() => r(null), 3000))]);
+            const onProbeResult = (probeResult) => {
+                if (probeResult === null && !isOffline) {
+                    console.log('Network probe failed — switching to offline mode.');
+                    isOffline = true;
+                    isExplicitLogin = true;
+                    if (hasLocalBoards) updateModeButton();
+                }
+            };
+            if (hasLocalBoards) cappedProbe.then(onProbeResult);
+            else onProbeResult(await cappedProbe);
         }
         // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
         const authResult = await checkAuth(isExplicitLogin);
@@ -6030,6 +6066,7 @@ function initApp() {
             updateModeButton();
             if (typeof showToast === 'function') showToast("Online mode restored", 2000);
         }
+        if (isSyncSuspended && pendingBackgroundSync) startBackgroundTokenRefresh();
     });
     window.addEventListener('offline', () => {
         clearTimeout(offlineTimeout);
@@ -7190,13 +7227,7 @@ async function checkAuth(isExplicitLogin = false) {
     const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
     if (isExpired) {
         console.log("Token expired. Refreshing auth token...");
-        try {
-            let refreshResult = await refreshAuthToken(false, true);
-            if (refreshResult && refreshResult.pass) return refreshResult;
-        } catch (authErr) {
-            console.warn("Auth refresh failed or was closed:", authErr);
-        }
-        if (useIndexedDb) {
+        if (useIndexedDb || localStorage.getItem('useIndexedDb') !== 'false') {
             try {
                 if (dbExists === null || typeof dbExists === 'undefined') {
                     dbExists = await checkDbExists(NOTES_DB_NAME);
@@ -7205,10 +7236,8 @@ async function checkAuth(isExplicitLogin = false) {
                     const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
                     if (boardsInDb && boardsInDb.length > 0) {
                         isSyncSuspended = true;
-                        console.warn("Session expired, but local data exists. Entering local mode with suspended sync.");
-                        if (typeof showToast === 'function') {
-                            showToast(_('syncSuspendedTooltip') || "Sync suspended. Click the mode button to sign in again.", 6000);
-                        }
+                        console.warn("Session expired, but local data exists. Entering local mode, refreshing the token in the background.");
+                        startBackgroundTokenRefresh();
                         updateModeButton();
                         return { pass: true, syncSuspended: true, tokenData: tokenData };
                     }
@@ -7216,6 +7245,12 @@ async function checkAuth(isExplicitLogin = false) {
             } catch (dbErr) {
                 console.warn("Could not inspect IndexedDB for optimistic start:", dbErr);
             }
+        }
+        try {
+            let refreshResult = await refreshAuthToken(false, true);
+            if (refreshResult && refreshResult.pass) return refreshResult;
+        } catch (authErr) {
+            console.warn("Auth refresh failed or was closed:", authErr);
         }
         // Няма локални данни — почистваме изтеклия токен и показваме логин формата
         sessionStorage.removeItem('google_auth_token');
@@ -8364,8 +8399,8 @@ async function mainLogic(forceFullSync = false) {
                     document.getElementById('login-page').hidden = true;
                     showAppUI();
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
-                    if (updateFromSource && !isOffline && !isSyncSuspended) {
-                        (async () => {
+                    if (updateFromSource && !isOffline) {
+                        const runBackgroundSync = async () => {
                             try {
                                 if (hasLocalData) {
                                     if (!authToken) {
@@ -8433,7 +8468,9 @@ async function mainLogic(forceFullSync = false) {
                             } catch (e) {
                                 console.error("[mainLogic] Background sync error:", e);
                             }
-                        })();
+                        };
+                        if (!isSyncSuspended) runBackgroundSync();
+                        else pendingBackgroundSync = runBackgroundSync;
                     }
                 }
             }
