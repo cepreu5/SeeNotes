@@ -1,7 +1,7 @@
 const fs = require('fs');
 const src = fs.readFileSync(__dirname + '/../../uni/main.js', 'utf8');
 const a = src.indexOf('// --- Markdown table alignment'), b = src.indexOf('// --- end markdown table alignment');
-const api = new Function(src.slice(a, b) + '; return { collectAlignableMarkdownTables, selectMarkdownTablesForAlignment, toggleMarkdownTablesAlignment, areAllMarkdownTablesAligned, findMarkdownTableAtOffset, planMarkdownTableAlignmentPress };')();
+const api = new Function(src.slice(a, b) + '; return { collectAlignableMarkdownTables, selectMarkdownTablesForAlignment, toggleMarkdownTablesAlignment, areAllMarkdownTablesAligned, findMarkdownTableAtOffset, planMarkdownTableFieldsOpen, planMarkdownTableFieldsClose, splitNoteAtTableRanges, joinNotePieces };')();
 let fails = 0, n = 0;
 const ok = (c, m) => { n++; if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 const run = (text, caret, all) => api.toggleMarkdownTablesAlignment(text, api.selectMarkdownTablesForAlignment(text, caret, all)).text;
@@ -74,59 +74,45 @@ ok(run(openEsc, 0, true) === openEsc, 'open row with escaped \\| untouched');
 const openTick = '`a|b` | B\n- | -\n1 | 2';
 ok(run(openTick, 0, true) === openTick, 'open row with | inside backticks untouched');
 ok(run('a | b\nc | d', 0, true) === 'a | b\nc | d', 'no separator row -> nothing');
-// --- ▦ toggles the fixed font of the content field (Variant A) ---
-const press = (text, caret, all, fixed) => api.planMarkdownTableAlignmentPress(text, caret, all, fixed);
-let p1 = press(cs, 0, false, false);
-ok(p1.fixedFont === true && p1.text === mock, 'plan: first press -> fixed font + aligned');
-let p2 = press(p1.text, 0, false, true);
-ok(p2.fixedFont === false && p2.text === dense, 'plan: second press -> normal font + compact');
-p1 = press(mock, 0, false, false);
-ok(p1.fixedFont === true && p1.text === mock && p1.edits.length === 0, 'plan: already aligned table -> first press still aligned view + fixed font');
-p1 = press(multi, 0, true, false);
-ok(p1.text === multiA && p1.fixedFont && press(multiA, 0, true, true).text === run(multiA, 0, true), 'plan: all path identical to the old toggle both ways');
-const noTbl = press('no tables here', 3, false, false), noTblOn = press('no tables here', 3, false, true);
-ok(noTbl.tableCount === 0 && noTbl.fixedFont === false && noTbl.text === 'no tables here' && noTblOn.fixedFont === true, 'plan: no table -> nothing in either direction');
-ok(press(fence, 6, true, false).tableCount === 0 && press(braces, 5, false, false).tableCount === 0 && press(esc, 2, false, false).tableCount === 0, 'plan: fence / {{}} / escaped -> no font switch');
-
-// DOM-level: the real updateTableAlignButtonState / applyMarkdownTableAlignment / font setter with a fake document.
-const d0 = src.indexOf('// One press of ▦'), d1 = src.indexOf('function createModalEditToolbar');
-const mkEl = (id, value = '', font = 'Roboto, sans-serif') => ({ id, value, dataset: {}, style: { fontFamily: font }, selectionStart: 0, selectionEnd: 0, scrollTop: 0,
-  classList: { set: new Set(), toggle(c, on) { on ? this.set.add(c) : this.set.delete(c); }, contains(c) { return this.set.has(c); } },
-  attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, focus() {}, setSelectionRange(a, b) { this.selectionStart = a; this.selectionEnd = b; }, dispatchEvent() {} });
-const makeDom = (bodyText) => {
-  const els = { 'note-edit-textarea': mkEl('note-edit-textarea', bodyText), 'note-edit-textarea-backdrop': mkEl('note-edit-textarea-backdrop'),
-    'note-edit-title-textarea': mkEl('note-edit-title-textarea', 'Заглавие'), 'note-edit-title-textarea-backdrop': mkEl('note-edit-title-textarea-backdrop'),
-    'modal-body': mkEl('modal-body'), button: mkEl('btn') };
-  const document = { getElementById: (id) => els[id] || null, querySelector: () => els.button };
-  const dom = new Function('document', src.slice(a, b) + src.slice(d0, d1) + '; return { applyMarkdownTableAlignment, updateTableAlignButtonState, NOTE_EDIT_FIXED_FONT };')(document);
-  return { els, dom };
-};
+// --- ▦ opens read-only table fields in place (b1.72) ---
+const open = (text, caret, all) => api.planMarkdownTableFieldsOpen(text, caret, all);
+const texts = (pieces) => pieces.filter(p => p.kind === 'text').map(p => p.value);
+const tablesIn = (pieces) => pieces.filter(p => p.kind === 'table').map(p => p.value);
 {
-  const { els, dom } = makeDom('Таблица\n' + cs);
-  const ta = els['note-edit-textarea'], title = els['note-edit-title-textarea'], bd = els['note-edit-textarea-backdrop'];
-  dom.updateTableAlignButtonState();
-  ok(!els.button.classList.contains('is-active') && ta.style.fontFamily === 'Roboto, sans-serif', 'dom: opened editor starts in normal font, button off');
-  ta.selectionStart = ta.selectionEnd = ta.value.indexOf('Test');
-  dom.applyMarkdownTableAlignment(false);
-  ok(ta.style.fontFamily === dom.NOTE_EDIT_FIXED_FONT && bd.style.fontFamily === dom.NOTE_EDIT_FIXED_FONT && ta.value === 'Таблица\n' + mock, 'dom: first press -> content + backdrop monospace AND aligned');
-  ok(els.button.classList.contains('is-active') && els.button.attrs['aria-pressed'] === 'true', 'dom: button pressed while fixed font is on');
-  ok(title.style.fontFamily === 'Roboto, sans-serif' && els['note-edit-title-textarea-backdrop'].style.fontFamily === 'Roboto, sans-serif' && title.value === 'Заглавие', 'dom: title field font and text untouched');
-  dom.applyMarkdownTableAlignment(false);
-  ok(ta.style.fontFamily === 'Roboto, sans-serif' && bd.style.fontFamily === 'Roboto, sans-serif' && ta.value === 'Таблица\n' + dense, 'dom: second press -> normal font AND compact');
-  ok(!els.button.classList.contains('is-active') && els.button.attrs['aria-pressed'] === 'false' && title.style.fontFamily === 'Roboto, sans-serif', 'dom: button off again, title still normal');
+  const before = 'Над таблицата **текст** {#L1#}\nвтори ред';
+  const after = 'Под таблицата\n\nпоследен ред';
+  const note = before + '\n' + cs + '\n' + after;
+  const o = open(note, note.indexOf('Test'), false);
+  const pieces = api.splitNoteAtTableRanges(o.text, o.ranges);
+  ok(o.tableCount === 1 && o.text === before + '\n' + mock + '\n' + after, 'fields: first press aligns the table, text around it byte-identical');
+  ok(api.joinNotePieces(pieces) === o.text, 'fields: pieces join back to the note byte for byte');
+  ok(JSON.stringify(texts(pieces)) === JSON.stringify([before, after]) && JSON.stringify(tablesIn(pieces)) === JSON.stringify([mock]), 'fields: text before / aligned table in field / text after');
+  const c = api.planMarkdownTableFieldsClose(o.text, o.ranges);
+  ok(c.text === before + '\n' + dense + '\n' + after, 'fields: second press -> compact table, text around it byte-identical');
+  const oa = open(before + '\n' + mock + '\n' + after, 0, false);
+  ok(oa.edits.length === 0 && oa.tableCount === 1, 'fields: already aligned table still gets a field');
 }
 {
-  const { els, dom } = makeDom('Таблица\n' + mock);
-  const ta = els['note-edit-textarea'];
-  dom.applyMarkdownTableAlignment(false);
-  ok(ta.value === 'Таблица\n' + mock && ta.style.fontFamily === dom.NOTE_EDIT_FIXED_FONT, 'dom: font switch alone leaves the text byte-identical');
-  dom.applyMarkdownTableAlignment(false);
-  ok(ta.value === 'Таблица\n' + dense && ta.style.fontFamily === 'Roboto, sans-serif', 'dom: already-aligned note -> second press compact + normal');
+  const o = open(multi, multi.indexOf('status'), false);
+  ok(o.tableCount === 1 && o.text === 'intro\n' + aligned1 + '\nмежду\n' + bl + '\nи\n' + cs + '\nend', 'fields: plain click -> only the table under the caret');
+  const oa = open(multi, 0, true);
+  const pieces = api.splitNoteAtTableRanges(oa.text, oa.ranges);
+  ok(oa.tableCount === 3 && oa.text === multiA, 'fields: hold -> all three tables aligned');
+  ok(JSON.stringify(texts(pieces)) === JSON.stringify(['intro', 'между', 'и', 'end']) && JSON.stringify(tablesIn(pieces)) === JSON.stringify([aligned1, blA, mock]), 'fields: hold -> a field in place of each table');
+  ok(api.joinNotePieces(pieces) === multiA, 'fields: hold -> pieces join back byte for byte');
+  ok(api.planMarkdownTableFieldsClose(oa.text, oa.ranges).text === run(multiA, 0, true), 'fields: hold, second press -> all compact');
 }
-for (const text of ['no tables here', fence, braces]) {
-  const { els, dom } = makeDom(text);
-  const ta = els['note-edit-textarea'];
-  dom.applyMarkdownTableAlignment(false); dom.applyMarkdownTableAlignment(true);
-  ok(ta.value === text && ta.style.fontFamily === 'Roboto, sans-serif' && !ta.dataset.fixedFont && !els.button.classList.contains('is-active'), 'dom: nothing alignable -> no font, no text change, button off: ' + JSON.stringify(text.slice(0, 12)));
+{
+  const edge = [mock, mock + '\n', '\n' + mock, 'a\n\n' + mock + '\n\nb', 'x\r\n' + mock];
+  edge.forEach(t => {
+    const o = open(t, t.indexOf('|'), false);
+    ok(o.tableCount === 1 && api.joinNotePieces(api.splitNoteAtTableRanges(o.text, o.ranges)) === o.text, 'fields: edge join ' + JSON.stringify(t.slice(0, 6)));
+  });
+  ok(JSON.stringify(texts(api.splitNoteAtTableRanges(mock, [{ start: 0, end: mock.length }]))) === '[]', 'fields: table alone -> no text piece');
+  ok(JSON.stringify(texts(api.splitNoteAtTableRanges('a\n\n' + mock + '\n\nb', [{ start: 3, end: 3 + mock.length }]))) === JSON.stringify(['a\n', '\nb']), 'fields: blank lines kept in the text pieces');
+}
+for (const t of ['no tables here', fence, braces, esc, '']) {
+  const o = open(t, 1, false), oa = open(t, 1, true);
+  ok(o.tableCount === 0 && oa.tableCount === 0 && o.text === t && oa.text === t && !o.edits.length, 'fields: no table -> nothing: ' + JSON.stringify(t.slice(0, 12)));
 }
 console.log(`${n - fails}/${n} passed`); process.exit(fails ? 1 : 0);

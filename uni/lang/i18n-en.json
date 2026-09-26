@@ -485,7 +485,7 @@
     "strikeTooltip": "Strikethrough text",
     "lineStartTooltip": "Line start · Ctrl/hold: paragraph start",
     "lineEndTooltip": "Line end · Ctrl/hold: paragraph end",
-    "tableAlignTooltip": "Align the table under the caret and use a fixed font · press again: compact table and normal font · Ctrl/⌘+click or hold: all tables",
+    "tableAlignTooltip": "Align the table under the caret and show it in a read-only field in its place (no wrapping, scrolls sideways) · press again: close the field and compact the table · Ctrl/⌘+click or hold: all tables",
     "assistantName": "Noto",
     "assistantTitle": "Assistant",
     "assistantLoading": "Loading...",

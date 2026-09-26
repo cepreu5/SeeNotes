@@ -16955,7 +16955,7 @@ function getMarkdownTableCellCharIndex(text, cellElement) {
  */
 document.addEventListener('keydown', (e) => {
     const activeTextarea = document.activeElement;
-    if (!activeTextarea || (activeTextarea.id !== 'note-edit-textarea' && activeTextarea.id !== 'note-edit-title-textarea')) return;
+    if (!activeTextarea || (!isNoteEditBodyField(activeTextarea) && activeTextarea.id !== 'note-edit-title-textarea')) return;
 
     if (e.ctrlKey || e.metaKey) {
         const key = e.key.toLowerCase();
@@ -16980,14 +16980,14 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('bullet-list-btn')?.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const activeTextarea = document.activeElement;
-    if (activeTextarea && (activeTextarea.id === 'note-edit-textarea' || activeTextarea.id === 'note-edit-title-textarea')) {
+    if (activeTextarea && (isNoteEditBodyField(activeTextarea) || activeTextarea.id === 'note-edit-title-textarea')) {
         toggleListFormat(activeTextarea, 'bullet');
     }
 });
 document.getElementById('numbered-list-btn')?.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const activeTextarea = document.activeElement;
-    if (activeTextarea && (activeTextarea.id === 'note-edit-textarea' || activeTextarea.id === 'note-edit-title-textarea')) {
+    if (activeTextarea && (isNoteEditBodyField(activeTextarea) || activeTextarea.id === 'note-edit-title-textarea')) {
         toggleListFormat(activeTextarea, 'numbered');
     }
 });
@@ -17060,6 +17060,34 @@ window.addEventListener('orientationchange', () => {
 });
 
 // --- Logic for preserving formatting during editing ---
+// Draws the text with its format ranges underlined into a highlight backdrop.
+function renderNoteEditBackdrop(backdrop, text, formats) {
+    if (!formats.length) {
+        backdrop.innerText = text;
+    } else {
+        const points = new Set([0, text.length]);
+        formats.forEach(f => {
+            points.add(Math.max(0, Math.min(text.length, f.start)));
+            points.add(Math.max(0, Math.min(text.length, f.end)));
+        });
+        const sortedPoints = Array.from(points).sort((a, b) => a - b);
+        let html = '';
+        for (let i = 0; i < sortedPoints.length - 1; i++) {
+            const start = sortedPoints[i];
+            const end = sortedPoints[i + 1];
+            let segment = text.substring(start, end);
+            const isFormatted = formats.some(f => start >= f.start && end <= f.end);
+            segment = segment.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            if (isFormatted) {
+                html += `<span style="border-bottom: 2px dashed black; background-color: rgba(128, 128, 128, 0.3);">${segment}</span>`;
+            } else {
+                html += segment;
+            }
+        }
+        backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
+    }
+}
+
 function handleEditInput(textarea, backdrop) {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem) return;
@@ -17101,36 +17129,12 @@ function handleEditInput(textarea, backdrop) {
         modalBodyElem.dataset[storageKey] = formats.map(f => JSON.stringify(f)).join('|');
     }
 
-    // Render Backdrop
-    if (!formats.length) {
-        backdrop.innerText = text;
-    } else {
-        const points = new Set([0, text.length]);
-        formats.forEach(f => {
-            points.add(Math.max(0, Math.min(text.length, f.start)));
-            points.add(Math.max(0, Math.min(text.length, f.end)));
-        });
-        const sortedPoints = Array.from(points).sort((a, b) => a - b);
-        let html = '';
-        for (let i = 0; i < sortedPoints.length - 1; i++) {
-            const start = sortedPoints[i];
-            const end = sortedPoints[i + 1];
-            let segment = text.substring(start, end);
-            const isFormatted = formats.some(f => start >= f.start && end <= f.end);
-            segment = segment.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            if (isFormatted) {
-                html += `<span style="border-bottom: 2px dashed black; background-color: rgba(128, 128, 128, 0.3);">${segment}</span>`;
-            } else {
-                html += segment;
-            }
-        }
-        backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
-    }
+    renderNoteEditBackdrop(backdrop, text, formats);
 }
 
 function getActiveModalEditor() {
     const activeElement = document.activeElement;
-    if (activeElement?.id === 'note-edit-textarea' || activeElement?.id === 'note-edit-title-textarea') {
+    if (isNoteEditBodyField(activeElement) || activeElement?.id === 'note-edit-title-textarea') {
         return activeElement;
     }
     return document.getElementById('note-edit-textarea') || document.getElementById('note-edit-title-textarea');
@@ -17421,65 +17425,307 @@ function mapOffsetThroughEdits(pos, edits) {
     });
     return pos;
 }
-// One press of ▦ in the edit modal. The fixed (monospace) font of the content field is the toggle:
-// normal font -> align the tables and switch to the fixed font (even when they are already aligned);
-// fixed font -> compact the tables and switch back. No table to work on -> nothing at all.
-function planMarkdownTableAlignmentPress(text, caret, all, fixedFont) {
+// One press of ▦ in the edit modal while no table field is open: align the tables it works on
+// (see selectMarkdownTablesForAlignment) and return where each of them now lies, so a read-only
+// field can be shown in its place. Already aligned tables still get a field. No table -> nothing.
+function planMarkdownTableFieldsOpen(text, caret, all) {
     const tables = selectMarkdownTablesForAlignment(text, caret, all);
-    if (!tables.length) return { text, edits: [], tableCount: 0, fixedFont };
-    const result = toggleMarkdownTablesAlignment(text, tables, fixedFont ? 'compact' : 'aligned');
-    return { text: result.text, edits: result.edits, tableCount: tables.length, fixedFont: !fixedFont };
+    if (!tables.length) return { text, edits: [], tableCount: 0, ranges: [] };
+    const result = toggleMarkdownTablesAlignment(text, tables, 'aligned');
+    const after = collectAlignableMarkdownTables(result.text);
+    const ranges = [];
+    tables.forEach(table => {
+        const start = mapOffsetThroughEdits(table.start, result.edits);
+        const found = after.find(t => start >= t.start && start <= t.end);
+        if (found && !ranges.some(r => r.start === found.start)) ranges.push({ start: found.start, end: found.end });
+    });
+    ranges.sort((x, y) => x.start - y.start);
+    return { text: result.text, edits: result.edits, tableCount: ranges.length, ranges };
+}
+// Second press: the tables that were shown in fields (given by their ranges) go back to compact.
+function planMarkdownTableFieldsClose(text, ranges) {
+    const tables = collectAlignableMarkdownTables(text).filter(t => ranges.some(r => r.start === t.start));
+    if (!tables.length) return { text, edits: [], tableCount: 0 };
+    const result = toggleMarkdownTablesAlignment(text, tables, 'compact');
+    return { text: result.text, edits: result.edits, tableCount: tables.length };
+}
+// Cuts the note into pieces around the given table ranges. Joining every piece's value gives the
+// text back byte for byte. 'sep' is the line break between a table and the text next to it: it is
+// kept out of the text pieces so they do not show an extra empty line. A text piece exists only
+// where there are lines next to a table (so a table at the very start has no text piece above it).
+function splitNoteAtTableRanges(text, ranges) {
+    const pieces = [];
+    let pos = 0;
+    ranges.forEach((r, i) => {
+        let mid = text.slice(pos, r.start);
+        const lead = i > 0 && mid.startsWith('\n') ? '\n' : '';
+        mid = mid.slice(lead.length);
+        const trail = mid.endsWith('\n') ? '\n' : '';
+        mid = mid.slice(0, mid.length - trail.length);
+        if (lead) pieces.push({ kind: 'sep', value: lead });
+        if (lead || trail || mid) pieces.push({ kind: 'text', value: mid });
+        if (trail) pieces.push({ kind: 'sep', value: trail });
+        pieces.push({ kind: 'table', value: text.slice(r.start, r.end) });
+        pos = r.end;
+    });
+    let rest = text.slice(pos);
+    if (ranges.length && rest.startsWith('\n')) {
+        pieces.push({ kind: 'sep', value: '\n' });
+        rest = rest.slice(1);
+        pieces.push({ kind: 'text', value: rest });
+    } else if (rest) {
+        pieces.push({ kind: 'text', value: rest });
+    }
+    return pieces;
+}
+function joinNotePieces(pieces) {
+    return pieces.map(p => p.value).join('');
+}
+function getNotePieceOffset(pieces, piece) {
+    let off = 0;
+    for (const p of pieces) {
+        if (p === piece) return off;
+        off += p.value.length;
+    }
+    return -1;
 }
 // --- end markdown table alignment ---
 
-// Fixed font for the note content field while ▦ is on. Presentation only: it lives on this textarea
-// (and its highlight backdrop, which must keep the same metrics), so a newly opened editor always
-// starts in the normal font and nothing reaches the note. The title field is never touched.
-const NOTE_EDIT_FIXED_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
-function isNoteEditFixedFont(textarea) {
-    return !!textarea && textarea.dataset.fixedFont === '1';
+// ▦ table fields. While they are open, the content editor is shown as a stack of pieces in its
+// place: text field (before) + read-only field with the aligned table + text field (after), and so
+// on for each table. #note-edit-textarea stays the one source of truth: it keeps the whole note
+// (hidden underneath), every edit in a text piece is written through to it and replayed as a single
+// edit at the caret, so handleEditInput, dataset.format, the backdrop, save and preview work as
+// before. The fields live only in this editor's DOM: a newly opened editor starts without them.
+function getNoteTableSplit(textarea = document.getElementById('note-edit-textarea')) {
+    return textarea?.parentElement?.querySelector(':scope > .note-table-split') || null;
 }
-function setNoteEditFixedFont(textarea, on) {
-    if (!textarea || textarea.id !== 'note-edit-textarea' || isNoteEditFixedFont(textarea) === on) return;
-    if (on) {
-        textarea.dataset.normalFont = textarea.style.fontFamily;
-        textarea.dataset.fixedFont = '1';
-    } else {
-        delete textarea.dataset.fixedFont;
+function isNoteTableSplitText(el) {
+    return !!el && !!el.classList && el.classList.contains('note-table-split-text');
+}
+// The content editor the caret is in: the note textarea itself, or a text piece while fields are open.
+function isNoteEditBodyField(el) {
+    return !!el && (el.id === 'note-edit-textarea' || isNoteTableSplitText(el));
+}
+function fitNoteTableSplitText(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+}
+function getNoteBodyFormats() {
+    const fmtStr = document.getElementById('modal-body')?.dataset.format;
+    if (!fmtStr || fmtStr.trim() === '') return [];
+    return fmtStr.split('|').map(p => {
+        try { return JSON.parse(p); } catch (e) { return null; }
+    }).filter(f => f && f.start !== undefined);
+}
+function renderNoteTableSplitBackdrops(split) {
+    const formats = getNoteBodyFormats();
+    split._pieces.forEach(piece => {
+        if (piece.kind !== 'text' || !piece.backdrop) return;
+        const off = getNotePieceOffset(split._pieces, piece);
+        const len = piece.value.length;
+        const local = formats
+            .map(f => ({ start: Math.max(0, f.start - off), end: Math.min(len, f.end - off) }))
+            .filter(f => f.end > f.start);
+        renderNoteEditBackdrop(piece.backdrop, piece.value, local);
+    });
+}
+// A text piece was edited: rebuild the whole note in the hidden textarea and replay it there.
+function onNoteTableSplitTextInput(split, piece) {
+    const main = split._main;
+    piece.value = piece.el.value;
+    const off = getNotePieceOffset(split._pieces, piece);
+    const full = joinNotePieces(split._pieces);
+    split._syncing = true;
+    main.value = full;
+    main.setSelectionRange(off + piece.el.selectionStart, off + piece.el.selectionEnd);
+    main.dispatchEvent(new Event('input', { bubbles: true }));
+    split._syncing = false;
+    split._value = full;
+    fitNoteTableSplitText(piece.el);
+    renderNoteTableSplitBackdrops(split);
+}
+// Something else changed the hidden textarea (paste button, attachment link...). An edit inside
+// one text piece is carried over; anything touching a table closes the fields (text kept as is).
+function onNoteTableSplitMainInput(split) {
+    if (split._syncing) return;
+    const main = split._main;
+    const oldText = split._value;
+    const newText = main.value;
+    if (oldText === newText) return;
+    let p = 0;
+    while (p < oldText.length && p < newText.length && oldText[p] === newText[p]) p++;
+    let s = 0;
+    while (s < oldText.length - p && s < newText.length - p && oldText[oldText.length - 1 - s] === newText[newText.length - 1 - s]) s++;
+    const oldEnd = oldText.length - s;
+    const piece = split._pieces.find(x => {
+        if (x.kind !== 'text') return false;
+        const off = getNotePieceOffset(split._pieces, x);
+        return p >= off && oldEnd <= off + x.value.length;
+    });
+    if (!piece) {
+        closeNoteTableSplit(main);
+        updateTableAlignButtonState();
+        return;
     }
-    const font = on ? NOTE_EDIT_FIXED_FONT : (textarea.dataset.normalFont || '');
-    textarea.style.fontFamily = font;
-    const backdrop = document.getElementById('note-edit-textarea-backdrop');
-    if (backdrop) backdrop.style.fontFamily = font;
+    const off = getNotePieceOffset(split._pieces, piece);
+    piece.value = newText.slice(off, off + piece.value.length + newText.length - oldText.length);
+    piece.el.value = piece.value;
+    split._value = newText;
+    const caret = main.selectionStart - off;
+    if (caret >= 0 && caret <= piece.value.length) {
+        piece.el.setSelectionRange(caret, Math.min(piece.value.length, main.selectionEnd - off));
+    }
+    fitNoteTableSplitText(piece.el);
+    renderNoteTableSplitBackdrops(split);
+}
+function openNoteTableSplit(main, ranges) {
+    const container = main.parentElement;
+    if (!container || !ranges.length) return null;
+    closeNoteTableSplit(main);
+    const scrollTop = main.scrollTop;
+    const caret = main.selectionStart;
+    const split = document.createElement('div');
+    split.className = 'note-table-split';
+    split._main = main;
+    split._value = main.value;
+    split._pieces = splitNoteAtTableRanges(main.value, ranges);
+    const cs = main.style;
+    split._pieces.forEach(piece => {
+        if (piece.kind === 'sep') return;
+        if (piece.kind === 'table') {
+            const field = document.createElement('div');
+            field.className = 'note-table-field';
+            field.tabIndex = 0;
+            field.setAttribute('role', 'textbox');
+            field.setAttribute('aria-readonly', 'true');
+            field.setAttribute('aria-multiline', 'true');
+            field.textContent = piece.value;
+            piece.el = field;
+            split.appendChild(field);
+            return;
+        }
+        const seg = document.createElement('div');
+        seg.className = 'note-table-split-seg';
+        const backdrop = document.createElement('div');
+        backdrop.className = 'note-table-split-backdrop';
+        const ta = document.createElement('textarea');
+        ta.className = 'note-table-split-text';
+        ta.value = piece.value;
+        ta.rows = 1;
+        ta.spellcheck = main.spellcheck;
+        [ta, backdrop].forEach(el => {
+            el.style.fontFamily = cs.fontFamily;
+            el.style.fontSize = cs.fontSize;
+            el.style.fontWeight = cs.fontWeight;
+        });
+        ta.addEventListener('input', () => onNoteTableSplitTextInput(split, piece));
+        ['keyup', 'mouseup', 'touchend', 'focus'].forEach(type => ta.addEventListener(type, updateTableAlignButtonState));
+        piece.el = ta;
+        piece.backdrop = backdrop;
+        seg.appendChild(backdrop);
+        seg.appendChild(ta);
+        split.appendChild(seg);
+    });
+    split._onMainInput = () => onNoteTableSplitMainInput(split);
+    main.addEventListener('input', split._onMainInput);
+    container.classList.add('is-table-split');
+    container.appendChild(split);
+    const texts = split._pieces.filter(p => p.kind === 'text');
+    const fields = split._pieces.filter(p => p.kind === 'table');
+    const modalBox = main.closest('.modal-content-box');
+    // A field is as tall as its table needs, up to about half of the modal.
+    const fitFields = () => {
+        const limit = Math.round((modalBox ? modalBox.clientHeight : split.clientHeight * 2) / 2);
+        fields.forEach(p => { p.el.style.maxHeight = limit + 'px'; });
+    };
+    const fitAll = () => texts.forEach(p => fitNoteTableSplitText(p.el));
+    fitFields();
+    fitAll();
+    renderNoteTableSplitBackdrops(split);
+    if (typeof ResizeObserver === 'function') {
+        let lastWidth = split.clientWidth;
+        split._ro = new ResizeObserver(() => {
+            fitFields();
+            if (split.clientWidth !== lastWidth) { lastWidth = split.clientWidth; fitAll(); }
+        });
+        split._ro.observe(split);
+    }
+    // Keep the caret: in the text piece that holds it, else right after (or before) its table.
+    let target = null, targetPos = 0;
+    split._pieces.forEach(piece => {
+        if (target || piece.kind !== 'text') return;
+        const off = getNotePieceOffset(split._pieces, piece);
+        if (caret >= off && caret <= off + piece.value.length) { target = piece; targetPos = caret - off; }
+    });
+    const firstTable = split._pieces.find(p => p.kind === 'table');
+    const caretTable = split._pieces.find(p => {
+        if (p.kind !== 'table') return false;
+        const off = getNotePieceOffset(split._pieces, p);
+        return caret >= off && caret <= off + p.value.length;
+    }) || firstTable;
+    if (!target) {
+        const i = split._pieces.indexOf(caretTable);
+        const after = split._pieces.slice(i + 1).find(p => p.kind === 'text');
+        const before = split._pieces.slice(0, i).reverse().find(p => p.kind === 'text');
+        target = after || before || null;
+        targetPos = after ? 0 : (before ? before.value.length : 0);
+    }
+    split.scrollTop = scrollTop;
+    const field = caretTable.el;
+    if (field.offsetTop < split.scrollTop || field.offsetTop + field.offsetHeight > split.scrollTop + split.clientHeight) {
+        split.scrollTop = Math.max(0, field.offsetTop - 24);
+    }
+    if (target) {
+        target.el.focus({ preventScroll: true });
+        target.el.setSelectionRange(targetPos, targetPos);
+    } else {
+        main.blur();
+    }
+    return split;
+}
+// Removes the fields and shows the note textarea again. Returns the ranges of the tables that
+// were in fields (offsets in the note), or null when none were open.
+function closeNoteTableSplit(main) {
+    const split = getNoteTableSplit(main);
+    if (!split) return null;
+    const ranges = [];
+    let sel = null;
+    const active = document.activeElement;
+    split._pieces.forEach(piece => {
+        const off = getNotePieceOffset(split._pieces, piece);
+        if (piece.kind === 'table') ranges.push({ start: off, end: off + piece.value.length });
+        if (piece.el && piece.el === active && piece.kind === 'text') {
+            sel = [off + active.selectionStart, off + active.selectionEnd];
+        }
+    });
+    const ratio = split.scrollHeight > split.clientHeight ? split.scrollTop / (split.scrollHeight - split.clientHeight) : 0;
+    main.removeEventListener('input', split._onMainInput);
+    split._ro?.disconnect();
+    split.remove();
+    main.parentElement?.classList.remove('is-table-split');
+    main.focus({ preventScroll: true });
+    if (sel) main.setSelectionRange(sel[0], sel[1]);
+    const maxScroll = main.scrollHeight - main.clientHeight;
+    main.scrollTop = maxScroll > 0 ? Math.round(ratio * maxScroll) : 0;
+    return ranges;
 }
 
 function updateTableAlignButtonState() {
     const button = document.querySelector('#content-modal .modal-edit-toolbar-btn.is-table');
     const textarea = document.getElementById('note-edit-textarea');
     if (!button) return;
-    // Pressed = the content field is in the fixed font (the aligned view of ▦).
-    const active = isNoteEditFixedFont(textarea);
+    // Pressed = the table fields are open.
+    const active = !!getNoteTableSplit(textarea);
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
 
-// all = true for hold / Ctrl/⌘+click: every table in the note; otherwise the table under the caret.
-function applyMarkdownTableAlignment(all = false) {
-    const textarea = document.getElementById('note-edit-textarea');
-    if (!textarea) return;
-    const result = planMarkdownTableAlignmentPress(textarea.value, textarea.selectionStart, all, isNoteEditFixedFont(textarea));
-    if (!result.tableCount) {
-        updateTableAlignButtonState();
-        return;
-    }
-    setNoteEditFixedFont(textarea, result.fixedFont);
-    if (!result.edits.length) {
-        textarea.focus({ preventScroll: true });
-        updateTableAlignButtonState();
-        return;
-    }
-    const map = (pos) => mapOffsetThroughEdits(pos, result.edits);
-    // Shift the stored format ranges ourselves: handleEditInput only knows single edits at the caret.
+// Writes whitespace edits of the table alignment into the note textarea, shifting the stored
+// format ranges ourselves (handleEditInput only knows single edits at the caret).
+function applyTableEditsToNoteTextarea(textarea, edits, text) {
+    if (!edits.length) return;
+    const map = (pos) => mapOffsetThroughEdits(pos, edits);
     const modalBodyElem = document.getElementById('modal-body');
     const fmtStr = modalBodyElem?.dataset.format;
     if (fmtStr && fmtStr.trim() !== '') {
@@ -17492,12 +17738,34 @@ function applyMarkdownTableAlignment(all = false) {
     const selectionStart = map(textarea.selectionStart);
     const selectionEnd = map(textarea.selectionEnd);
     const scrollTop = textarea.scrollTop;
-    textarea.value = result.text;
-    textarea.dataset.lastVal = result.text;
+    textarea.value = text;
+    textarea.dataset.lastVal = text;
     textarea.focus({ preventScroll: true });
     textarea.setSelectionRange(selectionStart, selectionEnd);
     textarea.scrollTop = scrollTop;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// One press of ▦. Fields closed: align the table under the caret (all = true for hold /
+// Ctrl/⌘+click: every table in the note) and show each in a read-only field in its place.
+// Fields open: close them all and bring those tables back to the compact form.
+function applyMarkdownTableAlignment(all = false) {
+    const textarea = document.getElementById('note-edit-textarea');
+    if (!textarea) return;
+    if (getNoteTableSplit(textarea)) {
+        const ranges = closeNoteTableSplit(textarea);
+        const result = planMarkdownTableFieldsClose(textarea.value, ranges || []);
+        applyTableEditsToNoteTextarea(textarea, result.edits, result.text);
+        updateTableAlignButtonState();
+        return;
+    }
+    const plan = planMarkdownTableFieldsOpen(textarea.value, textarea.selectionStart, all);
+    if (!plan.tableCount) {
+        updateTableAlignButtonState();
+        return;
+    }
+    applyTableEditsToNoteTextarea(textarea, plan.edits, plan.text);
+    openNoteTableSplit(textarea, plan.ranges);
     updateTableAlignButtonState();
 }
 
@@ -17595,7 +17863,7 @@ function createModalEditToolbar(modalContentBox) {
     });
     addButton({
         label: '▦',
-        title: _('tableAlignTooltip') || 'Align the table under the caret and use a fixed font · press again: compact table and normal font · Ctrl/⌘+click or hold: all tables',
+        title: _('tableAlignTooltip') || 'Align the table under the caret and show it in a read-only field in its place (no wrapping, scrolls sideways) · press again: close the field and compact the table · Ctrl/⌘+click or hold: all tables',
         className: 'is-table',
         action: (e) => applyMarkdownTableAlignment(!!(e && (e.ctrlKey || e.metaKey))),
         onLongPress: () => applyMarkdownTableAlignment(true)
