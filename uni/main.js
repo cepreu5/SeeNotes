@@ -17426,7 +17426,7 @@ function mapOffsetThroughEdits(pos, edits) {
     return pos;
 }
 // One press of ▦ in the edit modal while no table field is open: align the tables it works on
-// (see selectMarkdownTablesForAlignment) and return where each of them now lies, so a read-only
+// (see selectMarkdownTablesForAlignment) and return where each of them now lies, so an editable
 // field can be shown in its place. Already aligned tables still get a field. No table -> nothing.
 function planMarkdownTableFieldsOpen(text, caret, all) {
     const tables = selectMarkdownTablesForAlignment(text, caret, all);
@@ -17442,9 +17442,13 @@ function planMarkdownTableFieldsOpen(text, caret, all) {
     ranges.sort((x, y) => x.start - y.start);
     return { text: result.text, edits: result.edits, tableCount: ranges.length, ranges };
 }
-// Second press: the tables that were shown in fields (given by their ranges) go back to compact.
+// Second press: the tables that were shown in fields (given by their ranges, which already hold
+// whatever was typed in the fields) go back to compact: only the padding spaces and the separator
+// dashes go, the cell text stays exactly as typed. A table no longer recognisable as one is left
+// as it is. Any table lying in a field's range counts (typing may move or split it).
 function planMarkdownTableFieldsClose(text, ranges) {
-    const tables = collectAlignableMarkdownTables(text).filter(t => ranges.some(r => r.start === t.start));
+    const inRange = (t, r) => t.start === r.start || (t.start < r.end && t.end > r.start);
+    const tables = collectAlignableMarkdownTables(text).filter(t => ranges.some(r => inRange(t, r)));
     if (!tables.length) return { text, edits: [], tableCount: 0 };
     const result = toggleMarkdownTablesAlignment(text, tables, 'compact');
     return { text: result.text, edits: result.edits, tableCount: tables.length };
@@ -17492,10 +17496,10 @@ function getNotePieceOffset(pieces, piece) {
 // --- end markdown table alignment ---
 
 // ▦ table fields. While they are open, the content editor is shown as a stack of pieces in its
-// place: text field (before) + read-only field with the aligned table + text field (after), and so
+// place: text field (before) + editable field with the aligned table + text field (after), and so
 // on for each table. #note-edit-textarea stays the one source of truth: it keeps the whole note
-// (hidden underneath), every edit in a text piece is written through to it and replayed as a single
-// edit at the caret, so handleEditInput, dataset.format, the backdrop, save and preview work as
+// (hidden underneath), every edit in a text piece or a table field is written through to it at once
+// and replayed as a single edit at the caret (the table text is never re-aligned while typing), so handleEditInput, dataset.format, the backdrop, save and preview work as
 // before. The fields live only in this editor's DOM: a newly opened editor starts without them.
 function getNoteTableSplit(textarea = document.getElementById('note-edit-textarea')) {
     return textarea?.parentElement?.querySelector(':scope > .note-table-split') || null;
@@ -17510,6 +17514,15 @@ function isNoteEditBodyField(el) {
 function fitNoteTableSplitText(ta) {
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
+}
+// A table field is as tall as its rows plus the sideways scrollbar (CSS max-height caps it).
+function fitNoteTableField(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = (ta.scrollHeight + ta.offsetHeight - ta.clientHeight) + 'px';
+}
+function fitNoteTableSplitPiece(piece) {
+    if (piece.kind === 'table') fitNoteTableField(piece.el);
+    else fitNoteTableSplitText(piece.el);
 }
 function getNoteBodyFormats() {
     const fmtStr = document.getElementById('modal-body')?.dataset.format;
@@ -17530,7 +17543,8 @@ function renderNoteTableSplitBackdrops(split) {
         renderNoteEditBackdrop(piece.backdrop, piece.value, local);
     });
 }
-// A text piece was edited: rebuild the whole note in the hidden textarea and replay it there.
+// A text piece or a table field was edited: rebuild the whole note in the hidden textarea and
+// replay it there.
 function onNoteTableSplitTextInput(split, piece) {
     const main = split._main;
     piece.value = piece.el.value;
@@ -17542,11 +17556,12 @@ function onNoteTableSplitTextInput(split, piece) {
     main.dispatchEvent(new Event('input', { bubbles: true }));
     split._syncing = false;
     split._value = full;
-    fitNoteTableSplitText(piece.el);
+    fitNoteTableSplitPiece(piece);
     renderNoteTableSplitBackdrops(split);
 }
 // Something else changed the hidden textarea (paste button, attachment link...). An edit inside
-// one text piece is carried over; anything touching a table closes the fields (text kept as is).
+// one piece (text or table field) is carried over; one spanning pieces closes the fields. Either
+// way nothing typed is lost: it is already in the hidden textarea.
 function onNoteTableSplitMainInput(split) {
     if (split._syncing) return;
     const main = split._main;
@@ -17559,7 +17574,7 @@ function onNoteTableSplitMainInput(split) {
     while (s < oldText.length - p && s < newText.length - p && oldText[oldText.length - 1 - s] === newText[newText.length - 1 - s]) s++;
     const oldEnd = oldText.length - s;
     const piece = split._pieces.find(x => {
-        if (x.kind !== 'text') return false;
+        if (x.kind === 'sep') return false;
         const off = getNotePieceOffset(split._pieces, x);
         return p >= off && oldEnd <= off + x.value.length;
     });
@@ -17576,7 +17591,7 @@ function onNoteTableSplitMainInput(split) {
     if (caret >= 0 && caret <= piece.value.length) {
         piece.el.setSelectionRange(caret, Math.min(piece.value.length, main.selectionEnd - off));
     }
-    fitNoteTableSplitText(piece.el);
+    fitNoteTableSplitPiece(piece);
     renderNoteTableSplitBackdrops(split);
 }
 function openNoteTableSplit(main, ranges) {
@@ -17594,13 +17609,19 @@ function openNoteTableSplit(main, ranges) {
     split._pieces.forEach(piece => {
         if (piece.kind === 'sep') return;
         if (piece.kind === 'table') {
-            const field = document.createElement('div');
+            // Editable like the text pieces: monospace, no wrapping, sideways scroll. Enter adds a
+            // line, Tab moves on to the next part of the note (browser default).
+            const field = document.createElement('textarea');
             field.className = 'note-table-field';
-            field.tabIndex = 0;
-            field.setAttribute('role', 'textbox');
-            field.setAttribute('aria-readonly', 'true');
-            field.setAttribute('aria-multiline', 'true');
-            field.textContent = piece.value;
+            field.value = piece.value;
+            field.wrap = 'off';
+            field.rows = 1;
+            field.spellcheck = false;
+            field.setAttribute('autocapitalize', 'off');
+            field.setAttribute('autocomplete', 'off');
+            field.setAttribute('autocorrect', 'off');
+            field.addEventListener('input', () => onNoteTableSplitTextInput(split, piece));
+            ['keyup', 'mouseup', 'touchend', 'focus'].forEach(type => field.addEventListener(type, updateTableAlignButtonState));
             piece.el = field;
             split.appendChild(field);
             return;
@@ -17637,7 +17658,7 @@ function openNoteTableSplit(main, ranges) {
     // A field is as tall as its table needs, up to about half of the modal.
     const fitFields = () => {
         const limit = Math.round((modalBox ? modalBox.clientHeight : split.clientHeight * 2) / 2);
-        fields.forEach(p => { p.el.style.maxHeight = limit + 'px'; });
+        fields.forEach(p => { p.el.style.maxHeight = limit + 'px'; fitNoteTableField(p.el); });
     };
     const fitAll = () => texts.forEach(p => fitNoteTableSplitText(p.el));
     fitFields();
@@ -17695,7 +17716,7 @@ function closeNoteTableSplit(main) {
     split._pieces.forEach(piece => {
         const off = getNotePieceOffset(split._pieces, piece);
         if (piece.kind === 'table') ranges.push({ start: off, end: off + piece.value.length });
-        if (piece.el && piece.el === active && piece.kind === 'text') {
+        if (piece.el && piece.el === active && piece.kind !== 'sep') {
             sel = [off + active.selectionStart, off + active.selectionEnd];
         }
     });
@@ -17747,8 +17768,9 @@ function applyTableEditsToNoteTextarea(textarea, edits, text) {
 }
 
 // One press of ▦. Fields closed: align the table under the caret (all = true for hold /
-// Ctrl/⌘+click: every table in the note) and show each in a read-only field in its place.
-// Fields open: close them all and bring those tables back to the compact form.
+// Ctrl/⌘+click: every table in the note) and show each in an editable field in its place.
+// Fields open: close them all and bring those tables back to the compact form (what was typed in
+// the fields is already in the note; only padding and separator dashes are removed).
 function applyMarkdownTableAlignment(all = false) {
     const textarea = document.getElementById('note-edit-textarea');
     if (!textarea) return;
@@ -17863,7 +17885,7 @@ function createModalEditToolbar(modalContentBox) {
     });
     addButton({
         label: '▦',
-        title: _('tableAlignTooltip') || 'Align the table under the caret and show it in a read-only field in its place (no wrapping, scrolls sideways) · press again: close the field and compact the table · Ctrl/⌘+click or hold: all tables',
+        title: _('tableAlignTooltip') || 'Align the table under the caret and show it in its place in a field you can type in (no wrapping, scrolls sideways) · press again: close the field and compact the table · Ctrl/⌘+click or hold: all tables',
         className: 'is-table',
         action: (e) => applyMarkdownTableAlignment(!!(e && (e.ctrlKey || e.metaKey))),
         onLongPress: () => applyMarkdownTableAlignment(true)

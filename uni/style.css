@@ -3686,9 +3686,13 @@ body.selection-locked .note.active-selection-note .note-content {
     overflow: hidden;
 }
 
-/* Modelled on .code-block: no wrapping, sideways scroll, monospace, read-only. */
+/* Modelled on .code-block: no wrapping, sideways scroll, monospace. A textarea you type in. */
 .note-table-field {
     display: block;
+    width: calc(100% - 20px);
+    min-height: 0;
+    resize: none;
+    color: inherit;
     margin: 6px 10px;
     max-height: 50%;
     padding: 8px;

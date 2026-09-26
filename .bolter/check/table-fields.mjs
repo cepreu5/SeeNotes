@@ -1,4 +1,4 @@
-// ▦ read-only table fields in place (b1.72), real browser on uni/. Run from repo root:
+// ▦ table fields in place (b1.72; editable since b1.73, see table-edit.mjs), real browser on uni/. Run from repo root:
 //   node .bolter/check/table-fields.mjs      (exit 1 on any failed assertion)
 import { chromium } from '/opt/nvm/versions/node/v22.23.2/lib/node_modules/@playwright/mcp/node_modules/playwright/index.mjs';
 import http from 'node:http'; import { readFile } from 'node:fs/promises'; import path from 'node:path';
@@ -43,7 +43,7 @@ const state = () => page.evaluate(() => {
   return {
     main: main.value, mainVisible: getComputedStyle(main).visibility === 'visible', mainFont: getComputedStyle(main).fontFamily,
     split: !!split, active: b.classList.contains('is-active'), pressed: b.getAttribute('aria-pressed'), tip: b.title,
-    fields: fields.map(f => { const cs = getComputedStyle(f); return { text: f.textContent, ws: cs.whiteSpace, font: cs.fontFamily, ox: cs.overflowX,
+    fields: fields.map(f => { const cs = getComputedStyle(f); return { text: f.value, ws: cs.whiteSpace, font: cs.fontFamily, ox: cs.overflowX,
       sw: f.scrollWidth, cw: f.clientWidth, h: f.offsetHeight, lh: parseFloat(cs.lineHeight), top: f.getBoundingClientRect().top, bottom: f.getBoundingClientRect().bottom }; }),
     texts: texts.map(t => ({ value: t.value, font: getComputedStyle(t).fontFamily, top: t.getBoundingClientRect().top, bottom: t.getBoundingClientRect().bottom, readOnly: t.readOnly })),
     format: document.getElementById('modal-body').dataset.format || '',
@@ -73,11 +73,11 @@ ok(f.h < f.lh * 3 + 40, 'rows not wrapped: field is 3 lines high', { h: f.h, lh:
 const modalH = await page.evaluate(() => document.querySelector('#content-modal .modal-content-box').clientHeight);
 ok(f.h <= modalH / 2 + 1, 'field height at most half the modal', { h: f.h, modalH });
 ok(f.cw > 0 && await page.evaluate(() => { const el = document.querySelector('.note-table-field'); return el.scrollHeight <= el.clientHeight; }), 'all three rows visible without vertical scroll');
-ok(/read-only|само за четене/.test(s.tip), 'tooltip describes the field', s.tip);
+ok(/type in|може да се пише/.test(s.tip), 'tooltip describes the field', s.tip);
 const scrolled = await page.evaluate(() => { const el = document.querySelector('.note-table-field'); el.scrollLeft = 120; return el.scrollLeft; });
 ok(scrolled > 0, 'field scrolls horizontally', scrolled);
 await page.screenshot({ path: '.bolter/check/fields-390-open.png' });
-ok(await page.evaluate(() => document.querySelector('.note-table-field').isContentEditable === false && !document.querySelector('.note-table-field textarea')), 'field is read-only');
+ok(await page.evaluate(() => { const el = document.querySelector('.note-table-field'); return el.tagName === 'TEXTAREA' && !el.readOnly; }), 'field is an editable textarea (b1.73)');
 
 // editing in the text piece after the table goes through to the note
 await page.evaluate(() => { const t = document.querySelectorAll('.note-table-split-text')[1]; t.focus(); t.setSelectionRange(0, 0); });

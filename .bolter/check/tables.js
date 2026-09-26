@@ -115,4 +115,32 @@ for (const t of ['no tables here', fence, braces, esc, '']) {
   const o = open(t, 1, false), oa = open(t, 1, true);
   ok(o.tableCount === 0 && oa.tableCount === 0 && o.text === t && oa.text === t && !o.edits.length, 'fields: no table -> nothing: ' + JSON.stringify(t.slice(0, 12)));
 }
+// --- editable field (b1.73): the second press after typing = Variant A, compact as today ---
+{
+  const before = 'Над таблицата', after = 'Под таблицата';
+  const o = open(before + '\n' + cs + '\n' + after, before.length + 3, false);
+  const r = o.ranges[0];
+  // typed in the field: a longer cell (alignment now broken), a word with two inner spaces, a new short row
+  let tbl = o.text.slice(r.start, r.end)
+    .replace('| note 1 |', '| note 1 и още думи |')
+    .replace('| Text 2 |', '| Text  две |') + '\n| нов | ред |';
+  const edited = o.text.slice(0, r.start) + tbl + o.text.slice(r.end);
+  const c = api.planMarkdownTableFieldsClose(edited, [{ start: r.start, end: r.start + tbl.length }]);
+  const want = before + '\n| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 и още думи |\n| note 2 | Text  две | Test |\n| нов | ред |\n' + after;
+  ok(c.text === want, 'edited field: 2nd press removes only padding and dashes, typed cell text word for word', c.text);
+  ok(c.edits.every(e => /^[ \-|]*$/.test(e.text) && /^[ \-|]*$/.test(edited.slice(e.start, e.end))), 'edited field: every close edit only touches spaces / dashes / outer |');
+  ok(!api.areAllMarkdownTablesAligned(c.text), 'edited field: no re-alignment on close (not Variant B/C)');
+  // blank line typed at the top of the field: the table moved inside the range, still compacted
+  const moved = o.text.slice(0, r.start) + '\n' + o.text.slice(r.start);
+  const cm = api.planMarkdownTableFieldsClose(moved, [{ start: r.start, end: r.end + 1 }]);
+  ok(cm.tableCount === 1 && cm.text === before + '\n\n' + dense + '\n' + after, 'edited field: table moved down inside the field still compacts');
+  // separator row deleted: no longer a table -> left exactly as typed
+  const broken = o.text.replace(/\n\| -+ \| -+ \| -+ \|/, '');
+  const cb = api.planMarkdownTableFieldsClose(broken, [{ start: r.start, end: r.end - 33 }]);
+  ok(cb.tableCount === 0 && cb.text === broken, 'edited field: broken table left as typed');
+  // a table outside the field is not touched on close
+  const two = o.text + '\n' + t2;
+  const c2 = api.planMarkdownTableFieldsClose(two, o.ranges);
+  ok(c2.text === before + '\n' + dense + '\n' + after + '\n' + t2, 'edited field: table outside the field untouched');
+}
 console.log(`${n - fails}/${n} passed`); process.exit(fails ? 1 : 0);
