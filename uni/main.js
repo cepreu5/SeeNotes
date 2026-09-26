@@ -5312,6 +5312,12 @@ function showToast(message, duration = 10000) {
     toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
 }
 
+// Едно съобщение на запис, когато маркер за линк не е могъл да бъде възстановен и е премахнат.
+function notifyRemovedLinkMarkers(count) {
+    if (!count) return;
+    showToast((_('linkMarkersRemovedToast') || '').replace('{count}', count));
+}
+
 function showMessagePopup(message, showInput = false) {
     folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
     folderIdInput = document.getElementById('folderIdInput');
@@ -14237,16 +14243,114 @@ function adjustFormatStringOffset(formatString, offset) {
     }
 }
 
+// --- Link markers {#L<n>#} and code block placeholder ---
+// Маркер за маскиран линк (preEdit го слага в режим на редакция, postEdit го връща).
+const LINK_MARKER_REGEX = /\{#L(\d+)#\}/g;
+// Кодовият блок се заменя с ЕДИН символ (Private Use Area), за да не може граница на сегмент да го разкъса.
+const CODE_BLOCK_PLACEHOLDER = '\uE000';
+
+function buildCodeBlockHtml(block) {
+    const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
+    return '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>';
+}
+
+/**
+ * Замества маркерите на кодовите блокове по ред с HTML-а на блоковете.
+ * Маркери без блок (подадени отвън, напр. от сегмент на formatText) остават за външния проход.
+ */
+function insertCodeBlocks(html, codeBlocks) {
+    if (!codeBlocks.length || html.indexOf(CODE_BLOCK_PLACEHOLDER) === -1) return html;
+    const parts = html.split(CODE_BLOCK_PLACEHOLDER);
+    let out = parts[0];
+    for (let i = 1; i < parts.length; i++) {
+        out += (i - 1 < codeBlocks.length ? buildCodeBlockHtml(codeBlocks[i - 1]) : CODE_BLOCK_PLACEHOLDER) + parts[i];
+    }
+    return out;
+}
+
+/**
+ * Премахва {#L<n>#} от текст за показване и измества форматите за премахнатите символи:
+ * позиция след маркер се мести наляво с дължината на всички маркери преди нея,
+ * позиция вътре в маркер отива на неговото начало.
+ */
+function stripLinkMarkersForDisplay(text, formatString = null) {
+    if (!text || text.indexOf('{#L') === -1) return { text, formatString };
+    const removed = [];
+    const stripped = text.replace(LINK_MARKER_REGEX, (m, n, idx) => { removed.push({ start: idx, len: m.length }); return ''; });
+    if (!removed.length) return { text, formatString };
+    const mapPos = (p) => {
+        let shift = 0;
+        for (const r of removed) {
+            if (p >= r.start + r.len) shift += r.len;
+            else if (p > r.start) return r.start - shift;
+            else break;
+        }
+        return p - shift;
+    };
+    if (!formatString || formatString.trim() === '') return { text: stripped, formatString };
+    let isPipeSeparated = formatString.endsWith('|');
+    const str = isPipeSeparated ? formatString.slice(0, -1) : formatString;
+    const delimiter = isPipeSeparated ? '|' : '\n';
+    const formats = str.split(/[|\n]/).map(f => {
+        try { return JSON.parse(f); } catch (e) { return null; }
+    }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
+    if (formats.length === 0) return { text: stripped, formatString };
+    const adjusted = formats.map(f => JSON.stringify({ ...f, start: mapPos(f.start), end: mapPos(f.end) }));
+    return { text: stripped, formatString: adjusted.join(delimiter) + (isPipeSeparated ? '|' : '') };
+}
+
+/**
+ * Резервира номерата на маркерите, които вече стоят като текст в бележката (няма линк за тях),
+ * така че новите маркери от preEdit да не ги повторят. Резервираните места са null.
+ */
+function reserveLinkMarkerSlots(text) {
+    const slots = [];
+    if (!text) return slots;
+    for (const m of text.matchAll(LINK_MARKER_REGEX)) {
+        const n = parseInt(m[1], 10);
+        if (n < 1000) while (slots.length <= n) slots.push(null);
+    }
+    return slots;
+}
+
+/**
+ * Връща линковете на мястото на маркерите в ред на появяване. Маркер без линк
+ * (липсващ списък, индекс извън списъка, резервирано място) се премахва и се брои.
+ */
+function restoreLinkMarkers(text, formats, maskedLinks) {
+    let out = '', last = 0, delta = 0, removed = 0;
+    for (const m of text.matchAll(LINK_MARKER_REGEX)) {
+        const link = Array.isArray(maskedLinks) ? maskedLinks[parseInt(m[1], 10)] : undefined;
+        const rep = (typeof link === 'string') ? link : '';
+        if (!rep) removed++;
+        const s = m.index + delta, len = m[0].length, diff = rep.length - len;
+        formats.forEach(f => {
+            if (f.start >= s + len) f.start += diff; else if (!rep && f.start > s) f.start = s;
+            if (f.end >= s + len) f.end += diff; else if (!rep && f.end > s) f.end = s;
+        });
+        out += text.substring(last, m.index) + rep;
+        last = m.index + len;
+        delta += diff;
+    }
+    return { text: last ? out + text.substring(last) : text, formats, removed };
+}
+// --- end link markers ---
+
 /**
  * Унифицирана функция за форматиране и рендиране на съдържанието на бележка.
  * Използва се напълно еднакво както в модала за преглед, така и на картичките в борда.
+ * Маркерите {#L<n>#} не се показват (само режимът на редакция ги вижда).
  */
 function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString = null, isForModal = false) {
     if (!rawContent) return '';
     const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
     if (pipeIndex !== -1) {
-        const titlePart = rawContent.substring(0, pipeIndex);
-        const bodyPart = rawContent.substring(pipeIndex + 1);
+        const titleStripped = stripLinkMarkersForDisplay(rawContent.substring(0, pipeIndex), titleFormatString);
+        const bodyStripped = stripLinkMarkersForDisplay(rawContent.substring(pipeIndex + 1), formatString);
+        const titlePart = titleStripped.text;
+        const bodyPart = bodyStripped.text;
+        titleFormatString = titleStripped.formatString;
+        formatString = bodyStripped.formatString;
         let formattedTitle = '';
         if (titleFormatString && titleFormatString.trim() !== '') {
             formattedTitle = formatText(titlePart, titleFormatString, isForModal);
@@ -14265,6 +14369,8 @@ function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString
         }
         return formattedTitle + '<br>' + formattedBody;
     }
+    ({ text: rawContent, formatString } = stripLinkMarkersForDisplay(rawContent, formatString));
+    if (!rawContent) return '';
     const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
     if (fullTableHtml) return fullTableHtml;
     if (formatString && formatString.trim() !== '') {
@@ -14280,7 +14386,7 @@ function processNoteContent(text, isForModal = false) {
     const textWithoutCode = text.replace(codeTagRegex, (match, code1, code2) => {
         const code = code1 !== undefined ? code1 : code2;
         codeBlocks.push(escapeHtml(code));
-        return '%%CODE_BLOCK%%';
+        return CODE_BLOCK_PLACEHOLDER;
     });
     let escapedText = escapeHtml(textWithoutCode);
     const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true';
@@ -14307,10 +14413,7 @@ function processNoteContent(text, isForModal = false) {
     escapedText = replacePair(escapedText, symUnderline, 'u');
     escapedText = replacePair(escapedText, symItalic, 'i');
     if (symItalic !== '*') escapedText = replacePair(escapedText, '*', 'i');
-    codeBlocks.forEach(block => {
-        const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
-        escapedText = escapedText.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
-    });
+    escapedText = insertCodeBlocks(escapedText, codeBlocks);
     const lines = escapedText.split('\n');
     const processedLines = lines.map(line => {
         const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
@@ -14333,7 +14436,7 @@ function renderNoteContent(text) {
     const textWithoutCode = text.replace(codeTagRegex, (match, code1, code2) => {
         const code = code1 !== undefined ? code1 : code2;
         codeBlocks.push(escapeHtml(code));
-        return '%%CODE_BLOCK%%';
+        return CODE_BLOCK_PLACEHOLDER;
     });
 
     // First, escape the entire remaining text to neutralize any HTML
@@ -14341,10 +14444,7 @@ function renderNoteContent(text) {
     // Then, find URLs in the *escaped* text and wrap them in <a> tags.
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
     let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    codeBlocks.forEach(block => {
-        const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
-        html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
-    });
+    html = insertCodeBlocks(html, codeBlocks);
 
     return html;
 }
@@ -14369,6 +14469,9 @@ function formatText(text, formatString, isForModal = false) {
             try { return JSON.parse(f); } catch (e) { return null; }
         }).filter(f => f !== null && f.start !== undefined && f.end !== undefined);
     }
+    // Формат с позиции извън текста е остарял - игнорира се (не се подрязва).
+    const isFormatInRange = f => Number.isInteger(f.start) && Number.isInteger(f.end) && f.start >= 0 && f.start < f.end && f.end <= localText.length;
+    formats = formats.filter(isFormatInRange);
 
     if (localText.includes(mdClear)) {
         let searchIdx = 0;
@@ -14402,6 +14505,7 @@ function formatText(text, formatString, isForModal = false) {
         }
     }
 
+    formats = formats.filter(isFormatInRange);
     if (formats.length === 0) {
         return processNoteContent(localText, isForModal);
     }
@@ -14412,7 +14516,7 @@ function formatText(text, formatString, isForModal = false) {
     const textForSegments = localText.replace(codeTagRegex, (match, code1, code2) => {
         const code = code1 !== undefined ? code1 : code2;
         codeBlocks.push(escapeHtml(code));
-        return '%%CODE_BLOCK%%';
+        return CODE_BLOCK_PLACEHOLDER;
     });
     // Adjust format positions for removed {{ }} markers
     // (not needed — we adjust segment points below based on the modified text)
@@ -14428,7 +14532,7 @@ function formatText(text, formatString, isForModal = false) {
     const codeRanges = [];
     const codeTagRegex2 = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
     while ((codeMatch = codeTagRegex2.exec(localText)) !== null) {
-        codeRanges.push({ start: codeMatch.index, end: codeMatch.index + codeMatch[0].length, replLen: '%%CODE_BLOCK%%'.length });
+        codeRanges.push({ start: codeMatch.index, end: codeMatch.index + codeMatch[0].length, replLen: CODE_BLOCK_PLACEHOLDER.length });
     }
     // Build position mapping
     const positionMap = new Array(localText.length + 1);
@@ -14442,7 +14546,7 @@ function formatText(text, formatString, isForModal = false) {
             for (let j = cr.start; j <= cr.end && j <= localText.length; j++) {
                 positionMap[j] = mappedStart;
             }
-            // After the code range, the replacement is '%%CODE_BLOCK%%'
+            // After the code range, the replacement is CODE_BLOCK_PLACEHOLDER (1 char)
             offset += (cr.end - cr.start) - cr.replLen;
             ci = cr.end - 1; // loop will increment
             crIdx++;
@@ -14526,11 +14630,8 @@ function formatText(text, formatString, isForModal = false) {
         });
         html += formattedSegment;
     }
-    // Re-insert code blocks that were extracted before segmentation
-    codeBlocks.forEach(block => {
-        const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
-        html = html.replace('%%CODE_BLOCK%%', '<div class="code-block"><code>' + block + '</code>' + copyBtn + '</div>');
-    });
+    // Re-insert code blocks that were extracted before segmentation (final pass, in order)
+    html = insertCodeBlocks(html, codeBlocks);
     return html;
 }
 
@@ -14984,9 +15085,10 @@ async function createNoteElement(noteContent) {
     const titleEl = document.createElement('h3');
     // For hidden notes with title_span, apply formatting to the title
     if (isHiddenNote && titleSpan && titleSpan.trim() !== '') {
-        titleEl.innerHTML = formatText(noteTitle, titleSpan, false);
+        const strippedTitle = stripLinkMarkersForDisplay(noteTitle, titleSpan);
+        titleEl.innerHTML = formatText(strippedTitle.text, strippedTitle.formatString, false);
     } else {
-        titleEl.textContent = noteTitle;
+        titleEl.textContent = noteTitle.replace(LINK_MARKER_REGEX, '');
     }
     titleEl.className = 'note-title-truncated';
     if (isBorderlessTableNote) {
@@ -16584,14 +16686,14 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
                 bodyCharIdx = charIndex - (titleText.length + 1);
             }
         }
-        const titleResult = preEdit(titleText, currentTitleFormats, titleCharIdx);
-        const bodyResult = preEdit(bodyText, currentBodyFormats, bodyCharIdx);
+        const linkSlots = reserveLinkMarkerSlots(titleText + '\n' + bodyText);
+        const titleResult = preEdit(titleText, currentTitleFormats, titleCharIdx, linkSlots);
+        const bodyResult = preEdit(bodyText, currentBodyFormats, bodyCharIdx, linkSlots);
         titleText = titleResult.text;
         bodyText = bodyResult.text;
         correctedTitleIndex = titleResult.correctedIndex;
         correctedBodyIndex = bodyResult.correctedIndex;
-        const allMasked = [...(titleResult.maskedLinks || []), ...(bodyResult.maskedLinks || [])];
-        modalBodyElem.dataset.maskedLinks = JSON.stringify(allMasked);
+        modalBodyElem.dataset.maskedLinks = JSON.stringify(linkSlots);
         modalBodyElem.dataset.titleFormat = stringifyFormatsArray(titleResult.formats);
         modalBodyElem.dataset.format = stringifyFormatsArray(bodyResult.formats);
     } else {
@@ -17915,8 +18017,13 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
                     const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
                     const tPart = txt.substring(0, pipeIdx);
                     const bPart = txt.substring(pipeIdx + 1);
-                    bdy.innerHTML = (typeof formatText === 'function') ? formatText(tPart, currentNote.title_span || '', true) + '<br>' + formatText(bPart, currentNote.text_span || '', true) : tPart + '<br>' + bPart;
-                } else { bdy.innerHTML = (typeof formatText === 'function') ? formatText(txt, currentNote.text_span || '', true) : txt; }
+                    const tS = stripLinkMarkersForDisplay(tPart, currentNote.title_span || '');
+                    const bS = stripLinkMarkersForDisplay(bPart, currentNote.text_span || '');
+                    bdy.innerHTML = formatText(tS.text, tS.formatString, true) + '<br>' + formatText(bS.text, bS.formatString, true);
+                } else {
+                    const S = stripLinkMarkersForDisplay(txt, currentNote.text_span || '');
+                    bdy.innerHTML = formatText(S.text, S.formatString, true);
+                }
                 bdy.dataset.id = currentNote.id || '';
                 bdy.dataset.gdid = currentNote.gdid || '';
                 bdy.dataset.format = currentNote.text_span || ''; bdy.dataset.titleFormat = currentNote.title_span || '';
@@ -17957,10 +18064,13 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
                     const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
                     const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
                     note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
+                    let removedMarkers = res.removedLinkMarkers;
                     if (titleArea) {
                         const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
                         note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
+                        removedMarkers += tRes.removedLinkMarkers;
                     }
+                    notifyRemovedLinkMarkers(removedMarkers);
                 }
                 note.datemod = Date.now();
 
@@ -18193,11 +18303,13 @@ function saveEditedNote(forceClose = false) {
             const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
             finalFormat = stringifyFormatsArray(bodyRes.formats);
             processedText = titleRes.text + '|' + bodyRes.text;
+            notifyRemovedLinkMarkers(titleRes.removedLinkMarkers + bodyRes.removedLinkMarkers);
         } else {
             // Standard note
             const res = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
             processedText = res.text;
             finalFormat = stringifyFormatsArray(res.formats);
+            notifyRemovedLinkMarkers(res.removedLinkMarkers);
         }
         // Показваме форматирания текст ВЕДНАГА - не чакаме края на GDrive записа
         if (!closeAfterSave && typeof showModal === 'function') {
@@ -18787,14 +18899,8 @@ function disableNoteEditing(modalBodyElem) {
  */
 function postEdit(text, formats, maskedLinks = []) {
     if (parseMarkdownTable(text)) {
-        let currentText = text;
-        if (Array.isArray(maskedLinks)) {
-            maskedLinks.forEach((link, idx) => {
-                const placeholder = `{#L${idx}#}`;
-                currentText = currentText.replaceAll(placeholder, link);
-            });
-        }
-        return { text: currentText, formats: [] };
+        const restored = restoreLinkMarkers(text, [], maskedLinks);
+        return { text: restored.text, formats: [], removedLinkMarkers: restored.removed };
     }
     let currentText = text;
     let currentFormats = [...formats];
@@ -18942,24 +19048,10 @@ function postEdit(text, formats, maskedLinks = []) {
     handleClear(true); // Phase 2: Final sweep and marker removal
 
     // --- Restore Masked Links with proper shifting ---
-    maskedLinks.forEach((link, idx) => {
-        const placeholder = `{#L${idx}#}`;
-        let pIdx = currentText.indexOf(placeholder);
-        while (pIdx !== -1) {
-            currentText = currentText.substring(0, pIdx) + link + currentText.substring(pIdx + placeholder.length);
-            const diff = link.length - placeholder.length;
-            const startPos = pIdx;
-            const markerLen = placeholder.length;
+    // В ред на появяване; маркер без линк се премахва - в бележката никога не се записва маркер.
+    const restored = restoreLinkMarkers(currentText, currentFormats, maskedLinks);
 
-            currentFormats.forEach(f => {
-                if (f.start >= startPos + markerLen) f.start += diff;
-                if (f.end >= startPos + markerLen) f.end += diff;
-            });
-            pIdx = currentText.indexOf(placeholder, startPos + link.length);
-        }
-    });
-
-    return { text: currentText, formats: currentFormats };
+    return { text: restored.text, formats: restored.formats, removedLinkMarkers: restored.removed };
 }
 
 /**
@@ -18968,13 +19060,14 @@ function postEdit(text, formats, maskedLinks = []) {
 /**
  * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
  */
-function preEdit(text, formats, targetIndex = -1) {
-    if (!text) return { text: "", formats: [], correctedIndex: targetIndex };
+function preEdit(text, formats, targetIndex = -1, linkSlots = null) {
+    // linkSlots: общ списък за заглавие + тяло, така че номерата {#L<n>#} са глобални за бележката
+    const maskedLinks = linkSlots || reserveLinkMarkerSlots(text);
+    if (!text) return { text: "", formats: [], maskedLinks, correctedIndex: targetIndex };
 
     let currentText = text;
     let currentFormats = formats ? formats.map(f => ({ ...f })) : [];
     let correctedIndex = targetIndex;
-    let maskedLinks = [];
 
     const shiftIndex = (pos, diff) => {
         if (targetIndex === -1) return;

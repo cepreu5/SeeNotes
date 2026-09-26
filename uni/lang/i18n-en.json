@@ -507,5 +507,6 @@
         { "cmd": "/0", "text": "/0  or  /wipe — Erase data and close tab" }
     ],
     "wipeConfirmationPrompt": "Enter confirmation code {code} to wipe all data:",
-    "wipeWrongCode": "Incorrect confirmation code. Operation cancelled."
+    "wipeWrongCode": "Incorrect confirmation code. Operation cancelled.",
+    "linkMarkersRemovedToast": "Links that could not be restored and were removed on save: {count}. The original is in the file’s Drive history."
 }
