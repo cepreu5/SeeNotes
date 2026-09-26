@@ -12267,8 +12267,7 @@ const appSettingsKeys = [
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'lastSearchTerm', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
     'gdrive_folder_names', 'deviceName',
-    'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition',
-    'extendedMode'
+    'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
 ];
 async function findGDFileByName(folderId, fileName) {
     if (isOffline || !folderId) return null;
