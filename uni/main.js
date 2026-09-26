@@ -18019,7 +18019,14 @@ function initNoteEditUI() {
     const contentModal = document.getElementById('content-modal');
     const modalBodyEl = document.getElementById('modal-body');
     const modalContentBox = contentModal?.querySelector('.modal-content-box');
-    const footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
+    let footerToolbar = modalContentBox?.querySelector('.modal-footer-toolbar');
+    if (!footerToolbar && modalContentBox) {
+        // No toolbar from showModal() (no write rights): create it, so the buttons stay one row on the right.
+        footerToolbar = document.createElement('div');
+        footerToolbar.className = 'modal-footer-toolbar';
+        footerToolbar.dataset.editOnly = 'true';
+        modalContentBox.appendChild(footerToolbar);
+    }
     // Add attach button if not exists
     if (!document.getElementById('note-attach-btn')) {
         const attachBtn = document.createElement('div');
@@ -18063,12 +18070,6 @@ function initNoteEditUI() {
             footerToolbar.appendChild(previewBtn);
             if (existingSearchBtn) footerToolbar.appendChild(existingSearchBtn);
             footerToolbar.appendChild(saveBtn);
-        } else if (modalContentBox) {
-            const existingSearchBtn = document.getElementById('note-search-btn');
-            modalContentBox.appendChild(attachBtn);
-            modalContentBox.appendChild(previewBtn);
-            if (existingSearchBtn) modalContentBox.appendChild(existingSearchBtn);
-            modalContentBox.appendChild(saveBtn);
         }
     } else {
         // If buttons already exist, re-append them to ensure order: Attach, Preview, Search, Save
@@ -19327,7 +19328,11 @@ function disableNoteEditing(modalBodyElem) {
         }
     }
     const footerToolbar = modalBox?.querySelector('.modal-footer-toolbar');
-    if (footerToolbar) {
+    if (footerToolbar?.dataset.editOnly && ![...footerToolbar.children].some((child) => !child.hidden && getComputedStyle(child).display !== 'none')) {
+        // The toolbar created only for editing holds nothing visible now: drop it, keep the hidden buttons for the next edit.
+        footerToolbar._footerDateResizeObserver?.disconnect();
+        footerToolbar.replaceWith(...footerToolbar.children);
+    } else if (footerToolbar) {
         updateModalFooterDateVisibility(footerToolbar);
         footerToolbar._footerDateScheduleUpdate?.();
     }
