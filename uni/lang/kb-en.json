@@ -745,7 +745,19 @@
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.60<br><br><span align='left'>- ▦ button in the edit toolbar: aligns all tables in the note.</span>"
+                    "text": "Here is a note with one table, written by hand in Markdown - its columns are not aligned yet."
+                },
+                "2": {
+                    "text": "We open the note for editing to see how the table looks in the text itself."
+                },
+                "3": {
+                    "text": "The ▦ button aligns the table. Here it is before the click - the separator row is short and the columns do not line up."
+                },
+                "4": {
+                    "text": "After the click the columns and the separator row are aligned."
+                },
+                "5": {
+                    "text": "A second press returns the compact view. <b>Ctrl/⌘+click</b> or hold aligns every table in the note."
                 }
             }
         },
