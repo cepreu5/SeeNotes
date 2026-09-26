@@ -16953,6 +16953,201 @@ function restoreModalHeaderListButtons() {
     });
 }
 
+// --- Markdown table alignment (edit toolbar ▦) ---
+// Finds the tables the preview parser would draw and describes each row by its cells,
+// using the same masking as parseAllMarkdownTables for {{...}}, ```...``` and `...`.
+function collectAlignableMarkdownTables(text) {
+    if (!text || !text.includes('|')) return [];
+    let masked = text.replace(/\{\{([\s\S]*?)\}\}/g, m => m.replace(/[^\r\n]/g, ' '));
+    masked = masked.replace(/```([\s\S]*?)```/g, m => m.replace(/[^\r\n]/g, ' '));
+    masked = masked.replace(/`([^`\r\n]+)`/g, m => ' '.repeat(m.length));
+    const lines = [];
+    let offset = 0;
+    text.split('\n').forEach((raw) => {
+        const content = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+        const maskedLine = masked.substr(offset, content.length);
+        lines.push({ raw: content, masked: maskedLine, offset, hasPipe: maskedLine.includes('|') });
+        offset += raw.length + 1;
+    });
+    const isSeparator = (maskedLine) => {
+        const cells = maskedLine.split('|').map(cell => cell.trim()).filter(Boolean);
+        return cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell));
+    };
+    const parseRow = (line) => {
+        const count = (s) => s.split('|').length - 1;
+        const trimmed = line.raw.trim();
+        // Pipes hidden by the masking (inside {{...}} or backticks), escaped pipes and rows
+        // without outer pipes are left exactly as written.
+        if (count(line.raw) !== count(line.masked) || line.raw.includes('\\|')
+            || trimmed.length < 2 || !trimmed.startsWith('|') || !trimmed.endsWith('|')) {
+            return null;
+        }
+        const first = line.raw.indexOf('|');
+        const last = line.raw.lastIndexOf('|');
+        const cells = [];
+        let start = first + 1;
+        for (let i = start; i <= last; i++) {
+            if (line.raw[i] !== '|') continue;
+            const segment = line.raw.slice(start, i);
+            const lead = segment.length - segment.replace(/^\s+/, '').length;
+            const value = segment.trim();
+            cells.push({
+                start: line.offset + start,
+                end: line.offset + i,
+                valueStart: line.offset + start + lead,
+                valueEnd: line.offset + start + lead + value.length,
+                value
+            });
+            start = i + 1;
+        }
+        return cells;
+    };
+    const tables = [];
+    let i = 0;
+    while (i < lines.length) {
+        if (!lines[i].hasPipe) { i++; continue; }
+        let runEnd = i;
+        while (runEnd + 1 < lines.length && lines[runEnd + 1].hasPipe) runEnd++;
+        let sep = -1;
+        for (let j = i + 1; j <= runEnd; j++) {
+            if (isSeparator(lines[j].masked)) { sep = j; break; }
+        }
+        if (sep !== -1) {
+            const header = parseRow(lines[sep - 1]);
+            const separator = parseRow(lines[sep]);
+            if (header && separator) {
+                const rows = [{ cells: header, isSeparator: false }, { cells: separator, isSeparator: true }];
+                for (let j = sep + 1; j <= runEnd; j++) {
+                    const cells = parseRow(lines[j]);
+                    if (cells) rows.push({ cells, isSeparator: false });
+                }
+                tables.push({ rows });
+            }
+        }
+        i = runEnd + 1;
+    }
+    return tables;
+}
+
+// Returns the whitespace/dash replacements that bring one table to 'aligned' or 'compact' form.
+// Cell text is never part of a replacement, so a cell edited between two presses survives.
+function getMarkdownTableEdits(text, table, mode) {
+    const len = (s) => Array.from(s).length;
+    const separator = table.rows.find(row => row.isSeparator);
+    const aligns = separator.cells.map(cell => ({
+        left: cell.value.startsWith(':'),
+        right: cell.value.length > 1 && cell.value.endsWith(':')
+    }));
+    const alignOf = (c) => aligns[c] || { left: false, right: false };
+    const widths = [];
+    table.rows.forEach(row => row.cells.forEach((cell, c) => {
+        const a = alignOf(c);
+        const w = row.isSeparator ? 1 + (a.left ? 1 : 0) + (a.right ? 1 : 0) : len(cell.value);
+        widths[c] = Math.max(widths[c] || 0, w);
+    }));
+    const edits = [];
+    const replace = (start, end, replacement) => {
+        if (text.slice(start, end) !== replacement) edits.push({ start, end, text: replacement });
+    };
+    table.rows.forEach(row => row.cells.forEach((cell, c) => {
+        const a = alignOf(c);
+        if (row.isSeparator) {
+            const colons = (a.left ? 1 : 0) + (a.right ? 1 : 0);
+            const dashes = mode === 'aligned' ? widths[c] - colons : 1;
+            replace(cell.start, cell.end, ' ' + (a.left ? ':' : '') + '-'.repeat(dashes) + (a.right ? ':' : '') + ' ');
+            return;
+        }
+        // The borderless-table marker is written tight, as |%%|, in the compact form.
+        const isBorderlessMarker = row === table.rows[0] && c === 0 && cell.value === '%%';
+        let lead = isBorderlessMarker ? '' : ' ';
+        let trail = cell.value && !isBorderlessMarker ? ' ' : '';
+        if (mode === 'aligned') {
+            const gap = widths[c] - len(cell.value);
+            let before = 0;
+            if (a.left && a.right) before = Math.floor(gap / 2);
+            else if (a.right) before = gap;
+            lead = ' '.repeat(before + 1);
+            trail = ' '.repeat(gap - before + 1);
+        }
+        if (!cell.value) {
+            replace(cell.start, cell.end, lead + trail);
+            return;
+        }
+        replace(cell.start, cell.valueStart, lead);
+        replace(cell.valueEnd, cell.end, trail);
+    }));
+    return edits;
+}
+
+// Aligns every table in the note, or returns them all to the compact form when every table
+// is already aligned. 'Already aligned' is read from the text itself, not from a saved copy.
+function toggleMarkdownTablesAlignment(text) {
+    const tables = collectAlignableMarkdownTables(text);
+    if (!tables.length) return { text, edits: [], tableCount: 0, aligned: false };
+    const allAligned = tables.every(table => getMarkdownTableEdits(text, table, 'aligned').length === 0);
+    const mode = allAligned ? 'compact' : 'aligned';
+    const edits = tables.flatMap(table => getMarkdownTableEdits(text, table, mode)).sort((a, b) => b.start - a.start);
+    let result = text;
+    edits.forEach(edit => { result = result.slice(0, edit.start) + edit.text + result.slice(edit.end); });
+    return { text: result, edits, tableCount: tables.length, aligned: !allAligned };
+}
+
+function areAllMarkdownTablesAligned(text) {
+    const tables = collectAlignableMarkdownTables(text);
+    return tables.length > 0 && tables.every(table => getMarkdownTableEdits(text, table, 'aligned').length === 0);
+}
+
+// Maps an offset through edits sorted from last to first (as returned above).
+function mapOffsetThroughEdits(pos, edits) {
+    edits.forEach(edit => {
+        if (pos <= edit.start) return;
+        if (pos >= edit.end) pos += edit.text.length - (edit.end - edit.start);
+        else pos = edit.start + Math.min(pos - edit.start, edit.text.length);
+    });
+    return pos;
+}
+// --- end markdown table alignment ---
+
+function updateTableAlignButtonState() {
+    const button = document.querySelector('#content-modal .modal-edit-toolbar-btn.is-table');
+    const textarea = document.getElementById('note-edit-textarea');
+    if (!button) return;
+    const active = !!textarea && areAllMarkdownTablesAligned(textarea.value);
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+}
+
+function applyMarkdownTableAlignment() {
+    const textarea = document.getElementById('note-edit-textarea');
+    if (!textarea) return;
+    const result = toggleMarkdownTablesAlignment(textarea.value);
+    if (!result.edits.length) {
+        updateTableAlignButtonState();
+        return;
+    }
+    const map = (pos) => mapOffsetThroughEdits(pos, result.edits);
+    // Shift the stored format ranges ourselves: handleEditInput only knows single edits at the caret.
+    const modalBodyElem = document.getElementById('modal-body');
+    const fmtStr = modalBodyElem?.dataset.format;
+    if (fmtStr && fmtStr.trim() !== '') {
+        const formats = fmtStr.split('|').map(p => {
+            try { return JSON.parse(p); } catch (e) { return null; }
+        }).filter(f => f && f.start !== undefined);
+        formats.forEach(f => { f.start = map(f.start); f.end = map(f.end); });
+        modalBodyElem.dataset.format = formats.map(f => JSON.stringify(f)).join('|');
+    }
+    const selectionStart = map(textarea.selectionStart);
+    const selectionEnd = map(textarea.selectionEnd);
+    const scrollTop = textarea.scrollTop;
+    textarea.value = result.text;
+    textarea.dataset.lastVal = result.text;
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(selectionStart, selectionEnd);
+    textarea.scrollTop = scrollTop;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    updateTableAlignButtonState();
+}
+
 function createModalEditToolbar(modalContentBox) {
     if (!modalContentBox) return;
     restoreModalHeaderListButtons();
@@ -17045,7 +17240,15 @@ function createModalEditToolbar(modalContentBox) {
         action: (e) => moveCaretToLineEdge(getActiveModalEditor(), true, !!(e && e.ctrlKey)),
         onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, true)
     });
+    addButton({
+        label: '▦',
+        title: 'Подравняване на таблица',
+        className: 'is-table',
+        action: applyMarkdownTableAlignment
+    });
     headerToolbar.appendChild(toolbar);
+    document.getElementById('note-edit-textarea')?.addEventListener('input', updateTableAlignButtonState);
+    updateTableAlignButtonState();
     modalContentBox.classList.add('has-edit-toolbar');
 }
 

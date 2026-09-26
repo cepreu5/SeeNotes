@@ -3552,6 +3552,23 @@ body.selection-locked .note.active-selection-note .note-content {
     font-size: 21px;
 }
 
+.modal-edit-toolbar-btn.is-table {
+    font-size: 18px;
+}
+
+.modal-edit-toolbar-btn.is-table.is-active {
+    background: #4a90e2;
+    border-color: #4a90e2;
+    color: #fff;
+}
+
+/* Keep ▦ on the same row as the other formatting buttons on phones. */
+@media (max-width: 420px) {
+    .modal-edit-toolbar {
+        gap: 4px;
+    }
+}
+
 .modal-content-box.has-edit-toolbar {
     padding-top: 100px;
 }
