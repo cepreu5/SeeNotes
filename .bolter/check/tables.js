@@ -61,9 +61,9 @@ ok(crlfA === mock.replace(/\n/g, '\r\n'), 'CRLF: aligned, \\r kept at line ends'
 ok(run(crlfA, 0, false) === dense.replace(/\n/g, '\r\n'), 'CRLF: second press dense');
 const bl = '%%|Key|Val\n-|-|-\n|a|1|\nbb|22';
 const blA = run(bl, 0, false);
-ok(blA === '| %% | Key | Val |\n| -- | --- | --- |\n| a  | 1   |     |\n| bb | 22  |     |'.replace('|     |\n| bb | 22  |     |', '|\n| bb | 22  |'), 'borderless %% without outer |');
+ok(blA === '| %% | Key | Val |\n| -- | --- | --- |\n| a  | 1   |     |\n| bb | 22  |     |', 'borderless %% without outer |');
 if (!blA.startsWith('| %% |')) console.log(blA);
-ok(run(blA, 0, false) === '|%%| Key | Val |\n| - | - | - |\n| a | 1 |\n| bb | 22 |', 'borderless: second press compact, marker tight');
+ok(run(blA, 0, false) === '|%%| Key | Val |\n| - | - | - |\n| a | 1 | |\n| bb | 22 | |', 'borderless: second press compact, marker tight');
 const multi = 'intro\n' + t1 + '\nмежду\n' + bl + '\nи\n' + cs + '\nend';
 const multiA = run(multi, 0, true);
 ok(multiA === 'intro\n' + aligned1 + '\nмежду\n' + blA + '\nи\n' + mock + '\nend', 'hold (all=true): three tables incl. borderless and open rows');
@@ -130,7 +130,7 @@ for (const t of ['no tables here', fence, braces, esc, '']) {
     .replace('| Text 2 |', '| Text  две |') + '\n| нов | ред |';
   const edited = o.text.slice(0, r.start) + tbl + o.text.slice(r.end);
   const c = api.planMarkdownTableFieldsClose(edited, [{ start: r.start, end: r.start + tbl.length }]);
-  const want = before + '\n| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 и още думи |\n| note 2 | Text  две | Test |\n| нов | ред |\n' + after;
+  const want = before + '\n| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 и още думи |\n| note 2 | Text  две | Test |\n| нов | ред | |\n' + after;
   ok(c.text === want, 'edited field: 2nd press removes only padding and dashes, typed cell text word for word', c.text);
   ok(c.edits.every(e => /^[ \-|]*$/.test(e.text) && /^[ \-|]*$/.test(edited.slice(e.start, e.end))), 'edited field: every close edit only touches spaces / dashes / outer |');
   ok(!api.areAllMarkdownTablesAligned(c.text), 'edited field: no re-alignment on close (not Variant B/C)');
@@ -169,5 +169,53 @@ for (const t of ['no tables here', fence, braces, esc, '']) {
   const oo = open(o.text, 0, true);
   ok(oo.edits.length === 0 && oo.text === o.text, 'open: already aligned note -> text unchanged');
   ok(open('само текст | с черта\nред', 3, true).tableCount === 0, 'open: no table -> no field');
+}
+// --- rows shorter than the table (b1.76): missing empty cells + the closing | are added ---
+{
+  const force = (text, mode) => api.toggleMarkdownTablesAlignment(text, undefined, mode);
+  const pipes = (l) => l.split('|').length - 1;
+  const tableLines = (text) => text.split('\n').filter(l => l.includes('|'));
+  const cellText = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  const complete = (text, label) => {
+    const ls = tableLines(text), want = pipes(ls[0]);
+    ok(ls.every(l => pipes(l) === want && l.endsWith('|') && l.startsWith('|')), label, ls.filter(l => pipes(l) !== want || !l.endsWith('|')));
+  };
+  const fx = fs.readFileSync(__dirname + '/fixture-table-short-rows.txt', 'utf8');
+  ok(fx.length === 873 && fx.split('\n').length === 14, 'fixture: 873 bytes, 14 lines');
+  const fa = force(fx, 'aligned');
+  ok(fa.edits.length === 6, 'fixture aligned: cxpucmob trim + 5 short rows completed', fa.edits.length);
+  complete(fa.text, 'fixture aligned: every row has the header pipe count, ends with |, no trailing space');
+  const fxLines = fx.split('\n'), faLines = fa.text.split('\n');
+  ok(fxLines.every((l, i) => !l.includes('|') || pipes(l) !== 5 || JSON.stringify(cellText(l)) === JSON.stringify(cellText(faLines[i]))), 'fixture aligned: 4-cell rows keep their cell text');
+  ok(fxLines.every((l, i) => { if (!l.includes('|')) return true; const a = cellText(l).filter((c, k, arr) => k < arr.length - 1 || c), b = cellText(faLines[i]); return JSON.stringify(b.slice(0, a.length)) === JSON.stringify(a) && b.slice(a.length).every(c => c === ''); }), 'fixture aligned: short rows keep their cell text, new cells empty');
+  ok(faLines[5] === '| multinotes   |                       |        |                       |' && faLines[12] === '| cx.notes.web | 9/27/2026, 1:58:14 PM |        |                       |', 'fixture aligned: completed row written like an empty cell of the column');
+  const fc = force(fx, 'compact');
+  complete(fc.text, 'fixture compact: every row complete, ends with |');
+  ok(fc.text.split('\n')[5] === '| multinotes | | | |' && fc.text.split('\n')[12] === '| cx.notes.web | 9/27/2026, 1:58:14 PM | | |', 'fixture compact: missing cells written " |"');
+  ok(fxLines.every((l, i) => !l.includes('|') || i === 2 || pipes(l) !== 5 || JSON.stringify(cellText(l)) === JSON.stringify(cellText(fc.text.split('\n')[i]))), 'fixture compact: 4-cell rows keep their cell text');
+  ok(force(fa.text, 'aligned').edits.length === 0 && force(fc.text, 'compact').edits.length === 0, 'fixture: both forms idempotent');
+  ok(force(fa.text, 'compact').text === fc.text && force(fc.text, 'aligned').text === fa.text, 'fixture: aligned <-> compact round trip');
+  ok(run(fx, 0, true) === fa.text && run(fa.text, 0, true) === fc.text, 'fixture: ▦ toggle aligns (short rows count as unaligned), then compacts');
+  ok([...fa.edits, ...fc.edits].every(e => /^[ \-|]*$/.test(e.text) && /^[ \-|]*$/.test(fx.slice(e.start, e.end))), 'fixture: edits only touch spaces / dashes / |');
+  // minimal 3-column table
+  const m = '| A | B | C |\n| - | - | - |\n| 1 |';
+  ok(force(m, 'aligned').text === '| A | B | C |\n| - | - | - |\n| 1 |   |   |', 'short row, aligned', force(m, 'aligned').text);
+  ok(force(m, 'compact').text === '| A | B | C |\n| - | - | - |\n| 1 | | |', 'short row, compact', force(m, 'compact').text);
+  const mw = '| Alpha | B | C |\n| - | - | - |\n| 1 | 2 |';
+  ok(force(mw, 'aligned').text === '| Alpha | B | C |\n| ----- | - | - |\n| 1     | 2 |   |', 'short row, aligned, widths from the column');
+  const ms = '| A | B | C |\n| - | - | - |\n| 1 | 2 |   \t ';
+  ok(force(ms, 'aligned').text === '| A | B | C |\n| - | - | - |\n| 1 | 2 |   |' && force(ms, 'compact').text === '| A | B | C |\n| - | - | - |\n| 1 | 2 | |', 'short row whose last | has trailing whitespace');
+  const mo = '| A | B | C |\n| - | - | - |\n1 | 2  ';
+  ok(force(mo, 'aligned').text === '| A | B | C |\n| - | - | - |\n| 1 | 2 |   |' && force(mo, 'compact').text === '| A | B | C |\n| - | - | - |\n| 1 | 2 | |', 'short open row (no outer |, trailing spaces)', force(mo, 'aligned').text);
+  const msep = '| A | B | C |\n| - |\n| 1 | 2 | 3 |';
+  ok(force(msep, 'compact').text === '| A | B | C |\n| - | - | - |\n| 1 | 2 | 3 |', 'short separator row completed with dashes');
+  const mk = '| A | B | C |\n| - | - | - |\n| `a|b` |\n| {{x|y}} |\n| a \\| b |';
+  ok(force(mk, 'aligned').text === mk.replace('| - | - | - |', '| - | - | - |') && force(mk, 'compact').text === mk, 'short rows with masked / escaped | skipped whole', force(mk, 'aligned').text);
+  const lg = '| A | B |\n| - | - |\n| 1 | 2 | 3 |';
+  const lga = force(lg, 'aligned').text, lgc = force(lg, 'compact').text;
+  ok(lga.split('\n')[2] === '| 1 | 2 | 3 |' && lgc.split('\n')[2] === '| 1 | 2 | 3 |', 'row longer than the header left alone', lga);
+  ok(force(lga, 'aligned').edits.length === 0 && force(lgc, 'compact').edits.length === 0, 'long row: both forms idempotent');
+  const full = '| A | B |\n| - | - |\n| 1 | 2 |   ';
+  ok(force(full, 'compact').text === full, 'complete row with trailing spaces byte-identical');
 }
 console.log(`${n - fails}/${n} passed`); process.exit(fails ? 1 : 0);

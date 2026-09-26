@@ -17325,6 +17325,7 @@ function collectAlignableMarkdownTables(text) {
         }
         cells.openLead = openLead;
         cells.openTrail = openTrail;
+        cells.lineEnd = line.offset + line.raw.length;
         return cells;
     };
     const tables = [];
@@ -17347,7 +17348,9 @@ function collectAlignableMarkdownTables(text) {
                     if (cells) rows.push({ cells, isSeparator: false });
                 }
                 const last = lines[runEnd];
-                tables.push({ rows, start: lines[sep - 1].offset, end: last.offset + last.raw.length });
+                // Column count as the preview draws it: shorter rows are padded with empty cells.
+                const columns = Math.max(...rows.map(row => row.cells.length));
+                tables.push({ rows, columns, start: lines[sep - 1].offset, end: last.offset + last.raw.length });
             }
         }
         i = runEnd + 1;
@@ -17359,6 +17362,8 @@ function collectAlignableMarkdownTables(text) {
 // Cell text is never part of a replacement, so a cell edited between two presses survives.
 // Both forms add a row's missing outer | (the compact form with compact spacing), so every row
 // of the table ends up with both pipes; neither form ever removes an outer |.
+// A row with fewer cells than the table's column count gets the missing empty cells and its
+// closing | (replacing any whitespace after its last |), so every row has the full cell count.
 function getMarkdownTableEdits(text, table, mode) {
     const len = (s) => Array.from(s).length;
     const separator = table.rows.find(row => row.isSeparator);
@@ -17373,6 +17378,23 @@ function getMarkdownTableEdits(text, table, mode) {
         const w = row.isSeparator ? 1 + (a.left ? 1 : 0) + (a.right ? 1 : 0) : len(cell.value);
         widths[c] = Math.max(widths[c] || 0, w);
     }));
+    // Missing cells of a row shorter than the table, written after its last closing |.
+    const columns = table.columns || 0;
+    for (let c = 0; c < columns; c++) widths[c] = Math.max(widths[c] || 0, 1);
+    const missingCells = (row) => {
+        let missing = '';
+        for (let c = row.cells.length; c < columns; c++) {
+            if (row.isSeparator) {
+                const a = alignOf(c);
+                const colons = (a.left ? 1 : 0) + (a.right ? 1 : 0);
+                const dashes = mode === 'aligned' ? widths[c] - colons : 1;
+                missing += ' ' + (a.left ? ':' : '') + '-'.repeat(dashes) + (a.right ? ':' : '') + ' |';
+            } else {
+                missing += ' ' + (mode === 'aligned' ? ' '.repeat(widths[c] + 1) : '') + '|';
+            }
+        }
+        return missing;
+    };
     const edits = [];
     const replace = (start, end, replacement) => {
         if (text.slice(start, end) !== replacement) edits.push({ start, end, text: replacement });
@@ -17384,11 +17406,13 @@ function getMarkdownTableEdits(text, table, mode) {
         const openStart = c === 0 && row.cells.openLead;
         const openEnd = c === row.cells.length - 1 && row.cells.openTrail;
         const edge = (space, pipe, open) => (open ? pipe : space);
+        const short = c === row.cells.length - 1 && row.cells.length < columns;
         if (row.isSeparator) {
             const colons = (a.left ? 1 : 0) + (a.right ? 1 : 0);
             const dashes = mode === 'aligned' ? widths[c] - colons : 1;
-            replace(cell.start, cell.end, edge(' ', '| ', openStart) + (a.left ? ':' : '') + '-'.repeat(dashes)
-                + (a.right ? ':' : '') + edge(' ', ' |', openEnd));
+            replace(cell.start, openEnd && short ? row.cells.lineEnd : cell.end, edge(' ', '| ', openStart)
+                + (a.left ? ':' : '') + '-'.repeat(dashes) + (a.right ? ':' : '') + edge(' ', ' |', openEnd)
+                + (openEnd && short ? missingCells(row) : ''));
             return;
         }
         // The borderless-table marker is written tight, as |%%|, in the compact form.
@@ -17405,14 +17429,22 @@ function getMarkdownTableEdits(text, table, mode) {
         }
         // Open edge: the missing | goes in front of / after the spacing of either form.
         if (openStart) lead = '|' + lead;
-        if (openEnd) trail = trail + '|';
+        // A short open row: the closing |, the missing cells and no trailing whitespace, in one edit.
+        const end = openEnd && short ? row.cells.lineEnd : cell.end;
+        if (openEnd) trail = trail + '|' + (short ? missingCells(row) : '');
         if (!cell.value) {
-            replace(cell.start, cell.end, lead + trail);
+            replace(cell.start, end, lead + trail);
             return;
         }
         replace(cell.start, cell.valueStart, lead);
-        replace(cell.valueEnd, cell.end, trail);
+        replace(cell.valueEnd, end, trail);
     }));
+    // A short row that already ends with |: the missing cells replace whatever follows that |.
+    table.rows.forEach(row => {
+        const count = row.cells.length;
+        if (!count || count >= columns || row.cells.openTrail) return;
+        replace(row.cells[count - 1].end + 1, row.cells.lineEnd, missingCells(row));
+    });
     return edits;
 }
 

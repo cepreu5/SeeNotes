@@ -1,0 +1,14 @@
+Gemini, Claude, Codex
+| acc          | Gemini                | Claude | Codex                 |
+| ------------ | --------------------- | ------ | --------------------- |
+| serbox       | 9/27/2026, 2:20:02 PM |        | Sep 26, 2026, 8:23 PM |
+| cxpucmob     | 9/27/2026, 2:32:56 PM |        | Sep 30, 2026, 1:24 AM       |
+| multinotes   |                       |        | 
+| bidshaker    |                       |        | 
+| cx.sites     | 10/2/2026, 5:36:16 PM |        | 
+| moiatdisk    | %                     |        | 
+| ceca.mechka  |                       |        | Sep 30, 2:21 AM       |
+| cx.netwrk    |                       |        | Sep 26, 11:06 PM      |
+| homescandela |                       |        | Oct 3, 1:32 AM        |
+| cx.notes.web | 9/27/2026, 1:58:14 PM |        |
+| budjet13     | ---                   |        | Sep 21, 2026, 2:28 AM |

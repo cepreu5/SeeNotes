@@ -32,7 +32,7 @@ const AFTER = 'Текст след таблицата';
 const NOTE = BEFORE + '\n' + CS + '\n' + AFTER;
 // Typed in the field: ' ново' after 'note 1' (alignment broken), a new row after the last one.
 const TYPED_TABLE = '| Col1 header | Col 2  | Col 3  |\n| ----------- | ------ | ------ |\n| Text 1      | Test   | note 1 ново |\n| note 2      | Text 2 | Test   |\n| нов ред | x |';
-const CLOSED = BEFORE + '\n| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 ново |\n| note 2 | Text 2 | Test |\n| нов ред | x |\n' + AFTER;
+const CLOSED = BEFORE + '\n| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 ново |\n| note 2 | Text 2 | Test |\n| нов ред | x | |\n' + AFTER;
 
 const btn = page.locator('#content-modal .modal-edit-toolbar-btn.is-table');
 const openNote = (raw, caretAt) => page.evaluate(([raw, caretAt]) => {
@@ -129,8 +129,8 @@ for (const [w, h] of [[390, 800], [1280, 800]]) {
   s = await state();
   const rows = s.main.split('\n');
   const typed = rows.find(l => l.includes('нов ред'));
-  ok(!s.split && typed === '| нов ред | x |' && typed.endsWith('|'), `${w}: ▦ -> the typed row now ends with |`, typed);
-  ok(s.main === BEFORE + '\n| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 |\n| note 2 | Text 2 | Test |\n| нов ред | x |\n' + AFTER, `${w}: whole note after ▦ = dense table, every row with both pipes`, s.main);
+  ok(!s.split && typed === '| нов ред | x | |' && typed.endsWith('|'), `${w}: ▦ -> the typed short row is completed and ends with |`, typed);
+  ok(s.main === BEFORE + '\n| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 |\n| note 2 | Text 2 | Test |\n| нов ред | x | |\n' + AFTER, `${w}: whole note after ▦ = dense table, every row with both pipes`, s.main);
   await page.evaluate(() => { disableNoteEditing(document.getElementById('modal-body')); document.getElementById('content-modal').classList.remove('visible'); });
 }
 

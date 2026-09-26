@@ -32,6 +32,13 @@ const BEFORE_E = 'Днес минахме през трите неща: {#L0#}';
 const NOTE = 'Работна среща - бележки|' + BEFORE + '\n' + TABLE + '\n' + AFTER;
 const T2 = '| A | B |\n|-|-|\n| долъг текст | 1 |';
 const T2A = '| A           | B |\n| ----------- | - |\n| долъг текст | 1 |';
+// b1.76: the live note 1000346 whose table has rows one column short (ending '| ' early).
+const FIXTURE = (await readFile('.bolter/check/fixture-table-short-rows.txt', 'utf8')).split('\n');
+const SHORT_NOTE = FIXTURE.join('\n'); // as stored: a plain first line, then the table
+const SHORT_TABLE = FIXTURE.slice(1).join('\n');
+const pipes = l => l.split('|').length - 1;
+const completeRows = t => { const ls = t.split('\n'); return ls.length === 13 && ls.every(l => pipes(l) === 5 && l.startsWith('|') && l.endsWith('|')); };
+const cells = t => t.split('\n').map(l => l.slice(1, -1).split('|').map(c => c.trim()).filter(Boolean)).filter((r, i) => i !== 1);
 const btn = page.locator('#content-modal .modal-edit-toolbar-btn.is-table');
 let seq = 0;
 // Opens the note as the user does: the note modal is shown, and once it is on screen (a hidden modal
@@ -154,6 +161,21 @@ for (const width of [390, 1280]) {
   await openNote(SRCH, SRCH.indexOf('Долу') + 2);
   s = await state();
   ok(s.split && s.focus === 'text' && s.focusIdx === 1 && s.caret === 2, W + 'search hit below the table: caret there in the text', s);
+  await closeModal();
+
+  // rows shorter than the table (fixture note): completed with empty cells + closing |, both forms
+  await openNote(SHORT_NOTE);
+  s = await state();
+  ok(s.split && s.fields.length === 1 && completeRows(s.fields[0].text), W + 'short rows: field shows every row completed, equal | count, ends with |', s.fields[0]?.text);
+  ok(s.fields[0] && new Set(s.fields[0].text.split('\n').map(l => l.length)).size === 1, W + 'short rows: field rows all the same width (aligned)');
+  ok(s.fields[0] && JSON.stringify(cells(s.fields[0].text)) === JSON.stringify(cells(SHORT_TABLE.replace(/ +$/gm, ''))), W + 'short rows: cell text word for word');
+  ok(s.main.endsWith(s.fields[0]?.text), W + 'short rows: the note text holds the completed table');
+  await shot(`.bolter/check/shortrows-${width}-opened.png`);
+  await btn.click();
+  s = await state();
+  const compact = s.main.split('\n').filter(l => l.includes('|')).join('\n');
+  ok(!s.split && completeRows(compact) && compact.split('\n')[4] === '| multinotes | | | |', W + 'short rows, ▦: compact text, every row completed', compact);
+  await shot(`.bolter/check/shortrows-${width}-pressed.png`);
   await closeModal();
 
   // already open fields are not opened twice
