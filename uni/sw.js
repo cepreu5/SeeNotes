@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.64';
+const CACHE_NAME = 'cx-notes-b1.65';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -41,12 +41,7 @@ const ASSETS_TO_CACHE = [
   './wb1_1.png',
   './wg1_1.png',
   './wr1_1.png',
-  './lang/kb-core.json',
-  './lang/kb-bg.json',
-  './lang/kb-en.json',
   './msmstyle.css',
-  './kb-assistant.css',
-  './kb-assistant.js',
   './msmrt.js',
   './msm/msm-assist.png',
   './user-icon.png',
@@ -89,6 +84,16 @@ const ASSETS_TO_CACHE = [
   './msm-ex/1764554407319.jpg',
   './msm-ex/1764554540104.jpg',
 ];
+// Асистентът се зарежда при първо отваряне (ensureKBAssistant в main.js), затова
+// файловете му не са в предкеша, а влизат в кеша при първото ползване.
+const LAZY_ASSETS = [
+  './kb-assistant.js',
+  './kb-assistant.css',
+  './lang/kb-core.json',
+  './lang/kb-bg.json',
+  './lang/kb-en.json',
+];
+const LAZY_ASSET_URLS = LAZY_ASSETS.map(url => new URL(url, self.location.href).href);
 
 function swLog(...args) {
   try {
@@ -143,6 +148,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  // Изпраща се след първото успешно зареждане на асистента: допълва липсващите
+  // му файлове (напр. другия езиков KB файл), за да работи и офлайн.
+  if (event.data && event.data.type === 'CACHE_KB_ASSETS') {
+    event.waitUntil(caches.open(CACHE_NAME).then((cache) => {
+      return Promise.allSettled(
+        LAZY_ASSETS.map(url => cache.match(url).then(hit => hit || cache.add(url)))
+      );
+    }));
   }
 });
 
@@ -260,6 +274,10 @@ self.addEventListener('fetch', (event) => {
 
       // 2. If not in cache, try network
       return fetch(event.request).then((networkResponse) => {
+        if (networkResponse.ok && LAZY_ASSET_URLS.includes(event.request.url)) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        }
         return networkResponse;
       }).catch(() => {
         // 3. Fallback logic for offline/network failure

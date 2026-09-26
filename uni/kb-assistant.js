@@ -357,6 +357,9 @@ class KBAssistant {
         this.matcher = null;
         this.currentLang = this.getCurrentLanguage();
         this.isInitialized = false;
+        // "Какво ново" се проверява при първото отваряне на панела от потребителя
+        // (KBUI.open), а не при зареждане: водач, заредил асистента сам, не я показва.
+        this.versionNewsChecked = false;
 
         // Текстове на асистента (ще се заредят от JSON)
         this.texts = {
@@ -446,9 +449,6 @@ class KBAssistant {
                     this.matcher.currentLang = this.currentLang;
                 }
                 this.updateLanguage();
-                setTimeout(() => {
-                    this.checkVersionUpdates();
-                }, 1000);
                 console.log('✅ KB Assistant initialized successfully with split data files.');
                 console.log('Current language:', this.getCurrentLanguage());
                 if (!window.kbUI) {
@@ -490,7 +490,7 @@ class KBAssistant {
                 const latest = versionScenarios[0];
                 // Show the latest available record if we have no lastSeenVersion (fresh/forced)
                 console.log(`[KB Assistant] Fresh install/Force. Showing news for: ${latest.id} (Current App: ${currentVersion})`);
-                this.showGuide({ ...latest.guide, id: latest.id });
+                (this.ui || this).showGuide({ ...latest.guide, id: latest.id });
             }
             return;
         }
@@ -503,7 +503,7 @@ class KBAssistant {
 
         if (currentVersionScenario) {
             console.log(`[KB Assistant] Showing news for: ${currentVersionScenario.id}`);
-            this.showGuide({ ...currentVersionScenario.guide, id: currentVersionScenario.id });
+            (this.ui || this).showGuide({ ...currentVersionScenario.guide, id: currentVersionScenario.id });
         }
 
         // Update stored version
@@ -1287,7 +1287,7 @@ class KBAssistant {
 }
 
 // Глобална инстанция (без автоматична инициализация)
-// init() трябва да се извика ръчно след успешно логване от startApp() в main.js
+// Скриптът се зарежда при първа нужда; init() се вика от ensureKBAssistant() в main.js
 window.kbAssistant = new KBAssistant();
 
 /**
@@ -1320,6 +1320,9 @@ class KBUI {
      */
     createFAB() {
         if (window.isAppErrorState) return;
+        // Бутонът е статичен в index.html, за да съществува преди скрипта
+        this.fabButton = document.getElementById('kb-fab');
+        if (this.fabButton) return;
         this.fabButton = document.createElement('button');
         this.fabButton.id = 'kb-fab';
         this.fabButton.className = 'kb-fab';
@@ -1723,6 +1726,14 @@ class KBUI {
                 console.warn("kbAssistant not ready when opening UI");
             }
         }
+
+        // Новината за версията - при първото отваряне от потребителя в тази сесия
+        if (window.kbAssistant && window.kbAssistant.isInitialized && !window.kbAssistant.versionNewsChecked) {
+            window.kbAssistant.versionNewsChecked = true;
+            setTimeout(() => {
+                window.kbAssistant.checkVersionUpdates();
+            }, 1000);
+        }
     }
 
     /**
@@ -2123,5 +2134,5 @@ class KBUI {
 }
 
 // Глобална инстанция (без автоматична инициализация)
-// KBUI ще се създаде от KBAssistant.init() след успешно логване
+// KBUI ще се създаде от KBAssistant.init() при първото зареждане на асистента
 window.kbUI = null;

@@ -3306,6 +3306,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (rememberMeCheckbox) {
         rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
     }
+    const kbFabButton = document.getElementById('kb-fab');
+    if (kbFabButton) {
+        kbFabButton.addEventListener('click', onKBFabClick);
+    }
     if (localStorage.getItem('hideAssistant') === 'true') {
         const fabButton = document.getElementById('kb-fab');
         if (fabButton) {
@@ -5009,11 +5013,12 @@ async function startApp(isExplicitLogin = false) {
         }).catch(() => null);
     }
 
-    // --- NEW: Graceful fallback for KB Assistant ---
-    // If the assistant script failed to load or has errors, create a dummy object
-    // to prevent runtime errors in the main application.
+    // --- Graceful fallback for KB Assistant ---
+    // kb-assistant.js се зарежда едва при първо отваряне (ensureKBAssistant), така че
+    // до тогава - или ако зареждането се провали - тук стои този заместител.
+    // Той има само init/showGuide/terminateGuide/updateLanguage/isInitialized.
     if (typeof window.kbAssistant === 'undefined') {
-        console.warn("Knowledge Base Assistant not found. Creating a dummy object to ensure application stability.");
+        console.log("Knowledge Base Assistant is loaded on first use. Using a placeholder object until then.");
         window.kbAssistant = {
             init: () => Promise.resolve(false), // init is async, return false on failure
             showGuide: () => { console.warn("KB Assistant not loaded."); },
@@ -5103,8 +5108,6 @@ async function startApp(isExplicitLogin = false) {
         // Проверката за потребител и основната логика се извикват директно.
         // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
         // само ако е необходимо.
-        // --- Инициализация на KB Assistant след успешно логване ---
-        window.kbAssistant.init();
         // Инициализация на draggable бутони
         const initDraggableButtons = () => {
             // ScrollTop Button
@@ -5768,8 +5771,8 @@ function initApp() {
         appTitle.style.cursor = 'pointer';
         appTitle.addEventListener('click', async () => {
             console.log('Title clicked');
-            // Trigger the assistant-1 guide
-            if (window.kbAssistant && window.kbAssistant.isInitialized) {
+            // Trigger the assistant-1 guide (зарежда асистента, ако още не е зареден)
+            if (await ensureKBAssistant()) {
                 console.log('KB Assistant is initialized');
                 // Search in general section where assistant-1 is located
                 const assistantGuide = window.kbAssistant.kbData?.general?.find(item => item.id === 'assistant-1')
@@ -8387,16 +8390,15 @@ async function mainLogic(forceFullSync = false) {
             if (window.showInstallButton) window.showInstallButton();
             if (!isOffline) loadSettingsFromGDrive(true);
             if (guide && localStorage.getItem('initial_setup_complete') === 'true') {
-                const startAssistantGuide = () => {
-                    if (window.kbAssistant && window.kbAssistant.isInitialized) {
+                const startAssistantGuide = async () => {
+                    // Водачът зарежда асистента сам (без "какво ново" - то е при отваряне на панела)
+                    if (await ensureKBAssistant()) {
                         const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
                         if (entry && entry.guide) {
                             window.kbAssistant.showGuide(entry.guide);
                             localStorage.setItem('guide', 'false');
                             guide = false;
                         }
-                    } else {
-                        setTimeout(startAssistantGuide, 100);
                     }
                 };
                 setTimeout(startAssistantGuide, 1500);
@@ -9583,7 +9585,8 @@ function showModal(options, noteElement = null) {
     headerBtns.forEach(btn => btn.style.display = isPromo ? 'none' : '');
 
     if (isPromo) {
-        modalBoardNameEl.textContent = (window.kbAssistant && typeof window.kbAssistant.getText === 'function') ? window.kbAssistant.getText('assistantName') : 'Assistant';
+        // Докато KB не е заредена, името идва от i18n таблицата
+        modalBoardNameEl.textContent = (window.kbAssistant && window.kbAssistant.isInitialized) ? window.kbAssistant.getText('assistantName') : (_('assistantName') || 'Assistant');
         modalBoardNameEl.style.display = 'block';
         modalBoardNameEl.style.color = 'white';
         modalBoardNameEl.style.cursor = 'default';
@@ -15945,6 +15948,104 @@ async function setLanguage(lang) {
     if (typeof updateSpecialFolderNames === 'function') {
         updateSpecialFolderNames();
     }
+}
+
+// --- KB Assistant: зареждане при първа нужда ---
+// Скриптът, стиловете и KB файловете на асистента не се теглят при старт.
+// ensureKBAssistant() ги зарежда при първото отваряне или от водач и връща
+// едно и също обещание на всички извикващи, така че нищо не се тегли два пъти.
+let kbAssistantLoadPromise = null;
+let kbOpenAfterLoad = false; // потребителят чака панела (клик на бутона)
+
+function loadKBAssistantFile(tag, attrs) {
+    return new Promise((resolve, reject) => {
+        const el = document.createElement(tag);
+        Object.assign(el, attrs);
+        el.onload = () => resolve();
+        el.onerror = () => {
+            el.remove(); // при нов опит елементът се добавя отново
+            reject(new Error(`Failed to load ${attrs.src || attrs.href}`));
+        };
+        document.head.appendChild(el);
+    });
+}
+
+function setKBLoadingPanel(visible) {
+    let panel = document.getElementById('kb-loading-panel');
+    if (!visible) {
+        if (panel) panel.remove();
+        return;
+    }
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'kb-loading-panel';
+        panel.innerHTML = '<div class="kb-loading-panel-title"></div><div class="kb-loading-panel-text"></div>';
+        document.body.appendChild(panel);
+    }
+    panel.querySelector('.kb-loading-panel-title').textContent = _('assistantName') || 'Assistant';
+    panel.querySelector('.kb-loading-panel-text').textContent = _('assistantLoading') || 'Loading...';
+}
+
+function ensureKBAssistant() {
+    if (window.kbAssistant && window.kbAssistant.isInitialized) return Promise.resolve(true);
+    if (kbAssistantLoadPromise) return kbAssistantLoadPromise;
+    if (window.isAppErrorState) return Promise.resolve(false);
+    setKBLoadingPanel(true);
+    const css = document.querySelector('link[href="kb-assistant.css"]')
+        ? Promise.resolve()
+        : loadKBAssistantFile('link', { rel: 'stylesheet', href: 'kb-assistant.css' });
+    // Класът остава дефиниран след първото зареждане - скриптът не се добавя втори път
+    const js = typeof KBAssistant !== 'undefined'
+        ? Promise.resolve()
+        : loadKBAssistantFile('script', { src: 'kb-assistant.js' });
+    kbAssistantLoadPromise = Promise.all([css, js])
+        .then(() => {
+            if (!window.kbAssistant || typeof window.kbAssistant.getText !== 'function') {
+                throw new Error('kb-assistant.js did not define the assistant');
+            }
+            return window.kbAssistant.init();
+        })
+        .then((ok) => {
+            if (!ok) throw new Error('KB Assistant initialization failed');
+            // Кешира файловете на асистента, за да работи и офлайн от следващото отваряне
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.ready
+                    .then(reg => { if (reg.active) reg.active.postMessage({ type: 'CACHE_KB_ASSETS' }); })
+                    .catch(() => { });
+            }
+            return true;
+        })
+        .catch((err) => {
+            console.warn('KB Assistant could not be loaded:', err);
+            if (kbOpenAfterLoad) showToast(_('assistantLoadFailed') || 'The assistant could not be loaded.', 5000);
+            return false;
+        })
+        .then((ok) => {
+            kbAssistantLoadPromise = null; // при неуспех следващ опит зарежда наново
+            setKBLoadingPanel(false);
+            if (ok && kbOpenAfterLoad && window.kbUI && !window.kbUI.isOpen) window.kbUI.open();
+            kbOpenAfterLoad = false;
+            return ok;
+        });
+    return kbAssistantLoadPromise;
+}
+
+function onKBFabClick(e) {
+    // След зареждането бутонът се обслужва от KBUI (toggle, Ctrl+клик)
+    if (window.kbUI) return;
+    if (e.ctrlKey) {
+        const fab = e.currentTarget;
+        fab.style.opacity = fab.style.opacity === '0.5' ? '1' : '0.5';
+        return;
+    }
+    if (kbAssistantLoadPromise) {
+        // Клик по време на зареждане: скрива/показва панела, без нова заявка
+        kbOpenAfterLoad = !kbOpenAfterLoad;
+        setKBLoadingPanel(kbOpenAfterLoad);
+        return;
+    }
+    kbOpenAfterLoad = true;
+    ensureKBAssistant();
 }
 
 // --- Service Worker Registration ---

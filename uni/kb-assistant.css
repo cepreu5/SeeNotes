@@ -43,44 +43,8 @@
     --kb-scrollbar-thumb-hover: #a0aec0;
 }
 
-/* ========================================
-   FAB Button (Floating Action Button)
-   ======================================== */
-
-.kb-fab {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--kb-primary-color) 0%, var(--kb-primary-dark) 100%);
-    color: white;
-    font-size: 28px;
-    border: none;
-    cursor: pointer;
-    box-shadow: var(--kb-shadow-md);
-    z-index: 9998;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.kb-fab:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 20px rgba(72, 183, 162, 0.6);
-}
-
-.kb-fab:active {
-    transform: scale(0.95);
-}
-
-.kb-fab-hidden {
-    opacity: 0;
-    pointer-events: none;
-    transform: scale(0);
-}
+/* Стиловете на FAB бутона (.kb-fab) са в style.css: бутонът е статичен
+   в index.html и трябва да изглежда правилно преди този файл да е зареден. */
 
 /* ========================================
    Chat Container
@@ -580,14 +544,6 @@
         height: calc(100vh - 80px);
         bottom: 16px;
         right: 16px;
-    }
-
-    .kb-fab {
-        bottom: 10px;
-        right: 10px;
-        width: 60px;
-        height: 60px;
-        font-size: 20px;
     }
 }
 

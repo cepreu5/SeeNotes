@@ -46,9 +46,78 @@ body:has(#content-modal.visible) #add-note-fab {
     display: none !important;
 }
 
+/* The Assistant button is static now; keep it off the login page as before. */
+body:has(#login-page:not([hidden])) #kb-fab {
+    display: none !important;
+}
+
 /* Keep the Assistant clear of an expanded note's bottom toolbar. */
 body.modal-note-expanded #kb-fab {
     translate: 0 -60px;
+}
+
+/* KB Assistant FAB - статичен в index.html; kb-assistant.css се зарежда при първо отваряне */
+.kb-fab {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--kb-primary-color, #f59e0b) 0%, var(--kb-primary-dark, #d97706) 100%);
+    color: white;
+    font-size: 28px;
+    border: none;
+    cursor: pointer;
+    box-shadow: var(--kb-shadow-md, 0 4px 12px rgba(72, 183, 162, 0.3));
+    z-index: 9998;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kb-fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(72, 183, 162, 0.6);
+}
+
+.kb-fab:active {
+    transform: scale(0.95);
+}
+
+.kb-fab-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0);
+}
+
+/* Панел "зареждане" при първото отваряне на асистента (ensureKBAssistant) */
+#kb-loading-panel {
+    position: fixed;
+    bottom: 80px;
+    right: 10px;
+    width: 240px;
+    max-width: calc(100vw - 20px);
+    background: #1a202c;
+    color: #cbd5e0;
+    border: 5px solid #f59e0b;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    z-index: 10100;
+    overflow: hidden;
+    font-family: sans-serif;
+}
+
+#kb-loading-panel .kb-loading-panel-title {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+    font-weight: bold;
+    padding: 10px 14px;
+}
+
+#kb-loading-panel .kb-loading-panel-text {
+    padding: 14px;
 }
 
 header {
