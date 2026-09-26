@@ -761,6 +761,22 @@
                 }
             }
         },
+        "Beta 1.65": {
+            "keywords": [
+                "new",
+                "news",
+                "version",
+                "last",
+                "1.65"
+            ],
+            "question": "What new features and changes are in the application?",
+            "answer": "Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "Beta 1.65<br><br><span align='left'>- The assistant now loads only when you first open it, so the application starts faster.</span>"
+                }
+            }
+        },
         "offline-mode": {
             "keywords": [
                 "offline",
