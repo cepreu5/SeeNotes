@@ -16954,7 +16954,8 @@ function restoreModalHeaderListButtons() {
 }
 
 // --- Markdown table alignment (edit toolbar ▦) ---
-// Finds the tables the preview parser would draw and describes each row by its cells,
+// Finds the tables the preview parser would draw and describes each row by its cells
+// (start/end = character range of the table's lines, for finding the table under the caret),
 // using the same masking as parseAllMarkdownTables for {{...}}, ```...``` and `...`.
 function collectAlignableMarkdownTables(text) {
     if (!text || !text.includes('|')) return [];
@@ -17021,7 +17022,8 @@ function collectAlignableMarkdownTables(text) {
                     const cells = parseRow(lines[j]);
                     if (cells) rows.push({ cells, isSeparator: false });
                 }
-                tables.push({ rows });
+                const last = lines[runEnd];
+                tables.push({ rows, start: lines[sep - 1].offset, end: last.offset + last.raw.length });
             }
         }
         i = runEnd + 1;
@@ -17079,10 +17081,26 @@ function getMarkdownTableEdits(text, table, mode) {
     return edits;
 }
 
-// Aligns every table in the note, or returns them all to the compact form when every table
-// is already aligned. 'Already aligned' is read from the text itself, not from a saved copy.
-function toggleMarkdownTablesAlignment(text) {
+// The table whose lines contain the caret offset, or null.
+function findMarkdownTableAtOffset(tables, pos) {
+    return tables.find(table => pos >= table.start && pos <= table.end) || null;
+}
+
+// Which tables the ▦ button works on: all of them for hold / Ctrl/⌘+click, otherwise the one
+// under the caret. Caret outside every table: the only table, or all of them when there are
+// several (so the click has a visible result). To make that case do nothing, return [] there.
+function selectMarkdownTablesForAlignment(text, caret, all) {
     const tables = collectAlignableMarkdownTables(text);
+    if (all) return tables;
+    const current = findMarkdownTableAtOffset(tables, caret);
+    if (current) return [current];
+    return tables;
+}
+
+// Aligns the given tables (default: every table in the note), or returns them all to the compact
+// form when each of them is already aligned. 'Already aligned' is read from the text itself,
+// not from a saved copy.
+function toggleMarkdownTablesAlignment(text, tables = collectAlignableMarkdownTables(text)) {
     if (!tables.length) return { text, edits: [], tableCount: 0, aligned: false };
     const allAligned = tables.every(table => getMarkdownTableEdits(text, table, 'aligned').length === 0);
     const mode = allAligned ? 'compact' : 'aligned';
@@ -17092,8 +17110,7 @@ function toggleMarkdownTablesAlignment(text) {
     return { text: result, edits, tableCount: tables.length, aligned: !allAligned };
 }
 
-function areAllMarkdownTablesAligned(text) {
-    const tables = collectAlignableMarkdownTables(text);
+function areAllMarkdownTablesAligned(text, tables = collectAlignableMarkdownTables(text)) {
     return tables.length > 0 && tables.every(table => getMarkdownTableEdits(text, table, 'aligned').length === 0);
 }
 
@@ -17112,15 +17129,23 @@ function updateTableAlignButtonState() {
     const button = document.querySelector('#content-modal .modal-edit-toolbar-btn.is-table');
     const textarea = document.getElementById('note-edit-textarea');
     if (!button) return;
-    const active = !!textarea && areAllMarkdownTablesAligned(textarea.value);
+    let active = false;
+    if (textarea) {
+        // The table under the caret when there is one, all tables in the note otherwise.
+        const tables = collectAlignableMarkdownTables(textarea.value);
+        const current = findMarkdownTableAtOffset(tables, textarea.selectionStart);
+        active = areAllMarkdownTablesAligned(textarea.value, current ? [current] : tables);
+    }
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
 
-function applyMarkdownTableAlignment() {
+// all = true for hold / Ctrl/⌘+click: every table in the note; otherwise the table under the caret.
+function applyMarkdownTableAlignment(all = false) {
     const textarea = document.getElementById('note-edit-textarea');
     if (!textarea) return;
-    const result = toggleMarkdownTablesAlignment(textarea.value);
+    const tables = selectMarkdownTablesForAlignment(textarea.value, textarea.selectionStart, all);
+    const result = toggleMarkdownTablesAlignment(textarea.value, tables);
     if (!result.edits.length) {
         updateTableAlignButtonState();
         return;
@@ -17242,12 +17267,17 @@ function createModalEditToolbar(modalContentBox) {
     });
     addButton({
         label: '▦',
-        title: 'Подравняване на таблица',
+        title: 'Подравняване на таблицата под курсора · Ctrl/⌘+клик или задържане: всички таблици',
         className: 'is-table',
-        action: applyMarkdownTableAlignment
+        action: (e) => applyMarkdownTableAlignment(!!(e && (e.ctrlKey || e.metaKey))),
+        onLongPress: () => applyMarkdownTableAlignment(true)
     });
     headerToolbar.appendChild(toolbar);
-    document.getElementById('note-edit-textarea')?.addEventListener('input', updateTableAlignButtonState);
+    const noteTextarea = document.getElementById('note-edit-textarea');
+    // The button state follows the table under the caret, so caret moves refresh it too.
+    ['input', 'keyup', 'mouseup', 'touchend', 'focus'].forEach((type) => {
+        noteTextarea?.addEventListener(type, updateTableAlignButtonState);
+    });
     updateTableAlignButtonState();
     modalContentBox.classList.add('has-edit-toolbar');
 }
