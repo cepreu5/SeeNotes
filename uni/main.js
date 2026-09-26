@@ -17267,7 +17267,7 @@ function createModalEditToolbar(modalContentBox) {
     });
     addButton({
         label: '▦',
-        title: 'Подравняване на таблицата под курсора · Ctrl/⌘+клик или задържане: всички таблици',
+        title: _('tableAlignTooltip') || 'Align the table under the caret · Ctrl/⌘+click or hold: all tables',
         className: 'is-table',
         action: (e) => applyMarkdownTableAlignment(!!(e && (e.ctrlKey || e.metaKey))),
         onLongPress: () => applyMarkdownTableAlignment(true)
