@@ -11,6 +11,8 @@
  * външни извиквания, и двете GET през UrlFetchApp.fetchAll: изтегляне на
  * съдържанието на файл (Drive API v3 `files/<id>?alt=media`) и пълнотекстово
  * търсене в списъка с файлове (Drive API v3 `files?q=... fullText contains`).
+ * Режимите `revs` / `revtext` четат (пак само GET) revision историята на
+ * файл: `files/<id>/revisions` и `files/<id>/revisions/<revId>?alt=media`.
  *
  * Схемата на бележката е взета от uni/main.js (newNote / parseFileResults):
  *   id, gdid, boardid, notetxt, date, datemod, status, pass, type, ...
@@ -23,6 +25,8 @@
  *
  * Параметри: key, q, board, from, to, limit, mode, budget, batch, debug —
  * виж README.md.
+ *   - mode=revs&gdid=<fileId> — списък с версиите на файла (най-новата първа).
+ *   - mode=revtext&gdid=<fileId>&rev=<revId> — текстът на точно тази версия.
  */
 
 var FOLDER_NAMES_ = ['CX-Notes', 'multinotes_data']; // CX-Notes е основната папка (както в приложението), multinotes_data остава само fallback
@@ -40,6 +44,8 @@ var INDEX_PAGE_SIZE_ = 1000;      // Кандидати от едно пълно
 var DRIVE_FILES_URL_ = 'https://www.googleapis.com/drive/v3/files';
 var DRIVE_MEDIA_URL_ = DRIVE_FILES_URL_ + '/';
 var DRIVE_ABOUT_URL_ = 'https://www.googleapis.com/drive/v3/about?fields=user';
+var REVISIONS_PAGE_SIZE_ = 1000;  // Максимумът на Drive за revisions.list
+var MAX_REVISION_PAGES_ = 10;     // Таван на страниците за един файл (защита от безкраен цикъл)
 var SNIPPET_LEN_ = 200;
 
 /**
@@ -79,6 +85,12 @@ function handleRequest_(e) {
     var limit = parseLimit_(params.limit);
     var mode = parseMode_(params.mode);
     var debug = String(params.debug || '') === '1';
+
+    // Revision историята на един файл — преди търсенето, не зависи от папката
+    var rawMode = String(params.mode || '').trim().toLowerCase();
+    if (rawMode === 'revs' || rawMode === 'revtext') {
+        return handleRevisions_(rawMode, params);
+    }
 
     if ((from && !isIsoDate_(from)) || (to && !isIsoDate_(to))) {
         return { status: 400, body: { ok: false, error: 'bad_date' } };
@@ -506,6 +518,108 @@ function queryIndex_(folder, words, token) {
     } catch (err) {
         return null;
     }
+}
+
+// =================================================================================
+// Revision история на файл (mode=revs / mode=revtext, само четене)
+// =================================================================================
+
+/**
+ * `revs` — списък с версиите на файла, `revtext` — текстът на една версия.
+ * Полетата се подават така, както ги връща Drive — нищо не се измисля.
+ */
+function handleRevisions_(mode, params) {
+    var gdid = String(params.gdid || '').trim();
+    if (!gdid) return { status: 400, body: { ok: false, error: 'gdid_required' } };
+    var rev = String(params.rev || '').trim();
+    if (mode === 'revtext' && !rev) return { status: 400, body: { ok: false, error: 'rev_required' } };
+    var token = getOAuthTokenSafe_();
+    if (!token) return { status: 503, body: { ok: false, error: 'token_unavailable' } };
+    return mode === 'revs' ? listRevisions_(gdid, token) : revisionText_(gdid, rev, token);
+}
+
+/** Грешка от Drive: 404 -> file_not_found, всичко друго -> upstream_error. */
+function revisionError_(code) {
+    if (code === 404) return { status: 404, body: { ok: false, error: 'file_not_found' } };
+    return { status: 502, body: { ok: false, error: 'upstream_error', upstream: code === undefined ? null : code } };
+}
+
+/** Един GET през fetchAll; връща { code, text } (code: null при грешка на самата заявка). */
+function driveFetchOne_(url, token) {
+    try {
+        var resp = UrlFetchApp.fetchAll([driveGet_(url, token)])[0];
+        return { code: resp.getResponseCode(), text: resp.getContentText('UTF-8') };
+    } catch (err) {
+        return { code: null, text: null };
+    }
+}
+
+function revisionsUrl_(gdid, pageToken) {
+    return DRIVE_MEDIA_URL_ + encodeURIComponent(gdid) + '/revisions?fields=' +
+        encodeURIComponent('nextPageToken,revisions(id,modifiedTime,size,keepForever)') +
+        '&pageSize=' + REVISIONS_PAGE_SIZE_ +
+        (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
+}
+
+function listRevisions_(gdid, token) {
+    var metaUrl = DRIVE_MEDIA_URL_ + encodeURIComponent(gdid) + '?fields=' + encodeURIComponent('id,name,modifiedTime,size');
+    // Първата страница и метаданните на файла пътуват в един fetchAll
+    var responses;
+    try {
+        responses = UrlFetchApp.fetchAll([driveGet_(revisionsUrl_(gdid, null), token), driveGet_(metaUrl, token)]);
+    } catch (err) {
+        return revisionError_(null);
+    }
+    var pages = [];
+    var file;
+    try {
+        var revCode = responses[0].getResponseCode();
+        var metaCode = responses[1].getResponseCode();
+        if (revCode === 404 || metaCode === 404) return revisionError_(404);
+        if (revCode !== 200) return revisionError_(revCode);
+        if (metaCode !== 200) return revisionError_(metaCode);
+        pages.push(JSON.parse(responses[0].getContentText('UTF-8')));
+        file = JSON.parse(responses[1].getContentText('UTF-8'));
+    } catch (err) {
+        return revisionError_(null);
+    }
+    // Останалите страници (ако има) — една по една, до MAX_REVISION_PAGES_
+    while (pages[pages.length - 1] && pages[pages.length - 1].nextPageToken && pages.length < MAX_REVISION_PAGES_) {
+        var next = driveFetchOne_(revisionsUrl_(gdid, pages[pages.length - 1].nextPageToken), token);
+        if (next.code !== 200) return revisionError_(next.code);
+        try { pages.push(JSON.parse(next.text)); } catch (err) { return revisionError_(null); }
+    }
+    var revisions = [];
+    pages.forEach(function (p) {
+        (p && Array.isArray(p.revisions) ? p.revisions : []).forEach(function (r) {
+            if (!r) return;
+            revisions.push({ id: r.id, modifiedTime: r.modifiedTime, size: r.size, keepForever: r.keepForever });
+        });
+    });
+    // Най-новата първа
+    revisions.sort(function (a, b) {
+        var ta = Date.parse(a.modifiedTime) || 0;
+        var tb = Date.parse(b.modifiedTime) || 0;
+        return tb - ta;
+    });
+    return {
+        status: 200,
+        body: {
+            ok: true,
+            gdid: gdid,
+            file: { id: file.id, name: file.name, modifiedTime: file.modifiedTime, size: file.size },
+            count: revisions.length,
+            revisions: revisions
+        }
+    };
+}
+
+function revisionText_(gdid, rev, token) {
+    var url = DRIVE_MEDIA_URL_ + encodeURIComponent(gdid) + '/revisions/' + encodeURIComponent(rev) + '?alt=media';
+    var r = driveFetchOne_(url, token);
+    if (r.code !== 200) return revisionError_(r.code);
+    var text = r.text === null || r.text === undefined ? '' : String(r.text);
+    return { status: 200, body: { ok: true, gdid: gdid, rev: rev, bytes: utf8Length_(text), text: text } };
 }
 
 // =================================================================================

@@ -71,7 +71,7 @@ GET https://script.google.com/macros/s/<ID>/exec?key=<API_TOKEN>&q=догово�
 | `board` | Заглавие на борд (напр. `Работа`) или неговото id / gdid |
 | `from`, `to` | `YYYY-MM-DD`, филтър по датата на бележката (`date`, в часова зона Europe/Sofia) |
 | `limit` | Брой резултати, по подразбиране 20, максимум 100 |
-| `mode` | `auto` (по подразбиране), `index` или `scan` — виж „Бърз път през индекса на Drive“. Непозната стойност = `auto` |
+| `mode` | `auto` (по подразбиране), `index` или `scan` — виж „Бърз път през индекса на Drive“. Непозната стойност = `auto`. Отделно: `revs` / `revtext` — revision историята на един файл (виж „История на версиите“) |
 | `budget` | Бюджет по време в ms за четенето, по подразбиране 18000, ограничен до 3000–25000 |
 | `batch` | Файлове в един `UrlFetchApp.fetchAll`, по подразбиране 40, ограничен до 5–100 |
 | `debug` | `debug=1` добавя обект `timing` в отговора (виж по-долу). Без него нищо допълнително не се връща |
@@ -176,6 +176,33 @@ GET https://script.google.com/macros/s/<ID>/exec?key=<API_TOKEN>&q=догово�
   `mode=scan`.
 - Без заявка (`q` липсва — health check) винаги се прави пълно сканиране.
 
+### История на версиите на файл (`mode=revs` / `mode=revtext`)
+
+Освен търсене, скриптът чете и revision историята на **един** файл (само
+четене, същият `key`). Двата режима не търсят нищо и не ползват `q` — подава
+се `gdid` (id-то на `note.txt` файла):
+
+- `mode=revs&gdid=<fileId>` — списък с версиите на файла, най-новата първа:
+
+```json
+{"ok":true,"gdid":"...","file":{"id":"...","name":"note.txt","modifiedTime":"...","size":1234},
+ "count":12,"revisions":[{"id":"...","modifiedTime":"...","size":1234,"keepForever":false}]}
+```
+
+Връщат се само полетата, които Drive дава (`id`, `modifiedTime`, `size`,
+`keepForever`) — нищо не се измисля. Страниците (по 1000 версии) се дърпат до
+10 на заявка; първата страница и метаданните на файла пътуват в едно
+`fetchAll`.
+
+- `mode=revtext&gdid=<fileId>&rev=<revId>` — съдържанието на точно тази
+  версия: `{"ok":true,"gdid":"...","rev":"...","bytes":1234,"text":"..."}`.
+
+За какво служи: версия на бележка отпреди запис, който е повредил
+съдържанието (напр. временни маркери `{#L<n>#}`), се чете оттук. Drive пази
+версиите ограничено — около 30 дни и до 100 версии на файл — затова по-стара
+версия може вече да не е налична. Четенето минава само през Drive API (с
+OAuth токена на скрипта), без fallback през DriveApp.
+
 ### Какво НЕ се връща
 
 - Бележки в Кошчето (`status: 1`).
@@ -191,6 +218,11 @@ GET https://script.google.com/macros/s/<ID>/exec?key=<API_TOKEN>&q=догово�
 | Невалидна дата във `from`/`to` | `{"ok":false,"error":"bad_date"}` |
 | Папката не е намерена | `{"ok":false,"error":"folder_not_found"}` |
 | `mode=index`, а индексът на Drive е недостъпен | `{"ok":false,"error":"index_unavailable"}` |
+| `mode=revs`/`revtext` без `gdid` | `{"ok":false,"error":"gdid_required"}` |
+| `mode=revtext` без `rev` | `{"ok":false,"error":"rev_required"}` |
+| Файлът (или версията) не е намерен от Drive | `{"ok":false,"error":"file_not_found"}` |
+| Drive върна друга грешка при четене на версиите | `{"ok":false,"error":"upstream_error","upstream":<код>}` |
+| Липсва OAuth токен (нужен за четенето на версиите) | `{"ok":false,"error":"token_unavailable"}` |
 | Неочаквана грешка | `{"ok":false,"error":"internal_error"}` |
 
 ## Важни ограничения на Apps Script

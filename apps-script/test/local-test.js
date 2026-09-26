@@ -15,6 +15,9 @@
  * пълнотекстовото търсене `drive/v3/files?q=...` (симулира индекса на Drive
  * върху същите fixtures, само при opts.index) и `drive/v3/about?fields=user`
  * (само при opts.driveAccount); без тези опции двата адреса връщат 403.
+ * За mode=revs/revtext разпознава (само GET) `files/<id>?fields=...`,
+ * `files/<id>/revisions?...` и `files/<id>/revisions/<rev>?alt=media`, които
+ * отговарят от opts.revs (opts.revStatus подменя кода на отговора).
  *
  * Пускане: node apps-script/test/local-test.js
  */
@@ -98,6 +101,46 @@ const OAUTH_TOKEN = 'ya29.fake-' + crypto.randomBytes(8).toString('hex');
 const MEDIA_URL = /^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^/?#]+)\?alt=media&supportsAllDrives=true$/;
 const LIST_URL = /^https:\/\/www\.googleapis\.com\/drive\/v3\/files\?([^#]+)$/;
 const ABOUT_URL = 'https://www.googleapis.com/drive/v3/about?fields=user';
+const META_URL = /^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^/?#]+)\?(fields=[^#]+)$/;
+const REVS_URL = /^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^/?#]+)\/revisions\?([^#]+)$/;
+const REVTEXT_URL = /^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^/?#]+)\/revisions\/([^/?#]+)\?alt=media$/;
+
+/**
+ * Revision заявките към фалшивия Drive. Връща отговор или null (не е такава заявка).
+ * opts.revs: { <fileId>: { name, modifiedTime, size, revisions: [{ id, modifiedTime, size, keepForever, text }] } }
+ * opts.revPageSize: разделя списъка на страници (за да се види nextPageToken).
+ */
+function fakeRevisions(store, opts, r, okAuth) {
+    const url = String(r.url);
+    const meta = META_URL.exec(url);
+    const list = REVS_URL.exec(url);
+    const text = REVTEXT_URL.exec(url);
+    if (!meta && !list && !text) return null;
+    const id = decodeURIComponent((meta || list || text)[1]);
+    store.revCalls.push({ url, batch: r.__batch });
+    if (!okAuth) return jsonResponse(401, {});
+    if (opts.revStatus) return jsonResponse(opts.revStatus, { error: { code: opts.revStatus } });
+    const f = (opts.revs || {})[id];
+    if (!f) return jsonResponse(404, { error: { code: 404 } });
+    if (meta) {
+        eq(new URLSearchParams(meta[2]).get('fields'), 'id,name,modifiedTime,size', 'fields на файла');
+        return jsonResponse(200, { id, name: f.name, modifiedTime: f.modifiedTime, size: f.size });
+    }
+    if (list) {
+        const qs = new URLSearchParams(list[2]);
+        eq(qs.get('fields'), 'nextPageToken,revisions(id,modifiedTime,size,keepForever)', 'fields на ревизиите');
+        eq(qs.get('pageSize'), '1000', 'pageSize на ревизиите');
+        const all = f.revisions.map(x => ({ id: x.id, modifiedTime: x.modifiedTime, size: x.size, keepForever: x.keepForever }));
+        const per = opts.revPageSize || all.length;
+        const start = Number(qs.get('pageToken') || 0);
+        const body = { revisions: all.slice(start, start + per) };
+        if (start + per < all.length) body.nextPageToken = String(start + per);
+        return jsonResponse(200, body);
+    }
+    const rev = f.revisions.find(x => x.id === decodeURIComponent(text[2]));
+    if (!rev) return jsonResponse(404, { error: { code: 404 } });
+    return { getResponseCode: () => 200, getContentText: () => rev.text };
+}
 
 /**
  * Симулация на `fullText contains` на Drive: файлът е кандидат, ако суровото
@@ -142,6 +185,10 @@ function fakeUrlFetchApp(store, opts) {
                 const auth = r.headers && r.headers.Authorization;
                 const okAuth = auth === 'Bearer ' + OAUTH_TOKEN;
                 const list = LIST_URL.exec(String(r.url));
+                if (method === 'get' && r.payload === undefined) {
+                    const revResp = fakeRevisions(store, opts, Object.assign({ __batch: requests.length }, r), okAuth);
+                    if (revResp) return revResp;
+                }
                 if (method === 'get' && r.payload === undefined && String(r.url) === ABOUT_URL) {
                     store.aboutCalls.push(requests.length);
                     if (!okAuth) return jsonResponse(401, {});
@@ -178,7 +225,7 @@ function fakeUrlFetchApp(store, opts) {
 
 function makeContext(opts = {}) {
     const props = { API_TOKEN: opts.noToken ? null : TOKEN };
-    const store = { contents: {}, files: {}, folderNotes: {}, blobReads: 0, mediaReads: 0, fetchAllCalls: [], indexCalls: [], aboutCalls: [] };
+    const store = { contents: {}, files: {}, folderNotes: {}, blobReads: 0, mediaReads: 0, fetchAllCalls: [], indexCalls: [], aboutCalls: [], revCalls: [] };
     const logs = [];
     const logFn = (...a) => logs.push(a.map(String).join(' '));
     const folderQueries = [];
@@ -257,7 +304,7 @@ function call(params, opts = {}) {
     const out = ctx.doGet(e);
     // Броячите са само за първото извикване (doGet), преди handleRequest_ по-долу
     const st = ctx.__store;
-    const io = { blobReads: st.blobReads, mediaReads: st.mediaReads, fetchAllCalls: st.fetchAllCalls.slice(), indexCalls: st.indexCalls.slice(), aboutCalls: st.aboutCalls.slice() };
+    const io = { blobReads: st.blobReads, mediaReads: st.mediaReads, fetchAllCalls: st.fetchAllCalls.slice(), indexCalls: st.indexCalls.slice(), aboutCalls: st.aboutCalls.slice(), revCalls: st.revCalls.slice() };
     let status; // HTTP статусът, който логиката е избрала (doGet го превръща в 500 при грешка)
     try { status = ctx.handleRequest_(e).status; } catch (err) { status = 500; }
     return { status, body: JSON.parse(out.getContent()), raw: out.getContent(), mime: out.mime, logs: ctx.__logs, folderQueries: ctx.__folderQueries, io, ctx };
@@ -704,6 +751,95 @@ test('21. account и driveAccount във всеки успешен отгово�
     }
     eq(search({ q: 'x' }, { driveAccount: 'drive@example.com', noOAuth: true }).io.aboutCalls.length, 0, 'без токен about не се вика');
     assert(!('account' in call({ q: 'x' }).body), 'account в 401');
+});
+
+// ---------------------------------------------------------------------------
+// mode=revs / mode=revtext
+// ---------------------------------------------------------------------------
+
+const REVS = {
+    '1NoteLost': {
+        name: 'note.txt', modifiedTime: '2026-09-20T10:00:00.000Z', size: '52',
+        revisions: [
+            { id: 'r1', modifiedTime: '2026-09-01T08:00:00.000Z', size: '40', keepForever: false, text: '{"notetxt":"стар https://example.com/a"}' },
+            { id: 'r3', modifiedTime: '2026-09-20T10:00:00.000Z', size: '52', keepForever: false, text: '{"notetxt":"нов {#L#}"}' },
+            { id: 'r2', modifiedTime: '2026-09-10T09:30:00.000Z', size: '48', keepForever: true, text: '{"notetxt":"среден https://example.com/б"}' }
+        ]
+    }
+};
+
+test('22. revs/revtext без gdid -> 400 gdid_required, без rev -> 400 rev_required', () => {
+    for (const mode of ['revs', 'revtext', 'REVS']) {
+        const r = search({ mode }, { revs: REVS });
+        eq(r.status, 400, 'status за ' + mode);
+        eq(r.raw, '{"ok":false,"error":"gdid_required"}', 'тяло за ' + mode);
+        eq(r.io.revCalls.length, 0, 'Drive не се пита за ' + mode);
+    }
+    const nr = search({ mode: 'revtext', gdid: '1NoteLost' }, { revs: REVS });
+    eq(nr.status, 400, 'status без rev');
+    eq(nr.raw, '{"ok":false,"error":"rev_required"}', 'тяло без rev');
+    // key се проверява и тук
+    eq(call({ mode: 'revs', gdid: '1NoteLost' }, { revs: REVS }).status, 401, '401 без key');
+    // Не зависи от папката
+    eq(search({ mode: 'revs', gdid: '1NoteLost' }, { revs: REVS, folders: [] }).status, 200, 'без папка');
+});
+
+test('23. revs: сортирано низходящо по modifiedTime, file.name, полетата от Drive', () => {
+    const r = search({ mode: 'revs', gdid: '1NoteLost' }, { revs: REVS });
+    eq(r.status, 200, 'status');
+    const b = r.body;
+    eq(JSON.stringify(Object.keys(b)), '["ok","gdid","file","count","revisions"]', 'полета');
+    eq(b.gdid, '1NoteLost', 'gdid');
+    eq(JSON.stringify(b.file), '{"id":"1NoteLost","name":"note.txt","modifiedTime":"2026-09-20T10:00:00.000Z","size":"52"}', 'file');
+    eq(b.count, 3, 'count');
+    eq(b.revisions.map(x => x.id).join(','), 'r3,r2,r1', 'ред (най-новата първа)');
+    eq(JSON.stringify(b.revisions[1]), '{"id":"r2","modifiedTime":"2026-09-10T09:30:00.000Z","size":"48","keepForever":true}', 'полета на ревизия');
+    eq(r.io.revCalls.length, 2, 'две заявки (ревизии + метаданни)');
+    assert(r.io.revCalls.every(c => c.batch === 2), 'двете в един fetchAll');
+    eq(r.io.blobReads + r.io.mediaReads, 0, 'бележките не се четат');
+    // Страниците се обхождат докрай
+    const paged = search({ mode: 'revs', gdid: '1NoteLost' }, { revs: REVS, revPageSize: 1 });
+    eq(paged.body.revisions.map(x => x.id).join(','), 'r3,r2,r1', 'всички страници');
+    eq(paged.io.revCalls.length, 4, 'метаданни + 3 страници');
+    eq(writeAttempts.length, 0, 'опити за запис: ' + writeAttempts.join(', '));
+});
+
+test('24. revtext връща текста на избраната ревизия', () => {
+    const r = search({ mode: 'revtext', gdid: '1NoteLost', rev: 'r2' }, { revs: REVS });
+    eq(r.status, 200, 'status');
+    const text = REVS['1NoteLost'].revisions[2].text;
+    eq(JSON.stringify(r.body), JSON.stringify({ ok: true, gdid: '1NoteLost', rev: 'r2', bytes: Buffer.byteLength(text), text }), 'тяло');
+    eq(r.io.revCalls.length, 1, 'една заявка');
+    assert(/\/files\/1NoteLost\/revisions\/r2\?alt=media$/.test(r.io.revCalls[0].url), 'URL: ' + r.io.revCalls[0].url);
+    eq(search({ mode: 'revtext', gdid: '1NoteLost', rev: 'r1' }, { revs: REVS }).body.text, REVS['1NoteLost'].revisions[0].text, 'друга ревизия');
+});
+
+test('25. upstream 404 -> 404 file_not_found', () => {
+    const r = search({ mode: 'revs', gdid: 'noSuchFile' }, { revs: REVS });
+    eq(r.status, 404, 'status revs');
+    eq(r.raw, '{"ok":false,"error":"file_not_found"}', 'тяло revs');
+    const t = search({ mode: 'revtext', gdid: '1NoteLost', rev: 'r9' }, { revs: REVS });
+    eq(t.status, 404, 'status revtext (липсваща ревизия)');
+    eq(t.raw, '{"ok":false,"error":"file_not_found"}', 'тяло revtext');
+});
+
+test('26. upstream 500 -> 502 upstream_error със статуса на upstream', () => {
+    for (const params of [{ mode: 'revs', gdid: '1NoteLost' }, { mode: 'revtext', gdid: '1NoteLost', rev: 'r1' }]) {
+        const r = search(params, { revs: REVS, revStatus: 500 });
+        eq(r.status, 502, 'status за ' + params.mode);
+        eq(r.raw, '{"ok":false,"error":"upstream_error","upstream":500}', 'тяло за ' + params.mode);
+    }
+    const thrown = search({ mode: 'revs', gdid: '1NoteLost' }, { revs: REVS, fetchAllThrows: true });
+    eq(thrown.raw, '{"ok":false,"error":"upstream_error","upstream":null}', 'fetchAll хвърля');
+});
+
+test('27. липсващ OAuth токен -> 503 token_unavailable', () => {
+    for (const params of [{ mode: 'revs', gdid: '1NoteLost' }, { mode: 'revtext', gdid: '1NoteLost', rev: 'r1' }]) {
+        const r = search(params, { revs: REVS, noOAuth: true });
+        eq(r.status, 503, 'status за ' + params.mode);
+        eq(r.raw, '{"ok":false,"error":"token_unavailable"}', 'тяло за ' + params.mode);
+        eq(r.io.revCalls.length, 0, 'Drive не се пита');
+    }
 });
 
 const failed = results.filter(x => !x).length;
