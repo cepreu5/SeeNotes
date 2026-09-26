@@ -69,6 +69,10 @@ const multiA = run(multi, 0, true);
 ok(multiA === 'intro\n' + aligned1 + '\nмежду\n' + blA + '\nи\n' + mock + '\nend', 'hold (all=true): three tables incl. borderless and open rows');
 ok(api.collectAlignableMarkdownTables(multiA).every(t => api.toggleMarkdownTablesAlignment(multiA, [t]).aligned === false) && api.areAllMarkdownTablesAligned(multiA), 'after hold: getMarkdownTableEdits aligned is empty everywhere');
 ok(run(multiA, 0, true) === 'intro\n' + t1 + '\nмежду\n' + run(blA, 0, false) + '\nи\n' + dense + '\nend', 'hold again: all compact');
+// --- b1.75: the compact pass also inserts a row's missing outer | (dense spacing) ---
+const close = (text) => api.planMarkdownTableFieldsClose(text, [{ start: 0, end: text.length }]).text;
+ok(close('| A | B |\n| - | - |\n| x | y |\nнов ред | x') === '| A | B |\n| - | - |\n| x | y |\n| нов ред | x |', 'compact: typed row without outer | gets both pipes');
+ok(close('|Col1 header| Col 2|Col 3\n|-|-|-\nText 1|Test|note 1\nnote 2|Text 2|Test') === dense, 'compact: table with no outer | -> dense form with pipes');
 const openEsc = 'A \\| x | B\n- | -\n1 | 2';
 ok(run(openEsc, 0, true) === openEsc, 'open row with escaped \\| untouched');
 const openTick = '`a|b` | B\n- | -\n1 | 2';

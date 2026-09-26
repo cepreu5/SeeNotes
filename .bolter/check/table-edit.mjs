@@ -110,6 +110,30 @@ for (const [w, h] of [[390, 800], [1280, 800]]) {
   await page.screenshot({ path: `.bolter/check/edit-${w}-preview.png` });
 }
 
+// b1.75: open the note the real way (the modal auto-aligns the table into the field), type a row
+// without the trailing |, press ▦ once: the compact pass inserts the missing outer pipes.
+for (const [w, h] of [[390, 800], [1280, 800]]) {
+  await page.setViewportSize({ width: w, height: h });
+  await page.evaluate(raw => {
+    showModal({ raw, id: 'edit-pipe-' + Math.random() });
+    enableNoteEditing(document.getElementById('modal-body'));
+  }, NOTE);
+  await page.waitForFunction(() => document.querySelector('.note-table-field'), null, { timeout: 5000 });
+  let s = await state();
+  ok(s.split && s.field.value === MOCK, `${w}: opened with the table auto-aligned in the field`, s.field?.value);
+  await caretInField(-1);
+  await page.keyboard.type('\nнов ред | x');
+  s = await state();
+  ok(s.field.value === MOCK + '\nнов ред | x', `${w}: row typed without outer |`, s.field.value);
+  await btn.click();
+  s = await state();
+  const rows = s.main.split('\n');
+  const typed = rows.find(l => l.includes('нов ред'));
+  ok(!s.split && typed === '| нов ред | x |' && typed.endsWith('|'), `${w}: ▦ -> the typed row now ends with |`, typed);
+  ok(s.main === BEFORE + '\n| Col1 header | Col 2 | Col 3 |\n| - | - | - |\n| Text 1 | Test | note 1 |\n| note 2 | Text 2 | Test |\n| нов ред | x |\n' + AFTER, `${w}: whole note after ▦ = dense table, every row with both pipes`, s.main);
+  await page.evaluate(() => { disableNoteEditing(document.getElementById('modal-body')); document.getElementById('content-modal').classList.remove('visible'); });
+}
+
 // typed in the field, then preview straight away with the field open: nothing lost
 await openNote(NOTE, 'Test');
 await btn.click();

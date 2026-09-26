@@ -17357,6 +17357,8 @@ function collectAlignableMarkdownTables(text) {
 
 // Returns the whitespace/dash replacements that bring one table to 'aligned' or 'compact' form.
 // Cell text is never part of a replacement, so a cell edited between two presses survives.
+// Both forms add a row's missing outer | (the compact form with compact spacing), so every row
+// of the table ends up with both pipes; neither form ever removes an outer |.
 function getMarkdownTableEdits(text, table, mode) {
     const len = (s) => Array.from(s).length;
     const separator = table.rows.find(row => row.isSeparator);
@@ -17377,11 +17379,11 @@ function getMarkdownTableEdits(text, table, mode) {
     };
     table.rows.forEach(row => row.cells.forEach((cell, c) => {
         const a = alignOf(c);
-        // A missing outer | is added in the aligned form. The compact form never removes one,
-        // and leaves no space at an edge that still has none.
+        // A missing outer | is added in both forms (the compact form writes it dense, '| ' / ' |').
+        // Neither form ever removes one.
         const openStart = c === 0 && row.cells.openLead;
         const openEnd = c === row.cells.length - 1 && row.cells.openTrail;
-        const edge = (space, pipe, open) => (open ? (mode === 'aligned' ? pipe : '') : space);
+        const edge = (space, pipe, open) => (open ? pipe : space);
         if (row.isSeparator) {
             const colons = (a.left ? 1 : 0) + (a.right ? 1 : 0);
             const dashes = mode === 'aligned' ? widths[c] - colons : 1;
@@ -17401,8 +17403,9 @@ function getMarkdownTableEdits(text, table, mode) {
             lead = ' '.repeat(before + 1);
             trail = ' '.repeat(gap - before + 1);
         }
-        if (openStart) lead = mode === 'aligned' ? '|' + lead : '';
-        if (openEnd) trail = mode === 'aligned' ? trail + '|' : '';
+        // Open edge: the missing | goes in front of / after the spacing of either form.
+        if (openStart) lead = '|' + lead;
+        if (openEnd) trail = trail + '|';
         if (!cell.value) {
             replace(cell.start, cell.end, lead + trail);
             return;
