@@ -17152,33 +17152,40 @@ function collectAlignableMarkdownTables(text) {
         const cells = maskedLine.split('|').map(cell => cell.trim()).filter(Boolean);
         return cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell));
     };
+    // Like the preview parser, a row may lack its leading and/or trailing |; openLead/openTrail
+    // mark that, and the first/last cell then starts/ends at the row's first/last visible character.
     const parseRow = (line) => {
         const count = (s) => s.split('|').length - 1;
         const trimmed = line.raw.trim();
-        // Pipes hidden by the masking (inside {{...}} or backticks), escaped pipes and rows
-        // without outer pipes are left exactly as written.
-        if (count(line.raw) !== count(line.masked) || line.raw.includes('\\|')
-            || trimmed.length < 2 || !trimmed.startsWith('|') || !trimmed.endsWith('|')) {
+        // Pipes hidden by the masking (inside {{...}} or backticks) and escaped pipes leave the
+        // row exactly as written.
+        if (count(line.raw) !== count(line.masked) || line.raw.includes('\\|') || trimmed === '|') {
             return null;
         }
-        const first = line.raw.indexOf('|');
-        const last = line.raw.lastIndexOf('|');
+        const textStart = line.raw.length - line.raw.replace(/^\s+/, '').length;
+        const textEnd = line.raw.replace(/\s+$/, '').length;
+        const openLead = !trimmed.startsWith('|');
+        const openTrail = !trimmed.endsWith('|');
+        const bounds = [];
+        for (let i = 0; i < line.raw.length; i++) if (line.raw[i] === '|') bounds.push(i);
+        if (openLead) bounds.unshift(textStart - 1);
+        if (openTrail) bounds.push(textEnd);
         const cells = [];
-        let start = first + 1;
-        for (let i = start; i <= last; i++) {
-            if (line.raw[i] !== '|') continue;
-            const segment = line.raw.slice(start, i);
+        for (let b = 0; b + 1 < bounds.length; b++) {
+            const start = bounds[b] + 1;
+            const segment = line.raw.slice(start, bounds[b + 1]);
             const lead = segment.length - segment.replace(/^\s+/, '').length;
             const value = segment.trim();
             cells.push({
                 start: line.offset + start,
-                end: line.offset + i,
+                end: line.offset + bounds[b + 1],
                 valueStart: line.offset + start + lead,
                 valueEnd: line.offset + start + lead + value.length,
                 value
             });
-            start = i + 1;
         }
+        cells.openLead = openLead;
+        cells.openTrail = openTrail;
         return cells;
     };
     const tables = [];
@@ -17231,10 +17238,16 @@ function getMarkdownTableEdits(text, table, mode) {
     };
     table.rows.forEach(row => row.cells.forEach((cell, c) => {
         const a = alignOf(c);
+        // A missing outer | is added in the aligned form. The compact form never removes one,
+        // and leaves no space at an edge that still has none.
+        const openStart = c === 0 && row.cells.openLead;
+        const openEnd = c === row.cells.length - 1 && row.cells.openTrail;
+        const edge = (space, pipe, open) => (open ? (mode === 'aligned' ? pipe : '') : space);
         if (row.isSeparator) {
             const colons = (a.left ? 1 : 0) + (a.right ? 1 : 0);
             const dashes = mode === 'aligned' ? widths[c] - colons : 1;
-            replace(cell.start, cell.end, ' ' + (a.left ? ':' : '') + '-'.repeat(dashes) + (a.right ? ':' : '') + ' ');
+            replace(cell.start, cell.end, edge(' ', '| ', openStart) + (a.left ? ':' : '') + '-'.repeat(dashes)
+                + (a.right ? ':' : '') + edge(' ', ' |', openEnd));
             return;
         }
         // The borderless-table marker is written tight, as |%%|, in the compact form.
@@ -17249,6 +17262,8 @@ function getMarkdownTableEdits(text, table, mode) {
             lead = ' '.repeat(before + 1);
             trail = ' '.repeat(gap - before + 1);
         }
+        if (openStart) lead = mode === 'aligned' ? '|' + lead : '';
+        if (openEnd) trail = mode === 'aligned' ? trail + '|' : '';
         if (!cell.value) {
             replace(cell.start, cell.end, lead + trail);
             return;
