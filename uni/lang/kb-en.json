@@ -567,6 +567,42 @@
             "question": "How can I organize my notes?",
             "answer": "You can use <b><i>Settings</i></b> > <b><i>Order notes</i></b> to arrange them by date, color, alphabetical order, and other criteria."
         },
+        "table-work": {
+            "keywords": [
+                "table",
+                "tables",
+                "columns",
+                "align",
+                "▦",
+                "%%",
+                "markdown"
+            ],
+            "question": "How do I work with a table in a note?",
+            "answer": "A table is text in the note: cells are separated by <b>|</b>, a separator row of dashes sits under the header row, and the data rows follow it. Please click <b><i>Show me</i></b>.",
+            "guide": {
+                "1": {
+                    "text": "A table is plain text in the note: cells are separated by <b>|</b>. The first row is the header, the separator row of dashes comes right under it, and below that come the data rows, each on its own line, with no blank line between them."
+                },
+                "2": {
+                    "text": "The minimum for a table to be drawn: at least two adjacent lines with <b>|</b>; the separator row is <b>directly</b> under the header row; its cells are dashes only - <b>one dash is enough</b> (<b>:</b> on the left or right aligns the column); at least <b>one data row</b>. The outer <b>|</b> at the start and end of a line are optional."
+                },
+                "3": {
+                    "text": "A table without borders: <b>%%</b> in the first cell (or an empty first cell when there is more than one). The preview draws it with no borders and no header row - only the data rows. A note that is only such a table stays without a title."
+                },
+                "4": {
+                    "text": "While editing, the table is text in the field and you fix it cell by cell, between the <b>|</b>. The editor opens with every table already aligned."
+                },
+                "5": {
+                    "text": "The ▦ button: <b>click</b> - the table under the caret (all of them if the caret is outside a table and there are several); <b>hold</b> or <b>Ctrl/⌘+click</b> - every table. Here is the table in its compact form, before the click: the separator row is short and the columns do not line up. The <b>%%</b> marker is kept and written tight here - <b>|%%|</b>."
+                },
+                "6": {
+                    "text": "After the click the table is aligned in its own field, in its place - monospace, no wrapping, scrolls sideways. You type straight into the field; the text around it is left untouched."
+                },
+                "7": {
+                    "text": "A second press (or closing the field) returns the compact form - only the padding and the extra dashes go, the cell text stays word for word. <b>Save</b> writes the aligned text into the note."
+                }
+            }
+        },
         "calendar-view": {
             "keywords": [
                 "calendar",
