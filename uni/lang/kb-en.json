@@ -876,7 +876,32 @@
                 "key"
             ],
             "question": "Additional commands",
-            "answer": "<span align='left'><b>Click:</b><br>- a note's date in a board - opens a mini weekly calendar in the note<br>- a note's time in a board - opens a clock in the note<br>- the ◎ button on a note in a board - pins the note to the top of the board<br><br><b>Ctrl+click:</b><br>- Reload button - forces a full sync/reload, even with local unsaved changes<br>- board button - opens the floating boards menu.<br>- Boards button with photos - shows all the photos<br>- the floating boards menu button - switches to full-screen mode.<br>- click on a note in a board - opens it in edit mode.<br>- on a note's pin in a board - deletes the note.<br>- on the + button - opens creating a new board.<br><br>- Ctrl+dragging the resize corner of an open note - saves the size as individual for that note.<br><br>- Ctrl+B - bold<br>- Ctrl+I - italic.</span>"
+            "answer": "<span align='left'><b>Click:</b><br>- a note's date in a board - opens a mini weekly calendar in the note<br>- a note's time in a board - opens a clock in the note<br>- the ◎ button on a note in a board - pins the note to the top of the board<br><br><b>Ctrl+click:</b><br>- Reload button - forces a full sync/reload, even with local unsaved changes<br>- board button - opens the floating boards menu.<br>- Boards button with photos - shows all the photos<br>- the floating boards menu button - switches to full-screen mode.<br>- click on a note in a board - opens it in edit mode.<br>- on a note's title in a board - deletes the note (after confirmation); Ctrl+click on its ◎ pin only unpins it.<br>- on the + button - opens creating a new board.<br><br>- Ctrl+dragging the resize corner of an open note - saves the size as individual for that note.<br><br>- Ctrl+B - bold<br>- Ctrl+I - italic.<br><br>Please click <b><i>Show me</i></b> - the guide shows the commands on a demo note.</span>",
+            "guide": {
+                "1": {
+                    "text": "This is a demo note just for this tour - the guide shows the commands on it and removes it at the end.",
+                    "noBoardText": "This tour needs a board first - create one with <b>Ctrl+click</b> on the <b>+</b> button.",
+                    "noteText": "Demo note\nThe guide made it just for this tour and removes it at the end."
+                },
+                "2": {
+                    "text": "<b>Click</b> on the note's date to open a mini weekly calendar inside it; a second click closes it."
+                },
+                "3": {
+                    "text": "<b>Click</b> on the time to show a clock in the note; a click on the clock brings the text back."
+                },
+                "4": {
+                    "text": "<b>Click</b> on <b>◎</b> to pin the note to the top of the board; a second click unpins it."
+                },
+                "5": {
+                    "text": "<b>Ctrl+click</b> on the floating boards menu button to toggle full-screen mode - the top bar hides."
+                },
+                "6": {
+                    "text": "<b>Ctrl+click</b> on the note's title to be asked about moving it to the trash - the guide presses <b>No</b> and nothing is deleted."
+                },
+                "7": {
+                    "text": "<b>Ctrl+click</b> on the <b>+</b> button to open the new board window, while a plain click makes a new note."
+                }
+            }
         }
     }
 }

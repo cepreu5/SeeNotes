@@ -72,7 +72,101 @@ window.removeGuide = function () {
     window.isGuideActive = false;
     window.dispatchEvent(new CustomEvent('guide-finished'));
   }
+  // Кука за почистване при края на водача (напр. демо бележката на Ctrl-actions)
+  if (typeof window.onGuideFinish === 'function') {
+    const onFinish = window.onGuideFinish;
+    window.onGuideFinish = null;
+    try { onFinish(); } catch (e) { console.error('Error in onGuideFinish:', e); }
+  }
 };
+
+// --- Демо бележка за водачи (action "demoNote"): живее само в паметта, никога не стига до Drive/IndexedDB ---
+const GUIDE_DEMO_ID = 'guide-demo-note';
+let guideDemoState = null;
+
+function guideDemoBoards() {
+  return (typeof boardsData !== 'undefined' && Array.isArray(boardsData)) ? boardsData.filter(b => b && (b.gdid || b.id)) : [];
+}
+
+// Вика се от onStart на стъпката. Без борд не създава нищо: стъпката показва noBoardText и водачът спира.
+window.guideDemoNote = function (step) {
+  const boards = guideDemoBoards();
+  if (!boards.length) {
+    if (step.noBoardText) step.text = step.noBoardText;
+    if (step.noBoard) Object.assign(step, step.noBoard);
+    step.guideStop = true;
+    return false;
+  }
+  guideDemoCreate(step, boards);
+  return true;
+};
+
+async function guideDemoCreate(step, boards) {
+  if (typeof allNotesData === 'undefined' || typeof createNoteElement !== 'function') return;
+  guideDemoDiscard();
+  const header = document.querySelector('header');
+  const current = boards.find(b => String(b.gdid) === String(currentBoardFilter) || String(b.id) === String(currentBoardFilter));
+  const board = current || boards[0];
+  const boardId = String(board.gdid || board.id);
+  guideDemoState = {
+    extendedMode: localStorage.getItem('extendedMode'),
+    fullscreen: !!(header && header.classList.contains('header-fullscreen')),
+    prevFilter: (!current && currentBoardFilter !== 'all') ? currentBoardFilter : null
+  };
+  window.onGuideFinish = guideDemoFinish;
+  // В специален изглед (кошче, календар...) бележката не се вижда - демото минава в борда и после се връща
+  if (guideDemoState.prevFilter && typeof filterNotesByBoard === 'function') await filterNotesByBoard(boardId);
+  const now = Date.now();
+  const note = { id: GUIDE_DEMO_ID, gdid: GUIDE_DEMO_ID, boardid: board.gdid || board.id, notetxt: step.noteText || 'Demo', date: now, datemod: now, color: step.noteColor ?? 0, guideDemo: true };
+  allNotesData.push(note);
+  const el = await createNoteElement(note);
+  if (!guideDemoState) { guideDemoDiscard(); return; } // водачът е спрян междувременно
+  if (el) {
+    notesContainer.prepend(el);
+    applyFilters();
+    el.scrollIntoView({ block: 'center' });
+  }
+}
+
+// Маха демо бележката от паметта и от борда
+function guideDemoDiscard() {
+  if (typeof allNotesData === 'undefined') return;
+  for (let i = allNotesData.length - 1; i >= 0; i--) if (allNotesData[i] && allNotesData[i].guideDemo) allNotesData.splice(i, 1);
+  const els = document.querySelectorAll(`.note[data-i="${GUIDE_DEMO_ID}"]`);
+  els.forEach(el => el.remove());
+  if (els.length && typeof applyFilters === 'function') applyFilters();
+}
+window.guideDemoDiscard = guideDemoDiscard;
+
+// Затваря/връща всичко, отворено от предишната демо стъпка
+window.guideDemoReset = function () {
+  if (!guideDemoState) return;
+  const note = document.querySelector(`.note[data-i="${GUIDE_DEMO_ID}"]`);
+  if (note) {
+    note.querySelectorAll('.note-week-calendar').forEach(c => c.remove());
+    const clock = note.querySelector('.clock');
+    if (clock) clock.click(); // собственият клик на часовника връща текста и заглавния ред
+  }
+  const header = document.querySelector('header');
+  if (header && header.classList.contains('header-fullscreen') !== guideDemoState.fullscreen && typeof toggleHeaderFullscreen === 'function') {
+    toggleHeaderFullscreen();
+  }
+  if (guideDemoState.extendedMode === null) localStorage.removeItem('extendedMode');
+  else localStorage.setItem('extendedMode', guideDemoState.extendedMode);
+  const confirmPopup = document.getElementById('folderIdPromptPopup');
+  if (confirmPopup && confirmPopup.classList.contains('show')) document.getElementById('prompt-no-btn')?.click();
+  document.getElementById('new-board-modal')?.classList.remove('visible');
+  document.getElementById('boards-menu-modal')?.classList.remove('visible');
+};
+
+function guideDemoFinish() {
+  if (!guideDemoState) return;
+  window.guideDemoReset();
+  const prevFilter = guideDemoState.prevFilter;
+  guideDemoState = null;
+  guideDemoDiscard();
+  if (prevFilter && typeof filterNotesByBoard === 'function') filterNotesByBoard(prevFilter);
+}
 
 // Global function to flip image
 window.msmFlipImage = function () {
@@ -249,7 +343,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     }
   }
   let imagePath = step.image;
-  let stopAfter = false;
+  let stopAfter = !!step.guideStop;
   if (imagePath && imagePath.endsWith('!')) {
     stopAfter = true;
     imagePath = imagePath.slice(0, -1);
@@ -722,6 +816,11 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
 
       // Ако влачим, не обновяваме автоматично, за да не пречим на потребителя
       if (!isDragging && !isBubbleInteracting && !isResizing) {
+        // Целта може да се появи или да се подмени след действието на стъпката (напр. нова/пререндирана бележка)
+        if (step.target && (!targetEl.isConnected || targetEl === document.body)) {
+          const fresh = document.querySelector(step.target);
+          if (fresh) targetEl = fresh;
+        }
         const imgOffsetLeft = img.offsetLeft;
         const imgOffsetTop = img.offsetTop;
         const rect = targetEl.getBoundingClientRect();

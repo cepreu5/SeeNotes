@@ -4231,6 +4231,11 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
  * @param {boolean} fromModal - Дали се извиква от модалния прозорец.
  */
 async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
+    // Демо бележка на водач: потвърждението се показва, но нищо не стига до Drive/IndexedDB
+    if (allNotesData.some(n => n.guideDemo && ((noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId)))) {
+        if (await showConfirmation(_('confirmNoteMoveToTrash') || _('confirmNoteDelete'))) window.guideDemoDiscard?.();
+        return;
+    }
     const updateGDriveNow = useGoogleDb && !isOffline;
     const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
     if (!useIndexedDb && !updateGDriveNow && !doLocal) return;
@@ -15687,6 +15692,18 @@ async function toggleNotePinned(noteGdid, noteId) {
     if (!noteToUpdate) return false;
 
     const wasPinned = Number(noteToUpdate.pinnedAt || 0) > 0;
+    if (noteToUpdate.guideDemo) { // демо бележка на водач: само паметта и борда, без запис
+        if (wasPinned) delete noteToUpdate.pinnedAt;
+        else noteToUpdate.pinnedAt = Date.now();
+        const demoEl = document.querySelector(`.note[data-i="${noteToUpdate.id}"]`);
+        if (demoEl) {
+            const updatedEl = await createNoteElement(noteToUpdate);
+            if (updatedEl) demoEl.replaceWith(updatedEl);
+        }
+        applyFilters();
+        showToast(wasPinned ? (_('noteUnpinned') || 'Note unpinned') : (_('notePinned') || 'Note pinned'), 2000);
+        return true;
+    }
     if (noteToUpdate.version) noteToUpdate.version = parseInt(noteToUpdate.version, 10) + 1;
     else noteToUpdate.version = 1;
     if (wasPinned) delete noteToUpdate.pinnedAt;

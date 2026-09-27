@@ -742,11 +742,21 @@ class KBAssistant {
                         const existingOnStart = step.onStart;
                         step.onStart = () => {
                             if (existingOnStart) existingOnStart();
+                            // Затваряме каквото е отворила предишната демо стъпка (no-op без демо бележка)
+                            if (typeof window.guideDemoReset === 'function') window.guideDemoReset();
+                            if (step.action === 'demoNote') {
+                                if (typeof window.guideDemoNote === 'function') window.guideDemoNote(step);
+                                return;
+                            }
                             // Click the action element
                             const actionElement = document.querySelector(step.action);
                             if (actionElement) {
-                                console.log(`[KB Assistant] Clicking action element: ${step.action}`);
-                                actionElement.click();
+                                console.log(`[KB Assistant] Clicking action element: ${step.action}${step.ctrl ? ' (Ctrl)' : ''}`);
+                                if (step.ctrl) {
+                                    actionElement.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, ctrlKey: true }));
+                                } else {
+                                    actionElement.click();
+                                }
                             } else {
                                 console.warn(`[KB Assistant] Action element not found: ${step.action}`);
                             }

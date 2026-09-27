@@ -1744,7 +1744,116 @@
         },
         {
             "id": "Ctrl-actions",
-            "category": "workflow"
+            "category": "workflow",
+            "guide": {
+                "1": {
+                    "action": "demoNote",
+                    "noteColor": 0,
+                    "noBoard": {
+                        "image": "msm/r-down.png",
+                        "target": "#add-note-fab",
+                        "x": -80,
+                        "y": -95,
+                        "bx": -40,
+                        "by": -120,
+                        "bWidth": 250,
+                        "bHeight": 90
+                    },
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "time": 9000,
+                    "x": 20,
+                    "y": 40,
+                    "bx": 80,
+                    "by": 110,
+                    "bWidth": 250,
+                    "bHeight": 110,
+                    "target": ".note[data-i=\"guide-demo-note\"]"
+                },
+                "2": {
+                    "action": ".note[data-i=\"guide-demo-note\"] .note-header-date",
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "time": 9000,
+                    "x": 10,
+                    "y": 18,
+                    "bx": 80,
+                    "by": 110,
+                    "bWidth": 250,
+                    "bHeight": 90,
+                    "target": ".note[data-i=\"guide-demo-note\"] .note-header-date"
+                },
+                "3": {
+                    "action": ".note[data-i=\"guide-demo-note\"] .note-header-time",
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "time": 9000,
+                    "x": 60,
+                    "y": 40,
+                    "bx": 40,
+                    "by": 110,
+                    "bWidth": 250,
+                    "bHeight": 90,
+                    "target": ".note[data-i=\"guide-demo-note\"] .clock"
+                },
+                "4": {
+                    "action": ".note[data-i=\"guide-demo-note\"] button.note-pin-btn",
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "time": 9000,
+                    "x": 5,
+                    "y": 20,
+                    "bx": -10,
+                    "by": 110,
+                    "bWidth": 250,
+                    "bHeight": 90,
+                    "target": ".note[data-i=\"guide-demo-note\"] button.note-pin-btn"
+                },
+                "5": {
+                    "action": "#popup-menu-btn-floating",
+                    "ctrl": true,
+                    "image": "msm/r-up.png",
+                    "height": 100,
+                    "time": 9000,
+                    "x": -67,
+                    "y": 18,
+                    "bx": -150,
+                    "by": 110,
+                    "bWidth": 250,
+                    "bHeight": 110,
+                    "target": "#popup-menu-btn-floating"
+                },
+                "6": {
+                    "action": ".note[data-i=\"guide-demo-note\"] .note-title-wrapper",
+                    "ctrl": true,
+                    "image": "msm/l-up.png",
+                    "height": 100,
+                    "time": 10000,
+                    "x": 10,
+                    "y": 20,
+                    "bx": -40,
+                    "by": 110,
+                    "bWidth": 250,
+                    "bHeight": 110,
+                    "target": "#prompt-no-btn"
+                },
+                "7": {
+                    "action": "#add-note-fab",
+                    "ctrl": true,
+                    "image": "msm/r-up.png",
+                    "height": 100,
+                    "time": 9000,
+                    "x": -67,
+                    "y": 18,
+                    "bx": -170,
+                    "by": 110,
+                    "bWidth": 250,
+                    "bHeight": 90,
+                    "target": "#new-board-modal .modal-close"
+                },
+                "stopAfter": false,
+                "context": ""
+            }
         }
     ]
 }
