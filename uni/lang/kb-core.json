@@ -1221,6 +1221,7 @@
                 "1": {
                     "action": "note",
                     "noteContent": "xxxxxxxxxxxx:\n\n| Product | Price |\n|-|-|\n| bbbbbbbbb | 2.30 |\n| ddddddddd | 6.34 |",
+                    "editTable": true,
                     "noteColor": "#d4edda",
                     "noteWidth": 380,
                     "noteHeight": 330,
@@ -1252,6 +1253,7 @@
                 "3": {
                     "action": "note",
                     "noteContent": "xxxxxxxxxxxx:\n\n|%%| |\n|-|-|\n| aaaaaaaaa | 1.10 |\n| bbbbbbbbb | 2.30 |\n| ddddddddd | 6.34 |",
+                    "editTable": true,
                     "noteColor": "#d4edda",
                     "noteWidth": 380,
                     "noteHeight": 330,

@@ -124,8 +124,8 @@ async function openGuide(lang, W) {
   const showMe = page.locator('.kb-message .kb-show-me-btn').last();
   await showMe.waitFor({ timeout: 5000 });
   const ans = plain(await page.locator('.kb-answer-text').last().innerHTML());
-  ok(ans === plain(kb[lang].answer) && (lang === 'bg' ? /заглавието на бележка.*изтрива.*кабърчето ◎ само я откача/ : /note's title.*deletes.*◎ pin only unpins/).test(ans) && !/(кабърчето на бележка в борда - изтрива|pin in a board - deletes)/.test(ans),
-    W + 'chat shows the corrected Ctrl-actions answer (delete = title, pin only unpins) with the Show me invite');
+  ok(ans === plain(kb[lang].answer) && (lang === 'bg' ? /заглавието на бележка.*изтрива/ : /note's title.*deletes/).test(ans) && !/(кабърчето на бележка в борда - изтрива|pin in a board - deletes|само я откача|pin only unpins)/.test(ans),
+    W + 'chat shows the Ctrl-actions answer (delete = title, no pin-unpin clause, plan 13) with the Show me invite');
   await showMe.click(); // real input once
 }
 

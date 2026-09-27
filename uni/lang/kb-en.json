@@ -578,25 +578,25 @@
                 "markdown"
             ],
             "question": "How do I work with a table in a note?",
-            "answer": "A table is text in the note: cells are separated by <b>|</b>, a separator row of dashes sits under the header row, and the data rows follow it. Please click <b><i>Show me</i></b>.",
+            "answer": "A table is defined in a note like this: the columns are separated by <b>|</b>, the top row holds the column headers, under it comes the separator row of dashes, and then the data rows. Click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "A table is plain text in the note: cells are separated by <b>|</b>. The first row is the header, the separator row of dashes comes right under it, and below that come the data rows, each on its own line, with no blank line between them."
+                    "text": "A table is defined in the note like this: the columns (the cells in the rows) are separated by the | character, the top row holds the column headers, under it comes a separator row of dashes (at least 1 in every cell), then the data rows, with no blank line between them. Here the table is shown in edit mode - its exact definition stands between the | characters."
                 },
                 "2": {
-                    "text": "The minimum for a table to be drawn: at least two adjacent lines with <b>|</b>; the separator row is <b>directly</b> under the header row; its cells are dashes only - <b>one dash is enough</b> (<b>:</b> on the left or right aligns the column); at least <b>one data row</b>. The outer <b>|</b> at the start and end of a line are optional."
+                    "text": "The minimum for a table: a row with the column headers; the separator row <b>directly</b> under the header row; its cells are dashes only - <b>one is enough</b> (<b>:</b> on the left or right aligns the column); at least <b>one data row</b>. The outer <b>|</b> at the start and end of a line are optional."
                 },
                 "3": {
-                    "text": "A table without borders: <b>%%</b> in the first cell (or an empty first cell when there is more than one). The preview draws it with no borders and no header row - only the data rows. A note that is only such a table stays without a title."
+                    "text": "A table without borders: <b>%%</b> in the first cell. The table is drawn with no borders and no header row - only the data rows."
                 },
                 "4": {
-                    "text": "The ▦ button: <b>click</b> - the table under the caret (all of them if the caret is outside a table and there are several); <b>hold</b> or <b>Ctrl/⌘+click</b> - every table. Here is the table in its compact form, before the click: the separator row is short and the columns do not line up. The <b>%%</b> marker is kept and written tight here - <b>|%%|</b>."
+                    "text": "The ▦ button toggles the current table (the one the caret is in) or all tables (if the caret is outside a table) between clean text form and table form. <b>Ctrl+click / Hold</b> - every table is toggled."
                 },
                 "5": {
-                    "text": "After the click the table is aligned in its own field, in its place - monospace, no wrapping, scrolls sideways. You type straight into the field; the text around it is left untouched."
+                    "text": "In table form the table is shown in its own field, in monospace, with no wrapping and sideways scroll."
                 },
                 "6": {
-                    "text": "A second press (or closing the field) returns the compact form - only the padding and the extra dashes go, the cell text stays word for word. <b>Save</b> writes the aligned text into the note."
+                    "text": "A second press returns the table to text form - the spaces and dashes added for alignment are removed."
                 }
             }
         },
@@ -870,10 +870,11 @@
             "keywords": [
                 "Ctrl",
                 "additional",
-                "key"
+                "commands",
+                "control"
             ],
             "question": "Additional commands",
-            "answer": "<span align='left'><b>Click:</b><br>- a note's date in a board - opens a mini weekly calendar in the note<br>- a note's time in a board - opens a clock in the note<br>- the ◎ button on a note in a board - pins the note to the top of the board<br><br><b>Ctrl+click:</b><br>- Reload button - forces a full sync/reload, even with local unsaved changes<br>- board button - opens the floating boards menu.<br>- Boards button with photos - shows all the photos<br>- the floating boards menu button - switches to full-screen mode.<br>- click on a note in a board - opens it in edit mode.<br>- on a note's title in a board - deletes the note (after confirmation); Ctrl+click on its ◎ pin only unpins it.<br>- on the + button - opens creating a new board.<br><br>- Ctrl+dragging the resize corner of an open note - saves the size as individual for that note.<br><br>- Ctrl+B - bold<br>- Ctrl+I - italic.<br><br>Please click <b><i>Show me</i></b> - the guide shows the commands on a demo note.</span>",
+            "answer": "<span align='left'><b>Click:</b><br>- a note's date in a board - opens a mini weekly calendar in the note<br>- a note's time in a board - opens a clock in the note<br>- the ◎ button on a note in a board - pins the note to the top of the board; a second click on ◎ unpins it.<br><br><b>Ctrl+click:</b><br>- the Reload button - forces a full sync/reload, even with local unsaved changes<br>- a board button - opens the floating boards menu.<br>- the board button <i>With photos</i> - shows all the photos<br>- the floating boards menu button - switches to full-screen mode.<br>- a click on a note in a board - opens it in edit mode.<br>- on a note's title in a board - deletes the note (after confirmation).<br>- on the (+) button - opens creating a new board.<br><br>- Ctrl+dragging the resize corner of an open note - saves the size as individual for that note.<br><br>- Ctrl+B - <b>bold</b><br>- Ctrl+I - <i>italic</i>.<br><br>Click <b><i>Show me</i></b> to see the commands in action.</span>",
             "guide": {
                 "1": {
                     "text": "This is a demo note just for this tour - the guide shows the commands on it and removes it at the end.",
@@ -890,13 +891,13 @@
                     "text": "<b>Click</b> on <b>◎</b> to pin the note to the top of the board; a second click unpins it."
                 },
                 "5": {
-                    "text": "<b>Ctrl+click</b> on the floating boards menu button to toggle full-screen mode - the top bar hides."
+                    "text": "<b>Ctrl+click</b> on the floating boards menu button toggles full-screen mode - the app title and the buttons hide."
                 },
                 "6": {
-                    "text": "<b>Ctrl+click</b> on the note's title to be asked about moving it to the trash - the guide presses <b>No</b> and nothing is deleted."
+                    "text": "<b>Ctrl+click</b> on the note's title asks whether to delete it."
                 },
                 "7": {
-                    "text": "<b>Ctrl+click</b> on the <b>+</b> button to open the new board window, while a plain click makes a new note."
+                    "text": "<b>Ctrl+click</b> on the <b>(+)</b> button opens the new board window."
                 }
             }
         }

@@ -300,6 +300,21 @@ window.refreshGuideLanguage = function () {
   }
 };
 
+// Кликва клетка от таблицата в модала на временната бележка, щом тя е там; безопасно при липса на модал
+// и при повторно извикване (ако бележката вече е в режим редакция, не прави нищо)
+function openGuideNoteTable(step, tries = 0) {
+  if (currentActiveStep !== step || !isTempNoteOpen) return; // водачът вече е на друга стъпка или е затворен
+  const body = document.getElementById('modal-body');
+  const cell = body && body.querySelector('.md-table-render td, .md-table-render th');
+  if (!cell) {
+    // модалът още не е изрисуван (или е в режим редакция от предишна стъпка, докато се пренарисува)
+    if (tries < 60) requestAnimationFrame(() => openGuideNoteTable(step, tries + 1));
+    else if (!(body && body.querySelector('textarea'))) console.warn('[Guide] editTable: no table in the modal');
+    return;
+  }
+  cell.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+}
+
 function showStep(stepOrIndex, nextStepIndex = null, single = false) {
   if (stepTimer) clearTimeout(stepTimer);
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -340,6 +355,9 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         fontSize: step.noteFontSize
       });
       isTempNoteOpen = true;
+      // editTable: бележката се отваря направо в режим редакция с отворено поле на таблицата (▦ натиснат) -
+      // водачът прави същия клик върху таблицата, който човекът би направил (клик за редакция)
+      if (step.editTable) openGuideNoteTable(step);
     }
   }
   let imagePath = step.image;
@@ -871,6 +889,8 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
         // Check horizontal
         if (baseLeft < padding) {
           corrX = -baseLeft + padding;
+        } else if (baseRight > vpW - padding) {
+          corrX = Math.max((vpW - padding) - baseRight, padding - baseLeft);
         }
         // Check vertical
         if (baseTop < padding) {

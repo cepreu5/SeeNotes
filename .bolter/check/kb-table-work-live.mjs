@@ -1,4 +1,4 @@
-// Live check for the KB guide "table-work" (plan 11, b1.80) in a real browser on uni/ (static server, no Drive sign-in).
+// Live check for the KB guide "table-work" (plan 11, b1.80; plan 13, b1.82: edit mode + ▦ pressed from step 1) in a real browser on uni/ (static server, no Drive sign-in).
 //   node .bolter/check/kb-table-work-live.mjs      (exit 1 on any failed assertion; shots .bolter/check/kb-work-*.png)
 import { chromium } from '/opt/nvm/versions/node/v22.23.2/lib/node_modules/@playwright/mcp/node_modules/playwright/index.mjs';
 import http from 'node:http'; import { readFile } from 'node:fs/promises'; import path from 'node:path';
@@ -95,60 +95,69 @@ async function run(lang, width, shots) {
   const top = await page.evaluate(q => window.kbAssistant.matcher.search(q, 3).map(r => r.item?.id), kb[lang].question);
   ok(top[0] === 'table-work', W + 'assistant search for the question finds table-work first', top);
   const item = await page.evaluate(() => window.kbAssistant.kbData.general.find(r => r.id === 'table-work'));
-  ok(item && item.question === kb[lang].question && Object.keys(item.guide).filter(k => /^\d+$/.test(k)).length === 7 && item.guide[1].text === kb[lang].guide[1].text && item.guide[1].action === 'note',
-    W + 'merged record table-work: question + 7 steps with texts and core actions');
+  ok(item && item.question === kb[lang].question && Object.keys(item.guide).filter(k => /^\d+$/.test(k)).length === 6 && item.guide[1].text === kb[lang].guide[1].text && item.guide[1].action === 'note',
+    W + 'merged record table-work: question + 6 steps with texts and core actions');
   await page.evaluate(q => { window.kbUI.inputField.value = q; window.kbUI.sendMessage(); }, kb[lang].question);
   const showMe = page.locator('.kb-message .kb-show-me-btn').last();
   await showMe.waitFor({ timeout: 5000 });
   ok(plain(await page.locator('.kb-answer-text').last().innerHTML()) === plain(kb[lang].answer), W + 'chat shows the table-work answer');
   await showMe.click(); // real input once
 
-  // 1. demo note with a bordered table
+  // the balloon of the current step points at an element that exists (and is visible)
+  const target = k => page.evaluate(sel => { const el = document.querySelector(sel); if (!el) return null; const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; }, item.guide[k].target);
+  const targetOk = async k => { const t = await target(k); ok(t && t.w > 0 && t.h > 0, W + `step ${k}: balloon target ${item.guide[k].target} exists and is visible`, t); };
+  const waitField = () => page.waitForFunction(() => document.querySelector('#modal-body .note-table-split .note-table-field'), null, { timeout: 5000 }).then(() => true, () => false);
+  // 1. demo note: opens straight into edit mode, the table's field open, ▦ pressed
   ok(await waitStep(lang, 1), W + 'step 1 bubble text'); await onScreen(W, 1, width);
+  ok(await waitField(), W + 'step 1: table field appeared by itself');
   let s = await state();
-  ok(s.modal && s.table && !s.table.borderless && s.table.th === 2 && s.table.rows.length === 2 && s.table.border !== 'none', W + 'step 1: note shows a bordered table with a header row', s.table);
+  let fl = (s.field?.text || '').split('\n');
+  ok(s.modal && s.editing && s.split && s.btnActive === true && !s.table && fl[0].startsWith('| Product ') && fl.length === 4 && new Set(fl.map(l => l.length)).size === 1,
+    W + 'step 1: editor open, table definition as text in its field, ▦ pressed', { fl, btnActive: s.btnActive });
+  await targetOk(1);
   if (shots) await shot(`.bolter/check/kb-work-${width}-1.png`);
-  // 2. minimum requirement, same note
+  // 2. minimum requirement, same note, field stays open
   await next(); ok(await waitStep(lang, 2), W + 'step 2 bubble text'); await onScreen(W, 2, width);
   s = await state();
-  ok(s.modal && s.table && !s.table.borderless, W + 'step 2: same note still open');
+  ok(s.modal && s.editing && s.split && s.btnActive === true && (s.field?.text || '').startsWith('| Product '), W + 'step 2: same note, field still open');
+  await targetOk(2);
   if (shots) await shot(`.bolter/check/kb-work-${width}-2.png`);
-  // 3. borderless table (%%)
+  // 3. borderless table (%%): also in edit mode with ▦ pressed (variant A)
   await next(); ok(await waitStep(lang, 3), W + 'step 3 bubble text (%%)'); await onScreen(W, 3, width);
+  await page.waitForFunction(() => /%%/.test(document.querySelector('#modal-body .note-table-field')?.value || ''), null, { timeout: 5000 }).catch(() => {});
   s = await state();
-  ok(s.modal && s.table?.borderless && s.table.th === 0 && s.table.border === 'none' && s.table.rows.join() === 'aaaaaaaaa|1.10,bbbbbbbbb|2.30,ddddddddd|6.34',
-    W + 'step 3: note shows the table without borders, no header row, only the data rows', s.table);
+  fl = (s.field?.text || '').split('\n');
+  ok(s.editing && s.split && s.btnActive === true && fl.length === 5 && fl[0].startsWith('| %% ') && fl[2] === '| aaaaaaaaa | 1.10 |',
+    W + 'step 3: %% example in edit mode, its definition in the field, ▦ pressed', fl);
+  await targetOk(3);
   if (shots) await shot(`.bolter/check/kb-work-${width}-3.png`);
-  // 4. edit: the editor opens with the table already aligned in its field
+  // 4. the guide presses ▦: back to clean text form
   await next(); ok(await waitStep(lang, 4), W + 'step 4 bubble text'); await onScreen(W, 4, width);
-  await page.waitForFunction(() => document.getElementById('note-edit-textarea'), null, { timeout: 5000 }).catch(() => {});
-  s = await state();
-  ok(s.editing && s.split && s.btnActive && /^\| %% +\| +\|$/m.test(s.field?.text || ''), W + 'step 4: editor open, table already aligned in its field (marker kept)', s.field?.text);
-  if (shots) await shot(`.bolter/check/kb-work-${width}-4.png`);
-  // 5. the guide presses ▦: compact form, the "before"
-  await next(); ok(await waitStep(lang, 5), W + 'step 5 bubble text'); await onScreen(W, 5, width);
   s = await state();
   const compactLines = (s.text || '').split('\n').filter(l => l.includes('|'));
-  ok(!s.split && !s.btnActive && compactLines[0] === '|%%| |' && compactLines[1] === '| - | - |', W + 'step 5: compact table, short separator, marker tight |%%|', compactLines);
+  ok(s.editing && !s.split && s.btnActive === false && compactLines[0] === '|%%| |' && compactLines[1] === '| - | - |', W + 'step 4: ▦ released, clean text form (padding removed, marker tight |%%|)', { compactLines, btnActive: s.btnActive });
+  await targetOk(4);
+  if (shots) await shot(`.bolter/check/kb-work-${width}-4.png`);
+  // 5. the guide presses ▦ again: table form in its own field
+  await next(); ok(await waitStep(lang, 5), W + 'step 5 bubble text'); await onScreen(W, 5, width);
+  s = await state();
+  fl = (s.field?.text || '').split('\n');
+  ok(s.split && s.btnActive === true && fl.length === 5 && new Set(fl.map(l => l.length)).size === 1 && fl[0].startsWith('| %% ') && fl[1].startsWith('| ---') && fl[2] === '| aaaaaaaaa | 1.10 |',
+    W + 'step 5: ▦ pressed again, aligned table in its own field', fl);
+  ok(/mono|courier/i.test(s.field?.font || '') && (s.field.wrap === 'pre' || s.field.wrapAttr === 'off') && /auto|scroll/.test(s.field.overflowX), W + 'step 5: field is monospace, no wrapping, scrolls sideways', s.field);
+  await targetOk(5);
   if (shots) await shot(`.bolter/check/kb-work-${width}-5.png`);
-  // 6. the guide presses ▦ again: aligned table in its own field
+  // 6. explanation of the second press; nothing pressed
   await next(); ok(await waitStep(lang, 6), W + 'step 6 bubble text'); await onScreen(W, 6, width);
   s = await state();
-  const fl = (s.field?.text || '').split('\n');
-  ok(s.split && s.btnActive && fl.length === 5 && new Set(fl.map(l => l.length)).size === 1 && fl[0].startsWith('| %% ') && fl[1].startsWith('| ---') && fl[2] === '| aaaaaaaaa | 1.10 |',
-    W + 'step 6: ▦ click opened the field with the aligned table', fl);
-  ok(/mono|courier/i.test(s.field?.font || '') && (s.field.wrap === 'pre' || s.field.wrapAttr === 'off') && /auto|scroll/.test(s.field.overflowX), W + 'step 6: field is monospace, no wrapping, scrolls sideways', s.field);
+  ok(s.split && s.btnActive === true, W + 'step 6: field still open (explain only)');
+  await targetOk(6);
   if (shots) await shot(`.bolter/check/kb-work-${width}-6.png`);
-  // 7. explanation of the second press + Save; nothing pressed
-  await next(); ok(await waitStep(lang, 7), W + 'step 7 bubble text'); await onScreen(W, 7, width);
-  s = await state();
-  ok(s.split && s.btnActive, W + 'step 7: field still open (explain only)');
-  if (shots) await shot(`.bolter/check/kb-work-${width}-7.png`);
   // end: the guide closes the demo note
   await next();
   await page.waitForFunction(() => !document.querySelector('.guide-container'), null, { timeout: 5000 }).catch(() => {});
   s = await state();
-  ok(s.bubble === null && !s.modal, W + 'after step 7: guide gone, demo note closed', { bubble: s.bubble, modal: s.modal });
+  ok(s.bubble === null && !s.modal, W + 'after step 6: guide gone, demo note closed', { bubble: s.bubble, modal: s.modal });
   ok(errors.length === 0, W + 'no page/console errors during the guide', errors);
 }
 
