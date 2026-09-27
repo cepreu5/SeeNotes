@@ -10438,6 +10438,11 @@ function showModal(options, noteElement = null) {
     observeModalFooterDateVisibility(footerToolbar);
 }
 
+// Изрично излагане на window: минифицираният продукционен билд (Beta/mainn.js) преименува
+// функциите, но не и имената на свойства, а двигателят на водача (msm.js) търси точно
+// window.showModal за стъпките с action: "note".
+window.showModal = showModal;
+
 function toggleModalSearch(modalContentBox, modalBody) {
     const toolbar = modalContentBox.querySelector('.modal-footer-toolbar');
     let searchBar = modalContentBox.querySelector('.modal-search-bar');
