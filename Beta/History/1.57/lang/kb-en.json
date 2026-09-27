@@ -567,39 +567,6 @@
             "question": "How can I organize my notes?",
             "answer": "You can use <b><i>Settings</i></b> > <b><i>Order notes</i></b> to arrange them by date, color, alphabetical order, and other criteria."
         },
-        "table-work": {
-            "keywords": [
-                "table",
-                "tables",
-                "columns",
-                "align",
-                "▦",
-                "%%",
-                "markdown"
-            ],
-            "question": "How do I work with a table in a note?",
-            "answer": "A table is defined in a note like this: the columns are separated by <b>|</b>, the top row holds the column headers, under it comes the separator row of dashes, and then the data rows. Click <b><i>Show me</i></b>.",
-            "guide": {
-                "1": {
-                    "text": "A table is defined in the note like this: the columns (the cells in the rows) are separated by the | character, the top row holds the column headers, under it comes a separator row of dashes (at least 1 in every cell), then the data rows, with no blank line between them. Here the table is shown in edit mode."
-                },
-                "2": {
-                    "text": "The minimum for a table: a row with the column headers; the separator row <b>directly</b> under the header row; its cells are dashes only - <b>one is enough</b> (<b>:</b> on the left or right aligns the column); at least <b>one data row</b>. The outer <b>|</b> at the start and end of a line are optional."
-                },
-                "3": {
-                    "text": "A table without borders: <b>%%</b> in the first cell. The table is drawn with no borders and no header row - only the data rows."
-                },
-                "4": {
-                    "text": "The ▦ button toggles the current table (the one the caret is in) or all tables (if the caret is outside a table) between clean text form and table form. <b>Ctrl+click / Hold</b> - every table is toggled."
-                },
-                "5": {
-                    "text": "In table form the table is shown in its own field, in monospace, with no wrapping and sideways scroll."
-                },
-                "6": {
-                    "text": "A second press returns the table to text form - the spaces and dashes added for alignment are removed."
-                }
-            }
-        },
         "calendar-view": {
             "keywords": [
                 "calendar",
@@ -734,38 +701,6 @@
                 }
             }
         },
-        "Beta 1.57": {
-            "keywords": [
-                "new",
-                "news",
-                "version",
-                "last",
-                "1.57"
-            ],
-            "question": "What new features and changes are in the application?",
-            "answer": "Please click <b><i>Show me</i></b>.",
-            "guide": {
-                "1": {
-                    "text": "Beta 1.57<br><br><span align='left'>Slash commands in the search field:<br><br>/1 or /set (Settings)<br>/2 or /info (System information)<br>/3 or /cal (Calendar)<br>/4 or /rel (Reload)<br>/5 or /out (Sign out)<br>/6 or /norm (exit expanded mode)<br>/7 or /ex (enter expanded mode)<br>/%number - sets the browser zoom<br><br>/0 or /wipe (wipe data and close the tab)<br><br>/? - shows the list of commands</span>"
-                }
-            }
-        },
-        "Beta 1.58": {
-            "keywords": [
-                "new",
-                "news",
-                "version",
-                "last",
-                "1.58"
-            ],
-            "question": "What new features and changes are in the application?",
-            "answer": "Please click <b><i>Show me</i></b>.",
-            "guide": {
-                "1": {
-                    "text": "Beta 1.58<br><br><span align='left'>- Improved Markdown parser with more accurate formatting of notes.<br>- Improved table editing.<br>- The assistant now loads only when you first open it, so the application starts faster.<br>- The align button ▦ now also aligns tables without outer |.</span>"
-                }
-            }
-        },
         "offline-mode": {
             "keywords": [
                 "offline",
@@ -803,41 +738,6 @@
                 },
                 "5": {
                     "text": "<b>(-)</b> deletes the selected profile from the cloud after a confirmation. The default <b><i>Default</i></b> profile cannot be deleted."
-                }
-            }
-        },
-        "Ctrl-actions": {
-            "keywords": [
-                "Ctrl",
-                "additional",
-                "commands",
-                "control"
-            ],
-            "question": "Additional commands",
-            "answer": "<span align='left'><b>Click:</b><br>- a note's date in a board - opens a mini weekly calendar in the note<br>- a note's time in a board - opens a clock in the note<br>- the ◎ button on a note in a board - pins the note to the top of the board; a second click on ◎ unpins it.<br><br><b>Ctrl+click:</b><br>- the Reload button - forces a full sync/reload, even with local unsaved changes<br>- a board button - opens the floating boards menu.<br>- the board button <i>With photos</i> - shows all the photos<br>- the floating boards menu button - switches to full-screen mode.<br>- a click on a note in a board - opens it in edit mode.<br>- on a note's title in a board - deletes the note (after confirmation).<br>- on the (+) button - opens creating a new board.<br><br>- Ctrl+dragging the resize corner of an open note - saves the size as individual for that note.<br><br>- Ctrl+B - <b>bold</b><br>- Ctrl+I - <i>italic</i>.<br><br>Click <b><i>Show me</i></b> to see the commands in action.</span>",
-            "guide": {
-                "1": {
-                    "text": "This is a demo note just for this tour - the assistant shows the commands on it and removes it at the end.",
-                    "noBoardText": "This tour needs a board first - create one with <b>Ctrl+click</b> on the <b>+</b> button.",
-                    "noteText": "Demo note\nThe assistant made it just for this tour and removes it at the end."
-                },
-                "2": {
-                    "text": "<b>Click</b> on the note's date to open a mini weekly calendar inside it; a second click closes it."
-                },
-                "3": {
-                    "text": "<b>Click</b> on the time in header to show a clock in the note; a click on the clock brings the text back."
-                },
-                "4": {
-                    "text": "<b>Click</b> on <b>◎</b> to pin the note to the top of the board; a second click unpins it."
-                },
-                "5": {
-                    "text": "<b>Ctrl+click</b> on the floating boards menu button toggles full-screen mode - the app title and the buttons hide."
-                },
-                "6": {
-                    "text": "<b>Ctrl+click</b> on the note's title asks whether to delete it."
-                },
-                "7": {
-                    "text": "<b>Ctrl+click</b> on the <b>(+)</b> button opens the new board window."
                 }
             }
         }

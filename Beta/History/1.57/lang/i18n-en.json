@@ -203,7 +203,6 @@
     "confirmNoteDelete": "Are you sure you want to delete this note from the database (from the browser cache)? This will not delete it from the data source (e.g. Google Drive).",
     "confirmNoteDeleteSync": "Are you sure you want to delete this note?",
     "noteDeletedSuccess": "Note successfully deleted from the database.",
-    "confirmDiscardChanges": "Close without saving?",
     "confirmSaveChanges": "Save changes?",
     "savingChanges": "Saving changes...",
     "noteDeletedSuccessGDrive": "Note deleted from DB and Google Drive.",
@@ -391,7 +390,6 @@
     "migrationError": "Error copying data.",
     "errorNoBoards": "Please create a board first before adding notes.",
     "selectFolderOption": "Select folder...",
-    "selectFolderPrompt": "Enter the name of an existing folder in Google Drive:",
     "errorFolderNotFoundDrive": "Folder not found in Google Drive.",
     "folderNotFoundCreate": "Folder '{folder}' was not found in Google Drive. Would you like to create it now?",
     "folderNotFoundSwitchedToMultinotes": "Folder '{oldFolder}' was not found in Google Drive. Automatically switched to the found 'multinotes_data' folder.",
@@ -457,7 +455,7 @@
     "systemBoardSortLabel": "System board:",
     "errorDuplicateBoardTitle": "A board with this name already exists.",
     "multiNotesSettingsWarn": "⚠️ Warning: Changes in the MultiNotes folder (multinotes_data) will not automatically reflect in the Android MultiNotes app without a full sync. Are you sure you want to switch to this folder?",
-    "dataFolderSelectionTitle": "<b><big>CX Notes</big></b>",
+    "dataFolderSelectionTitle": "Welcome to <b><big>CX Notes</big></b>!",
     "dataFolderSelectionDescription": "<b><big>CX Notes</big></b> uses a Google Drive folder to store your notes. Choose how you’d like to continue:",
     "dataFolderOption1": "Copy MultiNotes data into <b>CX Notes</b>",
     "dataFolderOption1Description": "Import your notes from MultiNotes folder (multinotes_data) into a new <b>CX-Notes</b> folder.",
@@ -485,11 +483,6 @@
     "strikeTooltip": "Strikethrough text",
     "lineStartTooltip": "Line start · Ctrl/hold: paragraph start",
     "lineEndTooltip": "Line end · Ctrl/hold: paragraph end",
-    "tableAlignTooltip": "Align the table under the caret and show it in its place in a field you can type in (no wrapping, scrolls sideways) · press again: close the field and compact the table · Ctrl/⌘+click or hold: all tables",
-    "assistantName": "Noto",
-    "assistantTitle": "Assistant",
-    "assistantLoading": "Loading...",
-    "assistantLoadFailed": "The assistant could not be loaded. Please try again later.",
     "resizeHandleTooltip": "Drag: global size · Ctrl+drag/hold+drag: this note only",
     "syncSuspendedTooltip": "Sync suspended. Click to connect.",
     "advancedSettingsEnabled": "Advanced settings enabled",
@@ -507,6 +500,5 @@
         { "cmd": "/0", "text": "/0  or  /wipe — Erase data and close tab" }
     ],
     "wipeConfirmationPrompt": "Enter confirmation code {code} to wipe all data:",
-    "wipeWrongCode": "Incorrect confirmation code. Operation cancelled.",
-    "linkMarkersRemovedToast": "Links that could not be restored and were removed on save: {count}. The original is in the file’s Drive history."
+    "wipeWrongCode": "Incorrect confirmation code. Operation cancelled."
 }

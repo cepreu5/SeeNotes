@@ -457,7 +457,7 @@
     "systemBoardSortLabel": "Системен борд:",
     "errorDuplicateBoardTitle": "Вече съществува борд с това име.",
     "multiNotesSettingsWarn": "⚠️ Внимание: Промените в на MultiNotes (multinotes_data) няма да се отразят автоматично в Android приложението MultiNotes без пълна синхронизация. Сигурни ли сте, че искате да превключите към тази папка?",
-    "dataFolderSelectionTitle": "<b><big>CX Notes</big></b>",
+    "dataFolderSelectionTitle": "Добре дошли в <b><big>CX Notes</big></b>!",
     "dataFolderSelectionDescription": "CX Notes изисква папка в Google Drive за съхранение на вашите бележки. Изберете как да продължите:",
     "dataFolderOption1": "Мигриране в CX-Notes (Препоръчено)",
     "dataFolderOption1Description": "Импортирайте бележки от съществуваща папка (напр. MultiNotes данни) в нова CX-Notes папка. По-малко разрешения, по-безопасно.",
@@ -485,11 +485,6 @@
     "strikeTooltip": "Зачертан текст",
     "lineStartTooltip": "Начало на реда · с Ctrl/задържане: начало на параграфа",
     "lineEndTooltip": "Край на реда · с Ctrl/задържане: край на параграфа",
-    "tableAlignTooltip": "Подравнява таблицата под курсора и я показва на мястото ѝ в поле, в което може да се пише (без пренасяне на редовете, с хоризонтален скрол) · второ натискане: затваря полето и връща компактната таблица · с Ctrl/⌘+клик или задържане: всички таблици",
-    "assistantName": "Лепчо",
-    "assistantTitle": "Асистент",
-    "assistantLoading": "Зареждам...",
-    "assistantLoadFailed": "Асистентът не можа да се зареди. Опитайте отново по-късно.",
     "resizeHandleTooltip": "Промяна на размера · с Ctrl/задържане: само за тази бележка",
     "syncSuspendedTooltip": "Синхронизацията е спряна. Кликнете за свързване.",
     "advancedSettingsEnabled": "Разширените настройки са активирани",
@@ -534,6 +529,5 @@
         }
     ],
     "wipeConfirmationPrompt": "Въведете кода за потвърждение {code}, за да изтриете всички данни:",
-    "wipeWrongCode": "Грешен код за потвърждение. Операцията е отменена.",
-    "linkMarkersRemovedToast": "Линкове, които не можаха да бъдат възстановени и бяха премахнати при записа: {count}. Оригиналът е в историята на файла в Drive."
+    "wipeWrongCode": "Грешен код за потвърждение. Операцията е отменена."
 }

@@ -5128,7 +5128,7 @@ async function startApp(isExplicitLogin = false) {
     }
 
     // --- Graceful fallback for KB Assistant ---
-    // kb-assistant.js се зарежда едва при първо отваряне (ensureKBAssistant), така че
+    // kb-assistantt.js се зарежда едва при първо отваряне (ensureKBAssistant), така че
     // до тогава - или ако зареждането се провали - тук стои този заместител.
     // Той има само init/showGuide/terminateGuide/updateLanguage/isInitialized.
     if (typeof window.kbAssistant === 'undefined') {
@@ -16243,11 +16243,11 @@ function ensureKBAssistant() {
     // Класът остава дефиниран след първото зареждане - скриптът не се добавя втори път
     const js = typeof KBAssistant !== 'undefined'
         ? Promise.resolve()
-        : loadKBAssistantFile('script', { src: 'kb-assistant.js' });
+        : loadKBAssistantFile('script', { src: 'kb-assistantt.js' });
     kbAssistantLoadPromise = Promise.all([css, js])
         .then(() => {
             if (!window.kbAssistant || typeof window.kbAssistant.getText !== 'function') {
-                throw new Error('kb-assistant.js did not define the assistant');
+                throw new Error('kb-assistantt.js did not define the assistant');
             }
             return window.kbAssistant.init();
         })
