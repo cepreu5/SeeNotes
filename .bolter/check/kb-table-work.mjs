@@ -54,7 +54,8 @@ for (const s of STEPS) {
   ok(st.action === expect[s][0] && st.target === expect[s][1], `core step ${s}: action=${JSON.stringify(st.action)} target=${JSON.stringify(st.target)}`);
   ok(!('text' in st) && st.time > 0 && st.time <= 15000 && /^msm\/.+\.png$/.test(st.image), `core step ${s}: no text, time ${st.time}, image ${st.image}`);
 }
-ok(cg.action === 'explain!' && cg.stopAfter === false, 'core guide-level action=explain! stopAfter=false');
+// guide-level 'explain' (not 'explain!' as in the Beta 1.60 news): the chat closes so it does not cover the demo note
+ok(cg.action === 'explain' && cg.stopAfter === false, 'core guide-level action=explain stopAfter=false');
 
 // 5. demo notes: step 1 a bordered table (same note as Beta 1.60), step 3 the same rows with %% (borderless)
 const b160 = gen.find(r => r.id === 'Beta 1.60').guide['1'].noteContent;
