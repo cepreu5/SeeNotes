@@ -750,79 +750,19 @@
                 }
             }
         },
-        "Beta 1.59": {
+        "Beta 1.58": {
             "keywords": [
                 "new",
                 "news",
                 "version",
                 "last",
-                "1.59"
+                "1.58"
             ],
             "question": "What new features and changes are in the application?",
             "answer": "Please click <b><i>Show me</i></b>.",
             "guide": {
                 "1": {
-                    "text": "Beta 1.59<br><br><span align='left'>- Improved Markdown parser with more accurate formatting of notes.</span>"
-                }
-            }
-        },
-        "Beta 1.60": {
-            "keywords": [
-                "new",
-                "news",
-                "version",
-                "last",
-                "1.60"
-            ],
-            "question": "What new features and changes are in the application?",
-            "answer": "Please click <b><i>Show me</i></b>.",
-            "guide": {
-                "1": {
-                    "text": "Here is a note with one table, written by hand in Markdown - its columns are not aligned yet."
-                },
-                "2": {
-                    "text": "We open the note for editing to see how the table looks in the text itself."
-                },
-                "3": {
-                    "text": "The ▦ button aligns the table. Here it is before the click - the separator row is short and the columns do not line up."
-                },
-                "4": {
-                    "text": "After the click the columns and the separator row are aligned."
-                },
-                "5": {
-                    "text": "A second press returns the compact view. <b>Ctrl/⌘+click</b> or hold aligns every table in the note."
-                }
-            }
-        },
-        "Beta 1.65": {
-            "keywords": [
-                "new",
-                "news",
-                "version",
-                "last",
-                "1.65"
-            ],
-            "question": "What new features and changes are in the application?",
-            "answer": "Please click <b><i>Show me</i></b>.",
-            "guide": {
-                "1": {
-                    "text": "Beta 1.65<br><br><span align='left'>- The assistant now loads only when you first open it, so the application starts faster.</span>"
-                }
-            }
-        },
-        "Beta 1.68": {
-            "keywords": [
-                "new",
-                "news",
-                "version",
-                "last",
-                "1.68"
-            ],
-            "question": "What new features and changes are in the application?",
-            "answer": "Please click <b><i>Show me</i></b>.",
-            "guide": {
-                "1": {
-                    "text": "Beta 1.68<br><br><span align='left'>- The align button ▦ now also aligns tables without outer | pipes.</span>"
+                    "text": "Beta 1.58<br><br><span align='left'>- Improved Markdown parser with more accurate formatting of notes.<br>- Improved table editing.<br>- The assistant now loads only when you first open it, so the application starts faster.<br>- The align button ▦ now also aligns tables without outer |.</span>"
                 }
             }
         },
