@@ -1,0 +1,12 @@
+ENGINE {"guideDemoNote":"function","guideDemoReset":"function","guideDemoDiscard":"function","boardsDataGlobal":"undefined","allNotesDataGlobal":"undefined","createNoteElementGlobal":"undefined","assistantHasDemoNote":false}
+ANSWER Ctrl-actions: "Click: - Датата на бележка в борда - отваря мини седмичен календар в бележката - Часа на бележка в борда - отв | Може също да те интересува: Как се работи с таблица в бележка? Какви допълнителни функции имат бележките в бор"
+SHOW-ME button {"id":null,"step1action":"demoNote"}
+CTRL step1 {"demoNote":false,"guide":true,"bubble":"Това е демо бележка само за този преглед - върху нея асистентът ще покаже командите, а накрая ще я премахне."}
+CTRL log ["[warning] [KB Assistant] Action element not found: demoNote"]
+CTRL after terminate {"demoNote":0,"guide":false}
+ANSWER table-work: "Таблицата се дефинира в бележката така: колоните се разделят със символа |, най-отгоре е ред със заглавията на | Може също да те интересува: Какво се вижда на основния екран и защо е важно? Какво е полезно да знам, когато п"
+TABLE-WORK show-me clicked true
+TABLE-WORK step1 {"modal":true,"tableBtnActive":true,"textarea":true}
+TABLE-WORK log []
+ANSWER plain: "Как се работи с таблица в бележка? Таблицата се дефинира в бележката така: колоните се разделят със символа |, | Може също да те интересува: Какво е полезно да знам, когато преглеждам бележка? Какви допълнителни функции има"
+PAGEERRORS []
