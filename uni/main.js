@@ -1440,6 +1440,8 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                             });
                             if (userInfoResp.ok) {
                                 const userInfo = await userInfoResp.json();
+                                // Проверен акаунт: сверява се с имейла в базата (при разлика - екранът за смяна на акаунт)
+                                if (userInfo.email) await onVerifiedAccount(userInfo.email);
                                 const previousEmail = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
                                 if (previousEmail && userInfo.email && previousEmail !== userInfo.email) {
                                     console.warn(`[refreshAuthToken] User account changed: ${previousEmail} → ${userInfo.email}. Resetting folder settings.`);
@@ -3316,8 +3318,11 @@ async function authCallback(tokenResponse) {
                 console.log('User info received:', userInfo.email);
                 const previousEmail = localStorage.getItem('google_login_hint');
                 if (previousEmail && previousEmail !== userInfo.email) {
-                    await handleAccountSwitchReset(previousEmail, userInfo.email);
+                    resetAccountFolderSettings();
                 }
+                // Базата не се трие тук: userCheck() в mainLogic сверява проверения имейл с userEmail в базата
+                // и при разлика показва екрана за смяна на акаунт (изтриване само след ОК).
+                if (userInfo.email) sessionStorage.setItem(VERIFIED_EMAIL_KEY, userInfo.email);
                 sessionStorage.setItem('google_auth_email_hint', userInfo.email);
                 localStorage.setItem('google_login_hint', userInfo.email);
                 localStorage.setItem('cached_whitelist_email', userInfo.email);
@@ -4523,7 +4528,10 @@ function openNotesDB() {
                 console.log("NotesDB structure is up to date.");
             };
             request.onsuccess = (event) => {
-                resolve(event.target.result);
+                const db = event.target.result;
+                // Отворена връзка не бива да блокира deleteNotesDB (смяна на акаунт)
+                db.onversionchange = () => db.close();
+                resolve(db);
             };
             request.onerror = (event) => {
                 const error = event.target.error;
@@ -4745,27 +4753,39 @@ async function checkDbExists(dbName) {
     });
 }
 
+/**
+ * Изтрива NotesDB и чака резултата.
+ * @returns {Promise<boolean>} true при успешно изтриване; false при грешка или ако остане блокирано над 8 сек.
+ */
 function deleteNotesDB() {
-    // --- ОКОНЧАТЕЛНА КОРЕКЦИЯ: Директно изтриване ---
-    let deleteFinished = false;
-    const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
-    deleteRequest.onsuccess = () => {
-        deleteFinished = true;
-        showToast(_('dbDeleted'), 3000);
-    };
-    deleteRequest.onerror = (event) => {
-        deleteFinished = true;
-        showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000);
-    };
-    deleteRequest.onblocked = (event) => {
-        console.log('Database deletion is blocked unexpectedly:', event);
-        // Показваме съобщението само ако изтриването не завърши до 1.5 секунди
-        setTimeout(() => {
-            if (!deleteFinished) {
-                showToast(_('errorDbDeletionBlocked'), 15000);
-            }
-        }, 1500);
-    };
+    return new Promise(resolve => {
+        let deleteFinished = false;
+        const finish = (ok) => {
+            if (deleteFinished) return;
+            deleteFinished = true;
+            resolve(ok);
+        };
+        const deleteRequest = indexedDB.deleteDatabase(NOTES_DB_NAME);
+        deleteRequest.onsuccess = () => {
+            showToast(_('dbDeleted'), 3000);
+            finish(true);
+        };
+        deleteRequest.onerror = (event) => {
+            showToast(_('dbDeleteFailed') + `: ${event.target.error}`, 10000);
+            finish(false);
+        };
+        deleteRequest.onblocked = (event) => {
+            console.log('Database deletion is blocked unexpectedly:', event);
+            // Показваме съобщението само ако изтриването не завърши до 1.5 секунди
+            setTimeout(() => {
+                if (!deleteFinished) {
+                    showToast(_('errorDbDeletionBlocked'), 15000);
+                }
+            }, 1500);
+            // Горна граница - блокирано изтриване не бива да заклещи приложението
+            setTimeout(() => finish(false), 8000);
+        };
+    });
 }
 
 /**
@@ -5165,6 +5185,8 @@ async function startApp(isExplicitLogin = false) {
         // --- КОРЕКЦИЯ: Осигуряваме наличност на имейла при безшумен старт ---
         // Използваме САМО записания от логина hint (ако е избрано 'Запомни ме'),
         // за да избегнем несъответствие с лицензния имейл.
+        // Това копие може да е остаряло и НЕ е доказателство за акаунта: userCheck() разчита
+        // само на VERIFIED_EMAIL_KEY (имейл от прясно userinfo запитване).
         if (!sessionStorage.getItem('google_auth_email_hint')) {
             const emailHint = localStorage.getItem('google_login_hint');
             if (emailHint) {
@@ -6072,6 +6094,8 @@ function initApp() {
             if (typeof showToast === 'function') showToast("Online mode restored", 2000);
         }
         if (isSyncSuspended && pendingBackgroundSync) startBackgroundTokenRefresh();
+        // Отложена проверка на акаунта (pendingAccountReset) - при първото връщане онлайн
+        if (!sessionStorage.getItem(VERIFIED_EMAIL_KEY) && (dbExists || readPendingAccountReset())) verifyAccountInBackground();
     });
     window.addEventListener('offline', () => {
         clearTimeout(offlineTimeout);
@@ -7306,6 +7330,8 @@ function handleSignoutClick() {
     localStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_email_hint');
+    sessionStorage.removeItem(VERIFIED_EMAIL_KEY);
+    sessionStorage.removeItem(ACCOUNT_SWITCH_DONE_KEY);
     localStorage.removeItem('google_login_hint');
     clearCachedMainFolderId();
     localStorage.removeItem('activeFolderId');
@@ -7319,11 +7345,235 @@ function handleSignoutClick() {
     window.location.reload();
 }
 
+// --- Смяна на акаунт ---
+// Доказателство за текущия акаунт е САМО имейл от прясно userinfo запитване (VERIFIED_EMAIL_KEY).
+// Указателите google_login_hint / google_auth_email_hint може да са останали от стария акаунт.
+const VERIFIED_EMAIL_KEY = 'google_verified_email';
+// { confirmed, dbEmail, newEmail, at } - намерение за изтриване, което преживява затваряне/презареждане
+const PENDING_ACCOUNT_RESET_KEY = 'pendingAccountReset';
+// Защита от цикъл: изтриването при смяна на акаунт се прави най-много веднъж на сесия
+const ACCOUNT_SWITCH_DONE_KEY = 'accountSwitchDone';
+let accountSwitchNoticeShown = false;
+let accountVerification = null;
+
+function readPendingAccountReset() {
+    try {
+        return JSON.parse(localStorage.getItem(PENDING_ACCOUNT_RESET_KEY)) || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function sameEmail(a, b) {
+    return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
 /**
- * Изчиства старото състояние и изтрива старата локална база при смяна на акаунта.
+ * Проверен имейл (от userinfo): сверява го с userEmail в базата.
+ * При разлика записва потвърденото намерение и показва екрана за смяна на акаунт.
+ * @returns {Promise<boolean>} true при потвърдена смяна на акаунт
  */
-async function handleAccountSwitchReset(previousEmail, newEmail) {
-    console.warn(`[AccountSwitch] Account changed from ${previousEmail} to ${newEmail}. Resetting state and deleting old local database.`);
+async function onVerifiedAccount(email) {
+    if (!email) return false;
+    sessionStorage.setItem(VERIFIED_EMAIL_KEY, email);
+    if (dbExists === null || typeof dbExists === 'undefined') {
+        dbExists = await checkDbExists(NOTES_DB_NAME);
+    }
+    if (!dbExists) {
+        localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
+        return false;
+    }
+    const storedUserEmail = await getConfig('userEmail');
+    if (storedUserEmail && !sameEmail(storedUserEmail, email)) {
+        localStorage.setItem(PENDING_ACCOUNT_RESET_KEY, JSON.stringify({ confirmed: true, dbEmail: storedUserEmail, newEmail: email, at: Date.now() }));
+        showAccountSwitchNotice(storedUserEmail, email);
+        return true;
+    }
+    localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
+    return false;
+}
+
+/**
+ * Акаунтът не може да се потвърди (офлайн или неуспешен фонов вход): нищо не се трие,
+ * записва се pendingAccountReset и проверката се повтаря при първото връщане онлайн.
+ */
+async function markAccountUnverified() {
+    const pending = readPendingAccountReset();
+    if (pending && pending.confirmed) return;
+    let dbEmail = null;
+    try { dbEmail = await getConfig('userEmail'); } catch (e) { }
+    localStorage.setItem(PENDING_ACCOUNT_RESET_KEY, JSON.stringify({ confirmed: false, dbEmail, at: Date.now() }));
+}
+
+/**
+ * Фонова проверка на акаунта - тръгва СЛЕД първото рисуване от локалната база и не го забавя.
+ * Едно userinfo запитване с наличния токен; при изтекъл токен - тихото опресняване (то само проверява userinfo).
+ * @returns {Promise<boolean>} true при потвърдена смяна на акаунт
+ */
+function verifyAccountInBackground() {
+    if (accountVerification) return accountVerification;
+    accountVerification = (async () => {
+        if (!dbExists) return false;
+        const known = sessionStorage.getItem(VERIFIED_EMAIL_KEY);
+        if (known) return onVerifiedAccount(known);
+        if (isOffline || !navigator.onLine) {
+            await markAccountUnverified();
+            return false;
+        }
+        let email = null;
+        let tokenData = null;
+        try { tokenData = JSON.parse(sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token')); } catch (e) { }
+        const isExpired = !tokenData || !tokenData.access_token || !tokenData.issued_at ||
+            (Date.now() - tokenData.issued_at) / 1000 > ((tokenData.expires_in || 0) - 60);
+        if (!isExpired) {
+            try {
+                const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+                });
+                if (resp.ok) email = (await resp.json()).email || null;
+            } catch (e) {
+                console.warn('[AccountCheck] userinfo request failed:', e);
+            }
+        }
+        if (!email && tokenData) {
+            // refreshAuthToken проверява userinfo и извиква onVerifiedAccount
+            await (isSyncSuspended ? startBackgroundTokenRefresh() : refreshAuthToken(false, true)).catch(() => null);
+            email = sessionStorage.getItem(VERIFIED_EMAIL_KEY);
+        }
+        if (!email) {
+            console.warn('[AccountCheck] Could not verify the current account. Nothing is deleted; will retry when online.');
+            await markAccountUnverified();
+            return false;
+        }
+        return onVerifiedAccount(email);
+    })().catch(e => {
+        console.warn('[AccountCheck] Error:', e);
+        return false;
+    }).finally(() => {
+        accountVerification = null;
+    });
+    return accountVerification;
+}
+
+/**
+ * Бележки от локалната база, по-нови от последната синхронизация (същото сравнение като при конфликт).
+ * Без база за сравнение (базата не е от Drive) се връщат всички - по-добре повече, отколкото загуба.
+ */
+async function getUnsyncedLocalNotes() {
+    const notes = (await getAllFromDB(NOTE_STORE_NAME)) || [];
+    const lastSyncTimestamp = parseInt(await getConfig('lastGDTimestamp'), 10) || 0;
+    if (!lastSyncTimestamp) return notes;
+    return notes.filter(n => (parseInt(n.datemod, 10) || 0) > lastSyncTimestamp);
+}
+
+function downloadAccountBackup(dbEmail, notes, boards) {
+    const payload = { account: dbEmail, exportedAt: new Date().toISOString(), boards: boards || [], notes };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cx-notes-${String(dbEmail || 'backup').replace(/[^\w.@-]+/g, '_')}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/**
+ * Екранът при потвърдена смяна на акаунт: бележките от чуждата база се махат от екрана,
+ * остава само съобщение с един бутон (ОК). Изтриването тръгва при натискането;
+ * затваряне без натискане не трие нищо и екранът идва пак при следващо отваряне (pendingAccountReset).
+ */
+function showAccountSwitchNotice(dbEmail, newEmail) {
+    if (accountSwitchNoticeShown) return;
+    accountSwitchNoticeShown = true;
+    isLoadCancelled = true;
+    pendingBackgroundSync = null;
+    allNotesData = [];
+    boardsData = [];
+    mediaData = [];
+    if (notesContainer) notesContainer.innerHTML = '';
+    const bmc = document.getElementById('boards-menu-container');
+    if (bmc) bmc.innerHTML = '';
+    document.querySelectorAll('.note, .note-item').forEach(el => el.remove());
+    const loader = document.getElementById('loader-container');
+    if (loader) loader.style.display = 'none';
+    const addNoteFab = document.getElementById('add-note-fab');
+    if (addNoteFab) addNoteFab.style.display = 'none';
+
+    // Повторна смяна в същата сесия: не трием пак (защита от цикъл) - ОК излиза от акаунта
+    const alreadySwitched = sessionStorage.getItem(ACCOUNT_SWITCH_DONE_KEY) === '1';
+    const fill = (text) => String(text || '').replace('{new}', newEmail || '').replace('{old}', dbEmail || '');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'account-switch-notice';
+    overlay.className = 'folder-id-prompt-popup show';
+    overlay.style.zIndex = '100000';
+    const content = document.createElement('div');
+    content.className = 'popup-content';
+    content.style.maxWidth = '460px';
+    const title = document.createElement('h3');
+    title.textContent = _('accountSwitchTitle');
+    const text = document.createElement('p');
+    text.textContent = fill(alreadySwitched ? _('accountSwitchRepeatText') : _('accountSwitchText'));
+    const hidden = document.createElement('p');
+    hidden.style.fontSize = '0.9em';
+    hidden.textContent = _('accountSwitchNotesHidden');
+    const unsynced = document.createElement('p');
+    unsynced.style.fontSize = '0.9em';
+    unsynced.style.display = 'none';
+    const okButton = document.createElement('button');
+    okButton.id = 'account-switch-ok';
+    okButton.className = 'zoom-btn';
+    okButton.textContent = _('okButton');
+    content.append(title, text, hidden, unsynced, okButton);
+    overlay.appendChild(content);
+    document.body.appendChild(overlay);
+
+    if (!alreadySwitched) {
+        getUnsyncedLocalNotes().then(list => {
+            if (list.length) {
+                unsynced.textContent = _('accountSwitchUnsynced').replace('{count}', list.length);
+                unsynced.style.display = '';
+            }
+        }).catch(() => { });
+    }
+
+    okButton.addEventListener('click', async () => {
+        if (alreadySwitched) {
+            handleSignoutClick();
+            return;
+        }
+        // Офлайн не се трие: новият акаунт не може да се изгради наново без Drive
+        if (isOffline || !navigator.onLine) {
+            showToast(_('accountSwitchNeedsOnline'), 6000);
+            return;
+        }
+        okButton.disabled = true;
+        try {
+            const unsyncedNotes = await getUnsyncedLocalNotes();
+            if (unsyncedNotes.length) {
+                const boards = (await getAllFromDB(BOARD_STORE_NAME)) || [];
+                downloadAccountBackup(dbEmail, unsyncedNotes, boards);
+            }
+        } catch (e) {
+            console.warn('[AccountSwitch] Could not export unsynced notes:', e);
+        }
+        const deleted = await handleAccountSwitchReset(dbEmail, newEmail);
+        if (!deleted) {
+            // Базата остава, намерението също - екранът идва пак при следващо отваряне
+            okButton.disabled = false;
+            return;
+        }
+        sessionStorage.setItem(ACCOUNT_SWITCH_DONE_KEY, '1');
+        localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
+        sessionStorage.setItem('google_auth_email_hint', newEmail);
+        localStorage.setItem('google_login_hint', newEmail);
+        location.reload();
+    });
+}
+
+function resetAccountFolderSettings() {
     localStorage.removeItem('active_folder_name');
     clearCachedMainFolderId();
     localStorage.removeItem('activeFolderId');
@@ -7337,6 +7587,16 @@ async function handleAccountSwitchReset(previousEmail, newEmail) {
     activeFolderName = 'CX-Notes';
     cachedMainFolderId = null;
     folderIds = {};
+}
+
+/**
+ * Изчиства старото състояние и изтрива старата локална база при смяна на акаунта.
+ * Извиква се само от екрана за смяна на акаунт (след ОК).
+ * @returns {Promise<boolean>} true ако базата е изтрита
+ */
+async function handleAccountSwitchReset(previousEmail, newEmail) {
+    console.warn(`[AccountSwitch] Account changed from ${previousEmail} to ${newEmail}. Resetting state and deleting old local database.`);
+    resetAccountFolderSettings();
     allNotesData = [];
     boardsData = [];
     mediaData = [];
@@ -7344,12 +7604,12 @@ async function handleAccountSwitchReset(previousEmail, newEmail) {
         noteBgCache.clear();
     }
     try {
-        await deleteNotesDB();
-        dbExists = false;
-        boardsCountInDb = 0;
-        notesInDb = [];
+        const deleted = await deleteNotesDB();
+        if (deleted) dbExists = false;
+        return deleted;
     } catch (e) {
         console.warn('Error deleting old NotesDB on account switch:', e);
+        return false;
     }
 }
 
@@ -7364,13 +7624,24 @@ async function handleAccountSwitchReset(previousEmail, newEmail) {
 async function userCheck() {
     if (!dbExists) {
         isDbOwner = true;
+        localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
         return false;
     }
+    // Сравнява се само с проверен акаунт (userinfo) - не с указателя от localStorage, който може да е остарял.
+    // Без мрежа: ако смяната вече е била потвърдена (pendingAccountReset), екранът се показва веднага.
     const storedUserEmail = await getConfig('userEmail');
-    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint');
-    if (storedUserEmail && currentUserEmail && storedUserEmail.toLowerCase() !== currentUserEmail.toLowerCase()) {
-        await handleAccountSwitchReset(storedUserEmail, currentUserEmail);
-        isDbOwner = true;
+    const verifiedEmail = sessionStorage.getItem(VERIFIED_EMAIL_KEY);
+    const pending = readPendingAccountReset();
+    let newEmail = null;
+    if (storedUserEmail && verifiedEmail) {
+        if (!sameEmail(storedUserEmail, verifiedEmail)) newEmail = verifiedEmail;
+        else localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
+    } else if (storedUserEmail && pending && pending.confirmed && sameEmail(pending.dbEmail, storedUserEmail)) {
+        newEmail = pending.newEmail;
+    }
+    if (newEmail) {
+        showAccountSwitchNotice(storedUserEmail, newEmail);
+        isDbOwner = false;
         return true; // сигнализира смяна на акаунт
     } else {
         isDbOwner = true;
@@ -8074,6 +8345,11 @@ async function mainLogic(forceFullSync = false) {
         }
         updateModeButton();
         initializeLoad(); // Нулираме контейнерите и подготвяме за нови данни
+        // Потвърдена по-рано смяна на акаунт: чуждите бележки не се рисуват и офлайн
+        if (await userCheck()) {
+            showAppUI();
+            return;
+        }
 
         try {
             await fetchAllDataLocal();
@@ -8081,6 +8357,8 @@ async function mainLogic(forceFullSync = false) {
         } catch (e) {
             console.error("Error loading local data in offline mode:", e);
         }
+        // Офлайн акаунтът не може да се потвърди: само се записва pendingAccountReset, нищо не се трие
+        verifyAccountInBackground();
 
         // --- КОРЕКЦИЯ: Осигуряваме видимост на UI елементите ---
         showAppUI();
@@ -8233,11 +8511,11 @@ async function mainLogic(forceFullSync = false) {
         }
         const accountSwitched = await userCheck();
         if (isLoadCancelled) return;
-        // Ако userCheck е открил смяна на акаунт и е изтрил DB,
-        // рестартираме приложението чисто за новия потребител.
+        // Потвърдена смяна на акаунт: екранът за смяна вече е показан, бележките от базата не се рисуват.
+        // Изтриването и презареждането тръгват само след ОК на този екран.
         if (accountSwitched) {
-            console.warn('[mainLogic] Account switch detected during mainLogic. Reloading for new user...');
-            location.reload();
+            console.warn('[mainLogic] Account switch detected during mainLogic. Waiting for the user to confirm on the notice screen.');
+            if (loaderContainer) loaderContainer.style.display = 'none';
             return;
         }
         updateGlobalStateFlags();
@@ -8403,6 +8681,8 @@ async function mainLogic(forceFullSync = false) {
                     document.getElementById('login-page').style.display = 'none';
                     document.getElementById('login-page').hidden = true;
                     showAppUI();
+                    // Проверката на акаунта е фонова - след първото рисуване, не го чака
+                    verifyAccountInBackground();
                     const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
                     if (updateFromSource && !isOffline) {
                         const runBackgroundSync = async () => {
@@ -8418,8 +8698,10 @@ async function mainLogic(forceFullSync = false) {
                                         if (useGoogleDb && typeof gapi !== 'undefined' && gapi.client) {
                                             gapi.client.setToken({ access_token: authToken.access_token });
                                         }
+                                        // Не синхронизираме чужд акаунт в базата: първо проверката на акаунта
+                                        if (await verifyAccountInBackground()) return;
                                         await loadGlobalFoldersJson();
-                                        await userCheck();
+                                        if (await userCheck()) return;
                                         updateGlobalStateFlags();
                                     } else {
                                         return;
@@ -15775,6 +16057,8 @@ async function toggleNotePinned(noteGdid, noteId) {
     return true;
 }
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
+    // Екранът за смяна на акаунт е показан - бележките от чуждата база не се рисуват
+    if (accountSwitchNoticeShown) return;
     // Изчистваме бележките само ако не презареждаме единствено менюто - ПРЕМЕСТЕНО ПО-ДОЛУ ЗА ИЗБЯГВАНЕ НА 'МИГАНЕ'
     /* if (!rerenderOnlyMenu) {
         notesContainer.innerHTML = '';

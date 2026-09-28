@@ -1,0 +1,23 @@
+ok   (1) fast path: local notes drawn 2504 ms before the userinfo answer (the check did not gate the first draw)
+ok   (1) stale hint A + userinfo B -> account-switch notice on screen, on top of everything
+ok   (1) the notice has exactly one button
+ok   (1) the notice names both accounts, in Bulgarian
+ok   (1) the notice says unsynced notes will be downloaded first
+ok   (1) no note of A left in the DOM
+ok   (1) NotesDB of A still present before OK
+ok   (1) confirmed intent persisted (pendingAccountReset)
+ok   (2) reopened without OK: notice back at once from the persisted intent
+ok   (2) notes of A never drawn on the second start
+ok   (2) DB of A still present (nothing deleted without OK)
+ok   (3) OK -> the one unsynced note is offered as a download before deletion
+ok   (3) the app reloaded after the deletion
+ok   (3) NotesDB of A gone after OK
+ok   (3) intent cleared, hint now B, once-per-session flag set
+ok   (4) hint B + userinfo B, DB of A -> notice, one button, no notes of A
+ok   (4) English UI: the notice has the English text
+ok   (4) no unsynced-notes line when nothing is newer than the last sync
+ok   (4) DB still present before OK
+ok   (5) same account: no notice, notes on screen, nothing pending
+ok   (5) DB of A untouched
+ok   no uncaught page errors (besides the stubbed-out Ko-fi widget)
+22/22 passed
