@@ -53,6 +53,15 @@ await ctx.addInitScript(() => {
       .observe(document.body, { childList: true, subtree: true });
   });
 });
+// (6) "translations not loaded": lang/i18n-*.json blocked and window.initialTranslationsPromise removed
+let blockLang = false;
+await ctx.route(/\/lang\/i18n-[a-z]+\.json/, route => blockLang ? route.abort() : route.continue());
+await ctx.addInitScript(() => {
+  if (localStorage.getItem('__testNoInitTr') !== '1') return;
+  Object.defineProperty(window, 'initialTranslationsPromise', { configurable: true, get() { return undefined; }, set() { } });
+});
+const I18N = { bg: JSON.parse(await readFile(path.join(root, 'lang/i18n-bg.json'), 'utf8')), en: JSON.parse(await readFile(path.join(root, 'lang/i18n-en.json'), 'utf8')) };
+const fillT = (t, dbE, newE, count) => t.replace(/\{new\}/g, newE).replace(/\{old\}/g, dbE).replace(/\{count\}/g, count);
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
@@ -114,6 +123,15 @@ const notice = () => page.evaluate((NOTE_TEXT) => {
     noteTextVisible: NOTE_TEXT.filter(t => bodyText.includes(t)), notesAt: window.__notesAt || 0,
     pending: localStorage.getItem('pendingAccountReset') };
 }, NOTE_TEXT);
+// Each piece of the notice separately: title, main paragraph, hidden-notes line, unsynced line, button label
+const parts = () => page.evaluate(() => {
+  const o = document.getElementById('account-switch-notice');
+  if (!o) return null;
+  const p = o.querySelectorAll('p');
+  const t = el => el ? el.innerText : null;
+  return { title: t(o.querySelector('h3')), text: t(p[0]), hidden: t(p[1]), unsynced: p[2] && p[2].style.display !== 'none' ? t(p[2]) : '', button: t(o.querySelector('button')),
+    rawText: p[0] ? p[0].textContent : null };
+});
 const waitNotice = () => page.waitForFunction(() => { const o = document.getElementById('account-switch-notice'); return o && o.checkVisibility({ visibilityProperty: true, opacityProperty: true }); }, null, { timeout: USERINFO_DELAY + 15000 }).then(() => true, () => false);
 
 // (1) The reported bug: DB of A, stale hint still says A, the real account (userinfo) is B.
@@ -134,6 +152,11 @@ let db = await dbInfo();
 ok(db.exists && db.userEmail === A && db.notes === 4, '(1) NotesDB of A still present before OK', db);
 ok(JSON.parse(s.pending || '{}').confirmed === true, '(1) confirmed intent persisted (pendingAccountReset)', s.pending);
 if (!BASE) await page.screenshot({ path: '.bolter/check/account-switch-390.png' });
+await page.waitForFunction(() => { const p = document.querySelectorAll('#account-switch-notice p')[2]; return p && p.style.display !== 'none'; }, null, { timeout: 5000 }).catch(() => {});
+let pt = await parts();
+ok(pt && pt.title === I18N.bg.accountSwitchTitle && pt.text === fillT(I18N.bg.accountSwitchText, A, B, 1) && pt.hidden === I18N.bg.accountSwitchNotesHidden
+  && pt.unsynced === fillT(I18N.bg.accountSwitchUnsynced, A, B, 1) && pt.button === I18N.bg.okButton,
+  '(a) translations loaded, BG UI: title, text, hidden line, unsynced line and button are exactly the strings of i18n-bg.json', pt);
 
 // (2) Closed without pressing OK: nothing deleted, the notice comes back, this time before any network answer.
 await startWith(A);
@@ -174,6 +197,10 @@ s = await notice();
 ok(shown && s.buttons === 1 && s.noteEls === 0 && !s.noteTextInDom.length, '(4) hint B + userinfo B, DB of A -> notice, one button, no notes of A', s);
 ok(/A different account was detected/.test(s.text) && s.text.includes(A), '(4) English UI: the notice has the English text', s.text);
 ok(!/unsynced/.test(s.text), '(4) no unsynced-notes line when nothing is newer than the last sync', s.text);
+pt = await parts();
+ok(pt && pt.title === I18N.en.accountSwitchTitle && pt.text === fillT(I18N.en.accountSwitchText, A, B, 0) && pt.hidden === I18N.en.accountSwitchNotesHidden
+  && pt.button === I18N.en.okButton && !/[А-Яа-я]/.test(pt.title + pt.text + pt.hidden),
+  '(a) translations loaded, EN UI: exactly the strings of i18n-en.json, no Bulgarian', pt);
 db = await dbInfo();
 ok(db.exists && db.userEmail === A, '(4) DB still present before OK', db);
 
@@ -188,6 +215,43 @@ s = await notice();
 db = await dbInfo();
 ok(!s.visible && s.noteEls > 0 && !s.pending, '(5) same account: no notice, notes on screen, nothing pending', s);
 ok(db.exists && db.userEmail === A && db.notes === 3, '(5) DB of A untouched', db);
+
+// (6) Translations not loaded at the moment the notice is shown: bilingual, nothing empty, nothing deleted.
+userinfoEmail = B;
+await seedA(true);
+await startWith(A, 'bg');
+await page.evaluate(() => localStorage.setItem('__testNoInitTr', '1'));
+blockLang = true;
+await page.reload();
+shown = await waitNotice();
+await page.waitForFunction(() => { const p = document.querySelectorAll('#account-switch-notice p')[2]; return p && p.style.display !== 'none'; }, null, { timeout: 5000 }).catch(() => {});
+pt = await parts();
+const st6 = await page.evaluate(() => ({ promise: typeof window.initialTranslationsPromise, fallback: !!translationsFallback[currentLang], lang: currentLang }));
+console.log('     bilingual notice as shown:', JSON.stringify(pt));
+const both = (got, key, count = 1) => !!got && got.includes(fillT(I18N.bg[key], A, B, count)) && got.includes(fillT(I18N.en[key], A, B, count));
+ok(shown && st6.promise === 'undefined' && st6.fallback, '(6) lang files blocked, initialTranslationsPromise gone -> the notice still comes up', { shown, st6 });
+ok(pt && both(pt.title, 'accountSwitchTitle') && both(pt.text, 'accountSwitchText') && both(pt.hidden, 'accountSwitchNotesHidden') && both(pt.unsynced, 'accountSwitchUnsynced'),
+  '(6) no translations: title, main text, hidden line and unsynced line carry both the Bulgarian and the English text', pt);
+ok(pt && pt.button.trim() === 'ОК' && [pt.title, pt.text, pt.hidden, pt.unsynced, pt.button].every(x => x && x.trim()), '(6) nothing on the notice is empty, the button says ОК', pt);
+ok(pt && pt.rawText.includes(fillT(I18N.bg.accountSwitchText, A, B, 1) + '\n\n' + fillT(I18N.en.accountSwitchText, A, B, 1)) && pt.text.split('\n').filter(Boolean).length === 2,
+  '(6) the two languages are on separate lines, not one run-on line', pt.text);
+if (!BASE) await page.screenshot({ path: '.bolter/check/account-switch-bilingual-390.png' });
+db = await dbInfo();
+ok(db.exists && db.userEmail === A && db.notes === 4, '(6) NotesDB of A untouched while the bilingual notice stands', db);
+// OK while offline: the toast is bilingual too and still nothing is deleted
+await page.evaluate(() => { isOffline = true; });
+await page.click('#account-switch-ok');
+const toast6 = await page.waitForFunction(() => { const t = document.getElementById('toastNotification'); return t && t.classList.contains('show') && t.innerText; }, null, { timeout: 5000 }).then(h => h.jsonValue(), () => '');
+ok(toast6.includes(I18N.bg.accountSwitchNeedsOnline) && toast6.includes(I18N.en.accountSwitchNeedsOnline), '(6) offline OK -> bilingual "no internet" toast', toast6);
+db = await dbInfo();
+ok(db.exists && db.userEmail === A && db.notes === 4, '(6) offline OK deleted nothing', db);
+// Translations arrive after the notice is up: the standing notice switches to the file text, no reload
+blockLang = false;
+await page.evaluate(async () => { isOffline = false; await setLanguage(currentLang); });
+pt = await parts();
+ok(pt && pt.title === I18N.bg.accountSwitchTitle && pt.text === fillT(I18N.bg.accountSwitchText, A, B, 1) && pt.unsynced === fillT(I18N.bg.accountSwitchUnsynced, A, B, 1) && pt.button === I18N.bg.okButton,
+  '(6) translations arriving later refresh the standing notice to the i18n-bg.json text', pt);
+await page.evaluate(() => localStorage.removeItem('__testNoInitTr'));
 
 const ours = errors.filter(e => !/kofiWidgetOverlay/.test(e));
 ok(!ours.length, 'no uncaught page errors (besides the stubbed-out Ko-fi widget)', ours);

@@ -410,6 +410,7 @@ function applyLanguageFromUrl() {
 applyLanguageFromUrl();
 
 let appTranslations = {};
+let translationsFallback = {}; // езици, за които езиковият файл не се зареди и appTranslations[lang] е само резервата от loadTranslations
 
 const noteBackgrounds = [
     'wg1_1.png', // 0
@@ -7479,6 +7480,54 @@ function downloadAccountBackup(dbEmail, notes, boards) {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+// Резерва за екрана за смяна на акаунт - буквално същите низове като в lang/i18n-bg.json и lang/i18n-en.json
+const ACCOUNT_SWITCH_TEXTS = {
+    accountSwitchTitle: {
+        bg: 'Открит е друг акаунт',
+        en: 'A different account was detected'
+    },
+    accountSwitchText: {
+        bg: 'Влязъл си с {new}, а на устройството има копие на бележките от {old}. Приложението не може да стартира с чужди бележки: копието ще бъде изтрито и бележките ще се заредят наново от Google Drive за новия акаунт.',
+        en: "You signed in as {new}, but this device holds a copy of the notes of {old}. The app cannot start with another account's notes: the copy will be deleted and the notes will be loaded again from Google Drive for the new account."
+    },
+    accountSwitchRepeatText: {
+        bg: 'Влязъл си с {new}, а локалната база все още е от {old}, въпреки че вече беше изтрита веднъж в тази сесия. За да не се получи цикъл, приложението няма да стартира. ОК ще те изведе от акаунта.',
+        en: 'You signed in as {new}, but the local database still belongs to {old}, although it was already deleted once in this session. To avoid a loop, the app will not start. OK will sign you out.'
+    },
+    accountSwitchNotesHidden: {
+        bg: 'Докато този екран стои, бележките от стария акаунт не се показват. Изтриването започва едва след натискане на ОК.',
+        en: "While this screen is open, the old account's notes are not shown. Deletion starts only after you press OK."
+    },
+    accountSwitchUnsynced: {
+        bg: 'На устройството има {count} несинхронизирани бележки. Преди изтриването те ще бъдат изтеглени като файл.',
+        en: 'This device has {count} unsynced notes. They will be downloaded as a file before the deletion.'
+    },
+    accountSwitchNeedsOnline: {
+        bg: 'Няма връзка с интернет. Базата ще бъде изтрита, когато връзката се възстанови.',
+        en: 'No internet connection. The database will be deleted once the connection is back.'
+    },
+    okButton: {
+        bg: 'ОК',
+        en: 'OK'
+    }
+};
+
+/**
+ * Низ за екрана за смяна на акаунт: от езиковия файл, ако е зареден;
+ * иначе двуезично (български, празен ред, английски) от ACCOUNT_SWITCH_TEXTS.
+ */
+function acctText(key) {
+    const t = translationsFallback[currentLang] ? '' : _(key);
+    if (t) return t;
+    const r = ACCOUNT_SWITCH_TEXTS[key];
+    if (!r) return '';
+    if (key === 'okButton') return r.bg;
+    return r.bg + '\n\n' + r.en;
+}
+
+// Опреснява стоящия екран за смяна на акаунт, когато преводите пристигнат след показването му
+let accountSwitchNoticeRefresh = null;
+
 /**
  * Екранът при потвърдена смяна на акаунт: бележките от чуждата база се махат от екрана,
  * остава само съобщение с един бутон (ОК). Изтриването тръгва при натискането;
@@ -7503,7 +7552,7 @@ function showAccountSwitchNotice(dbEmail, newEmail) {
 
     // Повторна смяна в същата сесия: не трием пак (защита от цикъл) - ОК излиза от акаунта
     const alreadySwitched = sessionStorage.getItem(ACCOUNT_SWITCH_DONE_KEY) === '1';
-    const fill = (text) => String(text || '').replace('{new}', newEmail || '').replace('{old}', dbEmail || '');
+    const fill = (text) => String(text || '').replace(/\{new\}/g, newEmail || '').replace(/\{old\}/g, dbEmail || '');
 
     const overlay = document.createElement('div');
     overlay.id = 'account-switch-notice';
@@ -7512,20 +7561,31 @@ function showAccountSwitchNotice(dbEmail, newEmail) {
     const content = document.createElement('div');
     content.className = 'popup-content';
     content.style.maxWidth = '460px';
+    // pre-line: двуезичната резерва е на два реда (празен ред между езиците)
     const title = document.createElement('h3');
-    title.textContent = _('accountSwitchTitle');
+    title.style.whiteSpace = 'pre-line';
     const text = document.createElement('p');
-    text.textContent = fill(alreadySwitched ? _('accountSwitchRepeatText') : _('accountSwitchText'));
+    text.style.whiteSpace = 'pre-line';
     const hidden = document.createElement('p');
     hidden.style.fontSize = '0.9em';
-    hidden.textContent = _('accountSwitchNotesHidden');
+    hidden.style.whiteSpace = 'pre-line';
     const unsynced = document.createElement('p');
     unsynced.style.fontSize = '0.9em';
+    unsynced.style.whiteSpace = 'pre-line';
     unsynced.style.display = 'none';
     const okButton = document.createElement('button');
     okButton.id = 'account-switch-ok';
     okButton.className = 'zoom-btn';
-    okButton.textContent = _('okButton');
+    let unsyncedCount = 0;
+    const renderTexts = () => {
+        title.textContent = acctText('accountSwitchTitle');
+        text.textContent = fill(acctText(alreadySwitched ? 'accountSwitchRepeatText' : 'accountSwitchText'));
+        hidden.textContent = acctText('accountSwitchNotesHidden');
+        if (unsyncedCount) unsynced.textContent = acctText('accountSwitchUnsynced').replace(/\{count\}/g, unsyncedCount);
+        okButton.textContent = acctText('okButton');
+    };
+    renderTexts();
+    accountSwitchNoticeRefresh = renderTexts;
     content.append(title, text, hidden, unsynced, okButton);
     overlay.appendChild(content);
     document.body.appendChild(overlay);
@@ -7533,7 +7593,8 @@ function showAccountSwitchNotice(dbEmail, newEmail) {
     if (!alreadySwitched) {
         getUnsyncedLocalNotes().then(list => {
             if (list.length) {
-                unsynced.textContent = _('accountSwitchUnsynced').replace('{count}', list.length);
+                unsyncedCount = list.length;
+                renderTexts();
                 unsynced.style.display = '';
             }
         }).catch(() => { });
@@ -7546,7 +7607,13 @@ function showAccountSwitchNotice(dbEmail, newEmail) {
         }
         // Офлайн не се трие: новият акаунт не може да се изгради наново без Drive
         if (isOffline || !navigator.onLine) {
-            showToast(_('accountSwitchNeedsOnline'), 6000);
+            const msg = acctText('accountSwitchNeedsOnline');
+            const toast = document.getElementById('toastNotification');
+            if (toast && msg.includes('\n')) {
+                toast.style.whiteSpace = 'pre-line';
+                setTimeout(() => { toast.style.whiteSpace = ''; }, 6500);
+            }
+            showToast(msg, 6000);
             return;
         }
         okButton.disabled = true;
@@ -16419,7 +16486,7 @@ async function readArh(dirHandle) {
 }
 
 async function loadTranslations(lang) {
-    if (appTranslations[lang]) return;
+    if (appTranslations[lang] && !translationsFallback[lang]) return;
     try {
         let data = null;
         if (window.initialTranslationsPromise && lang === (localStorage.getItem('language') || (navigator.language && navigator.language.startsWith('bg') ? 'bg' : 'en'))) {
@@ -16432,22 +16499,39 @@ async function loadTranslations(lang) {
             data = await response.json();
         }
         appTranslations[lang] = data;
+        delete translationsFallback[lang];
+        if (accountSwitchNoticeRefresh) accountSwitchNoticeRefresh();
     } catch (e) {
         console.error("Failed to load translations:", e);
         if (!appTranslations[lang]) {
             appTranslations[lang] = {};
+            translationsFallback[lang] = true;
             if (lang === 'bg') {
                 appTranslations[lang]['offlineStartButton'] = 'Старт офлайн';
                 appTranslations[lang]['authorizeButton'] = 'Вход с Google';
                 appTranslations[lang]['trialButton'] = 'Старт 30-дневен пробен период';
                 appTranslations[lang]['sessionExpired'] = 'Сесията изтече. Моля, влезте отново.';
                 appTranslations[lang]['initialDataLoad'] = 'Зареждане на данни...';
+                appTranslations[lang]['accountSwitchTitle'] = "Открит е друг акаунт";
+                appTranslations[lang]['accountSwitchText'] = "Влязъл си с {new}, а на устройството има копие на бележките от {old}. Приложението не може да стартира с чужди бележки: копието ще бъде изтрито и бележките ще се заредят наново от Google Drive за новия акаунт.";
+                appTranslations[lang]['accountSwitchRepeatText'] = "Влязъл си с {new}, а локалната база все още е от {old}, въпреки че вече беше изтрита веднъж в тази сесия. За да не се получи цикъл, приложението няма да стартира. ОК ще те изведе от акаунта.";
+                appTranslations[lang]['accountSwitchNotesHidden'] = "Докато този екран стои, бележките от стария акаунт не се показват. Изтриването започва едва след натискане на ОК.";
+                appTranslations[lang]['accountSwitchUnsynced'] = "На устройството има {count} несинхронизирани бележки. Преди изтриването те ще бъдат изтеглени като файл.";
+                appTranslations[lang]['accountSwitchNeedsOnline'] = "Няма връзка с интернет. Базата ще бъде изтрита, когато връзката се възстанови.";
+                appTranslations[lang]['okButton'] = "ОК";
             } else {
                 appTranslations[lang]['offlineStartButton'] = 'Start Offline';
                 appTranslations[lang]['authorizeButton'] = 'Authorize with Google';
                 appTranslations[lang]['trialButton'] = 'Start 30-day trial period';
                 appTranslations[lang]['sessionExpired'] = 'Session expired. Please login again.';
                 appTranslations[lang]['initialDataLoad'] = 'Data loading...';
+                appTranslations[lang]['accountSwitchTitle'] = "A different account was detected";
+                appTranslations[lang]['accountSwitchText'] = "You signed in as {new}, but this device holds a copy of the notes of {old}. The app cannot start with another account's notes: the copy will be deleted and the notes will be loaded again from Google Drive for the new account.";
+                appTranslations[lang]['accountSwitchRepeatText'] = "You signed in as {new}, but the local database still belongs to {old}, although it was already deleted once in this session. To avoid a loop, the app will not start. OK will sign you out.";
+                appTranslations[lang]['accountSwitchNotesHidden'] = "While this screen is open, the old account's notes are not shown. Deletion starts only after you press OK.";
+                appTranslations[lang]['accountSwitchUnsynced'] = "This device has {count} unsynced notes. They will be downloaded as a file before the deletion.";
+                appTranslations[lang]['accountSwitchNeedsOnline'] = "No internet connection. The database will be deleted once the connection is back.";
+                appTranslations[lang]['okButton'] = "OK";
             }
             if (!appTranslations[lang]['loginPrompt']) {
                 appTranslations[lang]['loginPrompt'] = lang === 'bg' ? 'Моля, влезте с Google акаунта, с който сте синхронизирали бележките си в MultiNotes.' : 'Please sign in with Google account you used to sync MultiNotes.';
@@ -16457,7 +16541,7 @@ async function loadTranslations(lang) {
 }
 
 async function setLanguage(lang) {
-    if (!appTranslations[lang]) {
+    if (!appTranslations[lang] || translationsFallback[lang]) {
         await loadTranslations(lang);
     }
     if (!appTranslations[lang]) return;
@@ -16465,6 +16549,7 @@ async function setLanguage(lang) {
     localStorage.setItem('language', lang);
     document.documentElement.lang = lang;
     const translations = appTranslations[lang];
+    if (accountSwitchNoticeRefresh) accountSwitchNoticeRefresh();
 
     document.querySelectorAll('[data-key]').forEach(element => {
         const key = element.getAttribute('data-key');
