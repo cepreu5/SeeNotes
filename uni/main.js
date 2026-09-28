@@ -7062,9 +7062,8 @@ async function initLoginPage() {
     }
     const switchLanguage = async (lang) => {
         localStorage.setItem('language', lang);
-        if (typeof saveSettingsToGDrive === 'function') {
-            try { await saveSettingsToGDrive(true); } catch (err) { console.warn('Failed to save settings on language change:', err); }
-        }
+        // Профилът в Drive се обновява след старта (loadSettingsFromGDrive), не тук - презареждаме веднага
+        localStorage.setItem(PENDING_LANG_SYNC_KEY, lang);
         location.reload();
     };
     if (typeof renderLanguageSwitchers === 'function') renderLanguageSwitchers(switchLanguage);
@@ -12626,6 +12625,8 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     contentWrapper.appendChild(scrollWrapper);
     return boardsNote;
 }
+// Езикът е сменен, но профилът в Drive още не е обновен: при старта изборът печели пред профилната снимка
+const PENDING_LANG_SYNC_KEY = 'pending_language_sync';
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
     'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'showFirstLine', 'showNewBoard', 'oneTapLink',
@@ -12979,6 +12980,8 @@ async function saveSettingsToGDrive(silent = false) {
                 } else {
                     await createGDriveFile(folderId, fileName, finalContent);
                 }
+                // Записът е минал: маркерът за смяна на езика се чисти, само ако още отговаря на избора
+                if (localStorage.getItem(PENDING_LANG_SYNC_KEY) === localStorage.getItem('language')) localStorage.removeItem(PENDING_LANG_SYNC_KEY);
             } catch (err) {
                 console.error("Save settings to GDrive error:", err);
             }
@@ -13020,8 +13023,13 @@ async function loadSettingsFromGDrive(silent = false) {
                     else if (!silent) { showToast("Settings for device '" + currentDevice + "' not found."); return; }
                 }
             }
+            const pendingLang = localStorage.getItem(PENDING_LANG_SYNC_KEY);
+            if (pendingLang) {
+                localStorage.setItem('language', pendingLang);
+                currentLang = pendingLang;
+            }
             const preservedKeys = ['useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id', 'folderId', 'deviceName'];
-            if (window.hasUrlLanguage) preservedKeys.push('language');
+            if (window.hasUrlLanguage || pendingLang) preservedKeys.push('language');
             Object.keys(settings).forEach(key => {
                 const isBoardKey = key.startsWith('board_');
                 if (appSettingsKeys.includes(key) || isBoardKey) {
@@ -13033,6 +13041,8 @@ async function loadSettingsFromGDrive(silent = false) {
                     }
                 }
             });
+            // Току-що сменен език: профилът се обновява на заден план, стартът не го чака
+            if (pendingLang) saveSettingsToGDrive(true).catch(e => console.warn('Background profile sync after language change failed:', e));
             initHeaderFullscreen();
             if (silent) {
                 await renderUI({ rerenderOnlyMenu: true });
@@ -13103,9 +13113,8 @@ async function createSettingsUI(boardsData, boardParseError) {
             settingsLangSelect.addEventListener('change', async () => {
                 const newLang = settingsLangSelect.value;
                 localStorage.setItem('language', newLang);
-                if (typeof saveSettingsToGDrive === 'function') {
-                    try { await saveSettingsToGDrive(true); } catch (err) { console.warn('Failed to save settings on language change:', err); }
-                }
+                // Профилът в Drive се обновява след старта (loadSettingsFromGDrive), не тук - презареждаме веднага
+                localStorage.setItem(PENDING_LANG_SYNC_KEY, newLang);
                 window.location.reload();
             });
         }
