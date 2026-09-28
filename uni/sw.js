@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.60';
+const CACHE_NAME = 'cx-notes-b1.58';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -42,7 +42,7 @@ const ASSETS_TO_CACHE = [
   './wg1_1.png',
   './wr1_1.png',
   './msmstyle.css',
-  './msmrt.js',
+  './msm.js',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',
