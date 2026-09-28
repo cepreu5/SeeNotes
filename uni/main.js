@@ -10443,6 +10443,17 @@ function showModal(options, noteElement = null) {
 // window.showModal за стъпките с action: "note".
 window.showModal = showModal;
 
+// Същото за демо бележката на водачите (msmrt.js): Beta/mainn.js се минифицира с --toplevel и
+// лекият двигател в Beta не вижда тези имена. Състоянието, което се преприсвоява, е жив getter, не снимка.
+Object.defineProperty(window, 'boardsData', { get: () => boardsData, configurable: true });
+Object.defineProperty(window, 'allNotesData', { get: () => allNotesData, configurable: true });
+Object.defineProperty(window, 'currentBoardFilter', { get: () => currentBoardFilter, configurable: true });
+Object.defineProperty(window, 'notesContainer', { get: () => notesContainer, configurable: true });
+window.createNoteElement = createNoteElement;
+window.filterNotesByBoard = filterNotesByBoard;
+window.applyFilters = applyFilters;
+window.toggleHeaderFullscreen = toggleHeaderFullscreen;
+
 function toggleModalSearch(modalContentBox, modalBody) {
     const toolbar = modalContentBox.querySelector('.modal-footer-toolbar');
     let searchBar = modalContentBox.querySelector('.modal-search-bar');
