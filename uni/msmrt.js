@@ -232,6 +232,7 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             stopAfter = true;
             imagePath = imagePath.slice(0, -1);
         }
+        let staleNodes = [];
         if (!container || !document.body.contains(container)) {
             container = document.createElement('div');
             container.className = 'guide-container';
@@ -242,13 +243,14 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             container.style.transition = 'none'; // Ensure no transition initially
             document.body.appendChild(container);
         } else {
-            // Reuse container but hide it until ready
-            container.style.transition = 'none'; // Disable transition for instant hide
-            container.style.opacity = '0';
-            container.style.left = '0px';
-            container.style.top = '0px';
+            // Reuse: НЕ се крием и НЕ местим на (0,0) - контейнерът остава видим и плъзга
+            // към новата стъпка с кратък преход, вместо да изчезва и да изплува на новото място
+            container.style.transition = 'left 0.28s ease, top 0.28s ease, opacity 0.28s ease';
+            // Старото съдържание остава видимо, докато новата картинка се декодира -
+            // иначе контейнерът стои празен на старата позиция и това се вижда като мигане
+            staleNodes = Array.from(container.childNodes);
         }
-        container.innerHTML = '';
+        if (!staleNodes.length) container.innerHTML = '';
         const img = document.createElement('img');
         img.src = imagePath;
         img.className = 'guide-img';
@@ -474,8 +476,14 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
             // Position container
             container.style.left = (rect.left + window.scrollX + (step.x || 0) - imgOffsetLeft) + "px";
             container.style.top = (rect.top + window.scrollY + (step.y || 0) - imgOffsetTop) + "px";
+            // Първо поставяме новата картинка на мястото, чак тогава махаме старата -
+            // така между кадрите никога не се вижда празен контейнер
+            if (staleNodes.length) {
+                staleNodes.forEach(n => n.parentNode === container && container.removeChild(n));
+                staleNodes = [];
+            }
             if (container.style.opacity === '0') {
-                container.style.transition = 'opacity 0.3s ease';
+                container.style.transition = 'left 0.28s ease, top 0.28s ease, opacity 0.3s ease';
                 container.style.opacity = '1';
             }
             // Start timer only when visible
