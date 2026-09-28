@@ -35,7 +35,101 @@ window.removeGuide = function () {
         if (modal) modal.classList.remove('visible');
         isTempNoteOpen = false;
     }
+    // Кука за почистване при края на водача (напр. демо бележката на Ctrl-actions)
+    if (typeof window.onGuideFinish === 'function') {
+        const onFinish = window.onGuideFinish;
+        window.onGuideFinish = null;
+        try { onFinish(); } catch (e) { console.error('Error in onGuideFinish:', e); }
+    }
 };
+
+// --- Демо бележка за водачи (action "demoNote"): живее само в паметта, никога не стига до Drive/IndexedDB ---
+const GUIDE_DEMO_ID = 'guide-demo-note';
+let guideDemoState = null;
+
+function guideDemoBoards() {
+    return (typeof boardsData !== 'undefined' && Array.isArray(boardsData)) ? boardsData.filter(b => b && (b.gdid || b.id)) : [];
+}
+
+// Вика се от onStart на стъпката. Без борд не създава нищо: стъпката показва noBoardText и водачът спира.
+window.guideDemoNote = function (step) {
+    const boards = guideDemoBoards();
+    if (!boards.length) {
+        if (step.noBoardText) step.text = step.noBoardText;
+        if (step.noBoard) Object.assign(step, step.noBoard);
+        step.guideStop = true;
+        return false;
+    }
+    guideDemoCreate(step, boards);
+    return true;
+};
+
+async function guideDemoCreate(step, boards) {
+    if (typeof allNotesData === 'undefined' || typeof createNoteElement !== 'function') return;
+    guideDemoDiscard();
+    const header = document.querySelector('header');
+    const current = boards.find(b => String(b.gdid) === String(currentBoardFilter) || String(b.id) === String(currentBoardFilter));
+    const board = current || boards[0];
+    const boardId = String(board.gdid || board.id);
+    guideDemoState = {
+        extendedMode: localStorage.getItem('extendedMode'),
+        fullscreen: !!(header && header.classList.contains('header-fullscreen')),
+        prevFilter: (!current && currentBoardFilter !== 'all') ? currentBoardFilter : null
+    };
+    window.onGuideFinish = guideDemoFinish;
+    // В специален изглед (кошче, календар...) бележката не се вижда - демото минава в борда и после се връща
+    if (guideDemoState.prevFilter && typeof filterNotesByBoard === 'function') await filterNotesByBoard(boardId);
+    const now = Date.now();
+    const note = { id: GUIDE_DEMO_ID, gdid: GUIDE_DEMO_ID, boardid: board.gdid || board.id, notetxt: step.noteText || 'Demo', date: now, datemod: now, color: step.noteColor ?? 0, guideDemo: true };
+    allNotesData.push(note);
+    const el = await createNoteElement(note);
+    if (!guideDemoState) { guideDemoDiscard(); return; } // водачът е спрян междувременно
+    if (el) {
+        notesContainer.prepend(el);
+        applyFilters();
+        el.scrollIntoView({ block: 'center' });
+    }
+}
+
+// Маха демо бележката от паметта и от борда
+function guideDemoDiscard() {
+    if (typeof allNotesData === 'undefined') return;
+    for (let i = allNotesData.length - 1; i >= 0; i--) if (allNotesData[i] && allNotesData[i].guideDemo) allNotesData.splice(i, 1);
+    const els = document.querySelectorAll(`.note[data-i="${GUIDE_DEMO_ID}"]`);
+    els.forEach(el => el.remove());
+    if (els.length && typeof applyFilters === 'function') applyFilters();
+}
+window.guideDemoDiscard = guideDemoDiscard;
+
+// Затваря/връща всичко, отворено от предишната демо стъпка
+window.guideDemoReset = function () {
+    if (!guideDemoState) return;
+    const note = document.querySelector(`.note[data-i="${GUIDE_DEMO_ID}"]`);
+    if (note) {
+        note.querySelectorAll('.note-week-calendar').forEach(c => c.remove());
+        const clock = note.querySelector('.clock');
+        if (clock) clock.click(); // собственият клик на часовника връща текста и заглавния ред
+    }
+    const header = document.querySelector('header');
+    if (header && header.classList.contains('header-fullscreen') !== guideDemoState.fullscreen && typeof toggleHeaderFullscreen === 'function') {
+        toggleHeaderFullscreen();
+    }
+    if (guideDemoState.extendedMode === null) localStorage.removeItem('extendedMode');
+    else localStorage.setItem('extendedMode', guideDemoState.extendedMode);
+    const confirmPopup = document.getElementById('folderIdPromptPopup');
+    if (confirmPopup && confirmPopup.classList.contains('show')) document.getElementById('prompt-no-btn')?.click();
+    document.getElementById('new-board-modal')?.classList.remove('visible');
+    document.getElementById('boards-menu-modal')?.classList.remove('visible');
+};
+
+function guideDemoFinish() {
+    if (!guideDemoState) return;
+    window.guideDemoReset();
+    const prevFilter = guideDemoState.prevFilter;
+    guideDemoState = null;
+    guideDemoDiscard();
+    if (prevFilter && typeof filterNotesByBoard === 'function') filterNotesByBoard(prevFilter);
+}
 
 window.showStep = showStep;
 
@@ -70,6 +164,21 @@ window.refreshGuideLanguage = function () {
         }
     }
 };
+
+// Кликва клетка от таблицата в модала на временната бележка, щом тя е там; безопасно при липса на модал
+// и при повторно извикване (ако бележката вече е в режим редакция, не прави нищо)
+function openGuideNoteTable(step, tries = 0) {
+    if (currentActiveStep !== step || !isTempNoteOpen) return; // водачът вече е на друга стъпка или е затворен
+    const body = document.getElementById('modal-body');
+    const cell = body && body.querySelector('.md-table-render td, .md-table-render th');
+    if (!cell) {
+        // модалът още не е изрисуван (или е в режим редакция от предишна стъпка, докато се пренарисува)
+        if (tries < 60) requestAnimationFrame(() => openGuideNoteTable(step, tries + 1));
+        else if (!(body && body.querySelector('textarea'))) console.warn('[Guide] editTable: no table in the modal');
+        return;
+    }
+    cell.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+}
 
 function showStep(stepOrIndex, nextStepIndex = null, single = false) {
     if (stepTimer) {
@@ -109,13 +218,16 @@ function showStep(stepOrIndex, nextStepIndex = null, single = false) {
                 fontSize: step.noteFontSize
             });
             isTempNoteOpen = true;
+            // editTable: бележката се отваря направо в режим редакция с отворено поле на таблицата (▦ натиснат) -
+            // водачът прави същия клик върху таблицата, който човекът би направил (клик за редакция)
+            if (step.editTable) openGuideNoteTable(step);
         }
     }
 
     // Execute onStart callback if exists and wait for animations
     const continueShowStep = () => {
         let imagePath = step.image;
-        let stopAfter = step.stopAfter || false;
+        let stopAfter = step.stopAfter || !!step.guideStop;
         if (imagePath && imagePath.endsWith('!')) {
             stopAfter = true;
             imagePath = imagePath.slice(0, -1);
