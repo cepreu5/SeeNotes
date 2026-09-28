@@ -42,7 +42,7 @@ const ASSETS_TO_CACHE = [
   './wg1_1.png',
   './wr1_1.png',
   './msmstyle.css',
-  './msmrtt.js',
+  './msmrt.js',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',
