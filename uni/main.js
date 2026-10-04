@@ -10,6 +10,7 @@
 // App version: идва от CACHE_NAME на service worker-а ('cx-notes-b1.67' -> 'Beta 1.67').
 // null, докато не се разбере; ако не се разбере изобщо, надписът се скрива.
 let version = null;
+const debug = true; // Глобален флаг за дебъг режим
 
 function versionFromCacheName(cacheName) {
     const match = /^cx-notes-b(\d.*)$/.exec(String(cacheName || '').trim());
@@ -87,7 +88,6 @@ function renderVersionLabels() {
 }
 
 const appVersionPromise = resolveAppVersion();
-const debug = false; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
 let guide = true;
