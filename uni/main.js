@@ -10122,6 +10122,7 @@ function showModal(options, noteElement = null) {
     // Special case: if titleFormatString is provided, format the title part separately.
     displayContent = getFormattedNoteHtml(rawContent, formatString, titleFormatString, true);
     modalBody.innerHTML = displayContent;
+    applyNoteViewHangingIndent(modalBody, rawContent);
     modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
 
     // Remove previous click listener if it exists to prevent accumulation
@@ -14816,10 +14817,15 @@ function processNoteContent(text, isForModal = false) {
     const symStrike = (localStorage.getItem('mdStrike') || '~~').trim();
     const symItalic = (localStorage.getItem('mdItalic') || '*').trim();
     const symUnderline = (localStorage.getItem('mdUnderline') || '_').trim();
+    // A pair counts as in the editor and postEdit: the text between does not start or end with a
+    // space ("a * b * c" stays as typed) and "_" does not pair inside a word (a_b_c, links).
     const replacePair = (src, sym, tag) => {
         if (!sym) return src;
         const esc = sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return src.replace(new RegExp(`${esc}([^${esc}\\n]+)${esc}`, 'g'), `<${tag}>$1</${tag}>`);
+        if (sym === '_') {
+            return src.replace(/(^|[^\p{L}\p{N}])_([^\s_\n](?:[^_\n]*[^\s_\n])?)_(?![\p{L}\p{N}])/gu, `$1<${tag}>$2</${tag}>`);
+        }
+        return src.replace(new RegExp(`${esc}([^\\s${esc}\\n](?:[^${esc}\\n]*[^\\s${esc}\\n])?)${esc}`, 'g'), `<${tag}>$1</${tag}>`);
     };
     escapedText = replacePair(escapedText, symBold, 'b');
     if (symBold !== '**') escapedText = replacePair(escapedText, '**', 'b');
@@ -17172,6 +17178,13 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         modalBodyElem.dataset.initialTitleFormat = modalBodyElem.dataset.titleFormat || '';
     }
     modalBodyElem.innerHTML = '';
+    clearNoteViewHangingIndent(modalBodyElem);
+    // Sticky formats (Ctrl+B... without a selection) stay on until pressed again; another note starts without them.
+    const stickyKey = getNoteStickyKey();
+    if (stickyKey !== noteStickyNoteKey) {
+        noteStickyFormats = new Set();
+        noteStickyNoteKey = stickyKey;
+    }
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'position:relative; width:100%; height:100%; display: flex; flex-direction: column;';
 
@@ -17191,7 +17204,9 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             fontFamily: getComputedStyle(modalBodyElem).fontFamily,
             fontSize: isTitle ? '1.2em' : getComputedStyle(modalBodyElem).fontSize,
             fontWeight: isTitle ? 'bold' : 'normal',
-            color: 'inherit',
+            // The text is drawn by the backdrop (with its formatting); the field shows the caret.
+            color: 'transparent',
+            caretColor: getComputedStyle(modalBodyElem).color,
             resize: 'none',
             padding: '10px',
             boxSizing: 'border-box',
@@ -17218,7 +17233,8 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             lineHeight: 'normal',
             whiteSpace: 'pre-wrap',
             wordWrap: 'break-word',
-            color: 'transparent',
+            overflowWrap: 'break-word',
+            color: 'inherit',
             pointerEvents: 'none',
             zIndex: '1',
             overflow: 'hidden'
@@ -17253,6 +17269,13 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         bodyBackdrop.addEventListener('scroll', () => { bodyTextarea.scrollTop = bodyBackdrop.scrollTop; });
         bodyTextarea.addEventListener('input', () => { handleEditInput(bodyTextarea, bodyBackdrop); });
         handleEditInput(bodyTextarea, bodyBackdrop);
+    }
+    // A width change (scrollbar coming or going, modal resize) re-wraps both the same way.
+    if (typeof ResizeObserver === 'function') {
+        [[bodyTextarea, bodyBackdrop], [titleTextarea, titleBackdrop]].forEach(([ta, bd]) => {
+            if (!ta || !bd) return;
+            new ResizeObserver(() => { if (ta.isConnected) syncNoteEditBackdropBox(ta, bd); }).observe(ta);
+        });
     }
     if (titleTextarea && titleBackdrop) {
         titleTextarea.addEventListener('scroll', () => { titleBackdrop.scrollTop = titleTextarea.scrollTop; });
@@ -17496,29 +17519,37 @@ document.addEventListener('keydown', (e) => {
 
 
 
+// Ctrl/⌘+B / I / U / D and the B I U S buttons. With a selection: the format goes on, or off when
+// all of it already has it; no marker goes into the text. Without one: sticky mode for that format
+// (what is typed next gets it) until the same shortcut is pressed again.
 function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD) {
-    let symbol = '';
-    if (isB) symbol = localStorage.getItem('mdBold') || '**';
-    else if (isI) symbol = localStorage.getItem('mdItalic') || '*';
-    else if (isU) symbol = localStorage.getItem('mdUnderline') || '_';
-    else if (isD) symbol = localStorage.getItem('mdStrike') || '~~';
-
+    const type = isB ? 1 : isI ? 2 : isU ? 3 : 7;
+    const ctx = getNoteEditContext(textarea);
+    if (!ctx) return;
+    if (!noteEditKeepsFormats(textarea)) {
+        // A note with a table keeps no ranges: the markers go into the text, as they always did.
+        const sym = getNoteMdSymbols();
+        const symbol = isB ? sym.bold : isI ? sym.italic : isU ? sym.underline : sym.strike;
+        const s0 = textarea.selectionStart, e0 = textarea.selectionEnd;
+        noteEditReplace(textarea, s0, e0, symbol + textarea.value.substring(s0, e0) + symbol, s0 + symbol.length);
+        textarea.setSelectionRange(s0 + symbol.length, e0 + symbol.length);
+        return;
+    }
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end);
-    const replacement = symbol + selectedText + symbol;
-
-    textarea.setRangeText(replacement, start, end, 'select');
-
     if (start === end) {
-        textarea.selectionStart = start + symbol.length;
-        textarea.selectionEnd = textarea.selectionStart;
-    } else {
-        textarea.selectionStart = start + symbol.length;
-        textarea.selectionEnd = start + symbol.length + selectedText.length;
+        if (noteStickyFormats.has(type)) noteStickyFormats.delete(type);
+        else noteStickyFormats.add(type);
+        updateNoteStickyButtons();
+        return;
     }
-
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    const S = ctx.off + start, E = ctx.off + end;
+    let formats = readNoteEditFormats(ctx.modalBody, ctx.key);
+    if (isNoteRangeCovered(formats, S, E, type)) formats = removeNoteFormatRange(formats, S, E, f => f.type === type);
+    else formats = addNoteFormatRange(formats, S, E, type);
+    writeNoteEditFormats(ctx.modalBody, ctx.key, formats);
+    refreshNoteEditBackdrops(ctx);
+    textarea.setSelectionRange(start, end);
 }
 
 window.addEventListener('orientationchange', () => {
@@ -17540,61 +17571,346 @@ window.addEventListener('orientationchange', () => {
 });
 
 // --- Logic for preserving formatting during editing ---
-// Draws the text with its format ranges underlined into a highlight backdrop.
+// The editor keeps the text WITHOUT Markdown markers and every format as a range (dataset.format /
+// dataset.titleFormat, the same shape as text_span). The textarea text is transparent (only the
+// caret and the selection show) and the backdrop under it draws the real formatting by the rules of
+// formatText. A textarea has one font, so the backdrop draws only what keeps every glyph where the
+// textarea has it: bold is a stroke, italic a slant per word, a heading bold with a bar, a small
+// size dimmed. Otherwise the caret would drift away from the letters.
+const NOTE_HEADER_SCALES = [1.3, 1.2, 1.1, 0.9, 0.8, 0.7]; // "# " ... "###### " (preEdit/postEdit)
+let noteStickyFormats = new Set(); // Ctrl+B/I/U/D without a selection: types the next typed text gets
+let noteStickyNoteKey = null;
+let noteMdApplying = false; // our own edits must not run the Markdown input rules again
+
+function ensureNoteMdStyles() {
+    if (document.getElementById('note-md-live-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'note-md-live-styles';
+    style.textContent = `
+.nmd-b { -webkit-text-stroke: 0.045em currentColor; }
+.nmd-i { display: inline-block; transform: skewX(-12deg); transform-origin: 50% 80%; }
+.nmd-h { -webkit-text-stroke: 0.045em currentColor; box-shadow: inset 0 -0.16em rgba(128, 128, 128, 0.35); }
+.nmd-h2 { box-shadow: inset 0 -0.11em rgba(128, 128, 128, 0.3); }
+.nmd-h3 { box-shadow: inset 0 -0.07em rgba(128, 128, 128, 0.3); }
+.nmd-small { opacity: 0.7; }
+.nmd-other { border-bottom: 2px dashed currentColor; background-color: rgba(128, 128, 128, 0.3); }
+#note-edit-textarea::selection, #note-edit-title-textarea::selection, .note-table-split-text::selection { color: transparent; background: rgba(74, 144, 226, 0.35); }
+.modal-edit-toolbar-btn.is-sticky { background: #4a90e2; border-color: #4a90e2; color: #fff; }
+#modal-body.nmd-hang div, #modal-body.nmd-hang table, #modal-body.nmd-hang pre { text-indent: 0; }
+`;
+    document.head.appendChild(style);
+}
+
+function getNoteMdSymbols() {
+    const sym = (key, def) => (localStorage.getItem(key) || def).trim();
+    return {
+        bold: sym('mdBold', '**'), italic: sym('mdItalic', '*'), underline: sym('mdUnderline', '_'),
+        strike: sym('mdStrike', '~~'), clear: sym('mdClear', '--'), bullet: sym('mdBullet', '-') || '-'
+    };
+}
+
+// A list item line: indent, marker ("-", "•", "+", the mdBullet symbol, or "12."), one space.
+function matchNoteListLine(line) {
+    const bullet = getNoteMdSymbols().bullet;
+    const bullets = ['-', '•', '+', bullet].filter((b, i, a) => b && a.indexOf(b) === i)
+        .map(b => b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const m = new RegExp(`^([ \\t]*)(?:(${bullets.join('|')})|(\\d{1,4})\\.)( +)`).exec(line);
+    if (!m) return null;
+    return { indent: m[1], bullet: m[2] || null, number: m[3] !== undefined ? parseInt(m[3], 10) : null, prefix: m[0] };
+}
+
+// Hanging indent for the continuation of a list item: the width of the list marker. A textarea
+// cannot indent single lines, so a note that has list items gets it for every wrapped line, in the
+// editor and in the note view alike (text-indent ... hanging each-line), and the two match.
+function getNoteListHangingIndent(text, el) {
+    if (!text || !el) return 0;
+    const prefixes = [];
+    String(text).split('\n').forEach(line => {
+        const m = matchNoteListLine(line);
+        if (m) prefixes.push(m);
+    });
+    if (!prefixes.length) return 0;
+    const top = prefixes.filter(m => !m.indent);
+    const cs = getComputedStyle(el);
+    const canvas = getNoteListHangingIndent._canvas || (getNoteListHangingIndent._canvas = document.createElement('canvas'));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return 0;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const widths = (top.length ? top : prefixes).map(m => ctx.measureText(m.prefix.replace(/\t/g, '    ')).width);
+    return Math.round((top.length ? Math.max(...widths) : Math.min(...widths)) * 10) / 10;
+}
+function applyNoteListHangingIndent(els, text, measureEl) {
+    const w = getNoteListHangingIndent(text, measureEl || els[0]);
+    const value = w > 0 ? `${w}px hanging each-line` : '';
+    els.forEach(el => { if (el && el.style.textIndent !== value) el.style.textIndent = value; });
+    return w;
+}
+// Note view (showModal): the same hanging indent as the editor gives this text.
+function applyNoteViewHangingIndent(modalBody, rawContent) {
+    if (!modalBody) return;
+    ensureNoteMdStyles();
+    const w = applyNoteListHangingIndent([modalBody], rawContent || '', modalBody);
+    modalBody.classList.toggle('nmd-hang', w > 0);
+}
+function clearNoteViewHangingIndent(modalBody) {
+    if (!modalBody) return;
+    modalBody.classList.remove('nmd-hang');
+    modalBody.style.textIndent = '';
+}
+
+function getNoteEditColorCss(paramint) {
+    let aVal = (paramint >> 24) & 0xff;
+    if (aVal === 0 && (paramint & 0x00ffffff) !== 0) aVal = 255;
+    return `rgba(${(paramint >> 16) & 0xff}, ${(paramint >> 8) & 0xff}, ${paramint & 0xff}, ${aVal / 255})`;
+}
+
+// Draws the text with its formats into the backdrop under the transparent textarea.
 function renderNoteEditBackdrop(backdrop, text, formats) {
-    if (!formats.length) {
-        backdrop.innerText = text;
-    } else {
-        const points = new Set([0, text.length]);
-        formats.forEach(f => {
-            points.add(Math.max(0, Math.min(text.length, f.start)));
-            points.add(Math.max(0, Math.min(text.length, f.end)));
+    ensureNoteMdStyles();
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const valid = (formats || []).filter(f => f && Number.isFinite(f.start) && Number.isFinite(f.end) && f.end > f.start);
+    const points = new Set([0, text.length]);
+    valid.forEach(f => {
+        points.add(Math.max(0, Math.min(text.length, f.start)));
+        points.add(Math.max(0, Math.min(text.length, f.end)));
+    });
+    const sortedPoints = Array.from(points).sort((a, b) => a - b);
+    let html = '';
+    for (let i = 0; i < sortedPoints.length - 1; i++) {
+        const start = sortedPoints[i];
+        const end = sortedPoints[i + 1];
+        const segment = text.substring(start, end);
+        if (!segment) continue;
+        const active = valid.filter(f => f.start <= start && f.end >= end).sort((a, b) => a.type - b.type);
+        if (!active.length) { html += esc(segment); continue; }
+        const classes = new Set();
+        const css = [];
+        const deco = [];
+        let italic = false;
+        active.forEach(f => {
+            switch (f.type) {
+                case 1: classes.add('nmd-b'); break;
+                case 2: italic = true; break;
+                case 3: deco.push('underline'); break;
+                case 7: deco.push('line-through'); break;
+                case 4: css.push(`color: ${getNoteEditColorCss(f.paramint)}`); break;
+                case 5: css.push(`background-color: ${getNoteEditColorCss(f.paramint)}`); break;
+                case 6:
+                    if (f.paramfloat > 1) {
+                        classes.add('nmd-h');
+                        if (f.paramfloat < 1.15) classes.add('nmd-h3');
+                        else if (f.paramfloat < 1.25) classes.add('nmd-h2');
+                    } else if (f.paramfloat > 0 && f.paramfloat < 1) {
+                        classes.add('nmd-small');
+                    }
+                    break;
+                default: classes.add('nmd-other'); break;
+            }
         });
-        const sortedPoints = Array.from(points).sort((a, b) => a - b);
-        let html = '';
-        for (let i = 0; i < sortedPoints.length - 1; i++) {
-            const start = sortedPoints[i];
-            const end = sortedPoints[i + 1];
-            let segment = text.substring(start, end);
-            const isFormatted = formats.some(f => start >= f.start && end <= f.end);
-            segment = segment.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            if (isFormatted) {
-                html += `<span style="border-bottom: 2px dashed black; background-color: rgba(128, 128, 128, 0.3);">${segment}</span>`;
-            } else {
-                html += segment;
+        if (deco.length) css.push(`text-decoration-line: ${[...new Set(deco)].join(' ')}`);
+        const open = (classes.size || css.length)
+            ? `<span${classes.size ? ` class="${[...classes].join(' ')}"` : ''}${css.length ? ` style="${css.join('; ')}"` : ''}>`
+            : '';
+        const wrap = (t) => open ? open + esc(t) + '</span>' : esc(t);
+        if (italic) {
+            // A slant per word: an inline-block keeps the width of the word, and the line still
+            // breaks only at the spaces, where the textarea breaks it.
+            html += segment.split(/(\s+)/).map(part => {
+                if (!part) return '';
+                return /^\s+$/.test(part) ? wrap(part) : `<span class="nmd-i">${wrap(part)}</span>`;
+            }).join('');
+        } else {
+            html += wrap(segment);
+        }
+    }
+    backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
+}
+
+// The backdrop has no scrollbar: it gets the textarea's scrollbar width as padding, so both wrap
+// the lines at the same width, and the same hanging indent.
+function syncNoteEditBackdropBox(textarea, backdrop) {
+    if (!textarea || !backdrop) return;
+    const sb = Math.max(0, textarea.offsetWidth - textarea.clientWidth);
+    const pad = parseFloat(textarea.style.paddingRight || getComputedStyle(textarea).paddingRight) || 0;
+    const value = (pad + sb) + 'px';
+    if (backdrop.style.paddingRight !== value) backdrop.style.paddingRight = value;
+    applyNoteListHangingIndent([textarea, backdrop], textarea.value, textarea);
+    if (backdrop.scrollTop !== textarea.scrollTop) backdrop.scrollTop = textarea.scrollTop;
+}
+
+function getNoteEditModalBody(field) {
+    return (field && field.closest && field.closest('#modal-body, #conflict-modal-body')) || document.getElementById('modal-body');
+}
+function readNoteEditFormats(modalBodyElem, key) {
+    const fmtStr = modalBodyElem?.dataset[key];
+    if (!fmtStr || fmtStr.trim() === '') return [];
+    return fmtStr.split('|').map(p => {
+        try { return JSON.parse(p); } catch (e) { return null; }
+    }).filter(f => f && f.start !== undefined);
+}
+function writeNoteEditFormats(modalBodyElem, key, formats) {
+    if (modalBodyElem) modalBodyElem.dataset[key] = formats.map(f => JSON.stringify(f)).join('|');
+}
+
+// Where an edit field keeps its text and formats: the note textarea itself, the title, or a text
+// piece of the ▦ table fields (offset = where the piece starts in the note textarea).
+function getNoteEditContext(field) {
+    if (!field) return null;
+    if (field.id === 'note-edit-textarea' || field.id === 'note-edit-title-textarea') {
+        const isTitle = field.id === 'note-edit-title-textarea';
+        return {
+            field, main: field, off: 0, split: null,
+            key: isTitle ? 'titleFormat' : 'format',
+            modalBody: getNoteEditModalBody(field),
+            backdrop: document.getElementById(field.id + '-backdrop')
+        };
+    }
+    if (isNoteTableSplitText(field)) {
+        const split = field.closest('.note-table-split');
+        const piece = split?._pieces?.find(p => p.el === field);
+        if (!split || !piece) return null;
+        return {
+            field, main: split._main, off: getNotePieceOffset(split._pieces, piece), split, key: 'format',
+            modalBody: getNoteEditModalBody(split._main),
+            backdrop: document.getElementById(split._main.id + '-backdrop')
+        };
+    }
+    return null;
+}
+
+// Redraws after a change of the formats only.
+function refreshNoteEditBackdrops(ctx) {
+    if (!ctx) return;
+    if (ctx.backdrop) handleEditInput(ctx.main, ctx.backdrop);
+    const split = ctx.split || getNoteTableSplit(ctx.main);
+    if (split) renderNoteTableSplitBackdrops(split);
+}
+
+// Replaces field[start, end) with str (field positions) as one edit: the formats are moved
+// exactly (not by the caret guess of handleEditInput), the browser keeps it in its undo history
+// where it can, and the caret goes to 'caret' (default: the end of str).
+function noteEditReplace(field, start, end, str, caret) {
+    const ctx = getNoteEditContext(field);
+    if (!ctx) return;
+    const oldValue = field.value;
+    const newValue = oldValue.slice(0, start) + str + oldValue.slice(end);
+    const delta = str.length - (end - start);
+    const S = ctx.off + start, E = ctx.off + end;
+    const map = (p) => p <= S ? p : (p >= E ? p + delta : S);
+    const formats = readNoteEditFormats(ctx.modalBody, ctx.key);
+    formats.forEach(f => { f.start = map(f.start); f.end = map(f.end); });
+    writeNoteEditFormats(ctx.modalBody, ctx.key, formats);
+    const mainOld = ctx.main.value;
+    ctx.main.dataset.lastVal = mainOld.slice(0, S) + str + mainOld.slice(E);
+    const wasApplying = noteMdApplying;
+    noteMdApplying = true;
+    try {
+        let done = false;
+        if (document.activeElement === field && typeof document.execCommand === 'function') {
+            field.setSelectionRange(start, end);
+            try {
+                done = str ? document.execCommand('insertText', false, str) : (start === end || document.execCommand('delete', false));
+            } catch (e) { done = false; }
+            if (done && field.value !== newValue) {
+                field.value = newValue;
+                done = false;
             }
         }
-        backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
+        if (!done) {
+            if (field.value !== newValue) field.value = newValue;
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        const pos = caret === undefined ? start + str.length : caret;
+        field.setSelectionRange(pos, pos);
+    } finally {
+        noteMdApplying = wasApplying;
     }
+    refreshNoteEditBackdrops(ctx);
+}
+
+// Adds [s, e) of a type to the formats, joined with the ranges of that type it touches.
+function addNoteFormatRange(formats, s, e, type, paramfloat = 0) {
+    if (e <= s) return formats;
+    let start = s, end = e;
+    const rest = [];
+    formats.forEach(f => {
+        if (f.type === type && (f.paramint || 0) === 0 && (f.paramfloat || 0) === paramfloat && f.start <= end && f.end >= start) {
+            start = Math.min(start, f.start);
+            end = Math.max(end, f.end);
+        } else {
+            rest.push(f);
+        }
+    });
+    rest.push({ start, end, type, paramint: 0, paramfloat });
+    return rest;
+}
+// Takes [s, e) out of the formats that match: they are cut, the parts outside stay.
+function removeNoteFormatRange(formats, s, e, test) {
+    const out = [];
+    formats.forEach(f => {
+        if (!test(f) || f.end <= s || f.start >= e) { out.push(f); return; }
+        if (f.start < s) out.push({ ...f, end: s });
+        if (f.end > e) out.push({ ...f, start: e });
+    });
+    return out;
+}
+function isNoteRangeCovered(formats, s, e, type) {
+    const ranges = formats.filter(f => f.type === type && f.end > s && f.start < e).sort((a, b) => a.start - b.start);
+    let pos = s;
+    for (const f of ranges) {
+        if (f.start > pos) return false;
+        pos = Math.max(pos, f.end);
+        if (pos >= e) return true;
+    }
+    return pos >= e;
+}
+
+function getNoteStickyKey() {
+    const mb = document.getElementById('modal-body');
+    return mb ? `${mb.dataset.gdid || ''}|${mb.dataset.id || ''}` : '';
+}
+function updateNoteStickyButtons() {
+    const map = { 1: 'is-bold', 2: 'is-italic', 3: 'is-underline', 7: 'is-strike' };
+    Object.entries(map).forEach(([type, cls]) => {
+        document.querySelectorAll(`#content-modal .modal-edit-toolbar-btn.${cls}`).forEach(btn => {
+            const on = noteStickyFormats.has(Number(type));
+            btn.classList.toggle('is-sticky', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+    });
 }
 
 function handleEditInput(textarea, backdrop) {
-    const modalBodyElem = document.getElementById('modal-body');
+    const modalBodyElem = getNoteEditModalBody(textarea);
     if (!modalBodyElem) return;
 
     const isTitle = textarea.id === 'note-edit-title-textarea';
     const storageKey = isTitle ? 'titleFormat' : 'format';
-    let formats = [];
-    const fmtStr = modalBodyElem.dataset[storageKey];
-
-    if (fmtStr && fmtStr.trim() !== '') {
-        formats = fmtStr.split('|').map(p => {
-            try { return JSON.parse(p); } catch (e) { return null; }
-        }).filter(f => f && f.start !== undefined);
-    }
+    let formats = readNoteEditFormats(modalBodyElem, storageKey);
 
     const text = textarea.value;
-    const lastVal = textarea.dataset.lastVal || text;
+    const lastVal = textarea.dataset.lastVal !== undefined ? textarea.dataset.lastVal : text;
     const diff = text.length - lastVal.length;
     const pos = textarea.selectionStart;
 
     if (diff > 0) {
         const P = pos - diff;
         const L = diff;
+        const inserted = text.substr(P, L);
         formats.forEach(f => {
+            if (f.type === 6 && P >= f.start && P <= f.end) {
+                // A heading is its line: typing in it (also at its edges) stays heading, a new
+                // line ends it there.
+                if (inserted.indexOf('\n') === -1) f.end += L;
+                else if (P === f.start) { f.start += L; f.end += L; }
+                else f.end = P;
+                return;
+            }
             if (P <= f.start) { f.start += L; f.end += L; }
             else if (P < f.end) { f.end += L; }
         });
+        // Sticky mode: what is typed now gets the switched-on formats.
+        noteStickyFormats.forEach(type => { formats = addNoteFormatRange(formats, P, P + L, type); });
     } else if (diff < 0) {
         const L = Math.abs(diff);
         const P = pos;
@@ -17606,11 +17922,201 @@ function handleEditInput(textarea, backdrop) {
 
     textarea.dataset.lastVal = text;
     if (diff !== 0) {
-        modalBodyElem.dataset[storageKey] = formats.map(f => JSON.stringify(f)).join('|');
+        writeNoteEditFormats(modalBodyElem, storageKey, formats);
     }
 
     renderNoteEditBackdrop(backdrop, text, formats);
+    syncNoteEditBackdropBox(textarea, backdrop);
 }
+
+// --- Markdown input in the editor ---
+// A closed pair (**, *, _, ~~, -- and "# " at a line start) disappears as soon as its closing
+// marker is typed and the text between gets the format (-- clears it). "+ " / "- " at a line start
+// becomes the mdBullet symbol, Enter continues a list item (numbers go on), Enter on an empty item
+// ends the list. Our own edits run through noteEditReplace with noteMdApplying set.
+function applyNoteMdPair(field, caret) {
+    const ctx = getNoteEditContext(field);
+    if (!ctx) return false;
+    const text = field.value;
+    const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
+    const sym = getNoteMdSymbols();
+    const rules = [
+        { s: sym.bold, t: 1 }, { s: sym.strike, t: 7 }, { s: sym.clear, t: 0 },
+        { s: sym.italic, t: 2 }, { s: sym.underline, t: 3 }
+    ].filter(r => r.s).sort((a, b) => b.s.length - a.s.length);
+    const isAlnum = (c) => !!c && /[\p{L}\p{N}]/u.test(c);
+    for (const rule of rules) {
+        const s = rule.s;
+        const closeStart = caret - s.length;
+        if (closeStart <= lineStart || text.slice(closeStart, caret) !== s) continue;
+        if (rule.t === 0) {
+            // The dashes of a Markdown table separator row are the table, not a marker.
+            let lineEnd = text.indexOf('\n', caret);
+            if (lineEnd === -1) lineEnd = text.length;
+            const line = text.slice(lineStart, lineEnd);
+            if (line.includes('|') && /^[\s|:\-]*$/.test(line)) continue;
+        }
+        const single = s.length === 1;
+        // A one-char marker that is a piece of a longer one (the * of **) is not this pair.
+        if (single && text[closeStart - 1] === s) continue;
+        let open = text.lastIndexOf(s, closeStart - 1);
+        while (open >= lineStart) {
+            const content = text.slice(open + s.length, closeStart);
+            const okOpen = !single || (text[open - 1] !== s && text[open + 1] !== s);
+            const okUnderscore = s !== '_' || (!isAlnum(text[open - 1]) && !isAlnum(text[caret]));
+            if (open + s.length <= closeStart && content && okOpen && okUnderscore &&
+                !/^\s/.test(content) && !/\s$/.test(content)) break;
+            open = open > lineStart ? text.lastIndexOf(s, open - 1) : -1;
+        }
+        if (open < lineStart) continue;
+        if (open + s.length > closeStart) continue;
+        noteEditReplace(field, closeStart, caret, '');
+        noteEditReplace(field, open, open + s.length, '', closeStart - s.length);
+        const S = ctx.off + open, E = ctx.off + closeStart - s.length;
+        let formats = readNoteEditFormats(ctx.modalBody, ctx.key);
+        if (rule.t === 0) formats = removeNoteFormatRange(formats, S, E, () => true);
+        else formats = addNoteFormatRange(formats, S, E, rule.t);
+        writeNoteEditFormats(ctx.modalBody, ctx.key, formats);
+        refreshNoteEditBackdrops(ctx);
+        return true;
+    }
+    return false;
+}
+
+function applyNoteMdLineStart(field, caret) {
+    const ctx = getNoteEditContext(field);
+    if (!ctx) return false;
+    const text = field.value;
+    const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
+    const before = text.slice(lineStart, caret);
+    const heading = /^(#{1,6}) $/.exec(before);
+    if (heading) {
+        noteEditReplace(field, lineStart, caret, '', lineStart);
+        let lineEnd = field.value.indexOf('\n', lineStart);
+        if (lineEnd === -1) lineEnd = field.value.length;
+        const S = ctx.off + lineStart, E = ctx.off + lineEnd;
+        let formats = readNoteEditFormats(ctx.modalBody, ctx.key);
+        formats = formats.filter(f => !(f.type === 6 && f.start <= E && f.end >= S));
+        formats.push({ start: S, end: E, type: 6, paramint: 0, paramfloat: NOTE_HEADER_SCALES[heading[1].length - 1] });
+        writeNoteEditFormats(ctx.modalBody, ctx.key, formats);
+        refreshNoteEditBackdrops(ctx);
+        return true;
+    }
+    const bullet = /^([ \t]*)([+-]) $/.exec(before);
+    if (bullet) {
+        const sym = getNoteMdSymbols().bullet;
+        if (bullet[2] !== sym) {
+            const at = lineStart + bullet[1].length;
+            noteEditReplace(field, at, at + 1, sym, at + sym.length + 1);
+        }
+        return true;
+    }
+    return false;
+}
+
+// Called after a line break was typed at caret.
+function applyNoteMdListEnter(field, caret) {
+    const text = field.value;
+    if (text[caret - 1] !== '\n') return false;
+    const prevStart = text.lastIndexOf('\n', caret - 2) + 1;
+    const prevLine = text.slice(prevStart, caret - 1);
+    const m = matchNoteListLine(prevLine);
+    if (!m) return false;
+    let curEnd = text.indexOf('\n', caret);
+    if (curEnd === -1) curEnd = text.length;
+    if (matchNoteListLine(text.slice(caret, curEnd))) return false; // the new line already is an item
+    if (prevLine.length === m.prefix.length) {
+        // Enter on an empty item: the list ends, the empty item becomes an empty line.
+        noteEditReplace(field, prevStart, caret, '', prevStart);
+        return true;
+    }
+    if (m.number === null) {
+        const marker = `${m.indent}${m.bullet} `;
+        noteEditReplace(field, caret, caret, marker);
+        return true;
+    }
+    const marker = `${m.indent}${m.number + 1}. `;
+    noteEditReplace(field, caret, caret, marker);
+    // The numbered items right after go on from here.
+    const caretAfter = field.selectionStart;
+    let expected = m.number + 2;
+    let lineStart = field.value.indexOf('\n', caretAfter);
+    while (lineStart !== -1) {
+        lineStart += 1;
+        const value = field.value;
+        let lineEnd = value.indexOf('\n', lineStart);
+        if (lineEnd === -1) lineEnd = value.length;
+        const lm = matchNoteListLine(value.slice(lineStart, lineEnd));
+        if (!lm || lm.number === null || lm.indent !== m.indent) break;
+        if (lm.number !== expected) {
+            const numStart = lineStart + lm.indent.length;
+            noteEditReplace(field, numStart, numStart + String(lm.number).length, String(expected), caretAfter);
+        }
+        expected++;
+        lineStart = field.value.indexOf('\n', lineStart);
+    }
+    field.setSelectionRange(caretAfter, caretAfter);
+    return true;
+}
+
+function isNoteMdField(el) {
+    return !!el && (el.id === 'note-edit-textarea' || el.id === 'note-edit-title-textarea' || isNoteTableSplitText(el));
+}
+
+// A note with a Markdown table is saved without format ranges (postEdit), so there the markers
+// stay text as before: no pair is folded and B/I/U/S put the markers in.
+function noteEditKeepsFormats(field) {
+    const ctx = getNoteEditContext(field);
+    return !!ctx && !parseMarkdownTable(ctx.main.value);
+}
+
+function runNoteMdInputRules(field) {
+    if (field.selectionStart !== field.selectionEnd) return;
+    const caret = field.selectionStart;
+    const ch = field.value[caret - 1];
+    if (!ch) return;
+    if (ch === '\n') { applyNoteMdListEnter(field, caret); return; }
+    const keepsFormats = noteEditKeepsFormats(field);
+    if (ch === ' ') {
+        const before = field.value.slice(field.value.lastIndexOf('\n', caret - 1) + 1, caret);
+        if (!keepsFormats && /^#{1,6} $/.test(before)) return;
+        if (applyNoteMdLineStart(field, caret)) return;
+    }
+    if (keepsFormats) applyNoteMdPair(field, caret);
+}
+
+document.addEventListener('input', (e) => {
+    if (noteMdApplying || !isNoteMdField(e.target) || e.isComposing) return;
+    const type = e.inputType || '';
+    if (type !== 'insertText' && type !== 'insertLineBreak' && type !== 'insertParagraph' && type !== 'insertCompositionText') return;
+    runNoteMdInputRules(e.target);
+});
+document.addEventListener('compositionend', (e) => {
+    if (noteMdApplying || !isNoteMdField(e.target)) return;
+    const field = e.target;
+    // The committed text is in the field right after this event.
+    setTimeout(() => { if (document.activeElement === field) runNoteMdInputRules(field); }, 0);
+});
+// Backspace at the start of a heading line takes the heading off (there is no "# " to delete).
+document.addEventListener('beforeinput', (e) => {
+    if (noteMdApplying || e.inputType !== 'deleteContentBackward' || !isNoteMdField(e.target)) return;
+    const field = e.target;
+    if (field.selectionStart !== field.selectionEnd) return;
+    const caret = field.selectionStart;
+    const lineStart = field.value.lastIndexOf('\n', caret - 1) + 1;
+    if (caret !== lineStart) return;
+    const ctx = getNoteEditContext(field);
+    if (!ctx) return;
+    let lineEnd = field.value.indexOf('\n', lineStart);
+    if (lineEnd === -1) lineEnd = field.value.length;
+    const S = ctx.off + lineStart, E = ctx.off + lineEnd;
+    const formats = readNoteEditFormats(ctx.modalBody, ctx.key);
+    const kept = formats.filter(f => !(f.type === 6 && f.start <= S && f.end >= S && (f.end > S || E === S)));
+    if (kept.length === formats.length) return;
+    e.preventDefault();
+    writeNoteEditFormats(ctx.modalBody, ctx.key, kept);
+    refreshNoteEditBackdrops(ctx);
+});
 
 function getActiveModalEditor() {
     const activeElement = document.activeElement;
@@ -18053,9 +18559,12 @@ function renderNoteTableSplitBackdrops(split) {
         const off = getNotePieceOffset(split._pieces, piece);
         const len = piece.value.length;
         const local = formats
-            .map(f => ({ start: Math.max(0, f.start - off), end: Math.min(len, f.end - off) }))
+            .map(f => ({ ...f, start: Math.max(0, f.start - off), end: Math.min(len, f.end - off) }))
             .filter(f => f.end > f.start);
         renderNoteEditBackdrop(piece.backdrop, piece.value, local);
+        const indent = piece.el.style.textIndent;
+        applyNoteListHangingIndent([piece.el, piece.backdrop], piece.value, piece.el);
+        if (piece.el.style.textIndent !== indent) fitNoteTableSplitText(piece.el);
     });
 }
 // A text piece or a table field was edited: rebuild the whole note in the hidden textarea and
@@ -18155,6 +18664,10 @@ function openNoteTableSplit(main, ranges) {
             el.style.fontSize = cs.fontSize;
             el.style.fontWeight = cs.fontWeight;
         });
+        // Like the note textarea: the text is drawn by the backdrop, the field shows the caret.
+        ta.style.color = 'transparent';
+        ta.style.caretColor = cs.caretColor || getComputedStyle(main).caretColor;
+        backdrop.style.color = 'inherit';
         ta.addEventListener('input', () => onNoteTableSplitTextInput(split, piece));
         ['keyup', 'mouseup', 'touchend', 'focus'].forEach(type => ta.addEventListener(type, updateTableAlignButtonState));
         piece.el = ta;
@@ -18459,6 +18972,7 @@ function createModalEditToolbar(modalContentBox) {
         noteTextarea?.addEventListener(type, updateTableAlignButtonState);
     });
     updateTableAlignButtonState();
+    updateNoteStickyButtons();
     modalContentBox.classList.add('has-edit-toolbar');
 }
 
@@ -19864,15 +20378,24 @@ function postEdit(text, formats, maskedLinks = []) {
         { s: (localStorage.getItem('mdUnderline') || '_').trim(), e: (localStorage.getItem('mdUnderline') || '_').trim(), t: 3 }
     ];
 
+    // The editor keeps these formats as ranges (they are not markers in its text any more), so they
+    // stay; markers still in the text (pasted) are added. A pair counts like in the editor: on one
+    // line, the text between not empty and not starting or ending with a space ("a * b * c" stays).
+    const isAlnumChar = (c) => !!c && /[\p{L}\p{N}]/u.test(c);
     rules.forEach(rule => {
         let searchIdx = 0;
-        // Clean existing formats of this type to avoid duplicates
-        currentFormats = currentFormats.filter(f => f.type !== rule.t);
+        if (!rule.s) return;
         while (true) {
             let start = currentText.indexOf(rule.s, searchIdx);
             if (start === -1) break;
             let end = currentText.indexOf(rule.e, start + rule.s.length);
             if (end === -1) {
+                searchIdx = start + rule.s.length;
+                continue;
+            }
+            const pairContent = currentText.substring(start + rule.s.length, end);
+            if (!pairContent || pairContent.includes('\n') || /^\s/.test(pairContent) || /\s$/.test(pairContent) ||
+                (rule.s === '_' && isAlnumChar(currentText[start - 1]) && isAlnumChar(currentText[end + 1]))) {
                 searchIdx = start + rule.s.length;
                 continue;
             }
@@ -19909,8 +20432,7 @@ function postEdit(text, formats, maskedLinks = []) {
         { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
         { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
     ];
-    // Clean header formats
-    currentFormats = currentFormats.filter(f => f.type !== 6);
+    // Heading ranges from the editor stay; "# " lines still in the text (pasted) are added.
     headerRules.forEach(rule => {
         let hIdx = 0;
         while (true) {
@@ -19937,6 +20459,16 @@ function postEdit(text, formats, maskedLinks = []) {
 
     handleClear(true); // Phase 2: Final sweep and marker removal
 
+    // Empty or repeated ranges of the editor formats are dropped (the old markers never made them).
+    const seenFormats = new Set();
+    currentFormats = currentFormats.filter(f => {
+        if ([1, 2, 3, 6, 7].includes(f.type) && !(f.end > f.start)) return false;
+        const k = JSON.stringify(f);
+        if (seenFormats.has(k)) return false;
+        seenFormats.add(k);
+        return true;
+    });
+
     // --- Restore Masked Links with proper shifting ---
     // В ред на появяване; маркер без линк се премахва - в бележката никога не се записва маркер.
     const restored = restoreLinkMarkers(currentText, currentFormats, maskedLinks);
@@ -19945,10 +20477,8 @@ function postEdit(text, formats, maskedLinks = []) {
 }
 
 /**
- * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
- */
-/**
- * Връща текст с вмъкнати MD символи на мястото на форматиращите команди.
+ * Подготвя текста за редактора: маскира линковете ({#L<n>#}) и отметките ([ ] / [x]).
+ * Форматирането (вкл. bold/italic/underline/strike и заглавията) остава като диапазони, без MD символи.
  */
 function preEdit(text, formats, targetIndex = -1, linkSlots = null) {
     // linkSlots: общ списък за заглавие + тяло, така че номерата {#L<n>#} са глобални за бележката
@@ -19990,30 +20520,8 @@ function preEdit(text, formats, targetIndex = -1, linkSlots = null) {
         urlRegex.lastIndex = start + placeholder.length; // Adjust for new text length
     }
 
-    // Re-calculate format positions relative to masked text
-    // (Simplistic approach: if a format was on a link, it might get slightly offset, but links shouldn't be formatted anyway)
-    // For now, let's just use the currentText for further MD insertion
-
-    // --- 2. Header Support (font size -> # levels) ---
-    const headerMap = [
-        { md: '###### ', scale: 0.7 }, { md: '##### ', scale: 0.8 }, { md: '#### ', scale: 0.9 },
-        { md: '### ', scale: 1.1 }, { md: '## ', scale: 1.2 }, { md: '# ', scale: 1.3 }
-    ];
-
-    headerMap.forEach(rule => {
-        const hFormats = currentFormats.filter(f => f.type === 6 && f.paramfloat === rule.scale);
-        let hIns = [];
-        hFormats.forEach(f => hIns.push({ pos: f.start, str: rule.md }));
-        hIns.sort((a, b) => b.pos - a.pos);
-        hIns.forEach(ins => {
-            currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
-            shiftIndex(ins.pos, ins.str.length);
-            currentFormats.forEach(f => {
-                if (f.start >= ins.pos) f.start += ins.str.length;
-                if (f.end >= ins.pos) f.end += ins.str.length;
-            });
-        });
-    });
+    // Bold, italic, underline, strike and headings are NOT turned into Markdown markers any more:
+    // they stay ranges and the editor's backdrop draws them (renderNoteEditBackdrop).
 
     // --- 3. Checkbox Support (Unicode to MD) ---
     const checkRules = [{ md: '[ ]', sym: '☐' }, { md: '[x]', sym: '☑' }];
@@ -20033,38 +20541,57 @@ function preEdit(text, formats, targetIndex = -1, linkSlots = null) {
         }
     });
 
-    // --- 4. Inline Formatting Rules ---
-    const rules = [
-        { s: localStorage.getItem('mdBold') || '**', e: localStorage.getItem('mdBold') || '**', t: 1 },
-        { s: localStorage.getItem('mdStrike') || '~~', e: localStorage.getItem('mdStrike') || '~~', t: 7 },
-        { s: localStorage.getItem('mdItalic') || '*', e: localStorage.getItem('mdItalic') || '*', t: 2 },
-        { s: localStorage.getItem('mdUnderline') || '_', e: localStorage.getItem('mdUnderline') || '_', t: 3 }
-    ];
-
-    const mdTypes = [1, 2, 3, 7];
-    let insertions = [];
-    currentFormats.forEach(f => {
-        const rule = rules.find(r => r.t === f.type);
-        if (rule) {
-            insertions.push({ pos: f.end, str: rule.e });
-            insertions.push({ pos: f.start, str: rule.s });
-        }
-    });
-
-    insertions.sort((a, b) => b.pos - a.pos);
-    insertions.forEach(ins => {
-        currentText = currentText.substring(0, ins.pos) + ins.str + currentText.substring(ins.pos);
-        shiftIndex(ins.pos, ins.str.length);
-        currentFormats.forEach(f => {
-            if (f.start >= ins.pos) f.start += ins.str.length;
-            if (f.end >= ins.pos) f.end += ins.str.length;
+    // --- 4. Markers still in the text (old notes, imports) become ranges here, by the pair rules
+    // of postEdit, so the editor shows what the note view and the save make of them. ---
+    if (!parseMarkdownTable(currentText)) {
+        const removeAt = (pos, len) => {
+            currentText = currentText.substring(0, pos) + currentText.substring(pos + len);
+            if (targetIndex !== -1 && correctedIndex > pos) correctedIndex = Math.max(pos, correctedIndex - len);
+            currentFormats.forEach(f => {
+                if (f.start > pos + len) f.start -= len; else if (f.start > pos) f.start = pos;
+                if (f.end > pos + len) f.end -= len; else if (f.end > pos) f.end = pos;
+            });
+        };
+        const inCode = (a, b) => [...currentText.matchAll(/\{\{[\s\S]*?\}\}|```[\s\S]*?```/g)]
+            .some(m => Math.max(a, m.index) < Math.min(b, m.index + m[0].length));
+        const isAlnum = (c) => !!c && /[\p{L}\p{N}]/u.test(c);
+        const sym = getNoteMdSymbols();
+        [{ s: sym.bold, t: 1 }, { s: sym.strike, t: 7 }, { s: sym.italic, t: 2 }, { s: sym.underline, t: 3 }].forEach(rule => {
+            if (!rule.s) return;
+            let from = 0;
+            while (true) {
+                const start = currentText.indexOf(rule.s, from);
+                if (start === -1) break;
+                const end = currentText.indexOf(rule.s, start + rule.s.length);
+                if (end === -1) break;
+                const content = currentText.substring(start + rule.s.length, end);
+                if (!content || content.includes('\n') || /^\s/.test(content) || /\s$/.test(content) ||
+                    (rule.s === '_' && isAlnum(currentText[start - 1]) && isAlnum(currentText[end + 1])) ||
+                    inCode(start, end + rule.s.length)) {
+                    from = start + rule.s.length;
+                    continue;
+                }
+                removeAt(end, rule.s.length);
+                removeAt(start, rule.s.length);
+                currentFormats.push({ start, end: start + content.length, type: rule.t, paramint: 0, paramfloat: 0 });
+                from = start + content.length;
+            }
         });
-    });
+        let lineStart = 0;
+        while (lineStart <= currentText.length) {
+            let lineEnd = currentText.indexOf('\n', lineStart);
+            if (lineEnd === -1) lineEnd = currentText.length;
+            const m = /^(#{1,6}) /.exec(currentText.substring(lineStart, lineEnd));
+            if (m && !inCode(lineStart, lineEnd)) {
+                removeAt(lineStart, m[0].length);
+                lineEnd -= m[0].length;
+                currentFormats.push({ start: lineStart, end: lineEnd, type: 6, paramint: 0, paramfloat: NOTE_HEADER_SCALES[m[1].length - 1] });
+            }
+            lineStart = lineEnd + 1;
+        }
+    }
 
-    const headerScales = [0.7, 0.8, 0.9, 1.1, 1.2, 1.3];
-    const remainingFormats = currentFormats.filter(f => !mdTypes.includes(f.type) && !(f.type === 6 && headerScales.includes(f.paramfloat)));
-
-    return { text: currentText, formats: remainingFormats, maskedLinks, correctedIndex };
+    return { text: currentText, formats: currentFormats, maskedLinks, correctedIndex };
 }
 
 // =================================================================================
