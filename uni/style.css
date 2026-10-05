@@ -3733,6 +3733,46 @@ body.selection-locked .note.active-selection-note .note-content {
     border-radius: 4px;
 }
 
+/* A table field with its backdrop: the wrapper takes the field's margin, the backdrop has the
+   field's metrics (border, padding, font, line-height, no wrapping) and draws the formatted text
+   under the transparent field text. JS sets its right/bottom to the field's scrollbars and keeps
+   its scroll in step with the field. */
+.note-table-field-seg {
+    margin: 6px 10px;
+}
+
+.note-table-field-seg > .note-table-field {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    margin: 0;
+    background-color: transparent;
+}
+
+.note-table-field-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    margin: 0;
+    padding: 8px;
+    box-sizing: border-box;
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    line-height: 1.4;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-wrap: normal;
+    color: inherit;
+    pointer-events: none;
+}
+
 /* Keep ▦ on the same row as the other formatting buttons on phones. */
 @media (max-width: 420px) {
     .modal-edit-toolbar {

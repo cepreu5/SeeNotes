@@ -14530,6 +14530,7 @@ function parseAllMarkdownTables(text) {
             tables.push({
                 borderless: isBorderless,
                 rows: paddedRows,
+                rowLineIndexes: [tableLinesInfo[sepIdx - 1].index, ...tableLinesInfo.slice(sepIdx + 1, lastValidIdx + 1).map(item => item.index)],
                 startIndex,
                 endIndex
             });
@@ -14544,21 +14545,56 @@ function parseMarkdownTable(text) {
     return tables.length > 0 ? tables[0] : null;
 }
 
-function renderMarkdownTableAsPseudoGraphic(text) {
+// formatString: обхватите на бележката (офсети в text). Всяка клетка и всеки блок извън таблицата
+// получава своя отрязък от тях; без обхвати изходът е същият като преди (processNoteContent).
+function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
     const tables = (typeof parseAllMarkdownTables === 'function') ? parseAllMarkdownTables(text) : (parseMarkdownTable(text) ? [parseMarkdownTable(text)] : []);
     if (!tables || tables.length === 0) return null;
+    // При \r\n нормализираните редове не съвпадат с офсетите на обхватите - тогава без обхвати.
+    const formats = (formatString && !text.includes('\r')) ? parseFormatsString(formatString) : [];
+    const lineStarts = [];
+    text.split('\n').reduce((pos, line) => { lineStarts.push(pos); return pos + line.length + 1; }, 0);
+    // Отрязък [start, start + len) с обхватите му, отместени към началото му.
+    const renderPart = (part, start) => {
+        const local = formats
+            .map(f => ({ ...f, start: Math.max(0, f.start - start), end: Math.min(part.length, f.end - start) }))
+            .filter(f => Number.isFinite(f.start) && Number.isFinite(f.end) && f.end > f.start);
+        if (!local.length) return processNoteContent(part, true);
+        return formatText(part, local.map(f => JSON.stringify(f)).join('|'), true);
+    };
+    // Началата на клетките в реда (същото рязане като parseRow в parseAllMarkdownTables).
+    const getCellStarts = (lineIndex) => {
+        const line = String(text.split('\n')[lineIndex] || '').replace(/\r$/, '');
+        let pos = line.length - line.trimStart().length;
+        let normalized = line.trim();
+        if (normalized.startsWith('|')) { normalized = normalized.slice(1); pos++; }
+        if (normalized.endsWith('|')) normalized = normalized.slice(0, -1);
+        return normalized.split('|').map(seg => {
+            const cellStart = lineStarts[lineIndex] + pos + (seg.length - seg.trimStart().length);
+            pos += seg.length + 1;
+            return cellStart;
+        });
+    };
     const renderSingleTable = (table) => {
-        const renderCells = (row, tag) => row.map(cell => `<${tag}>${processNoteContent(String(cell || ''), true)}</${tag}>`).join('');
+        const renderCells = (row, tag, rowIndex) => {
+            const lineIndex = table.rowLineIndexes ? table.rowLineIndexes[rowIndex] : undefined;
+            const starts = (formats.length && lineIndex !== undefined) ? getCellStarts(lineIndex) : [];
+            return row.map((cell, c) => {
+                const cellText = String(cell || '');
+                const html = starts[c] !== undefined ? renderPart(cellText, starts[c]) : processNoteContent(cellText, true);
+                return `<${tag}>${html}</${tag}>`;
+            }).join('');
+        };
         if (table.borderless) {
             const bodyRows = table.rows.slice(1);
             if (!bodyRows.length) return '';
-            const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
+            const bodyHtml = bodyRows.map((row, r) => `<tr>${renderCells(row, 'td', r + 1)}</tr>`).join('');
             return `<div class="md-table-wrapper"><table class="md-table-render md-table-borderless"><tbody>${bodyHtml}</tbody></table></div>`;
         } else {
-            const headerHtml = `<thead><tr>${renderCells(table.rows[0], 'th')}</tr></thead>`;
+            const headerHtml = `<thead><tr>${renderCells(table.rows[0], 'th', 0)}</tr></thead>`;
             const bodyRows = table.rows.slice(1);
             if (!bodyRows.length) return '';
-            const bodyHtml = bodyRows.map(row => `<tr>${renderCells(row, 'td')}</tr>`).join('');
+            const bodyHtml = bodyRows.map((row, r) => `<tr>${renderCells(row, 'td', r + 1)}</tr>`).join('');
             return `<div class="md-table-wrapper"><table class="md-table-render">${headerHtml}<tbody>${bodyHtml}</tbody></table></div>`;
         }
     };
@@ -14569,14 +14605,14 @@ function renderMarkdownTableAsPseudoGraphic(text) {
         const beforeLines = originalLines.slice(lastIndex, table.startIndex).join('\n');
         if (beforeLines.trim()) {
             if (finalHtml && !finalHtml.endsWith('<br>')) finalHtml += '<br>';
-            finalHtml += processNoteContent(beforeLines, true) + '<br>';
+            finalHtml += renderPart(beforeLines, lineStarts[lastIndex]) + '<br>';
         }
         finalHtml += renderSingleTable(table);
         lastIndex = table.endIndex + 1;
     });
     const afterLines = originalLines.slice(lastIndex).join('\n');
     if (afterLines.trim()) {
-        finalHtml += '<br>' + processNoteContent(afterLines, true);
+        finalHtml += '<br>' + renderPart(afterLines, lineStarts[lastIndex]);
     }
     return finalHtml;
 }
@@ -14770,11 +14806,11 @@ function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString
         if (titleFormatString && titleFormatString.trim() !== '') {
             formattedTitle = formatText(titlePart, titleFormatString, isForModal);
         } else {
-            const titleTableHtml = renderMarkdownTableAsPseudoGraphic(titlePart);
+            const titleTableHtml = renderMarkdownTableAsPseudoGraphic(titlePart, titleFormatString);
             formattedTitle = titleTableHtml || processNoteContent(titlePart, isForModal);
         }
         let formattedBody = '';
-        const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart);
+        const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart, formatString);
         if (tableHtml) {
             formattedBody = tableHtml;
         } else if (formatString && formatString.trim() !== '') {
@@ -14786,7 +14822,7 @@ function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString
     }
     ({ text: rawContent, formatString } = stripLinkMarkersForDisplay(rawContent, formatString));
     if (!rawContent) return '';
-    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent);
+    const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent, formatString);
     if (fullTableHtml) return fullTableHtml;
     if (formatString && formatString.trim() !== '') {
         return formatText(rawContent, formatString, isForModal);
@@ -17620,7 +17656,7 @@ function ensureNoteMdStyles() {
 .nmd-h3 { box-shadow: inset 0 -0.07em rgba(128, 128, 128, 0.3); }
 .nmd-small { opacity: 0.7; }
 .nmd-other { border-bottom: 2px dashed currentColor; background-color: rgba(128, 128, 128, 0.3); }
-#note-edit-textarea::selection, #note-edit-title-textarea::selection, .note-table-split-text::selection { color: transparent; background: rgba(74, 144, 226, 0.35); }
+#note-edit-textarea::selection, #note-edit-title-textarea::selection, .note-table-split-text::selection, .note-table-field-seg > .note-table-field::selection { color: transparent; background: rgba(74, 144, 226, 0.35); }
 .modal-edit-toolbar-btn.is-sticky { background: #4a90e2; border-color: #4a90e2; color: #fff; }
 `;
     document.head.appendChild(style);
@@ -18556,6 +18592,19 @@ function fitNoteTableSplitText(ta) {
 function fitNoteTableField(ta) {
     ta.style.height = 'auto';
     ta.style.height = (ta.scrollHeight + ta.offsetHeight - ta.clientHeight) + 'px';
+    syncNoteTableFieldBackdrop(ta);
+}
+// The backdrop of a table field covers exactly the field's client box (no scrollbars) and scrolls with it.
+function syncNoteTableFieldBackdrop(ta) {
+    const backdrop = ta._backdrop;
+    if (!backdrop) return;
+    const cs = getComputedStyle(ta);
+    const right = Math.max(0, ta.offsetWidth - ta.clientWidth - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0)) + 'px';
+    const bottom = Math.max(0, ta.offsetHeight - ta.clientHeight - (parseFloat(cs.borderTopWidth) || 0) - (parseFloat(cs.borderBottomWidth) || 0)) + 'px';
+    if (backdrop.style.right !== right) backdrop.style.right = right;
+    if (backdrop.style.bottom !== bottom) backdrop.style.bottom = bottom;
+    if (backdrop.scrollLeft !== ta.scrollLeft) backdrop.scrollLeft = ta.scrollLeft;
+    if (backdrop.scrollTop !== ta.scrollTop) backdrop.scrollTop = ta.scrollTop;
 }
 function fitNoteTableSplitPiece(piece) {
     if (piece.kind === 'table') fitNoteTableField(piece.el);
@@ -18571,14 +18620,15 @@ function getNoteBodyFormats() {
 function renderNoteTableSplitBackdrops(split) {
     const formats = getNoteBodyFormats();
     split._pieces.forEach(piece => {
-        if (piece.kind !== 'text' || !piece.backdrop) return;
+        if ((piece.kind !== 'text' && piece.kind !== 'table') || !piece.backdrop) return;
         const off = getNotePieceOffset(split._pieces, piece);
         const len = piece.value.length;
         const local = formats
             .map(f => ({ ...f, start: Math.max(0, f.start - off), end: Math.min(len, f.end - off) }))
             .filter(f => f.end > f.start);
         renderNoteEditBackdrop(piece.backdrop, piece.value, local);
-        fitNoteTableSplitText(piece.el);
+        if (piece.kind === 'table') syncNoteTableFieldBackdrop(piece.el);
+        else fitNoteTableSplitText(piece.el);
     });
 }
 // A text piece or a table field was edited: rebuild the whole note in the hidden textarea and
@@ -18660,8 +18710,22 @@ function openNoteTableSplit(main, ranges) {
             field.setAttribute('autocorrect', 'off');
             field.addEventListener('input', () => onNoteTableSplitTextInput(split, piece));
             ['keyup', 'mouseup', 'touchend', 'focus'].forEach(type => field.addEventListener(type, updateTableAlignButtonState));
+            // Like the text pieces: the backdrop draws the table with its formats, the field shows
+            // the caret and the selection. Same box metrics, so the letters stay under the caret.
+            const fieldSeg = document.createElement('div');
+            fieldSeg.className = 'note-table-split-seg note-table-field-seg';
+            const fieldBackdrop = document.createElement('div');
+            fieldBackdrop.className = 'note-table-field-backdrop';
+            field.style.color = 'transparent';
+            field.style.caretColor = cs.caretColor || getComputedStyle(main).caretColor;
+            field._backdrop = fieldBackdrop;
+            field.addEventListener('scroll', () => syncNoteTableFieldBackdrop(field));
             piece.el = field;
-            split.appendChild(field);
+            piece.backdrop = fieldBackdrop;
+            piece.seg = fieldSeg;
+            fieldSeg.appendChild(fieldBackdrop);
+            fieldSeg.appendChild(field);
+            split.appendChild(fieldSeg);
             return;
         }
         const seg = document.createElement('div');
@@ -18735,7 +18799,7 @@ function openNoteTableSplit(main, ranges) {
         targetPos = after ? 0 : (before ? before.value.length : 0);
     }
     split.scrollTop = scrollTop;
-    const field = caretTable.el;
+    const field = caretTable.seg || caretTable.el;
     if (field.offsetTop < split.scrollTop || field.offsetTop + field.offsetHeight > split.scrollTop + split.clientHeight) {
         split.scrollTop = Math.max(0, field.offsetTop - 24);
     }
@@ -18871,7 +18935,9 @@ function openNoteTableFieldsOnEdit(textarea, caret, inTable = false) {
 function revealNoteTableSplitCaret(split) {
     const el = document.activeElement;
     if (!split || !el || !split.contains(el)) return;
-    const top = el.offsetTop, bottom = top + el.offsetHeight;
+    // A table field sits in its backdrop wrapper (positioned): measure the wrapper inside the split.
+    const box = el.classList.contains('note-table-field') && el.parentElement?.classList.contains('note-table-field-seg') ? el.parentElement : el;
+    const top = box.offsetTop, bottom = top + box.offsetHeight;
     if (el.selectionStart === el.value.length && !el.classList.contains('note-table-field')) {
         if (bottom > split.scrollTop + split.clientHeight) split.scrollTop = bottom - split.clientHeight + 10;
         else if (bottom < split.scrollTop) split.scrollTop = Math.max(0, top - 24);
