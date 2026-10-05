@@ -4081,3 +4081,47 @@ body.selection-locked .note.active-selection-note .note-content {
 .note-appear {
     animation: noteAppear .35s cubic-bezier(.34, 1.56, .64, 1) both;
 } */
+
+/* MD отметки [ ] / [x] в прегледа и в картата на борда: системен чекбокс, зона за клик ~28px */
+.nmd-cb-hit {
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 0;
+    text-indent: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nmd-cb-hit::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 28px;
+    height: 28px;
+    transform: translate(-50%, -50%);
+}
+
+.nmd-cb {
+    position: relative;
+    z-index: 1;
+    width: 1.05em;
+    height: 1.05em;
+    margin: 0;
+    vertical-align: top;
+    cursor: pointer;
+    accent-color: #3a6ff0;
+}
+
+/* Отметнатият ред само сменя цвета си на приглушен - без задраскване */
+.nmd-cb-done {
+    opacity: 0.55;
+}
+
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+    .nmd-cb-done {
+        opacity: 1;
+        color: color-mix(in srgb, currentColor 52%, transparent);
+    }
+}

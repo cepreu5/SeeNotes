@@ -10154,6 +10154,7 @@ function showModal(options, noteElement = null) {
     displayContent = getFormattedNoteHtml(rawContent, formatString, titleFormatString, true);
     modalBody.innerHTML = displayContent;
     modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
+    setNoteCheckboxSource(modalBody, 0, String(rawContent || '').length);
 
     // Remove previous click listener if it exists to prevent accumulation
     if (modalBody._clickListener) {
@@ -15033,6 +15034,10 @@ function restoreLinkMarkers(text, formats, maskedLinks) {
  * Маркерите {#L<n>#} не се показват (само режимът на редакция ги вижда).
  */
 function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString = null, isForModal = false, listIndentMeasureEl = undefined) {
+    return renderNoteCheckboxes(getFormattedNoteHtmlBase(rawContent, formatString, titleFormatString, isForModal, listIndentMeasureEl));
+}
+
+function getFormattedNoteHtmlBase(rawContent, formatString = null, titleFormatString = null, isForModal = false, listIndentMeasureEl = undefined) {
     if (!rawContent) return '';
     const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
     if (pipeIndex !== -1) {
@@ -15068,6 +15073,239 @@ function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString
         return formatText(rawContent, formatString, isForModal, listIndentMeasureEl);
     }
     return processNoteContent(rawContent, isForModal, false, listIndentMeasureEl);
+}
+
+// --- MD отметки: [ ] / [x] (и ☐ / ☑, в които ги обръща postEdit) в началото на реда ---
+// Отметка се разпознава само в началото на реда (след отстъп и евентуален маркер на списък), както
+// в Markdown. Рендираното квадратче носи поредния си номер (data-cb), а кликът обръща отметката със
+// същия пореден номер в суровия текст - "коя по ред" остава вярно и след пре-рендер.
+const NOTE_CHECKBOX_TOGGLE = { '[ ]': '[x]', '[x]': '[ ]', '[X]': '[ ]', '[х]': '[ ]', '[Х]': '[ ]', '☐': '☑', '☑': '☐' };
+
+function matchNoteCheckboxLine(line) {
+    const list = matchNoteListLine(line);
+    const prefix = list ? list.prefix : /^[ \t]*/.exec(line)[0];
+    const m = /^(\[ \]|\[[xXхХ]\]|☐|☑)(?=\s|$)/.exec(line.slice(prefix.length));
+    if (!m) return null;
+    return { start: prefix.length, mark: m[1], checked: m[1] !== '[ ]' && m[1] !== '☐' };
+}
+
+// Отметките в текста, който се подава на getFormattedNoteHtml, в реда на показване:
+// [{ index, mark, checked }]. Кодовите блокове не съдържат отметки; '|' дели заглавие от тяло.
+function findNoteCheckboxes(text) {
+    const out = [];
+    if (!text) return out;
+    const masked = text.replace(/\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g, m => m.replace(/[^\n]/g, CODE_BLOCK_PLACEHOLDER));
+    const scan = (from, to) => {
+        let pos = from;
+        for (const line of masked.slice(from, to).split('\n')) {
+            const m = matchNoteCheckboxLine(line);
+            if (m) out.push({ index: pos + m.start, mark: m.mark, checked: m.checked });
+            pos += line.length + 1;
+        }
+    };
+    const pipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(text) : text.indexOf('|');
+    if (pipe !== -1) { scan(0, pipe); scan(pipe + 1, text.length); } else scan(0, text.length);
+    return out;
+}
+
+// Върху готовия HTML: всяка отметка в началото на ред става <input type="checkbox">. Суровите
+// знаци остават в скрит span, за да брои getPreciseCharIndex същите символи като в текста.
+// Отметнатият ред е само приглушен (.nmd-cb-done), без задраскване.
+function renderNoteCheckboxes(html) {
+    if (!html || !/\[[ xXхХ]\]|☐|☑/.test(html)) return html;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    const lines = [[]];
+    const SKIP = '.code-block, code, pre, table, .md-heading, button, textarea, input';
+    const walk = (node) => {
+        for (const child of Array.from(node.childNodes)) {
+            if (child.nodeType === Node.TEXT_NODE) { lines[lines.length - 1].push(child); continue; }
+            if (child.nodeType !== Node.ELEMENT_NODE) continue;
+            if (child.tagName === 'BR') { lines.push([]); continue; }
+            if (child.matches(SKIP)) { lines[lines.length - 1].push(null); continue; }
+            walk(child);
+        }
+    };
+    walk(tpl.content);
+    let ordinal = 0;
+    for (const nodes of lines) {
+        const plain = nodes.map(n => n ? n.data : CODE_BLOCK_PLACEHOLDER).join('');
+        const m = matchNoteCheckboxLine(plain);
+        if (!m) continue;
+        const cb = ordinal++;
+        let pos = 0, at = -1;
+        for (let i = 0; i < nodes.length; i++) {
+            const len = nodes[i] ? nodes[i].data.length : 1;
+            if (nodes[i] && m.start >= pos && m.start + m.mark.length <= pos + len) { at = i; break; }
+            if (m.start < pos + len) break;
+            pos += len;
+        }
+        if (at === -1) continue; // знаците на отметката са разделени между тагове - остават текст
+        const node = nodes[at];
+        const markNode = node.splitText(m.start - pos);
+        const rest = markNode.splitText(m.mark.length);
+        const hit = document.createElement('span');
+        hit.className = 'nmd-cb-hit';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'nmd-cb';
+        input.tabIndex = -1;
+        input.dataset.cb = String(cb);
+        if (m.checked) input.setAttribute('checked', '');
+        const src = document.createElement('span');
+        src.className = 'nmd-cb-src';
+        src.hidden = true;
+        hit.append(input, src);
+        markNode.replaceWith(hit);
+        src.appendChild(markNode);
+        if (m.checked) {
+            [rest, ...nodes.slice(at + 1)].forEach(n => {
+                if (!n || !n.data) return;
+                const done = document.createElement('span');
+                done.className = 'nmd-cb-done';
+                n.replaceWith(done);
+                done.appendChild(n);
+            });
+        }
+    }
+    return tpl.innerHTML;
+}
+
+// Кой текст е рендиран в elem (модала или картата): [start, end) от notetxt на бележката.
+function setNoteCheckboxSource(elem, start, end) {
+    if (!elem) return;
+    if (start === null || start < 0) {
+        delete elem.dataset.cbSrcStart;
+        delete elem.dataset.cbSrcEnd;
+        return;
+    }
+    elem.dataset.cbSrcStart = String(start);
+    elem.dataset.cbSrcEnd = String(end);
+}
+
+// Клик върху квадратчето (или зоната около него): обръща отметката в текста и записва бележката.
+// Прихваща се на window в capture фаза - преди отварянето на бележката и преди click-to-edit.
+window.addEventListener('click', (e) => {
+    const hit = e.target && e.target.closest ? e.target.closest('.nmd-cb-hit') : null;
+    if (!hit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    toggleNoteCheckbox(hit).catch(err => console.error('Checkbox toggle failed:', err));
+}, true);
+
+async function toggleNoteCheckbox(hit) {
+    const input = hit.querySelector('input.nmd-cb');
+    const host = hit.closest('[data-cb-src-end]');
+    if (!input || !host) return;
+    const isModal = host.id === 'modal-body';
+    const findNote = (gdid, id) => allNotesData.find(n => (gdid && n.gdid && String(n.gdid) === String(gdid)) || (id && n.id !== undefined && String(n.id) === String(id)));
+    let noteObj;
+    if (isModal) {
+        // Редакция или преглед на чернова: текстът на модала не е записаната бележка.
+        const saveBtn = document.getElementById('note-save-btn');
+        if (host.querySelector('textarea') || host.dataset.draftText || host.dataset.isPreview === 'true' ||
+            host.dataset.isNewNote === 'true' || (saveBtn && saveBtn.style.display !== 'none' && saveBtn.style.display !== '')) return;
+        noteObj = findNote(host.dataset.gdid, host.dataset.id);
+    } else {
+        const card = host.closest('.note');
+        if (!card) return;
+        noteObj = findNote(card.dataset.g, card.dataset.i);
+    }
+    if (!noteObj) return;
+    const field = noteObj.notetxt !== undefined ? 'notetxt' : 'text';
+    const raw = String(noteObj[field] || '');
+    if (isModal && typeof currentModalContent === 'string' && raw !== currentModalContent) return;
+    const start = parseInt(host.dataset.cbSrcStart, 10);
+    const end = parseInt(host.dataset.cbSrcEnd, 10);
+    if (!(start >= 0) || !(end >= start) || end > raw.length) return;
+    const boxes = findNoteCheckboxes(raw.substring(start, end));
+    const box = boxes[parseInt(input.dataset.cb, 10)];
+    // Рендерът и суровият текст трябва да са съгласни, иначе не пипаме нищо (никога грешен ред).
+    if (!box || box.checked !== input.hasAttribute('checked')) return;
+    if (isModal) {
+        const shown = Array.from(host.querySelectorAll('input.nmd-cb')).filter(el => el.closest('[data-cb-src-end]') === host);
+        if (shown.length !== boxes.length) return;
+    }
+    const pos = start + box.index;
+    noteObj[field] = raw.slice(0, pos) + NOTE_CHECKBOX_TOGGLE[box.mark] + raw.slice(pos + box.mark.length);
+    await saveNoteCheckboxChange(noteObj);
+}
+
+// Записът след смяна на отметка: обектът, картата, модала (ако показва тази бележка) и източниците
+// (Google Drive / локална папка / IndexedDB) по същия ред като saveEditedNote. Дължината на текста
+// не се сменя ([ ]<->[x], ☐<->☑), затова форматите (text_span/title_span) остават същите.
+async function saveNoteCheckboxChange(noteObj) {
+    const updateGDriveNow = useGoogleDb && !isOffline;
+    const updateLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
+    const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
+    noteObj.version = noteObj.version ? parseInt(noteObj.version, 10) + 1 : 1;
+    noteObj.datemod = Date.now();
+
+    const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
+    if (noteEl) {
+        const updatedEl = await createNoteElement(noteObj);
+        if (updatedEl) {
+            // A new card is created hidden (applyFilters shows it); the toggled card stays as visible as it was.
+            updatedEl.style.display = noteEl.style.display;
+            noteEl.replaceWith(updatedEl);
+        }
+    }
+    const mb = document.getElementById('modal-body');
+    const modalShowsNote = mb && !mb.querySelector('textarea') &&
+        ((noteObj.gdid && String(mb.dataset.gdid) === String(noteObj.gdid)) || (noteObj.id !== undefined && String(mb.dataset.id) === String(noteObj.id)));
+    if (modalShowsNote) {
+        const raw = noteObj.notetxt !== undefined ? noteObj.notetxt : noteObj.text;
+        const html = getFormattedNoteHtml(raw, noteObj.text_span, noteObj.title_span, true);
+        mb.innerHTML = html;
+        mb.dataset.renderedHtml = html;
+        setNoteCheckboxSource(mb, 0, String(raw || '').length);
+        currentModalContent = raw;
+        mb.dataset.baseDatemod = String(noteObj.datemod);
+        if (mb.dataset.baseNote) mb.dataset.baseNote = JSON.stringify(noteObj);
+    }
+
+    let gdriveOk = updateGDriveNow;
+    if (updateGDriveNow) {
+        const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
+        try {
+            if (isTempGdid) {
+                const folderId = await getFolderID();
+                if (folderId) {
+                    const tempGdid = noteObj.gdid;
+                    const newGdid = await createGDriveFile(folderId, 'note.txt', JSON.stringify(noteObj));
+                    if (!newGdid) throw new Error('Failed to create GDrive file');
+                    noteObj.gdid = newGdid;
+                    const el = document.querySelector(`.note[data-i="${noteObj.id}"]`);
+                    if (el) el.dataset.g = newGdid;
+                    if (mb && modalShowsNote) mb.dataset.gdid = newGdid;
+                    await updateGDriveFile(newGdid, JSON.stringify(noteObj));
+                    if (useIndexedDbNow && tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
+                }
+            } else {
+                const success = await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
+                if (!success) throw new Error('GDrive update returned false');
+            }
+        } catch (e) {
+            console.error('Failed to save checkbox change to GDrive', e);
+            showToast(_('errorSaveGDrive'));
+            gdriveOk = false;
+        }
+    }
+    if (updateLocalFolderNow) {
+        try {
+            const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
+            if (isTempGdid && !updateGDriveNow) noteObj.gdid = `L${Date.now()}`;
+            if (noteObj.gdid) await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
+        } catch (e) {
+            console.error('Failed to save checkbox change to the local folder', e);
+            showToast(_('errorSaveLocalFolder') || 'Грешка при запис в локалната папка');
+        }
+    }
+    if (gdriveOk) noteObj.type = 0;
+    else if (useIndexedDbNow) noteObj.type = -1; // за офлайн синхронизация
+    if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
+    if (typeof updateReloadButtonState === 'function') updateReloadButtonState();
 }
 
 // Елементът, спрямо чийто шрифт се мери висящият отстъп на списъците.
@@ -15143,7 +15381,8 @@ function wrapNoteLineBlocks(lines, listMeasureEl, plainTextOf) {
         const res = wrapNoteLineBlock(line, plain, listMeasureEl);
         if (res.heading) { out.push(res.html); cont = 0; continue; }
         if (res.indent !== null) { out.push(res.html); cont = res.indent; continue; }
-        if (cont > 0 && plain.trim() !== '') {
+        // A checkbox line ([ ] / [x]) is an item of its own, not the continuation of the item above.
+        if (cont > 0 && plain.trim() !== '' && !matchNoteCheckboxLine(plain)) {
             out.push(`<span class="nmd-li nmd-li-cont" style="display: inline-block; box-sizing: border-box; width: 100%; padding-left: ${cont}px; white-space: pre-wrap; tab-size: 4;">${line}</span>`);
             continue;
         }
@@ -16119,12 +16358,14 @@ async function createNoteElement(noteContent) {
             formatSource = adjustFormatStringOffset(formatSource, offset);
         }
         contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal, noteListMeasureEl);
+        setNoteCheckboxSource(contentEl, rawOffset !== -1 ? rawOffset : null, rawOffset + String(contentForPreview || '').length);
     };
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
         const titleFormatSource = (titleSpan && titleSpan.trim() !== '') ? titleSpan : null;
         contentEl.innerHTML = getFormattedNoteHtml(previewContent, null, titleFormatSource, isForModal, noteListMeasureEl);
+        setNoteCheckboxSource(contentEl, 0, previewContent.length);
     } else {
         renderPreviewContent(displayContent);
     }
