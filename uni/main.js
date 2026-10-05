@@ -17061,12 +17061,12 @@ function onKBFabClick(e) {
 // worker е готов, го пускаме веднага: обикновен refresh (или отваряне) вдига версията сам,
 // с едно презареждане. Щом вече се работи в приложението, не презареждаме под ръцете -
 // банерът изчаква натискането на Refresh now.
-let swUserInteracted = false;
+window.swUserInteracted = false;
 ['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(ev =>
-    window.addEventListener(ev, () => { swUserInteracted = true; }, { capture: true, passive: true }));
+    window.addEventListener(ev, () => { window.swUserInteracted = true; }, { capture: true, passive: true }));
 
 function applyWaitingWorker(worker) {
-    if (!worker || swUserInteracted) return false;
+    if (!worker || window.swUserInteracted) return false;
     try {
         worker.postMessage({ type: 'SKIP_WAITING' });
     } catch (e) {
@@ -17075,6 +17075,117 @@ function applyWaitingWorker(worker) {
     }
     console.log('[SW] Чакащият worker е пуснат, страницата се презарежда веднъж.');
     return true;
+}
+
+// Банерът е само за истински нов билд. Чакащ worker със същата версия като активния значи
+// само, че регистрацията си сменя адреса (напр. преминаване от 'sw.js?v=...' към чистия
+// 'sw.js') - тогава не показваме нищо и не презареждаме. Такъв worker поема при следващо
+// отваряне на приложението.
+// Чакащият worker още не обслужва страницата и не приема съобщения надеждно, затова четем
+// името на кеша направо от скрипта му.
+async function waitingWorkerCacheName(worker) {
+    try {
+        const res = await fetch(worker.scriptURL, { cache: 'no-store' });
+        if (!res.ok) return null;
+        const m = /CACHE_NAME\s*=\s*'([^']*)'/.exec(await res.text());
+        return m ? m[1] : null;
+    } catch (e) { return null; }
+}
+
+async function waitingWorkerIsNewBuild(worker) {
+    if (!worker || !navigator.serviceWorker.controller) return true;
+    const waitingVersion = await waitingWorkerCacheName(worker);
+    const activeVersion = await askServiceWorkerCacheName(navigator.serviceWorker.controller);
+    if (!waitingVersion || !activeVersion) return true;
+    return waitingVersion !== activeVersion;
+}
+
+// Банерът за обновяване: на топ ниво, защото го вика handleWaitingWorker (вътре в load
+// handler-а не се виждаше от нея - ReferenceError: showUpdateNotification is not defined).
+        // Function to show update notification as a persistent floating bar
+        // Uses a simple boolean flag - guarantees at most ONE notification per page load
+        const showUpdateNotification = (waitingSW) => {
+            if (!waitingSW) return;
+
+            // Block if already shown on this page load
+            if (window._swUpdateBarShown) return;
+
+            window._swUpdateBarShown = true;
+            console.log('[SW] Showing update notification bar.');
+
+            // Create update notification bar
+            const updateBar = document.createElement('div');
+            updateBar.id = 'sw-update-bar';
+            updateBar.style.cssText = `
+                position: fixed;
+                bottom: 15px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 12px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                z-index: 100000;
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                white-space: nowrap;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                animation: swSlideUp 0.3s ease;
+            `;
+
+            const textSpan = document.createElement('span');
+            textSpan.textContent = typeof _ === 'function' ? _('newVersionAvailable') : "New version available!";
+            textSpan.style.fontWeight = '500';
+
+            const refreshBtn = document.createElement('button');
+            refreshBtn.textContent = typeof _ === 'function' ? _('refreshNow') : "Refresh now";
+            refreshBtn.style.cssText = `
+                background: white;
+                color: #667eea;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: bold;
+                transition: all 0.2s;
+            `;
+            refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
+            refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
+            refreshBtn.onclick = () => {
+                localStorage.removeItem('app_version_seen');
+                waitingSW.postMessage({ type: 'SKIP_WAITING' });
+                setTimeout(() => updateBar.remove(), 100);
+            };
+
+            updateBar.appendChild(textSpan);
+            updateBar.appendChild(refreshBtn);
+            document.body.appendChild(updateBar);
+
+            // Add animation style if not exists
+            if (!document.getElementById('sw-update-style')) {
+                const style = document.createElement('style');
+                style.id = 'sw-update-style';
+                style.textContent = `
+                    @keyframes swSlideUp {
+                        from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+                        to { transform: translateX(-50%) translateY(0); opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        };
+
+let handledWaitingWorker = null;
+async function handleWaitingWorker(worker) {
+    if (!worker || worker === handledWaitingWorker) return;
+    handledWaitingWorker = worker;
+    if (!(await waitingWorkerIsNewBuild(worker))) {
+        console.log('[SW] Чакащият worker е същата версия, само сменя адреса си - без банер.');
+        return;
+    }
+    if (!applyWaitingWorker(worker)) showUpdateNotification(worker);
 }
 
 // --- Service Worker Registration ---
@@ -17101,85 +17212,9 @@ if ('serviceWorker' in navigator) {
             const registration = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
             console.log(`[SW] Registration successful. Scope: ${registration.scope}. Active: ${!!registration.active}, Waiting: ${!!registration.waiting}, Installing: ${!!registration.installing}`);
 
-            // Function to show update notification as a persistent floating bar
-            // Uses a simple boolean flag - guarantees at most ONE notification per page load
-            const showUpdateNotification = (waitingSW) => {
-                if (!waitingSW) return;
-
-                // Block if already shown on this page load
-                if (window._swUpdateBarShown) return;
-
-                window._swUpdateBarShown = true;
-                console.log('[SW] Showing update notification bar.');
-
-                // Create update notification bar
-                const updateBar = document.createElement('div');
-                updateBar.id = 'sw-update-bar';
-                updateBar.style.cssText = `
-                    position: fixed;
-                    bottom: 15px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    padding: 12px 20px;
-                    border-radius: 12px;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-                    z-index: 100000;
-                    display: flex;
-                    align-items: center;
-                    gap: 15px;
-                    white-space: nowrap;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    animation: swSlideUp 0.3s ease;
-                `;
-
-                const textSpan = document.createElement('span');
-                textSpan.textContent = typeof _ === 'function' ? _('newVersionAvailable') : "New version available!";
-                textSpan.style.fontWeight = '500';
-
-                const refreshBtn = document.createElement('button');
-                refreshBtn.textContent = typeof _ === 'function' ? _('refreshNow') : "Refresh now";
-                refreshBtn.style.cssText = `
-                    background: white;
-                    color: #667eea;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    transition: all 0.2s;
-                `;
-                refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
-                refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
-                refreshBtn.onclick = () => {
-                    localStorage.removeItem('app_version_seen');
-                    waitingSW.postMessage({ type: 'SKIP_WAITING' });
-                    setTimeout(() => updateBar.remove(), 100);
-                };
-
-                updateBar.appendChild(textSpan);
-                updateBar.appendChild(refreshBtn);
-                document.body.appendChild(updateBar);
-
-                // Add animation style if not exists
-                if (!document.getElementById('sw-update-style')) {
-                    const style = document.createElement('style');
-                    style.id = 'sw-update-style';
-                    style.textContent = `
-                        @keyframes swSlideUp {
-                            from { transform: translateX(-50%) translateY(100px); opacity: 0; }
-                            to { transform: translateX(-50%) translateY(0); opacity: 1; }
-                        }
-                    `;
-                    document.head.appendChild(style);
-                }
-            };
 
             // Готов нов worker още при зареждането: пускаме го, ако потребителят не е пипал нищо.
-            if (registration.waiting && !applyWaitingWorker(registration.waiting)) {
-                showUpdateNotification(registration.waiting);
-            }
+            if (registration.waiting) handleWaitingWorker(registration.waiting);
 
             // ALWAYS listen for new SW installing
             registration.addEventListener('updatefound', () => {
@@ -17190,11 +17225,25 @@ if ('serviceWorker' in navigator) {
                         console.log(`[SW] New worker state changed: ${newWorker.state}`);
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                             console.log('[SW] New worker installed.');
-                            if (!applyWaitingWorker(newWorker)) showUpdateNotification(newWorker);
+                            handleWaitingWorker(newWorker);
                         }
                     });
                 }
             });
+
+            // Същата проверка и периодично в първите секунди: при бърз (кеширан) sw.js инсталацията
+            // може да приключи, преди 'updatefound' да е вързал слушателя, и тогава никой не вижда
+            // чакащия worker.
+            let waitingWatchTries = 0;
+            const waitingWatch = setInterval(() => {
+                waitingWatchTries++;
+                if (registration.waiting) {
+                    clearInterval(waitingWatch);
+                    handleWaitingWorker(registration.waiting);
+                } else if (waitingWatchTries >= 20) {
+                    clearInterval(waitingWatch);
+                }
+            }, 500);
 
             // Reload when the new Service Worker takes control, but only IF there was a previous controller (actual update)
             let refreshing = false;
