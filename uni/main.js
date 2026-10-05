@@ -10347,7 +10347,7 @@ function showModal(options, noteElement = null) {
                 display: 'none',
                 gridTemplateColumns: 'auto',
                 gap: '4px',
-                zIndex: '10002', // above the modal's footer toolbar (10001), which the taller popup now reaches
+                zIndex: '10050', // above everything the modal draws itself (footer toolbar 10001): nothing in the page may sit over the popup
                 borderRadius: '8px',
                 boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
                 maxHeight: 'calc(100vh - 80px)',
@@ -10368,7 +10368,7 @@ function showModal(options, noteElement = null) {
             paletteClose.textContent = '✕';
             paletteClose.title = _('paletteCloseTooltip') || 'Close';
             paletteClose.addEventListener('mousedown', (e) => e.preventDefault());
-            paletteClose.onclick = (e) => { e.stopPropagation(); palette.style.display = 'none'; };
+            paletteClose.onclick = (e) => { e.stopPropagation(); closePaletteDropdown(); };
             closeRow.appendChild(paletteClose);
             palette.appendChild(closeRow);
 
@@ -10396,12 +10396,45 @@ function showModal(options, noteElement = null) {
             // are taken when the press starts (the native colour picker of the custom dot takes the
             // focus away; the other dots keep it with preventDefault on mousedown).
             let colorTarget = null;
-            const snapColorTarget = () => {
+            // A touch screen draws the selection handles and the copy/paste menu in a layer of the
+            // browser's own, above every element - no z-index can put the popup over them. So while
+            // the popup is open the selection is taken out of the browser's hands instead: the field
+            // is blurred and its native selection collapsed (no handles, no menu), and the colours
+            // apply to the range captured here. Closing the popup hands the selection back.
+            const paletteTouchPointer = typeof window.matchMedia === 'function'
+                && window.matchMedia('(pointer: coarse)').matches;
+            let colorTargetReleased = false;
+            const snapColorTarget = (force) => {
+                // While a released selection is held, only the field's own changes (a new popup
+                // opening) may replace it - never a press inside the popup.
+                if (!force && colorTargetReleased && colorTarget && colorTarget.field && colorTarget.field.isConnected) return;
                 const field = typeof getActiveModalEditor === 'function' ? getActiveModalEditor() : null;
                 colorTarget = field ? { field, start: field.selectionStart, end: field.selectionEnd } : null;
             };
-            palette.addEventListener('pointerdown', snapColorTarget, true);
-            palette.addEventListener('mousedown', snapColorTarget, true);
+            const releaseNativeSelection = () => {
+                const t = colorTarget;
+                if (!paletteTouchPointer || !t || !t.field || !t.field.isConnected) return;
+                t.wasFocused = document.activeElement === t.field;
+                try { t.field.blur(); } catch (e) { /* the field is gone */ }
+                try { t.field.setSelectionRange(t.start, t.start); } catch (e) { /* some fields refuse it */ }
+                t.released = true;
+                colorTargetReleased = true;
+            };
+            const restoreNativeSelection = () => {
+                colorTargetReleased = false;
+                const t = colorTarget;
+                if (!t || !t.released || !t.field || !t.field.isConnected) return;
+                t.released = false;
+                try { t.field.setSelectionRange(t.start, t.end); } catch (e) { /* nothing to hand back */ }
+                if (t.wasFocused) { try { t.field.focus({ preventScroll: true }); } catch (e) { /* nothing to hand back */ } }
+            };
+            const closePaletteDropdown = () => {
+                if (palette.style.display === 'none') return;
+                palette.style.display = 'none';
+                restoreNativeSelection();
+            };
+            palette.addEventListener('pointerdown', () => snapColorTarget(), true);
+            palette.addEventListener('mousedown', () => snapColorTarget(), true);
             const textGrids = {};
             const refreshTextColorMarks = () => {
                 const t = colorTarget && colorTarget.field && colorTarget.field.isConnected ? colorTarget : null;
@@ -10425,6 +10458,9 @@ function showModal(options, noteElement = null) {
                 const t = colorTarget;
                 if (!t || !t.field || !t.field.isConnected) return;
                 applyNoteEditColor(t.field, type, colorInt, t.start, t.end);
+                // applyNoteEditColor puts the selection back; with a released one that would raise
+                // the native handles over the popup again, so it goes back to the collapsed state.
+                if (t.released) { try { t.field.setSelectionRange(t.start, t.start); } catch (e) { /* nothing to collapse */ } }
                 refreshTextColorMarks();
             };
             const buildTextColorSection = (type, labelKey, labelFallback) => {
@@ -10519,7 +10555,7 @@ function showModal(options, noteElement = null) {
                         modalBody.dataset.color = c;
                         modalBody.dataset.colorIndex = idx;
                         setDefaultNoteBg(c); // last background becomes the default for new notes
-                        palette.style.display = 'none';
+                        closePaletteDropdown();
                     };
                     noteGrid.appendChild(swatch);
                 });
@@ -10548,7 +10584,7 @@ function showModal(options, noteElement = null) {
                 };
 
                 colorInput.onchange = () => {
-                    palette.style.display = 'none';
+                    closePaletteDropdown();
                 };
 
                 customSwatch.appendChild(colorInput);
@@ -10558,19 +10594,30 @@ function showModal(options, noteElement = null) {
 
             colorBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                palette.style.display = palette.style.display === 'none' ? 'grid' : 'none';
-                if (palette.style.display === 'grid') {
-                    colorTarget = null;
+                if (palette.style.display === 'none') {
+                    snapColorTarget(true); // the live selection is what the colours apply to
+                    releaseNativeSelection();
+                    palette.style.display = 'grid';
                     refreshTextColorMarks();
+                } else {
+                    closePaletteDropdown();
                 }
             });
             // Click outside to close (simple handler)
             const closePalette = (e) => {
                 if (palette.style.display === 'grid' && !palette.contains(e.target) && e.target !== colorBtn) {
-                    palette.style.display = 'none';
+                    closePaletteDropdown();
                 }
             };
             document.addEventListener('click', closePalette);
+            // No native copy/paste menu while the popup is open: on touch a long press would raise it
+            // over the popup, on a computer only a right click inside the popup is swallowed.
+            const blockNativeTextMenu = (e) => {
+                if (!palette.isConnected || palette.style.display !== 'grid') return;
+                if (e.target && palette.contains(e.target)) { e.preventDefault(); return; }
+                if (paletteTouchPointer) e.preventDefault();
+            };
+            document.addEventListener('contextmenu', blockNativeTextMenu);
             // Cleanup listener on modal close logic (or just let it persist, it's lightweight)
         }
     }
