@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.72';
+const CACHE_NAME = 'cx-notes-b1.73';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -123,8 +123,11 @@ self.addEventListener('install', (event) => {
       )
     );
   });
-  // Immediately take control of the page, avoiding install‑time delay
-  self.skipWaiting();
+  // Без поемане на контрола при install. Ако новият SW вземе контрола веднага,
+  // задейства се 'controllerchange' и main.js презарежда страницата, преди
+  // потребителят да види банера за обновяване. Обновяването минава само през
+  // бутона Refresh now (съобщение SKIP_WAITING по-долу), а иначе новият SW
+  // поема при следващо отваряне на приложението.
 });
 
 self.addEventListener('activate', (event) => {
