@@ -17619,9 +17619,8 @@ function matchNoteListLine(line) {
     return { indent: m[1], bullet: m[2] || null, number: m[3] !== undefined ? parseInt(m[3], 10) : null, prefix: m[0] };
 }
 
-// Hanging indent for the continuation of a list item: the width of the list marker. A textarea
-// cannot indent single lines, so a note that has list items gets it for every wrapped line, in the
-// editor and in the note view alike (text-indent ... hanging each-line), and the two match.
+// Hanging indent for the continuation of a list item in the note view: the width of the list
+// marker (text-indent ... hanging each-line). The editor has none (see syncNoteEditBackdropBox).
 function getNoteListHangingIndent(text, el) {
     if (!text || !el) return 0;
     const prefixes = [];
@@ -17645,7 +17644,7 @@ function applyNoteListHangingIndent(els, text, measureEl) {
     els.forEach(el => { if (el && el.style.textIndent !== value) el.style.textIndent = value; });
     return w;
 }
-// Note view (showModal): the same hanging indent as the editor gives this text.
+// Note view (showModal): hanging indent for list items.
 function applyNoteViewHangingIndent(modalBody, rawContent) {
     if (!modalBody) return;
     ensureNoteMdStyles();
@@ -17727,14 +17726,14 @@ function renderNoteEditBackdrop(backdrop, text, formats) {
 }
 
 // The backdrop has no scrollbar: it gets the textarea's scrollbar width as padding, so both wrap
-// the lines at the same width, and the same hanging indent.
+// the lines at the same width. No text-indent in the editor: a textarea does not apply
+// "hanging each-line" the way a div does, so the caret would drift from the letters.
 function syncNoteEditBackdropBox(textarea, backdrop) {
     if (!textarea || !backdrop) return;
     const sb = Math.max(0, textarea.offsetWidth - textarea.clientWidth);
     const pad = parseFloat(textarea.style.paddingRight || getComputedStyle(textarea).paddingRight) || 0;
     const value = (pad + sb) + 'px';
     if (backdrop.style.paddingRight !== value) backdrop.style.paddingRight = value;
-    applyNoteListHangingIndent([textarea, backdrop], textarea.value, textarea);
     if (backdrop.scrollTop !== textarea.scrollTop) backdrop.scrollTop = textarea.scrollTop;
 }
 
@@ -18562,9 +18561,7 @@ function renderNoteTableSplitBackdrops(split) {
             .map(f => ({ ...f, start: Math.max(0, f.start - off), end: Math.min(len, f.end - off) }))
             .filter(f => f.end > f.start);
         renderNoteEditBackdrop(piece.backdrop, piece.value, local);
-        const indent = piece.el.style.textIndent;
-        applyNoteListHangingIndent([piece.el, piece.backdrop], piece.value, piece.el);
-        if (piece.el.style.textIndent !== indent) fitNoteTableSplitText(piece.el);
+        fitNoteTableSplitText(piece.el);
     });
 }
 // A text piece or a table field was edited: rebuild the whole note in the hidden textarea and
