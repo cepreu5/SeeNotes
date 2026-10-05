@@ -17771,7 +17771,7 @@ function getNoteEditContext(field) {
             backdrop: document.getElementById(field.id + '-backdrop')
         };
     }
-    if (isNoteTableSplitText(field)) {
+    if (isNoteTableSplitText(field) || (field.classList && field.classList.contains('note-table-field'))) {
         const split = field.closest('.note-table-split');
         const piece = split?._pieces?.find(p => p.el === field);
         if (!split || !piece) return null;
@@ -18066,14 +18066,16 @@ function applyNoteMdListEnter(field, caret) {
 }
 
 function isNoteMdField(el) {
-    return !!el && (el.id === 'note-edit-textarea' || el.id === 'note-edit-title-textarea' || isNoteTableSplitText(el));
+    return !!el && (el.id === 'note-edit-textarea' || el.id === 'note-edit-title-textarea' || isNoteTableSplitText(el) || (el.classList && el.classList.contains('note-table-field')));
 }
 
-// A note with a Markdown table is saved without format ranges (postEdit), so there the markers
-// stay text as before: no pair is folded and B/I/U/S put the markers in.
+// The editor keeps the text WITHOUT Markdown markers and every format as a range, for every note,
+// a note with a Markdown table included: the table is split into raw fields (pipes, alignment and
+// separator dashes are plain text) and B/I/U/S apply as ranges there too, never literal symbols.
+// The ranges survive the save (postEdit keeps them for table notes). Stored text of an older note
+// that already carries literal markers keeps them until that fragment is edited away.
 function noteEditKeepsFormats(field) {
-    const ctx = getNoteEditContext(field);
-    return !!ctx && !parseMarkdownTable(ctx.main.value);
+    return !!getNoteEditContext(field);
 }
 
 function runNoteMdInputRules(field) {
@@ -18544,7 +18546,7 @@ function isNoteTableSplitText(el) {
 }
 // The content editor the caret is in: the note textarea itself, or a text piece while fields are open.
 function isNoteEditBodyField(el) {
-    return !!el && (el.id === 'note-edit-textarea' || isNoteTableSplitText(el));
+    return !!el && (el.id === 'note-edit-textarea' || isNoteTableSplitText(el) || (el.classList && el.classList.contains('note-table-field')));
 }
 function fitNoteTableSplitText(ta) {
     ta.style.height = 'auto';
@@ -20334,8 +20336,21 @@ function disableNoteEditing(modalBodyElem) {
  */
 function postEdit(text, formats, maskedLinks = []) {
     if (parseMarkdownTable(text)) {
-        const restored = restoreLinkMarkers(text, [], maskedLinks);
-        return { text: restored.text, formats: [], removedLinkMarkers: restored.removed };
+        // The table text stays exactly as typed — alignment pipes, separator dashes and any '*',
+        // '_' or '~~' inside cells are plain text the marker rules must never touch, so none of
+        // the format-conversion below runs. The WYSIWYG editor has still kept B/I/U/S as ranges
+        // (table cells included) and they are saved as they are; literal markers already present
+        // in the stored text (legacy, pasted) stay.
+        const restored = restoreLinkMarkers(text, [...formats], maskedLinks);
+        const seenFormats = new Set();
+        const keptFormats = restored.formats.filter(f => {
+            if ([1, 2, 3, 6, 7].includes(f.type) && !(f.end > f.start)) return false;
+            const k = JSON.stringify(f);
+            if (seenFormats.has(k)) return false;
+            seenFormats.add(k);
+            return true;
+        });
+        return { text: restored.text, formats: keptFormats, removedLinkMarkers: restored.removed };
     }
     let currentText = text;
     let currentFormats = [...formats];
