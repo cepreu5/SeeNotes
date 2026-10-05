@@ -10610,12 +10610,23 @@ function showModal(options, noteElement = null) {
                 }
             };
             document.addEventListener('click', closePalette);
-            // No native copy/paste menu while the popup is open: on touch a long press would raise it
-            // over the popup, on a computer only a right click inside the popup is swallowed.
+            // The browser keeps its copy/paste bar in a layer of its own, above every element: over the
+            // popup while it is open, and over the modal toolbar whenever a piece of the editor text is
+            // selected on a touch screen - a long press raises it above the selection, so on the first
+            // line it lands right on the toolbar. It is swallowed in both places. On a computer nothing
+            // but a right click inside the popup is swallowed, the editor keeps its own right click.
             const blockNativeTextMenu = (e) => {
-                if (!palette.isConnected || palette.style.display !== 'grid') return;
-                if (e.target && palette.contains(e.target)) { e.preventDefault(); return; }
-                if (paletteTouchPointer) e.preventDefault();
+                const t = e.target;
+                if (palette.isConnected && palette.style.display === 'grid') {
+                    if (t && palette.contains(t)) { e.preventDefault(); return; }
+                    if (paletteTouchPointer) e.preventDefault();
+                    return;
+                }
+                if (!paletteTouchPointer) return;
+                if (t && typeof isNoteMdField === 'function' && isNoteMdField(t)
+                    && typeof t.selectionStart === 'number' && t.selectionStart !== t.selectionEnd) {
+                    e.preventDefault();
+                }
             };
             document.addEventListener('contextmenu', blockNativeTextMenu);
             // Cleanup listener on modal close logic (or just let it persist, it's lightweight)
