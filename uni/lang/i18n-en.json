@@ -438,6 +438,7 @@
     "textBackgroundLabel": "Text background",
     "noteBackgroundLabel": "Note background",
     "standardColor": "Standard colour",
+    "paletteCloseTooltip": "Close the palette",
     "mdBulletLabel": "Bullet",
     "saveTooltip": "Save",
     "attachFileTooltip": "Attach file",

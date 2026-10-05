@@ -455,6 +455,36 @@ function getNoteColorCss(color, fallback = noteColorMap[0]) {
     return typeof color === 'string' ? color : fallback;
 }
 
+// --- Default note background -------------------------------------------------
+// The background of the last note the user recoloured. New notes, and notes with
+// no colour of their own, open with it. It lives in local storage; the profile
+// carries it because 'defaultNoteBg' is in appSettingsKeys, so the next profile
+// save writes it into settings.json and loading a profile restores it.
+const DEFAULT_NOTE_BG_KEY = 'defaultNoteBg';
+const FALLBACK_NOTE_BG = noteColorMap[0]; // '#FBFF86'
+
+function getDefaultNoteBg() {
+    const stored = String(localStorage.getItem(DEFAULT_NOTE_BG_KEY) || '').toUpperCase();
+    return /^#[0-9A-F]{6}$/.test(stored) ? stored : FALLBACK_NOTE_BG;
+}
+
+// A note's colour is stored as a palette index (0-9) or as a colour int - the
+// same shape getModalColorValue() returns.
+function getDefaultNoteBgValue() {
+    const hex = getDefaultNoteBg();
+    const idx = noteColorMap.indexOf(hex);
+    return (idx !== -1 && idx < 10) ? idx : hexToColorInt(hex);
+}
+
+// Remembers a new default. Local only: the profile is written on its own save.
+function setDefaultNoteBg(hex) {
+    if (typeof hex !== 'string') return;
+    const value = hex.toUpperCase();
+    if (!/^#[0-9A-F]{6}$/.test(value)) return;
+    if (localStorage.getItem(DEFAULT_NOTE_BG_KEY) === value) return;
+    localStorage.setItem(DEFAULT_NOTE_BG_KEY, value);
+}
+
 function getNoteHeaderDateTimestamp(noteData) {
     const timer = Number(noteData?.timer || 0);
     const timerDate = timer ? new Date(timer) : null;
@@ -659,7 +689,7 @@ async function preloadNoteBackgrounds(notesData) {
     notesData.forEach(note => {
         // We need backgrounds for deleted notes too, if user goes to trash!
         const noteColor = note.color;
-        const color = (typeof noteColor === 'number' && noteColor >= 0 && noteColor < noteColorMap.length) ? noteColorMap[noteColor] : (typeof noteColor === 'string' ? noteColor : '#FBFF86');
+        const color = (typeof noteColor === 'number' && noteColor >= 0 && noteColor < noteColorMap.length) ? noteColorMap[noteColor] : (typeof noteColor === 'string' ? noteColor : getDefaultNoteBg());
         const img = (note.sellist && note.sellist > 0) ? note.sellist : 0;
         needed.add(`${color}_${img}`);
     });
@@ -2521,7 +2551,7 @@ async function createNewNote() {
         "alarm_type": -1,
         "boardid": boardId,
         "calendarDate": 0,
-        "color": 0,
+        "color": getDefaultNoteBgValue(),
         "date": now,
         "datemod": now,
         "eventId": 0,
@@ -4981,7 +5011,7 @@ async function handleShareTarget(externalData = null) {
             showModal({
                 raw: noteContent,
                 format: null,
-                color: '#FBFF86', // Жълт фон по подразбиране
+                color: getDefaultNoteBg(), // Фон по подразбиране (вж. setDefaultNoteBg)
                 boardId: boardId,
                 id: noteId,
                 isNewNote: true
@@ -10253,7 +10283,7 @@ function showModal(options, noteElement = null) {
         modalContentBox.classList.add('no-bg-image');
         modalBody.classList.add('no-bg-image');
     } else {
-        let bgColor = '#eef603';
+        let bgColor = getDefaultNoteBg();
         if (typeof colorIndex === 'number') {
             if (colorIndex >= 0 && colorIndex < noteColorMap.length) bgColor = noteColorMap[colorIndex];
             else if (colorIndex === -1 && typeof noteColor === 'string' && noteColor.startsWith('#')) bgColor = noteColor;
@@ -10323,6 +10353,24 @@ function showModal(options, noteElement = null) {
                 maxHeight: 'calc(100vh - 80px)',
                 overflowY: 'auto'
             });
+
+            // Close glyph in the popup's top-right corner. The white dot inside the text
+            // sections stays what it is: the standard colour.
+            const closeRow = document.createElement('div');
+            Object.assign(closeRow.style, { display: 'flex', justifyContent: 'flex-end' });
+            const paletteClose = document.createElement('div');
+            paletteClose.id = 'color-palette-close';
+            paletteClose.className = 'color-palette-close';
+            Object.assign(paletteClose.style, {
+                width: '20px', height: '20px', cursor: 'pointer', borderRadius: '50%', boxSizing: 'border-box',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#777', fontSize: '14px', lineHeight: '1'
+            });
+            paletteClose.textContent = '✕';
+            paletteClose.title = _('paletteCloseTooltip') || 'Close';
+            paletteClose.addEventListener('mousedown', (e) => e.preventDefault());
+            paletteClose.onclick = (e) => { e.stopPropagation(); palette.style.display = 'none'; };
+            closeRow.appendChild(paletteClose);
+            palette.appendChild(closeRow);
 
             // Three sections, each a grid of 8 dots x 2 rows: text colour, text background, note background.
             const addPaletteSection = (labelKey, labelFallback, kind) => {
@@ -10470,6 +10518,7 @@ function showModal(options, noteElement = null) {
                         modalContentBox.style.backgroundColor = c;
                         modalBody.dataset.color = c;
                         modalBody.dataset.colorIndex = idx;
+                        setDefaultNoteBg(c); // last background becomes the default for new notes
                         palette.style.display = 'none';
                     };
                     noteGrid.appendChild(swatch);
@@ -10495,6 +10544,7 @@ function showModal(options, noteElement = null) {
                     modalContentBox.style.backgroundColor = hex;
                     modalBody.dataset.color = hex;
                     modalBody.dataset.colorIndex = -1; // -1 показва, че е потребителски цвят
+                    setDefaultNoteBg(hex); // last background becomes the default for new notes
                 };
 
                 colorInput.onchange = () => {
@@ -12762,7 +12812,7 @@ const PENDING_LANG_SYNC_KEY = 'pending_language_sync';
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
     'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'showFirstLine', 'showNewBoard', 'oneTapLink',
-    'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd',
+    'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd', 'defaultNoteBg',
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
@@ -15952,8 +16002,8 @@ async function createNoteElement(noteContent) {
     titleWrapper.appendChild(titleEl);
     // Use the color map for reliability and define a clear fallback color
     const noteBgColor = (typeof noteColor === 'number')
-        ? (noteColor >= 0 && noteColor < noteColorMap.length ? noteColorMap[noteColor] : (noteColor < 0 ? colorIntToHex(noteColor) : '#FBFF86'))
-        : (typeof noteColor === 'string' ? noteColor : '#FBFF86');
+        ? (noteColor >= 0 && noteColor < noteColorMap.length ? noteColorMap[noteColor] : (noteColor < 0 ? colorIntToHex(noteColor) : getDefaultNoteBg()))
+        : (typeof noteColor === 'string' ? noteColor : getDefaultNoteBg());
     note.style.margin = '5px';
     if (notesBgrdEnabled) {
         const imageName = (extraData.sellist && extraData.sellist > 0) ? `${extraData.sellist}` : 0;
@@ -19727,7 +19777,7 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
             Object.assign(card.style, { position: 'absolute', width: '100%', height: '100%', zIndex: zIndex, transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)', opacity: zIndex > 50 ? '1' : '0.4', transform: zIndex > 50 ? 'scale(1)' : 'scale(0.85) translateY(20px)', pointerEvents: zIndex > 50 ? 'auto' : 'none', margin: '0', display: 'flex', flexDirection: 'column' });
 
             // Background logic
-            let bgColor = '#FBFF86';
+            let bgColor = getDefaultNoteBg();
             if (typeof note.color === 'number') {
                 if (note.color >= 0 && note.color < noteColorMap.length) bgColor = noteColorMap[note.color];
                 else if (note.color < 0) bgColor = colorIntToHex(note.color);

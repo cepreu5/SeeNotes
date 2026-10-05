@@ -434,6 +434,7 @@
     "textBackgroundLabel": "Фон на текста",
     "noteBackgroundLabel": "Фон на бележката",
     "standardColor": "Стандартен цвят",
+    "paletteCloseTooltip": "Затвори палитрата",
     "mdBulletLabel": "Булет",
     "saveTooltip": "Запис",
     "attachFileTooltip": "Прикачи файл",
