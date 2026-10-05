@@ -14792,7 +14792,7 @@ function restoreLinkMarkers(text, formats, maskedLinks) {
  * Използва се напълно еднакво както в модала за преглед, така и на картичките в борда.
  * Маркерите {#L<n>#} не се показват (само режимът на редакция ги вижда).
  */
-function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString = null, isForModal = false) {
+function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString = null, isForModal = false, listIndentMeasureEl = undefined) {
     if (!rawContent) return '';
     const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
     if (pipeIndex !== -1) {
@@ -14804,19 +14804,19 @@ function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString
         formatString = bodyStripped.formatString;
         let formattedTitle = '';
         if (titleFormatString && titleFormatString.trim() !== '') {
-            formattedTitle = formatText(titlePart, titleFormatString, isForModal);
+            formattedTitle = formatText(titlePart, titleFormatString, isForModal, listIndentMeasureEl);
         } else {
             const titleTableHtml = renderMarkdownTableAsPseudoGraphic(titlePart, titleFormatString);
-            formattedTitle = titleTableHtml || processNoteContent(titlePart, isForModal);
+            formattedTitle = titleTableHtml || processNoteContent(titlePart, isForModal, false, listIndentMeasureEl);
         }
         let formattedBody = '';
         const tableHtml = renderMarkdownTableAsPseudoGraphic(bodyPart, formatString);
         if (tableHtml) {
             formattedBody = tableHtml;
         } else if (formatString && formatString.trim() !== '') {
-            formattedBody = formatText(bodyPart, formatString, isForModal);
+            formattedBody = formatText(bodyPart, formatString, isForModal, listIndentMeasureEl);
         } else {
-            formattedBody = processNoteContent(bodyPart, isForModal);
+            formattedBody = processNoteContent(bodyPart, isForModal, false, listIndentMeasureEl);
         }
         return formattedTitle + '<br>' + formattedBody;
     }
@@ -14825,42 +14825,97 @@ function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString
     const fullTableHtml = renderMarkdownTableAsPseudoGraphic(rawContent, formatString);
     if (fullTableHtml) return fullTableHtml;
     if (formatString && formatString.trim() !== '') {
-        return formatText(rawContent, formatString, isForModal);
+        return formatText(rawContent, formatString, isForModal, listIndentMeasureEl);
     }
-    return processNoteContent(rawContent, isForModal);
+    return processNoteContent(rawContent, isForModal, false, listIndentMeasureEl);
 }
 
-// Елементът, спрямо чийто шрифт се мери висящият отстъп на списъците в прегледа.
-function getNoteListMeasureEl() {
-    return (typeof modalBody !== 'undefined' && modalBody) || document.getElementById('modal-body');
+// Елементът, спрямо чийто шрифт се мери висящият отстъп на списъците.
+// Без аргумент - модалът (шрифтът на #modal-body). С елемент (карта на дъската) - скрит близнак
+// със същите класове, защото картата има свой шрифт (--note-font-size), различен от този в модала.
+function getNoteListMeasureEl(contextEl) {
+    if (!contextEl) {
+        return (typeof modalBody !== 'undefined' && modalBody) || document.getElementById('modal-body');
+    }
+    let mirror = getNoteListMeasureEl._mirror;
+    if (!mirror || !mirror.isConnected) {
+        mirror = document.createElement('div');
+        mirror.style.cssText = 'position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none;';
+        document.body.appendChild(mirror);
+        getNoteListMeasureEl._mirror = mirror;
+    }
+    const cls = typeof contextEl === 'string' ? contextEl : (contextEl.className || '');
+    if (mirror.className !== cls) mirror.className = cls;
+    return mirror;
 }
 
-// Блок за ЦЯЛ ред: заглавие -> <div class="md-heading">, а в прегледа списъчен ред -> .nmd-li.
+// Текстът на един HTML ред без тагове и с върнати ентитита - за да разпознаем маркера на списък
+// и продължението на ред, дори когато маркерът е вътре във форматиращ таг.
+function noteLinePlainText(htmlLine) {
+    return String(htmlLine)
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&');
+}
+
+// Блок за ЦЯЛ ред: заглавие -> <div class="md-heading">, а списъчен ред -> .nmd-li.
 // Подава се само завършен ред, никога част от ред (иначе блокът обхваща само началото му).
-function wrapNoteLineBlock(line, isForModal, listMeasureEl) {
+// plainText е текстът на реда без тагове (при липса - самият ред).
+// Връща { html, indent, heading }: indent е отстъпът за ред-продължение (null = не е списъчен ред).
+function wrapNoteLineBlock(line, plainText, listMeasureEl) {
+    const plain = plainText === undefined ? line : plainText;
     const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
         const level = headingMatch[1].length;
         const content = headingMatch[2];
         const fontSizes = { 1: '1.6em', 2: '1.35em', 3: '1.18em', 4: '1.05em', 5: '0.95em', 6: '0.85em' };
         const size = fontSizes[level] || '1.1em';
-        return `<div class="md-heading md-h${level}" style="font-size: ${size}; font-weight: bold; margin: 0.35em 0 0.15em 0; line-height: 1.25;">${content}</div>`;
+        return { html: `<div class="md-heading md-h${level}" style="font-size: ${size}; font-weight: bold; margin: 0.35em 0 0.15em 0; line-height: 1.25;">${content}</div>`, indent: null, heading: true };
     }
     // Note view: a list item gets its own full-width inline block, so only its wrapped
     // continuation hangs under the text. The <br>s stay as they are (getPreciseCharIndex).
-    const listMatch = isForModal ? matchNoteListLine(line) : null;
+    const listMatch = listMeasureEl ? matchNoteListLine(plain) : null;
     if (listMatch) {
         const w = getNoteListHangingIndent(listMatch.prefix, listMeasureEl);
         if (w > 0) {
-            return `<span class="nmd-li" style="display: inline-block; box-sizing: border-box; width: 100%; padding-left: ${w}px; text-indent: -${w}px; white-space: pre-wrap; tab-size: 4;">${line}</span>`;
+            return { html: `<span class="nmd-li" style="display: inline-block; box-sizing: border-box; width: 100%; padding-left: ${w}px; text-indent: -${w}px; white-space: pre-wrap; tab-size: 4;">${line}</span>`, indent: w };
         }
+        return { html: line, indent: null };
     }
-    return line;
+    return { html: line, indent: null };
+}
+
+// Всички редове на един пас: маркерният ред получава висящ отстъп (padding-left + отрицателен
+// text-indent), а редът-продължение - ред без маркер, който следва списъчен ред (текстът на булета
+// продължава на нов ред) - получава отстъп колкото маркера, за да застане под текста на булета.
+// Празен ред, заглавие и ред с кодов блок прекъсват продължението.
+function wrapNoteLineBlocks(lines, listMeasureEl, plainTextOf) {
+    if (!listMeasureEl) return lines;
+    const out = [];
+    let cont = 0;
+    for (const line of lines) {
+        const plain = plainTextOf ? plainTextOf(line) : line;
+        if (plain.indexOf(CODE_BLOCK_PLACEHOLDER) !== -1) { out.push(line); cont = 0; continue; }
+        const res = wrapNoteLineBlock(line, plain, listMeasureEl);
+        if (res.heading) { out.push(res.html); cont = 0; continue; }
+        if (res.indent !== null) { out.push(res.html); cont = res.indent; continue; }
+        if (cont > 0 && plain.trim() !== '') {
+            out.push(`<span class="nmd-li nmd-li-cont" style="display: inline-block; box-sizing: border-box; width: 100%; padding-left: ${cont}px; white-space: pre-wrap; tab-size: 4;">${line}</span>`);
+            continue;
+        }
+        out.push(line);
+        cont = 0;
+    }
+    return out;
 }
 
 // skipLineBlocks: текстът е част от ред (сегмент на formatText) - блоковете на редовете
 // се слагат от извикващия върху завършените редове.
-function processNoteContent(text, isForModal = false, skipLineBlocks = false) {
+function processNoteContent(text, isForModal = false, skipLineBlocks = false, listIndentMeasureEl = undefined) {
     if (!text) return '';
     const codeBlocks = [];
     const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
@@ -14901,8 +14956,8 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false) {
     if (symItalic !== '*') escapedText = replacePair(escapedText, '*', 'i');
     escapedText = insertCodeBlocks(escapedText, codeBlocks);
     const lines = escapedText.split('\n');
-    const listMeasureEl = isForModal ? getNoteListMeasureEl() : null;
-    const processedLines = skipLineBlocks ? lines : lines.map(line => wrapNoteLineBlock(line, isForModal, listMeasureEl));
+    const listMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
+    const processedLines = skipLineBlocks ? lines : wrapNoteLineBlocks(lines, listMeasureEl);
     return processedLines.join('<br>');
 }
 
@@ -14948,7 +15003,7 @@ function indexOfMdClearMarker(text, marker, from) {
  * @param {boolean} isForModal - Дали е за модал (за линковете).
  * @returns {string} Форматираният HTML низ.
  */
-function formatText(text, formatString, isForModal = false) {
+function formatText(text, formatString, isForModal = false, listIndentMeasureEl = undefined) {
     let localText = text;
     const mdClear = localStorage.getItem('mdClear') || '--';
 
@@ -14999,7 +15054,7 @@ function formatText(text, formatString, isForModal = false) {
 
     formats = formats.filter(isFormatInRange);
     if (formats.length === 0) {
-        return processNoteContent(localText, isForModal);
+        return processNoteContent(localText, isForModal, false, listIndentMeasureEl);
     }
     // Extract code blocks {{ }} BEFORE splitting into segments,
     // so they are not broken across segment boundaries
@@ -15068,7 +15123,8 @@ function formatText(text, formatString, isForModal = false) {
         const activeFormats = mappedFormats.filter(f => f.start <= start && f.end >= end);
         // Process segment (code blocks already extracted, processNoteContent won't find {{ }})
         // В прегледа сегментът е само част от ред - блоковете на редовете се слагат след цикъла
-        let formattedSegment = processNoteContent(segmentText, isForModal, isForModal);
+        const segmentMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
+        let formattedSegment = processNoteContent(segmentText, isForModal, isForModal || !!segmentMeasureEl, segmentMeasureEl);
         activeFormats.sort((a, b) => a.type - b.type); // Sort ascending to apply inline styles (bold/italic/etc) first
         activeFormats.forEach(format => {
             const {
@@ -15123,11 +15179,11 @@ function formatText(text, formatString, isForModal = false) {
         });
         html += formattedSegment;
     }
-    // Преглед: заглавията и списъчните редове се обвиват като цели редове (с първия им
-    // форматиран откъс). <br>-овете остават същите; ред с маркер на кодов блок не се обвива.
-    if (isForModal) {
-        const listMeasureEl = getNoteListMeasureEl();
-        html = html.split('<br>').map(line => line.indexOf(CODE_BLOCK_PLACEHOLDER) === -1 ? wrapNoteLineBlock(line, true, listMeasureEl) : line).join('<br>');
+    // Заглавията и списъчните редове се обвиват като цели редове (с първия им форматиран откъс).
+    // <br>-овете остават същите; ред с маркер на кодов блок не се обвива.
+    const listMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
+    if (listMeasureEl) {
+        html = wrapNoteLineBlocks(html.split('<br>'), listMeasureEl, noteLinePlainText).join('<br>');
     }
     // Re-insert code blocks that were extracted before segmentation (final pass, in order)
     html = insertCodeBlocks(html, codeBlocks);
@@ -15810,6 +15866,9 @@ async function createNoteElement(noteContent) {
     const contentEl = document.createElement('div');
     contentEl.className = 'note-content';
     const isForModal = (note.closest('#modal-body') !== null);
+    // Картата на дъската има свой шрифт (--note-font-size); отстъпът на списъците се мери спрямо
+    // него. В модала мярката остава #modal-body (undefined = по подразбиране).
+    const noteListMeasureEl = isForModal ? undefined : getNoteListMeasureEl(note);
     const renderPreviewContent = (contentForPreview) => {
         let formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
         const titleFormatSource = (titleSpan && titleSpan.trim() !== '') ? titleSpan : null;
@@ -15819,13 +15878,13 @@ async function createNoteElement(noteContent) {
         if (offset > 0 && formatSource) {
             formatSource = adjustFormatStringOffset(formatSource, offset);
         }
-        contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal);
+        contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal, noteListMeasureEl);
     };
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
         const titleFormatSource = (titleSpan && titleSpan.trim() !== '') ? titleSpan : null;
-        contentEl.innerHTML = getFormattedNoteHtml(previewContent, null, titleFormatSource, isForModal);
+        contentEl.innerHTML = getFormattedNoteHtml(previewContent, null, titleFormatSource, isForModal, noteListMeasureEl);
     } else {
         renderPreviewContent(displayContent);
     }
