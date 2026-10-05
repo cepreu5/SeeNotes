@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.73';
+const CACHE_NAME = 'cx-notes-b1.74';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -123,11 +123,11 @@ self.addEventListener('install', (event) => {
       )
     );
   });
-  // Без поемане на контрола при install. Ако новият SW вземе контрола веднага,
-  // задейства се 'controllerchange' и main.js презарежда страницата, преди
-  // потребителят да види банера за обновяване. Обновяването минава само през
-  // бутона Refresh now (съобщение SKIP_WAITING по-долу), а иначе новият SW
-  // поема при следващо отваряне на приложението.
+  // Без поемане на контрола при install: новият SW изчаква. main.js го пуска
+  // (SKIP_WAITING) веднага щом страницата се зареди, ако потребителят още не е
+  // пипал приложението - тогава обикновен refresh вдига версията. Ако вече се
+  // работи в приложението, банерът изчаква натискането на Refresh now.
+  // НЕ връщай self.skipWaiting() тук (виж projects/seenotes-sw-update в паметта).
 });
 
 self.addEventListener('activate', (event) => {

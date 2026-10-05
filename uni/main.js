@@ -17056,6 +17056,27 @@ function onKBFabClick(e) {
     ensureKBAssistant();
 }
 
+// --- Обновяване на приложението (uni/sw.js) ---
+// Флагът следи пипал ли е потребителят приложението след отварянето. Докато не е пипал и новият
+// worker е готов, го пускаме веднага: обикновен refresh (или отваряне) вдига версията сам,
+// с едно презареждане. Щом вече се работи в приложението, не презареждаме под ръцете -
+// банерът изчаква натискането на Refresh now.
+let swUserInteracted = false;
+['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(ev =>
+    window.addEventListener(ev, () => { swUserInteracted = true; }, { capture: true, passive: true }));
+
+function applyWaitingWorker(worker) {
+    if (!worker || swUserInteracted) return false;
+    try {
+        worker.postMessage({ type: 'SKIP_WAITING' });
+    } catch (e) {
+        console.warn('[SW] Чакащият worker не прие SKIP_WAITING:', e);
+        return false;
+    }
+    console.log('[SW] Чакащият worker е пуснат, страницата се презарежда веднъж.');
+    return true;
+}
+
 // --- Service Worker Registration ---
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', async () => {
@@ -17073,9 +17094,11 @@ if ('serviceWorker' in navigator) {
                     }
                 }
             }
-            // Регистрираме версията с флаг, за да принудим браузъра да я презареди, версиите на sw и main трябва да съвпадат
-            const appVersion = await appVersionPromise;
-            const registration = await navigator.serviceWorker.register(appVersion ? `sw.js?v=${encodeURIComponent(appVersion)}` : 'sw.js');
+            // Регистрацията е на стабилен адрес 'sw.js'. Печатът с версията (sw.js?v=...) караше
+            // браузъра да инсталира "нов" worker при всяко отваряне (различен адрес = различен
+            // скрипт), оттам излизаше банер дори когато версията вече е нова. Свежестта се
+            // гарантира с updateViaCache: 'none' - скриптът се тегли от мрежата при всяка проверка.
+            const registration = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
             console.log(`[SW] Registration successful. Scope: ${registration.scope}. Active: ${!!registration.active}, Waiting: ${!!registration.waiting}, Installing: ${!!registration.installing}`);
 
             // Function to show update notification as a persistent floating bar
@@ -17083,8 +17106,8 @@ if ('serviceWorker' in navigator) {
             const showUpdateNotification = (waitingSW) => {
                 if (!waitingSW) return;
 
-                // Block if already shown on this page load, or if we just clicked refresh in this session
-                if (window._swUpdateBarShown || sessionStorage.getItem('sw_refresh_clicked')) return;
+                // Block if already shown on this page load
+                if (window._swUpdateBarShown) return;
 
                 window._swUpdateBarShown = true;
                 console.log('[SW] Showing update notification bar.');
@@ -17130,8 +17153,6 @@ if ('serviceWorker' in navigator) {
                 refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
                 refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
                 refreshBtn.onclick = () => {
-                    // Block duplicate prompts after reload in this specific tab session
-                    sessionStorage.setItem('sw_refresh_clicked', 'true');
                     localStorage.removeItem('app_version_seen');
                     waitingSW.postMessage({ type: 'SKIP_WAITING' });
                     setTimeout(() => updateBar.remove(), 100);
@@ -17155,8 +17176,8 @@ if ('serviceWorker' in navigator) {
                 }
             };
 
-            // ALWAYS check if there's already a waiting SW
-            if (registration.waiting) {
+            // Готов нов worker още при зареждането: пускаме го, ако потребителят не е пипал нищо.
+            if (registration.waiting && !applyWaitingWorker(registration.waiting)) {
                 showUpdateNotification(registration.waiting);
             }
 
@@ -17168,8 +17189,8 @@ if ('serviceWorker' in navigator) {
                     newWorker.addEventListener('statechange', () => {
                         console.log(`[SW] New worker state changed: ${newWorker.state}`);
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            console.log('[SW] New worker installed and waiting. Showing notification bar.');
-                            showUpdateNotification(newWorker);
+                            console.log('[SW] New worker installed.');
+                            if (!applyWaitingWorker(newWorker)) showUpdateNotification(newWorker);
                         }
                     });
                 }
