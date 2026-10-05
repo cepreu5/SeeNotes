@@ -432,6 +432,7 @@ const noteColorMap = [
     '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF',
     '#DDB1FF', '#B1D8FF', '#B1FFF2', '#FFD7B1', '#FFB1E8'
 ];
+const NOTE_TEXT_COLORS = noteColorMap.filter(c => c !== '#EFEFEF'); // 14: the note palette without the neutral grey
 
 function colorIntToHex(intVal) {
     if (typeof intVal !== 'number') return intVal;
@@ -10298,6 +10299,8 @@ function showModal(options, noteElement = null) {
             });
             colorBtn.onmouseover = () => colorBtn.style.opacity = '1';
             colorBtn.onmouseout = () => colorBtn.style.opacity = '0.7';
+            // Keeps the editor's focus and selection (the text colours apply to the selection).
+            colorBtn.addEventListener('mousedown', (e) => e.preventDefault());
             // Keep it immediately to the left of the expand control in the first header row.
             closeBtn.parentNode.insertBefore(colorBtn, expandBtn || closeBtn);
 
@@ -10312,14 +10315,138 @@ function showModal(options, noteElement = null) {
                 border: '1px solid #ccc',
                 padding: '10px',
                 display: 'none',
-                gridTemplateColumns: 'repeat(4, 22px)',
-                gap: '8px',
-                zIndex: '10001',
+                gridTemplateColumns: 'auto',
+                gap: '4px',
+                zIndex: '10002', // above the modal's footer toolbar (10001), which the taller popup now reaches
                 borderRadius: '8px',
-                boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
+                boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+                maxHeight: 'calc(100vh - 80px)',
+                overflowY: 'auto'
             });
 
+            // Three sections, each a grid of 8 dots x 2 rows: text colour, text background, note background.
+            const addPaletteSection = (labelKey, labelFallback, kind) => {
+                const label = document.createElement('div');
+                label.className = 'color-palette-label';
+                label.textContent = _(labelKey) || labelFallback;
+                Object.assign(label.style, { fontSize: '11px', color: '#555', margin: '2px 0 0 0' });
+                const grid = document.createElement('div');
+                grid.className = 'color-palette-grid';
+                grid.dataset.kind = kind;
+                Object.assign(grid.style, { display: 'grid', gridTemplateColumns: 'repeat(8, 22px)', gap: '8px', marginBottom: '4px' });
+                palette.appendChild(label);
+                palette.appendChild(grid);
+                return grid;
+            };
+            const markSwatch = (sw, on) => {
+                sw.style.border = on ? '2px solid #555' : '1px solid #ccc';
+                sw.style.transform = on ? 'scale(1.1)' : '';
+                sw.classList.toggle('is-selected', on);
+            };
+
+            // Text colour (type 4) and text background (type 5): the editor field and its selection
+            // are taken when the press starts (the native colour picker of the custom dot takes the
+            // focus away; the other dots keep it with preventDefault on mousedown).
+            let colorTarget = null;
+            const snapColorTarget = () => {
+                const field = typeof getActiveModalEditor === 'function' ? getActiveModalEditor() : null;
+                colorTarget = field ? { field, start: field.selectionStart, end: field.selectionEnd } : null;
+            };
+            palette.addEventListener('pointerdown', snapColorTarget, true);
+            palette.addEventListener('mousedown', snapColorTarget, true);
+            const textGrids = {};
+            const refreshTextColorMarks = () => {
+                const t = colorTarget && colorTarget.field && colorTarget.field.isConnected ? colorTarget : null;
+                const field = t ? t.field : (typeof getActiveModalEditor === 'function' ? getActiveModalEditor() : null);
+                [4, 5].forEach(type => {
+                    const grid = textGrids[type];
+                    if (!grid) return;
+                    const current = field ? getNoteEditColorAt(field, type, t ? t.start : undefined, t ? t.end : undefined) : null;
+                    let found = false;
+                    grid.querySelectorAll('[data-color-int]').forEach(sw => {
+                        const on = current !== null && Number(sw.dataset.colorInt) === current;
+                        if (on) found = true;
+                        markSwatch(sw, on);
+                    });
+                    const custom = grid.querySelector('.color-swatch-custom');
+                    if (custom) markSwatch(custom, current !== null && !found);
+                });
+            };
+            const applyTextColor = (type, colorInt, keepTarget) => {
+                if (!keepTarget || !colorTarget) snapColorTarget();
+                const t = colorTarget;
+                if (!t || !t.field || !t.field.isConnected) return;
+                applyNoteEditColor(t.field, type, colorInt, t.start, t.end);
+                refreshTextColorMarks();
+            };
+            const buildTextColorSection = (type, labelKey, labelFallback) => {
+                const grid = addPaletteSection(labelKey, labelFallback, type === 4 ? 'text-color' : 'text-background');
+                textGrids[type] = grid;
+                NOTE_TEXT_COLORS.forEach(c => {
+                    const swatch = document.createElement('div');
+                    swatch.className = 'color-swatch';
+                    Object.assign(swatch.style, {
+                        width: '22px', height: '22px', backgroundColor: c, cursor: 'pointer', borderRadius: '50%',
+                        border: '1px solid #ccc', boxShadow: 'inset 0 0 2px rgba(0,0,0,0.2)', boxSizing: 'border-box'
+                    });
+                    swatch.dataset.color = c;
+                    swatch.dataset.colorInt = String(hexToColorInt(c));
+                    swatch.title = _(`color${noteColorMap.indexOf(c)}`) || c;
+                    swatch.addEventListener('mousedown', (e) => e.preventDefault());
+                    swatch.onclick = (e) => {
+                        e.stopPropagation();
+                        applyTextColor(type, hexToColorInt(c), true);
+                    };
+                    grid.appendChild(swatch);
+                });
+                // Standard colour: takes the colour off the selection, or the pending one.
+                const resetSwatch = document.createElement('div');
+                resetSwatch.className = 'color-swatch-default';
+                Object.assign(resetSwatch.style, {
+                    width: '22px', height: '22px', cursor: 'pointer', borderRadius: '50%', border: '1px solid #ccc',
+                    backgroundColor: 'white', color: '#777', boxSizing: 'border-box',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', lineHeight: '1'
+                });
+                resetSwatch.textContent = '×';
+                resetSwatch.title = _('standardColor') || 'Standard colour';
+                resetSwatch.addEventListener('mousedown', (e) => e.preventDefault());
+                resetSwatch.onclick = (e) => {
+                    e.stopPropagation();
+                    applyTextColor(type, null, true);
+                };
+                grid.appendChild(resetSwatch);
+                const custom = document.createElement('div');
+                custom.className = 'color-swatch-custom';
+                Object.assign(custom.style, {
+                    width: '22px', height: '22px', cursor: 'pointer', borderRadius: '50%', border: '1px solid #ccc',
+                    background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)', boxSizing: 'border-box',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
+                });
+                custom.title = _('customColor') || 'Custom color';
+                const input = document.createElement('input');
+                input.type = 'color';
+                Object.assign(input.style, {
+                    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer'
+                });
+                const onPick = (e) => applyTextColor(type, hexToColorInt(e.target.value.toUpperCase()), true);
+                input.oninput = onPick;
+                input.onchange = (e) => {
+                    onPick(e);
+                    const t = colorTarget;
+                    if (t && t.field && t.field.isConnected) {
+                        t.field.focus({ preventScroll: true });
+                        t.field.setSelectionRange(t.start, t.end);
+                    }
+                };
+                custom.appendChild(input);
+                grid.appendChild(custom);
+            };
+            buildTextColorSection(4, 'textColorLabel', 'Text colour');
+            buildTextColorSection(5, 'textBackgroundLabel', 'Text background');
+            palette._refreshTextColorMarks = refreshTextColorMarks;
+
             if (typeof noteColorMap !== 'undefined') {
+                const noteGrid = addPaletteSection('noteBackgroundLabel', 'Note background', 'note-background');
                 noteColorMap.forEach((c, idx) => {
                     const swatch = document.createElement('div');
                     Object.assign(swatch.style, {
@@ -10329,7 +10456,8 @@ function showModal(options, noteElement = null) {
                         cursor: 'pointer',
                         borderRadius: '50%',
                         border: '1px solid #ccc',
-                        boxShadow: 'inset 0 0 2px rgba(0,0,0,0.2)'
+                        boxShadow: 'inset 0 0 2px rgba(0,0,0,0.2)',
+                        boxSizing: 'border-box'
                     });
                     swatch.title = _(`color${idx}`) || c;
                     if (idx === colorIndex) {
@@ -10344,14 +10472,14 @@ function showModal(options, noteElement = null) {
                         modalBody.dataset.colorIndex = idx;
                         palette.style.display = 'none';
                     };
-                    palette.appendChild(swatch);
+                    noteGrid.appendChild(swatch);
                 });
 
                 // --- Добавяне на бутон за избор на произволен цвят ---
                 const customSwatch = document.createElement('div');
                 Object.assign(customSwatch.style, {
                     width: '22px', height: '22px', cursor: 'pointer', borderRadius: '50%', border: '1px solid #ccc',
-                    background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+                    background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)', boxSizing: 'border-box',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
                 });
                 customSwatch.title = _('customColor') || 'Custom color';
@@ -10374,13 +10502,17 @@ function showModal(options, noteElement = null) {
                 };
 
                 customSwatch.appendChild(colorInput);
-                palette.appendChild(customSwatch);
+                noteGrid.appendChild(customSwatch);
             }
             modalContentBox.appendChild(palette);
 
             colorBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 palette.style.display = palette.style.display === 'none' ? 'grid' : 'none';
+                if (palette.style.display === 'grid') {
+                    colorTarget = null;
+                    refreshTextColorMarks();
+                }
             });
             // Click outside to close (simple handler)
             const closePalette = (e) => {
@@ -17304,6 +17436,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     const stickyKey = getNoteStickyKey();
     if (stickyKey !== noteStickyNoteKey) {
         noteStickyFormats = new Set();
+        noteStickyColors = { 4: null, 5: null };
         noteStickyNoteKey = stickyKey;
     }
     const wrapper = document.createElement('div');
@@ -17673,6 +17806,47 @@ function formatKeyboardHotkeys(textarea, backdrop, isB, isI, isU, isD) {
     textarea.setSelectionRange(start, end);
 }
 
+// Text colour (type 4) / text background (type 5) from the droplet popup; colorInt null = the ×
+// dot (standard colour). With a selection the colour replaces whatever colour of that type is
+// there (never a toggle); without one it is pending for what is typed next in this note.
+function applyNoteEditColor(field, type, colorInt, selStart, selEnd) {
+    const ctx = getNoteEditContext(field);
+    if (!ctx) return false;
+    const start = selStart === undefined ? field.selectionStart : selStart;
+    const end = selEnd === undefined ? field.selectionEnd : selEnd;
+    if (start === end) {
+        noteStickyColors[type] = colorInt;
+        return true;
+    }
+    const S = ctx.off + Math.min(start, end), E = ctx.off + Math.max(start, end);
+    let formats = readNoteEditFormats(ctx.modalBody, ctx.key);
+    formats = colorInt === null
+        ? removeNoteFormatRange(formats, S, E, f => f.type === type)
+        : addNoteColorRange(formats, S, E, type, colorInt);
+    writeNoteEditFormats(ctx.modalBody, ctx.key, formats);
+    refreshNoteEditBackdrops(ctx);
+    field.setSelectionRange(start, end);
+    return true;
+}
+// The colour of a type that applies at the selection (its start), or that typing at the caret
+// would get (the pending one first); null = standard colour.
+function getNoteEditColorAt(field, type, selStart, selEnd) {
+    const ctx = getNoteEditContext(field);
+    if (!ctx) return null;
+    const start = selStart === undefined ? field.selectionStart : selStart;
+    const end = selEnd === undefined ? field.selectionEnd : selEnd;
+    const formats = readNoteEditFormats(ctx.modalBody, ctx.key);
+    if (start === end) {
+        if (noteStickyColors[type] !== null && noteStickyColors[type] !== undefined) return noteStickyColors[type];
+        const P = ctx.off + start;
+        const f = formats.find(f => f.type === type && f.start < P && f.end > P);
+        return f ? (f.paramint | 0) : null;
+    }
+    const S = ctx.off + Math.min(start, end);
+    const f = formats.find(f => f.type === type && f.start <= S && f.end > S);
+    return f ? (f.paramint | 0) : null;
+}
+
 window.addEventListener('orientationchange', () => {
     const floatingButton = document.getElementById('popup-menu-btn-floating');
     if (floatingButton) {
@@ -17701,6 +17875,7 @@ window.addEventListener('orientationchange', () => {
 const NOTE_HEADER_SCALES = [1.3, 1.2, 1.1, 0.9, 0.8, 0.7]; // "# " ... "###### " (preEdit/postEdit)
 let noteStickyFormats = new Set(); // Ctrl+B/I/U/D without a selection: types the next typed text gets
 let noteStickyNoteKey = null;
+let noteStickyColors = { 4: null, 5: null }; // droplet popup without a selection: type -> colour int the next typed text gets
 let noteMdApplying = false; // our own edits must not run the Markdown input rules again
 
 function ensureNoteMdStyles() {
@@ -17945,6 +18120,27 @@ function addNoteFormatRange(formats, s, e, type, paramfloat = 0) {
     rest.push({ start, end, type, paramint: 0, paramfloat });
     return rest;
 }
+// Colour ranges (4 text, 5 background): one colour per position. [s, e) is cut out of the ranges
+// of that type with another colour, and joined with the ranges of the same colour it touches
+// (so typing with a pending colour grows one range instead of adding one per keystroke).
+function addNoteColorRange(formats, s, e, type, colorInt) {
+    if (e <= s) return formats;
+    const color = colorInt | 0;
+    let start = s, end = e;
+    const rest = [];
+    formats.forEach(f => {
+        if (f.type !== type || f.end < s || f.start > e) { rest.push(f); return; }
+        if ((f.paramint | 0) === color) {
+            start = Math.min(start, f.start);
+            end = Math.max(end, f.end);
+            return;
+        }
+        if (f.start < s) rest.push({ ...f, end: Math.min(f.end, s) });
+        if (f.end > e) rest.push({ ...f, start: Math.max(f.start, e) });
+    });
+    rest.push({ start, end, type, paramint: color, paramfloat: 0 });
+    return rest;
+}
 // Takes [s, e) out of the formats that match: they are cut, the parts outside stay.
 function removeNoteFormatRange(formats, s, e, test) {
     const out = [];
@@ -18012,6 +18208,9 @@ function handleEditInput(textarea, backdrop) {
         });
         // Sticky mode: what is typed now gets the switched-on formats.
         noteStickyFormats.forEach(type => { formats = addNoteFormatRange(formats, P, P + L, type); });
+        [4, 5].forEach(type => {
+            if (noteStickyColors[type] !== null) formats = addNoteColorRange(formats, P, P + L, type, noteStickyColors[type]);
+        });
     } else if (diff < 0) {
         const L = Math.abs(diff);
         const P = pos;
