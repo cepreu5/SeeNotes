@@ -14794,7 +14794,37 @@ function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString
     return processNoteContent(rawContent, isForModal);
 }
 
-function processNoteContent(text, isForModal = false) {
+// Елементът, спрямо чийто шрифт се мери висящият отстъп на списъците в прегледа.
+function getNoteListMeasureEl() {
+    return (typeof modalBody !== 'undefined' && modalBody) || document.getElementById('modal-body');
+}
+
+// Блок за ЦЯЛ ред: заглавие -> <div class="md-heading">, а в прегледа списъчен ред -> .nmd-li.
+// Подава се само завършен ред, никога част от ред (иначе блокът обхваща само началото му).
+function wrapNoteLineBlock(line, isForModal, listMeasureEl) {
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+        const level = headingMatch[1].length;
+        const content = headingMatch[2];
+        const fontSizes = { 1: '1.6em', 2: '1.35em', 3: '1.18em', 4: '1.05em', 5: '0.95em', 6: '0.85em' };
+        const size = fontSizes[level] || '1.1em';
+        return `<div class="md-heading md-h${level}" style="font-size: ${size}; font-weight: bold; margin: 0.35em 0 0.15em 0; line-height: 1.25;">${content}</div>`;
+    }
+    // Note view: a list item gets its own full-width inline block, so only its wrapped
+    // continuation hangs under the text. The <br>s stay as they are (getPreciseCharIndex).
+    const listMatch = isForModal ? matchNoteListLine(line) : null;
+    if (listMatch) {
+        const w = getNoteListHangingIndent(listMatch.prefix, listMeasureEl);
+        if (w > 0) {
+            return `<span class="nmd-li" style="display: inline-block; box-sizing: border-box; width: 100%; padding-left: ${w}px; text-indent: -${w}px; white-space: pre-wrap; tab-size: 4;">${line}</span>`;
+        }
+    }
+    return line;
+}
+
+// skipLineBlocks: текстът е част от ред (сегмент на formatText) - блоковете на редовете
+// се слагат от извикващия върху завършените редове.
+function processNoteContent(text, isForModal = false, skipLineBlocks = false) {
     if (!text) return '';
     const codeBlocks = [];
     const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
@@ -14835,27 +14865,8 @@ function processNoteContent(text, isForModal = false) {
     if (symItalic !== '*') escapedText = replacePair(escapedText, '*', 'i');
     escapedText = insertCodeBlocks(escapedText, codeBlocks);
     const lines = escapedText.split('\n');
-    const listMeasureEl = isForModal ? ((typeof modalBody !== 'undefined' && modalBody) || document.getElementById('modal-body')) : null;
-    const processedLines = lines.map(line => {
-        const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-        if (headingMatch) {
-            const level = headingMatch[1].length;
-            const content = headingMatch[2];
-            const fontSizes = { 1: '1.6em', 2: '1.35em', 3: '1.18em', 4: '1.05em', 5: '0.95em', 6: '0.85em' };
-            const size = fontSizes[level] || '1.1em';
-            return `<div class="md-heading md-h${level}" style="font-size: ${size}; font-weight: bold; margin: 0.35em 0 0.15em 0; line-height: 1.25;">${content}</div>`;
-        }
-        // Note view: a list item gets its own full-width inline block, so only its wrapped
-        // continuation hangs under the text. The <br>s stay as they are (getPreciseCharIndex).
-        const listMatch = isForModal ? matchNoteListLine(line) : null;
-        if (listMatch) {
-            const w = getNoteListHangingIndent(listMatch.prefix, listMeasureEl);
-            if (w > 0) {
-                return `<span class="nmd-li" style="display: inline-block; box-sizing: border-box; width: 100%; padding-left: ${w}px; text-indent: -${w}px; white-space: pre-wrap; tab-size: 4;">${line}</span>`;
-            }
-        }
-        return line;
-    });
+    const listMeasureEl = isForModal ? getNoteListMeasureEl() : null;
+    const processedLines = skipLineBlocks ? lines : lines.map(line => wrapNoteLineBlock(line, isForModal, listMeasureEl));
     return processedLines.join('<br>');
 }
 
@@ -15020,7 +15031,8 @@ function formatText(text, formatString, isForModal = false) {
         if (segmentText.length === 0) continue;
         const activeFormats = mappedFormats.filter(f => f.start <= start && f.end >= end);
         // Process segment (code blocks already extracted, processNoteContent won't find {{ }})
-        let formattedSegment = processNoteContent(segmentText, isForModal);
+        // В прегледа сегментът е само част от ред - блоковете на редовете се слагат след цикъла
+        let formattedSegment = processNoteContent(segmentText, isForModal, isForModal);
         activeFormats.sort((a, b) => a.type - b.type); // Sort ascending to apply inline styles (bold/italic/etc) first
         activeFormats.forEach(format => {
             const {
@@ -15074,6 +15086,12 @@ function formatText(text, formatString, isForModal = false) {
             }
         });
         html += formattedSegment;
+    }
+    // Преглед: заглавията и списъчните редове се обвиват като цели редове (с първия им
+    // форматиран откъс). <br>-овете остават същите; ред с маркер на кодов блок не се обвива.
+    if (isForModal) {
+        const listMeasureEl = getNoteListMeasureEl();
+        html = html.split('<br>').map(line => line.indexOf(CODE_BLOCK_PLACEHOLDER) === -1 ? wrapNoteLineBlock(line, true, listMeasureEl) : line).join('<br>');
     }
     // Re-insert code blocks that were extracted before segmentation (final pass, in order)
     html = insertCodeBlocks(html, codeBlocks);
