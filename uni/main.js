@@ -18219,6 +18219,14 @@ function moveCaretToLineEdge(textarea, moveToEnd, isParagraph = false) {
     scrollCaretIntoView(textarea);
 }
 
+function moveCaretByOne(textarea, delta) {
+    if (!textarea) return;
+    const nextPosition = Math.max(0, Math.min(textarea.value.length, textarea.selectionStart + delta));
+    textarea.focus();
+    textarea.setSelectionRange(nextPosition, nextPosition);
+    scrollCaretIntoView(textarea);
+}
+
 function restoreModalHeaderListButtons() {
     const headerButtons = document.querySelector('#content-modal .modal-header-buttons');
     ['bullet-list-btn', 'numbered-list-btn'].forEach((buttonId) => {
@@ -18911,6 +18919,23 @@ function createModalEditToolbar(modalContentBox) {
             button.addEventListener('touchcancel', () => {
                 if (pressTimer) clearTimeout(pressTimer);
             });
+            // Press-and-hold with a mouse; mouse events that follow a touch are ignored.
+            let lastTouchEnd = 0;
+            button.addEventListener('touchend', () => { lastTouchEnd = Date.now(); });
+            button.addEventListener('mousedown', (e) => {
+                if (e.button !== 0 || Date.now() - lastTouchEnd < 1000) return;
+                longPressTriggered = false;
+                if (pressTimer) clearTimeout(pressTimer);
+                pressTimer = setTimeout(() => {
+                    longPressTriggered = true;
+                    onLongPress();
+                }, 500);
+            });
+            ['mouseup', 'mouseleave', 'mouseout'].forEach((type) => {
+                button.addEventListener(type, () => {
+                    if (pressTimer) clearTimeout(pressTimer);
+                });
+            });
             button.addEventListener('click', (e) => {
                 if (longPressTriggered) {
                     longPressTriggered = false;
@@ -18949,18 +18974,20 @@ function createModalEditToolbar(modalContentBox) {
         toolbar.appendChild(button);
     });
     addButton({
-        label: '⇤',
-        title: _('lineStartTooltip') || 'Line start · Ctrl / hold: paragraph start',
-        className: 'is-caret',
-        action: (e) => moveCaretToLineEdge(getActiveModalEditor(), false, !!(e && e.ctrlKey)),
-        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), false, true)
+        label: '←',
+        title: _('lineStartTooltip') || 'One character left · Ctrl/hold: line start',
+        action: (e) => (e && (e.ctrlKey || e.metaKey))
+            ? moveCaretToLineEdge(getActiveModalEditor(), false, false)
+            : moveCaretByOne(getActiveModalEditor(), -1),
+        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), false, false)
     });
     addButton({
-        label: '⇥',
-        title: _('lineEndTooltip') || 'Line end · Ctrl / hold: paragraph end',
-        className: 'is-caret',
-        action: (e) => moveCaretToLineEdge(getActiveModalEditor(), true, !!(e && e.ctrlKey)),
-        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, true)
+        label: '→',
+        title: _('lineEndTooltip') || 'One character right · Ctrl/hold: line end',
+        action: (e) => (e && (e.ctrlKey || e.metaKey))
+            ? moveCaretToLineEdge(getActiveModalEditor(), true, false)
+            : moveCaretByOne(getActiveModalEditor(), 1),
+        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, false)
     });
     addButton({
         label: '▦',
@@ -19589,7 +19616,7 @@ async function checkUnsavedChanges(isClosingModal = true) {
         const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
         if (confirmed) {
             enableNoteEditing(modalBodyElem);
-            await saveEditedNote(true);
+            await saveEditedNote();
             return false;
         }
         return true;
@@ -19638,7 +19665,7 @@ async function checkUnsavedChanges(isClosingModal = true) {
     }
     const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
     if (confirmed) {
-        await saveEditedNote(true);
+        await saveEditedNote();
         return false;
     } else {
         return true;
