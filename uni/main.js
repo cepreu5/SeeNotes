@@ -10122,7 +10122,6 @@ function showModal(options, noteElement = null) {
     // Special case: if titleFormatString is provided, format the title part separately.
     displayContent = getFormattedNoteHtml(rawContent, formatString, titleFormatString, true);
     modalBody.innerHTML = displayContent;
-    applyNoteViewHangingIndent(modalBody, rawContent);
     modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
 
     // Remove previous click listener if it exists to prevent accumulation
@@ -14836,6 +14835,7 @@ function processNoteContent(text, isForModal = false) {
     if (symItalic !== '*') escapedText = replacePair(escapedText, '*', 'i');
     escapedText = insertCodeBlocks(escapedText, codeBlocks);
     const lines = escapedText.split('\n');
+    const listMeasureEl = isForModal ? ((typeof modalBody !== 'undefined' && modalBody) || document.getElementById('modal-body')) : null;
     const processedLines = lines.map(line => {
         const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
         if (headingMatch) {
@@ -14844,6 +14844,15 @@ function processNoteContent(text, isForModal = false) {
             const fontSizes = { 1: '1.6em', 2: '1.35em', 3: '1.18em', 4: '1.05em', 5: '0.95em', 6: '0.85em' };
             const size = fontSizes[level] || '1.1em';
             return `<div class="md-heading md-h${level}" style="font-size: ${size}; font-weight: bold; margin: 0.35em 0 0.15em 0; line-height: 1.25;">${content}</div>`;
+        }
+        // Note view: a list item gets its own full-width inline block, so only its wrapped
+        // continuation hangs under the text. The <br>s stay as they are (getPreciseCharIndex).
+        const listMatch = isForModal ? matchNoteListLine(line) : null;
+        if (listMatch) {
+            const w = getNoteListHangingIndent(listMatch.prefix, listMeasureEl);
+            if (w > 0) {
+                return `<span class="nmd-li" style="display: inline-block; box-sizing: border-box; width: 100%; padding-left: ${w}px; text-indent: -${w}px; white-space: pre-wrap; tab-size: 4;">${line}</span>`;
+            }
         }
         return line;
     });
@@ -17178,7 +17187,6 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         modalBodyElem.dataset.initialTitleFormat = modalBodyElem.dataset.titleFormat || '';
     }
     modalBodyElem.innerHTML = '';
-    clearNoteViewHangingIndent(modalBodyElem);
     // Sticky formats (Ctrl+B... without a selection) stay on until pressed again; another note starts without them.
     const stickyKey = getNoteStickyKey();
     if (stickyKey !== noteStickyNoteKey) {
@@ -17596,7 +17604,6 @@ function ensureNoteMdStyles() {
 .nmd-other { border-bottom: 2px dashed currentColor; background-color: rgba(128, 128, 128, 0.3); }
 #note-edit-textarea::selection, #note-edit-title-textarea::selection, .note-table-split-text::selection { color: transparent; background: rgba(74, 144, 226, 0.35); }
 .modal-edit-toolbar-btn.is-sticky { background: #4a90e2; border-color: #4a90e2; color: #fff; }
-#modal-body.nmd-hang div, #modal-body.nmd-hang table, #modal-body.nmd-hang pre { text-indent: 0; }
 `;
     document.head.appendChild(style);
 }
@@ -17620,7 +17627,7 @@ function matchNoteListLine(line) {
 }
 
 // Hanging indent for the continuation of a list item in the note view: the width of the list
-// marker (text-indent ... hanging each-line). The editor has none (see syncNoteEditBackdropBox).
+// marker (processNoteContent wraps each item in a .nmd-li block). The editor has none.
 function getNoteListHangingIndent(text, el) {
     if (!text || !el) return 0;
     const prefixes = [];
@@ -17637,24 +17644,6 @@ function getNoteListHangingIndent(text, el) {
     ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
     const widths = (top.length ? top : prefixes).map(m => ctx.measureText(m.prefix.replace(/\t/g, '    ')).width);
     return Math.round((top.length ? Math.max(...widths) : Math.min(...widths)) * 10) / 10;
-}
-function applyNoteListHangingIndent(els, text, measureEl) {
-    const w = getNoteListHangingIndent(text, measureEl || els[0]);
-    const value = w > 0 ? `${w}px hanging each-line` : '';
-    els.forEach(el => { if (el && el.style.textIndent !== value) el.style.textIndent = value; });
-    return w;
-}
-// Note view (showModal): hanging indent for list items.
-function applyNoteViewHangingIndent(modalBody, rawContent) {
-    if (!modalBody) return;
-    ensureNoteMdStyles();
-    const w = applyNoteListHangingIndent([modalBody], rawContent || '', modalBody);
-    modalBody.classList.toggle('nmd-hang', w > 0);
-}
-function clearNoteViewHangingIndent(modalBody) {
-    if (!modalBody) return;
-    modalBody.classList.remove('nmd-hang');
-    modalBody.style.textIndent = '';
 }
 
 function getNoteEditColorCss(paramint) {
